@@ -459,12 +459,10 @@ def run(data, sample, preview=0):
     """ run the major functions for editing raw reads """
     ## if sample is already done skip
     if sample.stats['state'] >= 2:
-        print("skipping,", sample.name,
-              "already edited. Sample.stats['state'] ==", \
-               str(sample.stats['state']))
+        print("skipping, {} already edited. Sample.stats['state'] == {}".\
+              format(sample.name, int(sample.stats['state'])))
     elif os.path.getsize(sample.files["fastq"][0]) < 50:
-        print("skipping,", sample.name,
-              "File is empty.")
+        print("skipping, {}. File is empty.".format(sample.name))
     else:
         submitted, result_queue = run_full(data, sample, preview)
         cleanup(data, sample, submitted, result_queue)

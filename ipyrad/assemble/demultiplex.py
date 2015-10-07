@@ -603,7 +603,8 @@ def run(data, preview):
                              tempfile.gettempdir(), 
                              "tmp*"))
         for tmpfile in tmpfiles:
-            os.remove(tmpfile)
+            if os.path.isfile(tmpfile):
+                os.remove(tmpfile)
 
 
 
