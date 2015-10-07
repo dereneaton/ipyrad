@@ -7,6 +7,7 @@ Tutorials
 ---------
 
 Documentation is in the works, for now there are working example tutorials_.
+
 .. _tutorials: http://nbviewer.ipython.org/github/dereneaton/ipyrad/tree/master/tests/
 
 
