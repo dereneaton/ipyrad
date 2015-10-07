@@ -30,7 +30,8 @@ GPLv3
 Contributors
 ------------
 `Deren Eaton <deren.eaton@yale.edu>`_.  
-Seeking collaborators. 
+`Isaac Overcast <isaac.overcast@gmail.com>`_.  
+
 
 
 
