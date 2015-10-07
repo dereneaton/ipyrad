@@ -1,0 +1,1060 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"clust_",
+				"clust_threshold"
+			],
+			[
+				"clust",
+				"clust_"
+			],
+			[
+				"u",
+				"u"
+			],
+			[
+				"mu",
+				"multiprocessing"
+			],
+			[
+				"working",
+				"working_directory"
+			],
+			[
+				"result",
+				"result_queue"
+			],
+			[
+				"cuts",
+				"cuts"
+			],
+			[
+				"param",
+				"param"
+			],
+			[
+				"adapter",
+				"adapter_trimming"
+			],
+			[
+				"per",
+				"perfile_stats"
+			],
+			[
+				"_",
+				"_R1_"
+			],
+			[
+				"data",
+				"datatype"
+			],
+			[
+				"iter",
+				"iter"
+			],
+			[
+				"read",
+				"read1"
+			],
+			[
+				"am",
+				"ambigcutters"
+			],
+			[
+				"raw",
+				"raw_fastq_path"
+			],
+			[
+				"v",
+				"values"
+			],
+			[
+				"par",
+				"paramsdict"
+			],
+			[
+				"cm",
+				"cmd_exists"
+			],
+			[
+				"link",
+				"link_fastqs"
+			],
+			[
+				"sorted_f",
+				"sorted_fastq_path"
+			],
+			[
+				"ba",
+				"barcodes_path"
+			],
+			[
+				"sort",
+				"sorted_fastq_path"
+			],
+			[
+				"params",
+				"paramsdict"
+			],
+			[
+				"restriction",
+				"restriction_overhang"
+			],
+			[
+				"type",
+				"type"
+			],
+			[
+				"nam",
+				"nam"
+			],
+			[
+				"int",
+				"int"
+			],
+			[
+				"DATE",
+				"date"
+			],
+			[
+				"i",
+				"i"
+			],
+			[
+				"stacks",
+				"stacks"
+			],
+			[
+				"locus",
+				"locus"
+			],
+			[
+				"gzp",
+				"gzp"
+			],
+			[
+				"depth",
+				"depthofcoverage"
+			],
+			[
+				"hetero",
+				"hetero"
+			],
+			[
+				"G",
+				"G"
+			],
+			[
+				"n",
+				"n"
+			],
+			[
+				"badpair",
+				"badpair"
+			],
+			[
+				"bcd",
+				"bcd"
+			],
+			[
+				"parse",
+				"parseparams"
+			],
+			[
+				"hierarchs",
+				"hierarchs"
+			],
+			[
+				"l",
+				"l"
+			],
+			[
+				"b",
+				"b"
+			],
+			[
+				"IOError",
+				"IOError"
+			],
+			[
+				"ind",
+				"ind"
+			],
+			[
+				"tips",
+				"tips"
+			],
+			[
+				"count",
+				"count"
+			],
+			[
+				"tree",
+				"tree"
+			],
+			[
+				"TRE",
+				"TRE"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "core/paramsinfo.py",
+			"settings":
+			{
+				"buffer_size": 11203,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "core/assembly.py",
+			"settings":
+			{
+				"buffer_size": 17155,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "core/sample.py",
+			"settings":
+			{
+				"buffer_size": 772,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "assemble/demultiplex.py",
+			"settings":
+			{
+				"buffer_size": 17011,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "assemble/rawedit.py",
+			"settings":
+			{
+				"buffer_size": 14334,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "assemble/cluster_within.py",
+			"settings":
+			{
+				"buffer_size": 14146,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"contents": "#! /usr/bin/env python2\n\n\"\"\" \nde-replicates edit files and clusters de-replciated reads \nby sequence similarity using vsearch\n\"\"\"\n\nimport multiprocessing\nimport sys\nimport os\nimport numpy\nimport itertools\nimport glob\nimport subprocess\nimport operator\nimport gzip\nimport re\nimport fileinput\nimport shutil\nfrom potpour import Worker\n\n\ndef makederepclust(params, outfolder, handle):\n    \"\"\" combines information from .u and ._temp files \n    to create .clust files, which contain un-aligned clusters \"\"\"\n\n    ## if .u files are present this read them in as userout\n    if os.path.exists(outfolder+\"/\"+\\\n                      handle.split(\"/\")[-1].\\\n                      replace(\".edit\", \".u\")):\n        userout = open(outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                       replace(\".edit\", \".u\"), 'r').readlines()\n    else:\n        userout = []\n        print \"\\n\\tSkipping: no '.u' file available for sample %s\" % (\n               handle.split(\"/\")[-1])\n\n    ## create an output file to write cluster to        \n    outfile = gzip.open(outfolder+\"/\"+\\\n                        handle.split(\"/\")[-1].\\\n                        replace(\".edit\", \".clust.gz\"), 'w')\n\n    ## load reads into a dictionary\"\n    hits = {}  \n    dereps = open(handle.replace(\".edit\", \".derep\")).read()  ## f\n    for line in dereps.split(\">\")[1:]:\n        # Workaround to comply with both vsearch and usearch\n        line = line.replace(\";\\n\", \"\\n\", 1) \n        a, b, c = line.replace(\"\\n\", \";\", 1).replace(\"\\n\", \"\").split(\";\")\n        hits[\">\"+a+\";\"+b+\";\"] = [int(b.replace(\"size=\", \"\")), c.strip()]\n\n    ## create dictionary of .u file cluster hits info \"\n    udic = {}  ## U\n    for uline in [line.split(\"\\t\") for line in userout]:\n        # Workaround to comply with both vsearch and usearch\n        if uline[1].endswith(\";\") == False: \n            uline[1] += \";\"\n            uline[0] += \";\"\n            uline[5] = re.sub(\"\\..*\\n\", \"\\n\", uline[5])\n        if \">\"+uline[1] in udic:\n            udic[\">\"+uline[1]].append([\">\"+uline[0], uline[4],\n                                           uline[5].strip(),\n                                           uline[3]])\n        else:\n            udic[\">\"+uline[1]] = [[\">\"+uline[0], uline[4],\n                                       uline[5].strip(),\n                                       uline[3]]]\n\n    ## map sequences to clust file in order\n    seq = \"\"\n    seqslist = []  ## SEQS\n    for key, values in udic.items():\n        seq = key+\"\\n\"+hits[key][1]+'\\n'  \n        matchnames = [i[0] for i in values]       ## names of matches (S)\n        forwrev = [i[1] for i in values]          ## + or - for strands (R)\n        #cov = [int(float(i[2])) for i in values]  ## query coverage (overlap)\n        ins = [int(i[3]) for i in values]         ## indels\n\n        ## allow only 'w1' indels in hits to seed\n        if not any([int(i) > int(params[\"w1\"]) for i in ins]):\n            for i in range(len(matchnames)):\n                if forwrev[i] == \"+\":\n\n                    ## only match forward reads if high Cov\n                    #if cov[i] >= 90:\n                    seq += matchnames[i]+'+\\n'+\\\n                           hits[matchnames[i]][1]+\"\\n\"\n                else:\n                    ## name change for reverse hits\n                    ## allow low Cov for reverse hits\n                    seq += matchnames[i].replace(\"_r1;\", \"_c1;\")+\\\n                               '-\\n'+comp(hits[matchnames[i]][1][::-1])+\"\\n\"\n        seqslist.append(seq)\n    outfile.write(\"//\\n//\\n\".join(seqslist))\n\n    ## make Dict. from seeds (_temp files) \n    seedsdic = {}     ##  I\n    invar = open(outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                               replace(\".edit\", \"._temp\"), 'r')\n    invarlist = [(\">\"+i.replace(\"\\n\", \"\")).split(';') for i \\\n                      in invar.read().split(\">\")[1:]]\n    invar.close()\n\n    ## fill the seedsdic dictionary with seeds from invarlist\n    for i in invarlist:\n        try: \n            seedsdic[i[0]+';'+i[1]+';'] = i[2]\n        except IndexError:\n            pass  ## skip binary errors \n    del invarlist\n\n    ## create a set for keys in I not in seedsdic\n    set1 = set(seedsdic.keys())       ## temp file (no hits) seeds\n    set2 = set(udic.keys())       ## u file (with hits) seeds\n    diff = set1.difference(set2)  ## seeds in 'temp not matched to in 'u\n    if len(diff) > 1:\n        for i in diff:\n            hits[i][1].replace(\"n\", \"Z\").upper().replace(\"Z\", \"n\")\n            outfile.write(\"//\\n//\\n\"+i+\"\\n\"+hits[i][1]+'\\n')\n    else:\n        if diff:\n            popped = diff.pop()\n            hits[hits.keys()[0]][1].replace(\"n\", \"Z\").upper().replace(\"Z\", \"n\")            \n            outfile.write(popped+\"\\n\"+hits[hits.keys()[0]][1]+'\\n')\n    #outfile.write(\"\\n\")\n    outfile.write(\"//\\n//\\n\")\n    outfile.close()\n    del dereps\n    del userout\n\n\ndef derep(params, handle):\n    \"\"\" dereplicates reads and write to .step file \"\"\"\n    if 'vsearch' in params[\"vsearch\"]:\n        threads = \" \"\n    else:\n        threads = \" -threads 1\"\n    if params[\"datatype\"] in ['pairgbs', 'gbs', 'merged']:\n        reverse = \" -strand both \"\n    else:\n        reverse = \" \"\n    if params[\"minuniq\"]:\n        mins = \" -minuniquesize \"+str(params[\"minuniq\"])\n    else:\n        mins = \" \"\n    cmd = params[\"vsearch\"]+\\\n        \" -derep_fulllength \"+handle+\\\n        reverse+\\\n        mins+\\\n        \" -output \"+handle.replace(\".edit\", \".step\")+\\\n        \" -sizeout \"+\\\n        threads\n    subprocess.call(cmd, shell=True, \n                         stderr=subprocess.STDOUT, \n                         stdout=subprocess.PIPE)\n\n\ndef sortbysize(params, handle):\n    \"\"\" sorts dereplicated file (.step) so reads that were highly\n    replicated are at the top, and singletons at bottom, writes\n    output to .derep file \"\"\"\n    cmd = params[\"vsearch\"]+\\\n          \" -sortbysize \"+handle.replace(\".edit\", \".step\")+\\\n          \" -output \"+handle.replace(\".edit\", \".derep\")\n    subprocess.call(cmd, shell=True, \n                         stderr=subprocess.STDOUT,\n                         stdout=subprocess.PIPE)\n    if os.path.exists(handle.replace(\".edit\", \".step\")):\n        os.remove(handle.replace(\".edit\", \".step\"))\n\n\n## SKIPS IF USING VSEARCH\ndef splitbigfilesforderep(dfiles, params):\n    \"\"\" work around 4GB limit of 32-bit usearch\n    by splitting files for derep then rejoining \"\"\"\n    for handle in dfiles:\n        if not os.path.exists(handle.replace(\".edit\", \".derep\")):\n            ## break every 7.5M reads\n            bsize = 15000000\n            statinfo = os.stat(handle)\n            size = statinfo.st_size\n            ## if file size is over 3G\n            if size > 300000000:\n                with open(handle, 'r') as infile:\n                    alllines = infile.readlines()\n                breaks = len(alllines)/bsize\n                lines = 0\n                if breaks > 1:\n                    for brake in range(breaks+1):\n                        out = open(handle+\"_piece_\"+str(brake), 'w')\n                        out.write(\"\".join(alllines[lines:lines+bsize]))\n                        out.close()\n                        derep(params, handle+\"_piece_\"+str(brake))\n                        lines += bsize\n                else:\n                    brakes = 0\n                    with open(handle+\"_piece_\"+str(brakes), 'w') as out:\n                        out.write(\"\".join(alllines[lines:lines+bsize]))\n                    derep(params, handle+\"_piece_\"+str(brakes))\n                    lines += bsize\n\n                with open(handle+\"_piece_\"+str(breaks+1), 'w') as out:\n                    out.write(\"\".join(alllines[lines:]))\n                del alllines\n                derep(params, handle+\"_piece_\"+str(brakes+1))\n\n                sublist = glob.glob(handle.replace(\".edit\", \".step\")+\"_piece*\")\n                if len(sublist) > 0:\n                    fout = open(handle.replace(\".edit\", \".derep\"))\n                    for line in fileinput.input(sublist):\n                        fout.write(line)        \n                for rmfile in glob.glob(handle.\\\n                              replace(\".edit\", \".step\")+\"_piece*\"):\n                    os.remove(rmfile)\n        else:\n            print 'skipping derep of '+handle.replace(\".edit\", \".derep\")+\\\n                                                        ', aleady exists'\n\n\ndef fullcluster(params, outfolder, handle):\n    \"\"\" calls vsearch for clustering. \n        query cov varies by data type, values were chosen \n        based on experience, but could be edited by users \"\"\"\n    if params[\"datatype\"] == 'pairddrad':\n        comm = \" -cluster_smallmem \"+handle.replace(\".edit\", \".firsts\")\n    else:\n        comm = \" -cluster_smallmem \"+handle.replace(\".edit\", \".derep\")\n    if params[\"datatype\"] in ['gbs']:\n        reverse = \" -strand both \"\n        cov = \" -query_cov .35 \" \n    elif params[\"datatype\"] in ['pairgbs', 'merged']:\n        reverse = \" -strand both \"\n        cov = \" -query_cov .60 \" \n    else:     ## rad, ddrad, ddradmerge\n        reverse = \" -leftjust \"\n        cov = \" -query_cov .90\"\n    ## if vsearch and not usearch\n    if 'vsearch' not in params[\"vsearch\"]:\n        masker = \" \"\n    else:\n        masker = \" -qmask \"+params[\"mask\"]\n    cmd = params[\"vsearch\"]+\\\n        comm+\\\n        reverse+\\\n        cov+\\\n        masker+\\\n        \" -id \"+params[\"wclust\"]+\\\n        \" -userout \"+outfolder+\"/\"+\\\n                     handle.split(\"/\")[-1].replace(\".edit\", \".u\")+\\\n        \" -userfields query+target+id+gaps+qstrand+qcov\"+\\\n        \" -maxaccepts 1\"+\\\n        \" -maxrejects 0\"+\\\n        \" -minsl 0.5\"+\\\n        \" -fulldp\"+\\\n        \" -threads \"+str(params[\"threads\"])+\\\n        \" -usersort \"+\\\n        \" -notmatched \"+outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                                     replace(\".edit\", \"._temp\")\n    subprocess.call(cmd, shell=True,\n                         stderr=subprocess.STDOUT,\n                         stdout=subprocess.PIPE)\n\n\n\ndef stats(params, outfolder, handle, quiet):\n    \"\"\" return stats output after clustering is finished \"\"\"\n    temphandle = outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                               replace(\".edit\", \".clustS.gz\")\n    infile = gzip.open(temphandle)\n    duo = itertools.izip(*[iter(infile)]*2)\n    try: \n        ifas = duo.next()[0]   ## a\n    except StopIteration: \n        print \"no clusters found in \", temphandle+\"\\n\\n\"\n        sys.exit()\n    depth = []\n    thisdepth = int(ifas.split(\";\")[1].replace(\"size=\", \"\"))\n    while 1:\n        try: \n            ifas = duo.next()[0]\n        except StopIteration: \n            break\n        if ifas != \"//\\n\":\n            thisdepth += int(ifas.split(\";\")[1].replace(\"size=\", \"\"))\n        else:\n            depth.append(thisdepth)\n            thisdepth = 0\n    infile.close()\n\n    keep = [i for i in depth if i >= params[\"mindepth\"]]\n    namecheck = temphandle.split(\"/\")[-1].replace(\".clustS.gz\", \"\")\n    if depth:\n        me = round(numpy.mean(depth), 3)\n        std = round(numpy.std(depth), 3)\n    else:\n        me = std = 0.0\n    if keep:\n        mek = round(numpy.mean(keep), 3)\n        stdk = round(numpy.std(keep), 3)\n    else:\n        mek = stdk = 0.0\n    out = [namecheck, len(depth),\n           me, std, len(keep), \n           mek, stdk]\n\n    bins = range(1,21)+[30, 40, 50, 100, 200, 500, 99999]\n    ohist, edges = numpy.histogram(depth, bins)\n    hist = [float(i)/sum(ohist) for i in ohist]\n    hist = [int(round(i*30)) for i in hist]\n\n    if not quiet:\n        sys.stderr.write(\"\\tsample \"+handle.split(\"/\")[-1].\\\n                         split(\".\")[0]+\" finished, \"+str(len(depth))+\" loci\\n\")\n    del depth, keep\n    return out, edges, hist, ohist\n\n\ndef comp(seq):\n    \"\"\" returns a seq with small complement\"\"\"\n    return seq.replace(\"A\", 't')\\\n           .replace('T', 'a')\\\n           .replace('C', 'g')\\\n           .replace('G', 'c')\\\n           .replace('n', 'Z')\\\n           .upper().replace(\"Z\", \"n\")\n\n\ndef sortalign(stringnames):\n    \"\"\" parses muscle output from a string to two list \"\"\"\n    objs = stringnames.split(\"\\n>\")\n    seqs = [i.split(\"\\n\")[0].replace(\">\", \"\")+\"\\n\"+\\\n              \"\".join(i.split('\\n')[1:]) for i in objs]\n    aligned = [i.split(\"\\n\") for i in seqs]\n    newnames = [\">\"+i[0] for i in aligned]\n    seqs = [i[1] for i in aligned]     \n    return newnames, seqs\n\n\ndef alignfast(names, seqs, muscle):\n    \"\"\" performs muscle alignments on cluster and returns output as string\"\"\"\n    inputstring = \"\\n\".join('>'+i+'\\n'+j for i, j in zip(names, seqs))\n    cmd = \"/bin/echo '\"+inputstring+\"' | \"+muscle+\" -quiet -in -\"\n    piped = subprocess.Popen(cmd, shell=True, \n                                  stdin=subprocess.PIPE,\n                                  stdout=subprocess.PIPE, \n                                  stderr=subprocess.STDOUT,\n                                  close_fds=True)\n    (_, fout) = (piped.stdin, piped.stdout)\n    return fout.read()\n\n\ndef alignwrappair(params, handle):\n    \"\"\" same as alignwrap but for pairddrads,\n        feeds in first and second reads separately \"\"\"\n    ## iterator for 2 lines at a time\n    infile = gzip.open(handle)\n    duo = itertools.izip(*[iter(infile)]*2)\n\n    ## clear file if it exists\n    if os.path.exists(handle.replace(\".clust\", \".clustS\")):\n        os.remove(handle.replace(\".clust\", \".clustS\"))\n\n    ## list for storing until writing\n    out = []\n    cnts = 0\n    while 1:\n        try: \n            first = duo.next()\n        except StopIteration:\n            break\n        itera = [first[0], first[1]]\n        stack = []\n        names = []   \n        seqs = []\n        #nameiter = 0\n        while itera[0] != \"//\\n\":\n            names.append(itera[0].strip())\n            seqs.append(itera[1].strip())    #.replace(\"nnnn\", \"XX\"))\n            itera = duo.next()\n            #nameiter += 1\n\n        ## if longer than 1 it needs aligning \"\n        if len(names) > 1:\n            firsts = [i.split(\"nn\")[0] for i in seqs]\n            seconds = [i.split(\"nn\")[-1] for i in seqs]\n\n            #print firsts[0][:10], 'n', seconds[0][:10]\n\n            ## align first reads \"\n            stringnames = alignfast(names[0:200], \n                                    firsts[0:200],\n                                    params[\"muscle\"])\n            anames1, aseqs1 = sortalign(stringnames)\n            somedic1 = {}\n            for i in range(len(anames1)):\n                somedic1[anames1[i]] = aseqs1[i]\n            \n            ## reorder keys by nameiter order\n            keys = somedic1.keys()\n            keys.sort(key=lambda x: int(x.split(\";\")[1].\\\n                                        replace(\"size=\", \"\")),\n                                        reverse=True)\n\n            ## align second reads \"\n            stringnames = alignfast(names[0:200],\n                                    seconds[0:200],\n                                    params[\"muscle\"])\n            anames2, aseqs2 = sortalign(stringnames)\n            somedic2 = {}\n            for i in range(len(anames2)):\n                somedic2[anames2[i]] = aseqs2[i]\n\n            ## reorder keys by derep number \"\n            keys = somedic1.keys()\n            keys.sort(key=lambda x: int(x.split(\";\")[1].\\\n                          replace(\"size=\", \"\")), reverse=True)\n            for key in keys:\n                stack.append(key+'\\n'+somedic1[key]+\"nn\"+somedic2[key])\n\n        else:\n            if names:\n                stack = [names[0]+\"\\n\"+seqs[0]]\n\n        cnts += 1\n        if stack:\n            out.append(\"\\n\".join(stack))\n\n        if not cnts % 500:\n            if out:\n                outfile = gzip.open(handle.replace(\".clust\", \".clustS\"), 'a')\n                outfile.write(\"\\n//\\n//\\n\".join(out)+\"\\n//\\n//\\n\")\n                outfile.close()\n            out = []\n\n    outfile = gzip.open(handle.replace(\".clust\", \".clustS\"), 'a')\n    if out:\n        outfile.write(\"\\n//\\n//\\n\".join(out)+\"\\n//\\n//\\n\")\n    outfile.close()\n\n\ndef alignwrap(params, handle):\n    \"\"\" splits clusters and feeds them into alignfast function \"\"\"\n    ## iterator for 2 lines at a time\n    infile = gzip.open(handle)\n    duo = itertools.izip(*[iter(infile)]*2)\n\n    ## clear file if it exists\n    if os.path.exists(handle.replace(\".clust\", \".clustS\")):\n        os.remove(handle.replace(\".clust\", \".clustS\"))\n\n    ## list for storing until writing\n    out = []\n    cnts = 0\n    while 1:\n        try: \n            first = duo.next()\n        except StopIteration:\n            break\n        itera = [first[0], first[1]]\n        stack = []\n        names = []   \n        seqs = []\n        while itera[0] != \"//\\n\":\n            names.append(itera[0].strip())\n            seqs.append(itera[1].strip())  #.replace(\"nnnn\", \"XX\"))\n            itera = duo.next()\n        if len(names) > 1:\n            ## keep only the 200 most common dereps, \n            ## aligning more is surely junk\n            stringnames = alignfast(names[0:200], seqs[0:200], params[\"muscle\"])\n            anames, aseqs = sortalign(stringnames)\n            ## a dictionary for names2seqs post alignment and indel check\n            somedic = {}\n            leftlimit = 0\n            for i in range(len(anames)):\n                ## apply filter for number of indels again, post-alignment,\n                ## this affects indels of sequences relative to each other, not\n                ## just relative to the seed sequence \"\"\"\n                if aseqs[i].rstrip(\"-\").lstrip(\"-\").count(\"-\") <= params[\"w1\"]:\n                    somedic[anames[i]] = aseqs[i]\n\n                ## do not allow seqeuence to the left of the \n                ## seed (may include adapter/barcodes)\"\n                if not anames[i].split(\";\")[-1]:\n                    leftlimit = min([aseqs[i].index(j) for j in\\\n                                              aseqs[i] if j != \"-\"])\n                    \n            ## reorder keys by derep number \"\n            keys = somedic.keys()\n            keys.sort(key=lambda x: int(x.split(\";\")[1].\\\n                          replace(\"size=\", \"\")), reverse=True)\n            for key in keys:\n                stack.append(key+'\\n'+somedic[key][leftlimit:])\n        else:\n            if names:\n                stack = [names[0]+\"\\n\"+seqs[0]]\n\n        if stack:\n            out.append(\"\\n\".join(stack))\n\n        cnts += 1\n        ## only write to file after 500 aligned loci\n        if not cnts % 500:\n            if out:\n                outfile = gzip.open(handle.replace(\".clust\", \".clustS\"), 'a')\n                outfile.write(\"\\n//\\n//\\n\".join(out)+\"\\n//\\n//\\n\")\n                outfile.close()\n            out = []\n\n    outfile = gzip.open(handle.replace(\".clust\", \".clustS\"), 'a')\n    if out:\n        outfile.write(\"\\n//\\n//\\n\".join(out)+\"\\n//\\n//\\n\")\n    outfile.close()\n\n\ndef orderseqs(names, seqs):\n    \"\"\" reorders cluster by derep number because muscle output does\n        not retain the order \"\"\"\n    try: \n        dereps = [int(i.split(\";\")[1].replace(\"size=\", \"\")) for i in names]\n    except IndexError:\n        print names\n    ordered = sorted(range(len(dereps)), key=lambda a: dereps[a], reverse=True)\n    nnames = [names[i] for i in ordered]\n    sseqs = [seqs[i] for i in ordered]\n    return nnames, sseqs\n\n\n## DEPRECATED ALONG WITH ALIGNWRAPPAIR\n# def splitter(handle):\n#     \"\"\"splits paired reads and writes firsts to a file \"\"\"\n#     ## read in the derep file\n#     lines = iter(open(handle.replace(\".edit\", \".derep\")).\\\n#                              read().strip().split(\">\")[1:])\n#     firsts = []\n#     cnts = 0\n#     for line in lines:\n#         obj = line.split('\\n')\n#         name = obj[0]\n#         seq = \"\".join(obj[1:])\n#         ## legacy fix for pyrad2 -> pyrad 3\n#         seq = seq.replace(\"XXXX\", \"nnnn\")\n#         ## split on nn separator\n#         seq = seq.split(\"nn\")[0]\n#         firsts.append(\">\"+name+\"\\n\"+seq)\n#         cnts += 1\n#         if not cnts % 100000:\n#             orderfirsts = open(handle.replace(\".edit\", \".firsts\"), 'a')\n#             orderfirsts.write(\"\\n\".join(firsts))\n#             orderfirsts.close()\n#             firsts = []\n#     orderfirsts = open(handle.replace(\".edit\", \".firsts\"), 'a')\n#     orderfirsts.write(\"\\n\".join(firsts))\n#     orderfirsts.close()\n    \n\ndef final(params, outfolder, handle, fileno, remake, quiet):\n    \"\"\" run the full script \"\"\"\n\n    if remake:\n        pass\n    else:\n        ## de-replicate the reads if not done by big file method\"\n        if handle.replace(\".edit\", \".derep\") not in \\\n                          glob.glob(params[\"work\"]+\"edits/*\"):\n            derep(params, handle)\n            sortbysize(params, handle)\n\n        #if params[\"datatype\"] == 'pairddrad':\n        #    if handle.replace(\".edit\", \".firsts\") not in \\\n        #                      glob.glob(params[\"work\"]+\"edits/*\"):\n        #        splitter(handle)\n\n        ## cluster the reads \"\n        fullcluster(params, outfolder, handle)\n\n    ## build cluster files from .u & .temp files\n    makederepclust(params, outfolder, handle)\n\n    # thread each align job on N processors\n    unaligned = gzip.open(outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                          replace(\".edit\", \".clust.gz\"), 'r').\\\n                          read().strip().split(\"//\\n//\\n\")\n\n    chunk0 = len(unaligned)//20\n    chunk1 = len(unaligned)//15\n    chunk2 = len(unaligned)//10\n    chunk3 = len(unaligned)//5\n    chunk4 = (len(unaligned)-(chunk1+chunk2+chunk3))\n\n    #print len(unaligned), chunk0, chunk1, chunk2, chunk3, chunk4\n\n    #chunklen = (len(unaligned) + maxthreads - 1) // maxthreads\n    chunks = [unaligned[0:chunk0],\n              unaligned[chunk0:chunk0+chunk1], \n              unaligned[chunk0+chunk1:chunk0+chunk1+chunk2],\n              unaligned[chunk0+chunk1+chunk2:chunk0+chunk1+chunk2+chunk3],\n              unaligned[chunk0+chunk1+chunk2+chunk3:]]\n\n    for chunk in range(len(chunks)):\n        fchunk = gzip.open(outfolder+\"/\"+handle.split(\"/\")[-1]\\\n                    .replace(\".edit\", \".clust.i\"+str(chunk)+\".gz\"), 'w')\n        fchunk.write(\"//\\n//\\n\".join(chunks[chunk])+\"//\\n//\\n\")\n        fchunk.close()\n\n    jobs = []\n    temp_queue = multiprocessing.Queue()\n    fake_queue = multiprocessing.Queue()\n    for j in range(len(chunks)):\n        temp_queue.put([params, outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                         replace(\".edit\", \".clust.i\"+str(j)+\".gz\")])\n        if 'pair' in params[\"datatype\"]:\n            worker = Worker(temp_queue, fake_queue, alignwrappair)\n        else:\n            worker = Worker(temp_queue, fake_queue, alignwrap)            \n        jobs.append(worker)\n        worker.start()\n    for j in jobs:\n        j.join()\n\n    chandle = os.path.join(outfolder, \n              handle.replace(\".edit\", \".clustS.i*\").split(\"/\")[-1])\n    sublist = glob.glob(chandle)\n\n    if len(sublist) > 0:\n        fhandle = os.path.join(outfolder, \n                    handle.replace(\".edit\", \".clustS.gz\").split(\"/\")[-1])\n        with gzip.open(fhandle, 'wb') as wfp:\n            for ifile in sublist:\n                with gzip.open(ifile, 'rb') as rfp:\n                    shutil.copyfileobj(rfp, wfp)\n                os.remove(ifile)\n\n    for rmfile in [i.replace(\".clustS.\", \".clust.\") for i in sublist]:\n        os.remove(rmfile)\n\n    ## get stats \n    out, edges, hist, ohist = stats(params,\n                                    outfolder, \n                                    handle, \n                                    quiet)\n\n    end = handle.split(\"/\")[-1].replace(\".edit\", \"\")\n    outwrite = open(outfolder+\"/.temp.\"+end, 'w')\n    outwrite.write(\"\\t\".join([str(i) for i in out]))\n\n    ## print histograms to file\n    print >>outwrite, \"\\nbins\\tdepth_histogram\\tcnts\"\n    print >>outwrite, \"   :\\t0------------50-------------100%\"\n\n    for i, j, k in zip(edges, hist, ohist):\n        firststar = \" \"\n        if k > 0:\n            firststar = \"*\"\n        print >>outwrite, i, '\\t', firststar+\"*\"*j + \" \"*(34-j), k   ## HERE\n    outwrite.close()\n\n\ndef remake_func(outfolder):\n    \"\"\" tries to rebuild clusters from .u and ._temp files \"\"\"\n    for ufile in glob.glob(outfolder+\"/*.u\"):\n        #infile = open(ufile).readlines()\n        ## delete the last line in the file that was probably\n        ## not completely written\n        cmd = \"/bin/sed '$d' < \" + ufile + \" > tempfile\"\n        subprocess.call(cmd, shell=True) ##os.system(cmd)\n        ## make a backup b/c this isn't tested enough yet\n        cmd = \"/bin/mv \"+ufile+\" \"+ufile+\".backup\"\n        os.system(cmd)\n        ## replace original that is backed up with the new file\n        ## that has the last line removed.\n        cmd = \"/bin/mv tempfile \"+ufile\n        os.system(cmd)\n\n\ndef main(params, quiet, remake):\n    \"\"\" calls the main script \"\"\"\n\n    ## find .edit files in edits/ directory\n    if not os.path.exists(params[\"work\"]+'edits/'):\n        sys.exit(\"\\terror: could not find edits/ folder in working directory\")\n\n    ## make output folder for clusters    \n    if not os.path.exists(params[\"work\"]+'clust'+params[\"wclust\"]):\n        os.makedirs(params[\"work\"]+'clust'+params[\"wclust\"])\n    outfolder = params[\"work\"]+'clust'+str(params[\"wclust\"])\n    if not os.path.exists(params[\"work\"]+'stats'):\n        os.makedirs(params[\"work\"]+'stats')\n\n    ## remake option... in development\"\n    if remake:\n        remake_func(outfolder)\n\n    dfiles = []   ## FS\n\n    ## if not only 1 sample \"\n    if len(glob.glob(params[\"work\"]+\"edits/\"+params[\"subset\"]+\"*.edit*\")) > 1:  \n        for efile in glob.glob(params[\"work\"]+\"edits/\"+\\\n                               params[\"subset\"]+\"*.edit*\"):\n            ## append files to list if not already clustered or empty\"\n            if not os.path.exists(outfolder+\"/\"+efile.\\\n                   replace(\".edit\", \".clustS.gz\")):\n                size = os.stat(efile)\n                if size.st_size > 0:\n                    dfiles.append(efile)\n                else:\n                    print \"excluding \"+str(efile)+\" file is empty\"\n            else:\n                print efile.replace(\".edit\", \".clustS\")+\" already exists\"\n        ## \" arranges files by decreasing size for fast clustering order\"\n        for efile in range(len(dfiles)):\n            statinfo = os.stat(dfiles[efile])\n            dfiles[efile] = dfiles[efile], statinfo.st_size\n        dfiles.sort(key=operator.itemgetter(1), reverse=True)\n        dfiles = [i[0] for i in dfiles]\n\n    ## if only one files\n    elif len(glob.glob(params[\"work\"]+\"edits/\"+params[\"subset\"]+\\\n                                               \"*.edit*\")) == 1:\n        dfiles = glob.glob(params[\"work\"]+\"edits/\"+params[\"subset\"]+\"*.edit*\")\n        size = os.stat(dfiles[0])\n        ## check that the file is not empty\n        if size.st_size > 0:\n            pass\n        else:\n            print \"excluding \"+dfiles[0]+\" file is empty\"\n    else:\n        print \"\\tNo .edit files found in edits/ dir.\"\n\n    if not quiet:\n        sys.stderr.write(\"\\n\\tde-replicating files for clustering...\\n\")\n\n    ## do not split big files if using 64-bit Usearch,\n    ## or if using Vsearch, else do it to avoid 4GB limit of 32-bit usearch\"\"\"\n\n    if \"vsearch\" not in params[\"vsearch\"]:\n        print '\\n\\tsplitting big files'\n        splitbigfilesforderep(dfiles, params)\n\n    ## load work queue\"\n    work_queue = multiprocessing.Queue()\n    result_queue = multiprocessing.Queue()\n\n    ## perform function 'final' on files in dfiles list \"\n    submitted = {}\n    fileno = 1\n\n    ## if not reconstructing unfinished clusters\n    if not remake:\n        if params[\"threads\"] == 0:\n            nthreads = 'all'\n        else:\n            nthreads = params[\"threads\"]\n        nproc = min(params[\"parallel\"], len(dfiles))\n        if not quiet:\n            sys.stderr.write(\"\\n\\tstep 3: within-sample clustering of \"+\\\n                         str(len(dfiles))+\" samples at \\n\\t        \"+\\\n                         str(params[\"wclust\"])+\\\n                         \" similarity. Running \"+str(nproc)+\\\n                         \" parallel jobs\\n\\t\"+\\\n                         \" \\twith up to \"+str(nthreads)+\" threads per job.\"+\\\n                         \" If needed, \\n\\t\\tadjust to avoid CPU and\"+\\\n                         \" MEM limits\\n\\n\")\n    else:\n        sys.stderr.write(\"\\n\\tstep 3: rebuilding clusters \"+\\\n                          \"from unfinished step 3 files\\n\")\n\n    for handle in dfiles:\n        if outfolder+\"/\"+handle.split(\"/\")[-1].replace(\".edit\", \".clustS.gz\")\\\n                    not in glob.glob(outfolder+\"/*\"):\n            work_queue.put([params, outfolder, handle, fileno, remake, quiet])\n            submitted[handle] = 1\n            fileno += 1\n        else:\n            print \"\\tskipping \"+handle.split(\"/\")[-1].\\\n                                replace(\".edit\", \".clustS.gz\")+\\\n                  ' already exists in '+params[\"work\"]+outfolder.split(\"/\")[-1]\n\n    ## create a queue to pass to workers to store the results\"\n    jobs = []\n    for _ in range(min(submitted, params[\"parallel\"])):\n        worker = Worker(work_queue, result_queue, final)\n        jobs.append(worker)\n        worker.start()\n    for j in jobs:\n        j.join()\n\n\n    ## output statistics on depth of coverage\"\n    outstats = open(params[\"work\"]+\"stats/s3.clusters.txt\", 'a')\n    print >>outstats, '\\n'+'\\t'.join(['taxa', 'total', 'dpt.me',\n                                      'dpt.sd', 'd>'+\\\n                                      str(params[\"mindepth\"]-1)+'.tot',\n                                      'd>'+str(params[\"mindepth\"]-1)+'.me',\n                                      'd>'+str(params[\"mindepth\"]-1)+'.sd',\n                                      'badpairs'])\n\n    res = []\n    histo = []\n    for ffile in dfiles:\n        end = ffile.split(\"/\")[-1].replace(\".edit\", \"\")\n        ffile = outfolder+\"/.temp.\"+end\n        if os.path.exists(ffile):\n            line = open(ffile).readlines()\n            res.append(line[0].strip().split(\"\\t\"))\n            histo.append([line[0].split(\"\\t\")[0], \"\".join(line[1:])])\n            os.remove(ffile)\n    res.sort(key=lambda x: x[0])\n    histo.sort(key=lambda x: x[0])\n    \n    for i in res:\n        print >>outstats, \"\\t\".join(i)\n    \n    print >>outstats, \"\"\"\n    ## total = total number of clusters, including singletons\n    ## dpt.me = mean depth of clusters\n    ## dpt.sd = standard deviation of cluster depth\n    ## >N.tot = number of clusters with depth greater than N\n    ## >N.me = mean depth of clusters with depth greater than N\n    ## >N.sd = standard deviation of cluster depth for clusters with depth greater than N\n    ## badpairs = mismatched 1st & 2nd reads (only for paired ddRAD data)\\n\\nHISTOGRAMS\\n\n    \"\"\"\n\n    for i in histo:\n        print >>outstats, \"sample: \"+i[0]+\"\\n\"+i[1]\n    \n    outstats.close()\n    for handle in dfiles:\n        nothere = 0\n        try: \n            submitted[handle]\n        except KeyError:\n            nothere = 1\n        if not nothere:\n            if submitted[handle]:\n                if os.path.exists(outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                                  replace(\".edit\", \".clust.gz\")):\n                    os.remove(outfolder+\"/\"+handle.split(\"/\")[-1].\\\n                              replace(\".edit\", \".clust.gz\"))\n\nif __name__ == \"__main__\":\n    main()\n\n",
+			"file": "/home/deren/Documents/pyrad_depths/pyrad/cluster7dp.py",
+			"file_size": 31131,
+			"file_write_time": 1440360213000000,
+			"settings":
+			{
+				"buffer_size": 31131,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "__init__.py",
+			"settings":
+			{
+				"buffer_size": 243,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "assemble/worker.py",
+			"settings":
+			{
+				"buffer_size": 898,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "assemble/__init__.py",
+			"settings":
+			{
+				"buffer_size": 78,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "Packages/Python/Python.sublime-build",
+	"command_palette":
+	{
+		"height": 96.0,
+		"selected_items":
+		[
+			[
+				"comm",
+				"Toggle Block Comment"
+			],
+			[
+				"comme",
+				"Toggle Block Comment"
+			],
+			[
+				"package",
+				"Package Control: Enable Package"
+			],
+			[
+				"python",
+				"Set Syntax: Python"
+			],
+			[
+				"compare",
+				"GitGutter: Compare Against Origin"
+			],
+			[
+				"compar",
+				"GitGutter: Compare Against Commit"
+			],
+			[
+				"comparing",
+				"GitGutter: Show Comparing Against"
+			],
+			[
+				"pref",
+				"Preferences: Settings - User"
+			],
+			[
+				"install",
+				"Package Control: Install Package"
+			],
+			[
+				"install pack",
+				"Package Control: Install Package"
+			],
+			[
+				"install ",
+				"Package Control: Advanced Install Package"
+			],
+			[
+				"install package",
+				"Package Control: Install Package"
+			],
+			[
+				"install packag",
+				"Package Control: Install Package"
+			],
+			[
+				"prefer",
+				"Preferences: Settings - User"
+			],
+			[
+				"proj",
+				"Project: Save As"
+			],
+			[
+				"savea",
+				"Project: Save As"
+			],
+			[
+				"pip",
+				"Package Control: Install Package"
+			],
+			[
+				"inde",
+				"Preferences: Settings - Default"
+			],
+			[
+				"comment",
+				"Toggle Block Comment"
+			],
+			[
+				"comme	",
+				"Toggle Block Comment"
+			],
+			[
+				"commen",
+				"Toggle Block Comment"
+			],
+			[
+				"com",
+				"Toggle Block Comment"
+			],
+			[
+				"set python",
+				"Set Syntax: Python"
+			],
+			[
+				"instal",
+				"Package Control: Install Package"
+			],
+			[
+				"COMM",
+				"Toggle Block Comment"
+			],
+			[
+				"pac",
+				"Package Control: Enable Package"
+			],
+			[
+				"key",
+				"Preferences: Key Bindings - User"
+			],
+			[
+				"emacs",
+				"Package Control: List Unmanaged Packages"
+			],
+			[
+				"",
+				"Package Control: Add Repository"
+			],
+			[
+				"open",
+				"View: Toggle Open Files in Side Bar"
+			],
+			[
+				"add fo",
+				"Project: Add Folder"
+			],
+			[
+				"save",
+				"Project: Save As"
+			],
+			[
+				"open ",
+				"View: Toggle Open Files in Side Bar"
+			],
+			[
+				"side",
+				"View: Toggle Open Files in Side Bar"
+			],
+			[
+				"toggle",
+				"Toggle Block Comment"
+			],
+			[
+				"key-",
+				"Preferences: Key Bindings - User"
+			],
+			[
+				"sidebar",
+				"View: Toggle Open Files in Side Bar"
+			],
+			[
+				"install pak",
+				"Package Control: Install Package"
+			]
+		],
+		"width": 449.0
+	},
+	"console":
+	{
+		"height": 139.0
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/home/deren/.config/sublime-text-2/Packages/User/Preferences.sublime-settings",
+		"/home/deren/Dropbox/ipyrad/ipyrad/__main__.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/__init__.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/plotting/__init__.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/pyRAD.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/potpour.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/cluster_cons7_shuf.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/assemble/worker.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/core/core.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/assemble/__init__.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/consensdp.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/alignable.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/editraw_pairs.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/consens_pairs.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/H_err_dp.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/cluster7dp.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/assemble/s1.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/analysis.py",
+		"/home/deren/.config/sublime-text-2/Packages/Default/Preferences.sublime-settings",
+		"/home/deren/Dropbox/ipyrad/ipyrad/ipyrad.py",
+		"/home/deren/Dropbox/ipyrad/ipyrad/assemble/analysis.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/H_err_dp.pyc",
+		"/home/deren/Documents/pyrad_depths/pyrad/editraw_rads.py",
+		"/home/deren/Documents/simrrls/simrrls",
+		"/home/deren/Documents/simLoci/simloci.py",
+		"/home/deren/Documents/pyrad_depths/pyrad/editraw_rads.pyc",
+		"/home/deren/Dropbox/pyrad-working/pyrad/H_err_dp.pyc",
+		"/home/deren/Dropbox/pyrad-github/pyrad_v.3.0.0/alignable.py",
+		"/home/deren/Dropbox/pyrad-github/consensdp.py",
+		"/home/deren/Dropbox/pyrad-github/H_err_dp.py",
+		"/home/deren/Dropbox/pyrad-github/editraw_rads.py",
+		"/home/deren/Dropbox/pyrad-github/cluster_cons7_shuf.py",
+		"/home/deren/Dropbox/pyrad-github/sortandcheck2.py",
+		"/home/deren/Dropbox/pyrad-github/cluster7dp.py",
+		"/home/deren/Documents/simrrls/simrrls.py",
+		"/home/deren/Dropbox/pyrad-github/pyrad_v.3.0.0/H_err_dp.py",
+		"/home/deren/.config/sublime-text-2/Packages/sublemacspro/Default.sublime-keymap",
+		"/home/deren/Desktop/tablefix.py",
+		"/home/deren/.config/sublime-text-2/Packages/Default/Default (Linux).sublime-keymap",
+		"/home/deren/.config/sublime-text-2/Packages/User/Default (Linux).sublime-keymap",
+		"/home/deren/.config/sublime-text-2/Packages/Pylinter/Default (Linux).sublime-keymap",
+		"/home/deren/.config/sublime-text-2/Packages/User/Package Control.sublime-settings",
+		"/home/deren/dereneaton.github.io/_config.yml",
+		"/home/deren/dereneaton.github.io/talks.md",
+		"/home/deren/dereneaton.github.io/_includes/_navigation.html",
+		"/home/deren/dereneaton.github.io/_site/talks/Eaton_2014_Botany_Boise.svg",
+		"/home/deren/Desktop/flowers/javascripts/modernizr.js",
+		"/home/deren/.config/sublime-text-2/Packages/User/Pylinter.sublime-settings",
+		"/home/deren/Dropbox/pyrad-github/loci2gphocs.py",
+		"/home/deren/local/src/Pylinter/Pylinter.sublime-settings"
+	],
+	"find":
+	{
+		"height": 35.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+			""
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"print",
+			"work_queu",
+			"jobs",
+			"chunker",
+			"tostring",
+			"comp(",
+			"comp",
+			"def comp",
+			"comp(",
+			"seq[seq",
+			"chunks",
+			"print",
+			"print(bar",
+			"run(",
+			"barcodes",
+			"_R1",
+			"print(",
+			"filter",
+			"N_f",
+			"itertools",
+			"iter.",
+			"while",
+			".temp",
+			"\".temp",
+			".u\"",
+			".u",
+			"comp(",
+			"comp",
+			"derep",
+			"print",
+			"rawedit",
+			"open",
+			"'wb'",
+			".fasta",
+			"fasta",
+			"edit",
+			"temphandl",
+			"vsearch",
+			"paramd",
+			"clust_",
+			"edit\"",
+			"run_full",
+			"worker",
+			"submitted",
+			"data",
+			"link_fastq",
+			"samplehits",
+			"print(",
+			"print",
+			"bases2 = ",
+			"tmp",
+			"sample is",
+			"print(",
+			"\"sample",
+			"sample is",
+			"rstrip",
+			"rawedit",
+			"rawedit(",
+			"cut",
+			"print",
+			"fastq",
+			"afilter",
+			"link_",
+			"rawedit",
+			"print",
+			"nn",
+			"files",
+			"ambig",
+			"outdir",
+			"print ",
+			"print(",
+			"print",
+			"Sample",
+			"assemble",
+			"print",
+			"tmp_",
+			"chunks2 = ",
+			"counter",
+			"fastq",
+			"matching",
+			"matching(",
+			"matching",
+			"barmatch",
+			"barmatch(",
+			"read1",
+			"paired",
+			"matching",
+			"barmatch",
+			"cut_f",
+			"writetofile",
+			"print",
+			"_ = ",
+			"values",
+			"misses",
+			"barcodehit",
+			"read[1] =",
+			"longbar",
+			"unam",
+			"findbc",
+			"barmatch",
+			"barmat",
+			"file",
+			"barmatch",
+			"tempF",
+			"barmatch",
+			"barcode",
+			"barmatch",
+			"chunks",
+			"chunker",
+			"indata",
+			"writetofile",
+			"barmatch",
+			"unambig",
+			"findb",
+			"Worker",
+			"Work",
+			"assemble",
+			"barmatch",
+			"assign",
+			"assign_",
+			"assign",
+			"link",
+			"assi",
+			"barco",
+			"parsebar",
+			"inside",
+			"linkfas",
+			"sorted"
+		],
+		"highlight": false,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+			",\n,",
+			"\n,",
+			"paramsdict[",
+			"paramset",
+			"paramSet",
+			"replace",
+			"print",
+			"PTRE"
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 3,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "core/paramsinfo.py",
+					"settings":
+					{
+						"buffer_size": 11203,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								11166,
+								11166
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 2152.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "core/assembly.py",
+					"settings":
+					{
+						"buffer_size": 17155,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								17076,
+								17076
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 5621.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"file": "core/sample.py",
+					"settings":
+					{
+						"buffer_size": 772,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								403,
+								403
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "assemble/demultiplex.py",
+					"settings":
+					{
+						"buffer_size": 17011,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								9223,
+								9223
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 3633.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 4,
+					"file": "assemble/rawedit.py",
+					"settings":
+					{
+						"buffer_size": 14334,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								8734,
+								8734
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 3321.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 5,
+					"file": "assemble/cluster_within.py",
+					"settings":
+					{
+						"buffer_size": 14146,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								3780,
+								3780
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 664.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		},
+		{
+			"selected": 3,
+			"sheets":
+			[
+				{
+					"buffer": 6,
+					"file": "/home/deren/Documents/pyrad_depths/pyrad/cluster7dp.py",
+					"settings":
+					{
+						"buffer_size": 31131,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								22010,
+								22010
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 7749.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 7,
+					"file": "__init__.py",
+					"settings":
+					{
+						"buffer_size": 243,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								243,
+								243
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 8,
+					"file": "assemble/worker.py",
+					"settings":
+					{
+						"buffer_size": 898,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								898,
+								898
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 9,
+					"file": "assemble/__init__.py",
+					"settings":
+					{
+						"buffer_size": 78,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								78,
+								78
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 34.0
+	},
+	"input":
+	{
+		"height": 31.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			],
+			[
+				1,
+				0,
+				2,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			0.5826709062,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.exec":
+	{
+		"height": 172.0
+	},
+	"replace":
+	{
+		"height": 64.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+			[
+				"d",
+				"dereneaton.github.io/talks.md"
+			],
+			[
+				"deren",
+				"dereneaton.github.io/_includes/_navigation.html"
+			],
+			[
+				"_site",
+				"dereneaton.github.io/_site/talks/Eaton_2014_Botany_Boise.svg"
+			],
+			[
+				"/home/deren/docu",
+				"/home/deren/Documents/test_SVDquartets/simquarts.py"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"show_minimap": true,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 186.0,
+	"status_bar_visible": true
+}
