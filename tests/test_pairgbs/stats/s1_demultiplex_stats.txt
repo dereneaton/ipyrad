@@ -1,0 +1,32 @@
+raw_file                               total_reads    cut_found  bar_matched
+sim_pairgbs_R1_.fastq                        48000        48000        48000
+sim_pairgbs_R2_.fastq                        48000        48000        48000
+
+sample_name                          total_R1_reads
+1A0                                           4000
+1B0                                           4000
+1C0                                           4000
+1D0                                           4000
+2E0                                           4000
+2F0                                           4000
+2G0                                           4000
+2H0                                           4000
+3I0                                           4000
+3J0                                           4000
+3K0                                           4000
+3L0                                           4000
+
+sample_name                               true_bar      obs_bar    N_records
+1A0                                         CATCAT       CATCAT         4000
+1B0                                         GATATA       GATATA         4000
+1C0                                         GGGTGG       GGGTGG         4000
+1D0                                         TAGTAT       TAGTAT         4000
+2E0                                         GATGGT       GATGGT         4000
+2F0                                         TGAAAG       TGAAAG         4000
+2G0                                         ATAAAG       ATAAAG         4000
+2H0                                         AAGAAG       AAGAAG         4000
+3I0                                         TTGAGG       TTGAGG         4000
+3J0                                         TATGGG       TATGGG         4000
+3K0                                         TGATGT       TGATGT         4000
+3L0                                         GTTGGG       GTTGGG         4000
+no_match                                         _            _            0

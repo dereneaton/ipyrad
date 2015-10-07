@@ -1,0 +1,2 @@
+sample                     Nreads_orig   -qscore       -adapters     Nreads_kept  
+1A0                        20000         0             0             20000        
