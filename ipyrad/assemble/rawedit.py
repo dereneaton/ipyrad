@@ -15,6 +15,9 @@ from .demultiplex import ambigcutters
 from .demultiplex import chunker #, blocks
 from ipyrad.assemble import worker
 
+# pylint: disable=E1101
+
+
 
 ## TODO: write chunker to do smaller chunks for small files?
 
@@ -327,12 +330,13 @@ def trim_merge_edge(bases, cut1, cut2):
 def prechecks(data, preview):
     """ checks before starting analysis """
     ## create output directories 
-    statsdir = os.path.join(data.paramsdict["working_directory"], 'stats')
-    if not os.path.exists(statsdir):
-        os.makedirs(statsdir)
-    editsdir = os.path.join(data.paramsdict["working_directory"], 'edits')
-    if not os.path.exists(editsdir):
-        os.makedirs(editsdir)
+    #statsdir = os.path.join(data.paramsdict["working_directory"], 'stats')
+    #if not os.path.exists(statsdir):
+    #    os.makedirs(statsdir)
+    data.dirs.edits = os.path.join(data.paramsdict["working_directory"], 
+                                  'edits')
+    if not os.path.exists(data.dirs.edits):
+        os.makedirs(data.dirs.edits)
     ## preview
     if preview:
         print("preview")
@@ -355,13 +359,13 @@ def run_full(data, sample, preview):
     paired = bool("pair" in data.paramsdict["datatype"])
 
     ## set optim size
-    optim = 5000
-    if sample.stats.get("demultiplexed_reads"):
-        if sample.stats.get("demultiplexed_reads") > 1e5:
+    optim = 1000
+    if sample.stats.reads_raw:
+        if sample.stats.reads_raw > 1e5:
             optim = 1e4
-        if sample.stats.get("demultiplexed_reads") > 1e6:
+        if sample.stats.reads_raw > 1e6:
             optim = 1e5
-        if sample.stats.get("demultiplexed_reads") > 5e6:
+        if sample.stats.reads_raw > 5e6:
             optim = 2e5
 
     ## break up the file into smaller tmp files for each processor
@@ -373,7 +377,7 @@ def run_full(data, sample, preview):
         result_queue = multiprocessing.Queue()
         for tmptuple in chunkslist:
             ## used to increment names across processors
-            point = num*10000 #num*(chunksize/2)
+            point = num*optim #10000 #num*(chunksize/2)
             work_queue.put([data, sample, tmptuple, paired, preview, point])
             submitted += 1
             num += 1
@@ -398,11 +402,15 @@ def run_full(data, sample, preview):
 
 def cleanup(data, sample, submitted, result_queue):
     """ cleaning up """
+
     ## rejoin chunks
-    outdir = os.path.join(data.paramsdict["working_directory"], "edits")
-    combs = glob.glob(os.path.join(outdir, "tmp_"+sample.name+"_*.gz"))
+    combs = glob.glob(os.path.join(
+                        data.dirs.edits,
+                        "tmp_"+sample.name+"_*.gz"))
+
     ## one outfile to write to
-    editout = os.path.join(outdir, sample.name+".fasta")
+    editout = os.path.join(data.dirs.edits,
+                           sample.name+".fasta")
     combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")))
     with open(editout, 'w') as out:
         for fname in combs:
@@ -424,19 +432,15 @@ def cleanup(data, sample, submitted, result_queue):
         fcounts["adapter"] += counts["adapter"]
         fcounts["keep"] += counts["keep"]
 
-    statsdir = os.path.join(data.paramsdict["working_directory"], "stats")
-    if not os.path.exists(statsdir):
-        os.mkdir(statsdir)
-
-    statsfile = os.path.join(statsdir, 's2_rawedit_stats.txt')
-    if not os.path.exists(statsfile):
-        with open(statsfile, 'w') as outfile:
+    data.statsfiles.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
+    if not os.path.exists(data.statsfiles.s2):
+        with open(data.statsfiles.s2, 'w') as outfile:
             outfile.write('{:<25}  {:>13} {:>13} {:>13} {:>13}\n'.\
                 format("sample", "Nreads_orig", "-qscore", 
                        "-adapters", "Nreads_kept"))
 
     ## append stats to file
-    outfile = open(statsfile, 'a+')
+    outfile = open(data.statsfiles.s2, 'a+')
     outfile.write('{:<25}  {:>13} {:>13} {:>13} {:>13}\n'.\
                   format(sample.name, 
                          str(fcounts["orig"]),
@@ -446,23 +450,24 @@ def cleanup(data, sample, submitted, result_queue):
     outfile.close()
 
     ## save stats to Sample if successful
-    sample.stats["state"] = 2
-    sample.files["edits"] = editout
-    sample.stats["reads_filtered"] = fcounts["keep"]
+    sample.stats.state = 2
+    sample.files.edits = editout
+    sample.stats.reads_filtered = fcounts["keep"]
     ## save stats to the sample??
     data.stamp("s2 rawediting on "+sample.name)        
 
 
 
-
-def run(data, sample, preview=0):
+def run(data, sample, preview=0, force=False):
     """ run the major functions for editing raw reads """
+    ## TODO: incorporate 'force' arg.
     ## if sample is already done skip
-    if sample.stats['state'] >= 2:
-        print("skipping, {} already edited. Sample.stats['state'] == {}".\
-              format(sample.name, int(sample.stats['state'])))
-    elif os.path.getsize(sample.files["fastq"][0]) < 50:
-        print("skipping, {}. File is empty.".format(sample.name))
+    if sample.stats.state >= 2:
+        print("skipping, {} already edited. Use force=True to overwrite"\
+              .format(sample.name))
+    elif sample.stats.reads_raw < 1000:
+        print("skipping {}. Too few reads ({})"\
+              .format(sample.name, sample.stats.reads_raw))
     else:
         submitted, result_queue = run_full(data, sample, preview)
         cleanup(data, sample, submitted, result_queue)
