@@ -16,6 +16,7 @@ from ipyrad.assemble import worker
 from ipyrad.core.sample import Sample
 
 
+
 def combinefiles(filepath):
     """ Joins first and second read file names """
     ## unpack seq files in filepath
@@ -94,7 +95,7 @@ def findbcode(cut, longbar, read1):
 
 
 
-def barmatch(data, rawfile, chunk, cut, longbar, outdir, chunknum, filenum): 
+def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum): 
     """matches reads to barcodes in barcode file
     and writes to individual temp files, after all
     read files have been split, temp files are collated
@@ -198,14 +199,16 @@ def barmatch(data, rawfile, chunk, cut, longbar, outdir, chunknum, filenum):
 
     ## write the remaining reads to file"
     for sample in dsort1:
-        handle = os.path.join(outdir, "tmp_"+sample+"_R1_"+\
+        handle = os.path.join(data.dirs.fastqs,
+                              "tmp_"+sample+"_R1_"+\
                               str(filenum)+"_"+str(chunknum)+".gz")
         with gzip.open(handle, 'w') as out:
             out.write("\n".join(dsort1[sample])+"\n")
     if paired:
         for sample in dsort2:
-            handle = os.path.join(outdir, "tmp_"+sample+"_R2_"+\
-                              str(filenum)+"_"+str(chunknum)+".gz")
+            handle = os.path.join(data.dirs.fastqs,
+                                  "tmp_"+sample+"_R2_"+\
+                                  str(filenum)+"_"+str(chunknum)+".gz")
             with gzip.open(handle, 'w') as out:
                 out.write("\n".join(dsort2[sample])+"\n")
 
@@ -219,9 +222,10 @@ def barmatch(data, rawfile, chunk, cut, longbar, outdir, chunknum, filenum):
     filestats = [handle, total, cutfound, matched]
     samplestats = [samplehits, barhits, misses, dbars]
 
-    pickout = open(os.path.join(data.paramsdict["working_directory"],
-                    "fastq", handle+"_"+str(chunknum)+"_"+\
-                    str(filenum)+".pickle"), "wb")
+    pickout = open(os.path.join(
+                      data.dirs.fastqs,
+                      handle+"_"+str(chunknum)+"_"+\
+                      str(filenum)+".pickle"), "wb")
     pickle.dump([filestats, samplestats], pickout)
     pickout.close()
 
@@ -295,8 +299,8 @@ def chunker(data, fastq, paired, num, optim, pickleout=0):
     ## return [fastq[0], zip(chunks1, chunks2)]
     if pickleout:
         pickout = open(os.path.join(
-            data.paramsdict["working_directory"], "fastq", 
-            "chunks_"+str(num)+".pickle"), "wb")
+                          data.dirs.fastqs, 
+                          "chunks_"+str(num)+".pickle"), "wb")
         pickle.dump([fastq[0], zip(chunks1, chunks2)], pickout)
         pickout.close()
     else:
@@ -326,7 +330,7 @@ def parallel_chunker(data, raws, paired):
 
 
 
-def parallel_sorter(data, rawfilename, chunks, cutter, longbar, outdir, filenum):
+def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum):
     """ takes list of chunk files and runs barmatch function
     on them across N processors and outputs temp file results.
     """
@@ -335,16 +339,14 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, outdir, filenum)
     work_queue = multiprocessing.Queue()
     for tmptuple in chunks:
         work_queue.put([data, rawfilename, tmptuple, cutter, 
-                        longbar, outdir, chunknum, filenum])
+                        longbar, chunknum, filenum])
         chunknum += 1
 
     ## spawn workers, run barmatch function"
     jobs = []        
     null_queue = multiprocessing.Queue()
     for _ in xrange(data.paramsdict["N_processors"]):
-        work = worker.Worker(work_queue, 
-                             null_queue, 
-                             barmatch)
+        work = worker.Worker(work_queue, null_queue, barmatch)
         work.start()
         jobs.append(work)
     for job in jobs:
@@ -352,25 +354,27 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, outdir, filenum)
 
  
 
-def collate_tmps(data, outdir, paired):
+def collate_tmps(data, paired):
     """ collate temp files back into 1 sample """
     for name in data.barcodes:
         ## nproc len list of chunks
-        combs = glob.glob(os.path.join(outdir, "tmp_"+name)+"_R1_*.gz")
+        combs = glob.glob(os.path.join(
+                          data.dirs.fastqs, "tmp_"+name)+"_R1_*.gz")
         combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")[0]))
 
         ## one outfile to write to
-        handle_r1 = os.path.join(outdir, name+"_R1_.gz")
+        handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.gz")
         with gzip.open(handle_r1, 'w') as out:
             for fname in combs:
                 with gzip.open(fname) as infile:
                     out.write(infile.read())
         if paired:
             ## nproc len list of chunks
-            combs = glob.glob(os.path.join(outdir, "tmp_"+name)+"_R2_*.gz")
+            combs = glob.glob(os.path.join(
+                              data.dirs.fastqs, "tmp_"+name)+"_R2_*.gz")
             combs.sort()                        
             ## one outfile to write to
-            handle_r2 = os.path.join(outdir, name+"_R2_.gz")
+            handle_r2 = os.path.join(data.dirs.fastqs, name+"_R2_.gz")
             with gzip.open(handle_r2, 'w') as out:
                 for fname in combs:
                     with gzip.open(fname) as infile:
@@ -393,14 +397,15 @@ def prechecks(data, preview):
         longbar = (max(barlens), 'diff')
 
     ## make sure there is an out directory
-    outdir = os.path.join(data.paramsdict["working_directory"], 'fastq')
+    data.dirs.fastqs = os.path.join(data.paramsdict["working_directory"],
+                                    'fastq')
     if not os.path.exists(data.paramsdict["working_directory"]):
         os.mkdir(data.paramsdict["working_directory"])
-    if not os.path.exists(outdir):
-        os.mkdir(outdir)
+    if not os.path.exists(data.dirs.fastqs):
+        os.mkdir(data.dirs.fastqs)
 
     ## if leftover tmp files, remove
-    oldtmps = glob.glob(os.path.join(outdir, "tmp_*.gz"))
+    oldtmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
     if oldtmps:
         for oldtmp in oldtmps:
             os.remove(oldtmp)
@@ -423,12 +428,12 @@ def prechecks(data, preview):
     cut1, _ = [ambigcutters(i) for i in \
                data.paramsdict["restriction_overhang"]]
 
-    return raws, longbar, cut1, outdir, paired
+    return raws, longbar, cut1, paired
 
 
 
 
-def make_stats(data, raws, outdir, paired):
+def make_stats(data, raws, paired):
     """ reads in pickled stats, collates, and writes to file """
     ## stats for each rawdata file
     perfile = {}
@@ -446,7 +451,7 @@ def make_stats(data, raws, outdir, paired):
     fmisses = Counter()
 
     ## get stats from each file pickle
-    pickles = glob.glob(os.path.join(outdir, "*.pickle"))
+    pickles = glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
     for picfile in pickles:
         with open(picfile, "rb") as pickin:
             filestats, samplestats = pickle.load(pickin)
@@ -467,14 +472,14 @@ def make_stats(data, raws, outdir, paired):
         fdbars.update(dbars)
 
 
-    statsdir = os.path.join(data.paramsdict["working_directory"], "stats")
-    if not os.path.exists(statsdir):
-        os.mkdir(statsdir)
-    outfile = open(os.path.join(statsdir, 's1_demultiplex_stats.txt'), 'w')
+    data.statsfiles.s1 = os.path.join(data.dirs.fastqs, 
+                                      's1_demultiplex_stats.txt')
+    outfile = open(data.statsfiles.s1, 'w')
 
     ## how many from each rawfile
     outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-                  format("raw_file", "total_reads", "cut_found", "bar_matched"))
+                  format("raw_file", "total_reads", 
+                         "cut_found", "bar_matched"))
     ## sort rawfile names
     rawfilenames = sorted(perfile)
     for rawstat in rawfilenames:
@@ -489,6 +494,7 @@ def make_stats(data, raws, outdir, paired):
     ## spacer, how many records for each sample
     outfile.write('\n{:<35}  {:>13}\n'.\
                   format("sample_name", "total_R1_reads"))
+
     ## names alphabetical
     names_sorted = sorted(data.barcodes)
     for name in names_sorted:
@@ -531,20 +537,21 @@ def make_stats(data, raws, outdir, paired):
         sample.name = name
         sample.barcode = data.barcodes[name]
         if paired:
-            sample.files["fastq"] = (os.path.join(outdir, name+"_R1_.gz"),
-                                     os.path.join(outdir, name+"_R2_.gz"))
+            sample.files["fastq"] = (os.path.join(data.dirs.fastqs,
+                                                  name+"_R1_.gz"),
+                                     os.path.join(data.dirs.fastqs,
+                                                  name+"_R2_.gz"))
         else:
-            sample.files["fastq"] = (os.path.join(outdir, name+"_R1_.gz"),)
+            sample.files["fastq"] = (os.path.join(data.dirs.fastqs,
+                                                  name+"_R1_.gz"),)
         sample.stats["reads_raw"] = fsamplehits[name]
         if sample.stats["reads_raw"]:
-            sample.stats['state'] = 1
+            sample.stats.state = 1
             data.samples[sample.name] = sample
         else:
             print("Excluded sample: no data found for", name)
 
-    ## add stats file to Assembly object stats
-    data.statsfiles['s1'] = (os.path.join(statsdir, 's1_demultiplex_stats.txt'))
-                    
+
 
 
 
@@ -552,7 +559,8 @@ def run(data, preview):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
-    raws, longbar, cut1, outdir, paired = prechecks(data, preview)
+    raws, longbar, cut1, paired = prechecks(data, preview)
+
     if preview:
         print('raws', raws)
     ## nested structure to prevent abandoned temp files
@@ -560,9 +568,8 @@ def run(data, preview):
         ## splits up all files into chunks, returns list of list
         ## of chunks names in tuples
         parallel_chunker(data, raws, paired)
-        chunkspickles = glob.glob(os.path.join(
-                            data.paramsdict["working_directory"],
-                            "fastq", "chunks_*.pickle"))
+        chunkspickles = glob.glob(os.path.join(data.dirs.fastqs,
+                                              "chunks_*.pickle"))
         chunkslist = []
         for picklefile in chunkspickles:
             ## put chunk names in list
@@ -581,22 +588,21 @@ def run(data, preview):
                     if cutter:     
                         ## sort chunks for this list     
                         parallel_sorter(data, rawfilename, chunks, 
-                                        cutter, longbar,
-                                        outdir, filenum)
+                                        cutter, longbar, filenum)
                 filenum += 1
                 ## combine tmps for ambiguous cuts
                 ## somefunc()
             ## collate tmps back into one file
-            collate_tmps(data, outdir, paired)
-            make_stats(data, raws, outdir, paired)
+            collate_tmps(data, paired)
+            make_stats(data, raws, paired)
         finally:
             ## cleans up tmp files
-            tmpfiles = glob.glob(os.path.join(outdir, "tmp_*.gz"))
+            tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
             for tmpfile in tmpfiles:
                 os.remove(tmpfile)
     finally:
         ## cleans up chunk files and stats pickles
-        pickles = glob.glob(os.path.join(outdir, "*.pickle"))
+        pickles = glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
         for pickfile in pickles:
             os.remove(pickfile)
         tmpfiles = glob.glob(os.path.join(
