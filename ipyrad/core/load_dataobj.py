@@ -9,12 +9,17 @@ import os
 
 def load_dataobj(tryname):
     """ loads an ipython pickled Assembly object """
-    if ".dataobj" not in tryname:
-        tryname += ".dataobj"
+    if ".assembly" not in tryname:
+        tryname += ".assembly"
     if os.path.exists(tryname):
         with open(tryname, "rb") as pickin:
             data = dill.load(pickin)
         return data
     else:
-        print("cannot find", tryname, "please enter full path to file")
+        print("cannot find", tryname, "try entering the full path to file")
+
+
+def save_dataobj():
+	""" TODO: """
+	pass
 

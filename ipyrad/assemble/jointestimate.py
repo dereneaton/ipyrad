@@ -272,6 +272,10 @@ def cleanup(data, samples):
 
 
     ## create a final stats file
+    #statsfile = os.path.join(os.path.dir(""))
+    #data.statsfiles["s4"] = statsfile
+
+
     #if not os.path.exists(data.paramsdict["working_directory"]+\
     #    "stats/Pi_E_estimate.txt"):
     #     outstats = open(params["work"]+"stats/Pi_E_estimate.txt", 'w')

@@ -47,16 +47,16 @@ class Sample(object):
         self.group = []
 
 
-    def __getstate__(self):
-        return self.__dict__
+    #def __getstate__(self):
+    #    return self.__dict__
 
-    def __setstate__(self, dicto):
-        self.__dict__.update(dicto)
+    #def __setstate__(self, dicto):
+    #    self.__dict__.update(dicto)
 
-    def save(self):
-        """ pickle the data object """
-        dillout = open(self.name+".dataobj", "wb")
-        dill.dump(self, dillout)
-        dillout.close()
+    #def save(self):
+    #    """ pickle the data object """
+    #    dillout = open(self.name+".dataobj", "wb")
+    #    dill.dump(self, dillout)
+    #    dillout.close()
 
 
