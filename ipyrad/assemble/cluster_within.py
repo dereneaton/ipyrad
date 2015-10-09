@@ -6,30 +6,29 @@ by sequence similarity using vsearch
 """
 
 from __future__ import print_function
-import multiprocessing
+
 import os
-import sys
+import gzip
 import itertools
 import subprocess
-import gzip
 import numpy as np
+import ipyparallel as ipp
 from .rawedit import comp
-from ipyrad.assemble import worker
-
+#from ipyrad.assemble import worker
+#import multiprocessing
 # pylint: disable=E1101
+
 
 
 def cleanup(data, sample):
     """ stats, cleanup, and sample """
     
-    ## grab file
-    #data.dirs.clustdir = os.path.join(
-    #                        data.dirs.editsdir, 
-    #                        "clust_"+str(data.paramsdict["clust_threshold"]))
-    clusthandle = os.path.join(data.dirs.clusts, sample.name+".clustS.gz")
+    ## get clustfile
+    sample.files["clusters"] = os.path.join(data.dirs.clusts,
+                                            sample.name+".clustS.gz")
 
     ## get depth stats
-    infile = gzip.open(clusthandle)
+    infile = gzip.open(sample.files["clusters"])
     duo = itertools.izip(*[iter(infile)]*2)
     depth = []
     thisdepth = []
@@ -57,7 +56,6 @@ def cleanup(data, sample):
         sample.stats["clusters_total"] = len(depth)
         sample.stats["clusters_kept"] = max([len(i) for i in \
                                              (keepmj, keepstat)])
-        sample.files["clusters"] = str(clusthandle)
         sample.depths["total"] = depth
         sample.depths["mjmin"] = keepmj
         sample.depths["statmin"] = keepstat
@@ -75,7 +73,8 @@ def muscle_align(data, sample):
     ## iterator to read clust file 2 lines at a time
     #clustdir = os.path.join(data.paramsdict["working_directory"],
     #    "clust_"+str(data.paramsdict["clust_threshold"]))
-    clusthandle = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+    clusthandle = os.path.join(data.dirs.clusts, 
+                               sample.name+".clust.gz")
     infile = gzip.open(clusthandle)
     duo = itertools.izip(*[iter(infile)]*2)
 
@@ -182,11 +181,6 @@ def alignfast(data, names, seqs):
 def build_clusters(data, sample):
     """ combines information from .u and ._temp files 
     to create .clust files, which contain un-aligned clusters """
-
-    ## find files for this sample
-    #clustdir = os.path.join(
-    #    data.paramsdict["working_directory"], 
-    #    "clust_"+str(data.paramsdict["clust_threshold"]))
 
     ## derepfile 
     derepfile = sample.files["edits"].replace(".fasta", ".derep")
@@ -300,24 +294,20 @@ def split_among_processors(data, samples, preview, noreverse, nthreads):
 
 
     ## queue items and counters for multiprocessing
-    work_queue = multiprocessing.Queue()
-    result_queue = multiprocessing.Queue()
+    submitted_args = []
 
     ## sort samples by size so biggest go on first
     samples = sorted(samples, key=lambda x: os.stat(x.files["edits"]).st_size)
 
     ## submit files and args to queue, for func run_all
     for sample in samples:
-        work_queue.put([data, sample, preview, noreverse, nthreads])
+        submitted_args.append([data, sample, preview, noreverse, nthreads])
 
-    ## make a job list and start workers on jobs
-    jobs = []
-    for _ in xrange(data.paramsdict["N_processors"]):
-        work = worker.Worker(work_queue, result_queue, runprocess)
-        jobs.append(work)
-        work.start()
-    for j in jobs:
-        j.join()
+    ## call to ipp
+    ipyclient = ipp.Client()
+    workers = ipyclient.load_balanced_view()
+    results = workers.map(runprocess, submitted_args)
+    results.get()     #ipyclient.wait()
 
     ## 
     if preview:
@@ -408,8 +398,6 @@ def cluster(data, sample, preview, noreverse, nthreads):
     values were chosen based on experience, but could be edited by users """
     ## get files
     derephandle = sample.files["edits"].replace(".fasta", ".derep")
-    #clustdir = os.path.join(data.paramsdict["working_directory"],
-    #    "clust_"+str(data.paramsdict["clust_threshold"]))
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
@@ -446,8 +434,6 @@ def cluster(data, sample, preview, noreverse, nthreads):
         " -notmatched "+temphandle+\
         " -fasta_width 0"
 
-    #print(cmd)
-
     ## run vsearch
     if preview:
         ## make this some kind of wait command that kills after a few mins
@@ -473,9 +459,13 @@ def multi_muscle_align(data, sample, nthreads):
 
 
 
-def runprocess(data, sample, preview, noreverse, nthreads):
+def runprocess(args): 
     """ splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them """
+
+    ## get args
+    data, sample, preview, noreverse, nthreads = args
+
     ## preview
     if preview:
         print("preview: in run_full")
@@ -494,6 +484,7 @@ def runprocess(data, sample, preview, noreverse, nthreads):
 
     ## align clusters across multiple threads
     #multi_muscle_align(data, sample, nthreads)
+
 
 
 def run(data, samples, preview=0, noreverse=0, nthreads=4):

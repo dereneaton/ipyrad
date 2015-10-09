@@ -246,8 +246,10 @@ def blocks(files, size=50120000):
 def chunker(args):
     """ splits fastq file into nchunks, preserving that
     the data are in 4-line groups. Split across N processors. """
-    print("inside this chunk")
+
+    ## get args
     data, fastq, paired, num, optim, pickleout = args
+
     ## is gzipped?
     gzipped = bool(fastq[0].endswith(".gz"))
 
@@ -310,32 +312,18 @@ def chunker(args):
 def parallel_chunker(data, raws, paired):
     """ iterate over raw data files and split into N pieces """
     ## count how many rawfiles have been done
-    #work_queue = multiprocessing.Queue()    
     submitted_args = []
-    #chunk_queue = multiprocessing.Queue()        
     num = 0
     for rawtuple in list(raws):
-        ## for each (R1, R2) put on work queue, w/ fixblock=1
-        #work_queue.put([data, rawtuple, 
-        #                paired, num, 400000, 1])
         submitted_args.append([data, rawtuple, paired, num, 400000, 1])
         num += 1
 
     ## call to ipp
-    ipyclient = ipp.Client()
-    workers = ipyclient.load_balanced_view()
-    res = workers.map(chunker, submitted_args)
-    res.get() #ipyclient.wait()
-
-    #apply_async(chunker, submitted_args)
-    ## spawn workers, run barmatch function"
-    # jobs = []        
-    # for _ in xrange(data.paramsdict["N_processors"]):
-    #     work = worker.Worker(work_queue, chunk_queue, chunker)
-    #     work.start()
-    #     jobs.append(work)
-    # for job in jobs:
-    #     job.join()
+    ipyclient = ipp.Client().load_balanced_view()
+    #print(ipyclient.ids)    
+    res = ipyclient.map_async(chunker, submitted_args)
+    res.get() 
+    del ipyclient
 
 
 
@@ -352,11 +340,10 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum):
         chunknum += 1
 
     ## uses all available processors
-    ipyclient = ipp.Client()
-    workers = ipyclient.load_balanced_view()
-    res = workers.map_async(barmatch, submitted_args)
-    res.get()  
-
+    ipyclient = ipp.Client().load_balanced_view()
+    results = ipyclient.map_async(barmatch, submitted_args)
+    results.get()
+    del ipyclient
  
 
 def collate_tmps(data, paired):

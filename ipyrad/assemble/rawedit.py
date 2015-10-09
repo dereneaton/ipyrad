@@ -5,21 +5,16 @@ to check for adapters and primers, but is not optimized
 for all types of cutters """
 
 from __future__ import print_function
-import multiprocessing
-import itertools
-import glob
 import os
+import glob
 import gzip
+import itertools
 import numpy as np
+import ipyparallel as ipp
 from .demultiplex import ambigcutters
 from .demultiplex import chunker #, blocks
-from ipyrad.assemble import worker
-
 # pylint: disable=E1101
 
-
-
-## TODO: write chunker to do smaller chunks for small files?
 
 
 def afilter(data, sample, bases, cut1, cut2, strict, preview, read):
@@ -102,10 +97,14 @@ def comp(seq):
 
 
 
-def rawedit(data, sample, tmptuple, paired, preview, point):
+def rawedit(args):
     """ three functions:
     (1) replaces low quality base calls with Ns,
     (2) checks for adapter sequence if strict set to 1 or 2 """
+
+    ## get args
+    data, sample, tmptuple, paired, preview, point = args
+    print(sample.name, os.getpid())
 
     ## get cut sites
     cut1, cut2 = [ambigcutters(i) for i in \
@@ -353,7 +352,6 @@ def run_full(data, sample, preview):
     ## load up work queue
     submitted = 0
     num = 0
-    work_queue = multiprocessing.Queue()
 
     ## is paired?
     paired = bool("pair" in data.paramsdict["datatype"])
@@ -369,38 +367,39 @@ def run_full(data, sample, preview):
             optim = 2e5
 
     ## break up the file into smaller tmp files for each processor
-    _, chunkslist = chunker(data, sample.files["fastq"],
-                            paired, num, optim, 0)
+    args = [data, sample.files["fastq"], paired, num, optim, 0]
+    _, chunkslist = chunker(args)
+
+    ## 
     try: 
         ## send file to multiprocess queue, will delete if fail
-        work_queue = multiprocessing.Queue()
-        result_queue = multiprocessing.Queue()
+        submitted_args = []
         for tmptuple in chunkslist:
             ## used to increment names across processors
             point = num*optim #10000 #num*(chunksize/2)
-            work_queue.put([data, sample, tmptuple, paired, preview, point])
+            submitted_args.append([data, sample, tmptuple, 
+                                    paired, preview, point])
+            #work_queue.put([data, sample, tmptuple, paired, preview, point])
             submitted += 1
             num += 1
 
-        ## spawn workers, run rawedit func
-        jobs = []
-        for _ in range(data.paramsdict["N_processors"]):
-            work = worker.Worker(work_queue, result_queue, rawedit)
-            work.start()
-            jobs.append(work)
-        for job in jobs:
-            job.join()
+        ## call to ipp
+        ipyclient = ipp.Client().load_balanced_view()
+        #print(ipyclient.ids)
+        results = ipyclient.map_async(rawedit, submitted_args)
+        results.get()   
+        del ipyclient
     
     finally:
         ## if process failed at any point delete temp files
         for tmptuple in chunkslist:
             os.remove(tmptuple[0])
             os.remove(tmptuple[1])     
-    return submitted, result_queue
+    return submitted, results
 
 
 
-def cleanup(data, sample, submitted, result_queue):
+def cleanup(data, sample, submitted, results):
     """ cleaning up """
 
     ## rejoin chunks
@@ -425,8 +424,8 @@ def cleanup(data, sample, submitted, result_queue):
                "keep": 0}
 
     ## merge finished edits
-    for _ in range(submitted):
-        counts = result_queue.get()
+    for i in range(submitted):
+        counts = results[i]
         fcounts["orig"] += counts["orig"]
         fcounts["quality"] += counts["quality"]
         fcounts["adapter"] += counts["adapter"]
@@ -469,8 +468,8 @@ def run(data, sample, preview=0, force=False):
         print("skipping {}. Too few reads ({})"\
               .format(sample.name, sample.stats.reads_raw))
     else:
-        submitted, result_queue = run_full(data, sample, preview)
-        cleanup(data, sample, submitted, result_queue)
+        submitted, results = run_full(data, sample, preview)
+        cleanup(data, sample, submitted, results)
 
 
 if __name__ == "__main__":
