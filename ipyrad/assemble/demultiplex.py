@@ -3,18 +3,17 @@
 """ demultiplex raw sequence data given a barcode map """
 
 from __future__ import print_function
-import gzip
-import itertools
-import sys
-import glob
 import os
+import sys
+import gzip
+import glob
 import tempfile
-import multiprocessing
+import itertools
+#import multiprocessing
 import cPickle as pickle
-from collections import defaultdict, Counter
-from ipyrad.assemble import worker
+import ipyparallel as ipp
 from ipyrad.core.sample import Sample
-
+from collections import defaultdict, Counter
 
 
 def combinefiles(filepath):
@@ -95,11 +94,14 @@ def findbcode(cut, longbar, read1):
 
 
 
-def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum): 
+def barmatch(args):
     """matches reads to barcodes in barcode file
     and writes to individual temp files, after all
     read files have been split, temp files are collated
     into .fq files"""
+
+    ## read in list of args
+    data, rawfile, chunk, cut, longbar, chunknum, filenum = args
 
     ## is paired?
     paired = bool('pair' in data.paramsdict["datatype"])
@@ -241,9 +243,11 @@ def blocks(files, size=50120000):
 
 
 
-def chunker(data, fastq, paired, num, optim, pickleout=0):
+def chunker(args):
     """ splits fastq file into nchunks, preserving that
     the data are in 4-line groups. Split across N processors. """
+    print("inside this chunk")
+    data, fastq, paired, num, optim, pickleout = args
     ## is gzipped?
     gzipped = bool(fastq[0].endswith(".gz"))
 
@@ -255,11 +259,6 @@ def chunker(data, fastq, paired, num, optim, pickleout=0):
         with open(fastq[0], 'rb') as indata:
             totlen = sum([ind.count("\n") for ind in blocks(indata)])
     added = 0
-
-    ## optimal chunk sizes, 4 for each processor
-    #optim = ((totlen/4)/nproc)*16
-    #optim = 400000
-    #print(totlen, optim, 'tot.opt')
 
     ## data in at optim lines at a time
     if gzipped:
@@ -311,22 +310,32 @@ def chunker(data, fastq, paired, num, optim, pickleout=0):
 def parallel_chunker(data, raws, paired):
     """ iterate over raw data files and split into N pieces """
     ## count how many rawfiles have been done
-    work_queue = multiprocessing.Queue()    
-    chunk_queue = multiprocessing.Queue()        
+    #work_queue = multiprocessing.Queue()    
+    submitted_args = []
+    #chunk_queue = multiprocessing.Queue()        
     num = 0
     for rawtuple in list(raws):
         ## for each (R1, R2) put on work queue, w/ fixblock=1
-        work_queue.put([data, rawtuple, 
-                        paired, num, 400000, 1])
+        #work_queue.put([data, rawtuple, 
+        #                paired, num, 400000, 1])
+        submitted_args.append([data, rawtuple, paired, num, 400000, 1])
         num += 1
+
+    ## call to ipp
+    ipyclient = ipp.Client()
+    workers = ipyclient.load_balanced_view()
+    res = workers.map(chunker, submitted_args)
+    res.get() #ipyclient.wait()
+
+    #apply_async(chunker, submitted_args)
     ## spawn workers, run barmatch function"
-    jobs = []        
-    for _ in xrange(data.paramsdict["N_processors"]):
-        work = worker.Worker(work_queue, chunk_queue, chunker)
-        work.start()
-        jobs.append(work)
-    for job in jobs:
-        job.join()
+    # jobs = []        
+    # for _ in xrange(data.paramsdict["N_processors"]):
+    #     work = worker.Worker(work_queue, chunk_queue, chunker)
+    #     work.start()
+    #     jobs.append(work)
+    # for job in jobs:
+    #     job.join()
 
 
 
@@ -336,21 +345,17 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum):
     """
     ## send file to multiprocess queue"
     chunknum = 0
-    work_queue = multiprocessing.Queue()
+    submitted_args = []
     for tmptuple in chunks:
-        work_queue.put([data, rawfilename, tmptuple, cutter, 
-                        longbar, chunknum, filenum])
+        submitted_args.append([data, rawfilename, tmptuple, cutter,
+                               longbar, chunknum, filenum])
         chunknum += 1
 
-    ## spawn workers, run barmatch function"
-    jobs = []        
-    null_queue = multiprocessing.Queue()
-    for _ in xrange(data.paramsdict["N_processors"]):
-        work = worker.Worker(work_queue, null_queue, barmatch)
-        work.start()
-        jobs.append(work)
-    for job in jobs:
-        job.join()
+    ## uses all available processors
+    ipyclient = ipp.Client()
+    workers = ipyclient.load_balanced_view()
+    res = workers.map_async(barmatch, submitted_args)
+    res.get()  
 
  
 
@@ -550,7 +555,6 @@ def make_stats(data, raws, paired):
             data.samples[sample.name] = sample
         else:
             print("Excluded sample: no data found for", name)
-
 
 
 
