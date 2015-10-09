@@ -11,7 +11,7 @@ import numpy
 import gzip
 import os
 from ipyrad.assemble import worker
-from ipyrad.assemble import ObjDict
+from ipyrad.assemble.worker import ObjDict
 from collections import Counter
 # pylint: disable=E1101
 
