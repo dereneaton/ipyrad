@@ -1,12 +1,12 @@
-
 #!/usr/bin/env python2.7
 
-""" define ipyrad analysis class object. 
+""" ipyrad Assembly class object. 
     This is used for the following:
         -- to store and modify a params dictionary.
-        -- to view analysis history graph.
-        -- to load data that is saved to disk.
-        -- to run ipyrad assembly steps on samples linked to it. """
+        -- to view analysis history log.
+        -- to load/link to data saved on disk.
+        -- to run assembly steps on samples.
+"""
 
 from __future__ import print_function
 import time
@@ -16,28 +16,24 @@ import sys
 import subprocess
 import pandas as pd
 import dill
+import copy
 from collections import OrderedDict
+from ipyrad.assemble.worker import ObjDict
 from ipyrad.core.sample import Sample
 from ipyrad import assemble
+from types import *
+
 
 # pylint: disable=E1101
 # pylint: disable=E1103
 
 
-## TODO: consens files need their own directory, 
-## NESTED DATA STRUCTURE
-## best way to make analyses bifurcating
-## e.g., clust.95/cons_d6j6/
+## TODO: combinatorial indexing
 
-## cite herrera about hard to estimate restriction sites
-## cite Seetharam & Stuart as another predicted study from one genome
-## cite Peterson et al. (2012) for thinking they can estimate Nloci
-
-## allow combinatorial indexing
 
 class Assembly(object):
-    """ An ipyrad analysis object """
-    def __init__(self, name=""):
+    """ An ipyrad Assembly class object """
+    def __init__(self, name):
         ## a project name
         self.name = name
 
@@ -47,14 +43,16 @@ class Assembly(object):
         ## link a log history of executed workflow
         self.log = []
         self.stamp(self.name+" created")
-        self.statsfiles = {}
+        self.statsfiles = ObjDict()
 
         ## samples linked 
-        self.samples = {}
+        self.samples = ObjDict()
 
         ## multiplex files linked
-        self.barcodes = {}
-        self.rawdata = []
+        self.barcodes = ObjDict()
+
+        ## an object for storing data directories for this Assembly
+        self.dirs = ObjDict()
 
         ## the default params dict
         self.paramsdict = OrderedDict([
@@ -96,6 +94,8 @@ class Assembly(object):
         #if os.path.exists(self.paramsdict["barcodes_path"]):
         #    self.barcodes = self.link_barcodes()
 
+
+
     @property
     def stats(self):
         """ returns a data frame with sample data and state """
@@ -104,22 +104,11 @@ class Assembly(object):
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
                       index=nameordered)
 
-    # @property
-    # def files(self):
-    #     """ returns a data frame with sample data and state """
-    #     nameordered = self.samples.keys()
-    #     nameordered.sort()
-    #     return pd.DataFrame([self.samples[i].statsfiles for i in nameordered], 
-    #                   index=nameordered)
+    #def __getstate__(self):
+    #    return self.__dict__
 
-
-
-    def __getstate__(self):
-        return self.__dict__
-
-    def __setstate__(self, dicto):
-        self.__dict__.update(dicto)
-
+    #def __setstate__(self, dicto):
+    #    self.__dict__.update(dicto)
 
     def stamp(self, event):
         """ stamp an event into the log history """
@@ -127,17 +116,17 @@ class Assembly(object):
         self.log.append((self.name, tev, event))
 
 
-    def link_raws(self):
-        """ link raw data files """
-        ## TODO: remove from link_fastqs
-        if os.path.isdir(self.paramsdict["raw_fastq_path"]):
-            self.paramsdict["raw_fastq_path"] += "*"
-        raws = glob.glob(os.path.join(
-                            self.paramsdict["raw_fastq_path"],
-                            ))
-        if raws:
-            for rawfile in raws:
-                self.rawdata.append(rawfile)
+    # def link_raws(self):
+    #     """ link raw data files """
+    #     ## TODO: remove from link_fastqs
+    #     if os.path.isdir(self.paramsdict["raw_fastq_path"]):
+    #         self.paramsdict["raw_fastq_path"] += "*"
+    #     raws = glob.glob(os.path.join(
+    #                         self.paramsdict["raw_fastq_path"],
+    #                         ))
+    #     if raws:
+    #         for rawfile in raws:
+    #             self.rawdata.append(rawfile)
 
 
     def link_fastqs(self, pear=0):
@@ -152,9 +141,9 @@ class Assembly(object):
         fastqs = glob.glob(os.path.join(
                             self.paramsdict["sorted_fastq_path"],
                             ))
-        raws = glob.glob(os.path.join(
-                            self.paramsdict["raw_fastq_path"],
-                            ))
+        #raws = glob.glob(os.path.join(
+        #                    self.paramsdict["raw_fastq_path"],
+        #                    ))
 
         ## create a Sample object for each fastq file
         if fastqs:
@@ -175,7 +164,7 @@ class Assembly(object):
 
                 ## create Sample
                 samp = Sample(sname)
-                samp.stats["state"] = 1
+                samp.stats.state = 1
                 samp.barcode = "pre_demultiplexed"
                 samp.files['fastq'] = fastq
 
@@ -187,10 +176,9 @@ class Assembly(object):
                         print("warning: if data are merged with PEAR "+\
                               "enter link_fastqs(pear=1)")
                 self.samples[samp.name] = samp
-        if raws:
-            for rawfile in raws:
-                self.rawdata.append(rawfile)
-
+        #if raws:
+        #    for rawfile in raws:
+        #        self.rawdata.append(rawfile)
         ## TODO: if fastqs already sorted, try to link stats
   
 
@@ -246,8 +234,7 @@ class Assembly(object):
         #if not os.path.exists(barcodefile):
         #    print("Barcodes file not found:", self.paramsdict["barcodes_path"])
         #else:            
-        bdf = pd.read_csv(barcodefile, header=None, 
-                                       delim_whitespace=1)
+        bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
         bdf = bdf.dropna()
         ## make sure upper case
         bdf[1] = bdf[1].str.upper()
@@ -307,6 +294,7 @@ class Assembly(object):
         if param in ['1', 'working_directory']:
             self.paramsdict['working_directory'] = expander(newvalue)
             self.stamp("[1] set to "+newvalue)
+            self.dirs["working"] = self.paramsdict["working_directory"]
 
 
         elif param in ['2', 'raw_fastq_path']:
@@ -315,9 +303,13 @@ class Assembly(object):
                 fullrawpath = os.path.join(fullrawpath, "*.gz")
             self.paramsdict['raw_fastq_path'] = fullrawpath
             self.stamp("[2] set to "+newvalue)
+            #if not self.paramdict["raw_fastq_path"]:
+            self.dirs["fastqs"] = os.path.dirname(
+                                     self.paramsdict["raw_fastq_path"])
 
 
         elif param in ['3', 'barcodes_path']:
+            #assert type(newvalue) is StringType, "arg must be a string"
             fullbarpath = expander(newvalue)
             if glob.glob(fullbarpath):
                 self.paramsdict['barcodes_path'] = fullbarpath
@@ -337,6 +329,9 @@ class Assembly(object):
             self.paramsdict['sorted_fastq_path'] = newvalue
             self.link_fastqs()
             self.stamp("[4] set to "+newvalue)
+            #if not self.paramdict["raw_fastq_path"]:
+            self.dirs["fastqs"] = os.path.dirname(
+                                   self.paramsdict["sorted_fastq_path"])
 
 
         elif param in ['5', 'restriction_overhang']:
@@ -472,6 +467,19 @@ class Assembly(object):
 
 
 
+    def copy(self, newname):
+        """ returns a copy of the Assemlbly object. 
+        Does not allow names to be replicated """
+        if (newname == self.name) or (os.path.exists(newname+".assembly")):
+            print("Assembly object named {} already exists".format(newname))
+        else:
+            ## create a copy of the Assembly obj
+            newobj = copy.deepcopy(self)
+            ## create copies of each Sample obj
+            for sample in self.samples:
+                newobj.samples[sample] = copy.deepcopy(self.samples[sample])
+            return newobj
+
 
 
     def file_tree(self):
@@ -491,8 +499,9 @@ class Assembly(object):
 
     def _save(self):
         """ pickle the data object """
-        dillout = open(os.path.join(self.paramsdict["working_directory"],
-                  self.name+".dataobj"), "wb")
+        dillout = open(os.path.join(
+                          self.paramsdict["working_directory"],
+                          self.name+".assembly"), "wb")
         dill.dump(self, dillout)
         dillout.close()
 
@@ -624,6 +633,46 @@ class Assembly(object):
         self._save()
 
 
+
+    def step5(self, samples="", preview=0):
+        """ step 5: Consensus base calling from clusters within samples.
+        If you want to overwrite data for a file, first set its state to 
+        3 or 4. e.g., data.samples['sample'].stats['state'] = 3 """
+
+        ## sampling
+        if samples:
+            ## make a list keys or samples
+            if isinstance(samples, str):
+                samples = list([samples])
+            else:
+                samples = list(samples)
+
+            ## if keys are in list
+            if any([isinstance(i, str) for i in samples]):
+                ## make into a subsampled sample dict
+                subsamples = {i: self.samples[i] for i in samples}
+
+            ## send to function
+            assemble.consens_se.run(self, subsamples.values())
+        else:
+            ## if no sample, then do all samples
+            if not self.samples:
+                ## if no samples in data, try linking edits from working dir
+                #self.link_clustfiles()
+                if not self.samples:
+                    print("Assembly object has no samples in state=3")
+            ## run clustering for all samples
+            assemble.consens_se.run(self, self.samples.values())
+
+        ## pickle the data object
+        self._save()
+
+
+
+
+
+
+
     def run(self, steps=0):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
@@ -643,6 +692,7 @@ class Assembly(object):
         #     self.step6()            
         # if '7' in steps:
         #     self.step7()            
+
 
 
 
@@ -715,6 +765,9 @@ def getbins():
                        "muscle3.8.31_i86darwin64")
     ## TODO: return error if system is 32-bit arch.
     return vsearch, muscle
+
+
+
 
 
 
