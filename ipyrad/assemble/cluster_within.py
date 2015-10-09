@@ -23,9 +23,10 @@ def cleanup(data, sample):
     """ stats, cleanup, and sample """
     
     ## grab file
-    clustdir = os.path.join(data.paramsdict["working_directory"],
-        "clust_"+str(data.paramsdict["clust_threshold"]))
-    clusthandle = os.path.join(clustdir, sample.name+".clustS.gz")
+    #data.dirs.clustdir = os.path.join(
+    #                        data.dirs.editsdir, 
+    #                        "clust_"+str(data.paramsdict["clust_threshold"]))
+    clusthandle = os.path.join(data.dirs.clusts, sample.name+".clustS.gz")
 
     ## get depth stats
     infile = gzip.open(clusthandle)
@@ -72,20 +73,15 @@ def muscle_align(data, sample):
     If paired, first and second reads are split and aligned 
     separately """
     ## iterator to read clust file 2 lines at a time
-    clustdir = os.path.join(data.paramsdict["working_directory"],
-        "clust_"+str(data.paramsdict["clust_threshold"]))
-    clusthandle = os.path.join(clustdir, sample.name+".clust.gz")
+    #clustdir = os.path.join(data.paramsdict["working_directory"],
+    #    "clust_"+str(data.paramsdict["clust_threshold"]))
+    clusthandle = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
     infile = gzip.open(clusthandle)
     duo = itertools.izip(*[iter(infile)]*2)
 
     ## lists for storing first and second aligned loci
     out = []
     cnts = 0
-
-    ## remove clustS file if it already exists
-    #clustshandle = clusthandle.replace(".clust.gz", ".clustS.gz")
-    #if os.path.exists(clustshandle):
-    #    os.remove(clustshandle)
 
     ## iterate over loci
     while 1:
@@ -188,19 +184,20 @@ def build_clusters(data, sample):
     to create .clust files, which contain un-aligned clusters """
 
     ## find files for this sample
-    clustdir = os.path.join(
-        data.paramsdict["working_directory"], 
-        "clust_"+str(data.paramsdict["clust_threshold"]))
+    #clustdir = os.path.join(
+    #    data.paramsdict["working_directory"], 
+    #    "clust_"+str(data.paramsdict["clust_threshold"]))
 
     ## derepfile 
     derepfile = sample.files["edits"].replace(".fasta", ".derep")
 
     ## vsearch results files
-    ufile = os.path.join(clustdir, sample.name+".utemp")
-    tempfile = os.path.join(clustdir, sample.name+".htemp")
+    ufile = os.path.join(data.dirs.clusts, sample.name+".utemp")
+    tempfile = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## create an output file to write clusters to        
-    clustfile = gzip.open(os.path.join(clustdir, 
+    clustfile = gzip.open(os.path.join(
+                          data.dirs.clusts,
                           sample.name+".clust.gz"), 'wb')
     sample.files["clusts"] = clustfile
 
@@ -295,17 +292,12 @@ def split_among_processors(data, samples, preview, noreverse, nthreads):
     :returns: None
     """
     ## make output folder for clusters  
-    clustdir = os.path.join(
-                  data.paramsdict["working_directory"],
-                  "clust_"+str(data.paramsdict["clust_threshold"]))
-    if not os.path.exists(clustdir):
-        os.makedirs(clustdir)
+    data.dirs.clusts = os.path.join(
+                          data.dirs.edits,
+                         "clust_"+str(data.paramsdict["clust_threshold"]))
+    if not os.path.exists(data.dirs.clusts):
+        os.makedirs(data.dirs.clusts)
 
-    ## check for stats dir
-    statsdir = os.path.join(
-                  data.paramsdict["working_directory"], "stats")
-    if not os.path.exists(statsdir):
-        os.makedirs(statsdir)
 
     ## queue items and counters for multiprocessing
     work_queue = multiprocessing.Queue()
@@ -336,12 +328,9 @@ def split_among_processors(data, samples, preview, noreverse, nthreads):
         cleanup(data, sample)
 
     ## summarize results to stats file
-    statsdir = os.path.join(data.paramsdict["working_directory"], "stats")
-    if not os.path.exists(statsdir):
-        os.mkdir(statsdir)
-    statsfile = os.path.join(statsdir, 's3_cluster_stats.txt')
-    if not os.path.exists(statsfile):
-        with open(statsfile, 'w') as outfile:
+    data.statsfiles.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
+    if not os.path.exists(data.statsfiles.s3):
+        with open(data.statsfiles.s3, 'w') as outfile:
             outfile.write(""+\
             "{:<20}   {:>9}   {:>9}   {:>9}   {:>9}   {:>9}   {:>9}\n""".\
                 format("sample", "N_reads", "clusts_tot", 
@@ -349,7 +338,7 @@ def split_among_processors(data, samples, preview, noreverse, nthreads):
                        "avg.depth>mj", "avg.depth>stat"))
 
     ## append stats to file
-    outfile = open(statsfile, 'a+')
+    outfile = open(data.statsfiles.s3, 'a+')
     samples.sort(key=lambda x: x.name)
     for sample in samples:
         outfile.write(""+\
@@ -363,9 +352,6 @@ def split_among_processors(data, samples, preview, noreverse, nthreads):
                              np.mean(sample.depths["statmin"]),
                              ))
     outfile.close()
-    ## link statsfile to dataobj
-    data.statsfiles["s3"] = statsfile
-
 
 
 
@@ -422,10 +408,10 @@ def cluster(data, sample, preview, noreverse, nthreads):
     values were chosen based on experience, but could be edited by users """
     ## get files
     derephandle = sample.files["edits"].replace(".fasta", ".derep")
-    clustdir = os.path.join(data.paramsdict["working_directory"],
-        "clust_"+str(data.paramsdict["clust_threshold"]))
-    uhandle = os.path.join(clustdir, sample.name+".utemp")
-    temphandle = os.path.join(clustdir, sample.name+".htemp")
+    #clustdir = os.path.join(data.paramsdict["working_directory"],
+    #    "clust_"+str(data.paramsdict["clust_threshold"]))
+    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+    temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## datatype variables
     if data.paramsdict["datatype"] in ['gbs']:
