@@ -6,3 +6,8 @@ build
 dist
 ipyrad.egg-info
 ipyrad.sublime-*
+tests/test_rad/
+tests/test_gbs/
+tests/test_ddrad/
+tests/test_pairgbs/
+tests/test_pairddrad/
