@@ -524,7 +524,7 @@ class Assembly(object):
         self._save()
 
 
-    def step2(self, sample="", preview=0):
+    def step2(self, sample="", preview=0, force=False):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
         select all samples in the Assembly object. Only samples in state
@@ -539,7 +539,7 @@ class Assembly(object):
                 skey = sample.replace("_R1_", "")
                 if skey in self.samples:
                     sample = self.samples[skey]
-                    assemble.rawedit.run(self, sample, preview)
+                    assemble.rawedit.run(self, sample, preview, force)
                 else:
                     print("sample", sample, "not in", self.name)
             else:
@@ -547,17 +547,17 @@ class Assembly(object):
                     for samp in sample:
                         ## get sample from dict key
                         samp = self.samples[samp]
-                        assemble.rawedit.run(self, samp, preview)
+                        assemble.rawedit.run(self, samp, preview, force)
 
         else:
             for _, sample in self.samples.items():
-                assemble.rawedit.run(self, sample, preview)
+                assemble.rawedit.run(self, sample, preview, force)
 
         ## pickle the data obj
         self._save()
 
 
-    def step3(self, samples=None, preview=0, noreverse=0, nthreads=4):
+    def step3(self, samples=None, preview=0, noreverse=0, force=False):
         """ step 3: clustering within samples """
 
         ## sampling
@@ -576,30 +576,30 @@ class Assembly(object):
                     subsamples.append((sample, self.samples[sample]))
             if subsamples:
                 ## if sample is a key, replace with sample obj
-                print("clustering {} samples on {} processors".\
+                print("Clustering {} samples on {} processors.".\
                       format(len(samples), self.paramsdict["N_processors"]))
                 assemble.cluster_within.run(self, subsamples, preview, 
-                                            noreverse, nthreads)
+                                            noreverse, force)
             else:
                 print("No samples found. Check that names are correct")
         else:
             ## if no samples selected and no samples exist
             if not self.samples:
                 ## try linking edits from working dir
-                print("linked fastas from [working_directory]/edits")
+                print("linked fasta files from [working_directory]/edits")
                 self.link_edits()
             ## run clustering for all samples
             print("clustering {} samples on {} processors".\
                   format(len(self.samples), self.paramsdict["N_processors"]))
             assemble.cluster_within.run(self, self.samples.items(),
-                                        preview, noreverse, nthreads)
+                                        preview, noreverse, force)
 
         ## pickle the data object
         self._save()
 
 
 
-    def step4(self, samples="", preview=0):
+    def step4(self, samples=None, preview=0, force=False):
         """ step 4: Joint estimation of error rate and heterozygosity. 
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """

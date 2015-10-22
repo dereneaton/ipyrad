@@ -7,7 +7,7 @@ import dill
 import os
 
 
-def load_dataobj(tryname):
+def load_assembly(tryname):
     """ loads an ipython pickled Assembly object """
     if ".assembly" not in tryname:
         tryname += ".assembly"

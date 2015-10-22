@@ -102,7 +102,7 @@ def barmatch(args):
 
     ## read in list of args
     data, rawfile, chunk, cut, longbar, chunknum, filenum = args
-
+    print(args)
     ## is paired?
     paired = bool('pair' in data.paramsdict["datatype"])
 
@@ -230,6 +230,7 @@ def barmatch(args):
                       str(filenum)+".pickle"), "wb")
     pickle.dump([filestats, samplestats], pickout)
     pickout.close()
+    return "done"
 
 
 
@@ -261,6 +262,14 @@ def chunker(args):
         with open(fastq[0], 'rb') as indata:
             totlen = sum([ind.count("\n") for ind in blocks(indata)])
     added = 0
+
+    ## could calculate new optim value here
+    ## ...
+    if not optim:
+        if totlen < 4e6:
+            optim = 50000
+        if totlen < 4e5:
+            optim = 10000
 
     ## data in at optim lines at a time
     if gzipped:
@@ -309,25 +318,24 @@ def chunker(args):
 
 
 
-def parallel_chunker(data, raws, paired):
+def parallel_chunker(data, raws, paired, ipyclient):
     """ iterate over raw data files and split into N pieces """
     ## count how many rawfiles have been done
-    submitted_args = []
     num = 0
+    submitted_args = []
     for rawtuple in list(raws):
-        submitted_args.append([data, rawtuple, paired, num, 400000, 1])
+        ## fix optim to some number? (400000)
+        submitted_args.append([data, rawtuple, paired, num, None, 1])
         num += 1
 
     ## call to ipp
-    ipyclient = ipp.Client().load_balanced_view()
-    #print(ipyclient.ids)    
-    res = ipyclient.map_async(chunker, submitted_args)
-    res.get() 
-    del ipyclient
+    dview = ipyclient.load_balanced_view()
+    res = dview.map(chunker, submitted_args)
+    res.get()
 
 
 
-def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum):
+def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum, ipyclient):
     """ takes list of chunk files and runs barmatch function
     on them across N processors and outputs temp file results.
     """
@@ -340,10 +348,10 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum):
         chunknum += 1
 
     ## uses all available processors
-    ipyclient = ipp.Client().load_balanced_view()
-    results = ipyclient.map_async(barmatch, submitted_args)
-    results.get()
-    del ipyclient
+    dview = ipyclient.load_balanced_view()
+    res = dview.map_async(barmatch, submitted_args)
+    res.get()
+
  
 
 def collate_tmps(data, paired):
@@ -552,13 +560,16 @@ def run(data, preview):
     ## checks on data before starting
     raws, longbar, cut1, paired = prechecks(data, preview)
 
+    ## start parallel client
+    ipyclient = ipp.Client()
+
     if preview:
         print('raws', raws)
     ## nested structure to prevent abandoned temp files
     try: 
         ## splits up all files into chunks, returns list of list
         ## of chunks names in tuples
-        parallel_chunker(data, raws, paired)
+        parallel_chunker(data, raws, paired, ipyclient)
         chunkspickles = glob.glob(os.path.join(data.dirs.fastqs,
                                               "chunks_*.pickle"))
         chunkslist = []
@@ -578,8 +589,9 @@ def run(data, preview):
                 for cutter in cut1:
                     if cutter:     
                         ## sort chunks for this list     
-                        parallel_sorter(data, rawfilename, chunks, 
-                                        cutter, longbar, filenum)
+                        args = [data, rawfilename, chunks, cutter,
+                                longbar, filenum, ipyclient]
+                        parallel_sorter(*args)
                 filenum += 1
                 ## combine tmps for ambiguous cuts
                 ## somefunc()

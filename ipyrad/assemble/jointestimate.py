@@ -202,12 +202,31 @@ def optim(data, sample):
 
 
 
-def run(data, samples):
+def run(data, samples, force):
     """ calls the main functions """
 
     # if haploid data
     if data.paramsdict["ploidy"] == 1:
         print("Applying haploid-based test (infer E with H fixed to 0")
+
+    ## if sample is already done skip
+    if not force:
+        if sample.stats.state >= 4:
+            print("skipping {}. Already estimated. Use force=True to overwrite"\
+                  .format(sample.name))
+        elif sample.stats.clusters < 1000:
+            print("skipping {}. Too few reads ({}). Use force=True \
+                  to override".format(sample.name, sample.stats.reads_raw))
+        else:
+            ipyclient = ipp.Client()
+            submitted, results = run_full(data, sample, ipyclient, preview)
+            cleanup(data, sample, submitted, results)
+    else:
+        ipyclient = ipp.Client()
+        submitted, results = run_full(data, sample, ipyclient, preview)
+        cleanup(data, sample, submitted, results)
+
+
 
     # load up work queue
     work_queue = multiprocessing.Queue()
@@ -220,7 +239,7 @@ def run(data, samples):
 
     ## put on work queue
     for sample in samples:
-        if sample.stats["state"] == 3:
+        if sample.stats["state"] >= 3:
             if sample.stats["clusters_kept"]:
                 work_queue.put([data, sample])
                 submitted += 1

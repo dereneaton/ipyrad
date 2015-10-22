@@ -4,6 +4,7 @@
 #import os
 import pandas as pd
 import dill
+from ipyrad.assemble.worker import ObjDict
 
 
 class Sample(object):
@@ -39,9 +40,10 @@ class Sample(object):
                    "stats"])
 
         ## store cluster depth information
-        self.depths = {"total": None,
-                       "mjmin": None,
-                       "statmin": None}
+        self.depths = ObjDict()
+        self.depths.total = []
+        self.depths.mjmin = []
+        self.depths.statmin = []                
 
         ## assignments for hierarchical clustering
         self.group = []

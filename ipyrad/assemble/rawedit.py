@@ -104,7 +104,6 @@ def rawedit(args):
 
     ## get args
     data, sample, tmptuple, paired, preview, point = args
-    print(sample.name, os.getpid())
 
     ## get cut sites
     cut1, cut2 = [ambigcutters(i) for i in \
@@ -342,7 +341,7 @@ def prechecks(data, preview):
 
 
 
-def run_full(data, sample, preview):
+def run_full(data, sample, ipyclient, preview):
     """ splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them """
 
@@ -384,17 +383,16 @@ def run_full(data, sample, preview):
             num += 1
 
         ## call to ipp
-        ipyclient = ipp.Client().load_balanced_view()
-        #print(ipyclient.ids)
-        results = ipyclient.map_async(rawedit, submitted_args)
-        results.get()   
-        del ipyclient
+        dview = ipyclient.load_balanced_view()
+        results = dview.map_async(rawedit, submitted_args)
+        results.get()
+        del dview
     
     finally:
         ## if process failed at any point delete temp files
         for tmptuple in chunkslist:
             os.remove(tmptuple[0])
-            os.remove(tmptuple[1])     
+            os.remove(tmptuple[1]) 
     return submitted, results
 
 
@@ -459,16 +457,21 @@ def cleanup(data, sample, submitted, results):
 
 def run(data, sample, preview=0, force=False):
     """ run the major functions for editing raw reads """
-    ## TODO: incorporate 'force' arg.
     ## if sample is already done skip
-    if sample.stats.state >= 2:
-        print("skipping, {} already edited. Use force=True to overwrite"\
-              .format(sample.name))
-    elif sample.stats.reads_raw < 1000:
-        print("skipping {}. Too few reads ({})"\
-              .format(sample.name, sample.stats.reads_raw))
+    if not force:
+        if sample.stats.state >= 2:
+            print("skipping {}. Already edited. Use force=True to overwrite"\
+                  .format(sample.name))
+        elif sample.stats.reads_raw < 1000:
+            print("skipping {}. Too few reads ({}). Use force=True \
+                  to override".format(sample.name, sample.stats.reads_raw))
+        else:
+            ipyclient = ipp.Client()
+            submitted, results = run_full(data, sample, ipyclient, preview)
+            cleanup(data, sample, submitted, results)
     else:
-        submitted, results = run_full(data, sample, preview)
+        ipyclient = ipp.Client()
+        submitted, results = run_full(data, sample, ipyclient, preview)
         cleanup(data, sample, submitted, results)
 
 
