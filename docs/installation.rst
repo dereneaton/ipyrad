@@ -39,6 +39,13 @@ is used. These include the following:
 - Dill -- Store pickle objects of complex Classes  
 - ...   
 
+Installing on HPC
+-----------------
+One of the greatest strengths of using *conda* for installation is that it 
+creates a Python package directory in your home directory called ``~/anaconda/``
+where new packages are installed, and because they are not stored in a 
+system-wide directory you do not need administrator privileges to install 
+new packages.  
 
 
 
