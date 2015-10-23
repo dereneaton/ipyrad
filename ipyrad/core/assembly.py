@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env ipython2
 
 """ ipyrad Assembly class object. 
     This is used for the following:
@@ -13,10 +13,11 @@ import time
 import glob
 import os
 import sys
-import subprocess
-import pandas as pd
 import dill
 import copy
+import subprocess
+import pandas as pd
+import ipyparallel as ipp
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.core.sample import Sample
@@ -509,9 +510,13 @@ class Assembly(object):
 
     ### assembly methods that take or link Sample objects
     def step1(self, preview=0):
-        """ step 1: demultiplex raw reads. """
+        """ step 1: demultiplex raw reads """
+
+        ## launch parallel client
+        ipyclient = ipp.Client()
+
         if not self.samples:
-            assemble.demultiplex.run(self, preview)
+            assemble.demultiplex.run(self, preview, ipyclient)
             self.stamp("s1_demultiplexing:")
         else:
             print("samples already found in ", self.name, 
@@ -519,6 +524,9 @@ class Assembly(object):
             # if append:
             #     assemble.demultiplex.run(self, preview)
             #     self.stamp("s1_demultiplexing [append]:")
+
+        ## 
+        ipyclient.close()
 
         ## pickle the data obj
         self._save()
@@ -531,6 +539,9 @@ class Assembly(object):
         =1 will be edited. If state > 2, file will be skipped. If you want
         to overwrite data for a file, first set its state to 1:
         data.samples['sample'].stats['state'] = 1 """
+
+        ## launch parallel client
+        ipyclient = ipp.Client()
 
         if sample:
             ## if sample key, replace with sample obj
@@ -547,11 +558,15 @@ class Assembly(object):
                     for samp in sample:
                         ## get sample from dict key
                         samp = self.samples[samp]
-                        assemble.rawedit.run(self, samp, preview, force)
+                        assemble.rawedit.run(self, samp, ipyclient, 
+                                             preview, force)
 
         else:
             for _, sample in self.samples.items():
-                assemble.rawedit.run(self, sample, preview, force)
+                assemble.rawedit.run(self, sample, ipyclient, preview, force)
+
+        ## close parallel client
+        ipyclient.close()
 
         ## pickle the data obj
         self._save()
@@ -559,6 +574,9 @@ class Assembly(object):
 
     def step3(self, samples=None, preview=0, noreverse=0, force=False):
         """ step 3: clustering within samples """
+
+        ## launch parallel client
+        ipyclient = ipp.Client()
 
         ## sampling
         if samples:
@@ -578,8 +596,8 @@ class Assembly(object):
                 ## if sample is a key, replace with sample obj
                 print("Clustering {} samples on {} processors.".\
                       format(len(samples), self.paramsdict["N_processors"]))
-                assemble.cluster_within.run(self, subsamples, preview, 
-                                            noreverse, force)
+                assemble.cluster_within.run(self, subsamples, ipyclient, 
+                                            preview, noreverse, force)
             else:
                 print("No samples found. Check that names are correct")
         else:
@@ -591,8 +609,11 @@ class Assembly(object):
             ## run clustering for all samples
             print("clustering {} samples on {} processors".\
                   format(len(self.samples), self.paramsdict["N_processors"]))
-            assemble.cluster_within.run(self, self.samples.items(),
+            assemble.cluster_within.run(self, self.samples.items(), ipyclient,
                                         preview, noreverse, force)
+
+        ## close parallel client
+        ipyclient.close()
 
         ## pickle the data object
         self._save()

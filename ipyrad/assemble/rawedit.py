@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env ipython2
 
 """ edits reads based on quality scores. Can be used
 to check for adapters and primers, but is not optimized 
@@ -10,9 +10,8 @@ import glob
 import gzip
 import itertools
 import numpy as np
-import ipyparallel as ipp
 from .demultiplex import ambigcutters
-from .demultiplex import chunker #, blocks
+from .demultiplex import chunker  #, blocks
 # pylint: disable=E1101
 
 
@@ -111,15 +110,15 @@ def rawedit(args):
 
     ## the read1 demultiplexed reads file
     if tmptuple[0].endswith(".gz"):
-        fr1 = gzip.open(tmptuple[0], 'r')
+        fr1 = gzip.open(tmptuple[0], 'rb')
     else:
-        fr1 = open(tmptuple[0], 'r')
+        fr1 = open(tmptuple[0], 'rb')
     ## the read2 demultiplexed reads file, if paired
     if paired:
         if tmptuple[1].endswith(".gz"):
-            fr2 = gzip.open(tmptuple[1], 'r')
+            fr2 = gzip.open(tmptuple[1], 'rb')
         else:
-            fr2 = open(tmptuple[1], 'r')
+            fr2 = open(tmptuple[1], 'rb')
 
     ## create iterators to sample 4 lines at a time 
     quart1 = itertools.izip(*[iter(fr1)]*4)
@@ -241,10 +240,15 @@ def rawedit(args):
     outdir = os.path.join(data.paramsdict["working_directory"], "edits")
     handle = os.path.join(outdir, "tmp_"+sample.name+"_"+str(point)+".gz")
 
+    ## close file handles
+    fr1.close()
+    if paired:
+        fr2.close()
+
     if preview:
         print("".join(writing[:20]))
 
-    with gzip.open(handle, 'w') as out:
+    with gzip.open(handle, 'wb') as out:
         out.write("".join(writing))
     return counts
 
@@ -356,14 +360,14 @@ def run_full(data, sample, ipyclient, preview):
     paired = bool("pair" in data.paramsdict["datatype"])
 
     ## set optim size
-    optim = 1000
+    optim = 4000
     if sample.stats.reads_raw:
         if sample.stats.reads_raw > 1e5:
-            optim = 1e4
+            optim = int(4e4)
         if sample.stats.reads_raw > 1e6:
-            optim = 1e5
+            optim = int(1e5)
         if sample.stats.reads_raw > 5e6:
-            optim = 2e5
+            optim = int(4e5)
 
     ## break up the file into smaller tmp files for each processor
     args = [data, sample.files["fastq"], paired, num, optim, 0]
@@ -409,11 +413,11 @@ def cleanup(data, sample, submitted, results):
     editout = os.path.join(data.dirs.edits,
                            sample.name+".fasta")
     combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")))
-    with open(editout, 'w') as out:
+    with open(editout, 'wb') as out:
         for fname in combs:
             with gzip.open(fname) as infile:
                 out.write(infile.read())
-                os.remove(fname)
+            os.remove(fname)
 
     ## record results
     fcounts = {"orig": 0,
@@ -432,13 +436,13 @@ def cleanup(data, sample, submitted, results):
     data.statsfiles.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
     if not os.path.exists(data.statsfiles.s2):
         with open(data.statsfiles.s2, 'w') as outfile:
-            outfile.write('{:<25}  {:>13} {:>13} {:>13} {:>13}\n'.\
+            outfile.write('{:<35}  {:>13} {:>13} {:>13} {:>13}\n'.\
                 format("sample", "Nreads_orig", "-qscore", 
                        "-adapters", "Nreads_kept"))
 
     ## append stats to file
     outfile = open(data.statsfiles.s2, 'a+')
-    outfile.write('{:<25}  {:>13} {:>13} {:>13} {:>13}\n'.\
+    outfile.write('{:<35}  {:>13} {:>13} {:>13} {:>13}\n'.\
                   format(sample.name, 
                          str(fcounts["orig"]),
                          str(fcounts["quality"]),
@@ -455,7 +459,7 @@ def cleanup(data, sample, submitted, results):
 
 
 
-def run(data, sample, preview=0, force=False):
+def run(data, sample, ipyclient, preview=0, force=False):
     """ run the major functions for editing raw reads """
     ## if sample is already done skip
     if not force:
@@ -466,11 +470,9 @@ def run(data, sample, preview=0, force=False):
             print("skipping {}. Too few reads ({}). Use force=True \
                   to override".format(sample.name, sample.stats.reads_raw))
         else:
-            ipyclient = ipp.Client()
             submitted, results = run_full(data, sample, ipyclient, preview)
             cleanup(data, sample, submitted, results)
     else:
-        ipyclient = ipp.Client()
         submitted, results = run_full(data, sample, ipyclient, preview)
         cleanup(data, sample, submitted, results)
 

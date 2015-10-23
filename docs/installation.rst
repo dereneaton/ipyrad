@@ -21,8 +21,8 @@ like below.
 
 .. _here: http://conda.pydata.org/docs/install/quick.html
 
+    $ conda update 
     $ conda install ipyrad  
-    $ pip install ipyrad  
 
 
 In contrast to its predecessor (*pyrad*), *ipryad* makes use of many more
@@ -34,10 +34,11 @@ is used. These include the following:
 - Pandas -- Used for manipulating data frames  
 - Sphinx -- Used for building documentation  
 - IPython -- Interactivity  
-- Jupyter-notebook -- Creating reproducible notebooks  
+- ipyparallel -- Parallel, threading, MPI support
+- jupyter -- Creating reproducible notebooks  
 - H5py -- Database structure for large data sets  
 - Dill -- Store pickle objects of complex Classes  
-- ...   
+- Toyplot -- [optional]...   
 
 Installing on HPC
 -----------------

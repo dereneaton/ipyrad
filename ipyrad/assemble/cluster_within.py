@@ -16,10 +16,11 @@ import tempfile
 import itertools
 import subprocess
 import numpy as np
-import ipyparallel as ipp
 from .demultiplex import blocks
 from .rawedit import comp
 
+
+## TODO: find stopIteration, change Nprocessors, make tpp send right info...
 
 
 def cleanup(data, sample):
@@ -238,7 +239,7 @@ def build_clusters(data, sample):
 
     ## vsearch results files
     ufile = os.path.join(data.dirs.clusts, sample.name+".utemp")
-    tempfile = os.path.join(data.dirs.clusts, sample.name+".htemp")
+    htempfile = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## create an output file to write clusters to        
     clustfile = gzip.open(os.path.join(
@@ -304,7 +305,7 @@ def build_clusters(data, sample):
     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
 
     ## make Dict. from seeds (_temp files) 
-    iotemp = open(tempfile, 'rb')
+    iotemp = open(htempfile, 'rb')
     invars = itertools.izip(*[iter(iotemp)]*2)
     seedsdic = {k:v for (k, v) in invars}  
     iotemp.close()
@@ -325,7 +326,7 @@ def build_clusters(data, sample):
 
 
 
-def split_among_processors(data, samples, preview, noreverse, force):
+def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     """ pass the samples across N_processors to execute run_full on each.
 
     :param data: An Assembly object
@@ -336,12 +337,9 @@ def split_among_processors(data, samples, preview, noreverse, force):
 
     :returns: None
     """
-    ## start a parallel client
-    ipyclient = ipp.Client()
-
     ## nthreads per job for clustering
     threaded_view = ipyclient.load_balanced_view(
-                      targets=ipyclient.ids[::data.paramsdict["N_processors"]])
+                    targets=ipyclient.ids[::data.paramsdict["N_processors"]])
     tpp = len(threaded_view)
 
     ## make output folder for clusters  
@@ -369,12 +367,14 @@ def split_among_processors(data, samples, preview, noreverse, force):
 
     ## call to ipp for clustering
     results = threaded_view.map(clustall, submitted_args)
-    results.get()    
+    results.get()   
+    del threaded_view 
 
     ## call to ipp for aligning
     lbview = ipyclient.load_balanced_view()
     for sample in samples:
         multi_muscle_align(data, sample, lbview)
+    del lbview
 
     ## write stats to samples
     for sample in samples:
@@ -530,10 +530,16 @@ def multi_muscle_align(data, sample, lbview):
                                     strip().split("//\n//\n"))
         grabchunk = itertools.izip(*[inclusts]*optim)        
         while added < totlen:
+            try:
+                getchunk = grabchunk.next()
+            except StopIteration:
+                getchunk = list(inclusts)
+
+            print('inclusts', inclusts)
             with tempfile.NamedTemporaryFile('w+b', delete=False, 
                                              prefix=sample.name, 
                                              suffix='.ali') as out:
-                out.write("//\n//\n".join(grabchunk.next())+"//\n//\n")
+                out.write("//\n//\n".join(getchunk)+"//\n//\n")
             tmpnames.append(out.name)
             print(added, added+optim, totlen)
             added += optim
@@ -551,14 +557,12 @@ def multi_muscle_align(data, sample, lbview):
             for fname in tmpnames:
                 with open(fname) as infile:
                     out.write(infile.read())
-                    #os.remove(fname)
 
     finally:
         ## still delete tmpfiles if job was interrupted
-        pass
-        #for fname in tmpnames:
-        #    if os.path.exists(fname):
-        #        os.remove(fname)
+        for fname in tmpnames:
+            if os.path.exists(fname):
+                os.remove(fname)
 
 
 
@@ -585,7 +589,7 @@ def clustall(args):
 
 
 
-def run(data, samples, preview, noreverse, force):
+def run(data, samples, ipyclient, preview, noreverse, force):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
@@ -609,7 +613,7 @@ def run(data, samples, preview, noreverse, force):
 
     ## run subsamples 
     if subsamples:
-        args = [data, subsamples, preview, noreverse, force]
+        args = [data, subsamples, ipyclient, preview, noreverse, force]
         split_among_processors(*args)
     else:
         print("\nNo samples found in state 2. To rewrite existing data use\n"+\

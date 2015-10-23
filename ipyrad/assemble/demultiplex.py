@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env ipython2
 
 """ demultiplex raw sequence data given a barcode map """
 
@@ -9,9 +9,7 @@ import gzip
 import glob
 import tempfile
 import itertools
-#import multiprocessing
 import cPickle as pickle
-import ipyparallel as ipp
 from ipyrad.core.sample import Sample
 from collections import defaultdict, Counter
 
@@ -268,8 +266,10 @@ def chunker(args):
     if not optim:
         if totlen < 4e6:
             optim = 50000
-        if totlen < 4e5:
+        elif totlen < 4e5:
             optim = 10000
+        else:
+            optim = 400000
 
     ## data in at optim lines at a time
     if gzipped:
@@ -330,8 +330,9 @@ def parallel_chunker(data, raws, paired, ipyclient):
 
     ## call to ipp
     dview = ipyclient.load_balanced_view()
-    res = dview.map(chunker, submitted_args)
+    res = dview.map_async(chunker, submitted_args)
     res.get()
+    del dview
 
 
 
@@ -351,8 +352,9 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum, ipyclie
     dview = ipyclient.load_balanced_view()
     res = dview.map_async(barmatch, submitted_args)
     res.get()
-
+    del dview
  
+
 
 def collate_tmps(data, paired):
     """ collate temp files back into 1 sample """
@@ -554,14 +556,11 @@ def make_stats(data, raws, paired):
 
 
 
-def run(data, preview):
+def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
     raws, longbar, cut1, paired = prechecks(data, preview)
-
-    ## start parallel client
-    ipyclient = ipp.Client()
 
     if preview:
         print('raws', raws)
