@@ -16,7 +16,7 @@ import tempfile
 import itertools
 import subprocess
 import numpy as np
-from .demultiplex import blocks
+#from .demultiplex import blocks
 from .rawedit import comp
 
 

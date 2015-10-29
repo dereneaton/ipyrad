@@ -9,7 +9,8 @@ requirements = [
     'h5py',
     'pyzmq>14.5',
     'dill>0.2',
-    'sphinx'
+    'sphinx',
+    'ipyparallel'
     ]
 
 setup(

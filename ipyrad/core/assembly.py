@@ -512,61 +512,68 @@ class Assembly(object):
     def step1(self, preview=0):
         """ step 1: demultiplex raw reads """
 
-        ## launch parallel client
-        ipyclient = ipp.Client()
+        ## launch parallel client within guarded statement
+        try: 
+            ipyclient = ipp.Client()
 
-        if not self.samples:
-            assemble.demultiplex.run(self, preview, ipyclient)
-            self.stamp("s1_demultiplexing:")
-        else:
-            print("samples already found in ", self.name, 
-                  "use ip.merge to combine samples")
-            # if append:
-            #     assemble.demultiplex.run(self, preview)
-            #     self.stamp("s1_demultiplexing [append]:")
-
-        ## 
-        ipyclient.close()
+            if not self.samples:
+                assemble.demultiplex.run(self, preview, ipyclient)
+                self.stamp("s1_demultiplexing:")
+            else:
+                print("samples already found in", self.name, 
+                      "use ip.merge() to combine samples from multiple\
+                      Assembly objects")
+        except (KeyboardInterrupt, SystemExit):
+            print("assembly step1 interrupted.")
+            raise
+        ## close client when done or if interrupted
+        finally:
+            ipyclient.close()
 
         ## pickle the data obj
         self._save()
+
 
 
     def step2(self, sample="", preview=0, force=False):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
         select all samples in the Assembly object. Only samples in state
-        =1 will be edited. If state > 2, file will be skipped. If you want
-        to overwrite data for a file, first set its state to 1:
-        data.samples['sample'].stats['state'] = 1 """
+        =1 will be edited, all others are skipped. To overwrite data
+        use the argument force=True. 
 
-        ## launch parallel client
-        ipyclient = ipp.Client()
+        """
 
-        if sample:
-            ## if sample key, replace with sample obj
-            if isinstance(sample, str):
-                ## in case name doesn't match key
-                skey = sample.replace("_R1_", "")
-                if skey in self.samples:
-                    sample = self.samples[skey]
-                    assemble.rawedit.run(self, sample, preview, force)
+        ## launch parallel client within guarded statement
+        try:
+            ipyclient = ipp.Client()
+
+            if sample:
+                ## if sample key, replace with sample obj
+                if isinstance(sample, str):
+                    ## in case name doesn't match key
+                    skey = sample.replace("_R1_", "")
+                    if skey in self.samples:
+                        sample = self.samples[skey]
+                        assemble.rawedit.run(self, sample, preview, force)
+                    else:
+                        print("sample", sample, "not in", self.name)
                 else:
-                    print("sample", sample, "not in", self.name)
-            else:
-                if isinstance(sample, list):
-                    for samp in sample:
-                        ## get sample from dict key
-                        samp = self.samples[samp]
-                        assemble.rawedit.run(self, samp, ipyclient, 
-                                             preview, force)
+                    if isinstance(sample, list):
+                        for samp in sample:
+                            ## get sample from dict key
+                            samp = self.samples[samp]
+                            assemble.rawedit.run(self, samp, ipyclient, 
+                                                 preview, force)
 
-        else:
-            for _, sample in self.samples.items():
-                assemble.rawedit.run(self, sample, ipyclient, preview, force)
+            else:
+                for _, sample in self.samples.items():
+                    assemble.rawedit.run(self, sample, ipyclient, 
+                                         preview, force)
 
         ## close parallel client
-        ipyclient.close()
+        finally:
+            ipyclient.close()
 
         ## pickle the data obj
         self._save()

@@ -5,6 +5,7 @@ to check for adapters and primers, but is not optimized
 for all types of cutters """
 
 from __future__ import print_function
+# pylint: disable=E1101
 import os
 import glob
 import gzip
@@ -12,7 +13,7 @@ import itertools
 import numpy as np
 from .demultiplex import ambigcutters
 from .demultiplex import chunker  #, blocks
-# pylint: disable=E1101
+
 
 
 
