@@ -38,7 +38,7 @@ class Assembly(object):
         self.name = name
 
         ## get binaries of dependencies
-        self.vsearch, self.muscle = getbins()
+        self.vsearch, self.muscle, self.smalt = getbins()
 
         ## link a log history of executed workflow
         self.log = []
@@ -85,7 +85,8 @@ class Assembly(object):
                        ("max_SNPs_locus", (100, 100)), 
                        ("max_Indels_locus", (5, 99)), 
                        ("trim_overhang", (1, 2, 2, 1)), 
-                       ("hierarchical_clustering", 0)
+                       ("hierarchical_clustering", 0),
+                       ("reference_sequence", "")
         ])
     
         ## Require user to link Sample objects 
@@ -466,6 +467,11 @@ class Assembly(object):
             self.stamp("[26] set to {}".format(int(newvalue)))
 
 
+        elif param in ['27', 'reference_sequence']:
+            fullrawpath = expander(newvalue)
+            self.paramsdict['reference_sequence'] = fullrawpath
+            self.stamp("[27] set to "+newvalue)
+
 
     def copy(self, newname):
         """ returns a copy of the Assemlbly object. 
@@ -736,7 +742,7 @@ def cmd_exists(cmd):
 
 
 def getbins():
-    """ gets the right version of vsearch and muscle
+    """ gets the right version of vsearch, muscle, and smalt
     depending on linux vs osx """
     ## get platform mac or linux
     _platform = sys.platform
@@ -744,7 +750,7 @@ def getbins():
     ## get current location
     path = os.path.abspath(os.path.dirname(__file__))
 
-    ## fin bin directory
+    ## find bin directory
     ipyrad_path = os.path.dirname(os.path.dirname(path))
     bin_path = os.path.join(ipyrad_path, "bin")
 
@@ -756,6 +762,9 @@ def getbins():
         muscle = os.path.join(
                        os.path.abspath(bin_path),
                        "muscle3.8.31_i86linux64")
+        smalt = os.path.join(
+                       os.path.abspath(bin_path),
+                       "smalt-0.7.6-linux-x86_64")
     else:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
@@ -763,8 +772,29 @@ def getbins():
         muscle = os.path.join(
                        os.path.abspath(bin_path),
                        "muscle3.8.31_i86darwin64")
-    ## TODO: return error if system is 32-bit arch.
-    return vsearch, muscle
+        smalt = os.path.join(
+                       os.path.abspath(bin_path),
+                       "smalt-0.7.6-osx-x86_64")
+
+    # Test for existence of binaries
+    if not os.path.isfile( smalt ):
+        print("warning: smalt binary not found, reference sequence mapping will "+\
+            "be skipped. Here's where we looked:\n" + smalt)
+    print("found smalt:"+smalt)
+    if not os.path.isfile( muscle ):
+        sys.exit("fatal: Can't find muscle binary: " + muscle)
+    print("found smalt:"+muscle)
+    if not os.path.isfile( vsearch ):
+        sys.exit("fatal: Can't find muscle binary: " + vsearch)
+    print("found smalt:"+vsearch)
+
+    # Return error if system is 32-bit arch.
+    # This is straight from the python docs:
+    # https://docs.python.org/2/library/platform.html#cross-platform
+    if not sys.maxsize > 2**32:
+        sys.exit("iPyrad requires 64bit architecture") 
+
+    return vsearch, muscle, smalt
 
 
 

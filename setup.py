@@ -2,9 +2,10 @@
 
 from setuptools import setup, find_packages
 import ipyrad
+import glob
 
 requirements = [
-    'numpy>=1.9',
+#    'numpy>=1.9',
     'scipy>0.10',
     'h5py',
     'pyzmq>14.5',
@@ -32,6 +33,8 @@ setup(
                 'ipyrad = ipyrad.__main__:main',
             ],
     },
+
+    data_files = [ ( 'bin', glob.glob("./bin/*") ) ],
 
     license='GPL',
 
