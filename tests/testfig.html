@@ -7,7 +7,7 @@
     {
       var re = /\s*alignment-baseline\s*:\s*([^;\s]*)\s*/;
       var text = document.querySelectorAll("#t571fede402614f52b1500898868e409d text");
-      for(var i = 0; i != text.length; ++i)
+      for(var i = 0;  i != text.length; ++i)
       {
         var match = re.exec(text[i].attributes.style.value);
         if(match)
