@@ -1,0 +1,31 @@
+raw_file                               total_reads    cut_found  bar_matched
+sim_rad1_R1_.fastq                           23768        23768        23768
+
+sample_name                          total_R1_reads
+1A_0                                          1986
+1B_0                                          1980
+1C_0                                          1981
+1D_0                                          1965
+2E_0                                          1986
+2F_0                                          2009
+2G_0                                          1923
+2H_0                                          1982
+3I_0                                          1987
+3J_0                                          1989
+3K_0                                          2015
+3L_0                                          1965
+
+sample_name                               true_bar      obs_bar    N_records
+1A_0                                        CATCAT       CATCAT         1986
+1B_0                                        AGTGAT       AGTGAT         1980
+1C_0                                        ATGGTA       ATGGTA         1981
+1D_0                                        GTGGGA       GTGGGA         1965
+2E_0                                        AGGGAA       AGGGAA         1986
+2F_0                                        AAAGTG       AAAGTG         2009
+2G_0                                        GATATA       GATATA         1923
+2H_0                                        GAGGAG       GAGGAG         1982
+3I_0                                        GGGATT       GGGATT         1987
+3J_0                                        TAATTA       TAATTA         1989
+3K_0                                        TGAGGG       TGAGGG         2015
+3L_0                                        ATATTA       ATATTA         1965
+no_match                                         _            _            0

@@ -20,7 +20,6 @@ import numpy as np
 from .rawedit import comp
 
 
-## TODO: find stopIteration, change Nprocessors, make tpp send right info...
 
 
 def cleanup(data, sample):
@@ -226,6 +225,11 @@ def alignfast(data, names, seqs):
                        stderr=subprocess.STDOUT,
                        close_fds=True)
     _, fout = piped.stdin, piped.stdout
+    #piped = subprocess.Popen(cmd, shell=True, 
+    #                   stdout=subprocess.PIPE,
+    #                   stderr=subprocess.STDOUT,
+    #                   close_fds=True)
+    #_, fout = piped.stdin, piped.stdout
     return fout.read()
 
 
@@ -235,7 +239,7 @@ def build_clusters(data, sample):
     to create .clust files, which contain un-aligned clusters """
 
     ## derepfile 
-    derepfile = sample.files["edits"].replace(".fasta", ".derep")
+    derepfile = os.path.join(data.dirs.edits, sample.name+".derep")
 
     ## vsearch results files
     ufile = os.path.join(data.dirs.clusts, sample.name+".utemp")
@@ -344,13 +348,11 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
 
     ## make output folder for clusters  
     data.dirs.clusts = os.path.join(
-                          data.dirs.edits,
-                         "clust_"+str(data.paramsdict["clust_threshold"]))
+                        os.path.realpath(data.paramsdict["working_directory"]),
+                        data.name+"_"+
+                       "clust_"+str(data.paramsdict["clust_threshold"]))
     if not os.path.exists(data.dirs.clusts):
         os.makedirs(data.dirs.clusts)
-
-    ## sort samples by size so biggest go on first
-    samples = sorted(samples, key=lambda x: os.stat(x.files["edits"]).st_size)
 
     ## submit files and args to queue, for func clustall
     submitted_args = []
@@ -414,8 +416,18 @@ def derep_and_sort(data, sample, preview, nthreads):
     replicated are at the top, and singletons at bottom, writes
     output to .derep file """
 
-    ## select file
-    handle = sample.files["edits"]
+    ## concatenate if multiple edits files for a sample
+    if len(sample.files.edits) > 1:
+        ## create temporary concat file
+        tmphandle = os.path.join(data.dirs.edits,
+                              "tmp_"+sample.name+".concat")       
+        with open(tmphandle, 'wb') as tmp:
+            for editfile in sample.files.edits:
+                with open(editfile) as inedit:
+                    tmp.write(inedit)
+        handle = tmphandle
+    else:
+        handle = sample.files.edits[0]
 
     ## reverse complement clustering for some types    
     if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
@@ -423,25 +435,18 @@ def derep_and_sort(data, sample, preview, nthreads):
     else:
         reverse = " "
 
-    ## only make derep if .derep doesn't already exist
-    if not os.path.exists(handle.replace(".fasta", ".derep")):
-        if preview:
-            print("dereplicating...")
-        ## do dereplication with vsearch
-        cmd = data.vsearch+\
-            " -derep_fulllength "+handle+\
-            reverse+\
-            " -output "+handle.replace(".fasta", ".derep")+\
-            " -sizeout "+\
-            " -threads "+str(nthreads)+\
-            " -fasta_width 0"
-        subprocess.call(cmd, shell=True, 
-                             stderr=subprocess.STDOUT, 
-                             stdout=subprocess.PIPE)
-    else:
-        ## pass
-        if preview:
-            print('skipping dereplication, derep file already exists')
+    ## do dereplication with vsearch
+    cmd = data.vsearch+\
+        " -derep_fulllength "+handle+\
+        reverse+\
+        " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
+        " -sizeout "+\
+        " -threads "+str(nthreads)+\
+        " -fasta_width 0"
+    subprocess.call(cmd, shell=True, 
+                         stderr=subprocess.STDOUT, 
+                         stdout=subprocess.PIPE)
+
 
 
 
@@ -449,7 +454,7 @@ def cluster(data, sample, preview, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
     values were chosen based on experience, but could be edited by users """
     ## get files
-    derephandle = sample.files["edits"].replace(".fasta", ".derep")
+    derephandle = os.path.join(data.dirs.edits, sample.name+".derep")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
@@ -510,40 +515,22 @@ def multi_muscle_align(data, sample, lbview):
     try: 
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-        with gzip.open(clustfile, 'rb') as indata:
-            totlen = sum([ind.count(";*\n") for ind in blocks(indata)])
-        added = 0
-
-        ## calculate optim
-        if totlen < 5000:
-            ## split into 10 bits
-            optim = 250
-        elif totlen < 50000:
-            ## split into >50 bits
-            optim = 1000
-        else:
-            ## split into 100 bits        
-            optim = 2000
+        optim = 1000
 
         ## write optim clusters to each tmp file
         inclusts = iter(gzip.open(clustfile, 'rb').read().\
-                                    strip().split("//\n//\n"))
-        grabchunk = itertools.izip(*[inclusts]*optim)        
-        while added < totlen:
-            try:
-                getchunk = grabchunk.next()
-            except StopIteration:
-                getchunk = list(inclusts)
-
-            print('inclusts', inclusts)
+                                  strip().split("//\n//\n"))
+        grabchunk = list(itertools.islice(inclusts, optim))
+        while grabchunk:
             with tempfile.NamedTemporaryFile('w+b', delete=False, 
-                                             prefix=sample.name, 
+                                             dir=data.dirs.clusts,
+                                             prefix=sample.name+"_", 
                                              suffix='.ali') as out:
-                out.write("//\n//\n".join(getchunk)+"//\n//\n")
+                out.write("//\n//\n".join(grabchunk)+"//\n//\n")
             tmpnames.append(out.name)
-            print(added, added+optim, totlen)
-            added += optim
-
+            grabchunk = list(itertools.islice(inclusts, optim))
+    
+        ## create job queue
         submitted_args = []
         for num, fname in enumerate(tmpnames):
             submitted_args.append([data, sample, fname, num])
@@ -552,7 +539,8 @@ def multi_muscle_align(data, sample, lbview):
         lbview.map(muscle_align2, submitted_args)
 
         ## concatenate finished reads
-        sample.files.clusters = clustfile.replace("clust.gz", "clustS.gz")
+        sample.files.clusters = os.path.join(data.dirs.clusts,
+                                             sample.name+".clustS.gz")
         with gzip.open(sample.files.clusters, 'wb') as out:
             for fname in tmpnames:
                 with open(fname) as infile:
@@ -563,7 +551,6 @@ def multi_muscle_align(data, sample, lbview):
         for fname in tmpnames:
             if os.path.exists(fname):
                 os.remove(fname)
-
 
 
 
@@ -598,15 +585,15 @@ def run(data, samples, ipyclient, preview, noreverse, force):
     ## if sample is already done skip
     for _, sample in samples:
         if not force:
-            if not sample.files.isnull().clusters:
+            if sample.files.clusters:
                 print("{} aleady clustered. Sample.stats.state == {}".\
                       format(sample.name, int(sample.stats['state'])))
             else:
                 subsamples.append(sample)
         
         else:
-            ## clean up existing files from this sample
-            if not sample.files.isnull().clusters:
+            ## clean up existing files from this sample and overwrite
+            if sample.files.clusters:
                 if os.path.exists(sample.files.clusters):
                     os.remove(sample.files.clusters)
             subsamples.append(sample)

@@ -9,10 +9,11 @@
 """
 
 from __future__ import print_function
+import os
 import time
 import glob
-import os
 import sys
+import gzip
 import dill
 import copy
 import subprocess
@@ -57,12 +58,15 @@ class Assembly(object):
 
         ## the default params dict
         self.paramsdict = OrderedDict([
-                       ("working_directory", os.path.curdir),
+                       ("working_directory", os.path.realpath(
+                                                os.path.curdir)),
                        ("raw_fastq_path", os.path.join(
-                                                 os.path.curdir,
+                                            os.path.realpath(
+                                                 os.path.curdir),
                                                  "*.fastq")),
                        ("barcodes_path", os.path.join(
-                                                os.path.curdir,
+                                            os.path.realpath(
+                                                os.path.curdir),
                                                 "*.barcodes.txt")),
                        ("sorted_fastq_path", ""),
                        ("restriction_overhang", ("TGCAG", "")),
@@ -130,60 +134,77 @@ class Assembly(object):
     #             self.rawdata.append(rawfile)
 
 
-    def link_fastqs(self, pear=0):
+    def link_fastqs(self, pear=0, force=False):
         """ Create Sample objects for samples in sorted_fastq_path. """
         ## does location exist, if nothing selected, select all
         if os.path.isdir(self.paramsdict["sorted_fastq_path"]):
             self.paramsdict["sorted_fastq_path"] += "*"
-        if os.path.isdir(self.paramsdict["raw_fastq_path"]):
-            self.paramsdict["raw_fastq_path"] += "*"
 
         ## grab fastqs/fq/gzip/all
         fastqs = glob.glob(os.path.join(
-                            self.paramsdict["sorted_fastq_path"],
-                            ))
-        #raws = glob.glob(os.path.join(
-        #                    self.paramsdict["raw_fastq_path"],
-        #                    ))
+                            self.paramsdict["sorted_fastq_path"]))
 
-        ## create a Sample object for each fastq file
-        if fastqs:
-            ## link pairs into tuples
-            if 'pair' in self.paramsdict["datatype"]:
-                if "_R1_" in any([i for i in fastqs]):
-                    r1_files = [i for i in fastqs if "_R1_" in i]
-                    fastqs = [(i, i.replace("_R1_", "_R2_")) for i in r1_files]
-                else:
-                    r1_files = [i for i in fastqs if "_R1." in i]
-                    fastqs = [(i, i.replace("_R1.", "_R2.")) for i in r1_files]
+        ## link pairs into tuples
+        fastqs.sort()
+        if 'pair' in self.paramsdict["datatype"]:
+            if "_R1_" in any([i for i in fastqs]):
+                r1_files = [i for i in fastqs if "_R1_" in i]
+                fastqs = [(i, i.replace("_R1_", "_R2_")) for i in r1_files]
             else:
-                fastqs = [(i, ) for i in fastqs]
+                r1_files = [i for i in fastqs if "_R1." in i]
+                fastqs = [(i, i.replace("_R1.", "_R2.")) for i in r1_files]
+        else:
+            fastqs = [(i, ) for i in fastqs]
 
-            for fastq in fastqs:
-                ## remove file extension from name
-                sname = name_from_file(fastq[0])
+        created = 0
+        linked = 0
+        for fastq in list(fastqs):
+            ## remove file extension from name
+            sname = name_from_file(fastq[0])
 
-                ## create Sample
+            if sname not in self.samples:
+                ## create new Sample
                 samp = Sample(sname)
                 samp.stats.state = 1
                 samp.barcode = "pre_demultiplexed"
-                samp.files['fastq'] = fastq
+                samp.files['fastq'].append(fastq)
+                self.samples[sname] = samp 
+                created += 1
+                linked += 1
+            else:
+                ## modify existing sample
+                if not force:
+                    print(sname, "already in samples. Use force=True "+\
+                         "to add fastq files to this sample")
 
-                ## check if data were pear_merged
-                if pear:
-                    samp.pear = 1
                 else:
-                    if '.forward' in fastq[0]:
-                        print("warning: if data are merged with PEAR "+\
-                              "enter link_fastqs(pear=1)")
-                self.samples[samp.name] = samp
-        #if raws:
-        #    for rawfile in raws:
-        #        self.rawdata.append(rawfile)
-        ## TODO: if fastqs already sorted, try to link stats
+                    self.samples[sname].files['fastq'].append(fastq)
+                    linked += 1
+
+            ## check if data were pear_merged
+            if pear:
+                self.samples[sname].pear = 1
+            else:
+                if '.forward' in fastq[0]:
+                    print("warning: if R1 and R2 data are merged with PEAR "+\
+                          "use link_fastqs(pear=1, force=1) to re-write "+\
+                          "with merged files.")
+
+            ## if fastqs already sorted, try to link stats
+            gzipped = bool(fastq[0].endswith(".gz"))
+            nreads = 0
+            for fastqtuple in self.samples[sname].files.fastq:
+                nreads += bufcount(fastqtuple[0], gzipped)
+            self.samples[sname].stats.reads_raw = nreads/4
+
+        ## print if data were linked
+        print("{} new Samples created in {}.".format(created, self.name))
+        print("{} fastq files linked to Samples.".format(linked))
+
+
   
 
-    def link_edits(self, sample=""):
+    def link_fastas(self, sample=""):
         """ link existing fasta files from the edits/ directory in the
         working directory to an Assembly object. Used to restart an 
         analysis from step3, or to link files for extracting stats.
@@ -286,7 +307,6 @@ class Assembly(object):
     def set_params(self, param, newvalue):
         """ Set parameter to different value. Raises error if param 
         is wrong type or in conflict"""
-        ## TODO: change structure to use assertions?
 
         ## make string
         param = str(param)
@@ -328,6 +348,7 @@ class Assembly(object):
             if os.path.isdir(newvalue):
                 newvalue = os.path.join(newvalue, "*.gz")
             self.paramsdict['sorted_fastq_path'] = newvalue
+            ## link_fastqs will check that files exist
             self.link_fastqs()
             self.stamp("[4] set to "+newvalue)
             #if not self.paramdict["raw_fastq_path"]:
@@ -336,10 +357,9 @@ class Assembly(object):
 
 
         elif param in ['5', 'restriction_overhang']:
-            if not isinstance(newvalue, tuple):
-                print("must enter as a tuple, e.g., '(TGCAG, "")' )")
-            else:
-                self.paramsdict['restriction_overhang'] = newvalue
+            assert isinstance(newvalue, tuple), \
+                "cut site must be a tuple, e.g., (TGCAG, "") "
+            self.paramsdict['restriction_overhang'] = newvalue
             self.stamp("[5] set to "+str(newvalue))
 
 
@@ -486,7 +506,7 @@ class Assembly(object):
     def file_tree(self):
         """ prints the project data structure """
         startpath = self.paramsdict["working_directory"]
-        if startpath in [".", "", "./"]:
+        if startpath in [".", "", "./", os.path.expanduser(startpath)]:
             print("./")
         else:
             for root, _, files in os.walk(startpath):
@@ -520,9 +540,9 @@ class Assembly(object):
                 assemble.demultiplex.run(self, preview, ipyclient)
                 self.stamp("s1_demultiplexing:")
             else:
-                print("samples already found in", self.name, 
-                      "use ip.merge() to combine samples from multiple\
-                      Assembly objects")
+                print("samples already found in", self.name, ""+\
+                      "use ip.merge() to combine samples \nfrom multiple"+\
+                      "Assembly objects")
         except (KeyboardInterrupt, SystemExit):
             print("assembly step1 interrupted.")
             raise
@@ -565,15 +585,20 @@ class Assembly(object):
                             samp = self.samples[samp]
                             assemble.rawedit.run(self, samp, ipyclient, 
                                                  preview, force)
-
             else:
+                if not self.samples:
+                    assert self.samples, "No Samples in "+self.name
                 for _, sample in self.samples.items():
                     assemble.rawedit.run(self, sample, ipyclient, 
                                          preview, force)
-
-        ## close parallel client
+        except (KeyboardInterrupt, SystemExit):
+            print("assembly step2 interrupted")
+            raise
+        ## close parallel client if done or interrupted
         finally:
             ipyclient.close()
+            if preview:
+                print(".")
 
         ## pickle the data obj
         self._save()
@@ -585,42 +610,49 @@ class Assembly(object):
         ## launch parallel client
         ipyclient = ipp.Client()
 
-        ## sampling
-        if samples:
-            ## if string make a list(tuple)
-            if isinstance(samples, str):
-                ## make sure pair names aren't used
-                skey = samples.replace("_R1_", "")
-                samples = [skey]
+        ## TODO: Make sure restarting at 3.5 works...
+        try:
+            ## sampling
+            if samples:
+                ## if string make a list(tuple)
+                if isinstance(samples, str):
+                    ## make sure pair names aren't used
+                    skey = samples.replace("_R1_", "")
+                    samples = [skey]
 
-            ## make into a tuple list with (key, sample)
-            ## filters out bad names
-            subsamples = []
-            for sample in samples:
-                if self.samples.get(sample):
-                    subsamples.append((sample, self.samples[sample]))
-            if subsamples:
-                ## if sample is a key, replace with sample obj
-                print("Clustering {} samples on {} processors.".\
-                      format(len(samples), self.paramsdict["N_processors"]))
-                assemble.cluster_within.run(self, subsamples, ipyclient, 
-                                            preview, noreverse, force)
+                ## make into a tuple list with (key, sample)
+                ## filters out bad names
+                subsamples = []
+                for sample in samples:
+                    if self.samples.get(sample):
+                        subsamples.append((sample, self.samples[sample]))
+                if subsamples:
+                    ## if sample is a key, replace with sample obj
+                    print("Clustering {} samples on {} processors.".\
+                          format(len(samples), self.paramsdict["N_processors"]))
+                    assemble.cluster_within.run(self, subsamples, ipyclient, 
+                                                preview, noreverse, force)
+                else:
+                    print("No samples found. Check that names are correct")
             else:
-                print("No samples found. Check that names are correct")
-        else:
-            ## if no samples selected and no samples exist
-            if not self.samples:
-                ## try linking edits from working dir
-                print("linked fasta files from [working_directory]/edits")
-                self.link_edits()
-            ## run clustering for all samples
-            print("clustering {} samples on {} processors".\
-                  format(len(self.samples), self.paramsdict["N_processors"]))
-            assemble.cluster_within.run(self, self.samples.items(), ipyclient,
-                                        preview, noreverse, force)
-
-        ## close parallel client
-        ipyclient.close()
+                ## if no samples selected and no samples exist
+                if not self.samples:
+                    ## try linking edits from working dir
+                    print("linked fasta files from [working_directory]/edits")
+                    self.link_edits()
+                ## run clustering for all samples
+                print("clustering {} samples on {} processors".\
+                     format(len(self.samples), self.paramsdict["N_processors"]))
+                assemble.cluster_within.run(self, self.samples.items(), 
+                                        ipyclient, preview, noreverse, force)
+        except (KeyboardInterrupt, SystemExit):
+            print("assembly step3 interrupted")
+            raise
+        ## close parallel client if done or interrupted
+        finally:
+            ipyclient.close()
+            if preview:
+                print(".")
 
         ## pickle the data object
         self._save()
@@ -632,33 +664,49 @@ class Assembly(object):
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """
 
-        ## sampling
-        if samples:
-            ## make a list keys or samples
-            if isinstance(samples, str):
-                samples = list([samples])
+        ## launch parallel client
+        ipyclient = ipp.Client()
+
+        try: 
+            ## sampling
+            if samples:
+                ## make a list keys or samples
+                if isinstance(samples, str):
+                    samples = list([samples])
+                else:
+                    samples = list(samples)
+
+                ## if keys are in list
+                if any([isinstance(i, str) for i in samples]):
+                    ## make into a subsampled sample dict
+                    subsamples = {i: self.samples[i] for i in samples}
+
+                ## send to function
+                assemble.jointestimate.run(self, subsamples.values(), 
+                                           ipyclient, force)
             else:
-                samples = list(samples)
-
-            ## if keys are in list
-            if any([isinstance(i, str) for i in samples]):
-                ## make into a subsampled sample dict
-                subsamples = {i: self.samples[i] for i in samples}
-
-            ## send to function
-            assemble.jointestimate.run(self, subsamples.values())
-        else:
-            ## if no sample, then do all samples
-            if not self.samples:
-                ## if no samples in data, try linking edits from working dir
-                #self.link_clustfiles()
+                ## if no sample, then do all samples
                 if not self.samples:
-                    print("Assembly object has no samples in state=3")
-            ## run clustering for all samples
-            assemble.jointestimate.run(self, self.samples.values())
+                    ## if no samples in data, try linking edits from working dir
+                    #self.link_clustfiles()
+                    if not self.samples:
+                        print("Assembly object has no samples in state=3")
+                ## run clustering for all samples
+                assemble.jointestimate.run(self, self.samples.values(), 
+                                           ipyclient, force)
+
+        except (KeyboardInterrupt, SystemExit):
+            print("assembly step4 interrupted")
+            raise
+        ## close parallel client if done or interrupted
+        finally:
+            ipyclient.close()
+            if preview:
+                print(".")
 
         ## pickle the data object
         self._save()
+
 
 
 
@@ -701,7 +749,7 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0):
+    def run(self, steps=0, oforce=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
@@ -709,9 +757,9 @@ class Assembly(object):
         if '1' in steps:
             self.step1()
         if '2' in steps:
-            self.step2()            
+            self.step2(force=oforce)
         if '3' in steps:
-            self.step3()            
+            self.step3(force=oforce)
         # if '4' in steps:
         #     self.step4()            
         # if '5' in steps:
@@ -720,9 +768,6 @@ class Assembly(object):
         #     self.step6()            
         # if '7' in steps:
         #     self.step7()            
-
-
-
 
 
 
@@ -740,6 +785,7 @@ def name_from_file(fname):
     return base
 
 
+
 def expander(namepath):
     """ expand ./ ~ and ../ designators in location names """        
     if "~" in namepath:
@@ -755,12 +801,14 @@ def expander(namepath):
     return namepath
 
 
+
 def cmd_exists(cmd):
     """ check if dependency program is there """
     return subprocess.call("type " + cmd,
                            shell=True, 
                            stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE) == 0
+
 
 
 def getbins():
@@ -791,12 +839,66 @@ def getbins():
         muscle = os.path.join(
                        os.path.abspath(bin_path),
                        "muscle3.8.31_i86darwin64")
-    ## TODO: return error if system is 32-bit arch.
+    assert cmd_exists(muscle), "muscle not found"
+    assert cmd_exists(vsearch), "vsearch not found"
     return vsearch, muscle
 
 
 
+def merge(name, assemblies):
+    """ Creates and returns a new Assembly object in which 
+    samples from two or more Assembly objects with matching names
+    are 'merged'. Merging does not affect the actual files written
+    on disk, but rather creates new Samples that are linked to 
+    multiple data files, and with stats summed. """
 
+    ## checks
+    assemblies = list(assemblies)
+
+    ## create new Assembly
+    merged = assemblies[0].copy(name)
+
+    ## get all sample names from all Assemblies
+    allsamples = set(merged.samples.keys())
+    for iterass in assemblies[1:]:
+        allsamples.update(set(iterass.samples.keys()))
+
+    ## iterate over assembly objects, skip first already copied
+    for iterass in assemblies[1:]:
+        ## iterate over stats, skip 'state'
+        for stat in merged.stats.keys()[1:]:
+            ## iterate over allsamples, add if not in merged
+            for sample in iterass.samples:
+                if sample not in merged.samples:
+                    merged.samples[sample] = iterass.samples[sample]
+                ## merge stats
+                merged.samples[sample].stats[stat] += \
+                                  iterass.samples[sample].stats[stat]
+                ## merge file references
+                for filetype in ["fastq", "edits", "clusters", "consens"]:
+                    merged.samples[sample].files[filetype].append(
+                                  iterass.samples[sample].files[filetype])
+
+    ## return the new Assembly object
+    return merged
+
+
+
+def bufcount(filename, gzipped):
+    """ fast line counter """
+    if gzipped: 
+        fin = gzip.open(filename)                  
+    else:
+        fin = open(filename)                          
+    nlines = 0
+    buf_size = 1024 * 1024
+    read_f = fin.read # loop optimization
+    buf = read_f(buf_size)
+    while buf:
+        nlines += buf.count('\n')
+        buf = read_f(buf_size)
+    fin.close()
+    return nlines
 
 
 if __name__ == "__main__":

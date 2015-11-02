@@ -9,11 +9,11 @@ from __future__ import print_function
 import os
 import glob
 import gzip
+import math
 import itertools
 import numpy as np
 from .demultiplex import ambigcutters
-from .demultiplex import chunker  #, blocks
-
+from .demultiplex import zcat_make_temps
 
 
 
@@ -99,8 +99,10 @@ def comp(seq):
 
 def rawedit(args):
     """ three functions:
-    (1) replaces low quality base calls with Ns,
-    (2) checks for adapter sequence if strict set to 1 or 2 """
+    (1) replaces low quality base calls with Ns (optional),
+    (2) checks for adapter sequence if strict set to 1 or 2 
+
+    """
 
     ## get args
     data, sample, tmptuple, paired, preview, point = args
@@ -111,15 +113,15 @@ def rawedit(args):
 
     ## the read1 demultiplexed reads file
     if tmptuple[0].endswith(".gz"):
-        fr1 = gzip.open(tmptuple[0], 'rb')
+        fr1 = gzip.open(os.path.realpath(tmptuple[0]), 'rb')
     else:
-        fr1 = open(tmptuple[0], 'rb')
+        fr1 = open(os.path.realpath(tmptuple[0]), 'rb')
     ## the read2 demultiplexed reads file, if paired
     if paired:
         if tmptuple[1].endswith(".gz"):
-            fr2 = gzip.open(tmptuple[1], 'rb')
+            fr2 = gzip.open(os.path.realpath(tmptuple[1]), 'rb')
         else:
-            fr2 = open(tmptuple[1], 'rb')
+            fr2 = open(os.path.realpath(tmptuple[1]), 'rb')
 
     ## create iterators to sample 4 lines at a time 
     quart1 = itertools.izip(*[iter(fr1)]*4)
@@ -238,8 +240,9 @@ def rawedit(args):
         point += 1
 
     ## write to file
-    outdir = os.path.join(data.paramsdict["working_directory"], "edits")
-    handle = os.path.join(outdir, "tmp_"+sample.name+"_"+str(point)+".gz")
+    #outdir = #os.path.join(data.paramsdict["working_directory"], "edits")
+    handle = os.path.join(data.dirs.edits, 
+                          "tmp_"+sample.name+"_"+str(point)+".gz")
 
     ## close file handles
     fr1.close()
@@ -333,16 +336,26 @@ def trim_merge_edge(bases, cut1, cut2):
 def prechecks(data, preview):
     """ checks before starting analysis """
     ## create output directories 
-    #statsdir = os.path.join(data.paramsdict["working_directory"], 'stats')
-    #if not os.path.exists(statsdir):
-    #    os.makedirs(statsdir)
-    data.dirs.edits = os.path.join(data.paramsdict["working_directory"], 
-                                  'edits')
+    pathname = os.path.join(os.path.realpath(
+                                data.paramsdict["working_directory"]), 
+                                data.name+"_edits")
+    ## protect ...
+    #assert not os.path.isdir(pathname), "edits/ directory already exists. "+\
+    #        "Use [Assembly].copy() to branch parameter settings, else use"+\
+    #        "force=True to overwrite."
+    data.dirs.edits = pathname
     if not os.path.exists(data.dirs.edits):
         os.makedirs(data.dirs.edits)
     ## preview
     if preview:
-        print("preview")
+        print("created new directory: {}".format(data.dirs.edits))
+
+
+
+
+def roundup(x):
+    """ round to nearest hundred """
+    return int(math.ceil(x / 100.0)) * 100
 
 
 
@@ -361,29 +374,26 @@ def run_full(data, sample, ipyclient, preview):
     paired = bool("pair" in data.paramsdict["datatype"])
 
     ## set optim size
-    optim = 4000
+    optim = 10000
     if sample.stats.reads_raw:
         if sample.stats.reads_raw > 1e5:
-            optim = int(4e4)
-        if sample.stats.reads_raw > 1e6:
-            optim = int(1e5)
-        if sample.stats.reads_raw > 5e6:
-            optim = int(4e5)
+            optim = roundup(sample.stats.reads_raw/len(ipyclient.ids))*4
 
     ## break up the file into smaller tmp files for each processor
-    args = [data, sample.files["fastq"], paired, num, optim, 0]
-    _, chunkslist = chunker(args)
+    chunkslist = []
+    for fastqtuple in [sample.files.fastq]:
+        args = [fastqtuple, data.dirs.edits, paired, num, optim]
+        _, achunk = zcat_make_temps(args)
+        chunkslist += achunk
 
-    ## 
+    ## send chunks across processors, will delete if fail
     try: 
-        ## send file to multiprocess queue, will delete if fail
         submitted_args = []
         for tmptuple in chunkslist:
             ## used to increment names across processors
-            point = num*optim #10000 #num*(chunksize/2)
+            point = num*optim   #10000 #num*(chunksize/2)
             submitted_args.append([data, sample, tmptuple, 
                                     paired, preview, point])
-            #work_queue.put([data, sample, tmptuple, paired, preview, point])
             submitted += 1
             num += 1
 
@@ -397,12 +407,14 @@ def run_full(data, sample, ipyclient, preview):
         ## if process failed at any point delete temp files
         for tmptuple in chunkslist:
             os.remove(tmptuple[0])
-            os.remove(tmptuple[1]) 
+            if paired:
+                os.remove(tmptuple[1]) 
+
     return submitted, results
 
 
 
-def cleanup(data, sample, submitted, results):
+def cleanup(data, sample, submitted, results, force):
     """ cleaning up """
 
     ## rejoin chunks
@@ -453,8 +465,13 @@ def cleanup(data, sample, submitted, results):
 
     ## save stats to Sample if successful
     sample.stats.state = 2
-    sample.files.edits = editout
+    sample.files.edits.append(editout)
+    sample.files.edits = list(set(sample.files.edits))
+
+    ## always overwrite stats b/c even if multiple fastq
+    ## files it concatenates them before running.
     sample.stats.reads_filtered = fcounts["keep"]
+
     ## save stats to the sample??
     data.stamp("s2 rawediting on "+sample.name)        
 
@@ -468,19 +485,30 @@ def run(data, sample, ipyclient, preview=0, force=False):
             print("skipping {}. Already edited. Use force=True to overwrite"\
                   .format(sample.name))
         elif sample.stats.reads_raw < 1000:
-            print("skipping {}. Too few reads ({}). Use force=True \
-                  to override".format(sample.name, sample.stats.reads_raw))
+            print("skipping {}. Too few reads ({}).".\
+                    format(sample.name, sample.stats.reads_raw))
         else:
             submitted, results = run_full(data, sample, ipyclient, preview)
-            cleanup(data, sample, submitted, results)
+            cleanup(data, sample, submitted, results, force)
     else:
         submitted, results = run_full(data, sample, ipyclient, preview)
-        cleanup(data, sample, submitted, results)
+        cleanup(data, sample, submitted, results, force)
+
 
 
 if __name__ == "__main__":
-    pass
-    #PARAMS = {}
-    #FASTQS = []
-    #QUIET = 0
-    #main(PARAMS, FASTQS, QUIET)
+    ## run test
+    import ipyrad as ip
+
+    ## test rad
+    TEST = ip.load_assembly("testrad")
+    TEST.step2(force=True)
+
+    ## test gbs
+    TEST = ip.load_assembly("testgbs")
+    TEST.step2(force=True)
+
+    ## test pairgbs
+    TEST = ip.load_assembly("testpairgbs")
+    TEST.step2(force=True)
+

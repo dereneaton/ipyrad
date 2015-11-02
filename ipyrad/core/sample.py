@@ -30,14 +30,15 @@ class Sample(object):
                    "reads_consens",])
 
         ## link to files
-        self.files = pd.Series(
-            index=["fastq",
-                   "edits",
-                   "clusters",
-                   "depths",
-                   "consens",
-                   "database",
-                   "stats"])
+        self.files = ObjDict({
+              "fastq": [],
+              "edits": [],
+              "clusters": [],
+              "depths": [],
+              "consens": [],
+              "database": [],
+              "stats": []
+              })
 
         ## store cluster depth information
         self.depths = ObjDict()
