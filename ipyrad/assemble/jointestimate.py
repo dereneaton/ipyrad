@@ -138,10 +138,15 @@ def countlist(data, sample):
             itera = duo.next()
 
         ## don't use sequence edges / restriction overhangs
-        sarray = np.array(thisstack)[6:-6]
+        cutl1, cutl2 = [len(i) for i in data.paramsdict["restriction_overhang"]]
+        if cutl2:
+            cutl2 *= -1
+        else:
+            cutl2 = None
+        sarray = np.array(thisstack)[:, cutl1:cutl2]
 
         ## enforce minimum depth for estimates
-        if sarray.shape[0] > data.paramsdict["mindepth_statistical"]:
+        if sarray.shape[0] >= data.paramsdict["mindepth_statistical"]:
             ## make list for each site in sequences
             res = [Counter(seq) for seq in sarray.T]
             ## exclude sites with indels
@@ -156,8 +161,11 @@ def toarray(uniqstack):
 
 
 
-def optim(data, sample):
+def optim(args):
     """ func scipy optimize to find best parameters"""
+
+    ## split args
+    data, sample = args
 
     ## make a list of Counter objects for each site in each stack
     stacked = countlist(data, sample)
@@ -200,6 +208,7 @@ def optim(data, sample):
     with open(handle, 'wb') as out:
         out.write("{}\t{}\t{}".format(sample.name, hetero, errors))
 
+    return [stacks, stackcounts]
 
 
 def run(data, samples, ipyclient, force):
@@ -209,53 +218,34 @@ def run(data, samples, ipyclient, force):
     if data.paramsdict["ploidy"] == 1:
         print("Applying haploid-based test (infer E with H fixed to 0")
 
+    submitted_args = []
     ## if sample is already done skip
-    if not force:
-        if sample.stats.state >= 4:
-            print("skipping {}. Already estimated. Use force=True to overwrite"\
-                  .format(sample.name))
-        elif sample.stats.clusters < 100:
-            print("skipping {}. Too few reads ({}). Use force=True \
-                  to override".format(sample.name, sample.stats.reads_raw))
+    for sample in samples:
+        if not force:
+            if sample.stats.state >= 4:
+                print(sample.name+"already estimated. Use force=True "+\
+                      "to overwrite")
+            elif sample.stats.clusters_kept < 100:
+                print("skipping {}. Too few reads ({}). Use force=True \
+                      to override".format(sample.name, sample.stats.reads_raw))
+            else:
+                submitted_args.append([data, sample])
         else:
-            submitted, results = run_full(data, sample, ipyclient)
-            cleanup(data, sample, submitted, results)
-    else:
-        submitted, results = run_full(data, sample, ipyclient)
-        cleanup(data, sample, submitted, results)
+            submitted_args.append([data, sample])
 
-    # load up work queue
-    work_queue = multiprocessing.Queue()
+    lbview = ipyclient.load_balanced_view()
+    results = lbview.map_async(optim, submitted_args)
+    s1 = results.get()
+    print(s1)
 
-    # iterate over files
-    submitted = 0
+    #submitted, results = run_full(data, sample, ipyclient)
+    #cleanup(data, sample, submitted, results)
 
     ## sort samples by clustsize
-    samples.sort(key=lambda x: x.stats["clusters_kept"], reverse=True)
+    samples.sort(key=lambda x: x.stats.clusters_kept, reverse=True)
 
-    ## put on work queue
-    for sample in samples:
-        if sample.stats["state"] >= 3:
-            if sample.stats["clusters_kept"]:
-                work_queue.put([data, sample])
-                submitted += 1
-
-    ## create a queue to pass to workers to store the results
-    fake_queue = multiprocessing.Queue()
-    
-    try:
-        ##  spawn workers 
-        jobs = []
-        for _ in range(min(data.paramsdict["N_processors"], submitted)):
-            work = worker.Worker(work_queue, fake_queue, optim)
-            work.start()
-            jobs.append(work)
-        for job in jobs:
-            job.join()
-
-    finally:
-        ## get results and remove temp files
-        cleanup(data, samples)
+    ## get results and remove temp files
+    cleanup(data, samples)
 
 
 

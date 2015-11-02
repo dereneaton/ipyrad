@@ -160,7 +160,7 @@ class Assembly(object):
         linked = 0
         for fastq in list(fastqs):
             ## remove file extension from name
-            sname = name_from_file(fastq[0])
+            sname = _name_from_file(fastq[0])
 
             if sname not in self.samples:
                 ## create new Sample
@@ -221,7 +221,7 @@ class Assembly(object):
                 self.paramsdict["working_directory"], "edits")
             for fname in glob.glob(os.path.join(editdir, "*")):
                 ## get sample name from file name
-                sname = name_from_file(fname)
+                sname = _name_from_file(fname)
                 ## check that Sapmle does not already exist
                 if sname in self.samples:
                     ## enter location
@@ -489,13 +489,16 @@ class Assembly(object):
 
 
     def copy(self, newname):
-        """ returns a copy of the Assemlbly object. 
-        Does not allow names to be replicated """
+        """ Returns a copy of the Assemlbly object. Does not allow Assembly 
+        object names to be replicated in namespace or path. """
         if (newname == self.name) or (os.path.exists(newname+".assembly")):
             print("Assembly object named {} already exists".format(newname))
         else:
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
+            newobj.name = newname
+            newobj.set_params(14, newname)
+
             ## create copies of each Sample obj
             for sample in self.samples:
                 newobj.samples[sample] = copy.deepcopy(self.samples[sample])
@@ -504,7 +507,8 @@ class Assembly(object):
 
 
     def file_tree(self):
-        """ prints the project data structure """
+        """ prints the project data structure. TODO: this needs work.
+        prints way too much other junk if [work] is home dir. """
         startpath = self.paramsdict["working_directory"]
         if startpath in [".", "", "./", os.path.expanduser(startpath)]:
             print("./")
@@ -518,8 +522,11 @@ class Assembly(object):
                     print('{}{}'.format(subindent, fname))
 
 
+
     def _save(self):
-        """ pickle the data object """
+        """ Pickle the Assembly object. Could be used for checkpointing before
+        and after assembly steps. Currently it is called after assembly steps.
+        """
         dillout = open(os.path.join(
                           self.paramsdict["working_directory"],
                           self.name+".assembly"), "wb")
@@ -528,7 +535,6 @@ class Assembly(object):
 
 
 
-    ### assembly methods that take or link Sample objects
     def step1(self, preview=0):
         """ step 1: demultiplex raw reads """
 
@@ -747,9 +753,7 @@ class Assembly(object):
 
 
 
-
-
-    def run(self, steps=0, oforce=False):
+    def run(self, steps=0, force=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
@@ -757,11 +761,11 @@ class Assembly(object):
         if '1' in steps:
             self.step1()
         if '2' in steps:
-            self.step2(force=oforce)
+            self.step2(force=force)
         if '3' in steps:
-            self.step3(force=oforce)
-        # if '4' in steps:
-        #     self.step4()            
+            self.step3(force=force)
+        if '4' in steps:
+            self.step4(force=force)            
         # if '5' in steps:
         #     self.step5()            
         # if '6' in steps:
@@ -771,7 +775,7 @@ class Assembly(object):
 
 
 
-def name_from_file(fname):
+def _name_from_file(fname):
     """ internal func: get the sample name from any pyrad file """
     file_extensions = [".gz", ".fastq", ".fq", ".fasta", 
                        ".clustS", ".consens"]
@@ -899,6 +903,7 @@ def bufcount(filename, gzipped):
         buf = read_f(buf_size)
     fin.close()
     return nlines
+
 
 
 if __name__ == "__main__":
