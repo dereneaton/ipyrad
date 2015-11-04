@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 
 from setuptools import setup, find_packages
-import ipyrad
+import re
 
 requirements = [
     'numpy>=1.9',
@@ -15,7 +15,13 @@ requirements = [
 
 setup(
     name="ipyrad",
-    version=ipyrad.__version__,
+    version=re.search(
+        r"^__version__ = ['\"]([^'\"]*)['\"]",
+            open(
+                "ipyrad/__init__.py",
+                "r").read(),
+            re.M).group(1),
+
     url="https://github.com/dereneaton/ipyrad",
 
     author="Deren Eaton",
