@@ -12,4 +12,4 @@ tests/*
 
 ## but not these files
 !tests/*.ipynb
-!tests/data
+!tests/data/*
