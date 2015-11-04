@@ -43,7 +43,7 @@ setup(
     install_requires=[requirements],
     extras_require = {
         'plotting': ['toyplot>0.0.8'],
-    }
+    },
 
     entry_points={
             'console_scripts': [
