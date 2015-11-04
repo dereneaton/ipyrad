@@ -1,0 +1,9 @@
+numpy>=1.9
+scipy>0.10
+h5py
+pyzmq>14.5
+dill>0.2
+sphinx
+ipython>4.0
+jupyter-notebook
+ipyparallel
