@@ -17,12 +17,6 @@ import os
 import sys
 import shlex
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#sys.path.insert(0, os.path.abspath('.'))
-sys.path.insert(0, os.path.abspath(".."))
-
 
 # Provide stubs for external dependencies, so we can generate our reference
 # documentation without having to install them.
@@ -49,6 +43,12 @@ class module_proxy(object):
 MODULES = ["numpy", "scipy", "pandas", "dill", "h5py"]
 for module_name in MODULES:
     sys.modules[module_name] = module_proxy()
+
+# If extensions (or modules to document with autodoc) are in another directory,
+# add these directories to sys.path here. If the directory is relative to the
+# documentation root, use os.path.abspath to make it absolute, like shown here.
+#sys.path.insert(0, os.path.abspath('.'))
+sys.path.insert(0, os.path.abspath(".."))
 
     
 # If extensions (or modules to document with autodoc) are in another directory,
