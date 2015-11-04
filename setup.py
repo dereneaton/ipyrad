@@ -10,7 +10,6 @@ requirements = [
     'numpy>=1.9',
     'pandas',
     'h5py',
-    'pyzmq>14.5',
     'dill>0.2',
     'sphinx',
     'ipython>=4.0',
@@ -42,6 +41,9 @@ setup(
     packages=find_packages(),
     
     install_requires=[requirements],
+    extras_require = {
+        'plotting': ['toyplot>0.0.8'],
+    }
 
     entry_points={
             'console_scripts': [
@@ -50,7 +52,7 @@ setup(
     },
 
     license='GPL',
-
+    
     classifiers=[
         'Programming Language :: Python',
         'Programming Language :: Python :: 2',
