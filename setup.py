@@ -5,11 +5,10 @@ import re
 
 requirements = [
     'pip>7.0',
-    'Cython',
+    'cython',
     'scipy>0.10',
     'numpy>=1.9',
     'pandas',
-    'h5py',
     'dill>0.2',
     'sphinx',
     'ipython>=4.0',
