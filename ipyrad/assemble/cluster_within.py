@@ -593,9 +593,9 @@ def run(data, samples, ipyclient, preview, noreverse, force):
         
         else:
             ## clean up existing files from this sample and overwrite
-            if sample.files.clusters:
-                if os.path.exists(sample.files.clusters):
-                    os.remove(sample.files.clusters)
+            #if sample.files.clusters:
+            #    if os.path.exists(sample.files.clusters):
+            #        os.remove(sample.files.clusters)
             subsamples.append(sample)
 
     ## run subsamples 

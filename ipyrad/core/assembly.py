@@ -108,6 +108,7 @@ class Assembly(object):
         nameordered.sort()
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
                       index=nameordered)
+                      #dtype=[int, int, int, int, int, float, float, int])
 
     #def __getstate__(self):
     #    return self.__dict__

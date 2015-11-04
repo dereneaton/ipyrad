@@ -225,27 +225,31 @@ def run(data, samples, ipyclient, force):
             if sample.stats.state >= 4:
                 print(sample.name+"already estimated. Use force=True "+\
                       "to overwrite")
+            elif sample.stats.state < 3:
+                print(sample.name+"not clustered yet. Run step3() first.")
             elif sample.stats.clusters_kept < 100:
                 print("skipping {}. Too few reads ({}). Use force=True \
                       to override".format(sample.name, sample.stats.reads_raw))
             else:
                 submitted_args.append([data, sample])
         else:
-            submitted_args.append([data, sample])
+            if sample.stats.state < 3:
+                print(sample.name+" not clustered yet. Run step3() first.")
+            else:
+                submitted_args.append([data, sample])
 
-    lbview = ipyclient.load_balanced_view()
-    results = lbview.map_async(optim, submitted_args)
-    s1 = results.get()
-    print(s1)
+    ## if jobs then run
+    if submitted_args:
+        ## sort by cluster size
+        submitted_args.sort(key=lambda x: x[1].stats.clusters_kept, 
+                                                      reverse=True)
+        lbview = ipyclient.load_balanced_view()
+        results = lbview.map_async(optim, submitted_args)
+        fakeres = results.get()
+        print(fakeres)
 
-    #submitted, results = run_full(data, sample, ipyclient)
-    #cleanup(data, sample, submitted, results)
-
-    ## sort samples by clustsize
-    samples.sort(key=lambda x: x.stats.clusters_kept, reverse=True)
-
-    ## get results and remove temp files
-    cleanup(data, samples)
+        ## get results and remove temp files
+        cleanup(data, samples)
 
 
 
@@ -301,6 +305,25 @@ def cleanup(data, samples):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    TEST = ip.load_dataobj("test")
-    TEST.run()
+
+    ## get path to test dir/ 
+    ROOT = os.path.realpath(
+       os.path.dirname(
+           os.path.dirname(
+               os.path.dirname(__file__)
+               )
+           )
+       )
+
+    ## run test on RAD data1
+    TEST = ip.load_assembly(os.path.join(ROOT, "tests", "test_rad", "data1"))
+    TEST.step4(force=True)
+    print(TEST.stats)
+
+    ## run test on messy data set
+    #TEST = ip.load_assembly(os.path.join(ROOT, "tests", "radmess", "data1"))
+
+    ## check if results are correct
+
+    ## cleanup
 
