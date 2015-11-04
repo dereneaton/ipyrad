@@ -9,6 +9,7 @@ dist
 ipyrad.egg-info
 ipyrad.sublime-*
 tests/*
+env/
 
 ## but not these files
 !tests/*.ipynb
