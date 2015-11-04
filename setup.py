@@ -4,23 +4,32 @@ from setuptools import setup, find_packages
 import re
 
 requirements = [
-    'numpy>=1.9',
+    'pip>7.0',
+    'Cython',
     'scipy>0.10',
+    'numpy>=1.9',
+    'pandas',
     'h5py',
     'pyzmq>14.5',
     'dill>0.2',
     'sphinx',
-    'ipyparallel'
+    'ipython>=4.0',
+    'ipyparallel',
+    'jupyter'
     ]
 
+#import ipyrad
+#version=ipyrad.__version__,
+    
 setup(
     name="ipyrad",
+
     version=re.search(
-        r"^__version__ = ['\"]([^'\"]*)['\"]",
-            open(
-                "ipyrad/__init__.py",
-                "r").read(),
-            re.M).group(1),
+       r"^__version__ = ['\"]([^'\"]*)['\"]",
+           open(
+               "ipyrad/__init__.py",
+               "r").read(),
+       re.M).group(1),
 
     url="https://github.com/dereneaton/ipyrad",
 
