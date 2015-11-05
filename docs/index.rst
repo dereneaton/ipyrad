@@ -41,7 +41,7 @@ Documentation
    :maxdepth: 2
 
    Ethos.rst
-   Installation.rst
+   Installation
    Command_line_interface.rst
    ipyrad_scripts.rst
    Notebook_workflow.rst
