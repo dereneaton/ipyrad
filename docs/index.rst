@@ -3,15 +3,16 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. include:: global.rst  
+
+
 ipyrad: assembly and analysis of RADseq data sets
-==================================================
+-------------------------------------------------
 
-Welcome!
-========
-
-ipyrad_ is an interactive toolkit for assembly and analysis of genomic RADseq data sets.
+Welcome! ipyrad_ is an interactive toolkit for assembly and analysis of genomic RADseq data sets.
 Our goal is to support all restriction-site associated data types (e.g., RAD, ddRAD, GBS;
-see Data_types_). 
+see Data_types_), and to offer simple but powerful methods for assembling data into
+output files for downstream genomic analyses. 
 
 
 How is it different from pyrad?
@@ -34,7 +35,7 @@ parameter settings. Other improvements include:
 
 
 Documentation
-=============
+-------------
 
 .. toctree::
    :maxdepth: 2
@@ -44,7 +45,8 @@ Documentation
    Command_line_interface.rst
    ipyrad_scripts.rst
    Notebook_workflow.rst
-   Tutorials.rst
+   Tutorials  
+   test_rad
    Data_types.rst
    Citing.rst
    License.rst
@@ -52,9 +54,8 @@ Documentation
    Dependencies.rst
 
 
-
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
