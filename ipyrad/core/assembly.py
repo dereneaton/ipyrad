@@ -34,9 +34,54 @@ from types import *
 
 
 class Assembly(object):
-    """ An ipyrad Assembly class object """
+    """ An ipyrad Assembly class object.
+
+    The core object in ipyrad used to store and retrieve results, to
+    call assembly functions, and to link to Sample objects.
+
+    Parameters
+    ----------
+    name : str
+         A name should be passed when creating a new Assembly object.
+         This name will be used as a prefix for all files saved to disk
+         associated with this Assembly. It is automatically set as the
+         prefix name (parameter 14).          
+
+    Attributes
+    ----------
+    name : str
+        A name for the Assembly object. Used for all saved files on disk.
+    samples : dict
+        Returns a dictionary with Sample names as keys and Sample objects as values.
+    barcodes : dict
+        Returns a dictionary with Sample names as keys and barcodes as values.
+        The barcodes information is fetched from parameter 3
+        `[Assembly].paramsdict['barcodes_path']`.
+    vsearch : str
+        The path to the default vsearch executable. If not found, this can be changed
+        by setting `[Assembly].vsearch = [newpath]`.
+    muscle : str
+        The path to the default muscle executable. If not found, this can be changed
+        by setting `[Assembly].vsearch = [newpath]`.
+    log : list
+        A list of all modifications to the Assembly object and its Samples with
+        time stamps. Use `print [Assembly].log` for easier viewing.
+    statsfiles : dict
+        Returns a dictionary with the location of stats output files...
+        maybe this is unnecessary...
+
+        
+    Returns
+    -------
+    object
+         A new assembly object is returned.
+
+
+     """
     def __init__(self, name):
         ## a project name
+        ## TODO: make global and do not allow duplicate names?
+        ## or maybe allow, just know they old files will be overwritten
         self.name = name
 
         ## get binaries of dependencies
@@ -99,44 +144,50 @@ class Assembly(object):
         #if os.path.exists(self.paramsdict["barcodes_path"]):
         #    self.barcodes = self.link_barcodes()
 
-
-
     @property
     def stats(self):
-        """ returns a data frame with sample data and state """
+        """ Returns a data frame with Sample data and state. """
         nameordered = self.samples.keys()
         nameordered.sort()
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
                       index=nameordered)
                       #dtype=[int, int, int, int, int, float, float, int])
 
-    #def __getstate__(self):
-    #    return self.__dict__
-
-    #def __setstate__(self, dicto):
-    #    self.__dict__.update(dicto)
-
+                      
     def stamp(self, event):
-        """ stamp an event into the log history """
+        """ Stamps an event into the log history. TODO: Should probably
+        change this to a private function, e.g., _stamp """
         tev = time.strftime("%m/%d/%y %H:%M:%S", time.gmtime())
         self.log.append((self.name, tev, event))
 
 
-    # def link_raws(self):
-    #     """ link raw data files """
-    #     ## TODO: remove from link_fastqs
-    #     if os.path.isdir(self.paramsdict["raw_fastq_path"]):
-    #         self.paramsdict["raw_fastq_path"] += "*"
-    #     raws = glob.glob(os.path.join(
-    #                         self.paramsdict["raw_fastq_path"],
-    #                         ))
-    #     if raws:
-    #         for rawfile in raws:
-    #             self.rawdata.append(rawfile)
-
 
     def link_fastqs(self, pear=0, force=False):
-        """ Create Sample objects for samples in sorted_fastq_path. """
+        """ Create Sample objects for samples in sorted_fastq_path.
+
+        Note
+        ----
+        link_fastqs() is called automatically when parameter 4 is
+        modified.
+
+        Parameters
+        ----------
+        pear : int
+            Set to 1 if first and second reads were already merged
+            using the software `PEAR`.
+        force : int
+            Appends additional fastq files to Samples that are already
+            linked to the Assembly object. To replace the linked files
+            with different ones do not use `force`.
+
+        Returns
+        -------
+        str
+            Print to screen the number of new Sample objects created
+            and the number of fastq files linked to Sample objects
+            in the Assembly object. 
+        
+        """
         ## does location exist, if nothing selected, select all
         if os.path.isdir(self.paramsdict["sorted_fastq_path"]):
             self.paramsdict["sorted_fastq_path"] += "*"
@@ -206,13 +257,18 @@ class Assembly(object):
   
 
     def link_fastas(self, sample=""):
-        """ link existing fasta files from the edits/ directory in the
-        working directory to an Assembly object. Used to restart an 
-        analysis from step3, or to link files for extracting stats.
-        Sample names can be entered to select individual samples from 
-        edits/ otherwise all are attempted to be linked. If there is 
-        alread a Sample in Assembly.samples with the same name, the 
-        edits files are linked to that Sample """
+        """ Link existing fasta (edit) files from the edits/ directory to
+        Sample objects in the Assembly object.
+
+        TODO: maybe redundant, swith all over to fastq files now that
+        vsearch no longer requires fasta?
+        
+        Used to restart an analysis from step3, or to link files
+        for extracting stats. Sample names can be entered to select
+        individual samples from edits/ otherwise all are attempted
+        to be linked. If there is already a Sample in Assembly.samples
+        with the same name, the edits files are linked to that Sample """
+        
         if sample:
             ## link a single sample
             pass
@@ -306,8 +362,44 @@ class Assembly(object):
 
 
     def set_params(self, param, newvalue):
-        """ Set parameter to different value. Raises error if param 
-        is wrong type or in conflict"""
+        """ Set a parameter to a new value. Raises error if newvalue 
+        is wrong type.
+
+        Note
+        ----
+        Use [Assembly].get_params() to see the parameter values currently
+        linked to the Assembly object.
+
+        Parameters
+        ----------
+        param : int or str
+            The index (e.g., 1) or string name (e.g., "working_directory")
+            for the parameter that will be changed.
+
+        newvalue : int, str, or tuple
+            The new value for the parameter selected for `param`. Use
+            `ipyrad.get_params_info()` to get further information about
+            a given parameter. If the wrong type is entered for newvalue
+            (e.g., a str when it should be an int), an error will be raised.
+            Further information about each parameter is also available
+            in the documentation.
+
+        Examples
+        --------
+        ## param 1 takes only a str as input
+        [Assembly].set_params(1, 'new_directory')
+        [Assembly].set_params('working_directory', 'new_directory')
+
+        ## param 6 must be a tuple or str, if str it is converted to a tuple
+        ## with the second entry empty.
+        [Assembly].set_params(6, 'TGCAG')
+        [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')                            
+
+        ## param 13 can be an int or a float:
+        [Assembly].set_params(13, 4)
+        [Assembly].set_params('max_shared_heterozygosity', 0.25)
+            
+        """
 
         ## make string
         param = str(param)
