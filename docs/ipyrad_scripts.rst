@@ -24,28 +24,31 @@ To create a new Assembly object named *data*:
     data1 = ip.Assembly("data1")
 
 
-.. code:: parsed-literal  
-
-    new object created...
-
-
-.. _Assembly
-
 Setting parameters
 ------------------
-Use the get_params() call to show the current parameter settings:
+Use the get_params() call to show the current parameter settings:  
+
+.. code:: python  
+
     data.get_params()
 
-To change a parameter use the set_params() call:
+To change a parameter use the set_params() call:  
+
+.. code:: python  
+
     data1.set_params(1, "tests")
     data1.set_params(2, "tests/data/*.gz")
     data1.set_params(3, "tests/data/testrad_barcodes.txt")  
+
 
 To get more info on how a specific parameter influences the assembly you 
 can use ip.get_params_info(N), if you are working interactively, otherwise
 you can look in the Parameters_ section. 
 
+.. code:: python  
+
     ip.get_params_info(1)   
+
 
 .. _Setting_parameters
 
@@ -53,11 +56,10 @@ Sample objects
 --------------
 
 
-.. _Sample 
-
+.. _Sample objects
 
 Saving Assembly objects
-=======================
+-----------------------
 Assembly objects are auto-saved every time an assembly function (step or run) 
 is called, or it can be saved by the user by calling save_object(). This stores
 the object to disk so that it can be re-loaded at a later time. Because the 
