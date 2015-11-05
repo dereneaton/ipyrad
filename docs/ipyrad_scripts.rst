@@ -16,9 +16,18 @@ You can think of an assembly object as a sort of map to your data. It
 stores the parameters used in assembly steps, the location of data files
 on disk, and the statistical output from each step of the assembly. 
 
-To create a new Assembly object named *data*:
-    
+
+To create a new Assembly object named *data*:  
+
+.. code:: python
+
     data1 = ip.Assembly("data1")
+
+
+.. code:: parsed-literal  
+
+    new object created...
+
 
 .. _Assembly
 
