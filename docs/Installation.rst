@@ -48,7 +48,7 @@ where new packages are installed, and because they are not stored in a
 system-wide directory you do not need administrator privileges to install 
 new packages.  
 
-
+.. include:: global.rst
 
 
 
