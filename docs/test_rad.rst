@@ -156,7 +156,6 @@ sample that will be stored in the Assembly object.
 
 .. code:: python
 
-    %%time
     ## run step 1 to demultiplex the data
     data1.step1()
     
@@ -166,7 +165,7 @@ sample that will be stored in the Assembly object.
 
 .. parsed-literal::
 
-          state  reads_raw  reads_filtered  clusters_total  clusters_kept  \
+          state  reads_raw  reads_filtered  clusters_total  clusters_kept  
     1A_0      1      20099             NaN             NaN            NaN   
     1B_0      1      19977             NaN             NaN            NaN   
     1C_0      1      20114             NaN             NaN            NaN   
@@ -179,8 +178,6 @@ sample that will be stored in the Assembly object.
     1C_0         NaN        NaN            NaN  
     1D_0         NaN        NaN            NaN  
     2E_0         NaN        NaN            NaN  
-    CPU times: user 931 ms, sys: 66.6 ms, total: 998 ms
-    Wall time: 8.18 s
 
 
 Step 2: Filter reads
