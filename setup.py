@@ -3,19 +3,34 @@
 from setuptools import setup, find_packages
 import ipyrad
 import glob
+import re
 
 requirements = [
-#    'numpy>=1.9',
+    'pip>7.0',
+    'cython',
     'scipy>0.10',
-    'h5py',
-    'pyzmq>14.5',
+    'numpy>=1.9',
+    'pandas',
     'dill>0.2',
-    'sphinx'
+    'sphinx',
+    'ipython>=4.0',
+    'ipyparallel',
+    'jupyter'
     ]
 
+#import ipyrad
+#version=ipyrad.__version__,
+    
 setup(
     name="ipyrad",
-    version=ipyrad.__version__,
+
+    version=re.search(
+       r"^__version__ = ['\"]([^'\"]*)['\"]",
+           open(
+               "ipyrad/__init__.py",
+               "r").read(),
+       re.M).group(1),
+
     url="https://github.com/dereneaton/ipyrad",
 
     author="Deren Eaton",
@@ -27,6 +42,9 @@ setup(
     packages=find_packages(),
     
     install_requires=[requirements],
+    extras_require = {
+        'plotting': ['toyplot>0.0.8'],
+    },
 
     entry_points={
             'console_scripts': [
@@ -37,7 +55,7 @@ setup(
     data_files = [ ( 'bin', glob.glob("./bin/*") ) ],
 
     license='GPL',
-
+    
     classifiers=[
         'Programming Language :: Python',
         'Programming Language :: Python :: 2',

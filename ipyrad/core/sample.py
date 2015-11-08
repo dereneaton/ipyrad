@@ -4,6 +4,7 @@
 #import os
 import pandas as pd
 import dill
+from ipyrad.assemble.worker import ObjDict
 
 
 class Sample(object):
@@ -29,19 +30,21 @@ class Sample(object):
                    "reads_consens",])
 
         ## link to files
-        self.files = pd.Series(
-            index=["fastq",
-                   "edits",
-                   "clusters",
-                   "depths",
-                   "consens",
-                   "database",
-                   "stats"])
+        self.files = ObjDict({
+              "fastq": [],
+              "edits": [],
+              "clusters": [],
+              "depths": [],
+              "consens": [],
+              "database": [],
+              "stats": []
+              })
 
         ## store cluster depth information
-        self.depths = {"total": None,
-                       "mjmin": None,
-                       "statmin": None}
+        self.depths = ObjDict()
+        self.depths.total = []
+        self.depths.mjmin = []
+        self.depths.statmin = []                
 
         ## assignments for hierarchical clustering
         self.group = []

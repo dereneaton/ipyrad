@@ -3,11 +3,13 @@
 """ loads an archived Assembly object. """
 
 from __future__ import print_function
-import dill
+
 import os
+import dill
+from ipyrad.core.assembly import Assembly
 
 
-def load_dataobj(tryname):
+def load_assembly(tryname):
     """ loads an ipython pickled Assembly object """
     if ".assembly" not in tryname:
         tryname += ".assembly"
@@ -22,4 +24,14 @@ def load_dataobj(tryname):
 def save_dataobj():
 	""" TODO: """
 	pass
+
+
+
+
+
+    ## iterate over Assembly objects
+
+
+
+
 

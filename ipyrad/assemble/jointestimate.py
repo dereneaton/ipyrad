@@ -138,10 +138,15 @@ def countlist(data, sample):
             itera = duo.next()
 
         ## don't use sequence edges / restriction overhangs
-        sarray = np.array(thisstack)[6:-6]
+        cutl1, cutl2 = [len(i) for i in data.paramsdict["restriction_overhang"]]
+        if cutl2:
+            cutl2 *= -1
+        else:
+            cutl2 = None
+        sarray = np.array(thisstack)[:, cutl1:cutl2]
 
         ## enforce minimum depth for estimates
-        if sarray.shape[0] > data.paramsdict["mindepth_statistical"]:
+        if sarray.shape[0] >= data.paramsdict["mindepth_statistical"]:
             ## make list for each site in sequences
             res = [Counter(seq) for seq in sarray.T]
             ## exclude sites with indels
@@ -156,8 +161,11 @@ def toarray(uniqstack):
 
 
 
-def optim(data, sample):
+def optim(args):
     """ func scipy optimize to find best parameters"""
+
+    ## split args
+    data, sample = args
 
     ## make a list of Counter objects for each site in each stack
     stacked = countlist(data, sample)
@@ -200,45 +208,46 @@ def optim(data, sample):
     with open(handle, 'wb') as out:
         out.write("{}\t{}\t{}".format(sample.name, hetero, errors))
 
+    return [stacks, stackcounts]
 
 
-def run(data, samples):
+def run(data, samples, ipyclient, force):
     """ calls the main functions """
 
     # if haploid data
     if data.paramsdict["ploidy"] == 1:
         print("Applying haploid-based test (infer E with H fixed to 0")
 
-    # load up work queue
-    work_queue = multiprocessing.Queue()
-
-    # iterate over files
-    submitted = 0
-
-    ## sort samples by clustsize
-    samples.sort(key=lambda x: x.stats["clusters_kept"], reverse=True)
-
-    ## put on work queue
+    submitted_args = []
+    ## if sample is already done skip
     for sample in samples:
-        if sample.stats["state"] == 3:
-            if sample.stats["clusters_kept"]:
-                work_queue.put([data, sample])
-                submitted += 1
+        if not force:
+            if sample.stats.state >= 4:
+                print(sample.name+"already estimated. Use force=True "+\
+                      "to overwrite")
+            elif sample.stats.state < 3:
+                print(sample.name+"not clustered yet. Run step3() first.")
+            elif sample.stats.clusters_kept < 100:
+                print("skipping {}. Too few reads ({}). Use force=True \
+                      to override".format(sample.name, sample.stats.reads_raw))
+            else:
+                submitted_args.append([data, sample])
+        else:
+            if sample.stats.state < 3:
+                print(sample.name+" not clustered yet. Run step3() first.")
+            else:
+                submitted_args.append([data, sample])
 
-    ## create a queue to pass to workers to store the results
-    fake_queue = multiprocessing.Queue()
-    
-    try:
-        ##  spawn workers 
-        jobs = []
-        for _ in range(min(data.paramsdict["N_processors"], submitted)):
-            work = worker.Worker(work_queue, fake_queue, optim)
-            work.start()
-            jobs.append(work)
-        for job in jobs:
-            job.join()
+    ## if jobs then run
+    if submitted_args:
+        ## sort by cluster size
+        submitted_args.sort(key=lambda x: x[1].stats.clusters_kept, 
+                                                      reverse=True)
+        lbview = ipyclient.load_balanced_view()
+        results = lbview.map_async(optim, submitted_args)
+        fakeres = results.get()
+        print(fakeres)
 
-    finally:
         ## get results and remove temp files
         cleanup(data, samples)
 
@@ -296,6 +305,25 @@ def cleanup(data, samples):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    TEST = ip.load_dataobj("test")
-    TEST.run()
+
+    ## get path to test dir/ 
+    ROOT = os.path.realpath(
+       os.path.dirname(
+           os.path.dirname(
+               os.path.dirname(__file__)
+               )
+           )
+       )
+
+    ## run test on RAD data1
+    TEST = ip.load_assembly(os.path.join(ROOT, "tests", "test_rad", "data1"))
+    TEST.step4(force=True)
+    print(TEST.stats)
+
+    ## run test on messy data set
+    #TEST = ip.load_assembly(os.path.join(ROOT, "tests", "radmess", "data1"))
+
+    ## check if results are correct
+
+    ## cleanup
 
