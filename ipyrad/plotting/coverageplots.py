@@ -17,10 +17,11 @@ from collections import OrderedDict
 def depthplot(data, samples=None, dims=(0, 0), xmax=50, outprefix=None):
     """ plots histogram of coverages across clusters"""
 
-    ## select samples to be plotted
+    ## select samples to be plotted, requires depths info
     if not samples:
         samples = data.samples.keys()
         samples.sort()
+
     subsamples = OrderedDict([(i, data.samples[i]) for i in samples])
 
     ## get canvas dimensions based on n-samples

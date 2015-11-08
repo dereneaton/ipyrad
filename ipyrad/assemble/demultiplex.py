@@ -1,19 +1,20 @@
-#!/usr/bin/env python2
+#!/usr/bin/env ipython2
 
 """ demultiplex raw sequence data given a barcode map """
 
 from __future__ import print_function
-import gzip
-import itertools
-import sys
-import glob
+# pylint: disable=E1101
 import os
+import sys
+import gzip
+import glob
 import tempfile
-import multiprocessing
+import itertools
+import subprocess
+import numpy as np
 import cPickle as pickle
-from collections import defaultdict, Counter
-from ipyrad.assemble import worker
 from ipyrad.core.sample import Sample
+from collections import defaultdict, Counter
 
 
 
@@ -82,7 +83,6 @@ def ambigcutters(seq):
 def findbcode(cut, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
-    #barcode = 'N'*20
     search = read1[1][:longbar+len(cut)]
     countcuts = search.count(cut)
     if countcuts == 1:
@@ -95,11 +95,14 @@ def findbcode(cut, longbar, read1):
 
 
 
-def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum): 
+def barmatch(args):
     """matches reads to barcodes in barcode file
     and writes to individual temp files, after all
     read files have been split, temp files are collated
     into .fq files"""
+
+    ## read in list of args
+    data, rawfile, chunk, cut, longbar, chunknum, filenum = args
 
     ## is paired?
     paired = bool('pair' in data.paramsdict["datatype"])
@@ -130,7 +133,7 @@ def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum):
     ## dictionaries to store first and second reads
     dsort1 = defaultdict(list)
     dsort2 = defaultdict(list)
-    dbars = defaultdict(list)   ## all bars matched in sample
+    dbars = defaultdict(list)    ## all bars matched in sample
     for sample in data.barcodes:
         dsort1[sample] = []
         dsort2[sample] = []
@@ -145,9 +148,9 @@ def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum):
         total += 1
 
         ## strip
-        read1 = [i.strip() for i in read1s]
+        read1 = np.array([i.strip() for i in read1s])
         if paired:
-            read2 = [i.strip() for i in read2s]
+            read2 = np.array([i.strip() for i in read2s])
 
         ## Parse barcode from sequence 
         ## very simple sorting if barcodes are invariable
@@ -202,14 +205,14 @@ def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum):
         handle = os.path.join(data.dirs.fastqs,
                               "tmp_"+sample+"_R1_"+\
                               str(filenum)+"_"+str(chunknum)+".gz")
-        with gzip.open(handle, 'w') as out:
+        with gzip.open(handle, 'wb') as out:
             out.write("\n".join(dsort1[sample])+"\n")
     if paired:
         for sample in dsort2:
             handle = os.path.join(data.dirs.fastqs,
                                   "tmp_"+sample+"_R2_"+\
                                   str(filenum)+"_"+str(chunknum)+".gz")
-            with gzip.open(handle, 'w') as out:
+            with gzip.open(handle, 'wb') as out:
                 out.write("\n".join(dsort2[sample])+"\n")
 
     ## close file handles
@@ -229,156 +232,306 @@ def barmatch(data, rawfile, chunk, cut, longbar, chunknum, filenum):
     pickle.dump([filestats, samplestats], pickout)
     pickout.close()
 
-
-
-def blocks(files, size=50120000):
-    """ reads in block 5MB in size"""
-    while 1:
-        block = files.read(size)
-        if not block:
-            break
-        yield block
+    return "done"
 
 
 
-def chunker(data, fastq, paired, num, optim, pickleout=0):
-    """ splits fastq file into nchunks, preserving that
-    the data are in 4-line groups. Split across N processors. """
-    ## is gzipped?
-    gzipped = bool(fastq[0].endswith(".gz"))
+# def bufcount(filename, gzipped):
+#     """ fast line counter """
+#     if gzipped: 
+#         fin = gzip.open(filename)                  
+#     else:
+#         fin = open(filename)                          
+#     nlines = 0
+#     buf_size = 1024 * 1024
+#     read_f = fin.read # loop optimization
+#     buf = read_f(buf_size)
+#     while buf:
+#         nlines += buf.count('\n')
+#         buf = read_f(buf_size)
+#     fin.close()
+#     return nlines
 
-    ## count nlines in read1 file
-    if gzipped:
-        with gzip.open(fastq[0], 'rb') as indata:
-            totlen = sum([ind.count("\n") for ind in blocks(indata)])
+
+
+def getoptim(filename):
+    """ Calculate optimum splitting based on file size. 
+    Does not unzip files, assumes average rate of compression. 
+    This is a fast alternative to counting lines which takes 
+    too long on huge files.
+    """
+    filesize = os.stat(filename).st_size
+    if filesize < 160000000:
+        optim = 40000
+    elif filesize < 4000000000:
+        optim = 800000
+    elif filesize < 8000000000:        
+        optim = 12000000
     else:
-        with open(fastq[0], 'rb') as indata:
-            totlen = sum([ind.count("\n") for ind in blocks(indata)])
-    added = 0
+        optim = 24000000
+    return optim
 
-    ## optimal chunk sizes, 4 for each processor
-    #optim = ((totlen/4)/nproc)*16
-    #optim = 400000
-    #print(totlen, optim, 'tot.opt')
 
-    ## data in at optim lines at a time
-    if gzipped:
-        indata1 = gzip.open(fastq[0])
+
+def getsplits(filename):
+    """ Calculate optimum splitting based on file size. 
+    Does not unzip files, assumes average rate of compression. 
+    This is a fast alternative to counting lines which takes 
+    too long on huge files.
+    """
+    filesize = os.stat(filename).st_size
+    if filesize < 10000000:
+        optim = 400000
+    elif filesize < 4000000000:
+        optim = 1000000
+    elif filesize < 8000000000:        
+        optim = 4000000
     else:
-        indata1 = open(fastq[0])
-    ## 
+        optim = 8000000
+    return optim
+
+
+
+def maketempfiles(data, chunk1, chunk2):
+    """ writes data chunks to temp files """
+
+    with tempfile.NamedTemporaryFile('w+b', delete=False, 
+         dir=os.path.realpath(data.dirs.fastqs), 
+         prefix="tmp_", suffix=".chunk") as out1:
+        out1.write("".join(chunk1))
+
+    out2 = tempfile.NamedTemporaryFile("w+b", delete=False, 
+           dir=os.path.realpath(data.dirs.fastqs), 
+           prefix="tmp_", suffix=".chunk")
+    if chunk2:
+        out2.write("".join(chunk2))            
+    out2.close()
+    del chunk1
+    del chunk2
+    return (out1.name, out2.name)
+
+
+
+
+# def chunker(args):
+#     """ splits fastq file into nchunks, preserving that
+#     the data are in 4-line groups. Split across N processors. """
+
+#     ## split args
+#     data, fastq, paired, num, optim = args
+    
+#     ## is gzipped?
+#     gzipped = bool(fastq[0].endswith(".gz"))
+
+#     ## count nlines in read1 file
+#     #totlen = bufcount(fastq[0], gzipped)
+#     if not optim:
+#         optim = getoptim(fastq[0])
+
+#     ## open data file for reading
+#     if gzipped:
+#         indata1 = gzip.open(fastq[0])
+#         if paired:
+#             indata2 = gzip.open(fastq[1])
+
+#     else:
+#         indata1 = open(fastq[0])
+#         if paired:
+#             indata2 = open(fastq[1])            
+
+#     grabchunk1 = itertools.izip(*[indata1]*optim)
+#     if paired:
+#         grabchunk2 = itertools.izip(*[indata2]*optim)    
+
+#     ## read in data optim lines at a time and write to temp files
+#     done = 0
+#     chunks1 = []
+#     chunks2 = []
+#     chunk2 = None
+
+#     #submitted_args = []
+#     while not done:
+#         try:
+#             chunk1 = grabchunk1.next()
+#             if paired:
+#                 chunk2 = grabchunk2.next()
+
+#         except StopIteration:
+#             chunk1 = indata1
+#             if paired:
+#                 chunk2 = indata2
+#             done = 1
+
+#         chk1, chk2 = maketempfiles(data, chunk1, chunk2)
+#         chunks1.append(chk1)
+#         chunks2.append(chk2)        
+#         #submitted_args.append([data, chunk1, chunk2])
+
+#     ## parallelize
+#     #dview = ipyclient.load_balanced_view()
+#     #res = dview.map_async(maketempfiles, submitted_args)
+#     #res.get()
+#     #del dview
+
+#     #for result in res:
+#     #    chunks1.append(result[0])
+#     #    chunks2.append(result[1])
+
+#     ## cleanup
+#     indata1.close()
+#     if paired:
+#         indata2.close()
+
+#     ## return as a pickle
+#     pickout = open(os.path.join(
+#                       data.dirs.fastqs, 
+#                       "chunks_"+str(num)+".pickle"), "wb")
+#     pickle.dump([fastq[0], zip(chunks1, chunks2)], pickout)
+#     pickout.close()
+
+
+
+def zcat_make_temps(args):
+    """ call bash command zcat and split to split large files """
+    ## split args
+    raws, dirs, paired, num, optim = args
+
+    ## get optimum lines per file
+    if not optim:
+        optim = getsplits(raws[0])
+
+    ## is it gzipped
+    cat = "cat"
+    if raws[0].endswith(".gz"):
+        cat = "zcat"
+
+    ### run splitter
+    cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
+                  "-", os.path.join(dirs, "chunk_"+str(num)+"_")])
+    _ = subprocess.call(cmd, shell=True,
+                             stdin=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE,
+                             close_fds=True)
+    chunks1 = glob.glob(os.path.join(
+                        dirs, "chunk_"+str(num)+"_*"))
+    chunks1.sort()
+
     if paired:
-        if gzipped:
-            indata2 = gzip.open(fastq[1])
-        else:
-            indata2 = open(fastq[1])            
+        cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
+                  "-", os.path.join(dirs, "chunk_"+str(num)+"_")])
+        _ = subprocess.call(cmd, shell=True,
+                             stdin=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE,
+                             close_fds=True)
+    chunksall = glob.glob(os.path.join(
+                       dirs, "chunk_"+str(num)+"_*"))
+    chunks2 = [i for i in chunksall if i not in chunks1]
+    chunks2.sort()
+    if not len(chunks1) == len(chunks2):
+        chunks2 = [0]*len(chunks1)
 
-    ## list for tempname tuples
-    chunks1 = []
-    chunks2 = []
-    while added < totlen:
-        with tempfile.NamedTemporaryFile('w+b', delete=False) as out:
-            out.write("".join(list(itertools.islice(indata1, optim))))
-        chunks1.append(out.name)
-        if paired:
-            with tempfile.NamedTemporaryFile('w+b', delete=False) as out:
-                out.write("".join(list(itertools.islice(indata2, optim))))
-            chunks2.append(out.name)
-        else:
-            chunks2.append(tempfile.NamedTemporaryFile(delete=False).name)
-        added += optim
-
-    ## cleanup
-    indata1.close()
-    if paired:
-        indata2.close()
-
-    ## returns a list with tuple of (tmp1, "") or (tmp1, tmp2) and chunk size
-    ## GEEEEEz, return queue is too small again, causes freezing
-    ## use pickles instead, again.
-    ## return [fastq[0], zip(chunks1, chunks2)]
-    if pickleout:
-        pickout = open(os.path.join(
-                          data.dirs.fastqs, 
-                          "chunks_"+str(num)+".pickle"), "wb")
-        pickle.dump([fastq[0], zip(chunks1, chunks2)], pickout)
-        pickout.close()
-    else:
-        return [fastq[0], zip(chunks1, chunks2)]
+    return [raws[0], zip(chunks1, chunks2)]
 
 
 
-def parallel_chunker(data, raws, paired):
-    """ iterate over raw data files and split into N pieces """
+def parallel_chunker2(data, raws, paired):
+    """ breaks files into chunks and returns chunk names. If data are in 
+    multiple files then each is split using a separate processor. """
+    datatuples = []
+    for num, rawtuple in enumerate(list(raws)):
+        args = [rawtuple, data.dirs.fastqs, paired, num, 0]
+        raws, chunks = zcat_make_temps(args)
+        datatuples.append((raws, chunks))
+    return datatuples
+
+
+
+def parallel_chunker(data, raws, paired, ipyclient):
+    """ iterate over raw data files and split into N pieces. This is 
+    parallelized across N files, so works faster if there are multiple input 
+    files. """
     ## count how many rawfiles have been done
-    work_queue = multiprocessing.Queue()    
-    chunk_queue = multiprocessing.Queue()        
     num = 0
-    for rawtuple in list(raws):
-        ## for each (R1, R2) put on work queue, w/ fixblock=1
-        work_queue.put([data, rawtuple, 
-                        paired, num, 400000, 1])
+    submitted_args = []
+    for num, rawtuple in enumerate(list(raws)):
+        submitted_args.append([rawtuple, data.dirs.fastqs,
+                               paired, num, 0])
         num += 1
-    ## spawn workers, run barmatch function"
-    jobs = []        
-    for _ in xrange(data.paramsdict["N_processors"]):
-        work = worker.Worker(work_queue, chunk_queue, chunker)
-        work.start()
-        jobs.append(work)
-    for job in jobs:
-        job.join()
+
+    ## call to ipp
+    dview = ipyclient.load_balanced_view()
+    res = dview.map_async(zcat_make_temps, submitted_args)
+    datatuples = res.get()
+    del dview
+    return datatuples
 
 
 
-def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum):
+def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum, ipyclient):
     """ takes list of chunk files and runs barmatch function
     on them across N processors and outputs temp file results.
+    This is parallelized on N chunks.
     """
     ## send file to multiprocess queue"
     chunknum = 0
-    work_queue = multiprocessing.Queue()
+    submitted_args = []
     for tmptuple in chunks:
-        work_queue.put([data, rawfilename, tmptuple, cutter, 
-                        longbar, chunknum, filenum])
+        submitted_args.append([data, rawfilename, tmptuple, cutter,
+                               longbar, chunknum, filenum])
         chunknum += 1
 
-    ## spawn workers, run barmatch function"
-    jobs = []        
-    null_queue = multiprocessing.Queue()
-    for _ in xrange(data.paramsdict["N_processors"]):
-        work = worker.Worker(work_queue, null_queue, barmatch)
-        work.start()
-        jobs.append(work)
-    for job in jobs:
-        job.join()
-
+    ## uses all available processors
+    dview = ipyclient.load_balanced_view()
+    res = dview.map_async(barmatch, submitted_args)
+    res.get()
+    del dview
  
 
-def collate_tmps(data, paired):
+
+def parallel_collate(data, ipyclient, paired):
+    """ parallel calls to collate_tmps function """
+    ## send file to multiprocess queue"
+    submitted_args = []
+    for samplename in data.barcodes.keys():
+        submitted_args.append([data, samplename, paired])
+
+    ## uses all available processors
+    dview = ipyclient.load_balanced_view()
+    res = dview.map_async(collate_tmps, submitted_args)
+    res.get()
+    del dview
+
+
+
+def collate_tmps(args):
     """ collate temp files back into 1 sample """
-    for name in data.barcodes:
+    ## split args
+    data, name, paired = args
+
+    ## nproc len list of chunks
+    combs = glob.glob(os.path.join(
+                      data.dirs.fastqs, "tmp_"+name)+"_R1_*.gz")
+    combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")[0]))
+
+    ## one outfile to write to
+    handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.gz")
+    with gzip.open(handle_r1, 'wb') as out:
+        for fname in combs:
+            with gzip.open(fname) as infile:
+                out.write(infile.read())
+    if paired:
         ## nproc len list of chunks
         combs = glob.glob(os.path.join(
-                          data.dirs.fastqs, "tmp_"+name)+"_R1_*.gz")
-        combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")[0]))
-
+                          data.dirs.fastqs, "tmp_"+name)+"_R2_*.gz")
+        combs.sort()                        
         ## one outfile to write to
-        handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.gz")
-        with gzip.open(handle_r1, 'w') as out:
+        handle_r2 = os.path.join(data.dirs.fastqs, name+"_R2_.gz")
+        with gzip.open(handle_r2, 'wb') as out:
             for fname in combs:
                 with gzip.open(fname) as infile:
                     out.write(infile.read())
-        if paired:
-            ## nproc len list of chunks
-            combs = glob.glob(os.path.join(
-                              data.dirs.fastqs, "tmp_"+name)+"_R2_*.gz")
-            combs.sort()                        
-            ## one outfile to write to
-            handle_r2 = os.path.join(data.dirs.fastqs, name+"_R2_.gz")
-            with gzip.open(handle_r2, 'w') as out:
-                for fname in combs:
-                    with gzip.open(fname) as infile:
-                        out.write(infile.read())
 
 
 
@@ -398,7 +551,7 @@ def prechecks(data, preview):
 
     ## make sure there is an out directory
     data.dirs.fastqs = os.path.join(data.paramsdict["working_directory"],
-                                    'fastq')
+                                    data.name+"_fastqs")
     if not os.path.exists(data.paramsdict["working_directory"]):
         os.mkdir(data.paramsdict["working_directory"])
     if not os.path.exists(data.dirs.fastqs):
@@ -554,67 +707,59 @@ def make_stats(data, raws, paired):
 
 
 
-
-def run(data, preview):
+def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
     raws, longbar, cut1, paired = prechecks(data, preview)
 
-    if preview:
-        print('raws', raws)
     ## nested structure to prevent abandoned temp files
     try: 
         ## splits up all files into chunks, returns list of list
         ## of chunks names in tuples
-        parallel_chunker(data, raws, paired)
-        chunkspickles = glob.glob(os.path.join(data.dirs.fastqs,
-                                              "chunks_*.pickle"))
-        chunkslist = []
-        for picklefile in chunkspickles:
-            ## put chunk names in list
-            with open(picklefile) as pickdata:
-                rawfilename, chunks = pickle.load(pickdata)
-            chunkslist.append([rawfilename, chunks])
-        for picklefile in chunkspickles:            
-            os.remove(picklefile)
         if preview:
-            print("chunkslist", chunkslist)
-        try:
-            ## sorts all chunk files into tmp files by barcode
-            filenum = 0            
-            for rawfilename, chunks in chunkslist:
-                for cutter in cut1:
-                    if cutter:     
-                        ## sort chunks for this list     
-                        parallel_sorter(data, rawfilename, chunks, 
-                                        cutter, longbar, filenum)
-                filenum += 1
-                ## combine tmps for ambiguous cuts
-                ## somefunc()
-            ## collate tmps back into one file
-            collate_tmps(data, paired)
-            make_stats(data, raws, paired)
-        finally:
-            ## cleans up tmp files
-            tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
-            for tmpfile in tmpfiles:
-                os.remove(tmpfile)
+            print('splitting large files')
+        datatuples = parallel_chunker(data, raws, paired, ipyclient) 
+
+        filenum = 0            
+        for rawfilename, chunks in datatuples:
+            for cutter in cut1:
+                if cutter:     
+                    ## sort chunks for this list     
+                    parallel_sorter(data, rawfilename, chunks, cutter,
+                                    longbar, filenum, ipyclient)
+            filenum += 1
+            ## combine tmps for ambiguous cuts
+            ## TODO: somefunc()
+        ## collate tmps back into one file
+        parallel_collate(data, ipyclient, paired)
+        #collate_tmps(data, paired)
+        make_stats(data, raws, paired)
+
     finally:
         ## cleans up chunk files and stats pickles
-        pickles = glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
-        for pickfile in pickles:
-            os.remove(pickfile)
-        tmpfiles = glob.glob(os.path.join(
-                             tempfile.gettempdir(), 
-                             "tmp*"))
-        for tmpfile in tmpfiles:
-            if os.path.isfile(tmpfile):
+        tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "chunk_*"))        
+        tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
+        tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
+        if tmpfiles:
+            for tmpfile in tmpfiles:
                 os.remove(tmpfile)
 
 
 
 if __name__ == "__main__":
-    pass
-    #PARAMS = {}
-    #run(PARAMS)
+
+    ## run test
+    import ipyrad as ip
+
+    ## get current location
+    PATH = os.path.abspath(os.path.dirname(__file__))
+    ## get location of test files
+    IPATH = os.path.dirname(os.path.dirname(PATH))
+    DATA = os.path.join(IPATH, "tests", "test_rad")
+
+    TEST = ip.load_assembly(os.path.join(DATA, "testrad"))
+    TEST.set_params(1, "./")
+    TEST.set_params(2, "tests/data/sim_rad_test_R1_.fastq.gz")
+    TEST.set_params(3, "tests/data/sim_rad_test_barcodes.txt")
+    TEST.step1()
