@@ -932,7 +932,7 @@ def getbins():
     else:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
-                       "vsearch-1.1.3-osx-86_64")
+                       "vsearch-1.1.3-osx-x86_64")
         muscle = os.path.join(
                        os.path.abspath(bin_path),
                        "muscle3.8.31_i86darwin64")
