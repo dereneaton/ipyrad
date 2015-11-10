@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 
 from setuptools import setup, find_packages
+import glob
 import re
 
 requirements = [
@@ -49,6 +50,8 @@ setup(
                 'ipyrad = ipyrad.__main__:main',
             ],
     },
+
+    data_files = [ ( 'bin', glob.glob("./bin/*") ) ],
 
     license='GPL',
     

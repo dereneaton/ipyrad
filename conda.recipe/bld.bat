@@ -1,1 +1,2 @@
-python setup.py install
+echo "ipyrad not supported on windows"
+exit -1
