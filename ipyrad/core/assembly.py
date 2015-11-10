@@ -63,6 +63,9 @@ class Assembly(object):
     muscle : str
         The path to the default muscle executable. If not found, this can be changed
         by setting `[Assembly].vsearch = [newpath]`.
+    smalt : str
+        The path to the default smalt executable. If not found, this can be changed
+        by setting `[Assembly].smalt = [newpath]`.
     log : list
         A list of all modifications to the Assembly object and its Samples with
         time stamps. Use `print [Assembly].log` for easier viewing.
@@ -583,6 +586,10 @@ class Assembly(object):
 
         elif param in ['27', 'reference_sequence']:
             fullrawpath = expander(newvalue)
+            assert os.path.isfile(fullrawpath), "Reference sequence file not found. " \
+                + "This must be an absolute path (/home/wat/ipyrad/data/referece.gz) " \
+                + "or a path relative to the directory where you're running ipyrad " \
+                + "(./data/reference.gz). Here's what you gave us: " + fullrawpath
             self.paramsdict['reference_sequence'] = fullrawpath
             self.stamp("[27] set to "+newvalue)
 
@@ -711,6 +718,12 @@ class Assembly(object):
 
     def step3(self, samples=None, preview=0, noreverse=0, force=False):
         """ step 3: clustering within samples """
+
+        ## Test if we are doing reference sequence mapping
+        ## Then test if the ref sequence has been indexed yet
+        ## If the reference sequence parameter is empty we'll pass over this.
+        if not self.paramsdict["reference_sequence"] == "":
+            self.index_reference_sequence() 
 
         ## launch parallel client
         ipyclient = ipp.Client()
@@ -849,9 +862,6 @@ class Assembly(object):
         self._save()
 
 
-
-
-
     def run(self, steps=0, force=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
@@ -960,6 +970,7 @@ def getbins():
     assert cmd_exists(muscle), "muscle not found"
     assert cmd_exists(vsearch), "vsearch not found"
     assert cmd_exists(smalt), "smalt not found"
+    assert cmd_exists(samtools), "samtools not found"
     return vsearch, muscle, smalt
 
 
@@ -1002,7 +1013,6 @@ def merge(name, assemblies):
     return merged
 
 
-
 def bufcount(filename, gzipped):
     """ fast line counter """
     if gzipped: 
@@ -1019,7 +1029,22 @@ def bufcount(filename, gzipped):
     fin.close()
     return nlines
 
+def index_reference_sequence( self ):
+    """ Attempt to index the reference sequence. This is a little naive
+    in that it'll actually _try_ do to the reference every time, but it's
+    quick about giving up if it detects the indices already exist. You could
+    also test for existence of both index files, but i'm choosing to just let
+    smalt do that for us ;) """
 
+    refseq_file = self.paramsdict['reference_sequence']
+
+    cmd = data.smalt+\
+        " index "\
+        " -s 2 "+refseqfile 
+
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
 
 if __name__ == "__main__":
     ## test...
