@@ -8,7 +8,7 @@
 
 *ipyrad*: interactive assembly and analysis of RADseq data sets
 -------------------------------------------------
-Welcome to `*ipyrad*`_, an interactive toolkit for assembly and analysis of 
+Welcome to *ipyrad_*, an interactive toolkit for assembly and analysis of 
 restriction-site associated genomic data sets (e.g., RAD, ddRAD, GBS) with 
 the following goals:
 
