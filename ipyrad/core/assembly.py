@@ -591,7 +591,7 @@ class Assembly(object):
                 + "or a path relative to the directory where you're running ipyrad " \
                 + "(./data/reference.gz). Here's what you gave us: " + fullrawpath
             self.paramsdict['reference_sequence'] = fullrawpath
-            self.stamp("[27] set to "+newvalue)
+            self.stamp("[27] set to "+fullrawpath)
 
 
     def copy(self, newname):
@@ -723,7 +723,7 @@ class Assembly(object):
         ## Then test if the ref sequence has been indexed yet
         ## If the reference sequence parameter is empty we'll pass over this.
         if not self.paramsdict["reference_sequence"] == "":
-            self.index_reference_sequence() 
+            print(index_reference_sequence(self))
 
         ## launch parallel client
         ipyclient = ipp.Client()
@@ -958,7 +958,7 @@ def getbins():
     else:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
-                       "vsearch-1.1.3-osx-86_64")
+                       "vsearch-1.1.3-osx-x86_64")
         muscle = os.path.join(
                        os.path.abspath(bin_path),
                        "muscle3.8.31_i86darwin64")
@@ -967,10 +967,10 @@ def getbins():
                        "smalt-0.7.6-osx-x86_64")
 
     # Test for existence of binaries
-    assert cmd_exists(muscle), "muscle not found"
-    assert cmd_exists(vsearch), "vsearch not found"
-    assert cmd_exists(smalt), "smalt not found"
-    assert cmd_exists(samtools), "samtools not found"
+    assert cmd_exists(muscle), "muscle not found here: "+muscle
+    assert cmd_exists(vsearch), "vsearch not found here: "+vsearch
+    assert cmd_exists(smalt), "smalt not found here: "+smalt
+    #assert cmd_exists(samtools), "samtools not found here: "+samtools
     return vsearch, muscle, smalt
 
 
@@ -1036,18 +1036,34 @@ def index_reference_sequence( self ):
     also test for existence of both index files, but i'm choosing to just let
     smalt do that for us ;) """
 
+    print("Checking for reference sequence index. If it doesn't exist then create it.")
+    print("This could take several minutes, but it's a one time penalty, so be patient.")
+
     refseq_file = self.paramsdict['reference_sequence']
 
-    cmd = data.smalt+\
-        " index "\
-        " -s 2 "+refseqfile 
+    #TODO: Here test if the indices exist already
+    # These are smalt specific index files. We don't ever reference
+    # them directly except here to make sure they exist, so we don't need
+    # to keep them around.
+    index_sma = refseq_file+".sma"
+    index_smi = refseq_file+".smi"
 
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
+    if not os.path.isfile( index_sma ) or not os.path.isfile( index_smi ):
+        cmd = self.smalt+\
+            " index "\
+            " -s 2 "+\
+	    refseq_file+" "+\
+	    refseq_file
+
+        print(cmd)
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
 
 if __name__ == "__main__":
     ## test...
     DATA = Assembly("test")
     DATA.get_params()
     DATA.set_params(1, "./")
+    DATA.set_params(27, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
+    DATA.get_params()
+    print(DATA.log)
+    DATA.step3()
