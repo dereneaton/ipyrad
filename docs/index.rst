@@ -6,32 +6,23 @@
 .. include:: global.rst  
 
 
-ipyrad: assembly and analysis of RADseq data sets
+*ipyrad*: interactive assembly and analysis of RADseq data sets
 -------------------------------------------------
+Welcome to *ipyrad*, an interactive toolkit for assembly and analysis of 
+restriction-site associated genomic data sets (e.g., RAD, ddRAD, GBS) for 
+population genetic or phylogenetic studies, with the following goals:
 
-Welcome! ipyrad_ is an interactive toolkit for assembly and analysis of genomic RADseq data sets.
-Our goal is to support all restriction-site associated data types (e.g., RAD, ddRAD, GBS;
-see Data_types_), and to offer simple but powerful methods for assembling data into
-output files for downstream genomic analyses. 
+- Provide an easy-to-use and intuitive workflow to convert raw data to formatted output files.
+- Offer a range of fast and parallelized assembly methods.
+- Create a `reproducible framework`_ for designing complex assembly procedures.
+- Allow visualization and checks on the quality of data assemblies. 
+- Enable interactive_ access to assembled data and statistics.
 
+Read more about the broader goals behind *ipyrad* here_. 
 
-How is it different from pyrad?
--------------------------------
-
-ipyrad_ is a complete re-write of pyrad_ built with a very different philosophy in mind. 
-While it retains the easy-to-use command line interface (CLI_) that will be familiar to pyrad_ users,
-the real power of ipyrad_ comes from its implementation through a Python API, which allows users to 
-write scripts that detail complex assemblies able to construct multiple data sets under multiple 
-parameter settings. Other improvements include: 
-
-    - 3 modes of assembly: *de novo*, reference alignment, or hybrid (*de novo* & reference).  
-    - Parallel implementation using ipyparallel_ which utilizes MPI allowing greater use of HPC clusters.   
-    - Better checkpointing. If your job is ever interrupted you should be able to simply restart the
-      script and continue from where it left off.  
-    - Faster code (speed comparisons forthcoming with publication).  
-    - Write highly reproducible documented code with Jupyter Notebooks (see Notebook_workflow_).    
-    - No external installations: vsearch, muscle and all other dependencies are installed with ipyrad_ 
-      using conda (see Installation_).   
+.. here_ :: Ethos.rst
+.. `reproducible framework`_ :: Notebooks.rst
+.. interactive_ :: interactive.rst
 
 
 Documentation
@@ -41,17 +32,14 @@ Documentation
    :maxdepth: 2
 
    Ethos.rst
-   Installation
-   Command_line_interface.rst
-   ipyrad_scripts.rst
-   Notebook_workflow.rst
-   Tutorials  
-   test_rad
-   Data_types.rst
+   Features.rst
+   Installation.rst
+   Quick-guide.rst
+   Assembly.rst
+   Tutorials.rst
    Citing.rst
    License.rst
    Contributions.rst
-   Dependencies.rst
 
 
 Indices and tables
