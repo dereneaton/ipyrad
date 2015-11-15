@@ -738,7 +738,7 @@ class Assembly(object):
                 if not self.samples:
                     ## try linking edits from working dir
                     print("linked fasta files from [working_directory]/edits")
-                    self.link_edits()
+                    self.link_fastas()
                 ## run clustering for all samples
                 print("clustering {} samples on {} processors".\
                      format(len(self.samples), self.paramsdict["N_processors"]))
