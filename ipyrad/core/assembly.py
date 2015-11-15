@@ -66,6 +66,9 @@ class Assembly(object):
     smalt : str
         The path to the default smalt executable. If not found, this can be changed
         by setting `[Assembly].smalt = [newpath]`.
+    samtools : str
+        The path to the default samtools executable. If not found, this can be changed
+        by setting `[Assembly].samtools = [newpath]`.
     log : list
         A list of all modifications to the Assembly object and its Samples with
         time stamps. Use `print [Assembly].log` for easier viewing.
@@ -88,7 +91,7 @@ class Assembly(object):
         self.name = name
 
         ## get binaries of dependencies
-        self.vsearch, self.muscle, self.smalt = getbins()
+        self.vsearch, self.muscle, self.smalt, self.samtools = getbins()
 
         ## link a log history of executed workflow
         self.log = []
@@ -192,6 +195,16 @@ class Assembly(object):
             in the Assembly object. 
         
         """
+#TODO: Fix this perhaps. The paraminfo docs for sorted_fastq_path
+#	suggest that it'll automatically look in <workdir>/fastq
+#	but demultiplex prechecks creates <workdir>/data.name+_fastq
+        ## Test if the default data.name+_fastq directory exists
+#        default_fqdir = os.path.join(self.paramsdict["working_directory"],
+#                                     self.name+"_fastqs")
+#        if os.path.isdir(default_fqdir):
+#            self.paramsdict["sorted_fastq_path"] = default_fqdir
+#            self.paramsdict["sorted_fastq_path"] += "/*"
+
         ## does location exist, if nothing selected, select all
         if os.path.isdir(self.paramsdict["sorted_fastq_path"]):
             self.paramsdict["sorted_fastq_path"] += "*"
@@ -199,6 +212,7 @@ class Assembly(object):
         ## grab fastqs/fq/gzip/all
         fastqs = glob.glob(os.path.join(
                             self.paramsdict["sorted_fastq_path"]))
+        print(fastqs)
 
         ## link pairs into tuples
         fastqs.sort()
@@ -757,7 +771,7 @@ class Assembly(object):
                 if not self.samples:
                     ## try linking edits from working dir
                     print("linked fasta files from [working_directory]/edits")
-                    self.link_edits()
+                    self.link_fastas()
                 ## run clustering for all samples
                 print("clustering {} samples on {} processors".\
                      format(len(self.samples), self.paramsdict["N_processors"]))
@@ -862,19 +876,19 @@ class Assembly(object):
         self._save()
 
 
-    def run(self, steps=0, force=False):
+    def run(self, steps=0, force=False, preview=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
             steps = "123457"
         if '1' in steps:
-            self.step1()
+            self.step1(preview=preview)
         if '2' in steps:
-            self.step2(force=force)
+            self.step2(force=force, preview=preview)
         if '3' in steps:
-            self.step3(force=force)
+            self.step3(force=force, preview=preview)
         if '4' in steps:
-            self.step4(force=force)            
+            self.step4(force=force, preview=preview)            
         # if '5' in steps:
         #     self.step5()            
         # if '6' in steps:
@@ -955,6 +969,9 @@ def getbins():
         smalt = os.path.join(
                        os.path.abspath(bin_path),
                        "smalt-0.7.6-linux-x86_64")
+        samtools = os.path.join(
+                       os.path.abspath(bin_path),
+                       "samtools-linux-x86_64")
     else:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
@@ -965,13 +982,16 @@ def getbins():
         smalt = os.path.join(
                        os.path.abspath(bin_path),
                        "smalt-0.7.6-osx-x86_64")
+        samtools = os.path.join(
+                       os.path.abspath(bin_path),
+                       "samtools-osx-x86_64")
 
     # Test for existence of binaries
     assert cmd_exists(muscle), "muscle not found here: "+muscle
     assert cmd_exists(vsearch), "vsearch not found here: "+vsearch
     assert cmd_exists(smalt), "smalt not found here: "+smalt
-    #assert cmd_exists(samtools), "samtools not found here: "+samtools
-    return vsearch, muscle, smalt
+    assert cmd_exists(samtools), "samtools not found here: "+samtools
+    return vsearch, muscle, smalt, samtools
 
 
 
@@ -1063,7 +1083,5 @@ if __name__ == "__main__":
     DATA = Assembly("test")
     DATA.get_params()
     DATA.set_params(1, "./")
-    DATA.set_params(27, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
     DATA.get_params()
     print(DATA.log)
-    DATA.step3()
