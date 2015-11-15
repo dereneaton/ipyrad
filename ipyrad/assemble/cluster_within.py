@@ -367,6 +367,12 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                 ## clustered but not aligned
                 pass
 
+    # If reference sequence is specified then try read mapping, else pass.
+    if not self.paramsdict["reference_sequence"] == "":
+        ## call to ipp for read mapping
+        results = threaded_view.map(mapreads, submitted_args)
+        results.get()
+
     ## call to ipp for clustering
     results = threaded_view.map(clustall, submitted_args)
     results.get()   
@@ -446,9 +452,6 @@ def derep_and_sort(data, sample, preview, nthreads):
     subprocess.call(cmd, shell=True, 
                          stderr=subprocess.STDOUT, 
                          stdout=subprocess.PIPE)
-
-
-
 
 def cluster(data, sample, preview, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
@@ -574,6 +577,111 @@ def clustall(args):
     ## cluster_rebuild
     build_clusters(data, sample)
 
+def mapreads(args):
+    """ Attempt to map reads to reference sequence. This reads in the 
+    samples.files.edits .fasta files, and attempts to map each read to the 
+    reference sequences. Unmapped reads are dropped right back in the de novo 
+    pipeline. Reads that map successfully are processed and pushed downstream 
+    and joined with the rest of the data post musle_align. The read mapping 
+    produces a sam file, unmapped reads are pulled out of this and dropped back 
+    in place of the edits (.fasta) file. The raw edits .fasta file is moved to 
+    .<sample>.fasta to hide it in case the mapping screws up and we need to roll-back.
+    Mapped reads stay in the sam file and are pulled out of the pileup later."""
+
+    ## TODO: Right now this is coded to read in the edits which are .fasta format
+    ## It would be ideal to read in the fastq instead, since this contains info
+    ## about base quality scores, improves the mapping confidence.
+
+    ## get args
+    data, sample, preview, noreverse, nthreads = args
+
+    ## preview
+    if preview:
+        print("preview: in run_full, using", nthreads)
+
+    samhandle = os.path.join(data.dirs.edits, sample.name+".sam")
+    bamhandle = os.path.join(data.dirs.clusts, sample.name+".bam")
+    unmapped_fasta_handle = sample.files.edits[0]
+
+################
+# Paired end isn't handled yet, but it needs to be.
+"""    ## datatype variables
+    if data.paramsdict["datatype"] in ['gbs']:
+        reverse = " -strand both "
+        cov = " -query_cov .35 "
+	elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
+        reverse = "  -strand both "
+        cov = " -query_cov .60 "
+    else:  ## rad, ddrad, ddradmerge
+        reverse = " -leftjust "
+        cov = " -query_cov .90 "
+
+    ## override reverse clustering option
+    if noreverse:
+            reverse = " -leftjust "
+            print(noreverse, "not performing reverse complement clustering")
+"""
+################
+
+    ## get call string
+    cmd = data.smalt+\
+        "map -f sam -n " + str(nthreads) +\
+            " -o " + samhandle +\
+            " " + data.get_params(27) +\
+            " " + sample.files.fastq[0]
+
+    ## run smalt
+    if preview:
+        ## make this some kind of wait command that kills after a few mins
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+    else:
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+
+
+    ## Fetch up the unmapped reads and write them to the edits .fasta file
+    ## In order to do this we have to go through a little process:
+    ##   1) Get the unmapped reads and convert to bam
+    ##   2) Sort them 
+    ##   3) Dump bam to fastq
+
+    ## Step 1 get unmapped reads with samtools view
+    ##   -b = write out to .bam
+    ##   -f = Select only reads with associated flags set (0x4 means unmapped)
+    cmd = data.samtools+\
+        " view -b -f 0x4 "+samhandle+\
+            " > " + bamhandle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
+
+    ## Step 2 sort unmapped bam
+    ##   -T = Temporary file name, this is required by samtools, you can ignore it
+    ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
+    ##   -O = Output file format, in this case bam
+    ##   -o = Output file name
+    cmd = data.samtools+\
+        " sort -T " + samhandle+".tmp" +\
+            " -O bam " + bamhandle\
+            " -o " + bamhandle+".sorted"
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
+
+    ## Step 3 Dump sorted bam to fastq
+    ## No args for this one
+    ## TODO: output is actually fastq, so fix that
+    ## TODO: output file name is fsck, and it also needs to be .gz to kosher with
+    ##       the other files for de novo
+    cmd = data.samtools+\
+        " bam2fq " + bamhandle+".sorted" +\
+            " > " + unmapped_fasta_handle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
 
 
 def run(data, samples, ipyclient, preview, noreverse, force):
