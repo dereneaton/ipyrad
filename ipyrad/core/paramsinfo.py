@@ -55,9 +55,9 @@ def get_params_info(param=""):
     ("4", """
         (4) sorted_fastq_path ------------------------------------------------
         Path to demultiplexed fastq data. If left blank, this is assigned
-        automatically to fastq/ within the working directory. If your data are 
-        already demultiplexed then you must enter the location of your data 
-        here. Wildcard selectors can be used to select a subsample of files 
+        automatically to <data.name>_fastq/ within the working directory. If your
+        data are already demultiplexed then you must enter the location of your  
+        data here. Wildcard selectors can be used to select a subsample of files 
         within a directory, else all files are selected in the directory.
         This parameter affects only step 2 of assembly. 
         Examples:

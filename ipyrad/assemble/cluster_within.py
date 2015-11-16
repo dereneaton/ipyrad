@@ -368,7 +368,7 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                 pass
 
     # If reference sequence is specified then try read mapping, else pass.
-    if not self.paramsdict["reference_sequence"] == "":
+    if not data.paramsdict["reference_sequence"] == "":
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
         results.get()
@@ -600,16 +600,16 @@ def mapreads(args):
         print("preview: in run_full, using", nthreads)
 
     samhandle = os.path.join(data.dirs.edits, sample.name+".sam")
-    bamhandle = os.path.join(data.dirs.clusts, sample.name+".bam")
+    bamhandle = os.path.join(data.dirs.edits, sample.name+".bam")
     unmapped_fasta_handle = sample.files.edits[0]
 
 ################
 # Paired end isn't handled yet, but it needs to be.
-"""    ## datatype variables
+    ## datatype variables
     if data.paramsdict["datatype"] in ['gbs']:
         reverse = " -strand both "
         cov = " -query_cov .35 "
-	elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
+    elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
         reverse = "  -strand both "
         cov = " -query_cov .60 "
     else:  ## rad, ddrad, ddradmerge
@@ -620,15 +620,14 @@ def mapreads(args):
     if noreverse:
             reverse = " -leftjust "
             print(noreverse, "not performing reverse complement clustering")
-"""
 ################
 
     ## get call string
     cmd = data.smalt+\
-        "map -f sam -n " + str(nthreads) +\
-            " -o " + samhandle +\
-            " " + data.get_params(27) +\
-            " " + sample.files.fastq[0]
+        " map -f sam -n " + str(nthreads) +\
+        " -o " + samhandle +\
+        " " + data.get_params(27) +\
+        " " + sample.files.fastq[0]
 
     ## run smalt
     if preview:
@@ -664,9 +663,9 @@ def mapreads(args):
     ##   -O = Output file format, in this case bam
     ##   -o = Output file name
     cmd = data.samtools+\
-        " sort -T " + samhandle+".tmp" +\
-            " -O bam " + bamhandle\
-            " -o " + bamhandle+".sorted"
+        " sort -T "+samhandle+".tmp" +\
+        " -O bam "+bamhandle+\
+        " -o "+bamhandle+".sorted"
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
@@ -677,8 +676,8 @@ def mapreads(args):
     ## TODO: output file name is fsck, and it also needs to be .gz to kosher with
     ##       the other files for de novo
     cmd = data.samtools+\
-        " bam2fq " + bamhandle+".sorted" +\
-            " > " + unmapped_fasta_handle
+        " bam2fq "+bamhandle+".sorted"+\
+        " > "+unmapped_fasta_handle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
@@ -718,6 +717,14 @@ def run(data, samples, ipyclient, preview, noreverse, force):
 
 
 if __name__ == "__main__":
+    ## test...
+    DATA = Assembly("test")
+    DATA.get_params()
+    DATA.set_params(1, "./")
+    DATA.set_params(27, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
+    DATA.get_params()
+    print(DATA.log)
+    DATA.step3()
     #PARAMS = {}
     #FASTQS = []
     #QUIET = 0
