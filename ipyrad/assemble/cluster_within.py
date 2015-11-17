@@ -601,7 +601,7 @@ def mapreads(args):
 
     samhandle = os.path.join(data.dirs.edits, sample.name+".sam")
     bamhandle = os.path.join(data.dirs.edits, sample.name+".bam")
-    unmapped_fasta_handle = sample.files.edits[0]
+    unmapped_fastq_handle = os.path.join(data.dirs.edits, sample.name+".fastq")
 
 ################
 # Paired end isn't handled yet, but it needs to be.
@@ -677,11 +677,33 @@ def mapreads(args):
     ##       the other files for de novo
     cmd = data.samtools+\
         " bam2fq "+bamhandle+".sorted"+\
-        " > "+unmapped_fasta_handle
+        " > "+unmapped_fastq_handle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
 
+    ## This is hax to get fastq to fasta to get this off the ground.
+    ## samtools bam2fq natively returns fastq, you just delete this code
+    ## when fastq pipleline is working
+    writing = []
+    with open(os.path.realpath(unmapped_fastq_handle), 'rb') as fq:
+        quart1 = itertools.izip(*[iter(fq)]*4)
+        quarts = itertools.izip(quart1, iter(int, 1))
+        writing = []
+        while 1:
+            try:
+                quart = quarts.next()
+            except StopIteration:
+                break
+            read1 = [i.strip() for i in quart[0]]
+            sseq = ">"+sample.name+"_"+str(0)+\
+                           "_c1\n"+read1[1]+"\n"
+            writing.append(sseq)
+
+    with open( sample.files.edits[0], 'w' ) as out:
+        out.write("".join(writing))
+    #####################################################################
+    ## End block of dummy code, delete this when fastq works
 
 def run(data, samples, ipyclient, preview, noreverse, force):
     """ run the major functions for clustering within samples """
