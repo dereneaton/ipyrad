@@ -403,7 +403,7 @@ def zcat_make_temps(args):
     ## is it gzipped
     cat = "cat"
     if raws[0].endswith(".gz"):
-        cat = "zcat"
+        cat = "gunzip -c"
 
     ### run splitter
     cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
@@ -754,15 +754,17 @@ if __name__ == "__main__":
 
     ## run test
     import ipyrad as ip
+    from ipyrad.core.assembly import Assembly
 
     ## get current location
     PATH = os.path.abspath(os.path.dirname(__file__))
     ## get location of test files
     IPATH = os.path.dirname(os.path.dirname(PATH))
+    
     DATA = os.path.join(IPATH, "tests", "test_rad")
-
-    TEST = ip.load_assembly(os.path.join(DATA, "testrad"))
+    TEST = Assembly("test-demultiplex")
+    #TEST = ip.load_assembly(os.path.join(DATA, "testrad"))
     TEST.set_params(1, "./")
-    TEST.set_params(2, "tests/data/sim_rad_test_R1_.fastq.gz")
-    TEST.set_params(3, "tests/data/sim_rad_test_barcodes.txt")
+    TEST.set_params(2, "./tests/data/sim_rad_test_R1_.fastq.gz")
+    TEST.set_params(3, "./tests/data/sim_rad_test_barcodes.txt")
     TEST.step1()
