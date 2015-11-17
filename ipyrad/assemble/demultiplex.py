@@ -538,9 +538,12 @@ def collate_tmps(args):
 def prechecks(data, preview):
     """ todo before starting analysis """
     ## check for data
-    if not glob.glob(data.paramsdict["raw_fastq_path"]):
-        sys.exit("\tNo data found in "+data.paramsdict["raw_fastq_path"]+\
-                 ". Fix path to the data files\n")
+    assert glob.glob(data.paramsdict["raw_fastq_path"]), \
+        "No data found in "+data.paramsdict["raw_fastq_path"]
+    #if not glob.glob(data.paramsdict["raw_fastq_path"]):
+    #    assert 
+    #    sys.exit("\tNo data found in "+data.paramsdict["raw_fastq_path"]+\
+    #             ". Fix path to the data files\n")
 
     ## find longest barcode
     barlens = [len(i) for i in data.barcodes.values()]
