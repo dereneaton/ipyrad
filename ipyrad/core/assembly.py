@@ -640,11 +640,14 @@ class Assembly(object):
                 self.stamp("s1_demultiplexing:")
             else:
                 print("samples already found in", self.name, ""+\
-                      "use ip.merge() to combine samples \nfrom multiple"+\
-                      "Assembly objects")
+                      "use ip.merge() to combine samples \nfrom multiple "+\
+                      "Assembly objects.\n")
         except (KeyboardInterrupt, SystemExit):
             print("assembly step1 interrupted.")
             raise
+        #except RunTimeWarning:
+        #    pass
+
         ## close client when done or if interrupted
         finally:
             ipyclient.close()
@@ -690,17 +693,24 @@ class Assembly(object):
                 for _, sample in self.samples.items():
                     assemble.rawedit.run(self, sample, ipyclient, 
                                          preview, force)
+
+        except IOError:
+            print("No parallel cluster controller detected." \
+                 +"Start one with `ipcluster start`.")
+
         except (KeyboardInterrupt, SystemExit):
             print("assembly step2 interrupted")
             raise
+            
         ## close parallel client if done or interrupted
         finally:
             ipyclient.close()
             if preview:
                 print(".")
+            ## checkpoint the data obj
+            self._save()
 
-        ## pickle the data obj
-        self._save()
+
 
 
     def step3(self, samples=None, preview=0, noreverse=0, force=False):
