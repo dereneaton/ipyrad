@@ -1,9 +1,12 @@
 
+.. include:: global.rst
+
 .. _installation:
 
 
 Installation with conda
 -----------------------
+
 The easiest way to install *ipyrad* and all of its dependencies is 
 to use conda_, which is a command line program for installing Python
 packages. If you do not have *conda* installed, follow these 
@@ -53,7 +56,7 @@ HPC installation
 ----------------
 One of the benefits of using *conda* for installation is that it 
 creates a Python package directory in your home directory called 
-`~/anaconda/` (or ~/miniconda/) where new packages are installed.
+``~/anaconda/`` (or ``~/miniconda/``) where new packages are installed.
 Make sure you follow the installation instructions_ so that Python
 scripts will look in this directory by default. 
 Because these Python packages are not stored in a system-wide 
@@ -64,7 +67,6 @@ system before using them.
 TODO: is MPI an exception to this?
 
 
-.. include:: global.rst
 
 
 
