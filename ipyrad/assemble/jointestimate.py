@@ -7,11 +7,8 @@ import scipy.stats
 import scipy.optimize
 import numpy as np
 import itertools
-import glob
 import os
-import multiprocessing
 import gzip
-from ipyrad.assemble import worker
 from collections import Counter
 
 
@@ -246,7 +243,7 @@ def run(data, samples, ipyclient, force):
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(optim, submitted_args)
         fakeres = results.get()
-        print(fakeres)
+        #print(fakeres)
 
         ## get results and remove temp files
         cleanup(data, samples)
@@ -273,7 +270,7 @@ def cleanup(data, samples):
             sampobj.stats["state"] = 4
             sampobj.stats["hetero_est"] = est_h
             sampobj.stats["error_est"] = est_e
-            data.stamp("s4 params estimated on "+sampobj.name)
+            data._stamp("s4 params estimated on "+sampobj.name)
             os.remove(tempres)
         else:
             pass

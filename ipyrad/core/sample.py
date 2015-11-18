@@ -16,7 +16,7 @@ class Sample(object):
         ## a sample name
         self.name = name
         self.barcode = ""
-        self.pear = 0
+        self.merged = 0
 
         ## stats dictionary
         self.stats = pd.Series(

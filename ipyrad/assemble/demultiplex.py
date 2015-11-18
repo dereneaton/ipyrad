@@ -469,16 +469,16 @@ def parallel_chunker(data, raws, paired, ipyclient):
 
 
 
-def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum, ipyclient):
+def parallel_sorter(data, rawtups, chunks, cutter, longbar, filenum, ipyclient):
     """ takes list of chunk files and runs barmatch function
-    on them across N processors and outputs temp file results.
+    on them across all engines and outputs temp file results.
     This is parallelized on N chunks.
     """
     ## send file to multiprocess queue"
     chunknum = 0
     submitted_args = []
     for tmptuple in chunks:
-        submitted_args.append([data, rawfilename, tmptuple, cutter,
+        submitted_args.append([data, rawtups, tmptuple, cutter,
                                longbar, chunknum, filenum])
         chunknum += 1
 
@@ -754,7 +754,7 @@ if __name__ == "__main__":
 
     ## run test
     import ipyrad as ip
-    from ipyrad.core.assembly import Assembly
+    #from ipyrad.core.assembly import Assembly
 
     ## get current location
     PATH = os.path.abspath(os.path.dirname(__file__))
@@ -762,7 +762,7 @@ if __name__ == "__main__":
     IPATH = os.path.dirname(os.path.dirname(PATH))
     
     DATA = os.path.join(IPATH, "tests", "test_rad")
-    TEST = Assembly("test-demultiplex")
+    TEST = ip.Assembly("test-demultiplex")
     #TEST = ip.load_assembly(os.path.join(DATA, "testrad"))
     TEST.set_params(1, "./")
     TEST.set_params(2, "./tests/data/sim_rad_test_R1_.fastq.gz")

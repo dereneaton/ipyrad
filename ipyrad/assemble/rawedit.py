@@ -473,7 +473,7 @@ def cleanup(data, sample, submitted, results, force):
     sample.stats.reads_filtered = fcounts["keep"]
 
     ## save stats to the sample??
-    data.stamp("s2 rawediting on "+sample.name)        
+    data._stamp("s2 rawediting on "+sample.name)        
 
 
 

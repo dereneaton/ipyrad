@@ -13,12 +13,13 @@ def load_assembly(tryname):
     """ loads an ipython pickled Assembly object """
     if ".assembly" not in tryname:
         tryname += ".assembly"
-    if os.path.exists(tryname):
+
+    if not os.path.exists(tryname):
+        print("cannot find", tryname, "try entering the full path to file")
+    else:
         with open(tryname, "rb") as pickin:
             data = dill.load(pickin)
         return data
-    else:
-        print("cannot find", tryname, "try entering the full path to file")
 
 
 def save_dataobj():

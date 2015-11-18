@@ -1,12 +1,9 @@
 #!/usr/bin/env ipython2
 
-""" ipyrad Assembly class object. 
-    This is used for the following:
-        -- to store and modify a params dictionary.
-        -- to view analysis history log.
-        -- to load/link to data saved on disk.
-        -- to run assembly steps on samples.
-"""
+""" ipyrad Assembly class object. """
+
+# pylint: disable=E1101
+# pylint: disable=E1103
 
 from __future__ import print_function
 import os
@@ -19,18 +16,13 @@ import copy
 import subprocess
 import pandas as pd
 import ipyparallel as ipp
+
+from types import *
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.core.sample import Sample
 from ipyrad import assemble
-from types import *
-
-
-# pylint: disable=E1101
-# pylint: disable=E1103
-
-
-## TODO: combinatorial indexing
+from ipyrad.core.parallel import __IPNAME__
 
 
 class Assembly(object):
@@ -42,27 +34,28 @@ class Assembly(object):
     Parameters
     ----------
     name : str
-         A name should be passed when creating a new Assembly object.
-         This name will be used as a prefix for all files saved to disk
-         associated with this Assembly. It is automatically set as the
-         prefix name (parameter 14).          
+        A name should be passed when creating a new Assembly object.
+        This name will be used as a prefix for all files saved to disk
+        associated with this Assembly. It is automatically set as the
+        prefix name (parameter 14).          
+
 
     Attributes
     ----------
     name : str
         A name for the Assembly object. Used for all saved files on disk.
     samples : dict
-        Returns a dictionary with Sample names as keys and Sample objects as values.
+        Returns a dict with Sample names as keys and Sample objects as values.
     barcodes : dict
         Returns a dictionary with Sample names as keys and barcodes as values.
         The barcodes information is fetched from parameter 3
         `[Assembly].paramsdict['barcodes_path']`.
     vsearch : str
-        The path to the default vsearch executable. If not found, this can be changed
-        by setting `[Assembly].vsearch = [newpath]`.
+        Path to the vsearch executable. This can be changed int
+        [Assembly].vsearch = [newpath].
     muscle : str
-        The path to the default muscle executable. If not found, this can be changed
-        by setting `[Assembly].vsearch = [newpath]`.
+        Path to the muscle executable. This can be changed in
+        [Assembly].vsearch = [newpath].
     log : list
         A list of all modifications to the Assembly object and its Samples with
         time stamps. Use `print [Assembly].log` for easier viewing.
@@ -79,17 +72,17 @@ class Assembly(object):
 
      """
     def __init__(self, name):
-        ## a project name
-        ## TODO: make global and do not allow duplicate names?
-        ## or maybe allow, just know they old files will be overwritten
-        self.name = name
+
+        ## obj name
+        self.name = name    
+        print("New Assembly object `{}` created".format(self.name))
 
         ## get binaries of dependencies
         self.vsearch, self.muscle = getbins()
 
         ## link a log history of executed workflow
         self.log = []
-        self.stamp(self.name+" created")
+        self._stamp(self.name+" created")
         self.statsfiles = ObjDict()
 
         ## samples linked 
@@ -138,11 +131,6 @@ class Assembly(object):
                        ("hierarchical_clustering", 0)
         ])
     
-        ## Require user to link Sample objects 
-        ## self.link_barcodes()
-        ## link barcodes dict if already in barcodes_path
-        #if os.path.exists(self.paramsdict["barcodes_path"]):
-        #    self.barcodes = self.link_barcodes()
 
     @property
     def stats(self):
@@ -154,31 +142,31 @@ class Assembly(object):
                       #dtype=[int, int, int, int, int, float, float, int])
 
                       
-    def stamp(self, event):
-        """ Stamps an event into the log history. TODO: Should probably
-        change this to a private function, e.g., _stamp """
+    def _stamp(self, event):
+        """ Stamps an event into the log history. """
         tev = time.strftime("%m/%d/%y %H:%M:%S", time.gmtime())
         self.log.append((self.name, tev, event))
 
 
 
-    def link_fastqs(self, pear=0, force=False):
+    def link_fastqs(self, merged=False, force=False):
         """ Create Sample objects for samples in sorted_fastq_path.
 
         Note
         ----
-        link_fastqs() is called automatically when parameter 4 is
-        modified.
+        link_fastqs() is called automatically when parameter 4 
+        [sorted_fastq_path] is modified.
 
         Parameters
         ----------
-        pear : int
-            Set to 1 if first and second reads were already merged
-            using the software `PEAR`.
-        force : int
+        merged : bool
+            Set to True if files represent first and second reads that were 
+            merged using some external software such as `PEAR`.
+
+        force : bool
             Appends additional fastq files to Samples that are already
-            linked to the Assembly object. To replace the linked files
-            with different ones do not use `force`.
+            linked to the Assembly object. To replace the linked files,
+            instead of appending, use `force=True`.
 
         Returns
         -------
@@ -234,8 +222,8 @@ class Assembly(object):
                     linked += 1
 
             ## check if data were pear_merged
-            if pear:
-                self.samples[sname].pear = 1
+            if merged:
+                self.samples[sname].merged = 1
             else:
                 if '.forward' in fastq[0]:
                     print("warning: if R1 and R2 data are merged with PEAR "+\
@@ -407,7 +395,7 @@ class Assembly(object):
         ## if matching
         if param in ['1', 'working_directory']:
             self.paramsdict['working_directory'] = expander(newvalue)
-            self.stamp("[1] set to "+newvalue)
+            self._stamp("[1] set to "+newvalue)
             self.dirs["working"] = self.paramsdict["working_directory"]
 
 
@@ -416,7 +404,7 @@ class Assembly(object):
             if os.path.isdir(fullrawpath):
                 fullrawpath = os.path.join(fullrawpath, "*.gz")
             self.paramsdict['raw_fastq_path'] = fullrawpath
-            self.stamp("[2] set to "+newvalue)
+            self._stamp("[2] set to "+newvalue)
             #if not self.paramdict["raw_fastq_path"]:
             self.dirs["fastqs"] = os.path.dirname(
                                      self.paramsdict["raw_fastq_path"])
@@ -428,10 +416,10 @@ class Assembly(object):
             if glob.glob(fullbarpath):
                 self.paramsdict['barcodes_path'] = fullbarpath
                 self.link_barcodes()
-                self.stamp("[3] set to "+newvalue)
+                self._stamp("[3] set to "+newvalue)
             elif not fullbarpath:
                 self.paramsdict['barcodes_path'] = fullbarpath                
-                self.stamp("[3] set to empty")
+                self._stamp("[3] set to empty")
             else:
                 print('cannot find barcodes file')
 
@@ -443,7 +431,7 @@ class Assembly(object):
             self.paramsdict['sorted_fastq_path'] = newvalue
             ## link_fastqs will check that files exist
             self.link_fastqs()
-            self.stamp("[4] set to "+newvalue)
+            self._stamp("[4] set to "+newvalue)
             #if not self.paramdict["raw_fastq_path"]:
             self.dirs["fastqs"] = os.path.dirname(
                                    self.paramsdict["sorted_fastq_path"])
@@ -453,17 +441,17 @@ class Assembly(object):
             assert isinstance(newvalue, tuple), \
                 "cut site must be a tuple, e.g., (TGCAG, "") "
             self.paramsdict['restriction_overhang'] = newvalue
-            self.stamp("[5] set to "+str(newvalue))
+            self._stamp("[5] set to "+str(newvalue))
 
 
         elif param in ['6', 'max_low_qual_bases']:
             self.paramsdict['max_low_qual_bases'] = int(newvalue)
-            self.stamp("[6] set to "+str(newvalue))
+            self._stamp("[6] set to "+str(newvalue))
 
 
-        elif param in ['7', 'N_processors']:
-            self.paramsdict['N_processors'] = int(newvalue)
-            self.stamp("[7] set to "+str(newvalue))
+        elif param in ['7', "engines_per_job"]:
+            self.paramsdict['engines_per_job'] = int(newvalue)
+            self._stamp("[7] set to "+str(newvalue))
 
 
         elif param in ['8', 'mindepth_statistical']:
@@ -476,7 +464,7 @@ class Assembly(object):
                        mindepth_majrule")                
             else:
                 self.paramsdict['mindepth_statistical'] = int(newvalue)
-                self.stamp("[8] set to "+str(newvalue))
+                self._stamp("[8] set to "+str(newvalue))
 
 
         elif param in ['9', 'mindepth_majrule']:
@@ -485,7 +473,7 @@ class Assembly(object):
                        mindepth_statistical")
             else:
                 self.paramsdict['mindepth_majrule'] = int(newvalue)
-                self.stamp("[9] set to "+str(newvalue))
+                self._stamp("[9] set to "+str(newvalue))
 
 
         elif param in ['10', 'datatype']:
@@ -497,87 +485,87 @@ class Assembly(object):
                 print("error: datatype not recognized")
             else:
                 self.paramsdict['datatype'] = str(newvalue)
-                self.stamp("[10] set to "+newvalue)
+                self._stamp("[10] set to "+newvalue)
 
 
         elif param in ['11', 'clust_threshold']:
             self.paramsdict['clust_threshold'] = float(newvalue)
-            self.stamp("[11] set to {}".format(newvalue))
+            self._stamp("[11] set to {}".format(newvalue))
 
 
         elif param in ['12', 'minsamp']:
             self.paramsdict['minsamp'] = int(newvalue)
-            self.stamp("[12] set to {}".format(int(newvalue)))
+            self._stamp("[12] set to {}".format(int(newvalue)))
 
 
         elif param in ['13', 'max_shared_heterozygosity']:
             self.paramsdict['max_shared_heterozygosity'] = newvalue
-            self.stamp("[13] set to {}".format(newvalue))
+            self._stamp("[13] set to {}".format(newvalue))
 
 
         elif param in ['14', 'prefix_outname']:
             self.paramsdict['prefix_outname'] = newvalue
-            self.stamp("[14] set to {}".format(newvalue))
+            self._stamp("[14] set to {}".format(newvalue))
 
 
         elif param in ['15', 'phred_Qscore_offset']:
             self.paramsdict['phred_Qscore_offset'] = int(newvalue)
-            self.stamp("[15] set to {}".format(int(newvalue)))
+            self._stamp("[15] set to {}".format(int(newvalue)))
 
 
         elif param in ['16', 'max_barcode_mismatch']:
             self.paramsdict['max_barcode_mismatch'] = int(newvalue)
-            self.stamp("[16] set to {}".format(int(newvalue)))
+            self._stamp("[16] set to {}".format(int(newvalue)))
 
         ### ....
         elif param in ['17', 'filter_adapters']:
             self.paramsdict['filter_adapters'] = int(newvalue)
-            self.stamp("[17] set to "+str(newvalue))
+            self._stamp("[17] set to "+str(newvalue))
 
 
         elif param in ['18', 'filter_min_trim_len']:
             self.paramsdict['filter_min_trim_len'] = int(newvalue)
-            self.stamp("[18] set to {}".format(int(newvalue)))
+            self._stamp("[18] set to {}".format(int(newvalue)))
 
 
         elif param in ['19', 'ploidy']:
             self.paramsdict['ploidy'] = int(newvalue)
-            self.stamp("[19] set to {}".format(int(newvalue)))
+            self._stamp("[19] set to {}".format(int(newvalue)))
 
 
         elif param in ['20', 'max_stack_size']:
             self.paramsdict['max_stack_size'] = int(newvalue)
-            self.stamp("[20] set to {}".format(int(newvalue)))
+            self._stamp("[20] set to {}".format(int(newvalue)))
 
 
         elif param in ['21', 'max_Ns_consens']:
             self.paramsdict['max_Ns_consens'] = int(newvalue)
-            self.stamp("[21] set to {}".format(int(newvalue)))
+            self._stamp("[21] set to {}".format(int(newvalue)))
 
 
         elif param in ['22', 'max_Hs_consens']:
             self.paramsdict['max_Hs_consens'] = int(newvalue)
-            self.stamp("[22] set to {}".format(int(newvalue)))
+            self._stamp("[22] set to {}".format(int(newvalue)))
 
 
         elif param in ['23', 'max_Hs_consens']:
             self.paramsdict['max_Hs_consens'] = int(newvalue)
-            self.stamp("[22] set to {}".format(int(newvalue)))
+            self._stamp("[22] set to {}".format(int(newvalue)))
 
 
         elif param in ['24', 'max_Indels_locus']:
             self.paramsdict['max_Indels_locus'] = int(newvalue)
-            self.stamp("[24] set to {}".format(int(newvalue)))
+            self._stamp("[24] set to {}".format(int(newvalue)))
 
 
         elif param in ['25', 'trim_overhang']:
             self.paramsdict['trim_overhang'] = int(newvalue)
-            self.stamp("[25] set to {}".format(int(newvalue)))
+            self._stamp("[25] set to {}".format(int(newvalue)))
 
 
         elif param in ['26', 'hierarchical_clustering']:
             self.paramsdict['hierarchical_clustering'] = int(newvalue)
-            self.stamp("[26] set to {}".format(int(newvalue)))
+            self._stamp("[26] set to {}".format(int(newvalue)))
 
 
 
@@ -633,11 +621,11 @@ class Assembly(object):
 
         ## launch parallel client within guarded statement
         try: 
-            ipyclient = ipp.Client()
+            ipyclient = ipp.Client(cluster_id=__IPNAME__)
 
             if not self.samples:
                 assemble.demultiplex.run(self, preview, ipyclient)
-                self.stamp("s1_demultiplexing:")
+                self._stamp("s1_demultiplexing:")
             else:
                 print("samples already found in", self.name, ""+\
                       "use ip.merge() to combine samples \nfrom multiple "+\
@@ -668,35 +656,23 @@ class Assembly(object):
 
         ## launch parallel client within guarded statement
         try:
-            ipyclient = ipp.Client()
+            ipyclient = ipp.Client(cluster_id=__IPNAME__)
 
             if sample:
                 ## if sample key, replace with sample obj
-                if isinstance(sample, str):
-                    ## in case name doesn't match key
-                    skey = sample.replace("_R1_", "")
-                    if skey in self.samples:
-                        sample = self.samples[skey]
-                        assemble.rawedit.run(self, sample, preview, force)
-                    else:
-                        print("sample", sample, "not in", self.name)
-                else:
-                    if isinstance(sample, list):
-                        for samp in sample:
-                            ## get sample from dict key
-                            samp = self.samples[samp]
-                            assemble.rawedit.run(self, samp, ipyclient, 
-                                                 preview, force)
+                assert isinstance(sample, list), \
+                "to subselect samples enter as a list, e.g., [A, B]."
+                for samp in sample:
+                    ## get sample from dict key
+                    samp = self.samples[samp]
+                    assemble.rawedit.run(self, samp, ipyclient, 
+                                         preview, force)
             else:
                 if not self.samples:
                     assert self.samples, "No Samples in "+self.name
                 for _, sample in self.samples.items():
                     assemble.rawedit.run(self, sample, ipyclient, 
                                          preview, force)
-
-        except IOError:
-            print("No parallel cluster controller detected." \
-                 +"Start one with `ipcluster start`.")
 
         except (KeyboardInterrupt, SystemExit):
             print("assembly step2 interrupted")
@@ -705,6 +681,7 @@ class Assembly(object):
         ## close parallel client if done or interrupted
         finally:
             ipyclient.close()
+
             if preview:
                 print(".")
             ## checkpoint the data obj
@@ -717,28 +694,27 @@ class Assembly(object):
         """ step 3: clustering within samples """
 
         ## launch parallel client
-        ipyclient = ipp.Client()
+        ipyclient = ipp.Client(cluster_id=__IPNAME__)
 
-        ## TODO: Make sure restarting at 3.5 works...
         try:
             ## sampling
             if samples:
+
                 ## if string make a list(tuple)
-                if isinstance(samples, str):
-                    ## make sure pair names aren't used
-                    skey = samples.replace("_R1_", "")
-                    samples = [skey]
+                assert isinstance(samples, list), \
+                "to subselect samples enter as a list, e.g., [A, B]."
 
                 ## make into a tuple list with (key, sample)
-                ## filters out bad names
+                ## allows for names as keys or Sample objects
                 subsamples = []
                 for sample in samples:
                     if self.samples.get(sample):
                         subsamples.append((sample, self.samples[sample]))
+
                 if subsamples:
-                    ## if sample is a key, replace with sample obj
-                    print("Clustering {} samples on {} processors.".\
-                          format(len(samples), self.paramsdict["N_processors"]))
+                    print("Clustering {} samples using {} engines per job.".\
+                      format(len(samples), self.paramsdict["engines_per_job"]))
+                    ## run
                     assemble.cluster_within.run(self, subsamples, ipyclient, 
                                                 preview, noreverse, force)
                 else:
@@ -746,14 +722,17 @@ class Assembly(object):
             else:
                 ## if no samples selected and no samples exist
                 if not self.samples:
-                    ## try linking edits from working dir
-                    print("linked fasta files from [working_directory]/edits")
+                    ## try linking edits from [work]/edits/
+                    print("linked fastq files from [working_directory]/edits")
                     self.link_fastas()
-                ## run clustering for all samples
-                print("clustering {} samples on {} processors".\
-                     format(len(self.samples), self.paramsdict["N_processors"]))
+                
+                ## print to screen
+                print("clustering {} samples using {} engines per job".\
+                 format(len(self.samples), self.paramsdict["engines_per_job"]))
+                ## run
                 assemble.cluster_within.run(self, self.samples.items(), 
                                         ipyclient, preview, noreverse, force)
+
         except (KeyboardInterrupt, SystemExit):
             print("assembly step3 interrupted")
             raise
@@ -774,7 +753,7 @@ class Assembly(object):
         data.samples['sample'].stats['state'] = 3 """
 
         ## launch parallel client
-        ipyclient = ipp.Client()
+        ipyclient = ipp.Client(cluster_id=__IPNAME__)
 
         try: 
             ## sampling
