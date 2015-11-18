@@ -914,7 +914,7 @@ def getbins():
     if 'linux' in _platform:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
-                       "vsearch-1.1.3-linux-x86_64")
+                       "vsearch-1.9.2-linux-x86_64")
         muscle = os.path.join(
                        os.path.abspath(bin_path),
                        "muscle3.8.31_i86linux64")
