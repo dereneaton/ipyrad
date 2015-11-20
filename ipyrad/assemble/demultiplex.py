@@ -474,6 +474,7 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum, ipyclie
     on them across N processors and outputs temp file results.
     This is parallelized on N chunks.
     """
+    print(ipyclient.ids)
     ## send file to multiprocess queue"
     chunknum = 0
     submitted_args = []
@@ -481,10 +482,11 @@ def parallel_sorter(data, rawfilename, chunks, cutter, longbar, filenum, ipyclie
         submitted_args.append([data, rawfilename, tmptuple, cutter,
                                longbar, chunknum, filenum])
         chunknum += 1
-
+    print(submitted_args)
     ## uses all available processors
     dview = ipyclient.load_balanced_view()
     res = dview.map_async(barmatch, submitted_args)
+    print(res)
     res.get()
     del dview
  
