@@ -145,6 +145,14 @@ class Assembly(object):
                        ("reference_sequence", "")
         ])
     
+        ## init with default dirs
+        self.set_params('working_directory', 
+            self.get_params('working_directory'))
+        self.set_params('sorted_fastq_path', 
+            self.get_params('sorted_fastq_path'))
+        self.set_params('reference_sequence', 
+            self.get_params('reference_sequence'))
+
         ## Require user to link Sample objects 
         ## self.link_barcodes()
         ## link barcodes dict if already in barcodes_path
@@ -730,14 +738,23 @@ class Assembly(object):
         self._save()
 
 
-    def step3(self, samples=None, preview=0, noreverse=0, force=False):
+    def step3(self, assembly_method="denovo", samples=None, preview=0, 
+              noreverse=0, force=False):
         """ step 3: clustering within samples """
 
         ## Test if we are doing reference sequence mapping
-        ## Then test if the ref sequence has been indexed yet
-        ## If the reference sequence parameter is empty we'll pass over this.
-        if not self.paramsdict["reference_sequence"] == "":
-            print(index_reference_sequence(self))
+        assert assembly_method in list("denovo", "reference", "hybrid"), \
+        "The assembly_method option must be one of the following: "+\
+        "denovo, reference, or hybrid."
+
+        ## Require reference seq for reference-based methods
+        if assembly_method != "denovo":
+            assert self.paramsdict['reference_sequence'], \
+            "Reference or hybrid assembly requires a value for "+\
+            "reference_sequence_path paramter."
+
+            ## index the reference sequence
+            index_reference_sequence(self)
 
         ## launch parallel client
         ipyclient = ipp.Client()
@@ -1049,6 +1066,8 @@ def bufcount(filename, gzipped):
     fin.close()
     return nlines
 
+
+
 def index_reference_sequence( self ):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
@@ -1077,6 +1096,7 @@ def index_reference_sequence( self ):
 
         print(cmd)
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+
 
 if __name__ == "__main__":
     ## test...
