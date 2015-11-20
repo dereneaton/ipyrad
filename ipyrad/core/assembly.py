@@ -150,8 +150,6 @@ class Assembly(object):
             self.get_params('working_directory'))
         self.set_params('sorted_fastq_path', 
             self.get_params('sorted_fastq_path'))
-        self.set_params('reference_sequence', 
-            self.get_params('reference_sequence'))
 
         ## Require user to link Sample objects 
         ## self.link_barcodes()
@@ -743,7 +741,7 @@ class Assembly(object):
         """ step 3: clustering within samples """
 
         ## Test if we are doing reference sequence mapping
-        assert assembly_method in list("denovo", "reference", "hybrid"), \
+        assert assembly_method in list(["denovo", "reference", "hybrid"]), \
         "The assembly_method option must be one of the following: "+\
         "denovo, reference, or hybrid."
 
