@@ -1,52 +1,68 @@
 
 .. _installation:
 
-Installation
-============
 
-.. toctree::
-   :maxdepth: 2
-
-   macports-installation.rst
-
-Using Pip / Easy Install
-------------------------
-
+Installation with conda
+-----------------------
 The easiest way to install *ipyrad* and all of its dependencies is 
-to use *conda*, which is the current standard for installing Python
-packages. Follow the very simple instructions to install *Anaconda*
-or *Miniconda* for Python2.7 here_. Once installed you can use *conda* 
-to install additional Python packages including *ipyrad* with commands 
-like below. 
+to use conda_, which is a command line program for installing Python
+packages. If you do not have *conda* installed, follow these 
+instructions_ to install either *Anaconda* or *Miniconda* 
+for Python2.7. If you're working on an HPC system you can install
+*conda* in your home directory even without administrative privileges. 
 
-.. _here: http://conda.pydata.org/docs/install/quick.html
+Either installation wil create a command line program called *conda* 
+which can be used to install Python packages. The main difference between the
+two is that *Anaconda* will also install a large suite of commonly used Python 
+packages along with it, whereas *Miniconda* is a bare bones version that
+includes only the framework to install new packages. Unless you're really hard
+up for disk space I recommend installing *Anaconda*. 
 
-    $ conda update 
-    $ conda install ipyrad  
+To install *ipyrad* using *conda* simply type the following into a terminal ::
+
+    $ conda upgrade                 ## updates conda 
+    $ conda install ipyrad          ## installs the latest release
+
+If you wish to install a specific version of ipyrad, or to upgrade to the 
+latest release from an older version, you could use one of the following commands::
+
+    $ conda install ipyrad=0.7.0    ## install ipyrad v.0.7.0
+    $ conda update ipyrad           ## update to the latest
 
 
-In contrast to its predecessor (*pyrad*), *ipryad* makes use of many more
-Python resources which are easily bundled with the installation when *conda*
-is used. These include the following: 
+Dependencies
+------------
+All required dependencies for *ipyrad* should be installed along with 
+it when using *conda*. This will include the following Python packages, 
+some of which install additional dependencies of their own. 
 
 - Numpy -- Scientific processing  
 - Scipy -- Scientific processing  
 - Pandas -- Used for manipulating data frames  
 - Sphinx -- Used for building documentation  
-- IPython -- Interactivity  
+- IPython2 -- Interactive version of Python 2.7
 - ipyparallel -- Parallel, threading, MPI support
 - jupyter -- Creating reproducible notebooks  
-- H5py -- Database structure for large data sets  
+- Cython -- C bindings for Python 
+- H5py -- Database and HDF5 headers
 - Dill -- Store pickle objects of complex Classes  
-- Toyplot -- [optional]...   
+- Toyplot -- [optional].
 
-Installing on HPC
------------------
-One of the greatest strengths of using *conda* for installation is that it 
-creates a Python package directory in your home directory called ``~/anaconda/``
-where new packages are installed, and because they are not stored in a 
-system-wide directory you do not need administrator privileges to install 
-new packages.  
+
+HPC installation
+----------------
+One of the benefits of using *conda* for installation is that it 
+creates a Python package directory in your home directory called 
+`~/anaconda/` (or ~/miniconda/) where new packages are installed.
+Make sure you follow the installation instructions_ so that Python
+scripts will look in this directory by default. 
+Because these Python packages are not stored in a system-wide 
+directory you will not need administrator privileges to install 
+new packages, nor will you have to load these modules from the 
+system before using them. 
+
+TODO: is MPI an exception to this?
+
 
 .. include:: global.rst
 
