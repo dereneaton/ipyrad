@@ -23,6 +23,8 @@ class Sample(object):
             index=["state",
                    "reads_raw",
                    "reads_filtered",
+                   "refseq_mapped_reads",
+                   "refseq_unmapped_reads",
                    "clusters_total",
                    "clusters_kept",
                    "hetero_est",
@@ -33,6 +35,7 @@ class Sample(object):
         self.files = ObjDict({
               "fastq": [],
               "edits": [],
+              "mapped_reads": [],
               "clusters": [],
               "depths": [],
               "consens": [],
