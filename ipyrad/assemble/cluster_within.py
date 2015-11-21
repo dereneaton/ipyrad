@@ -369,6 +369,14 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
 
     # If reference sequence is specified then try read mapping, else pass.
     if not data.paramsdict["reference_sequence"] == "":
+        ## make output directory for read mapping process
+        data.dirs.refmapping = os.path.join(
+                                os.path.realpath(data.paramsdict["working_directory"]),
+                                data.name+"_"+
+                                "refmapping")
+        if not os.path.exists(data.dirs.refmapping):
+            os.makedirs(data.dirs.refmapping)
+
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
         results.get()
@@ -599,9 +607,28 @@ def mapreads(args):
     if preview:
         print("preview: in run_full, using", nthreads)
 
-    samhandle = os.path.join(data.dirs.edits, sample.name+".sam")
-    bamhandle = os.path.join(data.dirs.edits, sample.name+".bam")
+    ## Files we'll use during reference sequence mapping
+    ##
+    ## samhandle - Raw output from smalt reference mapping
+    ## unmapped_bamhandle - bam file containing only unmapped reads
+    ## mapped_bamhandle - bam file with only successfully mapped reads
+    ##    In the case of paired end, we only consider pairs where both
+    ##    reads map successfully
+    ## sorted_*_bamhandle - Sorted bam files for mapped and unmapped
+    ##    This is a precursor to bam2fq which requires sorted bams
+    ## unmapped_fastq_handle - The final output file of this function
+    ##    writes out unmapped reads to the 'edits' directory as .fq
+    ##    which is what downstream analysis expects
+    samhandle = os.path.join(data.dirs.refmapping, sample.name+".sam")
+    unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
+    sorted_unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-unmapped.bam")
+    sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-mapped.bam")
     unmapped_fastq_handle = os.path.join(data.dirs.edits, sample.name+".fastq")
+
+    ## Stash this one for later, because we'll need access to the successfully
+    ## mapped reads downstream
+    sample.files.mapped_reads = sorted_mapped_bamhandle
 
 ################
 # Paired end isn't handled yet, but it needs to be.
@@ -652,7 +679,7 @@ def mapreads(args):
     ##   -f = Select only reads with associated flags set (0x4 means unmapped)
     cmd = data.samtools+\
         " view -b -f 0x4 "+samhandle+\
-            " > " + bamhandle
+            " > " + unmapped_bamhandle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
@@ -664,8 +691,8 @@ def mapreads(args):
     ##   -o = Output file name
     cmd = data.samtools+\
         " sort -T "+samhandle+".tmp" +\
-        " -O bam "+bamhandle+\
-        " -o "+bamhandle+".sorted"
+        " -O bam "+unmapped_bamhandle+\
+        " -o "+sorted_unmapped_bamhandle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
@@ -676,11 +703,21 @@ def mapreads(args):
     ## TODO: output file name is fsck, and it also needs to be .gz to kosher with
     ##       the other files for de novo
     cmd = data.samtools+\
-        " bam2fq "+bamhandle+".sorted"+\
+        " bam2fq "+sorted_unmapped_bamhandle+\
         " > "+unmapped_fastq_handle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
+
+    ## Get some stats from the bam files
+    ## This is moderately hackish. samtools flagstat returns
+    ## the number of reads in the bam file as the first element
+    ## of the first line, this call makes this assumption.
+    cmd = data.samtools+\
+        " flagstat "+sorted_unmapped_bamhandle
+    result = subprocess.check_output( cmd, shell=True,
+                                           stderr=subprocess.STDOUT )
+    sample.stats["refseq_unmapped_reads"] = result.strip().split()[0]
 
     ## This is hax to get fastq to fasta to get this off the ground.
     ## samtools bam2fq natively returns fastq, you just delete this code
