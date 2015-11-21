@@ -36,6 +36,7 @@ class Sample(object):
               "fastq": [],
               "edits": [],
               "mapped_reads": [],
+              "unmapped_reads": [],
               "clusters": [],
               "depths": [],
               "consens": [],

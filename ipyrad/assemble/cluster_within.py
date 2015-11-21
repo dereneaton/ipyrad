@@ -66,6 +66,22 @@ def cleanup(data, sample):
     else:
         print("no clusters found for {}".format(sample.name))
 
+    ## Get some stats from the bam files
+    ## This is moderately hackish. samtools flagstat returns
+    ## the number of reads in the bam file as the first element
+    ## of the first line, this call makes this assumption.
+    if not data.paramsdict["reference_sequence"] == "":
+        cmd = data.samtools+\
+            " flagstat "+sample.files.unmapped_reads
+        result = subprocess.check_output( cmd, shell=True,
+                                           stderr=subprocess.STDOUT )
+        sample.stats["refseq_unmapped_reads"] = int(result.split()[0])
+
+        cmd = data.samtools+\
+            " flagstat "+sample.files.mapped_reads
+        result = subprocess.check_output( cmd, shell=True,
+                                           stderr=subprocess.STDOUT )
+        sample.stats["refseq_mapped_reads"] = int(result.split()[0])
 
 
 def muscle_align2(data, sample, chunk, num):
@@ -376,6 +392,13 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                                 "refmapping")
         if not os.path.exists(data.dirs.refmapping):
             os.makedirs(data.dirs.refmapping)
+        ## Set the mapped and unmapped reads files for this sample
+        for sample in samples:
+            sorted_unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-unmapped.bam")
+            sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-mapped.bam")
+            sample.files.unmapped_reads = sorted_unmapped_bamhandle
+    	    sample.files.mapped_reads = sorted_mapped_bamhandle
+            print(sample.files.mapped_reads)
 
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
@@ -622,8 +645,8 @@ def mapreads(args):
     samhandle = os.path.join(data.dirs.refmapping, sample.name+".sam")
     unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
     mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
-    sorted_unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-unmapped.bam")
-    sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-mapped.bam")
+    sorted_unmapped_bamhandle = sample.files["unmapped_reads"]
+    sorted_mapped_bamhandle = sample.files["mapped_reads"]
     unmapped_fastq_handle = os.path.join(data.dirs.edits, sample.name+".fastq")
 
     ## Stash this one for later, because we'll need access to the successfully
@@ -667,6 +690,41 @@ def mapreads(args):
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
 
+
+    ## Get the reads that map successfully. For PE both reads must map
+    ## successfully in order to qualify.
+    ##   1) Get mapped reads and convert to bam
+    ##   2) Sort them and save the path to the bam to sample.files.mapped_reads
+    ## The mapped reads are synced back into the pipeline downstream, after
+    ## muscle aligns the umapped reads.
+    ##
+    ## samtools view arguments
+    ##   -b = write to .bam
+    ##   -F = Select all reads that DON'T have this flag (0x4 means unmapped)
+    ##        <TODO>: This is deeply hackish right now, it will need some
+    ##                serious thinking to make this work for PE, etc.
+    cmd = data.samtools+\
+        " view -b -F 0x4 "+samhandle+\
+            " > " + mapped_bamhandle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
+    ## Step 2 sort mapped bam
+    ##   -T = Temporary file name, this is required by samtools, you can ignore it
+    ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
+    ##   -O = Output file format, in this case bam
+    ##   -o = Output file name
+    cmd = data.samtools+\
+        " sort -T "+samhandle+".tmp" +\
+        " -O bam "+mapped_bamhandle+\
+        " -o "+sorted_mapped_bamhandle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
+
+    ##############################################
+    ## Do unmapped
+    ##############################################
 
     ## Fetch up the unmapped reads and write them to the edits .fasta file
     ## In order to do this we have to go through a little process:
@@ -717,7 +775,16 @@ def mapreads(args):
         " flagstat "+sorted_unmapped_bamhandle
     result = subprocess.check_output( cmd, shell=True,
                                            stderr=subprocess.STDOUT )
-    sample.stats["refseq_unmapped_reads"] = result.strip().split()[0]
+    sample.stats.refseq_unmapped_reads = int(result.split()[0])
+
+    cmd = data.samtools+\
+        " flagstat "+sorted_mapped_bamhandle
+    result = subprocess.check_output( cmd, shell=True,
+                                           stderr=subprocess.STDOUT )
+    sample.stats.refseq_mapped_reads = int(result.split()[0])
+
+    with open('/tmp/wat.do', 'a') as out:
+        out.write(result.split()[0]+" "+sample.name+ " " + sample.files.mapped_reads)
 
     ## This is hax to get fastq to fasta to get this off the ground.
     ## samtools bam2fq natively returns fastq, you just delete this code
