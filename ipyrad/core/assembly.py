@@ -163,7 +163,7 @@ class Assembly(object):
         nameordered = self.samples.keys()
         nameordered.sort()
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
-                      index=nameordered)
+                      index=nameordered).dropna( axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
 
                       
