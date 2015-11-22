@@ -8,6 +8,7 @@ by sequence similarity using vsearch
 from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=F0401
+# pylint: disable=W0142
 
 import os
 import sys
@@ -331,7 +332,7 @@ def build_clusters(data, sample):
 
 
 def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
-    """ pass the samples across N_processors to execute run_full on each.
+    """ pass the samples to N engines to execute run_full on each.
 
     :param data: An Assembly object
     :param samples: one or more samples selected from data
@@ -343,7 +344,7 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     """
     ## nthreads per job for clustering
     threaded_view = ipyclient.load_balanced_view(
-                    targets=ipyclient.ids[::data.paramsdict["N_processors"]])
+                    targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
     tpp = len(threaded_view)
 
     ## make output folder for clusters  
@@ -420,14 +421,23 @@ def derep_and_sort(data, sample, preview, nthreads):
     if len(sample.files.edits) > 1:
         ## create temporary concat file
         tmphandle = os.path.join(data.dirs.edits,
-                              "tmp_"+sample.name+".concat")       
+                              "tmp1_"+sample.name+".concat")       
         with open(tmphandle, 'wb') as tmp:
-            for editfile in sample.files.edits:
-                with open(editfile) as inedit:
+            for editstuple in sample.files.edits:
+                with open(editstuple[0]) as inedit:
                     tmp.write(inedit)
-        handle = tmphandle
+        handle1 = tmphandle
+        if "pair" in data.paramsdict["datatype"]:
+            tmphandle = os.path.join(data.dirs.edits,
+                                     "tmp2_"+sample.name+".concat")       
+            with open(tmphandle, 'wb') as tmp:
+                for editstuple in sample.files.edits:
+                    with open(editstuple[1]) as inedit:
+                        tmp.write(inedit)
+            handle2 = tmphandle
+
     else:
-        handle = sample.files.edits[0]
+        handle1, handle2 = sample.files.edits[0]
 
     ## reverse complement clustering for some types    
     if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
@@ -436,16 +446,18 @@ def derep_and_sort(data, sample, preview, nthreads):
         reverse = " "
 
     ## do dereplication with vsearch
-    cmd = data.vsearch+\
-        " -derep_fulllength "+handle+\
-        reverse+\
-        " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
-        " -sizeout "+\
-        " -threads "+str(nthreads)+\
-        " -fasta_width 0"
-    subprocess.call(cmd, shell=True, 
-                         stderr=subprocess.STDOUT, 
-                         stdout=subprocess.PIPE)
+    for handle in [handle1, handle2]:
+        if handle:
+            cmd = data.vsearch+\
+            " -derep_fulllength "+handle+\
+            reverse+\
+            " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
+            " -sizeout "+\
+            " -threads "+str(nthreads)+\
+            " -fasta_width 0"
+        subprocess.call(cmd, shell=True, 
+                             stderr=subprocess.STDOUT, 
+                             stdout=subprocess.PIPE)
 
 
 
@@ -565,10 +577,15 @@ def clustall(args):
     if preview:
         print("preview: in run_full, using", nthreads)
 
-    ## derep and sort reads by their size
+    ## if reference do ref align here
+
+    ## merge fastq pairs 
+    ## TODO:
+
+    ## convert fastq to fasta, then derep and sort reads by their size
     derep_and_sort(data, sample, preview, nthreads)
 
-    ## cluster_vsearch
+    ## cluster derep fasta files in vsearch 
     cluster(data, sample, preview, noreverse, nthreads)
 
     ## cluster_rebuild
@@ -582,6 +599,9 @@ def run(data, samples, ipyclient, preview, noreverse, force):
     ## list of samples to submit to queue
     subsamples = []
 
+    ## TODO: use vsearch to subsample in preview mode
+    ## vsearch --fastq_subsample FILE --fastqout FILE --sizeout N
+
     ## if sample is already done skip
     for _, sample in samples:
         if not force:
@@ -590,21 +610,33 @@ def run(data, samples, ipyclient, preview, noreverse, force):
                       format(sample.name, int(sample.stats['state'])))
             else:
                 subsamples.append(sample)
-        
         else:
-            ## clean up existing files from this sample and overwrite
-            #if sample.files.clusters:
-            #    if os.path.exists(sample.files.clusters):
-            #        os.remove(sample.files.clusters)
+            ## force to overwrite
             subsamples.append(sample)
 
     ## run subsamples 
-    if subsamples:
-        args = [data, subsamples, ipyclient, preview, noreverse, force]
-        split_among_processors(*args)
-    else:
-        print("\nNo samples found in state 2. To rewrite existing data use\n"+\
-              "force=True, or change Sample states to 2.\n")
+    assert subsamples, "No Samples ready to be clustered. To rewrite existing" \
+                      +"data use force=True, or change Sample's state to 2."
+    args = [data, subsamples, ipyclient, preview, noreverse, force]
+    split_among_processors(*args)
+
+
+
+## TODO: maybe needed when merging...
+# def trim_merge_edge(bases, cut1, cut2):
+#     """ trim off farside cutsite in merged reads --
+#     to replace would require knowing how the cut site is cut."""
+#     ## check if two cutters
+#     if cut2[0]:
+#         bases = bases[:-(len(cut2[0])+1)]
+#     else:
+#         bases = bases[:-(len(cut1[0])+1)]
+#     return bases
+
+            ## USAGE
+            ## trim edges if merge data
+            ## if "merge" in data.paramsdict["datatype"]:
+            ##    bases1 = trim_merge_edge(bases1, cut1, cut2)
 
 
 

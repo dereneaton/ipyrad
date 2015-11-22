@@ -5,8 +5,8 @@ from __future__ import print_function
 import subprocess
 import psutil
 import atexit
-import random
 import time
+import os
 
 
 ## start ipcluster
@@ -53,14 +53,30 @@ def ipcontroller_init(controller="Local"):
     from interfering with other ipcontrollers. The controller option is 
     used to toggle between Local, MPI, PBS.
     """
-    global __IPNAME__
-    ipname = "ipyrad[id="+str(random.randint(1, 999))+"]"
+    ipname = "ipyrad-"+str(os.getpid())
     start(ipname, controller, delay="1.0")
-    ## give engines time to connect... (longer?)
-    time.sleep(5)
+    ## give engines time to connect... TODO: make this smarter
+    time.sleep(1)
+
     atexit.register(stop, ipname)
-    __IPNAME__ = ipname    
-    #print(__IPNAME__, 'init')
+    return ipname    
+
+
+
+# def parallel(engines, controller="Local"):
+#     """
+#     The name is a unique id that keeps this __init__ of ipyrad distinct
+#     from interfering with other ipcontrollers. The controller option is 
+#     used to toggle between Local, MPI, PBS.
+#     """
+#     global __IPNAME__    
+#     print("Establishing {} connection.".format(controller))
+#     ipname = "ipyrad[id="+str(random.randint(1, 999))+"]"
+#     start(ipname, controller, delay="1.0")
+#     ## give engines time to connect... (longer?)    
+#     time.sleep(1)    
+#     atexit.register(stop, ipname)    
+#     __IPNAME__ = ipname
 
 
 
@@ -70,15 +86,13 @@ def ipcontroller_set(controller="Local"):
     from interfering with other ipcontrollers. The controller option is 
     used to toggle between Local, MPI, PBS.
     """
-    global __IPNAME__    
     print("Establishing {} connection.".format(controller))
-    ipname = "ipyrad[id="+str(random.randint(1, 999))+"]"
+    ipname = "ipyrad-"+str(os.getpid())
     start(ipname, controller, delay="1.0")
     ## give engines time to connect... (longer?)    
-    time.sleep(5)    
+    time.sleep(3)    
     atexit.register(stop, ipname)    
-    __IPNAME__ = ipname
-    #print(__IPNAME__, 'set2')
+    return ipname  
 
 
 

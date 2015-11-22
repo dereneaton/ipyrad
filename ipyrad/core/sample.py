@@ -31,7 +31,7 @@ class Sample(object):
 
         ## link to files
         self.files = ObjDict({
-              "fastq": [],
+              "fastqs": [],
               "edits": [],
               "clusters": [],
               "depths": [],
