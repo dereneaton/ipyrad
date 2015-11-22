@@ -14,7 +14,9 @@ requirements = [
     'sphinx',
     'ipython>=4.0',
     'ipyparallel',
-    'jupyter'
+    'ipykernel>=4.1',
+    'jupyter',
+    'jupyter-client>=4.1'
     ]
 
 #import ipyrad

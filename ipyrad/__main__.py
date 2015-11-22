@@ -2,13 +2,15 @@
 """ the main CLI for calling ipyrad """
 
 from __future__ import print_function, division  # Requires Python 2.7+ 
-import optparse
+import argparse
+import pkg_resources
+
+
 
 
 def parse_params():
-    """ a toy func """
+    """ parse the CLI arguments """
     ## create a default Assembly object
-    data = 
     params = open(paramsfile).readlines()
 
     xpoint = 3
