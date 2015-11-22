@@ -168,6 +168,57 @@ def get_params_info(param=""):
         data.setparams("prefix_outname") = c85d4m8p4   ## verbose
         ---------------------------------------------------------------------- 
         """),
+    ("27", """
+        (27) assembly_method -------------------------------------------------
+        A string specifying the desired assembly method. There are three 
+        available options for assembly method:
+            denovo    -   Denovo assembly is the classic pyrad method, and
+                          it is the <default> unless otherwise specified.
+                          Denovo will cluster and align all reads from scratch
+            reference -   Reference assembly will map and align reads to the
+                          provided reference sequence, which must be specified
+                          in parameter 28 (reference_sequence). Strict refer-
+                          ence assembly will throw out all unmapped reads, 
+                          which could be a significant proportion detpending
+                          on the distance between your reference and study
+                          species. Most times you'll want to use 'hybrid'.
+            hybrid    -   Hybrid assembly will attempt to map and align reads
+                          to the provided reference sequence which must be set
+                          in parameter 28. It will also denovo assemble all
+                          unmapped reads, and then merge assembled mapped and 
+                          unmapped for downstream analysis. This is what you'll
+                          want most of the time if you're passing in a refer-
+                          ence sequence.
+        ----------------------------------------------------------------------
+        data.setparams(27) = denovo        ## set a name
+        data.setparams(27) = hybrid        ## set a name of parameters values
+        data.setparams("assembly_method") = reference   ## verbose
+        ---------------------------------------------------------------------- 
+        """),
+    ("28", """
+        (28) reference_sequence ----------------------------------------------
+        The path to the reference sequence you desire to map your reads to.
+        The reference may be either fasta or gzipped fasta. It should be a 
+        complete reference sequence, including all chromosomes, scaffolds, and
+        contigs in one huge file (most reference sequences available will be
+        in this format, especially non-model references). The first time you 
+        attempt to use this sequence it will be indexed (we are using smalt 
+        for reference mapping). This is a time intensive process so expect the 
+        first run to take some time, certainly more than ten minutes, but less 
+        than an hour. If you desire to index the reference yourself you can do 
+        this, but best not to unless you really care about smalt indexing 
+        settings. We chose conservative defaults that have worked well for us 
+        on other projects. 
+
+        A word on the format of the path (this is important). The path may
+        either be a full path (desirable) or a path relative to the directory
+        you are running ipyrad from (supported but be careful of the path).
+        ----------------------------------------------------------------------
+        data.setparams(28) = /home/wat/data/reference.fa  ## set a full path
+        data.setparams(28) = ./data/reference.fa.gz       ## set a relative path
+        data.setparams("reference_sequence") = ./data/reference.fa   ## verbose
+        ---------------------------------------------------------------------- 
+        """),
 
     ])
 
