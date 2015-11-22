@@ -2,12 +2,14 @@
 """ the main CLI for calling ipyrad """
 
 from __future__ import print_function, division  # Requires Python 2.7+ 
+import optparse
 
 
 def main():
     import ipyrad as ip
     from ipyrad.core.assembly import Assembly
     """ a toy func """
+    ## create a default Assembly object
     xpoint = 3
     print(xpoint, "CLI not ready yet")
     #TEST = Assembly("test-refseq")
@@ -22,5 +24,20 @@ def main():
     TEST.step3(["1A_0"], preview=True, force=True)
     print(TEST.stats)
 
+def parse_params():
+    print("not yet")
+
+def parse_command_line():
+    """ Parse CLI. Only three options now. """
+    ## -p  choose params file
+    ## -s  subselect steps
+    ## -n  create new params file
+    print("not yet")
+
+
 if __name__ == "__main__": 
+    
+    ## parse params file input
+    parse_params()
     main()
+    ## 

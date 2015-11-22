@@ -16,7 +16,7 @@ class Sample(object):
         ## a sample name
         self.name = name
         self.barcode = ""
-        self.pear = 0
+        self.merged = 0
 
         ## stats dictionary
         self.stats = pd.Series(
@@ -33,7 +33,7 @@ class Sample(object):
 
         ## link to files
         self.files = ObjDict({
-              "fastq": [],
+              "fastqs": [],
               "edits": [],
               "mapped_reads": [],
               "unmapped_reads": [],

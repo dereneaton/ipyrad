@@ -7,18 +7,25 @@ from __future__ import print_function
 import os
 import dill
 from ipyrad.core.assembly import Assembly
+from ipyrad.core.parallel import ipcontroller_init
 
-
-def load_assembly(tryname):
+def load_assembly(tryname, controller="Local"):
     """ loads an ipython pickled Assembly object """
     if ".assembly" not in tryname:
         tryname += ".assembly"
-    if os.path.exists(tryname):
+
+    if not os.path.exists(tryname):
+        print("cannot find", tryname, "try entering the full path to file")
+
+    else:
+        ## load in the Assembly object
         with open(tryname, "rb") as pickin:
             data = dill.load(pickin)
+        ## relaunch the ipcluster
+        data.__ipname__ = ipcontroller_init(controller)
+
+
         return data
-    else:
-        print("cannot find", tryname, "try entering the full path to file")
 
 
 def save_dataobj():
