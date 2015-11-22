@@ -415,11 +415,24 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
         multi_muscle_align(data, sample, lbview)
     del lbview
 
+    ## If reference sequence is specified then pull in alignments from 
+    ## mapped bam files and write them out to the clustS files to fold
+    ## them back into the pipeline.
+    if not data.paramsdict["assembly_method"] == "denovo":
+        ## make output directory for read mapping process
+        data.dirs.refmapping = os.path.join(
+                                os.path.realpath(data.paramsdict["working_directory"]),
+                                data.name+"_"+
+                                "refmapping")
+        for sample in samples:
+            results = getalignedreads( data, sample )
+
     ## write stats to samples
     for sample in samples:
         cleanup(data, sample)
 
     ## summarize results to stats file
+    ## TODO: update statsfile with mapped and unmapped reads for reference mapping
     data.statsfiles.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
     if not os.path.exists(data.statsfiles.s3):
         with open(data.statsfiles.s3, 'w') as outfile:
@@ -649,12 +662,8 @@ def mapreads(args):
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
     unmapped_fastq_handle = os.path.join(data.dirs.edits, sample.name+".fastq")
 
-    ## Stash this one for later, because we'll need access to the successfully
-    ## mapped reads downstream
-    sample.files.mapped_reads = sorted_mapped_bamhandle
-
 ################
-# Paired end isn't handled yet, but it needs to be.
+# TODO: Paired end isn't handled yet, but it needs to be.
     ## datatype variables
     if data.paramsdict["datatype"] in ['gbs']:
         reverse = " -strand both "
@@ -689,7 +698,6 @@ def mapreads(args):
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
-
 
     ## Get the reads that map successfully. For PE both reads must map
     ## successfully in order to qualify.
@@ -790,9 +798,6 @@ def mapreads(args):
                                            stderr=subprocess.STDOUT )
     sample.stats.refseq_mapped_reads = int(result.split()[0])
 
-    with open('/tmp/wat.do', 'a') as out:
-        out.write(result.split()[0]+" "+sample.name+ " " + sample.files.mapped_reads)
-
     ## This is hax to get fastq to fasta to get this off the ground.
     ## samtools bam2fq natively returns fastq, you just delete this code
     ## when fastq pipleline is working
@@ -817,6 +822,18 @@ def mapreads(args):
         out.write("".join(writing))
     #####################################################################
     ## End block of dummy code, delete this when fastq works
+
+def getalignedreads( data, sample ):
+    """Pull aligned reads out of sorted mapped bam files and
+    append them to the clustS.gz file so the fall into downstream analysis """
+
+    ## Build the samtools bam2fq command to push bam out
+    cmd = data.samtools+\
+        " bam2fq "+sample.files["mapped_reads"]+\
+        " > "+mapped_fastq_handle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
 
 def run(data, samples, ipyclient, preview, noreverse, force):
     """ run the major functions for clustering within samples """
