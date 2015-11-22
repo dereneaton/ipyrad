@@ -142,6 +142,7 @@ class Assembly(object):
                        ("max_Indels_locus", (5, 99)), 
                        ("trim_overhang", (1, 2, 2, 1)), 
                        ("hierarchical_clustering", 0),
+                       ("assembly_method", "denovo"),
                        ("reference_sequence", "")
         ])
     
@@ -604,14 +605,21 @@ class Assembly(object):
             self.stamp("[26] set to {}".format(int(newvalue)))
 
 
-        elif param in ['27', 'reference_sequence']:
+        elif param in ['27', 'assembly_method']:
+            self.paramsdict['assembly_method'] = newvalue
+            assert self.paramsdict['assembly_method'] in list(["denovo", "reference", "hybrid"]), \
+                 "The assembly_method option must be one of the following: "+\
+                 "denovo, reference, or hybrid."
+            self.stamp("[27] set to {}".format(newvalue))
+
+        elif param in ['28', 'reference_sequence']:
             fullrawpath = expander(newvalue)
             assert os.path.isfile(fullrawpath), "Reference sequence file not found. " \
                 + "This must be an absolute path (/home/wat/ipyrad/data/referece.gz) " \
                 + "or a path relative to the directory where you're running ipyrad " \
                 + "(./data/reference.gz). Here's what you gave us: " + fullrawpath
             self.paramsdict['reference_sequence'] = fullrawpath
-            self.stamp("[27] set to "+fullrawpath)
+            self.stamp("[28] set to "+fullrawpath)
 
 
     def copy(self, newname):
@@ -736,17 +744,12 @@ class Assembly(object):
         self._save()
 
 
-    def step3(self, assembly_method="denovo", samples=None, preview=0, 
+    def step3(self, samples=None, preview=0, 
               noreverse=0, force=False):
         """ step 3: clustering within samples """
 
-        ## Test if we are doing reference sequence mapping
-        assert assembly_method in list(["denovo", "reference", "hybrid"]), \
-        "The assembly_method option must be one of the following: "+\
-        "denovo, reference, or hybrid."
-
         ## Require reference seq for reference-based methods
-        if assembly_method != "denovo":
+        if self.paramsdict['assembly_method'] != "denovo":
             assert self.paramsdict['reference_sequence'], \
             "Reference or hybrid assembly requires a value for "+\
             "reference_sequence_path paramter."

@@ -70,7 +70,7 @@ def cleanup(data, sample):
     ## This is moderately hackish. samtools flagstat returns
     ## the number of reads in the bam file as the first element
     ## of the first line, this call makes this assumption.
-    if not data.paramsdict["reference_sequence"] == "":
+    if not data.paramsdict["assembly_method"] == "denovo":
         cmd = data.samtools+\
             " flagstat "+sample.files.unmapped_reads
         result = subprocess.check_output( cmd, shell=True,
@@ -384,7 +384,7 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                 pass
 
     # If reference sequence is specified then try read mapping, else pass.
-    if not data.paramsdict["reference_sequence"] == "":
+    if not data.paramsdict["assembly_method"] == "denovo":
         ## make output directory for read mapping process
         data.dirs.refmapping = os.path.join(
                                 os.path.realpath(data.paramsdict["working_directory"]),
@@ -676,7 +676,7 @@ def mapreads(args):
     cmd = data.smalt+\
         " map -f sam -n " + str(nthreads) +\
         " -o " + samhandle +\
-        " " + data.get_params(27) +\
+        " " + data.paramsdict['reference_sequence'] +\
         " " + sample.files.fastq[0]
 
     ## run smalt
@@ -767,6 +767,13 @@ def mapreads(args):
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
 
+    ## bs for experimentation. is samtools/smalt fscking the output?
+    cmd = data.samtools+\
+        " bam2fq "+sorted_mapped_bamhandle+\
+        " >> "+unmapped_fastq_handle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
     ## Get some stats from the bam files
     ## This is moderately hackish. samtools flagstat returns
     ## the number of reads in the bam file as the first element
@@ -794,15 +801,17 @@ def mapreads(args):
         quart1 = itertools.izip(*[iter(fq)]*4)
         quarts = itertools.izip(quart1, iter(int, 1))
         writing = []
+        j=0
         while 1:
             try:
                 quart = quarts.next()
             except StopIteration:
                 break
             read1 = [i.strip() for i in quart[0]]
-            sseq = ">"+sample.name+"_"+str(0)+\
-                           "_c1\n"+read1[1]+"\n"
+            sseq = ">"+sample.name+"_"+str(j)+\
+                           "_r1\n"+read1[1]+"\n"
             writing.append(sseq)
+            j = j+1
 
     with open( sample.files.edits[0], 'w' ) as out:
         out.write("".join(writing))
@@ -847,7 +856,7 @@ if __name__ == "__main__":
     DATA = Assembly("test")
     DATA.get_params()
     DATA.set_params(1, "./")
-    DATA.set_params(27, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
+    DATA.set_params(28, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
     DATA.get_params()
     print(DATA.log)
     DATA.step3()
