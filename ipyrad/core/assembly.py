@@ -581,7 +581,7 @@ class Assembly(object):
             assert self.paramsdict['assembly_method'] in list(["denovo", "reference", "hybrid"]), \
                  "The assembly_method option must be one of the following: "+\
                  "denovo, reference, or hybrid."
-            self.stamp("[27] set to {}".format(newvalue))
+            self._stamp("[27] set to {}".format(newvalue))
 
         elif param in ['28', 'reference_sequence']:
             fullrawpath = expander(newvalue)
@@ -590,7 +590,7 @@ class Assembly(object):
                 + "or a path relative to the directory where you're running ipyrad " \
                 + "(./data/reference.gz). Here's what you gave us: " + fullrawpath
             self.paramsdict['reference_sequence'] = fullrawpath
-            self.stamp("[28] set to "+fullrawpath)
+            self._stamp("[28] set to "+fullrawpath)
 
 
     def copy(self, newname):

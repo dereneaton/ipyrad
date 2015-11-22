@@ -9,18 +9,18 @@ def main():
     import ipyrad as ip
     from ipyrad.core.assembly import Assembly
     """ a toy func """
-    ## create a default Assembly object
-    xpoint = 3
-    print(xpoint, "CLI not ready yet")
-    #TEST = Assembly("test-refseq")
-    TEST = ip.load_assembly("/tmp/ipyrad-test/test-refseq.assembly")
+    ## create a default Assembly object to get the cluster running
+    TEST = Assembly("test-refseq")
+
+    ##
+    #TEST = ip.load_assembly("/tmp/ipyrad-test/test-refseq.assembly")
     TEST.set_params(27, "hybrid")
-    #TEST.set_params(1, "/tmp/ipyrad-test")
-    #TEST.set_params(2, "./tests/data/sim_rad_test_R1_.fastq.gz")
-    #TEST.set_params(3, "./tests/data/sim_rad_test_barcodes.txt")
-    #TEST.set_params(28, "/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa" )
-    #TEST.step1()
-    #TEST.step2()
+    TEST.set_params(1, "/tmp/ipyrad-test")
+    TEST.set_params(2, "./tests/data/sim_rad_test_R1_.fastq.gz")
+    TEST.set_params(3, "./tests/data/sim_rad_test_barcodes.txt")
+    TEST.set_params(28, "/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa" )
+    TEST.step1()
+    TEST.step2()
     TEST.step3(["1A_0"], preview=True, force=True)
     print(TEST.stats)
 
