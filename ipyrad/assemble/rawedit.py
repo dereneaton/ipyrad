@@ -88,11 +88,15 @@ def adapterfilter(args):
     """ filters for adapters """
 
     ## parse args
-    data, sample, read1, read2, cut1, cut2, write1, write2, counts, point = args
+    data, sample, read1, read2, cut1, cut2, write1, write2, point = args
 
     ## look for adapters in sequences
     wheretocut1 = wheretocut2 = cutter = None
 
+    ## keep counter
+    kept = 1
+
+    ## check for adapter
     if data.paramsdict["filter_adapters"]:
         ## get trim length for read1
         wheretocut1 = afilter(data, read1, cut1, cut2, 1)
@@ -128,11 +132,11 @@ def adapterfilter(args):
                                    read2[3][:cutter]])
                                    #bases1[:cutter]+"SS"+bases2[:cutter]+"\n"
                 write2.append(sseq2)
-            counts["keep"] += 1
+        else:
+            kept = 0
 
     ## not trimmed
     else:
-        counts["keep"] += 1
         sseq1 = "\n".join([">"+sample.name+"_"+str(point)+"_r1", 
                            "".join(read1[1]),
                            "".join(read1[2]),
@@ -144,10 +148,8 @@ def adapterfilter(args):
                                read2[2].tostring(),
                                read2[3].tostring()])
             write2.append(sseq2)
-        ## N filtered out
-        counts["quality"] += 1
     
-    return write1, write2, read1, read2, counts, point
+    return write1, write2, read1, read2, point, kept
 
 
 
@@ -213,21 +215,26 @@ def rawedit(args):
 
         ## filter for Ns
         ## base1 is only returned if both passed for paired-end reads        
-
         read1, read2 = nfilter(data, read1, read2, nreplace)
-        print('READ1', read1)
 
-        ## replace cut sites
         if len(read1):
+            ## replace cut sites            
             read1, read2 = replace_cuts(data, read1, read2, cut1, cut2)
 
-        ## filter for adapters 
-        if len(read1):
+            ## filter for adapters 
             args = [data, sample, read1, read2, cut1, cut2, 
-                    write1, write2, counts, point]
-            write1, write2, read1, read2, counts, point = adapterfilter(args)
+                    write1, write2, point]
+            write1, write2, read1, read2, point, kept = adapterfilter(args)
+            if kept:
+                counts["keep"] += 1
+            else:
+                counts["adapter"] += 1
+        else:
+            counts["quality"] += 1
 
-        #assert len(read1), '3'
+        ## TODO: print to file after N to retain low memory load
+
+
         ## advance number for read names
         point += 1
 
@@ -356,7 +363,7 @@ def run_full(data, sample, ipyclient, nreplace, preview):
 
     ## break up the file into smaller tmp files for each processor
     chunkslist = []
-    for fastqtuple in sample.files.fastq:
+    for fastqtuple in sample.files.fastqs:
         args = [data, fastqtuple, num, optim]
         _, achunk = zcat_make_temps(args)
         chunkslist += achunk
@@ -375,22 +382,11 @@ def run_full(data, sample, ipyclient, nreplace, preview):
         ## call to ipp
         dview = ipyclient.load_balanced_view()
         results = dview.map_async(rawedit, submitted_args)
-
         try:
             results.get()
-        except (TypeError,): #, AttributeError, NameError):
+        except (TypeError, AttributeError, NameError):
+            print(dview)
             print(results)
-            print(dview.results)
-            print(results.metadata)
-            # try:
-            #     for job in results.metadata:
-            #         print("engine id:", job["engine_id"])
-            #         print("Running Sample:", sample.name)
-            #         print(job["error"])
-            # except AttributeError:
-            #     print(results)
-            #     print(dir(results))
-            #     raise
         del dview
     
     finally:

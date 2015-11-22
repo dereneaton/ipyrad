@@ -115,7 +115,7 @@ class Assembly(object):
                        ("sorted_fastq_path", ""),
                        ("restriction_overhang", ("TGCAG", "")),
                        ("max_low_qual_bases", 5),
-                       ("N_processors", 4),
+                       ("engines_per_job", 4),
                        ("mindepth_statistical", 6), 
                        ("mindepth_majrule", 6), 
                        ("datatype", 'rad'), 
@@ -159,7 +159,7 @@ class Assembly(object):
 
 
 
-    def link_fastqs(self, path=None, merged=False, force=False):
+    def link_fastqs(self, path=None, merged=False, append=False):
         """ Create Sample objects for samples in sorted_fastq_path.
 
         Note
@@ -179,11 +179,11 @@ class Assembly(object):
             Set to True if files represent first and second reads that were 
             merged using some external software such as `PEAR` or `VSEARCH`. 
 
-        force : bool
-            The default action is to append fastq files to Samples whether they
-            already have linked fastq files or not. To instead replace any 
-            linked files with new fastq files use `force=True`.
-
+        append : bool
+            The default action is to overwrite fastq files linked to Samples if 
+            they already have linked files. Use append=True to instead append 
+            additional fastq files to a Sample (file names should be formatted 
+            the same as usual, e.g., [name]_R1_[optional].fastq.gz).
 
         Returns
         -------
@@ -195,6 +195,8 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
+        else:
+            assert os.path.exists(path), "No files in path: {}".format(path)
 
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
@@ -205,7 +207,6 @@ class Assembly(object):
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
-        #assert fastqs, "no fastq files found in path {}".format(path)
 
         ## sort alphabetical
         fastqs.sort()
@@ -228,51 +229,70 @@ class Assembly(object):
         ## counters for the printed output
         created = 0
         linked = 0
-        for fastq in list(fastqs):
+        appended = 0
+        for fastqtuple in list(fastqs):
+            ## local counters
+            createdinc = 0
+            linkedinc = 0
+            appendinc = 0
+
             ## remove file extension from name
-            sname = _name_from_file(fastq[0])
+            sname = _name_from_file(fastqtuple[0])
 
             if sname not in self.samples:
                 ## create new Sample
                 self.samples[sname] = Sample(sname)
                 self.samples[sname].stats.state = 1
                 self.samples[sname].barcode = "not_demultiplexed_by_ipyrad"
-                self.samples[sname].files['fastq'].append(fastq)
-                created += 1
-                linked += 1
+                self.samples[sname].files.fastqs.append(fastqtuple)
+                createdinc += 1
+                linkedinc += 1
             else:
                 ## if not forcing, shouldn't be here with existing Samples
-                if force:
-                    self.samples[sname].files['fastq'].append(fastq)
-                    linked += 1
+                if append:
+                    if fastqtuple not in self.samples[sname].files.fastqs:
+                        self.samples[sname].files.fastqs.append(fastqtuple)
+                        appendinc += 1
+                    else:
+                        print("{}\n already in Sample {}"\
+                              .format(fastqtuple, sname) \
+                           + ", cannot append duplicate files to a Sample.")
                 else:
                     print("{} already in samples.".format(sname) \
-                    + " Use force=True to append additional files to Samples.")
+                    + " Use append=True to append additional files to Samples.")
 
             ## record whether data were merged.
             if merged:
                 self.samples[sname].merged = 1
 
             ## do not allow merged=False and .forward in file names
-            assert not (merged == False and 'forward' in fastq[0]), \
+            assert not (merged == False and 'forward' in fastqtuple[0]), \
                 "If R1 and R2 data are merged (e.g., with PEAR) " \
               + "use link_fastqs(merge=True) to indicate this. You " \
               + "may need force=True to overwrite existing files"
 
-            ## if fastqs already sorted, try to link stats
-            gzipped = bool(fastq[0].endswith(".gz"))
-            nreads = 0
-            ## iterate over files if there are multiple
-            for fastqtuple in self.samples[sname].files.fastq:
-                nreads += bufcount(fastqtuple[0], gzipped)
-            self.samples[sname].stats.reads_raw = nreads/4
+            ## if fastqs already demultiplexed, try to link stats
+            if any([linkedinc, createdinc, appendinc]):
+                gzipped = bool(fastqtuple[0].endswith(".gz"))
+                nreads = 0
+                ## iterate over files if there are multiple
+                for alltuples in self.samples[sname].files.fastqs:
+                    nreads += bufcount(alltuples[0], gzipped)
+                self.samples[sname].stats.reads_raw = nreads/4
+                created += createdinc
+                linked += linkedinc
+                appended += appendinc
 
         ## print if data were linked
-        print("{} new Samples created in {}.".format(created, self.name))
-        print("{} new fastq files linked to {} total Samples.".\
+        print("{} new Samples created in `{}`.".format(created, self.name))
+        if linked:
+            print("{} fastq files linked to {} new Samples.".\
                   format(linked, len(self.samples)))
+        if appended:
+            print("{} fastq files appended to {} existing Samples.".\
+                  format(appended, len(self.samples)))
 
-  
+
 
     def link_barcodes(self):
         """ creates a self.barcodes object to save barcodes info 
@@ -366,6 +386,10 @@ class Assembly(object):
         [Assembly].set_params('max_shared_heterozygosity', 0.25)
             
         """
+
+        ## require parameter recognition
+        assert (param in range(50)) or (param in self.paramsdict.keys()), \
+            "Parameter key not recognized: `{}`.".format(param)
 
         ## make string
         param = str(param)

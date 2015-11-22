@@ -405,29 +405,30 @@ def zcat_make_temps(args):
 
     ### run splitter
     cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
-                   "-", os.path.join(data.dirs.fastqs, "chunk_"+str(num)+"_")])
+                   "-", os.path.join(data.dirs.fastqs, "chunk1_"+str(num)+"_")])
     _ = subprocess.call(cmd, shell=True,
                              stdin=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE,
                              close_fds=True)
     chunks1 = glob.glob(os.path.join(
-                        data.dirs.fastqs, "chunk_"+str(num)+"_*"))
+                        data.dirs.fastqs, "chunk1_"+str(num)+"_*"))
     chunks1.sort()
 
     if "pair" in data.paramsdict["datatype"]:
         cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
-                  "-", os.path.join(data.dirs.fastqs, "chunk_"+str(num)+"_")])
+                  "-", os.path.join(data.dirs.fastqs, "chunk2_"+str(num)+"_")])
         _ = subprocess.call(cmd, shell=True,
                              stdin=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE,
                              close_fds=True)
-    chunksall = glob.glob(os.path.join(
-                       data.dirs.fastqs, "chunk_"+str(num)+"_*"))
-    chunks2 = [i for i in chunksall if i not in chunks1]
-    chunks2.sort()
-    if not len(chunks1) == len(chunks2):
+        chunks2 = glob.glob(os.path.join(
+                        data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
+        chunks2.sort()
+        assert len(chunks1) == len(chunks2), \
+            "R1 and R2 files are not the same length."
+    else:
         chunks2 = [0]*len(chunks1)
 
     return [raws[0], zip(chunks1, chunks2)]
@@ -686,13 +687,13 @@ def make_stats(data, raws):
         sample.name = name
         sample.barcode = data.barcodes[name]
         if "pair" in data.paramsdict["datatype"]:
-            sample.files["fastq"] = (os.path.join(data.dirs.fastqs,
+            sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
                                                   name+"_R1_.gz"),
                                      os.path.join(data.dirs.fastqs,
-                                                  name+"_R2_.gz"))
+                                                  name+"_R2_.gz"))]
         else:
-            sample.files["fastq"] = (os.path.join(data.dirs.fastqs,
-                                                  name+"_R1_.gz"),)
+            sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
+                                                  name+"_R1_.gz"),)]
         sample.stats["reads_raw"] = fsamplehits[name]
         if sample.stats["reads_raw"]:
             sample.stats.state = 1
@@ -734,7 +735,7 @@ def run(data, preview, ipyclient):
 
     finally:
         ## cleans up chunk files and stats pickles
-        tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "chunk_*"))        
+        tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "chunk*"))        
         tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
         tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
         if tmpfiles:
