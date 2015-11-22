@@ -8,6 +8,7 @@ by sequence similarity using vsearch
 from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=F0401
+# pylint: disable=W0142
 
 import os
 import sys
@@ -582,6 +583,9 @@ def run(data, samples, ipyclient, preview, noreverse, force):
     ## list of samples to submit to queue
     subsamples = []
 
+    ## TODO: use vsearch to subsample in preview mode
+    ## vsearch --fastq_subsample FILE --fastqout FILE --sizeout N
+
     ## if sample is already done skip
     for _, sample in samples:
         if not force:
@@ -590,21 +594,33 @@ def run(data, samples, ipyclient, preview, noreverse, force):
                       format(sample.name, int(sample.stats['state'])))
             else:
                 subsamples.append(sample)
-        
         else:
-            ## clean up existing files from this sample and overwrite
-            #if sample.files.clusters:
-            #    if os.path.exists(sample.files.clusters):
-            #        os.remove(sample.files.clusters)
+            ## force to overwrite
             subsamples.append(sample)
 
     ## run subsamples 
-    if subsamples:
-        args = [data, subsamples, ipyclient, preview, noreverse, force]
-        split_among_processors(*args)
-    else:
-        print("\nNo samples found in state 2. To rewrite existing data use\n"+\
-              "force=True, or change Sample states to 2.\n")
+    assert subsamples, "No Samples ready to be clustered. To rewrite existing" \
+                      +"data use force=True, or change Sample's state to 2."
+    args = [data, subsamples, ipyclient, preview, noreverse, force]
+    split_among_processors(*args)
+
+
+
+## TODO: maybe needed when merging...
+# def trim_merge_edge(bases, cut1, cut2):
+#     """ trim off farside cutsite in merged reads --
+#     to replace would require knowing how the cut site is cut."""
+#     ## check if two cutters
+#     if cut2[0]:
+#         bases = bases[:-(len(cut2[0])+1)]
+#     else:
+#         bases = bases[:-(len(cut1[0])+1)]
+#     return bases
+
+            ## USAGE
+            ## trim edges if merge data
+            ## if "merge" in data.paramsdict["datatype"]:
+            ##    bases1 = trim_merge_edge(bases1, cut1, cut2)
 
 
 
