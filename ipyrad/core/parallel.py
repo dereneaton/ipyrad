@@ -37,7 +37,7 @@ def start(name, controller="Local", delay="1.0"):
 ## decorated func for stopping. Does not need to be called?
 def stop(cluster_id):
     """ stop ipcluster at sys.exit """
-    print("Closing {} remote parallel engines:".format(cluster_id))
+    print("\nClosing {} remote parallel engines:".format(cluster_id))
     stopcall = ["ipcluster", "stop", 
                 "--cluster-id="+cluster_id]
     try:

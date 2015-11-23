@@ -6,12 +6,6 @@ from . import dstats
 #from . import core
 
 
-## create an ipyparallel controller with an exit call to close at sys
-## exit, and a unique cluster-id name
-#from ipyrad.core.parallel import ipcontroller_init
-#from ipyrad.core.parallel import ipcontroller_set
-
-
 ## load the functional modules
 from ipyrad.core.assembly import Assembly
 from ipyrad.core.assembly import merge
