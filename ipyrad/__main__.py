@@ -50,15 +50,13 @@ def parse_command_line():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
-    Example command-line usage: 
+  * Example command-line usage: 
     ipyrad -n                      ## create new params.txt file.
     ipyrad -p params.txt           ## run ipyrad with settings in params.txt.
     ipyrad -p params.txt -s 123    ## run only steps 1, 2 and 3 of assembly.
-    ipyrad -p params.txt -s 45     ## run only steps 4 and 5 of assembly.
-    ipyrad --version               ## print ipyrad version.
-    ipyrad -h (--help)             ## show this help message and exit.
+    ipyrad -p params.txt -s 4567   ## run steps 4, 5, 6 and 7 of assembly.
 
-    See documentation for writing advanced ipyrad scripts.
+  * See documentation for writing advanced ipyrad scripts.
     """)
 
     ## add arguments 
