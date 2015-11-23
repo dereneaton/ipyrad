@@ -36,8 +36,7 @@ class Sample(object):
               "clusters": [],
               "depths": [],
               "consens": [],
-              "database": [],
-              "stats": []
+              "database": []
               })
 
         ## store cluster depth information

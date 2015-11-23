@@ -151,6 +151,17 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
 
+    @property
+    def files(self):
+        """ Returns a data frame with Sample files. Not very readable... """
+        nameordered = self.samples.keys()
+        nameordered.sort()
+        ## replace curdir with . for shorter printing
+        #fullcurdir = os.path.realpath(os.path.curdir)
+        return pd.DataFrame([self.samples[i].files for i in nameordered], 
+                      index=nameordered).dropna(axis=1, how='all')
+
+
                       
     def _stamp(self, event):
         """ Stamps an event into the log history. """
@@ -195,8 +206,8 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
-        else:
-            assert os.path.exists(path), "No files in path: {}".format(path)
+        #else:
+        #    assert os.path.exists(path), "No files in path: {}".format(path)
 
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
@@ -319,7 +330,6 @@ class Assembly(object):
             #     samp.barcode = self.barcodes[key]
             #     if samp not in self.samples:
             #         self.samples[samp.name] = samp
-
 
 
     def get_params(self, param=""):
