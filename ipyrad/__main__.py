@@ -14,9 +14,6 @@ import os
 
 def parse_params(params):
     """ Parse the params file args, create and return Assembly object."""
-    ## check that params.txt file exists
-    assert os.path.exists(params), "params file `{}` not found.".format(params)
-
     ## check that params.txt file is correctly formatted.
     with open(params) as paramsin:
         plines = paramsin.readlines()
@@ -48,6 +45,7 @@ def parse_params(params):
 
 def parse_command_line():
     """ Parse CLI args. Only three options now. """
+
     ## create the parser
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -81,6 +79,12 @@ def parse_command_line():
         type=str, default="1234567",
         help="subset of assembly steps to perform. Default=1234567")
 
+    ## if no args then return help message
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
+
+    ## parse args
     args = parser.parse_args()
     return args
 
@@ -101,6 +105,7 @@ def main():
     ## parse params file
     data = parse_params(args.params)
 
+    ## For now print the params. 
     print("")
     for key, item in data.paramsdict.items():
         print("{:<30} {:<20}".format(key, item))
