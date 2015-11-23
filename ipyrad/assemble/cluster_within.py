@@ -399,7 +399,6 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
             sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-mapped.bam")
             sample.files.unmapped_reads = sorted_unmapped_bamhandle
     	    sample.files.mapped_reads = sorted_mapped_bamhandle
-            print(sample.files.mapped_reads)
 
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
@@ -677,7 +676,14 @@ def mapreads(args):
     mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     sorted_unmapped_bamhandle = sample.files["unmapped_reads"]
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
-    unmapped_fastq_handle = os.path.join(data.dirs.edits, sample.name+".fastq")
+
+    ## TODO, figure out why edits is a tuple? There could be multiple edits files, yes?
+    ## but by the time we get to step three they are all collapsed in to one big file
+    ## which is the first element of the tuple, yes?
+    ##
+    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
+    ## might want to preserve the full .fq file in case of a later 'force' command
+    unmapped_fastq_handle = sample.files.edits[0][0] #os.path.join(data.dirs.edits, sample.name+".fastq")
 
 ################
 # TODO: Paired end isn't handled yet, but it needs to be.
@@ -698,12 +704,13 @@ def mapreads(args):
             print(noreverse, "not performing reverse complement clustering")
 ################
 
+
     ## get call string
     cmd = data.smalt+\
         " map -f sam -n " + str(nthreads) +\
         " -o " + samhandle +\
         " " + data.paramsdict['reference_sequence'] +\
-        " " + sample.files.fastq[0]
+        " " + sample.files.edits[0][0]
 
     ## run smalt
     if preview:
@@ -781,62 +788,51 @@ def mapreads(args):
                          stdout=subprocess.PIPE)
 
     ## Step 3 Dump sorted bam to fastq
-    ## No args for this one
-    ## TODO: output is actually fastq, so fix that
-    ## TODO: output file name is fsck, and it also needs to be .gz to kosher with
-    ##       the other files for de novo
+    ## No args for this one. Pipe it through gzip, because the downstream
+    ## analysis expects gzipped fq
     cmd = data.samtools+\
         " bam2fq "+sorted_unmapped_bamhandle+\
-        " > "+unmapped_fastq_handle
+        " | gzip > "+unmapped_fastq_handle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
 
     ## bs for experimentation. is samtools/smalt fscking the output?
+    ## TODO: get rid of this when mapped reads get returned to the 
+    ## pipeline right. or whenever, it's not useful.
     cmd = data.samtools+\
         " bam2fq "+sorted_mapped_bamhandle+\
-        " >> "+unmapped_fastq_handle
+        " | gzip >> "+unmapped_fastq_handle
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
-    ## Get some stats from the bam files
-    ## This is moderately hackish. samtools flagstat returns
-    ## the number of reads in the bam file as the first element
-    ## of the first line, this call makes this assumption.
-    cmd = data.samtools+\
-        " flagstat "+sorted_unmapped_bamhandle
-    result = subprocess.check_output( cmd, shell=True,
-                                           stderr=subprocess.STDOUT )
-    sample.stats.refseq_unmapped_reads = int(result.split()[0])
 
-    cmd = data.samtools+\
-        " flagstat "+sorted_mapped_bamhandle
-    result = subprocess.check_output( cmd, shell=True,
-                                           stderr=subprocess.STDOUT )
-    sample.stats.refseq_mapped_reads = int(result.split()[0])
+    ## This is the end of processing for each sample. Stats
+    ## are appended to the sample for mapped and unmapped reads 
+    ## during cluster_within.cleanup()
 
     ## This is hax to get fastq to fasta to get this off the ground.
     ## samtools bam2fq natively returns fastq, you just delete this code
     ## when fastq pipleline is working
-    writing = []
-    with open(os.path.realpath(unmapped_fastq_handle), 'rb') as fq:
-        quart1 = itertools.izip(*[iter(fq)]*4)
-        quarts = itertools.izip(quart1, iter(int, 1))
-        writing = []
-        j=0
-        while 1:
-            try:
-                quart = quarts.next()
-            except StopIteration:
-                break
-            read1 = [i.strip() for i in quart[0]]
-            sseq = ">"+sample.name+"_"+str(j)+\
-                           "_r1\n"+read1[1]+"\n"
-            writing.append(sseq)
-            j = j+1
-
-    with open( sample.files.edits[0], 'w' ) as out:
-        out.write("".join(writing))
+#    writing = []
+#    with open(os.path.realpath(unmapped_fastq_handle), 'rb') as fq:
+#        quart1 = itertools.izip(*[iter(fq)]*4)
+#        quarts = itertools.izip(quart1, iter(int, 1))
+#        writing = []
+#        j=0
+#        while 1:
+#            try:
+#                quart = quarts.next()
+#            except StopIteration:
+#                break
+#            read1 = [i.strip() for i in quart[0]]
+#            sseq = ">"+sample.name+"_"+str(j)+\
+#                           "_r1\n"+read1[1]+"\n"
+#            writing.append(sseq)
+#            j = j+1
+#
+#    with open( sample.files.edits[0], 'w' ) as out:
+#        out.write("".join(writing))
     #####################################################################
     ## End block of dummy code, delete this when fastq works
 
@@ -844,6 +840,7 @@ def getalignedreads( data, sample ):
     """Pull aligned reads out of sorted mapped bam files and
     append them to the clustS.gz file so the fall into downstream analysis """
 
+    mapped_fastq_handle = "/tmp/wat.fq"
     ## Build the samtools bam2fq command to push bam out
     cmd = data.samtools+\
         " bam2fq "+sample.files["mapped_reads"]+\
