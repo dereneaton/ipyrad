@@ -14,8 +14,9 @@ requirements = [
     'sphinx',
     'ipython>=4.0',
     'ipyparallel',
+    'ipykernel>=4.1',
     'jupyter',
-    'toyplot'
+    'jupyter-client>=4.1'
     ]
 
 #import ipyrad

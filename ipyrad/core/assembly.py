@@ -135,8 +135,8 @@ class Assembly(object):
                        ("filter_min_trim_len", 35), 
                        ("ploidy", 2), 
                        ("max_stack_size", 1000),
-                       ("max_Ns_consens", 5), 
-                       ("max_Hs_consens", 8), 
+                       ("max_Ns_consens", (5, 5)), 
+                       ("max_Hs_consens", (8, 8)), 
                        ("max_SNPs_locus", (100, 100)), 
                        ("max_Indels_locus", (5, 99)), 
                        ("trim_overhang", (1, 2, 2, 1)), 
@@ -154,7 +154,7 @@ class Assembly(object):
         nameordered = self.samples.keys()
         nameordered.sort()
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
-                      index=nameordered).dropna( axis=1, how='all')
+                      index=nameordered).dropna(axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
 
                       
@@ -394,7 +394,9 @@ class Assembly(object):
         """
 
         ## require parameter recognition
-        assert (param in range(50)) or (param in self.paramsdict.keys()), \
+        assert (param in range(50)) or \
+               (param in [str(i) for i in range(50)]) or \
+               (param in self.paramsdict.keys()), \
             "Parameter key not recognized: `{}`.".format(param)
 
         ## make string
@@ -440,14 +442,14 @@ class Assembly(object):
             ## link_fastqs will check that files exist
             self.link_fastqs()
             self._stamp("[4] set to "+newvalue)
-            #if not self.paramdict["raw_fastq_path"]:
             self.dirs["fastqs"] = os.path.dirname(
                                    self.paramsdict["sorted_fastq_path"])
 
 
         elif param in ['5', 'restriction_overhang']:
+            newvalue = tuplecheck(newvalue, str)                        
             assert isinstance(newvalue, tuple), \
-                "cut site must be a tuple, e.g., (TGCAG, "") "
+            "cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"
             self.paramsdict['restriction_overhang'] = newvalue
             self._stamp("[5] set to "+str(newvalue))
 
@@ -547,33 +549,43 @@ class Assembly(object):
 
 
         elif param in ['21', 'max_Ns_consens']:
-            self.paramsdict['max_Ns_consens'] = int(newvalue)
-            self._stamp("[21] set to {}".format(int(newvalue)))
+            newvalue = tuplecheck(newvalue)                        
+            assert isinstance(newvalue, tuple), \
+            "max_Ns_consens should be a tuple e.g., (1,2,2,1)"
+            self.paramsdict['max_Ns_consens'] = newvalue
+            self._stamp("[21] set to {}".format(newvalue))
 
 
         elif param in ['22', 'max_Hs_consens']:
-            self.paramsdict['max_Hs_consens'] = int(newvalue)
-            self._stamp("[22] set to {}".format(int(newvalue)))
+            newvalue = tuplecheck(newvalue)                        
+            assert isinstance(newvalue, tuple), \
+            "max_Hs_consens should be a tuple e.g., (1,2,2,1)"
+            self.paramsdict['max_Hs_consens'] = newvalue
+            self._stamp("[22] set to {}".format(newvalue))
 
 
-        elif param in ['23', 'max_Hs_consens']:
-            self.paramsdict['max_Hs_consens'] = int(newvalue)
-            self._stamp("[22] set to {}".format(int(newvalue)))
+        elif param in ['23', 'max_SNPs_locus']:
+            newvalue = tuplecheck(newvalue)                        
+            assert isinstance(newvalue, tuple), \
+            "max_SNPs_locus should be a tuple e.g., (20,20)"
+            self.paramsdict['max_SNPs_locus'] = newvalue
+            self._stamp("[23] set to {}".format(newvalue))
 
 
         elif param in ['24', 'max_Indels_locus']:
-            self.paramsdict['max_Indels_locus'] = int(newvalue)
-            self._stamp("[24] set to {}".format(int(newvalue)))
+            newvalue = tuplecheck(newvalue)            
+            assert isinstance(newvalue, tuple), \
+            "max_Indels_locus should be a tuple e.g., (5, 100)" 
+            self.paramsdict['max_Indels_locus'] = newvalue
+            self._stamp("[24] set to {}".format(newvalue))
 
 
         elif param in ['25', 'trim_overhang']:
-            self.paramsdict['trim_overhang'] = int(newvalue)
-            self._stamp("[25] set to {}".format(int(newvalue)))
-
-
-        elif param in ['26', 'hierarchical_clustering']:
-            self.paramsdict['hierarchical_clustering'] = int(newvalue)
-            self._stamp("[26] set to {}".format(int(newvalue)))
+            newvalue = tuplecheck(newvalue)
+            assert isinstance(newvalue, tuple), \
+            "trim_overhang should be a tuple e.g., (1,2,2,1)"
+            self.paramsdict['trim_overhang'] = newvalue
+            self._stamp("[25] set to {}".format(newvalue))
 
 
         elif param in ['27', 'assembly_method']:
@@ -1035,6 +1047,7 @@ def bufcount(filename, gzipped):
 
 
 
+<<<<<<< HEAD
 def index_reference_sequence( self ):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
@@ -1063,6 +1076,14 @@ def index_reference_sequence( self ):
 
         print(cmd)
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+
+def tuplecheck(newvalue, conv=int):
+    """ Takes a string argument and returns value as a tuple. 
+    Needed for paramfile conversion from CLI to set_params args """
+    if isinstance(newvalue, str):
+        newvalue = newvalue.rstrip(")").strip("(")
+        newvalue = tuple([conv(i) for i in newvalue.split(",")])
+    return newvalue
 
 
 if __name__ == "__main__":

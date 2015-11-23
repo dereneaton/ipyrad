@@ -245,6 +245,7 @@ def rawedit(args):
                           "tmp1_"+sample.name+"_"+str(point)+".gz")
     with gzip.open(handle, 'wb') as out1:
         out1.write("\n".join(write1))
+        out1.write("\n")
 
     if "pair" in data.paramsdict["datatype"]:    
         fr2.close()
