@@ -1047,7 +1047,6 @@ def bufcount(filename, gzipped):
 
 
 
-<<<<<<< HEAD
 def index_reference_sequence( self ):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
