@@ -42,15 +42,9 @@ def parse_params(params):
     return data
 
 
-def parse_params():
-    print("not yet")
 
 def parse_command_line():
-    """ Parse CLI. Only three options now. """
-    ## -p  choose params file
-    ## -s  subselect steps
-    ## -n  create new params file
-    print("not yet")
+    """ Parse CLI args. Only three options now. """
 
     ## create the parser
     parser = argparse.ArgumentParser(
