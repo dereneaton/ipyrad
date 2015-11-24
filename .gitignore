@@ -10,6 +10,7 @@ ipyrad.egg-info
 ipyrad.sublime-*
 tests/*
 env/
+params.txt
 
 ## but not these files
 !tests/*.ipynb
