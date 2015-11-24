@@ -356,7 +356,7 @@ def run_full(data, sample, ipyclient, nreplace, preview):
     submitted = 0
     num = 0
 
-    ## set optim size
+    ## set optim size, can only be optimized if reads_raw 
     optim = 10000
     if sample.stats.reads_raw:
         if sample.stats.reads_raw > 1e5:

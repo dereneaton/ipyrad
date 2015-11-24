@@ -551,7 +551,7 @@ class Assembly(object):
         elif param in ['21', 'max_Ns_consens']:
             newvalue = tuplecheck(newvalue)                        
             assert isinstance(newvalue, tuple), \
-            "max_Ns_consens should be a tuple e.g., (1,2,2,1)"
+            "max_Ns_consens should be a tuple e.g., (8,8)"
             self.paramsdict['max_Ns_consens'] = newvalue
             self._stamp("[21] set to {}".format(newvalue))
 
@@ -590,6 +590,7 @@ class Assembly(object):
 
         elif param in ['27', 'assembly_method']:
             self.paramsdict['assembly_method'] = newvalue
+            print(newvalue)
             assert self.paramsdict['assembly_method'] in list(["denovo", "reference", "hybrid"]), \
                  "The assembly_method option must be one of the following: "+\
                  "denovo, reference, or hybrid."
@@ -787,7 +788,7 @@ class Assembly(object):
 
 
 
-    def step4(self, samples=None, preview=0, force=False):
+    def step4(self, samples=None, preview=0, force=False, subsample=None):
         """ step 4: Joint estimation of error rate and heterozygosity. 
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """
@@ -811,17 +812,17 @@ class Assembly(object):
 
                 ## send to function
                 assemble.jointestimate.run(self, subsamples.values(), 
-                                           ipyclient, force)
+                                           ipyclient, force, subsample)
             else:
                 ## if no sample, then do all samples
                 if not self.samples:
                     ## if no samples in data, try linking edits from working dir
                     #self.link_clustfiles()
                     if not self.samples:
-                        print("Assembly object has no samples in state=3")
+                        print("Assembly object has no samples in state 3.")
                 ## run clustering for all samples
                 assemble.jointestimate.run(self, self.samples.values(), 
-                                           ipyclient, force)
+                                           ipyclient, force, subsample)
 
         except (KeyboardInterrupt, SystemExit):
             print("assembly step4 interrupted")
@@ -1076,12 +1077,15 @@ def index_reference_sequence( self ):
         print(cmd)
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
 
+
+
 def tuplecheck(newvalue, conv=int):
     """ Takes a string argument and returns value as a tuple. 
     Needed for paramfile conversion from CLI to set_params args """
     if isinstance(newvalue, str):
         newvalue = newvalue.rstrip(")").strip("(")
-        newvalue = tuple([conv(i) for i in newvalue.split(",")])
+        if "," in newvalue:
+            newvalue = tuple([conv(i) for i in newvalue.split(",")])
     return newvalue
 
 

@@ -347,6 +347,7 @@ def build_clusters(data, sample):
 
 
 
+
 def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     """ pass the samples to N engines to execute run_full on each.
 
@@ -460,6 +461,21 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
 
 
 
+def merge_fastq_pairs(data, sample):
+    """ Merge paired fastq reads. """
+    cmd = data.vsearch+\
+          " --fastq_mergepairs" \
+         +" --fastaout "+os.path.join(data.dirs.edits, sample.name+".merge") \
+         +" --fastq_allowmergestagger" \
+         +" --fastq_maxdiffs "+str(4) \
+         +" --fastq_maxns"+str(sum(data.paramsdict["maxNs"])) \
+         +" --fastq_minlen"+str(32) \
+         +" --fastq_..."
+    print(cmd)
+
+
+
+
 def derep_and_sort(data, sample, preview, nthreads):
     """ dereplicates reads and write to .step file
     ...sorts dereplicated file (.step) so reads that were highly
@@ -476,37 +492,30 @@ def derep_and_sort(data, sample, preview, nthreads):
                 with open(editstuple[0]) as inedit:
                     tmp.write(inedit)
         handle1 = tmphandle
-        if "pair" in data.paramsdict["datatype"]:
-            tmphandle = os.path.join(data.dirs.edits,
-                                     "tmp2_"+sample.name+".concat")       
-            with open(tmphandle, 'wb') as tmp:
-                for editstuple in sample.files.edits:
-                    with open(editstuple[1]) as inedit:
-                        tmp.write(inedit)
-            handle2 = tmphandle
-
     else:
-        handle1, handle2 = sample.files.edits[0]
+        handle1 = sample.files.edits[0]
 
     ## reverse complement clustering for some types    
-    if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
+    #if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
+    if sample.merged:
         reverse = " -strand both "
     else:
         reverse = " "
 
     ## do dereplication with vsearch
-    for handle in [handle1, handle2]:
-        if handle:
-            cmd = data.vsearch+\
-            " -derep_fulllength "+handle+\
-            reverse+\
-            " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
-            " -sizeout "+\
-            " -threads "+str(nthreads)+\
-            " -fasta_width 0"
-        subprocess.call(cmd, shell=True, 
-                             stderr=subprocess.STDOUT, 
-                             stdout=subprocess.PIPE)
+    cmd = data.vsearch+\
+          " -derep_fulllength "+handle1+\
+          reverse+\
+          " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
+          " -sizeout "+\
+          " -threads "+str(nthreads)+\
+          " -fasta_width 0"
+ 
+    subprocess.call(cmd, shell=True, 
+                         stderr=subprocess.STDOUT, 
+                         stdout=subprocess.PIPE)
+
+
 
 def cluster(data, sample, preview, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
@@ -625,8 +634,8 @@ def clustall(args):
 
     ## if reference do ref align here
 
-    ## merge fastq pairs 
-    ## TODO:
+    ## merge fastq pairs
+    merge_fastq_pairs(data, sample)
 
     ## convert fastq to fasta, then derep and sort reads by their size
     derep_and_sort(data, sample, preview, nthreads)
@@ -636,6 +645,8 @@ def clustall(args):
 
     ## cluster_rebuild
     build_clusters(data, sample)
+
+
 
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
@@ -848,6 +859,7 @@ def getalignedreads( data, sample ):
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
+
 
 def run(data, samples, ipyclient, preview, noreverse, force):
     """ run the major functions for clustering within samples """

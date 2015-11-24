@@ -3,17 +3,19 @@
 """ call consensus base calls on single-end data """
 
 from __future__ import print_function
-import multiprocessing
+# pylint: disable=E1101
+
 import scipy.stats
 import scipy.misc
 import itertools
 import numpy
 import gzip
 import os
-from ipyrad.assemble import worker
+
+from .demultiplex import zcat_make_temps
 from ipyrad.assemble.worker import ObjDict
 from collections import Counter
-# pylint: disable=E1101
+
 
 
 
@@ -219,15 +221,18 @@ def gbs_edgefilter(name, seq, leftjust, rights):
 
 
 
-def consensus(data, sample):
+def consensus(args):
     """
     from a clust file handle, reads in all copies at a locus and sorts
     bases at each site, tests for errors at the site according to error 
     rate, calls consensus.
     """
 
+    ## unpack args
+    data, sample, tmpchunk, point = args
+
     ## read in cluster file 2 lines at a time
-    infile = gzip.open(sample.files["clusters"])
+    infile = gzip.open(tmpchunk) #sample.files["clusters"])
     duo = itertools.izip(*[iter(infile)]*2)
 
     ## store read depth info for later output files
@@ -593,55 +598,114 @@ def filter3(data, consens, heteros, sloc):
 
 
 
-def run(data, samples):
-    """ calls the main function """
-    # load up work queue
-    work_queue = multiprocessing.Queue()
+def run_full(data, sample, ipyclient):
+    """ split job into bits and passses to the client """
 
-    # iterate over files
+    ## counter for split job submission
     submitted = 0
+    num = 0
 
-    ## create a consens directory/
-    # paramdir = "".join([str(i) for i in \
-    #                     "c", data.paramsdict["clust_threshold"],
-    #                     "m", data.paramsdict["mindepth_statistical"],
-    #                     "j", data.paramsdict["mindepth_majrule"],
-    #                     "n", data.paramsdict["max_Ns_consens"],
-    #                     "h", data.paramsdict["max_Hs_consens"],
-    #                     "m", ])
-    # data.fil
+    ## set optim size for chunks
+    optim = 5000
+    if sample.stats.clusters_kept > 1e5:
+        optim = 10000
 
+    ## break up the file into smaller tmp files for each engine
+    chunkslist = []
+    for clustfile in sample.files.clusters:
+        args = [data, clustfile, num, optim]
+        _, achunk = zcat_make_temps(args)
+        chunkslist += achunk
 
-    ## sort samples by clustsize
-    samples.sort(key=lambda x: x.stats["clusters_kept"], reverse=True)
-
-    ## put on work queue
-    for sample in samples:
-        ## only require state 3, param estimates are Assembly averages
-        if sample.stats["state"] in [3, 4]:
-            if sample.stats["clusters_kept"]:
-                work_queue.put([data, sample])
-                submitted += 1
-        elif sample.stats["state"] >= 5:
-            print("sample {} already passed state 5".format(sample.name))
-
-    ## create a queue to pass to workers to store the results
-    fake_queue = multiprocessing.Queue()
-
+    ## send chunks across engines, will delete tmps if failed
     try:
-        ##  spawn workers
-        jobs = []
-        for _ in range(min(data.paramsdict["N_processors"], submitted)):
-            work = worker.Worker(work_queue, fake_queue, consensus)
-            work.start()
-            jobs.append(work)
-        for job in jobs:
-            job.join()
+        submitted_args = []
+        for tmpchunk in chunkslist:
+            ## used to increment names across processors
+            point = num*optim  ## 10000
+            args = [data, sample, tmpchunk, point]
+            submitted_args.append(args)
+            submitted += 1
+            num += 1
+
+        ## call to ipp
+        lbview = ipyclient.load_balanced_view()
+        results = lbview.map_async(consensus, submitted_args)
+        try:
+            results.get()
+        except (TypeError, AttributeError, NameError):
+            print(lbview)
+            print(results)
+            print("failed: ...")
+        del lbview
 
     finally:
-        ## get results and cleanup
-        pass
-        #cleanup(data, samples)
+        ## if process failed at any point delete tmp files
+        for tmpchunk in chunkslist:
+            os.remove(tmpchunk)
+
+    return submitted, results
+
+
+        
+
+
+
+
+def run(data, sample, ipyclient, preview=0, force=False):
+    """ checks if the sample should be run and passes the args """
+
+    ## if sample is already done skip
+    if not force:
+        if sample.stats.state >= 5:
+            print("skipping {}, consensus calls already made. Use force=True "\
+                +" to overwrite".format(sample.name))
+        else:
+            run_full(data, sample, ipyclient)
+            cleanup(data, sample)
+    else:
+        run_full(data, sample, ipyclient)
+        cleanup(data, sample)
+
+
+
+
+# def run(data, samples):
+#     """ calls the main function """
+
+#     # iterate over files
+#     submitted = 0
+
+#     ## sort samples by clustsize
+#     samples.sort(key=lambda x: x.stats["clusters_kept"], reverse=True)
+
+#     ## put on work queue
+#     for sample in samples:
+#         ## only require state 3, param estimates are Assembly averages
+#         if sample.stats["state"] in [3, 4]:
+#             if sample.stats["clusters_kept"]:
+#                 work_queue.put([data, sample])
+#                 submitted += 1
+#         elif sample.stats["state"] >= 5:
+#             print("sample {} already passed state 5".format(sample.name))
+
+#     ## create a queue to pass to workers to store the results
+#     fake_queue = multiprocessing.Queue()
+
+#     try:
+#         ##  spawn workers
+#         jobs = []
+#         for _ in range(min(data.paramsdict["N_processors"], submitted)):
+#             work = worker.Worker(work_queue, fake_queue, consensus)
+#             work.start()
+#             jobs.append(work)
+#         for job in jobs:
+#             job.join()
+
+#     finally:
+#         ## get results and cleanup
+#         pass
+#         #cleanup(data, samples)
 
 
 

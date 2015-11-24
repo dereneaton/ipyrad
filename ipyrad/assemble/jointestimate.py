@@ -112,12 +112,19 @@ def tabledstack(stack):
 
 
 
-def countlist(data, sample):
+def countlist(data, sample, subsample=None):
     """ makes a list of lists of reads at each site """
     infile = gzip.open(sample.files.clusters)
     duo = itertools.izip(*[iter(infile)]*2)
     stacked = []
-    while 1:
+
+    ## speed hack for subsampling
+    if subsample:
+        until = int(subsample)
+    else:
+        until = int(1e6)
+
+    while len(stacked) < until:
         try:
             itera = duo.next()
         except StopIteration:
@@ -162,10 +169,10 @@ def optim(args):
     """ func scipy optimize to find best parameters"""
 
     ## split args
-    data, sample = args
+    data, sample, subsample = args
 
     ## make a list of Counter objects for each site in each stack
-    stacked = countlist(data, sample)
+    stacked = countlist(data, sample, subsample)
 
     ## get base frequencies
     base_frequencies = get_freqs(stacked)
@@ -208,12 +215,12 @@ def optim(args):
     return [stacks, stackcounts]
 
 
-def run(data, samples, ipyclient, force):
+def run(data, samples, ipyclient, force, subsample):
     """ calls the main functions """
 
     # if haploid data
     if data.paramsdict["ploidy"] == 1:
-        print("Applying haploid-based test (infer E with H fixed to 0")
+        print("Applying haploid-based test (infer E with H fixed to 0).")
 
     submitted_args = []
     ## if sample is already done skip
@@ -221,19 +228,19 @@ def run(data, samples, ipyclient, force):
         if not force:
             if sample.stats.state >= 4:
                 print(sample.name+"already estimated. Use force=True "+\
-                      "to overwrite")
+                      "to overwrite.")
             elif sample.stats.state < 3:
                 print(sample.name+"not clustered yet. Run step3() first.")
             elif sample.stats.clusters_kept < 100:
-                print("skipping {}. Too few reads ({}). Use force=True \
-                      to override".format(sample.name, sample.stats.reads_raw))
+                print("skipping {}. Too few reads ({}). Use force=True "+\
+                     "to override".format(sample.name, sample.stats.reads_raw))
             else:
-                submitted_args.append([data, sample])
+                submitted_args.append([data, sample, subsample])
         else:
             if sample.stats.state < 3:
                 print(sample.name+" not clustered yet. Run step3() first.")
             else:
-                submitted_args.append([data, sample])
+                submitted_args.append([data, sample, subsample])
 
     ## if jobs then run
     if submitted_args:
