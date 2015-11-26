@@ -17,60 +17,112 @@ import numpy as np
 from .demultiplex import ambigcutters
 from .demultiplex import zcat_make_temps
 
+import logging
+LOGGER = logging.getLogger(__name__)
 
 
-def afilter(data, bases, cut1, cut2, read):
+def afilter(data, sample, bases, cuts1, cuts2, read):
     """ 
     Applies filter for primers & adapters. Does three checks in order from 
     left to right of seq. Checks cut+adapter, adapter, and part of adapter
     """
+    ## set empty
+    where1 = where2 = where3 = check1 = check2 = None
 
-    ## which cutter will be next to adapters?
-    cuts = [comp(i)[::-1] for i in cut1]
+    ## if ddrad we're looking for the second cutter on read1
+    rvcuts = [comp(i)[::-1] for i in cuts1]
     if "ddrad" in data.paramsdict["datatype"]:
-        cuts = [comp(i)[::-1] for i in cut2]
+        rvcuts = [comp(i)[::-1] for i in cuts2]
 
-    ## if second read revcomp the cutters for checks
-    if read == 2:
-        cuta, cutb = [comp(i)[::-1] for i in cuts]
+    ## if not ambiguous cuts then make second Zs
+    if not rvcuts[1]:
+        rvcuts[1] = "Z"*10
 
-    ## get the one or two cutters
-    cuta, cutb = cuts
+    ## Look for adapters -- rvcut+[adapter]
+    if read == 1:
+        lookfor1 = rvcuts[0]+"AGA"
+        lookfor2 = rvcuts[1]+"AGA"
+    else:
+        ## read 2 will have the barcode between: rvcut+[barcode]+[adapter]
+        if sample.barcode:
+            lookfor1 = rvcuts[0]+comp(sample.barcode)[::-1][:3]
+            lookfor2 = rvcuts[1]+comp(sample.barcode)[::-1][:3]
+        else:
+            lookfor1 = rvcuts[0]+"NN"
+            lookfor2 = rvcuts[1]+"NN"
 
-    ## Look for adapters -- cut+[beginning of adapter]
-    lookfor1 = cuta+"AGA"
-    lookfor2 = cutb+"AGA"
+    ## if strict then shorter lookfor
     if data.paramsdict["filter_adapters"] == 2:
         lookfor1 = lookfor1[:-2]
         lookfor2 = lookfor2[:-2]
 
-    if cuts[1]:
-        check1 = bases.tostring().rfind(lookfor1)
-        check2 = bases.tostring().rfind(lookfor2)
-        where = max(0, min([i for i in [check1, check2] if i > 0]))
-    else:
-        where = max(0, bases.tostring().rfind(lookfor1))
-       
-    ## look for adapter sequence directly
-    lookfor1 = "AGATCGGA"    
-    if not where:
-        if data.paramsdict["filter_adapters"] == 2:        
-            lookfor1 = lookfor1[:-2]
+    ## if cutter has ambiguous base (2 in cuts) look for both otherwise just one
+    check1 = max(0, bases[1].tostring().rfind(lookfor1))
+    if sum([1 for i in rvcuts]) == 2:
+        check2 = max(0, bases[1].tostring().rfind(lookfor2))
 
+    if check1 or check2:
+        where1 = min([i for i in [check1, check2] if i])
+
+    LOGGER.debug("where1:%s, ch1:%s, ch2:%s, read:%s", 
+                 where1, check1, check2, read)
+
+    ## look for adapter sequence directly in two parts: "AGATCGGA.AGAGCGTC"
+    lookfor1 = "AGATCGGA"
+    lookfor2 = "AGAGCGTC"
+
+    ## if strict then shorter lookfor
+    if data.paramsdict["filter_adapters"] == 2:        
+        lookfor1 = lookfor1[:-2]
+        lookfor2 = lookfor2[:-2]
+
+    check1 = max(0, bases[1].tostring().rfind(lookfor1))
+    check2 = max(0, bases[1].tostring().rfind(lookfor2))
+    mincheck = min(check1, check2)
+
+    ## How far back from adapter to trim to remove cutsite and barcodes
+    if mincheck:
+        ## trim further for check2
+        backup = 1
+        if not check1:
+            backup = 9
+        ## find where to trim
         if read == 1:
-            where = max(0, bases.tostring().rfind(lookfor1) - (len(cuta) + 1))
+            where2 = max(0, mincheck - (len(cuts2[0]) + backup))
         else:
-            where = max(0, bases.tostring().rfind(lookfor1) - (len(cuta) + 6))
+            if "ddrad" in data.paramsdict["datatype"]:
+                trim = mincheck - ((len(cuts1[0]) + len(cuts2[0])) + backup)
+                where2 = max(0, trim)
+            else:
+                trim = mincheck - ((len(cuts1[0]) + len(cuts1[0])) + backup)
+                where2 = max(0, trim)
+    else:
+        where2 = 0
 
-    ## look for CUT at end of seq
-    if not where:
-        if cuta in bases[-len(cuta)-5:]:
-            where = bases.rindex(cuta)
+    LOGGER.debug("where2:%s, ch1:%s, ch2:%s, read:%s",
+                  where2, check1, check2, read)
 
-    ## if preview: show what you've been doing
-    #print(lookfor1, lookfor2, where)
-    return where
-
+    ## if strict filter, do additional search for cut site near edges
+    where3 = 0
+    if data.paramsdict["filter_adapters"] == 2:
+        if not (where1 or where2):
+            if read == 1:
+                cutback = -15
+                tail = bases[1].tostring()[cutback:]
+                if any([i in tail for i in rvcuts]):
+                    where3 = len(bases[1]) + cutback
+            else:
+                cutback = -10
+                tail = bases[1].tostring()[cutback:]
+                if any([i in tail for i in rvcuts]):
+                    where3 = len(bases[1]) + cutback
+    
+    LOGGER.debug("where3:%s, ......, ......, read:%s", where3, read)
+    try:
+        where = min([i for i in [where1, where2, where3] if i])
+    except (TypeError, ValueError):
+        where = 0
+    return where 
 
 
 def comp(seq):
@@ -88,7 +140,7 @@ def adapterfilter(args):
     """ filters for adapters """
 
     ## parse args
-    data, sample, read1, read2, cut1, cut2, write1, write2, point = args
+    data, sample, read1, read2, cuts1, cuts2, write1, write2, point = args
 
     ## look for adapters in sequences
     wheretocut1 = wheretocut2 = cutter = None
@@ -99,8 +151,8 @@ def adapterfilter(args):
     ## check for adapter
     if data.paramsdict["filter_adapters"]:
         ## get trim length for read1
-        wheretocut1 = afilter(data, read1, cut1, cut2, 1)
-        wheretocut2 = afilter(data, read2, cut1, cut2, 2)
+        wheretocut1 = afilter(data, sample, read1, cuts1, cuts2, 1)
+        wheretocut2 = afilter(data, sample, read2, cuts1, cuts2, 2)
 
         ## cut one or both reads depending on detection of adapters
         cutter = 0
@@ -109,46 +161,47 @@ def adapterfilter(args):
         elif wheretocut1 or wheretocut2:
             cutter = max(wheretocut1, wheretocut2)
 
-        ## if strict filter, do additional search for cut site near edges
-        if (data.paramsdict["filter_adapters"] == 2) and (not cutter):
-            if (cut1 in read1[1][-15:]) or (cut2 in read2[1][-10:]):
-                cutter = len(read1[1])-15
-
     ## if the read needs to be trimmed
+    LOGGER.debug("@cutter w1:%s w2:%s ", wheretocut1, wheretocut2)
+
     if cutter:
         ## if trimmed frag is still long enough
         if cutter > max(32, data.paramsdict["filter_min_trim_len"]):
             ## write fastq format
-            sseq1 = "\n".join([">"+sample.name+"_"+str(point)+"_c1", 
-                               read1[1][:cutter].tostring(),
+            sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+"_c1", 
+                               read1[1].tostring()[:cutter],
                                read1[2].tostring(),
-                               read1[3][:cutter].tostring()])
+                               read1[3].tostring()[:cutter]])
             write1.append(sseq1)
+            LOGGER.debug("%s", read1[1].tostring())
+            LOGGER.debug("%s -trim r1", read1[1].tostring()[:cutter])
 
             if len(read2):
-                sseq2 = "\n".join([">"+sample.name+"_"+str(point)+"_c2",
-                                   read2[1][:cutter].tostring(),
+                sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+"_c2",
+                                   read2[1].tostring()[:cutter],
                                    read2[2].tostring(),
-                                   read2[3][:cutter]])
+                                   read2[3].tostring()[:cutter]])
                                    #bases1[:cutter]+"SS"+bases2[:cutter]+"\n"
                 write2.append(sseq2)
+                LOGGER.debug("%s", read2[1].tostring())
+                LOGGER.debug("%s -trim r2", read2[1].tostring()[:cutter])                
         else:
             kept = 0
 
     ## not trimmed
     else:
-        sseq1 = "\n".join([">"+sample.name+"_"+str(point)+"_r1", 
-                           "".join(read1[1]),
-                           "".join(read1[2]),
-                           "".join(read1[3])])
+        sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+"_r1", 
+                           read1[1].tostring(),
+                           read1[2].tostring(),
+                           read1[3].tostring()])
         write1.append(sseq1)
         if len(read2):
-            sseq2 = "\n".join([">"+sample.name+"_"+str(point)+"_r2", 
+            sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+"_r2", 
                                read2[1].tostring(),
                                read2[2].tostring(),
                                read2[3].tostring()])
             write2.append(sseq2)
-    
+
     return write1, write2, read1, read2, point, kept
 
 
@@ -162,8 +215,9 @@ def rawedit(args):
     data, sample, tmptuple, nreplace, point = args
 
     ## get cut sites
-    cut1, cut2 = [ambigcutters(i) for i in \
-                  data.paramsdict["restriction_overhang"]]
+    cuts1, cuts2 = [ambigcutters(i) for i in \
+                    data.paramsdict["restriction_overhang"]]
+    LOGGER.info("cutsites %s %s", cuts1, cuts2)
 
     ## the read1 demultiplexed reads file
     if tmptuple[0].endswith(".gz"):
@@ -219,10 +273,10 @@ def rawedit(args):
 
         if len(read1):
             ## replace cut sites            
-            read1, read2 = replace_cuts(data, read1, read2, cut1, cut2)
+            read1, read2 = replace_cuts(data, read1, read2, cuts1, cuts2)
 
             ## filter for adapters 
-            args = [data, sample, read1, read2, cut1, cut2, 
+            args = [data, sample, read1, read2, cuts1, cuts2, 
                     write1, write2, point]
             write1, write2, read1, read2, point, kept = adapterfilter(args)
             if kept:
@@ -259,11 +313,12 @@ def rawedit(args):
 
 
 
-def replace_cuts(data, read1, read2, cut1, cut2):
+def replace_cuts(data, read1, read2, cuts1, cuts2):
     """ fix cut sites to be error free and not carry ambiguities """
 
     ## replace cut region with a single resolution of cut w/o ambiguities
-    read1[1][:len(cut1[0])] = list(cut1[0])    
+    read1[1][:len(cuts1[0])] = list(cuts1[0])
+    read1[3][:len(cuts1[0])] = ["B"]*len(cuts1[0])
     #read1[1] = read1[1][:len(cut1[0])] 
 
     ## same for cut2 and end of second read
@@ -271,11 +326,13 @@ def replace_cuts(data, read1, read2, cut1, cut2):
         ## fix cut sites to be error free before counting Ns
         if 'gbs' in data.paramsdict["datatype"]:
             ## single digest use overhang for enzyme 1
-            read2[1][:len(cut1[0])] = list(cut1[0])
+            read2[1][:len(cuts1[0])] = list(cuts1[0])
+            read2[3][:len(cuts1[0])] = ["B"]*len(cuts1[0])
             #read2[1] = read2[1][len(cut1[0]):] # = list(cut1[0])            
         else:
             ## double digest use overhang for enzyme 2
-            read2[1][:len(cut2[0])] = list(cut2[0])
+            read2[1][:len(cuts2[0])] = list(cuts2[0])
+            read2[3][:len(cuts2[0])] = ["B"]*len(cuts2[0])
             #read2[1] = read2[1][len(cut2[0]):] # = list(cut2[0])            
     return read1, read2
 
@@ -344,12 +401,13 @@ def roundup(num):
 
 
 
-def run_full(data, sample, ipyclient, nreplace, preview):
+def run_full(data, sample, ipyclient, nreplace):
     """ 
     Splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them .
     """
     ## before starting
+    preview = 0
     prechecks(data, preview)
 
     ## load up work queue
@@ -381,14 +439,10 @@ def run_full(data, sample, ipyclient, nreplace, preview):
             num += 1
 
         ## call to ipp
-        dview = ipyclient.load_balanced_view()
-        results = dview.map_async(rawedit, submitted_args)
-        try:
-            results.get()
-        except (TypeError, AttributeError, NameError):
-            print(dview)
-            print(results)
-        del dview
+        lbview = ipyclient.load_balanced_view()
+        results = lbview.map_async(rawedit, submitted_args)
+        results.get()
+        del lbview
     
     finally:
         ## if process failed at any point delete temp files
@@ -481,7 +535,7 @@ def cleanup(data, sample, submitted, results):
 
 
 
-def run(data, sample, ipyclient, preview=0, force=False, nreplace=True):
+def run(data, sample, ipyclient, force=False, nreplace=True):
     """ run the major functions for editing raw reads """
     ## if very few reads, raise warning
     if sample.stats.reads_raw < 500:
@@ -494,13 +548,13 @@ def run(data, sample, ipyclient, preview=0, force=False, nreplace=True):
             print("skipping {}. Already edited. Use force=True to overwrite"\
                   .format(sample.name))
         else:
-            submitted, results = run_full(data, sample, ipyclient, 
-                                          nreplace, preview)
+            submitted, results = run_full(data, sample, ipyclient, nreplace)
             cleanup(data, sample, submitted, results)
     else:
-        submitted, results = run_full(data, sample, ipyclient, 
-                                      nreplace, preview)
+        submitted, results = run_full(data, sample, ipyclient, nreplace)
         cleanup(data, sample, submitted, results)
+
+    return ipyclient
 
 
 

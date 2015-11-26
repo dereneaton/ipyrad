@@ -11,7 +11,6 @@ import sys
 import os
 
 
-
 def parse_params(params):
     """ Parse the params file args, create and return Assembly object."""
     ## check that params.txt file is correctly formatted.
@@ -34,8 +33,10 @@ def parse_params(params):
     ## create a default Assembly object
     print('parsedict:\n', parsedict)
     data = ip.Assembly(parsedict['14'])
+    data.set_params("datatype", parsedict['10'])
 
-    ## set_params for all keys in parsedict 
+    ## set_params for all keys in parsedict. There may be a preferred order
+    ## for entering some params, e.g., datatype to know if data are paired.
     for param in parsedict:
         data.set_params(param, parsedict[param])
 
@@ -93,6 +94,11 @@ def main():
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
 
+    ## used to restrict some CLI workflow vs. interactive features
+    ## does it need to be global?
+    ip.__interactive__ = 0
+    logging.debug("*** Launching CLI ***")
+
     ## create new paramsfile if -n
     if args.new:
         write_params(ip.__version__)
@@ -104,9 +110,8 @@ def main():
     data = parse_params(args.params)
 
     ## For now print the params. 
-    print("")
     for key, item in data.paramsdict.items():
-        print("{:<30} {:<20}".format(key, item))
+        logging.debug("%s, %s", key, item)
 
     ## run assembly steps
     #data.run(args.steps)
@@ -114,3 +119,5 @@ def main():
 
 if __name__ == "__main__": 
     main()
+
+

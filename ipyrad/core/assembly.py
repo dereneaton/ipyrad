@@ -24,6 +24,9 @@ from ipyrad.core.sample import Sample
 from ipyrad.core.parallel import ipcontroller_init
 from ipyrad import assemble
 
+import logging
+LOGGER = logging.getLogger(__name__)
+
 
 
 class Assembly(object):
@@ -52,17 +55,17 @@ class Assembly(object):
         The barcodes information is fetched from parameter 3
         `[Assembly].paramsdict['barcodes_path']`.
     vsearch : str
-        Path to the vsearch executable. This can be changed int
-        [Assembly].vsearch = [newpath].
+        The path to the default vsearch executable. If not found, this can be 
+        changed by setting [Assembly].vsearch = [newpath].
     muscle : str
-        The path to the default muscle executable. If not found, this can be changed
-        by setting `[Assembly].muscle = [newpath]`.
+        The path to the default muscle executable. If not found, this can be 
+        changed by setting `[Assembly].muscle = [newpath]`.
     smalt : str
-        The path to the default smalt executable. If not found, this can be changed
-        by setting `[Assembly].smalt = [newpath]`.
+        The path to the default smalt executable. If not found, this can be 
+        changed by setting `[Assembly].smalt = [newpath]`.
     samtools : str
-        The path to the default samtools executable. If not found, this can be changed
-        by setting `[Assembly].samtools = [newpath]`.
+        The path to the default samtools executable. If not found, this can be 
+        changed by setting `[Assembly].samtools = [newpath]`.
     log : list
         A list of all modifications to the Assembly object and its Samples with
         time stamps. Use `print [Assembly].log` for easier viewing.
@@ -176,13 +179,15 @@ class Assembly(object):
 
 
 
-    def link_fastqs(self, path=None, merged=False, append=False):
+    def link_fastqs(self, path=None, merged=False, force=False, append=False):
         """ Create Sample objects for samples in sorted_fastq_path.
 
         Note
         ----
-        link_fastqs() is called automatically when parameter 
-        [sorted_fastq_path] is modified.
+        link_fastqs() is called automatically during step2() if no Samples
+        are yet present in the Assembly object (data were not demultiplexed
+        in step1().) It looks for demultiplexed data files located in the
+        [sorted_fastq_path].
 
 
         Parameters
@@ -209,11 +214,18 @@ class Assembly(object):
             fastq files linked to Sample objects in the Assembly object. 
         
         """
+        ## cannot both force and append at once
+        if force and append:
+            raise Exception("Cannot use force and append at the same time.")
+
+        if self.samples and not (force or append):
+            raise Exception("Files already linked to `{}`. ".format(self.name)\
+                +"Use force=True to replace all files, or append=True to "
+                +"add additional files to existing Samples.")
+
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
-        #else:
-        #    assert os.path.exists(path), "No files in path: {}".format(path)
 
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
@@ -230,17 +242,23 @@ class Assembly(object):
 
         ## link pairs into tuples        
         if 'pair' in self.paramsdict["datatype"]:
-
             ## check that names fit the paired naming convention
-            assert any(["_R1_" in i for i in fastqs]) or \
-                   any(["_R1." in i for i in fastqs]), \
-                   "File name format error: paired file names must be "\
-                 + "identical except for _R1_ and _R2_ in their names."
             r1_files = [i for i in fastqs if "_R1_" in i]
-            fastqs = [(i, i.replace("_R1_", "_R2_")) for i in r1_files]
+            r2_files = [i.replace("_R1_", "_R2_") for i in r1_files]
+
+            if not any(["_R1_" in i for i in fastqs]) or \
+                   (len(r1_files) != len(r2_files)):
+                raise Exception("File name format error: paired file names " \
+                +"must be identical except for _R1_ and _R2_ in their names.")
+            fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
         ## data are not paired, create empty tuple pair
         else:
+            if any(["_R2_" in i for i in fastqs]):
+                print("Given the presence of '_R2_' in file names, this "\
+              +"is a warning that if your data are paired-end you should set "\
+              +"the Assembly object datatype to a paired type (e.g., "\
+              +"pairddrad or pairgbs) prior to running link_fastqs().")
             fastqs = [(i, ) for i in fastqs]
 
         ## counters for the printed output
@@ -248,11 +266,11 @@ class Assembly(object):
         linked = 0
         appended = 0
         for fastqtuple in list(fastqs):
+            assert isinstance(fastqtuple, tuple), "fastqs not a tuple."
             ## local counters
             createdinc = 0
             linkedinc = 0
             appendinc = 0
-
             ## remove file extension from name
             sname = _name_from_file(fastqtuple[0])
 
@@ -260,7 +278,7 @@ class Assembly(object):
                 ## create new Sample
                 self.samples[sname] = Sample(sname)
                 self.samples[sname].stats.state = 1
-                self.samples[sname].barcode = "not_demultiplexed_by_ipyrad"
+                self.samples[sname].barcode = None 
                 self.samples[sname].files.fastqs.append(fastqtuple)
                 createdinc += 1
                 linkedinc += 1
@@ -271,22 +289,32 @@ class Assembly(object):
                         self.samples[sname].files.fastqs.append(fastqtuple)
                         appendinc += 1
                     else:
-                        print("{}\n already in Sample {}"\
+                        print("The files {} are already in Sample {}, "\
                               .format(fastqtuple, sname) \
-                           + ", cannot append duplicate files to a Sample.")
+                              +"cannot append duplicate files to a Sample.\n")
+                elif force:
+                    ## create new Sample
+                    self.samples[sname] = Sample(sname)
+                    self.samples[sname].stats.state = 1
+                    self.samples[sname].barcode = None 
+                    self.samples[sname].files.fastqs.append(fastqtuple)
+                    createdinc += 1
+                    linkedinc += 1
                 else:
-                    print("{} already in samples.".format(sname) \
-                    + " Use append=True to append additional files to Samples.")
+                    print("The files {} are already in Sample.".format(sname) \
+                    + " Use append=True to append additional files to a Sample"\
+                    + " or force=True to replace all existing Samples.")
 
             ## record whether data were merged.
             if merged:
                 self.samples[sname].merged = 1
 
             ## do not allow merged=False and .forward in file names
-            assert not (merged == False and 'forward' in fastqtuple[0]), \
+            if (merged == False) and ('forward' in fastqtuple[0]):
+                print(\
                 "If R1 and R2 data are merged (e.g., with PEAR) " \
               + "use link_fastqs(merge=True) to indicate this. You " \
-              + "may need force=True to overwrite existing files"
+              + "may need force=True to overwrite existing files.\n")
 
             ## if fastqs already demultiplexed, try to link stats
             if any([linkedinc, createdinc, appendinc]):
@@ -301,7 +329,8 @@ class Assembly(object):
                 appended += appendinc
 
         ## print if data were linked
-        print("{} new Samples created in `{}`.".format(created, self.name))
+        if created:
+            print("{} new Samples created in `{}`.".format(created, self.name))
         if linked:
             print("{} fastq files linked to {} new Samples.".\
                   format(linked, len(self.samples)))
@@ -345,7 +374,7 @@ class Assembly(object):
             for index, (key, value) in enumerate(self.paramsdict.items()):
                 if isinstance(value, str):
                     value = value.replace(fullcurdir, ".")
-                sys.stdout.write("  {:<4}{:<30}{:<45}\n".format(index+1,
+                sys.stdout.write("  {:<4}{:<28}{:<45}\n".format(index+1,
                            key, value))
         else:
             try:
@@ -445,12 +474,14 @@ class Assembly(object):
 
 
         elif param in ['4', 'sorted_fastq_path']:
+            assert isinstance(newvalue, str), \
+            "sorted_fastq_path must be a string, e.g., /home/data/fastqs/*"
             newvalue = expander(newvalue)
             if os.path.isdir(newvalue):
                 newvalue = os.path.join(newvalue, "*.gz")
             self.paramsdict['sorted_fastq_path'] = newvalue
             ## link_fastqs will check that files exist
-            self.link_fastqs()
+            #self.link_fastqs()
             self._stamp("[4] set to "+newvalue)
             self.dirs["fastqs"] = os.path.dirname(
                                    self.paramsdict["sorted_fastq_path"])
@@ -678,22 +709,20 @@ class Assembly(object):
                     + "Use ip.merge() to combine samples \nfrom multiple " \
                     + "Assembly objects.\n")
         except (KeyboardInterrupt, SystemExit, AttributeError):
-            print("assembly step1 interrupted.")
-            print(ipyclient.result_status(0), 'status0')
+            logging.error("assembly step1 interrupted.")
             raise
-        #except RunTimeWarning:
-        #    pass
 
         ## close client when done or if interrupted
         finally:
+            ipyclient.shutdown(block=1)
             ipyclient.close()
 
         ## pickle the data obj
         self._save()
 
 
-
-    def step2(self, sample="", preview=0, force=False):
+    ## TODO: make a step Class object
+    def step2(self, samples="", preview=0, force=False):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
         select all samples in the Assembly object. Only samples in state
@@ -703,36 +732,54 @@ class Assembly(object):
         """
 
         ## launch parallel client within guarded statement
+        ipyclient = ipp.Client(cluster_id=self.__ipname__)        
         try:
             ipyclient = ipp.Client(cluster_id=self.__ipname__)
 
-            if sample:
+            if samples:
                 ## if sample key, replace with sample obj
-                assert isinstance(sample, list), \
+                assert isinstance(samples, list), \
                 "to subselect samples enter as a list, e.g., [A, B]."
-                for samp in sample:
+                for sample in samples:
                     ## get sample from dict key
-                    samp = self.samples[samp]
-                    assemble.rawedit.run(self, samp, ipyclient, 
-                                         preview, force)
+                    sample = self.samples[sample]
+                    assemble.rawedit.run(self, sample, ipyclient, force)
+                    # for key in ipyclient.history:
+                    #     if ipyclient.metadata[key].error:
+                    #         LOGGER.error("step2 error: %s", 
+                    #             ipyclient.metadata[key].error)
+                    #     if ipyclient.metadata[key].stdout:
+                    #         LOGGER.error("step2 stdout: %s",
+                    #             ipyclient.metadata[key].stdout)                            
             else:
+                ## TODO: Remove return of client
                 if not self.samples:
                     assert self.samples, "No Samples in "+self.name
                 for _, sample in self.samples.items():
-                    assemble.rawedit.run(self, sample, ipyclient, 
-                                         preview, force)
+                    assemble.rawedit.run(self, sample, ipyclient, force)
+                    # for key in ipyclient.history:
+                    #     if ipyclient.metadata[key].error:
+                    #         LOGGER.error("step2 error: %s", 
+                    #             ipyclient.metadata[key].error)
+                    #         raise SystemExit
+                    #     if ipyclient.metadata[key].stdout:
+                    #         LOGGER.error("step2 stdout:%s", 
+                    #             ipyclient.metadata[key].stdout)
+                    #         raise SystemExit
 
-        except (KeyboardInterrupt, SystemExit):
-            print("assembly step2 interrupted")
-            print(ipyclient.metadata)
+        except (KeyboardInterrupt, AttributeError, SystemExit):
+            LOGGER.error("assembly step2 interrupted!")
             raise
             
         ## close parallel client if done or interrupted
         finally:
+            logging.info("assembly step2 cleaning up.")
+            ipyclient.shutdown(block=1)
             ipyclient.close()
 
         ## checkpoint the data obj
         self._save()
+
 
 
     def step3(self, samples=None, preview=0, noreverse=0, force=False):
@@ -888,6 +935,8 @@ class Assembly(object):
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
             steps = "123457"
+        else:
+            steps = str(steps)
         if '1' in steps:
             self.step1(preview=preview)
         if '2' in steps:

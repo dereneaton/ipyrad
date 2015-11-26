@@ -16,6 +16,8 @@ import cPickle as pickle
 from ipyrad.core.sample import Sample
 from collections import defaultdict, Counter
 
+import logging
+LOGGER = logging.getLogger(__name__)
 
 
 def combinefiles(filepath):
@@ -45,6 +47,7 @@ def revcomp(sequence):
     return sequence
 
 
+
 def matching(barcode, data):
     "allows for N base difference between barcodes"
     match = 0
@@ -59,9 +62,8 @@ def matching(barcode, data):
 
 
 def ambigcutters(seq):
-    """ returns both resolutions of a cut site
-    that has an ambiguous base in it, else the 
-    single cut site """
+    """ returns both resolutions of a cut site that has an ambiguous base in 
+    it, else the single cut site """
     resos = []
     ambigs = {"R":("G", "A"),
               "K":("G", "T"),
@@ -136,6 +138,7 @@ def barmatch(args):
         dsort2[sample] = []
         dbars[sample] = set()
 
+    LOGGER.debug("inside")
     ## go until end of the file
     while 1:
         try: 
@@ -231,24 +234,6 @@ def barmatch(args):
     pickout.close()
 
     return "done"
-
-
-
-# def bufcount(filename, gzipped):
-#     """ fast line counter """
-#     if gzipped: 
-#         fin = gzip.open(filename)                  
-#     else:
-#         fin = open(filename)                          
-#     nlines = 0
-#     buf_size = 1024 * 1024
-#     read_f = fin.read # loop optimization
-#     buf = read_f(buf_size)
-#     while buf:
-#         nlines += buf.count('\n')
-#         buf = read_f(buf_size)
-#     fin.close()
-#     return nlines
 
 
 
@@ -397,6 +382,7 @@ def zcat_make_temps(args):
     ## get optimum lines per file
     if not optim:
         optim = getsplits(raws[0])
+    LOGGER.info("optim = %s", optim)
 
     ## is it gzipped
     cat = "cat"
@@ -516,7 +502,7 @@ def collate_tmps(args):
     combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")[0]))
 
     ## one outfile to write to
-    handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.gz")
+    handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.fastq.gz")
     with gzip.open(handle_r1, 'wb') as out:
         for fname in combs:
             with gzip.open(fname) as infile:
@@ -527,7 +513,7 @@ def collate_tmps(args):
                           data.dirs.fastqs, "tmp_"+name)+"_R2_*.gz")
         combs.sort()                        
         ## one outfile to write to
-        handle_r2 = os.path.join(data.dirs.fastqs, name+"_R2_.gz")
+        handle_r2 = os.path.join(data.dirs.fastqs, name+"_R2_.fastq.gz")
         with gzip.open(handle_r2, 'wb') as out:
             for fname in combs:
                 with gzip.open(fname) as infile:
