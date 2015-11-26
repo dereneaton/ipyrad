@@ -7,8 +7,11 @@ from ipyrad.core.newparamsfile import write_params
 import pkg_resources
 import ipyrad as ip
 import argparse
+import logging
 import sys
 import os
+
+LOGGER = logging.getLogger(__name__)
 
 
 def parse_params(params):
@@ -97,7 +100,8 @@ def main():
     ## used to restrict some CLI workflow vs. interactive features
     ## does it need to be global?
     ip.__interactive__ = 0
-    logging.debug("*** Launching CLI ***")
+
+    LOGGER.info("Running *CLI*")
 
     ## create new paramsfile if -n
     if args.new:
@@ -111,7 +115,7 @@ def main():
 
     ## For now print the params. 
     for key, item in data.paramsdict.items():
-        logging.debug("%s, %s", key, item)
+        LOGGER.debug("%s, %s", key, item)
 
     ## run assembly steps
     #data.run(args.steps)
