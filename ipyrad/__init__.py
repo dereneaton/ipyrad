@@ -17,7 +17,7 @@ from ipyrad.core.load_dataobj import load_assembly
 ## define state vars
 __version__ = "0.0.66"
 __interactive__ = 1
-__loglevel__ = "INFO"   ##  "DEBUG"  "INFO"  "ERROR"  "WARNING"
+__loglevel__ = "DEBUG"   ##  "DEBUG"  "INFO"  "ERROR"  "WARNING"
 
 
 ## failed attempts at launching parallel code in __init__

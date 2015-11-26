@@ -441,7 +441,20 @@ def run_full(data, sample, ipyclient, nreplace):
         ## call to ipp
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(rawedit, submitted_args)
-        results.get()
+
+        ## return errors if an engine fails
+        try:
+            results.get()
+        except TypeError:
+            for key in ipyclient.history:
+                if ipyclient.metadata[key].error:
+                    LOGGER.error("step2 error: %s", 
+                        ipyclient.metadata[key].error)
+                    raise SystemExit
+                if ipyclient.metadata[key].stdout:
+                    LOGGER.error("step2 stdout:%s", 
+                        ipyclient.metadata[key].stdout)
+                    raise SystemExit            
         del lbview
     
     finally:
@@ -449,7 +462,7 @@ def run_full(data, sample, ipyclient, nreplace):
         for tmptuple in chunkslist:
             os.remove(tmptuple[0])
             if "pair" in data.paramsdict["datatype"]:
-                os.remove(tmptuple[1]) 
+                pass#os.remove(tmptuple[1]) 
 
     return submitted, results
 

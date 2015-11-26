@@ -215,6 +215,7 @@ def optim(args):
     return [stacks, stackcounts]
 
 
+
 def run(data, samples, ipyclient, force, subsample):
     """ calls the main functions """
 
@@ -249,8 +250,7 @@ def run(data, samples, ipyclient, force, subsample):
                                                       reverse=True)
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(optim, submitted_args)
-        fakeres = results.get()
-        #print(fakeres)
+        results.get()
 
         ## get results and remove temp files
         cleanup(data, samples)

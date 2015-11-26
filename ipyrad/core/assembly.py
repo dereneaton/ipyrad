@@ -329,8 +329,7 @@ class Assembly(object):
                 appended += appendinc
 
         ## print if data were linked
-        if created:
-            print("{} new Samples created in `{}`.".format(created, self.name))
+        print("{} new Samples created in `{}`.".format(created, self.name))
         if linked:
             print("{} fastq files linked to {} new Samples.".\
                   format(linked, len(self.samples)))
@@ -631,18 +630,20 @@ class Assembly(object):
 
         elif param in ['27', 'assembly_method']:
             self.paramsdict['assembly_method'] = newvalue
-            print(newvalue)
-            assert self.paramsdict['assembly_method'] in list(["denovo", "reference", "hybrid"]), \
+            LOGGER.info("assembly method set to %s", newvalue)
+            assert self.paramsdict['assembly_method'] in \
+                              ["denovo", "reference", "hybrid"], \
                  "The assembly_method option must be one of the following: "+\
                  "denovo, reference, or hybrid."
             self._stamp("[27] set to {}".format(newvalue))
 
         elif param in ['28', 'reference_sequence']:
             fullrawpath = expander(newvalue)
-            assert os.path.isfile(fullrawpath), "Reference sequence file not found. " \
-                + "This must be an absolute path (/home/wat/ipyrad/data/referece.gz) " \
-                + "or a path relative to the directory where you're running ipyrad " \
-                + "(./data/reference.gz). Here's what you gave us: " + fullrawpath
+            if not os.path.isfile(fullrawpath):
+                raise Exception(\
+            "Reference sequence file not found. This must be an absolute path "\
+            +"(/home/wat/ipyrad/data/referece.gz) or a path relative to the "\
+            +"directory where you're running ipyrad (./data/reference.gz). ")
             self.paramsdict['reference_sequence'] = fullrawpath
             self._stamp("[28] set to "+fullrawpath)
 
@@ -744,28 +745,13 @@ class Assembly(object):
                     ## get sample from dict key
                     sample = self.samples[sample]
                     assemble.rawedit.run(self, sample, ipyclient, force)
-                    # for key in ipyclient.history:
-                    #     if ipyclient.metadata[key].error:
-                    #         LOGGER.error("step2 error: %s", 
-                    #             ipyclient.metadata[key].error)
-                    #     if ipyclient.metadata[key].stdout:
-                    #         LOGGER.error("step2 stdout: %s",
-                    #             ipyclient.metadata[key].stdout)                            
             else:
                 ## TODO: Remove return of client
                 if not self.samples:
                     assert self.samples, "No Samples in "+self.name
                 for _, sample in self.samples.items():
                     assemble.rawedit.run(self, sample, ipyclient, force)
-                    # for key in ipyclient.history:
-                    #     if ipyclient.metadata[key].error:
-                    #         LOGGER.error("step2 error: %s", 
-                    #             ipyclient.metadata[key].error)
-                    #         raise SystemExit
-                    #     if ipyclient.metadata[key].stdout:
-                    #         LOGGER.error("step2 stdout:%s", 
-                    #             ipyclient.metadata[key].stdout)
-                    #         raise SystemExit
+
 
         except (KeyboardInterrupt, AttributeError, SystemExit):
             LOGGER.error("assembly step2 interrupted!")

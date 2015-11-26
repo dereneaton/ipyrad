@@ -412,6 +412,7 @@ def zcat_make_temps(args):
         chunks2 = glob.glob(os.path.join(
                         data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
+        LOGGER.debug("chunksfiles: %s %s", chunks1, chunks2)
         assert len(chunks1) == len(chunks2), \
             "R1 and R2 files are not the same length."
     else:
@@ -676,12 +677,12 @@ def make_stats(data, raws):
         sample.barcode = data.barcodes[name]
         if "pair" in data.paramsdict["datatype"]:
             sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
-                                                  name+"_R1_.gz"),
+                                                  name+"_R1_.fastq.gz"),
                                      os.path.join(data.dirs.fastqs,
-                                                  name+"_R2_.gz"))]
+                                                  name+"_R2_.fastq.gz"))]
         else:
             sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
-                                                  name+"_R1_.gz"),)]
+                                                  name+"_R1_.fastq.gz"),)]
         sample.stats["reads_raw"] = fsamplehits[name]
         if sample.stats["reads_raw"]:
             sample.stats.state = 1
