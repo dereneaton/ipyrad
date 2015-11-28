@@ -1,6 +1,10 @@
 ipyrad (In development)
 =======================
 
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+   :alt: Join the chat at https://gitter.im/dereneaton/ipyrad
+   :target: https://gitter.im/dereneaton/ipyrad?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
+
 Interactive assembly and analysis of RAD-seq data sets.
 
 Tutorials
