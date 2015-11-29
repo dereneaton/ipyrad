@@ -6,7 +6,6 @@ import re
 
 requirements = [
     'pip>7.0',
-    'gnureadline',
     'cython',
     'scipy>0.10',
     'numpy>=1.9',
