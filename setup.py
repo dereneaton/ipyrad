@@ -9,6 +9,7 @@ requirements = [
     'dill>0.2',
     'sphinx',
     'cython',
+    'ipython>=4.0.1',
     'gnureadline',
     'ipyparallel',
     'ipykernel>=4.1',
