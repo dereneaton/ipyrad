@@ -7,7 +7,7 @@ Features
 
 
 What does ipyrad do?
-----------------------
+--------------------
 :ref:`ipyrad <ipyrad>` can be used to assemble RADseq data sets using 
 :ref:`*de novo* assembly <denovo>`, :ref:`reference mapping assembly <reference>`, 
 or `:ref:`hybrid assembly <hybrid>` -- a combination of the two approaches. 

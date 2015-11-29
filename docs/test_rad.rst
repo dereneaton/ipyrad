@@ -15,29 +15,6 @@ present
     print ip.__version__     ## print version
 
 
-.. parsed-literal::
-
-    0.0.65
-
-
-.. code:: python
-
-    ## clear data from test directory if it already exists
-    import shutil
-    import os
-    if os.path.exists("./test_rad/"):
-        shutil.rmtree("./test_rad/")
-
-.. code:: python
-
-    ## This is useful during development since IPython
-    ## seems to want to re-use old .pyc files, 
-    ## though even this doesn't always work...
-    import IPython.lib.deepreload
-    import __builtin__
-    from IPython.lib import deepreload
-    __builtin__.reload = deepreload.reload
-
 Assembly and Sample objects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -4,14 +4,12 @@
 .. _installation:
 
 
-Installation with conda
------------------------
+Installation
+============
 
 The easiest way to install *ipyrad* and all of its dependencies is with conda_,
 a command line program for installing Python packages. If you do not have *conda* installed, follow these instructions_ to install either *Anaconda* or *Miniconda* 
-for Python2.7. If you're working on an HPC system you can install *conda* 
-in your home directory without needing administrative privileges by following
-the same basic directions. 
+for Python2.7. If you're working on an :ref:`HPC <HPC_installation>` system you can install *conda* in your home directory without needing administrative privileges by following the same basic directions. 
 
 The only difference between *Anaconda* and *Miniconda* is that *Anaconda* 
 installs a large suite of commonly used Python packages along with the base
@@ -57,6 +55,8 @@ Executables:
 * smalt
 * samtools
 
+
+.. _HPC_installation:
 
 HPC installation
 ----------------
