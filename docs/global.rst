@@ -4,4 +4,5 @@
 .. _muscle: http://www.drive5.com/muscle/
 .. _anaconda: http://docs.continuum.io/anaconda/install.html
 .. _miniconda: http://repo.continuum.io/miniconda/
-.. _`simple_instructions`: http://conda.pydata.org/docs/install/quick.html
+.. _gitter: https://gitter.im/dereneaton/ipyrad?utm_source=share-link&utm_medium=link&utm_campaign=share-link  
+.. _instructions: http://conda.pydata.org/docs/install/quick.html

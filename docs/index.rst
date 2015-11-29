@@ -19,6 +19,8 @@ In this documentation you can learn more about what ipyrad does
 to explain how ipyrad works, as well as numerous example 
 :ref:`Tutorials <tutorials>` to make it easy to get started quickly.
 
+Got questions about ipyrad? Join the conversation :ref:`here <gitter>`.
+
 
 Documentation
 =============
@@ -29,16 +31,14 @@ Documentation
    ethos.rst
    features.rst
    installation.rst
-   quick-guide.rst
+   quickguide.rst
    notebooks.rst
-   interactive.rst
-   assembly.rst
+   userguide.rst
    tutorials.rst
-   test_rad.rst
    citing.rst
+   releasenotes.rst
+   contributions.rst   
    license.rst
-   contributions.rst
-
 
 Indices and tables
 ==================
