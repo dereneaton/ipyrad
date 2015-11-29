@@ -2,7 +2,7 @@
 .. _ethos:
 
 
-The ipyrad ethos
+The ipyrad Ethos
 ================
 
 * Simplicity: Code should be easy to install and use.
