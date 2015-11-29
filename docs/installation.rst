@@ -33,10 +33,11 @@ latest release from an older version, you could use one of the following command
 
 Dependencies
 ------------
-conda will install all required dependencies for *ipyrad* along with it. I 
-simply list them here to make clear what's being installed on your system. 
+conda will install all required dependencies for ipyrad along with it. I 
+list them here to make clear what is being installed on your system. 
 
-Python Packages:
+Python Packages:  
+
 * Numpy -- Scientific processing  
 * Scipy -- Scientific processing  
 * Pandas -- Used for manipulating data frames  
@@ -49,7 +50,8 @@ Python Packages:
 * Dill -- Store pickle objects of complex Classes  
 * Toyplot -- [optional].
 
-Executables:
+Executables:  
+
 * vsearch
 * muscle
 * smalt
