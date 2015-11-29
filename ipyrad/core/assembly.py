@@ -88,6 +88,7 @@ class Assembly(object):
         ## obj name
         self.name = name    
         print("New Assembly object `{}` created".format(self.name))
+        LOGGER.info("New Assembly object `%s` created", self.name)
 
         ## launch ipcluster and register for later destruction
         self.__ipname__ = ipcontroller_init(controller)
@@ -214,6 +215,7 @@ class Assembly(object):
             fastq files linked to Sample objects in the Assembly object. 
         
         """
+
         ## cannot both force and append at once
         if force and append:
             raise Exception("Cannot use force and append at the same time.")
@@ -490,6 +492,8 @@ class Assembly(object):
             newvalue = tuplecheck(newvalue, str)                        
             assert isinstance(newvalue, tuple), \
             "cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"
+            assert len(newvalue) in [1, 2], \
+            "must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"
             self.paramsdict['restriction_overhang'] = newvalue
             self._stamp("[5] set to "+str(newvalue))
 
@@ -630,34 +634,38 @@ class Assembly(object):
 
         elif param in ['27', 'assembly_method']:
             self.paramsdict['assembly_method'] = newvalue
-            LOGGER.info("assembly method set to %s", newvalue)
             assert self.paramsdict['assembly_method'] in \
                               ["denovo", "reference", "hybrid"], \
-                 "The assembly_method option must be one of the following: "+\
+                 "The assembly_method setting must be one of the following: "+\
                  "denovo, reference, or hybrid."
             self._stamp("[27] set to {}".format(newvalue))
+
 
         elif param in ['28', 'reference_sequence']:
             fullrawpath = expander(newvalue)
             if not os.path.isfile(fullrawpath):
-                raise Exception(\
-            "Reference sequence file not found. This must be an absolute path "\
+                LOGGER.info("reference sequence file not found.")
+                sys.exit("\nError: reference sequence file not found. "\
+            +"This must be an absolute path "\
             +"(/home/wat/ipyrad/data/referece.gz) or a path relative to the "\
-            +"directory where you're running ipyrad (./data/reference.gz). ")
+            +"directory where you're running ipyrad (./data/reference.gz). " \
+            +"You entered `%s`.\n" % fullrawpath)
             self.paramsdict['reference_sequence'] = fullrawpath
             self._stamp("[28] set to "+fullrawpath)
+
 
 
     def copy(self, newname):
         """ Returns a copy of the Assemlbly object. Does not allow Assembly 
         object names to be replicated in namespace or path. """
+        ## is there a better way to ask if it already exists?
         if (newname == self.name) or (os.path.exists(newname+".assembly")):
             print("Assembly object named {} already exists".format(newname))
         else:
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
-            newobj.set_params(14, newname)
+            newobj.set_params('prefix_outname', newname)
 
             ## create copies of each Sample obj
             for sample in self.samples:
@@ -670,16 +678,16 @@ class Assembly(object):
         """ prints the project data structure. TODO: this needs work.
         prints way too much other junk if [work] is home dir. """
         startpath = self.paramsdict["working_directory"]
-        if startpath in [".", "", "./", os.path.expanduser(startpath)]:
-            print("./")
-        else:
-            for root, _, files in os.walk(startpath):
-                level = root.replace(startpath, '').count(os.sep)
-                indent = ' ' * 4 * (level)
-                print('{}{}/'.format(indent, os.path.basename(root)))
-                subindent = ' ' * 4 * (level + 1)
-                for fname in files:
-                    print('{}{}'.format(subindent, fname))
+        #if startpath in [".", "", "./", os.path.expanduser(startpath)]:
+        #    print("./")
+        #else:
+        for root, _, files in os.walk(startpath):
+            level = root.replace(startpath, '').count(os.sep)
+            indent = ' ' * 4 * (level)
+            print('{}{}/'.format(indent, os.path.basename(root)))
+            subindent = ' ' * 4 * (level + 1)
+            for fname in files:
+                print('{}{}'.format(subindent, fname))
 
 
 
@@ -715,14 +723,14 @@ class Assembly(object):
 
         ## close client when done or if interrupted
         finally:
-            ipyclient.shutdown(block=1)
+            #ipyclient.shutdown(block=1)
             ipyclient.close()
 
         ## pickle the data obj
         self._save()
 
 
-    ## TODO: make a step Class object
+
     def step2(self, samples="", preview=0, force=False):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
@@ -731,9 +739,7 @@ class Assembly(object):
         use the argument force=True. 
 
         """
-
         ## launch parallel client within guarded statement
-        ipyclient = ipp.Client(cluster_id=self.__ipname__)        
         try:
             ipyclient = ipp.Client(cluster_id=self.__ipname__)
 
@@ -746,7 +752,6 @@ class Assembly(object):
                     sample = self.samples[sample]
                     assemble.rawedit.run(self, sample, ipyclient, force)
             else:
-                ## TODO: Remove return of client
                 if not self.samples:
                     assert self.samples, "No Samples in "+self.name
                 for _, sample in self.samples.items():
@@ -760,7 +765,7 @@ class Assembly(object):
         ## close parallel client if done or interrupted
         finally:
             logging.info("assembly step2 cleaning up.")
-            ipyclient.shutdown(block=1)
+            #ipyclient.shutdown(block=1)
             ipyclient.close()
 
         ## checkpoint the data obj
@@ -788,8 +793,8 @@ class Assembly(object):
             if samples:
 
                 ## if string make a list(tuple)
-                assert isinstance(samples, list), \
-                "to subselect samples enter as a list, e.g., [A, B]."
+                if isinstance(samples, str):
+                    samples = [samples]
 
                 ## make into a tuple list with (key, sample)
                 ## allows for names as keys or Sample objects
@@ -817,8 +822,8 @@ class Assembly(object):
                 assemble.cluster_within.run(self, self.samples.items(), 
                                         ipyclient, preview, noreverse, force)
 
-        except (KeyboardInterrupt, SystemExit):
-            print("assembly step3 interrupted")
+        except (KeyboardInterrupt, SystemExit) as _:
+            print("assembly step3 interrupted by user.")
             raise
         ## close parallel client if done or interrupted
         finally:
@@ -859,19 +864,24 @@ class Assembly(object):
             else:
                 ## if no sample, then do all samples
                 if not self.samples:
-                    ## if no samples in data, try linking edits from working dir
-                    #self.link_clustfiles()
-                    if not self.samples:
-                        print("Assembly object has no samples in state 3.")
+                    print("Assembly object has no Samples.")
                 ## run clustering for all samples
                 assemble.jointestimate.run(self, self.samples.values(), 
                                            ipyclient, force, subsample)
 
-        except (KeyboardInterrupt, SystemExit):
-            print("assembly step4 interrupted")
+        except (KeyboardInterrupt, SystemExit) as inst:
+            LOGGER.info("assembly step4 interrupted: %s", inst)
+            print("assembly step4 interrupted.")
             raise
+
+        except Exception as inst:
+            LOGGER.info("crashed step4 error: %s", inst)
+            print("error during step4 ...\n({})\n".format(inst))
+            raise
+
         ## close parallel client if done or interrupted
         finally:
+            ipyclient.shutdown(block=1)
             ipyclient.close()
             if preview:
                 print(".")
@@ -914,6 +924,7 @@ class Assembly(object):
 
         ## pickle the data object
         self._save()
+
 
 
     def run(self, steps=0, force=False, preview=False):
@@ -1075,6 +1086,7 @@ def merge(name, assemblies):
     return merged
 
 
+
 def bufcount(filename, gzipped):
     """ fast line counter """
     if gzipped: 
@@ -1093,15 +1105,16 @@ def bufcount(filename, gzipped):
 
 
 
-def index_reference_sequence( self ):
+def index_reference_sequence(self):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
     quick about giving up if it detects the indices already exist. You could
     also test for existence of both index files, but i'm choosing to just let
     smalt do that for us ;) """
 
-    print("Checking for reference sequence index. If it doesn't exist then create it.")
-    print("This could take several minutes, but it's a one time penalty, so be patient.")
+    print("Checking for reference sequence index, otherwise creating new one.")
+    print("This could take several minutes, but it's a one time penalty, "\
+          +"so be patient.")
 
     refseq_file = self.paramsdict['reference_sequence']
 
@@ -1112,7 +1125,7 @@ def index_reference_sequence( self ):
     index_sma = refseq_file+".sma"
     index_smi = refseq_file+".smi"
 
-    if not os.path.isfile( index_sma ) or not os.path.isfile( index_smi ):
+    if not os.path.isfile(index_sma) or not os.path.isfile(index_smi):
         cmd = self.smalt+\
             " index "\
             " -s 2 "+\
@@ -1129,9 +1142,16 @@ def tuplecheck(newvalue, conv=int):
     Needed for paramfile conversion from CLI to set_params args """
     if isinstance(newvalue, str):
         newvalue = newvalue.rstrip(")").strip("(")
-        if "," in newvalue:
+        try:
             newvalue = tuple([conv(i) for i in newvalue.split(",")])
+        except TypeError:
+            newvalue = tuple(conv(newvalue))
+        except Exception as inst:
+            LOGGER.info(inst)
+            sys.exit("\nError: arg `{}` is not formatted correctly.\n({})\n"\
+                     .format(newvalue, inst))
     return newvalue
+
 
 
 if __name__ == "__main__":

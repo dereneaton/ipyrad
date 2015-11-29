@@ -8,11 +8,13 @@ import os
 import sys
 import gzip
 import glob
+import time
 import tempfile
 import itertools
 import subprocess
 import numpy as np
 import cPickle as pickle
+import ipyparallel as ipp
 from ipyrad.core.sample import Sample
 from collections import defaultdict, Counter
 
@@ -138,7 +140,6 @@ def barmatch(args):
         dsort2[sample] = []
         dbars[sample] = set()
 
-    LOGGER.debug("inside")
     ## go until end of the file
     while 1:
         try: 
@@ -412,7 +413,7 @@ def zcat_make_temps(args):
         chunks2 = glob.glob(os.path.join(
                         data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
-        LOGGER.debug("chunksfiles: %s %s", chunks1, chunks2)
+        #LOGGER.debug("chunksfiles: %s %s", chunks1, chunks2)
         assert len(chunks1) == len(chunks2), \
             "R1 and R2 files are not the same length."
     else:
@@ -446,20 +447,31 @@ def parallel_chunker(data, raws, ipyclient):
         num += 1
 
     ## call to ipp
-    dview = ipyclient.load_balanced_view()
-    res = dview.map_async(zcat_make_temps, submitted_args)
-    datatuples = res.get()
-    del dview
+    lbview = ipyclient.load_balanced_view()
+    results = lbview.map_async(zcat_make_temps, submitted_args)
+
+    try:
+        datatuples = results.get()
+    except (AttributeError, TypeError):
+        for key in ipyclient.history:
+            if ipyclient.metadata[key].error:
+                LOGGER.error("step1 chunking error: %s", 
+                    ipyclient.metadata[key].error)
+                raise SystemExit("step1 chunking error.\n({})."\
+                                 .format(ipyclient.metadata[key].error))
+            if ipyclient.metadata[key].stdout:
+                LOGGER.error("step1 chunking stdout:%s", 
+                    ipyclient.metadata[key].stdout)
+                raise SystemExit("step3 chunking error.")
+    del lbview
     return datatuples
 
 
 
 def parallel_sorter(data, rawtups, chunks, cutter, longbar, filenum, ipyclient):
-    """ takes list of chunk files and runs barmatch function
-    on them across all engines and outputs temp file results.
-    This is parallelized on N chunks.
+    """ takes list of chunk files and runs barmatch function on them across
+    all engines and outputs temp file results. This is parallelized on N chunks.
     """
-    print(ipyclient.ids)
     ## send file to multiprocess queue"
     chunknum = 0
     submitted_args = []
@@ -467,13 +479,40 @@ def parallel_sorter(data, rawtups, chunks, cutter, longbar, filenum, ipyclient):
         submitted_args.append([data, rawtups, tmptuple, cutter,
                                longbar, chunknum, filenum])
         chunknum += 1
-    print(submitted_args)
+
+    ## first launch of ipyclient
+    def launch():
+        """ launch ipyclient, and return threading value """
+        lbview = ipyclient.load_balanced_view()
+        return lbview
+
+    ## launch within try statement in case engines aren't ready yet
+    ## and try 30 one second sleep/wait cycles before giving up on engines
+    tries = 30
+    while tries:
+        try:
+            lbview = launch()
+            tries = 0
+        except ipp.NoEnginesRegistered:
+            time.sleep(1)
+            tries -= 1
+
     ## uses all available processors
-    dview = ipyclient.load_balanced_view()
-    res = dview.map_async(barmatch, submitted_args)
-    print(res)
-    res.get()
-    del dview
+    results = lbview.map_async(barmatch, submitted_args)
+    try:
+        results.get()
+    except (AttributeError, TypeError):
+        for key in ipyclient.history:
+            if ipyclient.metadata[key].error:
+                LOGGER.error("step3 readmapping error: %s", 
+                    ipyclient.metadata[key].error)
+                raise SystemExit("step3 readmapping error.\n({})."\
+                                 .format(ipyclient.metadata[key].error))
+            if ipyclient.metadata[key].stdout:
+                LOGGER.error("step3 readmapping stdout:%s", 
+                    ipyclient.metadata[key].stdout)
+                raise SystemExit("step3 readmapping error.")
+    del lbview
  
 
 
@@ -485,10 +524,40 @@ def parallel_collate(data, ipyclient):
         submitted_args.append([data, samplename])
 
     ## uses all available processors
-    dview = ipyclient.load_balanced_view()
-    res = dview.map_async(collate_tmps, submitted_args)
-    res.get()
-    del dview
+    def launch():
+        """ launch ipyclient, and return threading value """
+        lbview = ipyclient.load_balanced_view()
+        return lbview
+
+    ## launch within try statement in case engines aren't ready yet
+    ## and try 30 one second sleep/wait cycles before giving up on engines
+    tries = 30
+    while tries:
+        try:
+            lbview = launch()
+            tries = 0
+        except ipp.NoEnginesRegistered:
+            time.sleep(1)
+            tries -= 1
+
+    results = lbview.map_async(collate_tmps, submitted_args)
+    try:
+        results.get()
+    except (AttributeError, TypeError):
+        for key in ipyclient.history:
+            if ipyclient.metadata[key].error:
+                LOGGER.error("step1 tmp splitting error: %s", 
+                    ipyclient.metadata[key].error)
+                raise SystemExit("step1 tmp splitting error.\n({})."\
+                                 .format(ipyclient.metadata[key].error))
+            if ipyclient.metadata[key].stdout:
+                LOGGER.error("step1 tmp splitting stdout:%s", 
+                    ipyclient.metadata[key].stdout)
+                raise SystemExit("step1 tmp splitting error.")
+
+        LOGGER.error(ipyclient.metadata)
+        sys.exit("")
+    del lbview
 
 
 

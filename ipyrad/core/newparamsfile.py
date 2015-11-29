@@ -35,7 +35,7 @@ ipyrad_test                ## [14] prefix name for saved output files
 5,100                      ## [24] max indels in a locus ("")
 1,2,2,1                    ## [25] trim overhang (see docs)
 0                          ## [26] hierarchical clustering (prob deprecated...)
-hybrid                     ## [27] clustering method (denovo, reference, hybrid)
+denovo                     ## [27] clustering method (denovo, reference, hybrid)
 ./*.fa                     ## [28] reference genome file
 lpn                        ## [29] output formats (see docs)
 ------ optional: list group/clade assignments below this line (see docs) ---

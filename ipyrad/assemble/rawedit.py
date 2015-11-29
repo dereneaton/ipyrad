@@ -12,8 +12,10 @@ import os
 import glob
 import gzip
 import math
+import time
 import itertools
 import numpy as np
+import ipyparallel as ipp
 from .demultiplex import ambigcutters
 from .demultiplex import zcat_make_temps
 
@@ -57,7 +59,10 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
         lookfor2 = lookfor2[:-2]
 
     ## if cutter has ambiguous base (2 in cuts) look for both otherwise just one
-    check1 = max(0, bases[1].tostring().rfind(lookfor1))
+    try: 
+        check1 = max(0, bases[1].tostring().rfind(lookfor1))
+    except Exception as inst:
+        LOGGER.debug([bases, lookfor1, inst])
     if sum([1 for i in rvcuts]) == 2:
         check2 = max(0, bases[1].tostring().rfind(lookfor2))
 
@@ -152,7 +157,8 @@ def adapterfilter(args):
     if data.paramsdict["filter_adapters"]:
         ## get trim length for read1
         wheretocut1 = afilter(data, sample, read1, cuts1, cuts2, 1)
-        wheretocut2 = afilter(data, sample, read2, cuts1, cuts2, 2)
+        if 'pair' in data.paramsdict["datatype"]:
+            wheretocut2 = afilter(data, sample, read2, cuts1, cuts2, 2)
 
         ## cut one or both reads depending on detection of adapters
         cutter = 0
@@ -307,6 +313,7 @@ def rawedit(args):
                           "tmp2_"+sample.name+"_"+str(point)+".gz")
         with gzip.open(handle, 'wb') as out2:
             out2.write("\n".join(write2))
+            out2.write("\n")            
 
     ## the number of ...
     return counts
@@ -438,14 +445,29 @@ def run_full(data, sample, ipyclient, nreplace):
             submitted += 1
             num += 1
 
-        ## call to ipp
-        lbview = ipyclient.load_balanced_view()
+        ## first launch of ipyclient
+        def launch():
+            """ launch ipyclient, and return threading value """
+            lbview = ipyclient.load_balanced_view()
+            return lbview
+
+        ## launch within try statement in case engines aren't ready yet
+        ## and try 30 one second sleep/wait cycles before giving up on engines
+        tries = 30
+        while tries:
+            try:
+                lbview = launch()
+                tries = 0
+            except ipp.NoEnginesRegistered:
+                time.sleep(1)
+                tries -= 1
+
         results = lbview.map_async(rawedit, submitted_args)
 
         ## return errors if an engine fails
         try:
             results.get()
-        except TypeError:
+        except (AttributeError, TypeError):
             for key in ipyclient.history:
                 if ipyclient.metadata[key].error:
                     LOGGER.error("step2 error: %s", 
@@ -566,8 +588,6 @@ def run(data, sample, ipyclient, force=False, nreplace=True):
     else:
         submitted, results = run_full(data, sample, ipyclient, nreplace)
         cleanup(data, sample, submitted, results)
-
-    return ipyclient
 
 
 

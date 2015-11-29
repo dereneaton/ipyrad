@@ -13,13 +13,16 @@ from __future__ import print_function
 import os
 import sys
 import gzip
+import time
 import tempfile
 import itertools
 import subprocess
 import numpy as np
-#from .demultiplex import blocks
+import ipyparallel as ipp
 from .rawedit import comp
 
+import logging
+LOGGER = logging.getLogger(__name__)
 
 
 
@@ -74,15 +77,16 @@ def cleanup(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo":
         cmd = data.samtools+\
             " flagstat "+sample.files.unmapped_reads
-        result = subprocess.check_output( cmd, shell=True,
-                                           stderr=subprocess.STDOUT )
+        result = subprocess.check_output(cmd, shell=True,
+                                              stderr=subprocess.STDOUT)
         sample.stats["refseq_unmapped_reads"] = int(result.split()[0])
 
         cmd = data.samtools+\
             " flagstat "+sample.files.mapped_reads
-        result = subprocess.check_output( cmd, shell=True,
-                                           stderr=subprocess.STDOUT )
+        result = subprocess.check_output(cmd, shell=True,
+                                              stderr=subprocess.STDOUT)
         sample.stats["refseq_mapped_reads"] = int(result.split()[0])
+
 
 
 def muscle_align2(data, sample, chunk, num):
@@ -360,9 +364,23 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     :returns: None
     """
     ## nthreads per job for clustering
-    threaded_view = ipyclient.load_balanced_view(
+    def launch():
+        """ launch ipyclient, and return threading value """
+        threaded_view = ipyclient.load_balanced_view(
                     targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
-    tpp = len(threaded_view)
+        return threaded_view, len(threaded_view)
+
+    ## launch within try statement in case engines aren't ready yet
+    ## and try 30 one second sleep/wait cycles before giving up on engines
+    tries = 30
+    while tries:
+        try:
+            threaded_view, tpp = launch()
+            tries = 0
+        except ipp.NoEnginesRegistered:
+            time.sleep(1)
+            tries -= 1
+
 
     ## make output folder for clusters  
     data.dirs.clusts = os.path.join(
@@ -389,25 +407,54 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     if not data.paramsdict["assembly_method"] == "denovo":
         ## make output directory for read mapping process
         data.dirs.refmapping = os.path.join(
-                                os.path.realpath(data.paramsdict["working_directory"]),
-                                data.name+"_"+
-                                "refmapping")
+                        os.path.realpath(data.paramsdict["working_directory"]),
+                        data.name+"_refmapping")
+      
         if not os.path.exists(data.dirs.refmapping):
             os.makedirs(data.dirs.refmapping)
         ## Set the mapped and unmapped reads files for this sample
         for sample in samples:
-            sorted_unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-unmapped.bam")
-            sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-sorted-mapped.bam")
+            sorted_unmapped_bamhandle = os.path.join(data.dirs.refmapping,
+                                            sample.name+"-sorted-unmapped.bam")
+            sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, 
+                                            sample.name+"-sorted-mapped.bam")
             sample.files.unmapped_reads = sorted_unmapped_bamhandle
-    	    sample.files.mapped_reads = sorted_mapped_bamhandle
+            sample.files.mapped_reads = sorted_mapped_bamhandle
 
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
-        results.get()
+        try:
+            results.get()
+        except (AttributeError, TypeError):
+            for key in ipyclient.history:
+                if ipyclient.metadata[key].error:
+                    LOGGER.error("step3 readmapping error: %s", 
+                        ipyclient.metadata[key].error)
+                    raise SystemExit("step3 readmapping error.\n({})."\
+                                     .format(ipyclient.metadata[key].error))
+                if ipyclient.metadata[key].stdout:
+                    LOGGER.error("step3 readmapping stdout:%s", 
+                        ipyclient.metadata[key].stdout)
+                    raise SystemExit("step3 readmapping error.")
+
+            LOGGER.error(ipyclient.metadata)
+            sys.exit("")
 
     ## call to ipp for clustering
     results = threaded_view.map(clustall, submitted_args)
-    results.get()   
+    try:
+        results.get()
+    except (AttributeError, TypeError):
+        for key in ipyclient.history:
+            if ipyclient.metadata[key].error:
+                LOGGER.error("step3 clustering error: %s", 
+                    ipyclient.metadata[key].error)
+                raise SystemExit("step3 clustering error.\n({})."\
+                                 .format(ipyclient.metadata[key].error))
+            if ipyclient.metadata[key].stdout:
+                LOGGER.error("step3 clustering stdout:%s", 
+                    ipyclient.metadata[key].stdout)
+                raise SystemExit("step3 clustering error.")
     del threaded_view 
 
     ## call to ipp for aligning
@@ -422,11 +469,10 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     if not data.paramsdict["assembly_method"] == "denovo":
         ## make output directory for read mapping process
         data.dirs.refmapping = os.path.join(
-                                os.path.realpath(data.paramsdict["working_directory"]),
-                                data.name+"_"+
-                                "refmapping")
+                        os.path.realpath(data.paramsdict["working_directory"]),
+                        data.name+"_refmapping")
         for sample in samples:
-            results = getalignedreads( data, sample )
+            results = getalignedreads(data, sample)
 
     ## write stats to samples
     for sample in samples:
@@ -461,39 +507,133 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
 
 
 
+def combine_pairs(data, sample):
+    """ in prep """
+    LOGGER.info(sample.files.edits)
+
+    ## open file for writing to
+    combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
+    combout = open(combined, 'wb')
+
+    ## get nonmerged pairs
+    nonmerged1 = os.path.join(data.dirs.edits, 
+                              sample.name+"_nonmerged_R1_.fastq")
+    nonmerged2 = os.path.join(data.dirs.edits, 
+                              sample.name+"_nonmerged_R2_.fastq")
+
+    ## read in paired end read files"
+    ## create iterators to sample 4 lines at a time
+    fr1 = open(nonmerged1, 'rb')
+    quart1 = itertools.izip(*[iter(fr1)]*4)
+    fr2 = open(nonmerged2, 'rb')
+    quart2 = itertools.izip(*[iter(fr2)]*4)
+    quarts = itertools.izip(quart1, quart2)
+
+    ## a list to store until writing
+    writing = []
+    counts = 0
+
+    ## iterate until done
+    while 1:
+        try:
+            read1s, read2s = quarts.next()
+        except StopIteration:
+            break
+        writing.append("\n".join([
+                        read1s[0].strip(),
+                        read1s[1].strip()+\
+                            "SSSS"+comp(read2s[1].strip())[::-1],
+                        read1s[2].strip(),
+                        read1s[3].strip()+\
+                            "SSSS"+read2s[3].strip()[::-1]]
+                        ))
+        counts += 1
+        if not counts % 1000:
+            combout.write("\n".join(writing)+"\n")
+
+    combout.write("\n".join(writing))
+    combout.close()
+
+    sample.files.edits = [(combined, )]
+    return sample
+
+
+
 def merge_fastq_pairs(data, sample):
     """ Merge paired fastq reads. """
-    cmd = data.vsearch+\
-          " --fastq_mergepairs" \
-         +" --fastaout "+os.path.join(data.dirs.edits, sample.name+".merge") \
-         +" --fastq_allowmergestagger" \
-         +" --fastq_maxdiffs "+str(4) \
-         +" --fastq_maxns"+str(sum(data.paramsdict["maxNs"])) \
-         +" --fastq_minlen"+str(32) \
-         +" --fastq_..."
-    print(cmd)
 
+    ## tempnames for merge files
+    merged = os.path.join(data.dirs.edits,
+                          sample.name+"_merged_.fastq")
+    nonmerged1 = os.path.join(data.dirs.edits, 
+                              sample.name+"_nonmerged_R1_.fastq")
+    nonmerged2 = os.path.join(data.dirs.edits, 
+                              sample.name+"_nonmerged_R2_.fastq")
+
+    try:
+        maxn = sum(data.paramsdict['max_low_qual_bases'])
+    except TypeError:
+        maxn = data.paramsdict['max_low_qual_bases']
+
+    assert os.path.exists(sample.files.edits[0][1]), \
+           "No paired read file (_R2_ file) found."
+
+    ## vsearch merging
+    cmd = data.vsearch \
+      +" --fastq_mergepairs "+sample.files.edits[0][0] \
+      +" --reverse "+sample.files.edits[0][1] \
+      +" --fastqout "+merged \
+      +" --fastqout_notmerged_fwd "+nonmerged1 \
+      +" --fastqout_notmerged_rev "+nonmerged2 \
+      +" --fasta_width 0 " \
+      +" --fastq_allowmergestagger " \
+      +" --fastq_minmergelen 32 " \
+      +" --fastq_maxns "+str(maxn)
+
+    try:
+        subprocess.check_call(cmd, shell=True,   
+                                   stderr=subprocess.STDOUT,
+                                   stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        LOGGER.error(subprocess.STDOUT)
+        LOGGER.error(cmd)        
+        sys.exit("Error in merging pairs: \n({}).".format(inst))
+    finally:
+        sample.merged = 1
+    return sample
+
+
+
+def concat_edits(data, sample):
+    """ concatenate if multiple edits files for a sample """
+    ## if more than one tuple in the list
+    if len(sample.files.edits) > 1:
+        ## create temporary concat file
+        tmphandle1 = os.path.join(data.dirs.edits,
+                              "tmp1_"+sample.name+".concat")       
+        with open(tmphandle1, 'wb') as tmp:
+            for editstuple in sample.files.edits:
+                with open(editstuple[0]) as inedit:
+                    tmp.write(inedit)
+
+        if 'pair' in data.paramsdict['datatype']:
+            tmphandle2 = os.path.join(data.dirs.edits,
+                                "tmp2_"+sample.name+".concat")       
+            with open(tmphandle2, 'wb') as tmp:
+                for editstuple in sample.files.edits:
+                    with open(editstuple[1]) as inedit:
+                        tmp.write(inedit)
+            sample.files.edits = [(tmphandle1, tmphandle2)]
+        else:
+            sample.files.edits = [(tmphandle1, )]
+    return sample
 
 
 
 def derep_and_sort(data, sample, preview, nthreads):
-    """ dereplicates reads and write to .step file
-    ...sorts dereplicated file (.step) so reads that were highly
+    """ dereplicates reads and sorts so reads that were highly
     replicated are at the top, and singletons at bottom, writes
     output to .derep file """
-
-    ## concatenate if multiple edits files for a sample
-    if len(sample.files.edits) > 1:
-        ## create temporary concat file
-        tmphandle = os.path.join(data.dirs.edits,
-                              "tmp1_"+sample.name+".concat")       
-        with open(tmphandle, 'wb') as tmp:
-            for editstuple in sample.files.edits:
-                with open(editstuple[0]) as inedit:
-                    tmp.write(inedit)
-        handle1 = tmphandle
-    else:
-        handle1 = sample.files.edits[0]
 
     ## reverse complement clustering for some types    
     #if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
@@ -502,18 +642,27 @@ def derep_and_sort(data, sample, preview, nthreads):
     else:
         reverse = " "
 
+    LOGGER.debug("derep FILE %s", sample.files.edits[0][0])
+
     ## do dereplication with vsearch
     cmd = data.vsearch+\
-          " -derep_fulllength "+handle1+\
+          " -derep_fulllength "+sample.files.edits[0][0]+\
           reverse+\
           " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
           " -sizeout "+\
           " -threads "+str(nthreads)+\
           " -fasta_width 0"
- 
-    subprocess.call(cmd, shell=True, 
-                         stderr=subprocess.STDOUT, 
-                         stdout=subprocess.PIPE)
+
+    ## run vsearch
+    try:
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        LOGGER.info(cmd)
+        LOGGER.info(inst)
+        sys.exit("Error in vsearch: \n{}\n{}\n{}."\
+                 .format(inst, subprocess.STDOUT, cmd))
 
 
 
@@ -559,15 +708,12 @@ def cluster(data, sample, preview, noreverse, nthreads):
         " -fasta_width 0"
 
     ## run vsearch
-    if preview:
-        ## make this some kind of wait command that kills after a few mins
+    try:
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
-    else:
-        subprocess.call(cmd, shell=True,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        sys.exit("Error in vsearch: \n{}\n{}".format(inst, subprocess.STDOUT))
 
 
 
@@ -630,12 +776,21 @@ def clustall(args):
 
     ## preview
     if preview:
-        print("preview: in run_full, using", nthreads)
+        print("preview: in clustall, using", nthreads)
 
-    ## if reference do ref align here
+    ## concatenate edits files in case a Sample has multiple, and 
+    ## returns a new Sample.files.edits with the concat file
+    sample = concat_edits(data, sample)
+
+    ## if reference do ref align here...
+    ## ...
 
     ## merge fastq pairs
-    merge_fastq_pairs(data, sample)
+    if 'pair' in data.paramsdict['datatype']:
+        ## merge pairs that overlap
+        sample = merge_fastq_pairs(data, sample)
+        ## combine end-to-end remaining pairs for denovo clustering
+        sample = combine_pairs(data, sample)
 
     ## convert fastq to fasta, then derep and sort reads by their size
     derep_and_sort(data, sample, preview, nthreads)
@@ -847,7 +1002,8 @@ def mapreads(args):
     #####################################################################
     ## End block of dummy code, delete this when fastq works
 
-def getalignedreads( data, sample ):
+
+def getalignedreads(data, sample):
     """Pull aligned reads out of sorted mapped bam files and
     append them to the clustS.gz file so the fall into downstream analysis """
 
@@ -861,21 +1017,19 @@ def getalignedreads( data, sample ):
                          stdout=subprocess.PIPE)
 
 
+
 def run(data, samples, ipyclient, preview, noreverse, force):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
     subsamples = []
 
-    ## TODO: use vsearch to subsample in preview mode
-    ## vsearch --fastq_subsample FILE --fastqout FILE --sizeout N
-
     ## if sample is already done skip
     for _, sample in samples:
         if not force:
             if sample.files.clusters:
-                print("{} aleady clustered. Sample.stats.state == {}".\
-                      format(sample.name, int(sample.stats['state'])))
+                print("Skipping {}; aleady clustered.".\
+                      format(sample.name))
             else:
                 subsamples.append(sample)
         else:
@@ -884,27 +1038,9 @@ def run(data, samples, ipyclient, preview, noreverse, force):
 
     ## run subsamples 
     assert subsamples, "No Samples ready to be clustered. To rewrite existing" \
-                      +"data use force=True, or change Sample's state to 2."
+                      +"data use force=True."
     args = [data, subsamples, ipyclient, preview, noreverse, force]
     split_among_processors(*args)
-
-
-
-## TODO: maybe needed when merging...
-# def trim_merge_edge(bases, cut1, cut2):
-#     """ trim off farside cutsite in merged reads --
-#     to replace would require knowing how the cut site is cut."""
-#     ## check if two cutters
-#     if cut2[0]:
-#         bases = bases[:-(len(cut2[0])+1)]
-#     else:
-#         bases = bases[:-(len(cut1[0])+1)]
-#     return bases
-
-            ## USAGE
-            ## trim edges if merge data
-            ## if "merge" in data.paramsdict["datatype"]:
-            ##    bases1 = trim_merge_edge(bases1, cut1, cut2)
 
 
 

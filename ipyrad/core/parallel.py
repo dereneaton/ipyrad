@@ -6,13 +6,13 @@ import subprocess
 import psutil
 import atexit
 import time
+import sys
 import os
-import logging
 
 #import ipyparallel.nbextension.clustermanager as clustermanager
 #from tornado import web
 
-
+import logging
 LOGGER = logging.getLogger(__name__)
 
 # ## start and stop ipcluster
@@ -62,15 +62,18 @@ def start(name, nproc, controller, delay):
         print("ipyparallel setup: {} connection to {} engines.".\
               format(controller, nproc))
 
-    except subprocess.CalledProcessError:
-        LOGGER.debug("ipcontroller already running")
+    except subprocess.CalledProcessError as inst:
+        LOGGER.debug("ipcontroller already running.")
+    except Exception as inst:
+        sys.exit("Error launching ipcluster for parallelization:\n({})\n".\
+                 format(inst))
 
 
 
 ## decorated func for stopping. Does not need to be called?
 def stop(cluster_id):
     """ stop ipcluster at sys.exit """
-    print("Closing {} remote parallel engines:".format(cluster_id))
+    print("Closing remote parallel engines: {}.".format(cluster_id))
     LOGGER.info("Shutting down [%s] remote parallel engines", cluster_id)
     stopcall = ["ipcluster", "stop", 
                 "--cluster-id="+cluster_id]
@@ -90,7 +93,7 @@ def ipcontroller_init(nproc=None, controller="Local"):
     ## check if this pid already has a running cluster
     ipname = "ipyrad-"+str(os.getpid())
     start(ipname, nproc, controller, delay="1.0")
-    time.sleep(1)
+    #time.sleep(1)
     atexit.register(stop, ipname)
     return ipname
 

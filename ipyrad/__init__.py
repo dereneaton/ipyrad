@@ -17,7 +17,7 @@ from ipyrad.core.load_dataobj import load_assembly
 ## define state vars
 __version__ = "0.0.66"
 __interactive__ = 1
-__loglevel__ = "DEBUG"   ##  "DEBUG"  "INFO"  "ERROR"  "WARNING"
+__loglevel__ = "DEBUG"   ##  "DEBUG"  "INFO"  "WARN"  "ERROR" 
 
 
 ## failed attempts at launching parallel code in __init__
@@ -30,8 +30,8 @@ import logging
 import logging.config
 
 ## clear the log file 
-with open("/tmp/ipyrad_debug.txt", 'w') as logfile: 
-    pass
+#with open("/tmp/ipyrad_debug.txt", 'w') as logfile: 
+#    pass
 
 logging.config.dictConfig({
     'version': 1,              

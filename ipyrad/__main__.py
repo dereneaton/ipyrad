@@ -34,7 +34,7 @@ def parse_params(params):
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
     ## create a default Assembly object
-    print('parsedict:\n', parsedict)
+    #print('parsedict:\n', parsedict)
     data = ip.Assembly(parsedict['14'])
     data.set_params("datatype", parsedict['10'])
 
