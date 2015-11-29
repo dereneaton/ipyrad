@@ -13,7 +13,6 @@ requirements = [
     'pandas',
     'dill>0.2',
     'sphinx',
-    'ipython>=4.0',
     'ipyparallel',
     'ipykernel>=4.1',
     'jupyter',
@@ -45,7 +44,7 @@ setup(
     
     install_requires=[requirements],
     extras_require = {
-        'plotting': ['toyplot>0.0.8'],
+        'plotting': ['toyplot>0.0.9'],
     },
 
     entry_points={
