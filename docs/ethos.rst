@@ -1,5 +1,11 @@
 
-.. _ Ethos:
+.. _ethos:
+
+
+The ipyrad ethos
+================
+
+blah blah blah
 
 
 How is it different from *pyrad*?
