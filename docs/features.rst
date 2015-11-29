@@ -8,9 +8,9 @@ Features
 
 What does ipyrad do?
 --------------------
-:ref:`ipyrad <ipyrad>` can be used to assemble RADseq data sets using 
-:ref:`*de novo* assembly <denovo>`, :ref:`reference mapping assembly <reference>`, 
-or `:ref:`hybrid assembly <hybrid>` -- a combination of the two approaches. 
+:ref:`ipyrad <ipyrad>` provides functions to assemble RADseq data sets in three 
+ways: :ref:`de novo <denovo>`, :ref:`reference mapping <reference>`, 
+and `:ref:`hybrid assembly <hybrid>` -- a combination of the first two approaches. 
 Assembled data sets can be output in a large variety of :ref:`formats <formats>`, facilitating downstream genomic analyses for both population genetic and phylogenetic 
 studies. It also includes methods for visualizing data and results, inferring population genetic statistics, and inferring genomic introgression.
 

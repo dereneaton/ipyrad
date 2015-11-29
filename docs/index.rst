@@ -14,11 +14,10 @@ restriction-site associated genomic data sets (e.g., RAD, ddRAD, GBS) for
 population genetic and phylogenetic studies.
 
 In this documentation you can learn more about what ipyrad does 
-(:ref:`features <features>`), and the broader goals behind its design 
-(:ref:`ethods <ethos>`). We provide a detailed :ref:`User Guide<userguide>`
-to explain exactly how ipyrad works, as well as numerous example 
-:ref:`tutorials <tutorials>` to make it easy to get started quickly and
-start using ipyrad to assemble and analyze RADseq data sets. 
+(:ref:`Features <features>`), and the broader goals behind its design 
+(:ref:`Ethos <ethos>`). We provide a detailed :ref:`User Guide<userguide>`
+to explain how ipyrad works, as well as numerous example 
+:ref:`Tutorials <tutorials>` to make it easy to get started quickly.
 
 
 Documentation
