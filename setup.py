@@ -6,16 +6,16 @@ import re
 
 requirements = [
     'pip>7.0',
-    'cython',
-    'scipy>0.10',
-    'numpy>=1.9',
-    'pandas',
     'dill>0.2',
     'sphinx',
     'ipyparallel',
     'ipykernel>=4.1',
     'jupyter',
-    'jupyter-client>=4.1'
+    'jupyter-client>=4.1',
+    'cython',
+    'scipy>0.10',
+    'numpy>=1.9',
+    'pandas',
     ]
 
 #import ipyrad
