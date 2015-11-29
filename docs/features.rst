@@ -19,24 +19,25 @@ How is it different from pyrad?
 -------------------------------
 :ref:`ipyrad <ipyrad>` is a complete re-write of :ref:`pyrad <pyrad>` with 
 an expanded focus on speed and flexibility. While we continue in the minimalist 
-:ref:`ethos <ethos>` of :ref:`pyrad <pyrad>` which emphasizes a simple installation procedure and ease-of-use, :ref:`ipyrad <ipyrad>` offers a Python API which allows users to interactively access data and results 
+:ref:`ethos <ethos>` of :ref:`pyrad <pyrad>` which emphasizes a simple installation procedure and ease-of-use, :ref:`ipyrad <ipyrad>` offers an additional Python API
+with which to interactively access data and results, as well as new methods for 
+assembly and visualization of results, and more rigorous code testing. 
 
-through simple Python scripts. We continue to support a command line interface (CLI_) that will be familiar to legacy pyrad_ users, but the real power of ipyrad_ comes from its implementation as a Python module which allows users to design complex
-assemblies that construct multiple data sets under multiple sets
-of parameter settings; to directly access assembly statistics; to plot assembly results;
-and to perform interactive downstream analyses.
+We continue to support the command line interface (:ref:`CLI <CLI>`) that 
+is familiar to :ref:`pyrad <pyrad>` users, but the real strength 
+:ref:`ipyrad <ipyrad>` comes from writing Python scripts. We provide many 
+example scripts with the hope of promoting the use of complex but easily 
+understandable code to construct multiple data sets under multiple sets
+of parameter settings. 
 
 
-New Features
-------------
-Major new features and improvements include:
+Major New Features in ipyrad
+----------------------
 
-    - New assembly methods: *de novo*, reference alignment, or hybrid (*de novo* & reference).
-    - Parallel implementation using ipyparallel_ which utilizes MPI allowing greater use of HPC clusters.
-    - Better checkpointing. If your job is ever interrupted you should be able to simply restart the
-      script and continue from where it left off.
-    - Faster code (speed comparisons forthcoming with publication).
-    - Write highly reproducible documented code with Jupyter Notebooks (see Notebook_workflow_).
-    - No external installations: vsearch, muscle and all other dependencies are installed with ipyrad_
-      using conda (see Installation_).
+* New assembly methods: *de novo*, reference alignment, or hybrid (*de novo* & reference).
+* Parallel implementation using :ref:`ipyparallel <ipyparallel>` which can utilize MPI, PSB, and LSF to make greater use of HPC clusters.
+* Better checkpointing. If your job is ever interrupted you should be able to simply restart the script and continue from where it left off.
+* Faster code (speed comparisons forthcoming with publication).
+* Write highly reproducible documented code with Jupyter Notebooks (see :ref:`Notebook_workflow <notebooks>`).
+* No external installations: vsearch, muscle and all other dependencies are installed  using conda (see :ref:`installation<installation>`).
 
