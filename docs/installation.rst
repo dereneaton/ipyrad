@@ -19,7 +19,7 @@ up for disk space I recommend installing *Anaconda*.
 
 To install *ipyrad* using *conda* simply type the following into a terminal ::
 
-    $ conda upgrade                 ## updates conda 
+    $ conda update conda            ## updates conda 
     $ conda install ipyrad          ## installs the latest release
 
 If you wish to install a specific version of ipyrad, or to upgrade to the 
@@ -31,11 +31,10 @@ latest release from an older version, you could use one of the following command
 
 Dependencies
 ------------
-conda will install all required dependencies for ipyrad along with it. I 
-list them here to make clear what is being installed on your system. 
+conda will install all of the following required dependencies during the
+installation of ipyrad. 
 
 Python Packages:  
-
 * Numpy -- Scientific processing  
 * Scipy -- Scientific processing  
 * Pandas -- Used for manipulating data frames  
@@ -49,7 +48,6 @@ Python Packages:
 * Toyplot -- [optional].
 
 Executables:  
-
 * vsearch
 * muscle
 * smalt
