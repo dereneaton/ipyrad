@@ -14,6 +14,7 @@ requirements = [
     'ipykernel>=4.1',
     'jupyter',
     'jupyter-client>=4.1',
+    'nbconvert',
     'scipy>0.10',
     'numpy>=1.9',
     'pandas',

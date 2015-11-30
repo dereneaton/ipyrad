@@ -37,7 +37,7 @@ Documentation
    tutorials.rst
    citing.rst
    releasenotes.rst
-   contributions.rst   
+   support.rst
    license.rst
 
 Indices and tables
