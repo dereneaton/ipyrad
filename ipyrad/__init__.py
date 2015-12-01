@@ -20,10 +20,6 @@ __interactive__ = 1
 __loglevel__ = "DEBUG"   ##  "DEBUG"  "INFO"  "WARN"  "ERROR" 
 
 
-## failed attempts at launching parallel code in __init__
-#import ipyrad.core.parallel
-
-
 ## this needs to come after __loglevel__ definition
 ## sets log config and prints warning if __loglevel__ is in hackers mode
 import logging
