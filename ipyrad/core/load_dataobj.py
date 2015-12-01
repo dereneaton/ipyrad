@@ -6,29 +6,44 @@ from __future__ import print_function
 
 import os
 import dill
-from ipyrad.core.assembly import Assembly
 from ipyrad.core.parallel import ipcontroller_init
 
 
-def load_assembly(name, controller="Local"):
-    """ loads an ipython pickled Assembly object """
+def load_assembly(name, controller="Local", quiet=False, launch=True):
+    """ loads an ipython dill pickled Assembly object """
     ## flexible name entry
-    if ".assembly" not in name:
-        name += ".assembly"
+    locations = [name]
+    locations.append(name+".assembly")
 
-    ## does Assembly save obj exist?
-    if not os.path.exists(name):
-        print("cannot find", name, "try entering the full path to file.")
+    ## does Assembly saved obj exist?
+    for name in locations:
+        try:
+            ## load in the Assembly object
+            with open(name, "rb") as pickin:
+                data = dill.load(pickin)
 
-    else:
-        ## load in the Assembly object
-        with open(name, "rb") as pickin:
-            data = dill.load(pickin)
-        ## relaunch ipcluster
-        data.__ipname__ = ipcontroller_init(controller)
+            ## will raise Attribute error if not loaded
+            fullcurdir = os.path.realpath(os.path.curdir)
+            name = name.replace(fullcurdir, ".")
+            if not quiet:
+                print("Loading Assembly: {}  [{}]".\
+                      format(data.name, name))
+    
+            ## relaunch ipcluster
+            if launch:
+                data.__ipname__ = ipcontroller_init(nproc="",
+                                                    controller=controller,
+                                                    quiet=quiet)
+            else:
+                data.__ipname__ = "nolaunch"
 
+        except (IOError, AttributeError):
+            pass
+
+    try:
         return data
-
+    except UnboundLocalError:
+        raise AssertionError(name)
 
 
 def save_dataobj():

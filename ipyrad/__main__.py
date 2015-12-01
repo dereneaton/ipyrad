@@ -14,10 +14,10 @@ import os
 LOGGER = logging.getLogger(__name__)
 
 
-def parse_params(params):
+def parse_params(args):
     """ Parse the params file args, create and return Assembly object."""
     ## check that params.txt file is correctly formatted.
-    with open(params) as paramsin:
+    with open(args.params) as paramsin:
         plines = paramsin.readlines()
 
     ## check header: big version changes can be distinguished by the header
@@ -33,15 +33,65 @@ def parse_params(params):
     keys = range(1, 30)
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
-    ## create a default Assembly object
-    #print('parsedict:\n', parsedict)
-    data = ip.Assembly(parsedict['14'])
-    data.set_params("datatype", parsedict['10'])
+    return parsedict
 
-    ## set_params for all keys in parsedict. There may be a preferred order
-    ## for entering some params, e.g., datatype to know if data are paired.
+
+
+def showstats(parsedict):
+    """ loads assembly or dies, and print stats to screen """
+    try:
+        data = ip.load_assembly(
+                    name=os.path.join(parsedict['1'], 
+                                      parsedict['14']),
+                    quiet=True, 
+                    launch=False)
+
+        print("Summary stats of Assembly {}".format(data.name) \
+             +"\n------------------------------------------------")
+        if not data.stats.empty:
+            print(data.stats)
+            print("\nFull stats files\n---------------------")
+
+            fullcurdir = os.path.realpath(os.path.curdir)
+            for key in sorted(data.statsfiles):
+                val = data.statsfiles[key]
+                val = val.replace(fullcurdir, ".")                
+                print(key+":", val)
+        else:
+            print("No stats to display")
+
+    except AssertionError as inst:
+        sys.exit("Error: No Assembly file found at {}. ".format(inst)\
+        +"\nCheck parameter settings for [working_dir]/[prefix_name]\n")
+
+
+
+def getassembly(args, parsedict):
+    """ loads assembly or creates a new one and set its params from dict"""
+    ## if '1' then do not load existing Assembly
+    if '1' in args.steps:
+        if args.force:
+            data = ip.Assembly(parsedict['14'])
+        else:
+            try:
+                data = ip.load_assembly(os.path.join(parsedict['1'], 
+                                                     parsedict['14']))
+            except AssertionError:
+                data = ip.Assembly(parsedict['14'])
+
+
+    ## otherwise look for existing
+    else:
+        try:
+            data = ip.load_assembly(os.path.join(parsedict['1'], 
+                                                 parsedict['14']))
+        except AssertionError:
+            data = ip.Assembly(parsedict['14'])
+
+    ## for entering some params...
     for param in parsedict:
-        data.set_params(param, parsedict[param])
+        if parsedict[param]:
+            data.set_params(param, parsedict[param])
 
     return data
 
@@ -55,27 +105,35 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n                      ## create new params.txt file.
-    ipyrad -p params.txt           ## run ipyrad with settings in params.txt.
-    ipyrad -p params.txt -s 123    ## run only steps 1, 2 and 3 of assembly.
-    ipyrad -p params.txt -s 4567   ## run steps 4, 5, 6 and 7 of assembly.
+    ipyrad -n                       ## create new params.txt file.
+    ipyrad -p params.txt            ## run ipyrad with settings in params.txt.
+    ipyrad -p params.txt -s 123     ## run only steps 1, 2 and 3 of assembly.
+    ipyrad -p params.txt -s 4567    ## run steps 4, 5, 6 and 7 of assembly.
+    ipyrad -p params.txt -s 3 -f    ## run step 3, overwrite existing data.
 
-  * See documentation for writing advanced ipyrad scripts.
+  * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
 
     ## add arguments 
     parser.add_argument('-v', '--version', action='version', 
         version=str(pkg_resources.get_distribution('ipyrad')))
 
+    parser.add_argument('-r', "--results", action='store_true',
+        help="show summary of results for Assembly in params.txt and exit")
+
     parser.add_argument('-n', "--new", action='store_true',
-        help="create new default params.txt file in current directory.")
+        help="create new default params.txt file in current directory")
+
+    parser.add_argument('-f', "--force", action='store_true',
+        help="force overwrite of existing data")
+
 
     #parser.add_argument('-q', "--quiet", action='store_true',
     #    help="do not print to stderror and stdout.")
 
     parser.add_argument('-p', metavar='params', dest="params",
-        type=str, default="params.txt",
-        help="path to params.txt file.")
+        type=str, default=None,
+        help="path to params.txt file")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
@@ -88,19 +146,24 @@ def parse_command_line():
 
     ## parse args
     args = parser.parse_args()
-    return args
 
+    if not any([args.params, args.results, args.new]):
+        parser.print_help()
+        sys.exit(1)
+
+    return args
 
 
 def main():
     """ main function """
+
+
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
 
     ## used to restrict some CLI workflow vs. interactive features
     ## does it need to be global?
-    ip.__interactive__ = 0
-
+    ip.__interactive__ = 1
     LOGGER.info("Running *CLI*")
 
     ## create new paramsfile if -n
@@ -110,15 +173,37 @@ def main():
                format(os.path.realpath(os.path.curdir)))
         sys.exit(2)
 
-    ## parse params file
-    data = parse_params(args.params)
+    ## if showing results, do not do step 1
+    if args.results:
+        args.steps = ""
+        print("")
+    else:
+        header = \
+    "\n --------------------------------------------------"+\
+    "\n  ipyrad [v.{}]".format(ip.__version__)+\
+    "\n  Interactive assembly and analysis of RADseq data"+\
+    "\n --------------------------------------------------\n"
+        print(header)
 
-    ## For now print the params. 
-    for key, item in data.paramsdict.items():
-        LOGGER.debug("%s, %s", key, item)
 
-    ## run assembly steps
-    #data.run(args.steps)
+    ## create new Assembly or load existing Assembly, quit if args.results
+    if args.params:
+        parsedict = parse_params(args)
+
+        if args.results:
+            showstats(parsedict)
+
+        else:
+            data = getassembly(args, parsedict)
+            ## For now print the params. 
+            for key, item in data.paramsdict.items():
+                LOGGER.debug("%s, %s", key, item)
+
+            ## run Assembly steps
+            steps = list(args.steps)
+            data.run(steps=steps, force=args.force)
+
+    print("")
 
 
 if __name__ == "__main__": 
