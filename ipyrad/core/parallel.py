@@ -5,7 +5,7 @@ from __future__ import print_function
 import subprocess
 import psutil
 import atexit
-import time
+#import time
 import sys
 import os
 
@@ -43,7 +43,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 ## start ipcluster
-def start(name, nproc, controller, delay):
+def start(name, nproc, controller, quiet, delay):
     """ Start ipcluster """
     if nproc != None:
         nproc = str(psutil.cpu_count())
@@ -58,9 +58,10 @@ def start(name, nproc, controller, delay):
         subprocess.check_call(" ".join(standard), 
          	                  shell=True, 
                               stderr=subprocess.STDOUT)
-        LOGGER.info("%s connection to %s engines", controller, nproc)
-        print("ipyparallel setup: {} connection to {} engines.".\
-              format(controller, nproc))
+        LOGGER.info("%s connection to %s engines [%s]", controller, nproc, name)
+        if not quiet:
+            print("ipyparallel setup: {} connection to {} engines\n".\
+                  format(controller, nproc))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
@@ -73,18 +74,21 @@ def start(name, nproc, controller, delay):
 ## decorated func for stopping. Does not need to be called?
 def stop(cluster_id):
     """ stop ipcluster at sys.exit """
-    print("Closing remote parallel engines: {}.".format(cluster_id))
-    LOGGER.info("Shutting down [%s] remote parallel engines", cluster_id)
+    #print("\nclosing remote Engines")
+    LOGGER.info("Shutting down [%s] remote Engines", cluster_id)
     stopcall = ["ipcluster", "stop", 
                 "--cluster-id="+cluster_id]
     try:
-        subprocess.check_call(" ".join(stopcall), shell=True)
+        subprocess.check_call(" ".join(stopcall), 
+                              shell=True, 
+                              stderr=subprocess.STDOUT,
+                              stdout=subprocess.PIPE)
     except subprocess.CalledProcessError:
         pass
 
 
 
-def ipcontroller_init(nproc=None, controller="Local"):
+def ipcontroller_init(nproc=None, controller="Local", quiet=False):
     """
     The name is a unique id that keeps this __init__ of ipyrad distinct
     from interfering with other ipcontrollers. The controller option is 
@@ -92,7 +96,7 @@ def ipcontroller_init(nproc=None, controller="Local"):
     """
     ## check if this pid already has a running cluster
     ipname = "ipyrad-"+str(os.getpid())
-    start(ipname, nproc, controller, delay="1.0")
+    start(ipname, nproc, controller, quiet, delay='1.0')
     #time.sleep(1)
     atexit.register(stop, ipname)
     return ipname

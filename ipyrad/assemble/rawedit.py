@@ -221,6 +221,8 @@ def rawedit(args):
     data, sample, tmptuple, nreplace, point = args
 
     ## get cut sites
+    LOGGER.debug(data.paramsdict["restriction_overhang"])
+    LOGGER.debug([i for i in data.paramsdict["restriction_overhang"]])
     cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
     LOGGER.info("cutsites %s %s", cuts1, cuts2)
@@ -484,7 +486,7 @@ def run_full(data, sample, ipyclient, nreplace):
         for tmptuple in chunkslist:
             os.remove(tmptuple[0])
             if "pair" in data.paramsdict["datatype"]:
-                pass#os.remove(tmptuple[1]) 
+                os.remove(tmptuple[1]) 
 
     return submitted, results
 
@@ -556,38 +558,52 @@ def cleanup(data, sample, submitted, results):
                                     str(fcounts["keep"])))
     outfile.close()
 
-    ## save stats to Sample if successful
-    sample.stats.state = 2
-    sample.files.edits.append((handle1, handle2))
-    sample.files.edits = list(set(sample.files.edits))
-
     ## always overwrite stats b/c even if multiple fastq
     ## files it concatenates them before running.
     sample.stats.reads_filtered = fcounts["keep"]
 
-    ## save stats to the sample??
-    data._stamp("s2 rawediting on "+sample.name)        
+    ## save stats to Sample if successful
+    if sample.stats.reads_filtered:
+        sample.stats.state = 2
+        sample.files.edits.append((handle1, handle2))
+        sample.files.edits = list(set(sample.files.edits))
 
-
-
-def run(data, sample, ipyclient, force=False, nreplace=True):
-    """ run the major functions for editing raw reads """
-    ## if very few reads, raise warning
-    if sample.stats.reads_raw < 500:
-        print("warning: Sample {} has very few reads ({}).".\
-            format(sample.name, sample.stats.reads_raw))
-
-    ## if sample is already done skip
-    if not force:
-        if sample.stats.state >= 2:
-            print("skipping {}. Already edited. Use force=True to overwrite"\
-                  .format(sample.name))
-        else:
-            submitted, results = run_full(data, sample, ipyclient, nreplace)
-            cleanup(data, sample, submitted, results)
+        ## save stats to the sample??
+        data._stamp("s2 rawediting on "+sample.name)
     else:
-        submitted, results = run_full(data, sample, ipyclient, nreplace)
-        cleanup(data, sample, submitted, results)
+        print("No reads passed filtering in Sample: {}".format(sample.name))
+
+
+
+def run(data, samples, ipyclient, force=False, nrep=True):
+    """ run the major functions for editing raw reads """
+    ## print warning if skipping all samples
+    if not force:
+        if all([i.stats.state >= 2 for i in samples]):
+            print("Skipping step2: All {} ".format(len(data.samples))\
+                 +"Samples already filtered in `{}`".format(data.name))
+            
+        else:
+            for sample in samples:
+                if sample.stats.state >= 2:
+                    print("Skipping Sample {}; ".format(sample.name)
+                         +"Already filtered. Use force=True to overwrite.")
+                elif sample.stats.reads_raw < 100:
+                    print("Skipping Sample {}; ".format(sample.name)
+                         +"Too few reads ({}). Use force=True to overwrite.".\
+                           format(sample.stats.reads_raw))
+                else:
+                    submitted, results = run_full(data, sample, ipyclient, nrep)
+                    cleanup(data, sample, submitted, results)
+    else:
+        for sample in samples:
+            if sample.stats.reads_raw < 100:
+                print("Skipping Sample {}; ".format(sample.name)
+                     +"No reads found in file {}".\
+                     format(sample.files.fastqs))
+            else:
+                submitted, results = run_full(data, sample, ipyclient, nrep)
+                cleanup(data, sample, submitted, results)
 
 
 
