@@ -364,23 +364,9 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     :returns: None
     """
     ## nthreads per job for clustering
-    def launch():
-        """ launch ipyclient, and return threading value """
-        threaded_view = ipyclient.load_balanced_view(
+    threaded_view = ipyclient.load_balanced_view(
                     targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
-        return threaded_view, len(threaded_view)
-
-    ## launch within try statement in case engines aren't ready yet
-    ## and try 30 one second sleep/wait cycles before giving up on engines
-    tries = 30
-    while tries:
-        try:
-            threaded_view, tpp = launch()
-            tries = 0
-        except ipp.NoEnginesRegistered:
-            time.sleep(1)
-            tries -= 1
-
+    tpp = len(threaded_view)
 
     ## make output folder for clusters  
     data.dirs.clusts = os.path.join(
