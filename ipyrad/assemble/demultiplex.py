@@ -1,6 +1,6 @@
 #!/usr/bin/env ipython2
 
-""" demultiplex raw sequence data given a barcode map """
+""" demultiplex raw sequence data given a barcode map."""
 
 from __future__ import print_function
 # pylint: disable=E1101
@@ -634,10 +634,10 @@ def prechecks(data, preview):
 
     ## make list of all perfect matching cut sites
     cut1, _ = [ambigcutters(i) for i in \
-               data.paramsdict["restriction_overhang"]]
+                   data.paramsdict["restriction_overhang"]][0]
+    assert cut1, "Must have a restriction overhang entered for demultiplexing."
 
     return raws, longbar, cut1
-
 
 
 
