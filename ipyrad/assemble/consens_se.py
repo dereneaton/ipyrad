@@ -5,10 +5,12 @@
 from __future__ import print_function
 # pylint: disable=E1101
 
+import ipyparallel as ipp
 import scipy.stats
 import scipy.misc
 import itertools
 import numpy
+import time
 import gzip
 import os
 
@@ -16,7 +18,8 @@ from .demultiplex import zcat_make_temps
 from ipyrad.assemble.worker import ObjDict
 from collections import Counter
 
-
+import logging
+LOGGER = logging.getLogger(__name__)
 
 
 def binomprobr(base1, base2, error, het):
@@ -35,17 +38,17 @@ def binomprobr(base1, base2, error, het):
     prior_het = het
 
     ## get probabilities
-    ab = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
-    aa = scipy.stats.binom.pmf(base1, base1+base2, error)
-    bb = scipy.stats.binom.pmf(base2, base1+base2, error)
+    hetro = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
+    homoa = scipy.stats.binom.pmf(base1, base1+base2, error)
+    homob = scipy.stats.binom.pmf(base2, base1+base2, error)
 
     ## calculate probs
-    aa = aa*prior_homo
-    bb = bb*prior_homo
-    ab = ab*prior_het
+    homoa = homoa*prior_homo
+    homob = homob*prior_homo
+    hetro = hetero*prior_het
 
     ## return 
-    probabilities = [aa, bb, ab]
+    probabilities = [homoa, homob, hetro]
     genotypes = ['aa', 'bb', 'ab']
     bestprob = max(probabilities)/float(sum(probabilities))
 
@@ -73,6 +76,7 @@ def hetero(base1, base2):
     returns IUPAC symbol for ambiguity bases,
     used for polymorphic sites.
     """
+    iupac = "N"
     trans = {('G', 'A'):"R",
              ('G', 'T'):"K",
              ('G', 'C'):"S",
@@ -82,23 +86,26 @@ def hetero(base1, base2):
     order1 = trans.get((base1, base2))
     order2 = trans.get((base2, base1))
     if order1:
-        return order1
+        iupac = order1
     elif order2:
-        return order2
+        iupac = order2
     else:
+        ## one or both are Ns
         if [base1, base2].count("N") == 2:
-            return "N"
+            pass
         elif base1 == "N":
-            return base2
+            iupac = base2
         elif base2 == "N":
-            return base1
+            iupac = base1
+        ## one or both are (-)s            
         else:
             if base1 == "-":
-                return base2
+                iupac = base2
             elif base2 == "-":
-                return base1
-            #sys.exit("report this error: bad site ("+\
-            #         base1+" "+base2+")")
+                iupac = base1
+            else:
+                LOGGER.error("unrecognized sequence: %s %s", base1, base2)
+    return iupac
 
 
 
@@ -605,10 +612,12 @@ def run_full(data, sample, ipyclient):
     submitted = 0
     num = 0
 
-    ## set optim size for chunks
-    optim = 5000
-    if sample.stats.clusters_kept > 1e5:
-        optim = 10000
+    ## set optim size for chunks in N clusters
+    optim = 1000
+    if sample.stats.clusters_kept > 50000:
+        optim = 2000
+    if sample.stats.clusters_kept > 100000:
+        optim = 3000
 
     ## break up the file into smaller tmp files for each engine
     chunkslist = []
@@ -617,6 +626,8 @@ def run_full(data, sample, ipyclient):
         _, achunk = zcat_make_temps(args)
         chunkslist += achunk
 
+    import sys
+    sys.exit()
     ## send chunks across engines, will delete tmps if failed
     try:
         submitted_args = []
@@ -628,15 +639,37 @@ def run_full(data, sample, ipyclient):
             submitted += 1
             num += 1
 
-        ## call to ipp
-        lbview = ipyclient.load_balanced_view()
-        results = lbview.map_async(consensus, submitted_args)
+        ## first launch of ipyclient
+        def launch():
+            """ launch ipyclient """
+            lbview = ipyclient.load_balanced_view()
+            return lbview
+
+        ## launch within try statement in case engines aren't ready yet
+        ## and try 30 one second sleep/wait cycles before giving up on engines
+        tries = 30
+        while tries:
+            try:
+                lbview = launch()
+                tries = 0
+            except ipp.NoEnginesRegistered:
+                time.sleep(1)
+                tries -= 1
+
+        results = lbview.map_async(consens, submitted_args)
+
         try:
             results.get()
         except (TypeError, AttributeError, NameError):
-            print(lbview)
-            print(results)
-            print("failed: ...")
+            for key in ipyclient.history:
+                if ipyclient.metadata[key].error:
+                    LOGGER.error("step2 error: %s", 
+                        ipyclient.metadata[key].error)
+                    raise SystemExit
+                if ipyclient.metadata[key].stdout:
+                    LOGGER.error("step2 stdout:%s", 
+                        ipyclient.metadata[key].stdout)
+                    raise SystemExit            
         del lbview
 
     finally:
@@ -655,61 +688,26 @@ def run_full(data, sample, ipyclient):
 def run(data, sample, ipyclient, preview=0, force=False):
     """ checks if the sample should be run and passes the args """
 
+    ## if very few reads, raise warning
+    if sample.stats.clusters_kept < 50:
+        print("warning: Sample {} has very few reads ({}).".\
+            format(sample.name, sample.stats.reads_raw))
+
     ## if sample is already done skip
     if not force:
         if sample.stats.state >= 5:
-            print("skipping {}, consensus calls already made. Use force=True "\
-                +" to overwrite".format(sample.name))
+            print("Skipping {}. Consensus sequences already called. "\
+                 +"Use force=True to overwrite".format(sample.name))
         else:
-            run_full(data, sample, ipyclient)
-            cleanup(data, sample)
+            submitted, results = run_full(data, sample, ipyclient)
+            cleanup(data, sample, submitted, results)
     else:
-        run_full(data, sample, ipyclient)
-        cleanup(data, sample)
-
-
-
-
-# def run(data, samples):
-#     """ calls the main function """
-
-#     # iterate over files
-#     submitted = 0
-
-#     ## sort samples by clustsize
-#     samples.sort(key=lambda x: x.stats["clusters_kept"], reverse=True)
-
-#     ## put on work queue
-#     for sample in samples:
-#         ## only require state 3, param estimates are Assembly averages
-#         if sample.stats["state"] in [3, 4]:
-#             if sample.stats["clusters_kept"]:
-#                 work_queue.put([data, sample])
-#                 submitted += 1
-#         elif sample.stats["state"] >= 5:
-#             print("sample {} already passed state 5".format(sample.name))
-
-#     ## create a queue to pass to workers to store the results
-#     fake_queue = multiprocessing.Queue()
-
-#     try:
-#         ##  spawn workers
-#         jobs = []
-#         for _ in range(min(data.paramsdict["N_processors"], submitted)):
-#             work = worker.Worker(work_queue, fake_queue, consensus)
-#             work.start()
-#             jobs.append(work)
-#         for job in jobs:
-#             job.join()
-
-#     finally:
-#         ## get results and cleanup
-#         pass
-#         #cleanup(data, samples)
+        submitted, results = run_full(data, sample, ipyclient)
+        cleanup(data, sample, submitted, results)
 
 
 
 if __name__ == "__main__":
     import ipyrad as ip
-    tester = ip.load_dataobj()
-    tester.step5.run()
+    TESTER = ip.load_dataobj("test")
+    TESTER.step5.run()

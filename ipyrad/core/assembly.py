@@ -86,9 +86,8 @@ class Assembly(object):
     def __init__(self, name, controller="Local"):
 
         ## obj name
-        self.name = name    
-        print("New Assembly object `{}` created".format(self.name))
-        LOGGER.info("New Assembly object `%s` created", self.name)
+        self.name = name
+        print("New Assembly: {}".format(self.name))
 
         ## launch ipcluster and register for later destruction
         self.__ipname__ = ipcontroller_init(controller)
@@ -148,6 +147,7 @@ class Assembly(object):
                        ("assembly_method", "denovo"),
                        ("reference_sequence", "")
         ])
+
 
     def __str__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
@@ -386,11 +386,6 @@ class Assembly(object):
                 return 'key not recognized'
 
 
-        #def save(self, name=""):
-        #    if not name:
-        #        print("must enter a filename for saved object")
-        #    else:
-        #        json.dumps(self)
 
 
     def set_params(self, param, newvalue):
@@ -471,7 +466,11 @@ class Assembly(object):
                 self.paramsdict['barcodes_path'] = fullbarpath                
                 self._stamp("[3] set to empty")
             else:
-                print('cannot find barcodes file')
+                print(
+        "Warning: barcodes file not found. This must be an absolute \n"\
+       +"path (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the \n"\
+       +"directory where you're running ipyrad (./data/data_barcodes.txt).\n"\
+       +"You entered: %s\n" % fullbarpath)
 
 
         elif param in ['4', 'sorted_fastq_path']:
@@ -481,8 +480,6 @@ class Assembly(object):
             if os.path.isdir(newvalue):
                 newvalue = os.path.join(newvalue, "*.gz")
             self.paramsdict['sorted_fastq_path'] = newvalue
-            ## link_fastqs will check that files exist
-            #self.link_fastqs()
             self._stamp("[4] set to "+newvalue)
             self.dirs["fastqs"] = os.path.dirname(
                                    self.paramsdict["sorted_fastq_path"])
@@ -492,7 +489,9 @@ class Assembly(object):
             newvalue = tuplecheck(newvalue, str)                        
             assert isinstance(newvalue, tuple), \
             "cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"
-            assert len(newvalue) in [1, 2], \
+            if len(newvalue) == 1:
+                newvalue = (newvalue, "")
+            assert len(newvalue) == 2, \
             "must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"
             self.paramsdict['restriction_overhang'] = newvalue
             self._stamp("[5] set to "+str(newvalue))
@@ -645,18 +644,18 @@ class Assembly(object):
             fullrawpath = expander(newvalue)
             if not os.path.isfile(fullrawpath):
                 LOGGER.info("reference sequence file not found.")
-                sys.exit("\nError: reference sequence file not found. "\
-            +"This must be an absolute path "\
-            +"(/home/wat/ipyrad/data/referece.gz) or a path relative to the "\
-            +"directory where you're running ipyrad (./data/reference.gz). " \
-            +"You entered `%s`.\n" % fullrawpath)
+                print(\
+        "Warning: reference sequence file not found. This must be an\n"\
+       +"absolute path (/home/wat/ipyrad/data/reference.gz) or relative to \n"\
+       +"the directory where you're running ipyrad (./data/reference.gz).\n"\
+       +"You entered: %s\n" % fullrawpath)
             self.paramsdict['reference_sequence'] = fullrawpath
             self._stamp("[28] set to "+fullrawpath)
 
 
 
     def copy(self, newname):
-        """ Returns a copy of the Assemlbly object. Does not allow Assembly 
+        """ Returns a copy of the Assembly object. Does not allow Assembly 
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
         if (newname == self.name) or (os.path.exists(newname+".assembly")):
@@ -703,28 +702,64 @@ class Assembly(object):
 
 
 
-    def step1(self, preview=0):
-        """ step 1: demultiplex raw reads """
+    def _launch(self, tries):
+        """ launch ipyclient, and return threading value """
+        ## launch within try statement in case engines aren't ready yet
+        ## and try 30 one second sleep/wait cycles before giving up on engines
+        while tries:
+            try:
+                ipyclient = ipp.Client(cluster_id=self.__ipname__)
+                tries = 0
+            except (IOError, ipp.NoEnginesRegistered):
+                time.sleep(1)
+                tries -= 1
+        return ipyclient
+
+
+
+    def step1(self, force=False, preview=0):
+        """ step 1: demultiplex raw reads or link pre-demultiplexed files."""
 
         ## launch parallel client within guarded statement
         try: 
-            ipyclient = ipp.Client(cluster_id=self.__ipname__)
+            ipyclient = self._launch(30) 
 
-            if not self.samples:
+            ## if Samples already exist then no demultiplexing
+            if self.samples:
+                if not force:
+                    print("Skipping step1: {} ".format(len(self.samples)) \
+                         +"Samples already found in `{}` ".format(self.name) \
+                         +"(see --force).")
+                else:
+                    assemble.demultiplex.run(self, preview, ipyclient)
+                    self._stamp("s1_demultiplexing:")
+                    #print("Overwriting Samples with data files in {}".\
+                    #      format(self.paramsdict["sorted_fastq_path"]))
+                    #self.link_fastqs(force=True)
+            ## Creating new Samples
+            else:
+                ## first check if demultiplexed files exist in path
+                #if os.path.exists(self.paramsdict["sorted_fastq_path"]):                
+                #    self.link_fastqs(
+                #        path=os.path.join(
+                #            self.paramsdict["working_directory"], "fastqs"))
+                #    print("linking files from {}".\
+                #          format(self.paramsdict["sorted_fastq_path"]))
+                ## otherwise do the demultiplexing
+                #else:
                 assemble.demultiplex.run(self, preview, ipyclient)
                 self._stamp("s1_demultiplexing:")
-            else:
-                print("Samples already found in `{}`.".format(self.name) \
-                    + "Use ip.merge() to combine samples \nfrom multiple " \
-                    + "Assembly objects.\n")
+
         except (KeyboardInterrupt, SystemExit, AttributeError):
             logging.error("assembly step1 interrupted.")
             raise
 
         ## close client when done or if interrupted
         finally:
-            #ipyclient.shutdown(block=1)
-            ipyclient.close()
+            try:
+                ipyclient.close()
+            except UnboundLocalError as inst:
+                LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
 
         ## pickle the data obj
         self._save()
@@ -740,33 +775,42 @@ class Assembly(object):
 
         """
         ## launch parallel client within guarded statement
-        try:
-            ipyclient = ipp.Client(cluster_id=self.__ipname__)
+        try: 
+            ipyclient = self._launch(30) 
 
-            if samples:
-                ## if sample key, replace with sample obj
-                assert isinstance(samples, list), \
-                "to subselect samples enter as a list, e.g., [A, B]."
-                for sample in samples:
-                    ## get sample from dict key
-                    sample = self.samples[sample]
-                    assemble.rawedit.run(self, sample, ipyclient, force)
-            else:
-                if not self.samples:
-                    assert self.samples, "No Samples in "+self.name
-                for _, sample in self.samples.items():
-                    assemble.rawedit.run(self, sample, ipyclient, force)
+            ## if samples not entered use all samples
+            if not samples:
+                samples = self.samples.keys()
 
+            if not samples:
+                self.link_fastqs()
 
-        except (KeyboardInterrupt, AttributeError, SystemExit):
-            LOGGER.error("assembly step2 interrupted!")
+            ## require Samples 
+            assert samples, "No Samples in {}".format(self.name)
+
+            ## if sample keys, replace with sample obj
+            assert isinstance(samples, list), \
+            "to subselect samples enter as a list, e.g., [A, B]."
+            samples = [self.samples[key] for key in samples]
+
+            ## pass samples to rawedit
+            assemble.rawedit.run(self, samples, ipyclient, force)
+
+        except (KeyboardInterrupt, SystemExit):
+            LOGGER.error("assembly step2 interrupted by user.")
             raise
             
+        except Exception as inst:
+            LOGGER.error("crashed step2 error: %s", inst)
+            print("error during step2 ...\n({})\n".format(inst))
+            raise
+
         ## close parallel client if done or interrupted
         finally:
-            logging.info("assembly step2 cleaning up.")
-            #ipyclient.shutdown(block=1)
-            ipyclient.close()
+            try:
+                ipyclient.close()
+            except UnboundLocalError as inst:
+                LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
 
         ## checkpoint the data obj
         self._save()
@@ -785,51 +829,39 @@ class Assembly(object):
             ## index the reference sequence
             index_reference_sequence(self)
 
-        ## launch parallel client
-        ipyclient = ipp.Client(cluster_id=self.__ipname__)
+        try: 
+            ipyclient = self._launch(30) 
 
-        try:
-            ## sampling
-            if samples:
+            ## if samples not entered use all samples
+            if not samples:
+                samples = self.samples.keys()
 
-                ## if string make a list(tuple)
-                if isinstance(samples, str):
-                    samples = [samples]
+            ## if sample keys, replace with sample obj
+            assert isinstance(samples, list), \
+            "to subselect samples enter as a list, e.g., [A, B]."
+            samples = [(key, self.samples[key]) for key in samples]
 
-                ## make into a tuple list with (key, sample)
-                ## allows for names as keys or Sample objects
-                subsamples = []
-                for sample in samples:
-                    if self.samples.get(sample):
-                        subsamples.append((sample, self.samples[sample]))
+            ## require Samples 
+            assert samples, "No Samples in {}".format(self.name)
 
-                if subsamples:
-                    print("Clustering {} samples using {} engines per job.".\
-                      format(len(samples), self.paramsdict["engines_per_job"]))
-                    ## run
-                    assemble.cluster_within.run(self, subsamples, ipyclient, 
-                                                preview, noreverse, force)
-                else:
-                    print("No samples found. Check that names are correct")
+            ## skip if all are finished
+            if all([i[1].stats.state >= 3 for i in samples]):
+                print("Skipping step3: All {} ".format(len(self.samples))\
+                     +"Samples already clustered in `{}`".format(self.name))
             else:
-                ## if no samples selected and no samples exist
-                assert self.samples, "no Samples found in {}".format(self.name)
-                
-                ## print to screen
-                print("clustering {} samples using {} engines per job".\
-                  format(len(self.samples), self.paramsdict["engines_per_job"]))
-                ## run
-                assemble.cluster_within.run(self, self.samples.items(), 
-                                        ipyclient, preview, noreverse, force)
+                assemble.cluster_within.run(self, samples, ipyclient, 
+                                            preview, noreverse, force)
+
 
         except (KeyboardInterrupt, SystemExit) as _:
             print("assembly step3 interrupted by user.")
             raise
+
         ## close parallel client if done or interrupted
-        finally:
+        try:
             ipyclient.close()
-            if preview:
-                print(".")
+        except UnboundLocalError as inst:
+            LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
 
         ## pickle the data object
         self._save()
@@ -841,10 +873,10 @@ class Assembly(object):
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """
 
-        ## launch parallel client
-        ipyclient = ipp.Client(cluster_id=self.__ipname__)
-
         try: 
+            ## launch parallel client            
+            ipyclient = self._launch(30) 
+
             ## sampling
             if samples:
                 ## make a list keys or samples
@@ -870,18 +902,17 @@ class Assembly(object):
                                            ipyclient, force, subsample)
 
         except (KeyboardInterrupt, SystemExit) as inst:
-            LOGGER.info("assembly step4 interrupted: %s", inst)
+            LOGGER.error("assembly step4 interrupted: %s", inst)
             print("assembly step4 interrupted.")
             raise
 
         except Exception as inst:
-            LOGGER.info("crashed step4 error: %s", inst)
+            LOGGER.error("crashed step4 error: %s", inst)
             print("error during step4 ...\n({})\n".format(inst))
             raise
 
         ## close parallel client if done or interrupted
         finally:
-            ipyclient.shutdown(block=1)
             ipyclient.close()
             if preview:
                 print(".")
@@ -892,37 +923,46 @@ class Assembly(object):
 
 
 
-    def step5(self, samples="", preview=0):
+    def step5(self, samples="", force=False):
         """ step 5: Consensus base calling from clusters within samples.
         If you want to overwrite data for a file, first set its state to 
         3 or 4. e.g., data.samples['sample'].stats['state'] = 3 """
 
-        ## sampling
-        if samples:
-            ## make a list keys or samples
-            if isinstance(samples, str):
-                samples = list([samples])
+        ## launch parallel client within guarded statement
+        try:
+            ipyclient = ipp.Client(cluster_id=self.__ipname__)
+
+            if samples:
+                ## if sample key, replace with sample obj
+                assert isinstance(samples, list), \
+                "to subselect samples enter as a list, e.g., [A, B]."
+                for sample in samples:
+                    ## get sample from dict key
+                    sample = self.samples[sample]
+                    assemble.consens_se.run(self, sample, ipyclient, force)
             else:
-                samples = list(samples)
-
-            ## if keys are in list
-            if any([isinstance(i, str) for i in samples]):
-                ## make into a subsampled sample dict
-                subsamples = {i: self.samples[i] for i in samples}
-
-            ## send to function
-            assemble.consens_se.run(self, subsamples.values())
-        else:
-            ## if no sample, then do all samples
-            if not self.samples:
-                ## if no samples in data, try linking edits from working dir
-                #self.link_clustfiles()
                 if not self.samples:
-                    print("Assembly object has no samples in state=3")
-            ## run clustering for all samples
-            assemble.consens_se.run(self, self.samples.values())
+                    assert self.samples, "No Samples in "+self.name
+                for _, sample in self.samples.items():
+                    assemble.consens_se.run(self, sample, ipyclient, force)
 
-        ## pickle the data object
+
+        except (KeyboardInterrupt, SystemExit):
+            LOGGER.error("assembly step2 interrupted by user.")
+            raise
+            
+        except Exception as inst:
+            LOGGER.error("crashed step2 error: %s", inst)
+            print("error during step2 ...\n({})\n".format(inst))
+            raise
+
+        ## close parallel client if done or interrupted
+        finally:
+            logging.info("assembly step2 cleaning up.")
+            #ipyclient.shutdown(block=1)
+            ipyclient.close()
+
+        ## checkpoint the data obj
         self._save()
 
 
@@ -931,9 +971,10 @@ class Assembly(object):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
-            steps = "123457"
+            steps = list("123457")
         else:
-            steps = str(steps)
+            steps = list(steps)
+
         if '1' in steps:
             self.step1(preview=preview)
         if '2' in steps:
@@ -947,7 +988,7 @@ class Assembly(object):
         # if '6' in steps:
         #     self.step6()            
         # if '7' in steps:
-        #     self.step7()            
+        #     self.step7()
 
 
 
