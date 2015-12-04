@@ -13,6 +13,7 @@ import sys
 import gzip
 import dill
 import copy
+import psutil
 import subprocess
 import pandas as pd
 import ipyparallel as ipp
@@ -83,14 +84,14 @@ class Assembly(object):
      """
 
 
-    def __init__(self, name, controller="Local"):
+    def __init__(self, name, nproc="", controller="Local"):
 
         ## obj name
         self.name = name
         print("New Assembly: {}".format(self.name))
 
         ## launch ipcluster and register for later destruction
-        self.__ipname__ = ipcontroller_init(controller)
+        self.__ipname__ = ipcontroller_init(nproc=nproc, controller=controller)
 
         ## get binaries of dependencies
         self.vsearch, self.muscle, self.smalt, self.samtools = getbins()
@@ -709,8 +710,18 @@ class Assembly(object):
         while tries:
             try:
                 ipyclient = ipp.Client(cluster_id=self.__ipname__)
+                if tries > 1:
+                    LOGGER.debug('try %s: starting controller', tries)                  
                 tries = 0
-            except (IOError, ipp.NoEnginesRegistered):
+                ## make sure all engines are connected
+                try:
+                    assert len(ipyclient.ids) == psutil.cpu_count()
+                    LOGGER.info('OK! Connected to %s/%s engines', 
+                                len(ipyclient.ids), psutil.cpu_count())                    
+                except AssertionError as _: 
+                    LOGGER.debug('connected to %s engines', len(ipyclient.ids))
+                    raise
+            except (IOError, ipp.NoEnginesRegistered, AssertionError):
                 time.sleep(1)
                 tries -= 1
         return ipyclient
@@ -752,6 +763,9 @@ class Assembly(object):
 
         except (KeyboardInterrupt, SystemExit, AttributeError):
             logging.error("assembly step1 interrupted.")
+            raise
+        except Exception as inst:
+            print("other error: %s" % inst)
             raise
 
         ## close client when done or if interrupted
@@ -855,6 +869,9 @@ class Assembly(object):
 
         except (KeyboardInterrupt, SystemExit) as _:
             print("assembly step3 interrupted by user.")
+            raise
+        except Exception as inst:
+            print("other error: %s" % inst)
             raise
 
         ## close parallel client if done or interrupted

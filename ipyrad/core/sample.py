@@ -3,7 +3,6 @@
 
 #import os
 import pandas as pd
-import dill
 from ipyrad.assemble.worker import ObjDict
 
 
@@ -38,20 +37,20 @@ class Sample(object):
               "mapped_reads": [],
               "unmapped_reads": [],
               "clusters": [],
-              "depths": [],
               "consens": [],
               "database": []
               })
 
+        self.depths = []
         ## store cluster depth information
         #self.depths = ObjDict()
-        self.depths = []
         ## autogen mins from depth info in Assembly obj
         #self.depths.mjmin = []
         #self.depths.statmin = []                
 
         ## assignments for hierarchical clustering
         self.group = []
+
 
 
     #def __getstate__(self):

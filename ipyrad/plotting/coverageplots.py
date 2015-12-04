@@ -36,7 +36,7 @@ def depthplot(data, samples=None, dims=(0, 0), xmax=50, outprefix=None):
             dims = (len(subsamples)/4, 4)
 
     ## create canvas
-    canvas = toyplot.Canvas(width=250*dims[1], height=200*dims[0])
+    canvas = toyplot.Canvas(width=200*dims[1], height=150*dims[0])
 
     ## fill in each panel of canvas with a sample
     for panel, sample in enumerate(subsamples):
@@ -45,16 +45,20 @@ def depthplot(data, samples=None, dims=(0, 0), xmax=50, outprefix=None):
         axes.label.text = sample
 
         ## statistical called bins
-        statdat = subsamples[sample].depths["statmin"]
+        statdat = subsamples[sample].depths[\
+                      subsamples[sample].depths >= \
+                      data.paramsdict["mindepth_statistical"]]
         sdat = np.histogram(statdat, range(50))
 
         ## majrule called bins
-        maj = data.samples[sample].depths["mjmin"]
-        majdat = maj[maj < data.paramsdict["mindepth_statistical"]]
-        mdat = np.histogram(majdat, range(50))
+        statdat = subsamples[sample].depths[\
+                      subsamples[sample].depths < \
+                      data.paramsdict["mindepth_statistical"]]
+        statdat = statdat[statdat >= data.paramsdict["mindepth_majrule"]]
+        mdat = np.histogram(statdat, range(50))
 
         ## excluded bins
-        tots = data.samples[sample].depths["total"]
+        tots = data.samples[sample].depths
         totsdat = tots[tots < data.paramsdict["mindepth_majrule"]]
         edat = np.histogram(totsdat, range(50))
 

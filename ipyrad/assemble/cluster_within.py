@@ -60,9 +60,9 @@ def cleanup(data, sample):
         sample.stats["clusters_total"] = len(depth)
         sample.stats["clusters_kept"] = max([len(i) for i in \
                                              (keepmj, keepstat)])
-        sample.depths.total = depth
-        sample.depths.mjmin = keepmj
-        sample.depths.statmin = keepstat
+        sample.depths = depth
+        #sample.depths.mjmin = keepmj
+        #sample.depths.statmin = keepstat
 
         data._stamp("s3 clustering on "+sample.name)        
     else:
@@ -483,12 +483,13 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                              int(sample.stats["reads_filtered"]),
                              int(sample.stats["clusters_total"]),
                              int(sample.stats["clusters_kept"]),
-                             np.mean(sample.depths["total"]),
-                             np.mean(sample.depths["mjmin"]),
-                             np.mean(sample.depths["statmin"]),
+                             np.mean(sample.depths),
+                             np.mean(sample.depths[sample.depths >= \
+                                     data.paramsdict["mindepth_majrule"]]),
+                             np.mean(sample.depths[sample.depths >= \
+                                     data.paramsdict["mindepth_statistical"]])
                              ))
     outfile.close()
-
 
 
 def combine_pairs(data, sample):

@@ -11,7 +11,7 @@ import subprocess
 import gzip
 import copy
 import cPickle as pickle
-from ipyrad.consensdp import unhetero, uplow
+from ipyrad.assemble.consens_se import unhetero, uplow
 
 
 def breakalleles(consensus):
@@ -72,8 +72,62 @@ def fullcomp(seq):
     return seq
 
 
-def cluster(params, handle, gid, quiet):
+def cluster(data, noreverse, nthreads):
+    """ calls vsearch for clustering across samples. """
+    ## input and output file handles
+    cathaplos = os.path.join(data.dirs.consens, "cat.haplos")
+    uhaplos = os.path.join(data.dirs.consens, "cat.utemp")
+    hhaplos = os.path.join(data.dirs.consens, "cat.htemp")    
+
+    ## parameters that vary by datatype
+    if data.paramsdict["datatype"] == "gbs":
+        reverse = " -strand both "
+        cov = " -query_cov .35 "
+    elif data.paramsdict["datatype"] == "pairgbs":
+        reverse = " -strand both "
+        cov = " -query_cov .60 "
+    else:
+        reverse = " -leftjust "
+        cov = " -query_cov .90 "
+
+    ## override reverse clustering option
+    if noreverse:
+        reverse = " -leftjust "
+        print(noreverse, "not performing reverse complement clustering")
+
+    ## get call string
+    cmd = data.vsearch+\
+        " -cluster_smallmem "+cathaplos \
+       +reverse \
+       +cov \
+       +" -id "+str(data.paramsdict["clust_threshold"]) \
+       +" -userout "+uhaplos \
+       +" -userfields query+target+id+gaps+qstrand+qcov" \
+       +" -maxaccepts 1" \
+       +" -maxrejects 0" \
+       +" -minsl 0.5" \
+       +" -fulldp " \
+       +" -threads "+str(nthreads) \
+       +" -usersort "+\
+       +" -notmatched "+hhaplos \
+       +" -fasta_width 0" \
+       +" -quiet"
+
+    try:
+        subprocess.check_call(cmd, shell=True, 
+                                   stderr=subprocess.STDOUT,
+                                   stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        sys.exit("Error in vsearch: \n{}\n{}".format(inst, subprocess.STDOUT))
+
+
+
+
+
+def oldcluster(data, handle, gid, quiet):
     """ clusters with vsearch across samples """
+
+
 
     if params["datatype"] == 'pairddrad':
         ## use first files for split clustering "
@@ -243,32 +297,33 @@ def makeclust(params, handle, gid, minmatch):
     pickleout.close()
 
 
-def splitter(handle):
-    """ splits first reads from second reads for pairddrad data
-        for split clustering method """
-    infile = open(handle)
-    if os.path.exists(handle.replace(".haplos", ".firsts")):
-        os.remove(handle.replace(".haplos", ".firsts"))
+# def splitter(handle):
+#     """ splits first reads from second reads for pairddrad data
+#         for split clustering method """
+#     infile = open(handle)
+#     if os.path.exists(handle.replace(".haplos", ".firsts")):
+#         os.remove(handle.replace(".haplos", ".firsts"))
         
-    orderfirsts = open(handle.replace(".haplos", ".firsts"), 'w')
-    dp = itertools.izip(*[iter(infile)]*2)
-    ff = []
-    cnts = 0
-    for d in dp:
-        n,s = d
-        ## checking fix to pairddrad splitting problem...
-        ## backwards compatible with pyrad v2
-        s1 = s.replace("X", "x").replace("x", "n").split("nn")[0]
-        ff.append(n+s1+"\n")
-        cnts += 1
-    orderfirsts.write("".join(ff))
-    orderfirsts.close()
-    return handle.replace(".haplos", ".firsts")
+#     orderfirsts = open(handle.replace(".haplos", ".firsts"), 'w')
+#     dp = itertools.izip(*[iter(infile)]*2)
+#     ff = []
+#     cnts = 0
+#     for d in dp:
+#         n,s = d
+#         ## checking fix to pairddrad splitting problem...
+#         ## backwards compatible with pyrad v2
+#         s1 = s.replace("X", "x").replace("x", "n").split("nn")[0]
+#         ff.append(n+s1+"\n")
+#         cnts += 1
+#     orderfirsts.write("".join(ff))
+#     orderfirsts.close()
+#     return handle.replace(".haplos", ".firsts")
 
 
 
 def makecons(params, inlist, outhandle, gid, minhit, quiet):
-    """ make the concatenated consens files to imput to vsearch"""
+    """ Make the concatenated consens files to imput to vsearch. 
+    Orders reads by length and shuffles randomly within length classes"""
 
     ## make list of consens files but cats already made
     consfiles = [i for i in inlist if "/cat.cons" not in i]

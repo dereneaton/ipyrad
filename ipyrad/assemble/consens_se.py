@@ -295,7 +295,7 @@ def consensus(args):
                     LOGGER.info("@hetero")
                     filters['hetero'] += 1
             else:
-                LOGGER.debug("@depth")
+                LOGGER.info("@depth")
                 filters['depth'] += 1
 
     clusters.close()
@@ -479,6 +479,7 @@ def clustdealer(pairdealer, optim):
             taker = itertools.takewhile(lambda x: x[0] != "//\n", pairdealer)
             oneclust = ["".join(taker.next())]
         except StopIteration:
+            LOGGER.debug('last chunk %s', chunk)
             return 1, chunk
 
         ## load one cluster
@@ -603,14 +604,9 @@ def run_full(data, sample, ipyclient):
     num = 0
 
     ## set optim size for chunks in N clusters TODO: (make this better)
-    optim = 250
-    if sample.stats.clusters_kept > 1100:
-        optim = 500
-    if sample.stats.clusters_kept > 50000:
-        optim = 2000
-    if sample.stats.clusters_kept > 100000:
-        optim = 3000
-
+    optim = int(sample.stats.clusters_kept/
+                float(len(ipyclient.ids)*2))
+    optim = 97
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
     chunkslist = []
@@ -626,7 +622,7 @@ def run_full(data, sample, ipyclient):
         ## grab optim clusters and write to file
         done, chunk = clustdealer(pairdealer, optim)
         chunkhandle = os.path.join(data.dirs.clusts, "tmp_"+str(num*optim))
-        if not done:
+        if chunk:
             chunkslist.append(chunkhandle)            
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
@@ -647,7 +643,6 @@ def run_full(data, sample, ipyclient):
 
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(consensus, submitted_args)
-
         try:
             statsdicts = results.get()
         except (TypeError, AttributeError, NameError):
@@ -661,6 +656,10 @@ def run_full(data, sample, ipyclient):
                         ipyclient.metadata[key].stdout)
                     raise SystemExit            
         del lbview
+
+    except Exception as inst:
+        print(inst)
+        raise SystemExit
 
     finally:
         ## if process failed at any point delete tmp files
@@ -685,6 +684,12 @@ def run(data, samples, ipyclient, force=False):
     data.dirs.consens = os.path.join(data.dirs.working, data.name+"_consens")
     if not os.path.exists(data.dirs.consens):
         os.mkdir(data.dirs.consens)
+
+    ## make sure no existing tmp files
+    tmpcons = glob.glob(os.path.join(data.dirs.working, "*_tmpcons.*"))
+    tmpcats = glob.glob(os.path.join(data.dirs.working, "*_tmpcats.*"))
+    for tmpfile in tmpcons+tmpcats:
+        os.remove(tmpfile)
 
     ## if sample is already done skip
     if data.stats.hetero_est.empty:
@@ -718,7 +723,6 @@ def run(data, samples, ipyclient, force=False):
                        format(sample.stats.clusters_kept))
             else:
                 statsdicts = run_full(data, sample, ipyclient)
-                LOGGER.debug("1")
                 cleanup(data, sample, statsdicts)
 
         else:
