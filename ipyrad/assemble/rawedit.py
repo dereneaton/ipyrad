@@ -448,22 +448,7 @@ def run_full(data, sample, ipyclient, nreplace):
             num += 1
 
         ## first launch of ipyclient
-        def launch():
-            """ launch ipyclient, and return threading value """
-            lbview = ipyclient.load_balanced_view()
-            return lbview
-
-        ## launch within try statement in case engines aren't ready yet
-        ## and try 30 one second sleep/wait cycles before giving up on engines
-        tries = 30
-        while tries:
-            try:
-                lbview = launch()
-                tries = 0
-            except ipp.NoEnginesRegistered:
-                time.sleep(1)
-                tries -= 1
-
+        lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(rawedit, submitted_args)
 
         ## return errors if an engine fails
@@ -597,7 +582,7 @@ def run(data, samples, ipyclient, force=False, nrep=True):
                     cleanup(data, sample, submitted, results)
     else:
         for sample in samples:
-            if sample.stats.reads_raw < 100:
+            if not sample.stats.reads_raw:
                 print("Skipping Sample {}; ".format(sample.name)
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))

@@ -13,12 +13,10 @@ from __future__ import print_function
 import os
 import sys
 import gzip
-import time
 import tempfile
 import itertools
 import subprocess
 import numpy as np
-import ipyparallel as ipp
 from .rawedit import comp
 
 import logging

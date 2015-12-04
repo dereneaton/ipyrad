@@ -923,46 +923,92 @@ class Assembly(object):
 
 
 
-    def step5(self, samples="", force=False):
+    def step5(self, samples="", preview=0, force=False):
         """ step 5: Consensus base calling from clusters within samples.
         If you want to overwrite data for a file, first set its state to 
         3 or 4. e.g., data.samples['sample'].stats['state'] = 3 """
 
         ## launch parallel client within guarded statement
-        try:
-            ipyclient = ipp.Client(cluster_id=self.__ipname__)
+        try: 
+            ipyclient = self._launch(30) 
 
-            if samples:
-                ## if sample key, replace with sample obj
-                assert isinstance(samples, list), \
-                "to subselect samples enter as a list, e.g., [A, B]."
-                for sample in samples:
-                    ## get sample from dict key
-                    sample = self.samples[sample]
-                    assemble.consens_se.run(self, sample, ipyclient, force)
-            else:
-                if not self.samples:
-                    assert self.samples, "No Samples in "+self.name
-                for _, sample in self.samples.items():
-                    assemble.consens_se.run(self, sample, ipyclient, force)
+            ## if samples not entered use all samples
+            if not samples:
+                samples = self.samples.keys()
 
+            if not samples:
+                self.link_fastqs()
+
+            ## require Samples 
+            assert samples, "No Samples in {}".format(self.name)
+
+            ## if sample keys, replace with sample obj
+            assert isinstance(samples, list), \
+            "to subselect samples enter as a list, e.g., [A, B]."
+            samples = [self.samples[key] for key in samples]
+
+            ## pass samples to rawedit
+            assemble.consens_se.run(self, samples, ipyclient, force)
 
         except (KeyboardInterrupt, SystemExit):
-            LOGGER.error("assembly step2 interrupted by user.")
+            LOGGER.error("assembly step5 interrupted by user.")
             raise
             
         except Exception as inst:
-            LOGGER.error("crashed step2 error: %s", inst)
-            print("error during step2 ...\n({})\n".format(inst))
+            LOGGER.error("crashed step5 error: %s", inst)
+            print("error during step5 ...\n({})\n".format(inst))
             raise
 
         ## close parallel client if done or interrupted
         finally:
-            logging.info("assembly step2 cleaning up.")
-            #ipyclient.shutdown(block=1)
-            ipyclient.close()
+            try:
+                ipyclient.close()
+            except UnboundLocalError as inst:
+                LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
 
         ## checkpoint the data obj
+        self._save()
+
+
+    def step6(self, samples="", force=False):
+        """ Step 6: Cluster consensus reads across samples """
+        try: 
+            ipyclient = self._launch(30) 
+
+            ## if samples not entered use all samples
+            if not samples:
+                samples = self.samples.keys()
+
+            ## if sample keys, replace with sample obj
+            assert isinstance(samples, list), \
+            "to subselect samples enter as a list, e.g., [A, B]."
+            samples = [(key, self.samples[key]) for key in samples]
+
+            ## require Samples 
+            assert samples, "No Samples in {}".format(self.name)
+
+            ## skip if all are finished
+            self.files.allclust = os.path.join(self.dirs.consens, 
+                                               "cat.clust.gz")
+            if os.path.exists(self.files.allclust):
+                print("Skipping step6: Clust file already exists:"\
+                     +"{}\n".format(data.files.allclust))
+            else:
+                assemble.cluster_across.run(self, samples, ipyclient, 
+                                            preview, noreverse, force)
+
+
+        except (KeyboardInterrupt, SystemExit) as _:
+            print("assembly step3 interrupted by user.")
+            raise
+
+        ## close parallel client if done or interrupted
+        try:
+            ipyclient.close()
+        except UnboundLocalError as inst:
+            LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
+
+        ## pickle the data object
         self._save()
 
 
@@ -983,8 +1029,8 @@ class Assembly(object):
             self.step3(force=force, preview=preview)
         if '4' in steps:
             self.step4(force=force, preview=preview)            
-        # if '5' in steps:
-        #     self.step5()            
+        if '5' in steps:
+            self.step5(force=force, preview=preview)            
         # if '6' in steps:
         #     self.step6()            
         # if '7' in steps:

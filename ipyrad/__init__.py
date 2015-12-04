@@ -3,7 +3,7 @@
 ## main ip.functions
 from . import assemble
 from . import plotting
-from . import dstats
+from . import analysis
 
 
 ## bring nested functions to ip.
@@ -15,7 +15,7 @@ from ipyrad.core.load_dataobj import load_assembly
 
 
 ## define state vars
-__version__ = "0.0.66"
+__version__ = "0.0.7"
 __interactive__ = 1
 __loglevel__ = "DEBUG"   ##  "DEBUG"  "INFO"  "WARN"  "ERROR" 
 

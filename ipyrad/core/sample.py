@@ -44,10 +44,11 @@ class Sample(object):
               })
 
         ## store cluster depth information
-        self.depths = ObjDict()
-        self.depths.total = []
-        self.depths.mjmin = []
-        self.depths.statmin = []                
+        #self.depths = ObjDict()
+        self.depths = []
+        ## autogen mins from depth info in Assembly obj
+        #self.depths.mjmin = []
+        #self.depths.statmin = []                
 
         ## assignments for hierarchical clustering
         self.group = []
