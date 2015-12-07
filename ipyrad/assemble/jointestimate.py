@@ -11,7 +11,6 @@ import os
 import gzip
 from collections import Counter
 
-
 # pylint: disable=E1101
 
 
@@ -29,7 +28,6 @@ def get_freqs(stack):
     return basefreqs
 
 
-
 def likelihood1(errors, base_frequencies, stacks):
     """probability homozygous"""
     ## make sure base_frequencies are in the right order
@@ -42,9 +40,8 @@ def likelihood1(errors, base_frequencies, stacks):
 
 def likelihood2(errors, base_frequencies, stacks):
     """probability of heterozygous"""
-
-    returnlist = []
-    for stackl in stacks:
+    returns = np.zeros([len(stacks)])
+    for idx, stackl in enumerate(stacks):
         spair = list(itertools.combinations(stackl, 2))
         bpair = list(itertools.combinations(base_frequencies, 2))
         one = 2.*np.product(bpair, axis=1)
@@ -56,9 +53,8 @@ def likelihood2(errors, base_frequencies, stacks):
                                       np.array([i[0]+i[1] for i in spair]),
                                       0.5)
         four = 1.-np.sum(base_frequencies**2)
-        returnlist.append(np.sum(one*two*(three/four)))
-    return np.array(returnlist)
-
+        returns[idx] = np.sum(one*two*(three/four))
+    return np.array(returns)
 
 
 
@@ -79,20 +75,20 @@ def get_diploid_lik(starting_params, base_frequencies, stacks, stackcounts):
     return score
 
 
-
 def get_haploid_lik(errors, base_frequencies, tabled_stacks):
     """ Log likelihood score given values [E] """
     hetero = 0.
-    listofliks = []
+    listofliks = np.zeros([len(tabled_stacks)])
     if errors <= 0.:
         score = np.exp(100)
     else:
-        for uniqstack in tabled_stacks:
+        for idx, uniqstack in enumerate(tabled_stacks):
             loglik = ((1.-hetero)*\
                      likelihood1(errors, base_frequencies, uniqstack))+\
                      (hetero*likelihood2(errors, base_frequencies, uniqstack))
             if loglik > 0:
-                listofliks.append(tabled_stacks[uniqstack]*np.log(loglik))
+                #listofliks.append(tabled_stacks[uniqstack]*np.log(loglik))
+                listofliks[idx] = tabled_stacks[uniqstack]*np.log(loglik)
         score = -sum(listofliks)
     return score
 

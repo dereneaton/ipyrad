@@ -22,6 +22,7 @@ class Sample(object):
             index=["state",
                    "reads_raw",
                    "reads_filtered",
+                   "reads_merged",
                    "refseq_mapped_reads",
                    "refseq_unmapped_reads",
                    "clusters_total",

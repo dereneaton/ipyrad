@@ -3,13 +3,17 @@
 """ cluster across samples using vsearch with options for 
     hierarchical clustering """
 
+from __future__ import print_function
+# pylint: disable=E1101
+
 import os
 import sys
-import itertools
-import random
-import subprocess
 import gzip
 import copy
+import random
+import itertools
+import subprocess
+import numpy as np
 import cPickle as pickle
 from ipyrad.assemble.consens_se import unhetero, uplow
 
@@ -37,6 +41,7 @@ def breakalleles(consensus):
             a1 += base
             a2 += base
     return a1,a2
+
 
 
 def fullcomp(seq):
@@ -70,6 +75,7 @@ def fullcomp(seq):
              .replace('p', 'm')\
              .replace('z', 'k')
     return seq
+
 
 
 def cluster(data, noreverse, nthreads):
@@ -122,12 +128,8 @@ def cluster(data, noreverse, nthreads):
 
 
 
-
-
 def oldcluster(data, handle, gid, quiet):
     """ clusters with vsearch across samples """
-
-
 
     if params["datatype"] == 'pairddrad':
         ## use first files for split clustering "
@@ -321,153 +323,43 @@ def makeclust(params, handle, gid, minmatch):
 
 
 
-def makecons(params, inlist, outhandle, gid, minhit, quiet):
-    """ Make the concatenated consens files to imput to vsearch. 
+def makecons(data, samples, outgroups, randomseed):
+    """ Make the concatenated consens files to input to vsearch. 
     Orders reads by length and shuffles randomly within length classes"""
 
-    ## make list of consens files but cats already made
-    consfiles = [i for i in inlist if "/cat.cons" not in i]
-    consfiles = [i for i in consfiles if "/cat.group" not in i]
-
-    if not consfiles:
-        sys.exit("no consens files found")
-
     ##  make a copy list that will not have outgroups excluded
-    conswithouts = copy.copy(inlist)
-    
-    ##are files gzipped ?
-    gzp = ""
-    if any([i.endswith(".gz") for i in consfiles]):
-        gzp = ".gz"
-
-    ## remove previous files if present "
-    check = params["work"]+'clust'+params["wclust"]+'/cat.consens_'+gid+gzp
-    if os.path.exists(check):
-        os.remove(check)
-    check = params["work"]+'clust'+params["wclust"]+'/cat.group_'+gid+gzp
-    if os.path.exists(check):
-        os.remove(check)
+    conshandles = [data.samples[samp].files.consens for samp in samples]
 
     ## remove outgroup sequences, add back in later to bottom after shuffling "
-    outgroup = ""
-    if params["outgroup"]:
-        outgroup = params["outgroup"].strip().split(",")
-        if len(outgroup) > 1:
-            for samp in outgroup:
-                check = params["work"]+"clust"+params["wclust"]+\
-                        "/"+samp+".consens"+gzp
-                if check in consfiles:
-                    consfiles.remove(check)
-        else:
-            outgroup = params["work"]+"clust"+params["wclust"]+"/"+\
-                       params["outgroup"]+".consens"+gzp
-            if outgroup in consfiles:
-                consfiles.remove(outgroup)
+    ##    outgroup = ""
                 
     ## output file for consens seqs from all taxa in consfiles list
-    out = gzip.open(params["work"]+'clust'+params["wclust"]+\
-                    '/cat.group_'+gid+gzp, 'w')
+    allcons = gzip.open(data.dirs.consens, "cat_consens.tmp")
 
-    ## iterate over files and...
-    for qhandle in consfiles:
-        if gzp:
-            consfile = gzip.open(qhandle)
-        else:
-            consfile = open(qhandle)
-        duo = itertools.izip(*[iter(consfile)]*2)
-        while 1:
-            try: 
-                itera = duo.next()
-            except StopIteration: 
-                break
-            print >>out, itera[0].strip()+"    "+itera[1].strip()
-        consfile.close()
-    out.close()
+    ## combine cons files into haplos
+    with open(allcons, 'wb') as consout:
+        for qhandle in conshandles:
+            with gzip.open(qhandle, 'r') as tmpin:
+                consout.write(tmpin.read())
 
+    ## shuffle sequences in vsearch
+    cmd = data.vsearch \
+        +" --shuffle "+allcons \
+        +" --output "+allcons.replace("_consens.gz", "_shuf.tmp")
+    subprocess.check_call(cmd, shell=True)
+
+    ## order by length in vsearch
+    cmd = data.vsearch \
+        +" --sortbylength "+allcons.replace("_consens.gz", "_shuf.tmp") \
+        +" --output "+allcons.replace("_consens.gz", "_sort.tmp")
+    subprocess.check_call(cmd, shell=True)
+
+    sys.exit()
     ## message to shell
-    if not quiet:
-        if gid:
-            sys.stderr.write('\n\tstep 6: clustering across '+\
-                             str(len(consfiles))+\
-                             " samples at "+params["wclust"]+" similarity "+
-                             "\n\tfor group ("+str(gid)+") retaining seeds "+\
-                             "w/ minimum of "+str(minhit)+\
-                             " hits\n\n")
-        else:
-            sys.stderr.write('\n\tstep 6: clustering across '+\
-                             str(len(consfiles))+\
-                             ' samples at '+params["wclust"]+\
-                             ' similarity \n\n')
-
-    ## make list of random number and data
-    if params["seed"]:
-        random.seed(params["seed"])
-
-    ## open file for reading consensus reads grouped together in one file
-    source = gzip.open(params["work"]+'clust'+params["wclust"]+\
-                       '/cat.group_'+gid+".gz", 'r')
-
-    ## generator to add a random number next to every sequence
-    data = ((random.random(), line) for line in source)
-
-    ## sort by the random number into a list (now stored in memory)
-    randomized_data = sorted(data)
-    source.close()
-    
-    ## order by size while retaining randomization within size classes
-    splitlines = (line.split('    ') for _, line in randomized_data)
-    equalspacers = iter("".join([i[0]+" "*(100-len(i[0])), i[1]]) \
-                        for i in splitlines)
-    orderedseqs = sorted(equalspacers, key=len, reverse=True)
-    nitera = iter(["**".join([i.split(" ")[0], i.split(" ")[-1]]) \
-                         for i in orderedseqs])
+    print("Step 6: clustering across {} samples at {} similarity").\
+         format(len(samples), data.paramsdict["clust_threshold"]) 
 
     ## write output to .consens_.gz file
-    ## NB: could probably speed this up
-    out = gzip.open(params["work"]+'clust'+params["wclust"]+\
-                    '/cat.consens_'+gid+".gz", 'wb')
-    while 1:
-        try:
-            name, seq = nitera.next().split("**")
-        except StopIteration: 
-            break
-        print >>out, name+'\n'+seq.strip()
-    
-    ##  add outgroup taxa back onto end of file.
-    ## append to existing consens_file
-    if outgroup:
-        if len(outgroup) > 1:
-            for samp in outgroup:
-                xoutg = params["work"]+"clust"+\
-                        params["wclust"]+"/"+samp+".consens.gz"
-                if xoutg in conswithouts:
-                    oreads = gzip.open(xoutg)
-                    duo = itertools.izip(*[iter(oreads)]*2)
-                    while 1:
-                        try: 
-                            oitera = duo.next()
-                        except StopIteration:
-                            break
-                        print >>out, oitera[0].strip()+"\n"+\
-                                     oitera[1].strip()
-                    oreads.close()
-        elif len(outgroup) == 1:
-            xoutg = params["work"]+"clust"+params["wclust"]+\
-                    "/"+outgroup[0]+".consens.gz"
-            if xoutg in conswithouts:
-                oreads = gzip.open(xoutg)
-                duo = itertools.izip(*[iter(oreads)]*2)
-                while 1:
-                    try:
-                        oitera = duo.next()
-                    except StopIteration:
-                        break
-                    print >>out, oitera[0].strip()+\
-                                 "\n"+oitera[1].strip()
-                oreads.close()
-        else:
-            pass
-    out.close()        
 
     ## convert ambiguity codes into a sampled haplotype for any sample
     ## to use for clustering, but save ambiguities for later
@@ -494,6 +386,7 @@ def makecons(params, inlist, outhandle, gid, minhit, quiet):
     outhaplos.close()
 
 
+
 def main(params, inlist, gid, group, minhit, quiet):
     """ setup to call functions """
 
@@ -501,7 +394,7 @@ def main(params, inlist, gid, group, minhit, quiet):
     outhandle = params["work"]+"clust"+params["wclust"]+\
                 "/cat.haplos_"+gid
 
-    ## make 
+    ## make file with all reads 
     makecons(params, inlist, outhandle, gid, minhit, quiet) 
 
     if params["datatype"] == 'pairddrad':
@@ -514,20 +407,25 @@ def main(params, inlist, gid, group, minhit, quiet):
     ## make clusters with .haplos, .u, and .temp files"
     makeclust(params, outhandle, gid, minhit)
 
+    ## align clusters
+    ##
+
+    ## load into hdf database with site counts..?
+    ##
 
 
-def run(data, samples, ipyclient, preview, noreverse, force):
+
+
+def run(data, samples, ipyclient, noreverse, force):
     """ subselect and pass args for across-sample clustering """
 
-    ## list of samples to submit to queue
-
-    if all([isinstance(i, str) for i in samples]):
-        subsamples = []
+    ## make file with all samples reads, allow priority to shunt outgroups
+    ## to the end of the file
+    outgroups = []
+    randomseed = np.random.randint(1, int(1e9))
+    makecons(data, samples, outgroups, randomseed)
 
     ## 
-    outhandle = os.path.join(data.dirs.consens, "cat.haplos")
-    ##
-    makecons(data, subsamples, outhandle)
 
 
 

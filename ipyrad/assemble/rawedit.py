@@ -12,15 +12,14 @@ import os
 import glob
 import gzip
 import math
-import time
 import itertools
 import numpy as np
-import ipyparallel as ipp
 from .demultiplex import ambigcutters
 from .demultiplex import zcat_make_temps
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
 
 
 def afilter(data, sample, bases, cuts1, cuts2, read):
@@ -62,15 +61,16 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     try: 
         check1 = max(0, bases[1].tostring().rfind(lookfor1))
     except Exception as inst:
-        LOGGER.debug([bases, lookfor1, inst])
+        LOGGER.error([bases, lookfor1, inst])
+
     if sum([1 for i in rvcuts]) == 2:
         check2 = max(0, bases[1].tostring().rfind(lookfor2))
 
     if check1 or check2:
         where1 = min([i for i in [check1, check2] if i])
 
-    LOGGER.debug("where1:%s, ch1:%s, ch2:%s, read:%s", 
-                 where1, check1, check2, read)
+    #LOGGER.debug("where1:%s, ch1:%s, ch2:%s, read:%s", 
+    #             where1, check1, check2, read)
 
     ## look for adapter sequence directly in two parts: "AGATCGGA.AGAGCGTC"
     lookfor1 = "AGATCGGA"
@@ -104,8 +104,8 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     else:
         where2 = 0
 
-    LOGGER.debug("where2:%s, ch1:%s, ch2:%s, read:%s",
-                  where2, check1, check2, read)
+    #LOGGER.debug("where2:%s, ch1:%s, ch2:%s, read:%s",
+    #              where2, check1, check2, read)
 
     ## if strict filter, do additional search for cut site near edges
     where3 = 0
@@ -122,12 +122,13 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
                 if any([i in tail for i in rvcuts]):
                     where3 = len(bases[1]) + cutback
     
-    LOGGER.debug("where3:%s, ......, ......, read:%s", where3, read)
+    #LOGGER.debug("where3:%s, ......, ......, read:%s", where3, read)
     try:
         where = min([i for i in [where1, where2, where3] if i])
     except (TypeError, ValueError):
         where = 0
     return where 
+
 
 
 def comp(seq):
@@ -168,19 +169,19 @@ def adapterfilter(args):
             cutter = max(wheretocut1, wheretocut2)
 
     ## if the read needs to be trimmed
-    LOGGER.debug("@cutter w1:%s w2:%s ", wheretocut1, wheretocut2)
+    #LOGGER.debug("@cutter w1:%s w2:%s ", wheretocut1, wheretocut2)
 
     if cutter:
         ## if trimmed frag is still long enough
-        if cutter > max(32, data.paramsdict["filter_min_trim_len"]):
+        if cutter >= max(32, data.paramsdict["filter_min_trim_len"]):
             ## write fastq format
             sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+"_c1", 
                                read1[1].tostring()[:cutter],
                                read1[2].tostring(),
                                read1[3].tostring()[:cutter]])
             write1.append(sseq1)
-            LOGGER.debug("%s", read1[1].tostring())
-            LOGGER.debug("%s -trim r1", read1[1].tostring()[:cutter])
+            #LOGGER.debug("%s", read1[1].tostring())
+            #LOGGER.debug("%s -trim r1", read1[1].tostring()[:cutter])
 
             if len(read2):
                 sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+"_c2",
@@ -189,8 +190,8 @@ def adapterfilter(args):
                                    read2[3].tostring()[:cutter]])
                                    #bases1[:cutter]+"SS"+bases2[:cutter]+"\n"
                 write2.append(sseq2)
-                LOGGER.debug("%s", read2[1].tostring())
-                LOGGER.debug("%s -trim r2", read2[1].tostring()[:cutter])                
+                #LOGGER.debug("%s", read2[1].tostring())
+                #LOGGER.debug("%s -trim r2", read2[1].tostring()[:cutter])                
         else:
             kept = 0
 
@@ -225,7 +226,7 @@ def rawedit(args):
     LOGGER.debug([i for i in data.paramsdict["restriction_overhang"]])
     cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
-    LOGGER.info("cutsites %s %s", cuts1, cuts2)
+    LOGGER.debug("cutsites %s %s", cuts1, cuts2)
 
     ## the read1 demultiplexed reads file
     if tmptuple[0].endswith(".gz"):
@@ -441,7 +442,7 @@ def run_full(data, sample, ipyclient, nreplace):
         submitted_args = []
         for tmptuple in chunkslist:
             ## used to increment names across processors
-            point = num*optim   #10000 #num*(chunksize/2)
+            point = num*(optim/4)   #10000 #num*(chunksize/2)
             args = [data, sample, tmptuple, nreplace, point]
             submitted_args.append(args)
             submitted += 1

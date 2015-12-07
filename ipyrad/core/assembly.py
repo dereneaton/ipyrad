@@ -110,6 +110,9 @@ class Assembly(object):
         ## an object for storing data directories for this Assembly
         self.dirs = ObjDict()
 
+        ## storing final results
+        self.loci = ObjDict()
+
         ## the default params dict
         self.paramsdict = OrderedDict([
                        ("working_directory", os.path.realpath(
@@ -249,9 +252,11 @@ class Assembly(object):
             r1_files = [i for i in fastqs if "_R1_" in i]
             r2_files = [i.replace("_R1_", "_R2_") for i in r1_files]
 
-            if not any(["_R1_" in i for i in fastqs]) or \
-                   (len(r1_files) != len(r2_files)):
-                raise Exception("File name format error: paired file names " \
+            if r1_files:
+                if not any(["_R1_" in i for i in fastqs]) or \
+                       (len(r1_files) != len(r2_files)):
+                    raise Exception(\
+                "File name format error: paired file names " \
                 +"must be identical except for _R1_ and _R2_ in their names.")
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
@@ -704,9 +709,10 @@ class Assembly(object):
 
 
     def _launch(self, tries):
-        """ launch ipyclient, and return threading value """
-        ## launch within try statement in case engines aren't ready yet
-        ## and try 30 one second sleep/wait cycles before giving up on engines
+        """ launch ipyclient.
+        launch within try statement in case engines aren't ready yet
+        and try 30 one second sleep/wait cycles before giving up on engines
+        """
         while tries:
             try:
                 ipyclient = ipp.Client(cluster_id=self.__ipname__)
@@ -859,9 +865,10 @@ class Assembly(object):
             assert samples, "No Samples in {}".format(self.name)
 
             ## skip if all are finished
-            if all([i[1].stats.state >= 3 for i in samples]):
-                print("Skipping step3: All {} ".format(len(self.samples))\
-                     +"Samples already clustered in `{}`".format(self.name))
+            if not force:
+                if all([i[1].stats.state >= 3 for i in samples]):
+                    print("Skipping step3: All {} ".format(len(self.samples))\
+                         +"Samples already clustered in `{}`".format(self.name))
             else:
                 assemble.cluster_within.run(self, samples, ipyclient, 
                                             preview, noreverse, force)
@@ -953,9 +960,6 @@ class Assembly(object):
             if not samples:
                 samples = self.samples.keys()
 
-            if not samples:
-                self.link_fastqs()
-
             ## require Samples 
             assert samples, "No Samples in {}".format(self.name)
 
@@ -987,7 +991,7 @@ class Assembly(object):
         self._save()
 
 
-    def step6(self, samples="", force=False):
+    def step6(self, samples="", noreverse=False, force=False):
         """ Step 6: Cluster consensus reads across samples """
         try: 
             ipyclient = self._launch(30) 
@@ -1004,15 +1008,15 @@ class Assembly(object):
             ## require Samples 
             assert samples, "No Samples in {}".format(self.name)
 
-            ## skip if all are finished
-            self.files.allclust = os.path.join(self.dirs.consens, 
-                                               "cat.clust.gz")
-            if os.path.exists(self.files.allclust):
+            ## file for all reads
+            self.loci.clusters = os.path.join(self.dirs.consens, 
+                                              "cat.clust.gz")
+            if os.path.exists(self.loci.clusters):
                 print("Skipping step6: Clust file already exists:"\
-                     +"{}\n".format(data.files.allclust))
+                     +"{}\n".format(self.loci.clusters))
             else:
                 assemble.cluster_across.run(self, samples, ipyclient, 
-                                            preview, noreverse, force)
+                                            noreverse, force)
 
 
         except (KeyboardInterrupt, SystemExit) as _:

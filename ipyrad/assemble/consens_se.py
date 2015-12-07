@@ -8,17 +8,19 @@ from __future__ import print_function
 import scipy.stats
 import scipy.misc
 import itertools
+import time
 import numpy
 import gzip
 import glob
 import os
+from numba import jit
 
 from collections import Counter
 
 import logging
 LOGGER = logging.getLogger(__name__)
 
-
+#@jit
 def binomprobr(base1, base2, error, het):
     """
     given two bases are observed at a site n1 and n2, and the error rate e, the
@@ -49,7 +51,7 @@ def binomprobr(base1, base2, error, het):
     return [bestprob, mjaf, genotypes[probabilities.index(max(probabilities))]]
 
 
-
+#@jit
 def simpleconsensus(base1, base2):
     """
     majority consensus calling for sites with too low of coverage for
@@ -61,7 +63,7 @@ def simpleconsensus(base1, base2):
     return [1.0, maf, 'aa']
 
 
-
+#@jit
 def hetero(base1, base2):
     """
     returns IUPAC symbol for ambiguity bases, used for polymorphic sites.
@@ -136,7 +138,6 @@ def uplow(hsite):
 
 
 
-
 def removerepeat_Ns(shortcon, stacked):
     """ checks for interior Ns in consensus seqs and removes those that arise 
     next to *single repeats* of at least 3 bases on either side, which may be
@@ -190,10 +191,12 @@ def consensus(args):
     """
 
     ## unpack args
+    LOGGER.info(args)    
     data, sample, tmpchunk = args
 
+
     ## number relative to tmp file
-    tmpnum = int(tmpchunk.split("_")[-1])
+    tmpnum = int(tmpchunk.split(".")[-1])
 
     ## prepare data for reading
     clusters = open(tmpchunk, 'rb')
@@ -237,14 +240,17 @@ def consensus(args):
                 stacked = [Counter(seq) for seq in arrayed.T] 
 
                 ## get consens call for each site, paralog site filter
-                consens = [basecall(data, site) for site in stacked]
-
+                #LOGGER.info('arr %s', arrayed)
+                consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
                 ## get hetero sites
                 heteros = [i[0] for i in enumerate(consens) \
                                  if i[1] in list("RKSYWM")]
                 nheteros = len(heteros)
                 counters["heteros"] += nheteros
-
+                if nheteros > 5:
+                    LOGGER.info("NH: %s", nheteros)
+                    LOGGER.debug("ARR: %s", arrayed)
+                    LOGGER.debug("cons: %s", consens)                    
                 ## filter for max number of hetero sites
                 if nfilter2(data, nheteros):
 
@@ -258,7 +264,6 @@ def consensus(args):
                     if mpl:
                         consens = "".join(consens).replace("-", "N")
                         shortcon = consens.rstrip("N")
-
                         ## this function which removes low coverage sites next 
                         ## to poly repeats that are likely sequencing errors 
                         ## TODO: Until this func is optimized
@@ -280,7 +285,8 @@ def consensus(args):
                                     [i["C"] for i in stacked], 
                                     [i["A"] for i in stacked], 
                                     [i["T"] for i in stacked],
-                                    [i["G"] for i in stacked]]).T
+                                    [i["G"] for i in stacked]], 
+                                    dtype='int16').T
                                 storecat.append(catg)
                             else:
                                 LOGGER.info("@shortmaxn")
@@ -307,6 +313,7 @@ def consensus(args):
         outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
                                  storeseq[key] for key in storeseq]))
     storecat = numpy.array(storecat)
+
     with open(consenshandle.replace("_tmpcons.", "_tmpcats."), 'wb') as dumph:
         numpy.save(dumph, storecat)
 
@@ -331,35 +338,6 @@ def consensus(args):
     ## final counts and return
     counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])
     return counters, filters
-
-
-
-def basecaller(data, site, base1, base2):
-    """ inputs data to binomprobr and gets alleles correctly oriented """
-
-    ## make statistical base call
-    if base1+base2 >= data.paramsdict["mindepth_statistical"]:
-        prob, _, who = binomprobr(base1, base2, 
-                                  data.stats.error_est.mean(),
-                                  data.stats.hetero_est.mean())
-
-    elif base1+base2 >= data.paramsdict["mindepth_majrule"]:
-        prob, _, who = simpleconsensus(base1, base2)
-
-    else:
-        LOGGER.error("gap in mindepth settings")
-
-    ## if the base could be called with 95% probability
-    if float(prob) >= 0.95:
-        if who != "ab":
-            ## site is homozygous
-            cons = site.most_common(1)[0][0]
-        else:
-            ## site is heterozygous
-            cons = hetero(*[i[0] for i in site.most_common(2)])
-    else:
-        cons = "N"
-    return cons
 
 
 
@@ -397,19 +375,25 @@ def nfilter3(data, consens, heteros, seqs, reps):
             if not any([i in orderedpolys for i in ["-", "N"]]):
                 ordered.extend(["".join(orderedpolys)]*rep)
 
-    ## exclude haplo sequences with an uncalled base
+    ## TODO: THIS PART
     counted = Counter(ordered)
-    LOGGER.debug('counted %s', counted)
+    nalleles = len(counted.keys())
+    # LOGGER.debug("heteros %s", heteros)
+    # LOGGER.debug("orderedpolys %s", orderedpolys)
+    # LOGGER.debug("ordered %s", ordered)
+    # LOGGER.debug('counted %s', counted)
+    # LOGGER.info('%s alleles', len(counted.keys()))
 
     ## how many high depth alleles?
-    LOGGER.info('%s alleles', len(counted.keys()))
-    if len(counted.keys()) > data.paramsdict["ploidy"]:
+    if nalleles > data.paramsdict["ploidy"]:
         return consens, 0
     else:
         ## if diploid try to get two alleles and return consens with
         ## lower upper and lower casing to save phased info
-        if data.paramsdict["ploidy"] == 2:
+        if (nalleles > 1) and (data.paramsdict["ploidy"] == 2):
             consens = findalleles(consens, heteros, counted)
+        else:
+            LOGGER.error("ugh %s:", "".join(consens))
         return consens, 1
 
 
@@ -418,14 +402,15 @@ def findalleles(consens, heteros, counted):
     """ store phased allele data for diploids """
     ## find the first hetero site from the left
     alleles = [i[0] for i in counted.most_common(2)]
-    LOGGER.debug('alleles %s', alleles)
+    LOGGER.debug('INSIDE alleles %s', alleles)
     bigbase = uplow(unhetero(consens[heteros[0]]))
-    LOGGER.debug('bigbase %s', bigbase)
-
+    LOGGER.debug('INSIDE bigbase %s', bigbase)
+    LOGGER.debug('INSIDE consens %s', consens)
     query = [i for i in alleles if i[0] == bigbase][0]
-    LOGGER.debug('query %s', query)
+    LOGGER.debug('INSIDE query %s', query)
 
     for ind, hsite in enumerate(heteros[1:]):
+        LOGGER.info('what %s, %s, %s', ind, hsite, consens[hsite])
         bigbase = uplow(unhetero(consens[hsite]))
         if query[ind+1] != bigbase:
             consens[hsite] = consens[hsite].lower()
@@ -434,8 +419,10 @@ def findalleles(consens, heteros, counted):
 
 
 
-def basecall(data, site):
-    """ applies returns site base calls base on either majrule or statistical"""
+def basecall(site, data):
+    """ prepares stack for making base calls """
+
+    site = Counter(site)
 
     ## remove Ns and (-)s
     if "N" in site:
@@ -443,7 +430,7 @@ def basecall(data, site):
     if "-" in site:
         site.pop("-")
 
-    assert site, "site is empty, need an catch for this..."
+    #assert site, "site is empty, need a catch for this..."
 
     ## get the most common alleles
     base1 = base2 = 0
@@ -453,20 +440,54 @@ def basecall(data, site):
         base2 = comms[1][1]
         
     ## if site depth after removing Ns, (-s) and third bases is below limit
-    if base1+base2 < data.paramsdict["mindepth_majrule"]:
+    bidepth = base1 + base2
+    if bidepth < data.paramsdict["mindepth_majrule"]:
         cons = "N"
     else:
         ## if depth > 500 reduce to randomly sampled 500 
-        if base1+base2 >= 500: 
+        if bidepth >= 500: 
             randomsample = numpy.array(tuple("A"*base1+"B"*base2))
             numpy.random.shuffle(randomsample)
             base1 = list(randomsample[:500]).count("A")
             base2 = list(randomsample[:500]).count("B")
 
         ## make the base call using a method depending on depth
-        cons = basecaller(data, site, base1, base2)
+        ## if highdepth and invariable just call the only base
+        if (bidepth > 10) and (not base2):
+            cons = comms[0][0]
+        ## but if variable then use basecaller
+        else:
+            cons = basecaller(data, site, base1, base2)
     return cons
 
+
+
+def basecaller(data, site, base1, base2):
+    """ inputs data to binomprobr and gets alleles correctly oriented """
+
+    ## make statistical base call
+    if base1+base2 >= data.paramsdict["mindepth_statistical"]:
+        prob, _, who = binomprobr(base1, base2, 
+                                  data.stats.error_est.mean(),
+                                  data.stats.hetero_est.mean())
+
+    elif base1+base2 >= data.paramsdict["mindepth_majrule"]:
+        prob, _, who = simpleconsensus(base1, base2)
+
+    else:
+        LOGGER.error("gap in mindepth settings")
+
+    ## if the base could be called with 95% probability
+    if float(prob) >= 0.95:
+        if who != "ab":
+            ## site is homozygous
+            cons = site.most_common(1)[0][0]
+        else:
+            ## site is heterozygous
+            cons = hetero(*[i[0] for i in site.most_common(2)])
+    else:
+        cons = "N"
+    return cons
 
 
 def clustdealer(pairdealer, optim):
@@ -479,7 +500,7 @@ def clustdealer(pairdealer, optim):
             taker = itertools.takewhile(lambda x: x[0] != "//\n", pairdealer)
             oneclust = ["".join(taker.next())]
         except StopIteration:
-            LOGGER.debug('last chunk %s', chunk)
+            #LOGGER.debug('last chunk %s', chunk)
             return 1, chunk
 
         ## load one cluster
@@ -551,8 +572,8 @@ def cleanup(data, sample, statsdicts):
     ## find longest name to make printing code block
     data.statsfiles.s5 = os.path.join(data.dirs.consens, 's5_consens.txt')    
     longestname = max([len(i) for i in data.samples.keys()])
-    printblock = "{:<%d} {:>10} {:>12} {:>13} {:>12} " % (longestname + 4) \
-                +"{:>12} {:>12} {:>8} {:>8} {:>8}\n"
+    printblock = "{:<%d} {:>11} {:>11} {:>11} {:>11} " % (longestname + 4) \
+                +"{:>11} {:>11} {:>11} {:>11} {:>11}\n"
     if not os.path.exists(data.statsfiles.s5):
         with open(data.statsfiles.s5, 'w') as outfile:
             outfile.write(printblock.format("sample", "nclusters", 
@@ -606,7 +627,7 @@ def run_full(data, sample, ipyclient):
     ## set optim size for chunks in N clusters TODO: (make this better)
     optim = int(sample.stats.clusters_kept/
                 float(len(ipyclient.ids)*2))
-    optim = 97
+    optim = 100
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
     chunkslist = []
@@ -621,7 +642,8 @@ def run_full(data, sample, ipyclient):
     while not done:
         ## grab optim clusters and write to file
         done, chunk = clustdealer(pairdealer, optim)
-        chunkhandle = os.path.join(data.dirs.clusts, "tmp_"+str(num*optim))
+        chunkhandle = os.path.join(data.dirs.clusts, 
+                                "tmp_"+str(sample.name)+"."+str(num*optim))
         if chunk:
             chunkslist.append(chunkhandle)            
             with open(chunkhandle, 'wb') as outchunk:
@@ -643,23 +665,21 @@ def run_full(data, sample, ipyclient):
 
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(consensus, submitted_args)
-        try:
-            statsdicts = results.get()
-        except (TypeError, AttributeError, NameError):
-            for key in ipyclient.history:
-                if ipyclient.metadata[key].error:
-                    LOGGER.error("step5 error: %s", 
-                        ipyclient.metadata[key].error)
-                    raise SystemExit
-                if ipyclient.metadata[key].stdout:
-                    LOGGER.error("step5 stdout:%s", 
-                        ipyclient.metadata[key].stdout)
-                    raise SystemExit            
+        statsdicts = results.get()
         del lbview
 
     except Exception as inst:
         print(inst)
-        raise SystemExit
+        for key in ipyclient.history:
+            if ipyclient.metadata[key].error:
+                LOGGER.error("step5 error: %s", 
+                    ipyclient.metadata[key].error)
+                raise SystemExit
+            if ipyclient.metadata[key].stdout:
+                LOGGER.error("step5 stdout:%s", 
+                    ipyclient.metadata[key].stdout)
+                raise SystemExit            
+        #raise SystemExit
 
     finally:
         ## if process failed at any point delete tmp files
@@ -695,15 +715,18 @@ def run(data, samples, ipyclient, force=False):
     if data.stats.hetero_est.empty:
         print("  No estimates of heterozygosity and error rate. Using default "\
               "values")
-    else:
-        if data.paramsdict["ploidy"] == 1:
-            print("  Haploid base calls and paralog filter (max haplos = 1)")
-        elif data.paramsdict["ploidy"] == 2:
-            print("  Diploid base calls and paralog filter (max haplos = 2)")
-        elif data.paramsdict["ploidy"] == 2:
-            print("  Diploid base calls and no paralog filter "\
+        for sample in data.samples:
+            sample.stats.hetero_est = 0.001
+            sample.stats.error_est = 0.0001
+
+    if data.paramsdict["ploidy"] == 1:
+        print("  Haploid base calls and paralog filter (max haplos = 1)")
+    elif data.paramsdict["ploidy"] == 2:
+        print("  Diploid base calls and paralog filter (max haplos = 2)")
+    elif data.paramsdict["ploidy"] == 2:
+        print("  Diploid base calls and no paralog filter "\
                 "(max haplos = {})".format(data.paramsdict["ploidy"]))
-        print("  error rate (mean, std):  " \
+    print("  error rate (mean, std):  " \
              +"{:.5f}, ".format(data.stats.error_est.mean()) \
              +"{:.5f}\n".format(data.stats.error_est.std()) \
           +"  heterozyg. (mean, std):  " \
@@ -726,14 +749,13 @@ def run(data, samples, ipyclient, force=False):
                 cleanup(data, sample, statsdicts)
 
         else:
-            for sample in samples:
-                if not sample.stats.clusters_kept:
-                    print("Skipping Sample {}; ".format(sample.name)
-                         +"No clusters found in file {}".\
-                         format(sample.files.fastqs))
-                else:
-                    statsdicts = run_full(data, sample, ipyclient)
-                    cleanup(data, sample, statsdicts)
+            if not sample.stats.clusters_kept:
+                print("Skipping Sample {}; ".format(sample.name)
+                     +"No clusters found in file {}".\
+                       format(sample.files.clusters_kept))
+            else:
+                statsdicts = run_full(data, sample, ipyclient)
+                cleanup(data, sample, statsdicts)
 
 
 

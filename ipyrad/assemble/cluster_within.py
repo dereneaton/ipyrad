@@ -9,6 +9,7 @@ from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=F0401
 # pylint: disable=W0142
+# pylint: disable=W0212
 
 import os
 import sys
@@ -87,63 +88,80 @@ def cleanup(data, sample):
 
 
 
-def muscle_align2(data, sample, chunk, num):
-    """ new """
-    ## 
-    clusts = gzip.open(chunk).read().split("//\n//\n")
+def muscle_align2(args):
+    """ aligns reads, does split then aligning for paired reads """
+    ## parse args
+    data, chunk = args
+
+    ## data are already chunked, read in the whole thing
+    infile = open(chunk, 'rb')
+    clusts = infile.read().split("//\n//\n")
     out = []
 
-    ##
+    ## iterate over clusters and align
     for clust in clusts:
-        stack = []        
+        stack = []
         lines = clust.split("\n")
         names = lines[::2]
         seqs = lines[1::2]
-        ## append counter to end of names
+
+        ## append counter to end of names b/c muscle doesn't retain order
         names = [j+str(i) for i, j in enumerate(names)]        
 
         ## don't bother aligning singletons
-        if len(names) > 1:
-            stringnames = alignfast(data, names[:200], seqs[:200])
-            anames, aseqs = sortalign(stringnames)
+        if len(names) <= 1:
+            if names:
+                stack = [names[0]+"\n"+seqs[0]]
+        else:
+            ## split seqs if paired end seqs
+            if 'pair' in data.paramsdict["datatype"]:
+                seqs1 = [i.split("ssss")[0] for i in seqs] 
+                seqs2 = [i.split("ssss")[1] for i in seqs]
+
+                stringnames1 = alignfast(data, names[:200], seqs1[:200])
+                stringnames2 = alignfast(data, names[:200], seqs2[:200])
+                anames, aseqs1 = sortalign(stringnames1)
+                anames, aseqs2 = sortalign(stringnames2)
+                aseqs = [i+"ssss"+j for i, j in zip(aseqs1, aseqs2)]
+
+            else:
+                stringnames = alignfast(data, names[:200], seqs[:200])
+                anames, aseqs = sortalign(stringnames)
+
             ## a dict for names2seqs post alignment and indel check
             somedic = {}
-            leftlimit = 0
             for i in range(len(anames)):
                 ## filter for max indels
                 nindels = aseqs[i].rstrip('-').lstrip('-').count('-')
-                if nindels <= data.paramsdict["max_Indels_locus"][0]:
+                if nindels <= sum(list(data.paramsdict["max_Indels_locus"])):
                     somedic[anames[i]] = aseqs[i]
+                else:
+                    LOGGER.info("high indels: %s", aseqs[i])
 
-                ## do not allow sequence to the left of the seed
-                ## to ensure exclusion of adapter/barcodes in gbs
-                if anames[i][-1] == "0":
-                    leftlimit = min([i for (i, j) in enumerate(aseqs[i]) \
-                                     if j != "-"])
 
-            ## reorder keys by derep number
+            ## reorder keys by derep number... TODO: test gbs revcomps
             keys = somedic.keys()
             keys.sort(key=lambda x: int(x[-1]))
+            ## TODO: reverse matches, enforce no overlap of cuts
             for key in keys:
-                if key[-1] == '-':
-                    ## reverse matches should have --- overhang
-                    if set(somedic[key][:4]) == {"-"}:
-                        stack.append(key+"\n"+somedic[key][leftlimit:])
-                    else:
-                        pass ## excluded
-                else:
-                    stack.append(key+"\n"+somedic[key][leftlimit:])
-        else:
-            if names:
-                stack = [names[0]+"\n"+seqs[0]]
+                stack.append(key+"\n"+somedic[key])
+            #for key in keys:
+            #    if key[-1] == '-':
+            #        ## reverse matches should have --- overhang
+            #        if set(somedic[key][:4]) == {"-"}:
+            #            stack.append(key+"\n"+somedic[key])
+            #        else:
+            #            pass ## excluded
+            #    else:
+            #        stack.append(key+"\n"+somedic[key])
 
         if stack:
             out.append("\n".join(stack))
 
     ## write to file after
-    sys.stderr.write(str(len(out)))
-    outfile = gzip.open(chunk)
-    outfile.write("\n//\n//\n".join(out)+"\n//\n//\n")
+    infile.close()
+    outfile = open(chunk, 'wb')#+"_tmpout_"+str(num))
+    outfile.write("\n//\n//\n".join(out)+"\n")#//\n//\n")
     outfile.close()
 
 
@@ -227,6 +245,7 @@ def sortalign(stringnames):
     objs = stringnames.split("\n>")
     seqs = [i.split("\n")[0].replace(">", "")+"\n"+\
               "".join(i.split('\n')[1:]) for i in objs]
+              
     aligned = [i.split("\n") for i in seqs]
     newnames = [">"+i[0] for i in aligned]
     seqs = [i[1] for i in aligned]     
@@ -254,7 +273,7 @@ def alignfast(data, names, seqs):
 
 
 def build_clusters(data, sample):
-    """ combines information from .u and ._temp files 
+    """ combines information from .utemp and .htemp files 
     to create .clust files, which contain un-aligned clusters """
 
     ## derepfile 
@@ -271,16 +290,13 @@ def build_clusters(data, sample):
     sample.files["clusts"] = clustfile
 
     ## if .u files are present read them in as userout
-    if os.path.exists(ufile):
-        userout = open(ufile, 'rb').readlines()
-    else:
-        userout = []
-        print("\n\tSkipping: no '.utemp' file. No clust matches")
+    if not os.path.exists(ufile):
+        LOGGER.error("no .utemp file found for %s", sample.name)
+        sys.exit("no .utemp file found for sample {}".format(sample.name))
+    userout = open(ufile, 'rb').readlines()
 
-    ## load reads into a dictionary"
+    ## load derep reads into a dictionary
     hits = {}  
-
-    ## iter 2 lines at a time
     ioderep = open(derepfile, 'rb')
     dereps = itertools.izip(*[iter(ioderep)]*2)
     for namestr, seq in dereps:
@@ -295,15 +311,18 @@ def build_clusters(data, sample):
         ## if the seed is in udic
         if ">"+uitems[1]+"\n" in udic:
             ## append hit to udict
-            udic[">"+uitems[1]+'\n'].append([">"+uitems[0]+"\n", uitems[4],
+            udic[">"+uitems[1]+'\n'].append([">"+uitems[0]+"\n", 
+                                            uitems[4],
                                             uitems[5].strip(),
                                             uitems[3]])
         else:
-            udic[">"+uitems[1]+'\n'] = [[">"+uitems[0]+"\n", uitems[4],
-                                       uitems[5].strip(),
-                                       uitems[3]]]
+            ## write as seed
+            udic[">"+uitems[1]+'\n'] = [[">"+uitems[0]+"\n", 
+                                         uitems[4],
+                                         uitems[5].strip(),
+                                         uitems[3]]]
 
-    ## map s equences to clust file in order
+    ## map sequences to clust file in order
     seqslist = [] 
     for key, values in udic.iteritems():
         seq = [key.strip()+"*\n"+hits[key][1]]
@@ -340,7 +359,7 @@ def build_clusters(data, sample):
     if diff:
         for i in list(diff):
             clustfile.write("//\n//\n"+i.strip()+"*\n"+hits[i][1]+'\n')
-    clustfile.write("//\n//\n")
+    #clustfile.write("//\n//\n\n")
     clustfile.close()
     del dereps
     del userout
@@ -420,11 +439,11 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                     LOGGER.error("step3 readmapping stdout:%s", 
                         ipyclient.metadata[key].stdout)
                     raise SystemExit("step3 readmapping error.")
-
             LOGGER.error(ipyclient.metadata)
             sys.exit("")
 
-    ## call to ipp for clustering
+
+    ## DENOVO calls
     results = threaded_view.map(clustall, submitted_args)
     try:
         results.get()
@@ -442,10 +461,10 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     del threaded_view 
 
     ## call to ipp for aligning
-    lbview = ipyclient.load_balanced_view()
+    #lbview = ipyclient.load_balanced_view()
     for sample in samples:
-        multi_muscle_align(data, sample, lbview)
-    del lbview
+        multi_muscle_align(data, sample, ipyclient)
+    #del lbview
 
     ## If reference sequence is specified then pull in alignments from 
     ## mapped bam files and write them out to the clustS files to fold
@@ -492,9 +511,10 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     outfile.close()
 
 
+
 def combine_pairs(data, sample):
     """ in prep """
-    LOGGER.info(sample.files.edits)
+    #LOGGER.info("in combine_pairs: %s", sample.files.edits)
 
     ## open file for writing to
     combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
@@ -527,25 +547,28 @@ def combine_pairs(data, sample):
         writing.append("\n".join([
                         read1s[0].strip(),
                         read1s[1].strip()+\
-                            "SSSS"+comp(read2s[1].strip())[::-1],
+                            "ssss"+comp(read2s[1].strip())[::-1],
                         read1s[2].strip(),
                         read1s[3].strip()+\
-                            "SSSS"+read2s[3].strip()[::-1]]
+                            "ssss"+read2s[3].strip()[::-1]]
                         ))
         counts += 1
         if not counts % 1000:
             combout.write("\n".join(writing)+"\n")
+            writing = []
 
     combout.write("\n".join(writing))
     combout.close()
 
     sample.files.edits = [(combined, )]
+    sample.files.pairs = combined
     return sample
 
 
 
 def merge_fastq_pairs(data, sample):
     """ Merge paired fastq reads. """
+    #LOGGER.info("merging reads")
 
     ## tempnames for merge files
     merged = os.path.join(data.dirs.edits,
@@ -573,7 +596,8 @@ def merge_fastq_pairs(data, sample):
       +" --fasta_width 0 " \
       +" --fastq_allowmergestagger " \
       +" --fastq_minmergelen 32 " \
-      +" --fastq_maxns "+str(maxn)
+      +" --fastq_maxns "+str(maxn) \
+      +" --fastq_minovlen 12 "
 
     try:
         subprocess.check_call(cmd, shell=True,   
@@ -584,7 +608,12 @@ def merge_fastq_pairs(data, sample):
         LOGGER.error(cmd)        
         sys.exit("Error in merging pairs: \n({}).".format(inst))
     finally:
-        sample.merged = 1
+        ## record merge file name temporarily
+        sample.files.merged = merged       
+        ## record how many read pairs were merged
+        with open(sample.files.merged, 'r') as tmpf:
+            sample.stats.reads_merged = len(tmpf.readlines())
+
     return sample
 
 
@@ -627,7 +656,7 @@ def derep_and_sort(data, sample, preview, nthreads):
     else:
         reverse = " "
 
-    LOGGER.debug("derep FILE %s", sample.files.edits[0][0])
+    #LOGGER.debug("derep FILE %s", sample.files.edits[0][0])
 
     ## do dereplication with vsearch
     cmd = data.vsearch+\
@@ -644,8 +673,8 @@ def derep_and_sort(data, sample, preview, nthreads):
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
     except subprocess.CalledProcessError as inst:
-        LOGGER.info(cmd)
-        LOGGER.info(inst)
+        LOGGER.error(cmd)
+        LOGGER.error(inst)
         sys.exit("Error in vsearch: \n{}\n{}\n{}."\
                  .format(inst, subprocess.STDOUT, cmd))
 
@@ -666,14 +695,14 @@ def cluster(data, sample, preview, noreverse, nthreads):
     elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
         reverse = "  -strand both "
         cov = " -query_cov .60 " 
-    else:  ## rad, ddrad, ddradmerge
+    else:  ## rad, ddrad
         reverse = " -leftjust "
         cov = " -query_cov .90 "
 
     ## override reverse clustering option
     if noreverse:
         reverse = " -leftjust "
-        print(noreverse, "not performing reverse complement clustering")
+        LOGGER.warn(noreverse, "not performing reverse complement clustering")
 
     ## get call string
     cmd = data.vsearch+\
@@ -690,7 +719,8 @@ def cluster(data, sample, preview, noreverse, nthreads):
         " -threads "+str(nthreads)+\
         " -usersort "+\
         " -notmatched "+temphandle+\
-        " -fasta_width 0"
+        " -fasta_width 0" \
+        " --samout "+temphandle.replace("htemp", "sam")
 
     ## run vsearch
     try:
@@ -702,39 +732,46 @@ def cluster(data, sample, preview, noreverse, nthreads):
 
 
 
-def multi_muscle_align(data, sample, lbview):
+def multi_muscle_align(data, sample, ipyclient):
     """ Splits the muscle alignment across nthreads processors, each runs on 
     1000 clusters at a time. This is a kludge until I find how to write a 
     better wrapper for muscle. 
     """
+    ## create loaded 
+    lbview = ipyclient.load_balanced_view()
+
     ## split clust.gz file into nthreads*10 bits cluster bits
     tmpnames = []
+    #LOGGER.debug("aligning %s", sample.name)
 
     try: 
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-        optim = 1000
+        clustio = gzip.open(clustfile, 'rb')
+        optim = 250
 
         ## write optim clusters to each tmp file
-        inclusts = iter(gzip.open(clustfile, 'rb').read().\
-                                  strip().split("//\n//\n"))
+        inclusts = iter(clustio.read().strip().split("//\n//\n"))
         grabchunk = list(itertools.islice(inclusts, optim))
         while grabchunk:
-            with tempfile.NamedTemporaryFile('w+b', delete=False, 
+            with tempfile.NamedTemporaryFile('w+b', 
+                                             delete=False, 
                                              dir=data.dirs.clusts,
                                              prefix=sample.name+"_", 
                                              suffix='.ali') as out:
-                out.write("//\n//\n".join(grabchunk)+"//\n//\n")
+                out.write("//\n//\n".join(grabchunk))
+                #out.write("\n")
             tmpnames.append(out.name)
             grabchunk = list(itertools.islice(inclusts, optim))
     
         ## create job queue
         submitted_args = []
-        for num, fname in enumerate(tmpnames):
-            submitted_args.append([data, sample, fname, num])
+        for fname in tmpnames:
+            submitted_args.append([data, fname])
 
         ## run muscle on all tmp files            
-        lbview.map(muscle_align2, submitted_args)
+        results = lbview.map_async(muscle_align2, submitted_args)
+        results.get()
 
         ## concatenate finished reads
         sample.files.clusters = os.path.join(data.dirs.clusts,
@@ -742,7 +779,11 @@ def multi_muscle_align(data, sample, lbview):
         with gzip.open(sample.files.clusters, 'wb') as out:
             for fname in tmpnames:
                 with open(fname) as infile:
-                    out.write(infile.read())
+                    out.write(infile.read()+"//\n//\n")
+
+    except Exception as inst:
+        LOGGER.warn(inst)
+        raise
 
     finally:
         ## still delete tmpfiles if job was interrupted
@@ -753,29 +794,31 @@ def multi_muscle_align(data, sample, lbview):
 
 
 def clustall(args):
-    """ splits fastq file into smaller chunks and distributes them across
-    multiple processors, and runs the rawedit func on them """
+    """ Running on remote Engine. Refmaps, then merges, then dereplicates, 
+    then denovo clusters reads. """
 
     ## get args
     data, sample, preview, noreverse, nthreads = args
 
     ## preview
     if preview:
-        print("preview: in clustall, using", nthreads)
+        LOGGER.info("preview: in clustall, using %s", nthreads)
 
     ## concatenate edits files in case a Sample has multiple, and 
     ## returns a new Sample.files.edits with the concat file
     sample = concat_edits(data, sample)
 
-    ## if reference do ref align here...
-    ## ...
-
     ## merge fastq pairs
     if 'pair' in data.paramsdict['datatype']:
-        ## merge pairs that overlap
+        ## merge pairs that overlap into a merge file
         sample = merge_fastq_pairs(data, sample)
-        ## combine end-to-end remaining pairs for denovo clustering
+        ## pair together remaining pairs into a pairs file
         sample = combine_pairs(data, sample)
+        ## if merge file, append to pairs file
+        with open(sample.files.pairs, 'a') as tmpout:
+            with open(sample.files.merged, 'r') as tmpin:
+                tmpout.write("\n"+tmpin.read())
+        LOGGER.info(sample.files.edits)
 
     ## convert fastq to fasta, then derep and sort reads by their size
     derep_and_sort(data, sample, preview, nthreads)
