@@ -14,10 +14,12 @@ from __future__ import print_function
 import os
 import sys
 import gzip
+import shlex
 import tempfile
 import itertools
 import subprocess
 import numpy as np
+from collections import OrderedDict
 from .rawedit import comp
 
 import logging
@@ -118,32 +120,35 @@ def muscle_align2(args):
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
 
-                stringnames1 = alignfast(data, names[:200], seqs1[:200])
-                stringnames2 = alignfast(data, names[:200], seqs2[:200])
-                anames, aseqs1 = sortalign(stringnames1)
-                anames, aseqs2 = sortalign(stringnames2)
+                string1 = muscle_call(data, names[:200], seqs1[:200])
+                string2 = muscle_call(data, names[:200], seqs2[:200])
+                anames, aseqs1 = parsemuscle(string1)
+                anames, aseqs2 = parsemuscle(string2)
+
+                ## resort so they're in same order
                 aseqs = [i+"ssss"+j for i, j in zip(aseqs1, aseqs2)]
+                somedic = OrderedDict()
+                for i in range(len(anames)):
+                    ## filter for max indels
+                    nind = aseqs[i].rstrip('-').lstrip('-').count('-')
+                    if nind <= sum(list(data.paramsdict["max_Indels_locus"])):
+                        somedic[anames[i]] = aseqs[i]
+                    else:
+                        LOGGER.info("high indels: %s", aseqs[i])
 
             else:
-                stringnames = alignfast(data, names[:200], seqs[:200])
-                anames, aseqs = sortalign(stringnames)
+                string1 = muscle_call(data, names[:200], seqs[:200])
+                anames, aseqs = parsemuscle(string1)
+                somedic = OrderedDict()
+                for i in range(len(anames)):
+                    ## filter for max indel                    
+                    nind = aseqs[i].rstrip('-').lstrip('-').count('-')
+                    if nind <= sum(list(data.paramsdict["max_Indels_locus"])):
+                        somedic[anames[i]] = aseqs[i]
+                    else:
+                        LOGGER.info("high indels: %s", aseqs[i])
 
-            ## a dict for names2seqs post alignment and indel check
-            somedic = {}
-            for i in range(len(anames)):
-                ## filter for max indels
-                nindels = aseqs[i].rstrip('-').lstrip('-').count('-')
-                if nindels <= sum(list(data.paramsdict["max_Indels_locus"])):
-                    somedic[anames[i]] = aseqs[i]
-                else:
-                    LOGGER.info("high indels: %s", aseqs[i])
-
-
-            ## reorder keys by derep number... TODO: test gbs revcomps
-            keys = somedic.keys()
-            keys.sort(key=lambda x: int(x[-1]))
-            ## TODO: reverse matches, enforce no overlap of cuts
-            for key in keys:
+            for key in somedic.keys():
                 stack.append(key+"\n"+somedic[key])
             #for key in keys:
             #    if key[-1] == '-':
@@ -166,109 +171,58 @@ def muscle_align2(args):
 
 
 
-def muscle_align(data, sample, chunk):
-    """ multiple sequence alignment of clusters with muscle. """
-
-    ## iterator to read clust file 2 lines at a time
-    infile = gzip.open(chunk).read().strip().split("//\n//\n")
-    duo = itertools.izip(*[iter(infile)]*2)
-
-    ## list for storing finished loci and a counter
-    out = []
-
-    ## iterate over loci
-    while 1:
-        ## reset lists
-        names = []
-        seqs = []
-        stack = []
-        nameiter = 0
-        try: 
-            itera = duo.next()
-        except StopIteration:
-            break
-        ## read in all data for this stack
-        while itera[0] != "//\n":
-            names.append(itera[0].strip()+str(nameiter))
-            seqs.append(itera[1].strip())
-            itera = duo.next()
-            nameiter += 1
-        ## if not singleton then align locus
-        if len(names) > 1:
-            ## separate first and second reads
-            stringnames = alignfast(data, names[:200], seqs[:200])
-            anames, aseqs = sortalign(stringnames)
-            ## a dict for names2seqs post alignment and indel check
-            somedic = {}
-            leftlimit = 0
-            for i in range(len(anames)):
-                ## if not too many indels
-                if aseqs[i].rstrip('-').lstrip('-').count('-') \
-                        <= data.paramsdict["max_Indels_locus"][0]:
-                    somedic[anames[i]] = aseqs[i]
-
-                ## do not allow sequence to the left of the seed
-                ## to ensure exclusion of adapter/barcodes in gbs
-                if anames[i][-1] == "*":
-                    leftlimit = min([i for (i, j) in enumerate(aseqs[i]) \
-                                     if j != "-"])
-
-            ## reorder keys by derep number
-            keys = somedic.keys()
-            keys.sort(key=lambda x: int(x.split(";")[-1][1:]))
-            for key in keys:
-                if key[-1] == '-':
-                    if set(somedic[key][:4]) == {"-"}:
-                        stack.append(key+"\n"+somedic[key][leftlimit:])
-                    else:
-                        pass ## excluded
-                else:
-                    stack.append(key+"\n"+somedic[key][leftlimit:])
-        else:
-            if names:
-                stack = [names[0]+"\n"+seqs[0]]
-
-        if stack:
-            out.append("\n".join(stack))
-
-        ## write to file after 1000 aligned loci
-        outfile = gzip.open(os.path.join(
-                             data.dirs.clusts,
-                             "tmp_"+sample.name+"_"+str(point)+".gz"))
-        outfile.write("\n//\n//\n".join(out)+"\n//\n//\n")
-        outfile.close()
-
-
-
-def sortalign(stringnames):
-    """ parses muscle output from a string to two lists """
-    objs = stringnames.split("\n>")
-    seqs = [i.split("\n")[0].replace(">", "")+"\n"+\
-              "".join(i.split('\n')[1:]) for i in objs]
+# def sortalign(stringnames):
+#     """ parses muscle output from a string to two lists """
+#     objs = stringnames.split("\n>")
+#     seqs = [i.split("\n")[0].replace(">", "")+"\n"+\
+#               "".join(i.split('\n')[1:]) for i in objs]
               
-    aligned = [i.split("\n") for i in seqs]
-    newnames = [">"+i[0] for i in aligned]
-    seqs = [i[1] for i in aligned]     
-    return newnames, seqs
+#     aligned = [i.split("\n") for i in seqs]
+#     newnames = [">"+i[0] for i in aligned]
+#     seqs = [i[1] for i in aligned]     
+#     ## return in sorted order by names
+#     sortedtups = [(i, j) for i, j in zip(*sorted(zip(newnames, seqs), 
+#                                          key=lambda pair: pair[0]))]
+#     return sortedtups
+
+
+def parsemuscle(out):
+    """ parse muscle string output into two sorted lists """
+    lines = out[1:].split("\n>")
+    names = [line.split("\n", 1)[0] for line in lines]
+    seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
+    tups = zip(names, seqs)
+    anames, aseqs = zip(*sorted(tups, 
+                        key=lambda x: int(x[0].split(";")[-1][1:])))
+    return anames, aseqs
 
 
 
-def alignfast(data, names, seqs):
-    """ makes subprocess call to muscle """
+def muscle_call(data, names, seqs):
+    """ makes subprocess call to muscle. A little faster than before """
     inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
-    cmd = "/bin/echo '"+inputstring+"' | "+data.muscle+" -quiet -in -"
-    piped = subprocess.Popen(cmd, shell=True, 
-                       stdin=subprocess.PIPE,
-                       stdout=subprocess.PIPE,
-                       stderr=subprocess.STDOUT,
-                       close_fds=True)
-    _, fout = piped.stdin, piped.stdout
-    #piped = subprocess.Popen(cmd, shell=True, 
-    #                   stdout=subprocess.PIPE,
-    #                   stderr=subprocess.STDOUT,
-    #                   close_fds=True)
-    #_, fout = piped.stdin, piped.stdout
-    return fout.read()
+    return subprocess.Popen(data.muscle, 
+                            stdin=subprocess.PIPE, 
+                            stdout=subprocess.PIPE)\
+                            .communicate(inputstring)[0]
+
+
+# def alignfast(data, names, seqs):
+#     """ makes subprocess call to muscle """
+#     inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
+#     cmd = "/bin/echo '"+inputstring+"' | "+data.muscle+" -quiet -in -"
+#     piped = subprocess.Popen(cmd, shell=True, 
+#                        stdin=subprocess.PIPE,
+#                        stdout=subprocess.PIPE,
+#                        stderr=subprocess.STDOUT,
+#                        close_fds=True)
+#     _, fout = piped.stdin, piped.stdout
+#     #piped = subprocess.Popen(cmd, shell=True, 
+#     #                   stdout=subprocess.PIPE,
+#     #                   stderr=subprocess.STDOUT,
+#     #                   close_fds=True)
+#     #_, fout = piped.stdin, piped.stdout
+#     return fout.read()
 
 
 

@@ -222,11 +222,11 @@ def rawedit(args):
     data, sample, tmptuple, nreplace, point = args
 
     ## get cut sites
-    LOGGER.debug(data.paramsdict["restriction_overhang"])
-    LOGGER.debug([i for i in data.paramsdict["restriction_overhang"]])
+    #LOGGER.debug(data.paramsdict["restriction_overhang"])
+    #LOGGER.debug([i for i in data.paramsdict["restriction_overhang"]])
     cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
-    LOGGER.debug("cutsites %s %s", cuts1, cuts2)
+    #LOGGER.debug("cutsites %s %s", cuts1, cuts2)
 
     ## the read1 demultiplexed reads file
     if tmptuple[0].endswith(".gz"):

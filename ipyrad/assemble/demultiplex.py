@@ -383,7 +383,7 @@ def zcat_make_temps(args):
     ## get optimum lines per file
     if not optim:
         optim = getsplits(raws[0])
-    LOGGER.info("optim = %s", optim)
+    #LOGGER.info("optim = %s", optim)
 
     ## is it gzipped
     cat = "cat"

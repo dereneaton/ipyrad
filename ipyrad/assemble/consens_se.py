@@ -13,14 +13,14 @@ import numpy
 import gzip
 import glob
 import os
-from numba import jit
 
 from collections import Counter
 
 import logging
 LOGGER = logging.getLogger(__name__)
 
-#@jit
+
+
 def binomprobr(base1, base2, error, het):
     """
     given two bases are observed at a site n1 and n2, and the error rate e, the
@@ -51,7 +51,6 @@ def binomprobr(base1, base2, error, het):
     return [bestprob, mjaf, genotypes[probabilities.index(max(probabilities))]]
 
 
-#@jit
 def simpleconsensus(base1, base2):
     """
     majority consensus calling for sites with too low of coverage for
@@ -63,7 +62,6 @@ def simpleconsensus(base1, base2):
     return [1.0, maf, 'aa']
 
 
-#@jit
 def hetero(base1, base2):
     """
     returns IUPAC symbol for ambiguity bases, used for polymorphic sites.
@@ -192,8 +190,7 @@ def consensus(args):
 
     ## unpack args
     LOGGER.info(args)    
-    data, sample, tmpchunk = args
-
+    data, sample, tmpchunk, optim = args
 
     ## number relative to tmp file
     tmpnum = int(tmpchunk.split(".")[-1])
@@ -201,6 +198,13 @@ def consensus(args):
     ## prepare data for reading
     clusters = open(tmpchunk, 'rb')
     pairdealer = itertools.izip(*[iter(clusters)]*2)
+
+    ## array to store all the coverage data, including
+    ## the consens reads that are excluded (for now)
+    #nreads = sample.stats.clusters_kept
+    ## dimensions: nreads, max_read_length, 4 bases
+    ## will store counts of bases only ne
+    catarr = numpy.empty([optim, 210, 4], dtype='int16')
 
     ## counters 
     counters = Counter()
@@ -276,9 +280,6 @@ def consensus(args):
                             ## minimum length for clustering in vsearch
                             if len(shortcon) >= 32:
                                 ## store sequence
-                                storeseq[counters["name"]] = shortcon
-                                counters["name"] += 1
-                                counters["nconsens"] += 1                                
 
                                 ## store a reduced array with only CATG
                                 catg = numpy.array([
@@ -287,7 +288,13 @@ def consensus(args):
                                     [i["T"] for i in stacked],
                                     [i["G"] for i in stacked]], 
                                     dtype='int16').T
-                                storecat.append(catg)
+                                catarr[counters["nconsens"]][:catg.shape[0]] = \
+                                catg
+                                #storecat.append(catg)
+                                storeseq[counters["name"]] = shortcon
+                                counters["name"] += 1
+                                counters["nconsens"] += 1                                
+
                             else:
                                 LOGGER.info("@shortmaxn")
                                 filters['maxn'] += 1
@@ -312,10 +319,10 @@ def consensus(args):
     with open(consenshandle, 'wb') as outfile:
         outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
                                  storeseq[key] for key in storeseq]))
-    storecat = numpy.array(storecat)
+    #storecat = numpy.array(storecat)
 
     with open(consenshandle.replace("_tmpcons.", "_tmpcats."), 'wb') as dumph:
-        numpy.save(dumph, storecat)
+        numpy.save(dumph, catarr)#storecat)
 
     ## count the number of polymorphic sites 
     ## TODO: make a decision about the pair separator
@@ -375,13 +382,12 @@ def nfilter3(data, consens, heteros, seqs, reps):
             if not any([i in orderedpolys for i in ["-", "N"]]):
                 ordered.extend(["".join(orderedpolys)]*rep)
 
-    ## TODO: THIS PART
     counted = Counter(ordered)
     nalleles = len(counted.keys())
-    # LOGGER.debug("heteros %s", heteros)
+    LOGGER.debug("heteros locs %s", heteros)
     # LOGGER.debug("orderedpolys %s", orderedpolys)
     # LOGGER.debug("ordered %s", ordered)
-    # LOGGER.debug('counted %s', counted)
+    LOGGER.debug('counted %s', counted)
     # LOGGER.info('%s alleles', len(counted.keys()))
 
     ## how many high depth alleles?
@@ -390,10 +396,12 @@ def nfilter3(data, consens, heteros, seqs, reps):
     else:
         ## if diploid try to get two alleles and return consens with
         ## lower upper and lower casing to save phased info
-        if (nalleles > 1) and (data.paramsdict["ploidy"] == 2):
-            consens = findalleles(consens, heteros, counted)
-        else:
-            LOGGER.error("ugh %s:", "".join(consens))
+        try:
+            if (nalleles > 1) and (data.paramsdict["ploidy"] == 2):
+                consens = findalleles(consens, heteros, counted)
+        except IndexError as inst:
+            LOGGER.error("nfilter3 error again: %s", inst)
+            LOGGER.error("\n"+"\n".join(seqs))
         return consens, 1
 
 
@@ -403,19 +411,31 @@ def findalleles(consens, heteros, counted):
     ## find the first hetero site from the left
     alleles = [i[0] for i in counted.most_common(2)]
     LOGGER.debug('INSIDE alleles %s', alleles)
-    bigbase = uplow(unhetero(consens[heteros[0]]))
-    LOGGER.debug('INSIDE bigbase %s', bigbase)
-    LOGGER.debug('INSIDE consens %s', consens)
-    query = [i for i in alleles if i[0] == bigbase][0]
+    firstbigbase = uplow(unhetero(consens[heteros[0]]))
+    LOGGER.debug('INSIDE firstbigbase %s', firstbigbase)
+    query = [i for i in alleles if i[0] == firstbigbase][0]
     LOGGER.debug('INSIDE query %s', query)
 
-    for ind, hsite in enumerate(heteros[1:]):
-        LOGGER.info('what %s, %s, %s', ind, hsite, consens[hsite])
-        bigbase = uplow(unhetero(consens[hsite]))
-        if query[ind+1] != bigbase:
-            consens[hsite] = consens[hsite].lower()
-            LOGGER.debug('newlow %s', consens[hsite])
-    return consens
+    for idx, site in enumerate(heteros[1:]):
+        if query[idx] != uplow(unhetero(consens[site])):
+            consens[site] = consens[site].lower()
+            LOGGER.debug('newlow %s', consens[site])
+    return consens            
+
+    #     uplow(unhetero())
+    #     lastbig = uplow(unhetero(heteros[idx-1]))
+    #     thisbig = uplow(unhetero(heteros[idx]))
+    #     if thisbase
+
+    # for ind, hsite in enumerate(heteros[1:]):
+    #     LOGGER.info('what %s, %s, %s', ind, hsite, consens[hsite])
+    #     bigbase = uplow(unhetero(consens[hsite]))
+    #     ## does this bigbase match the previous bigbase?
+    #     ## if not iupac is small
+    #     if query[ind-1] != bigbase:
+    #         consens[hsite] = consens[hsite].lower()
+
+    # return consens
 
 
 
@@ -488,6 +508,7 @@ def basecaller(data, site, base1, base2):
     else:
         cons = "N"
     return cons
+
 
 
 def clustdealer(pairdealer, optim):
@@ -659,7 +680,7 @@ def run_full(data, sample, ipyclient):
         submitted_args = []
         for chunkhandle in chunkslist:
             ## used to increment names across processors
-            args = [data, sample, chunkhandle]
+            args = [data, sample, chunkhandle, optim]
             submitted_args.append(args)
             num += 1
 
@@ -705,9 +726,9 @@ def run(data, samples, ipyclient, force=False):
     if not os.path.exists(data.dirs.consens):
         os.mkdir(data.dirs.consens)
 
-    ## make sure no existing tmp files
-    tmpcons = glob.glob(os.path.join(data.dirs.working, "*_tmpcons.*"))
-    tmpcats = glob.glob(os.path.join(data.dirs.working, "*_tmpcats.*"))
+    ## zap any tmp files that might be leftover
+    tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+    tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
     for tmpfile in tmpcons+tmpcats:
         os.remove(tmpfile)
 
