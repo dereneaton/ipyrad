@@ -80,17 +80,19 @@ def getassembly(args, parsedict):
             ## try loading an existing one
             try:
                 data = ip.load_assembly(os.path.join(parsedict['1'], 
-                                                     parsedict['14']))
+                                                     parsedict['14']),
+                                                     quiet=True)
+
             ## if not found then create a new one
             except AssertionError:
                 data = ip.Assembly(parsedict['14'])
-
 
     ## otherwise look for existing
     else:
         try:
             data = ip.load_assembly(os.path.join(parsedict['1'], 
-                                                 parsedict['14']))
+                                                 parsedict['14']),
+                                                 quiet=True)
         except AssertionError:
             data = ip.Assembly(parsedict['14'])
 
@@ -199,7 +201,7 @@ def main():
     "\n --------------------------------------------------"+\
     "\n  ipyrad [v.{}]".format(ip.__version__)+\
     "\n  Interactive assembly and analysis of RADseq data"+\
-    "\n --------------------------------------------------\n"
+    "\n --------------------------------------------------"
         print(header)
     
 
@@ -234,7 +236,6 @@ def main():
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force)
 
-    print("")
 
 
 if __name__ == "__main__": 

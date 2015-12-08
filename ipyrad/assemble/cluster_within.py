@@ -192,6 +192,7 @@ def parsemuscle(out):
     names = [line.split("\n", 1)[0] for line in lines]
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
     tups = zip(names, seqs)
+    ## who knew, zip(*) is the inverse of zip
     anames, aseqs = zip(*sorted(tups, 
                         key=lambda x: int(x[0].split(";")[-1][1:])))
     return anames, aseqs

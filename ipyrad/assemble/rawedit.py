@@ -399,9 +399,6 @@ def prechecks(data, preview):
     ## create output directory if doesn't exist
     if not os.path.exists(data.dirs.edits):
         os.makedirs(data.dirs.edits)
-    ## preview
-    if preview:
-        print("created new directory: {}".format(data.dirs.edits))
 
 
 
@@ -429,6 +426,8 @@ def run_full(data, sample, ipyclient, nreplace):
     if sample.stats.reads_raw:
         if sample.stats.reads_raw > 1e5:
             optim = roundup(sample.stats.reads_raw/len(ipyclient.ids))*4
+            ## must be divisible by 4
+            assert not optim % 4
 
     ## break up the file into smaller tmp files for each processor
     chunkslist = []
@@ -566,16 +565,16 @@ def run(data, samples, ipyclient, force=False, nrep=True):
     ## print warning if skipping all samples
     if not force:
         if all([i.stats.state >= 2 for i in samples]):
-            print("Skipping step2: All {} ".format(len(data.samples))\
+            print("  Skipping step2: All {} ".format(len(data.samples))\
                  +"Samples already filtered in `{}`".format(data.name))
             
         else:
             for sample in samples:
                 if sample.stats.state >= 2:
-                    print("Skipping Sample {}; ".format(sample.name)
+                    print("  Skipping Sample {}; ".format(sample.name)
                          +"Already filtered. Use force=True to overwrite.")
                 elif sample.stats.reads_raw < 100:
-                    print("Skipping Sample {}; ".format(sample.name)
+                    print("  Skipping Sample {}; ".format(sample.name)
                          +"Too few reads ({}). Use force=True to overwrite.".\
                            format(sample.stats.reads_raw))
                 else:
@@ -584,7 +583,7 @@ def run(data, samples, ipyclient, force=False, nrep=True):
     else:
         for sample in samples:
             if not sample.stats.reads_raw:
-                print("Skipping Sample {}; ".format(sample.name)
+                print("  Skipping Sample {}; ".format(sample.name)
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))
             else:

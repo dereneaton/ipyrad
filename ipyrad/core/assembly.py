@@ -4,7 +4,7 @@
 
 # pylint: disable=E1101
 # pylint: disable=E1103
-# pylint: disable=W0142
+
 
 from __future__ import print_function
 import os
@@ -14,7 +14,6 @@ import sys
 import gzip
 import dill
 import copy
-import psutil
 import subprocess
 import pandas as pd
 import ipyparallel as ipp
@@ -451,8 +450,8 @@ class Assembly(object):
             self.paramsdict['raw_fastq_path'] = fullrawpath
             self._stamp("[2] set to "+newvalue)
             #if not self.paramdict["raw_fastq_path"]:
-            self.dirs["fastqs"] = os.path.dirname(
-                                     self.paramsdict["raw_fastq_path"])
+            #self.dirs["fastqs"] = os.path.dirname(
+            #                         self.paramsdict["raw_fastq_path"])
 
 
         elif param in ['3', 'barcodes_path']:
@@ -481,8 +480,8 @@ class Assembly(object):
                 newvalue = os.path.join(newvalue, "*.gz")
             self.paramsdict['sorted_fastq_path'] = newvalue
             self._stamp("[4] set to "+newvalue)
-            self.dirs["fastqs"] = os.path.dirname(
-                                   self.paramsdict["sorted_fastq_path"])
+            #self.dirs["fastqs"] = os.path.dirname(
+            #                       self.paramsdict["sorted_fastq_path"])
 
 
         elif param in ['5', 'restriction_overhang']:
@@ -743,7 +742,8 @@ class Assembly(object):
         ## launch parallel client within guarded statement
         try: 
             ipyclient = self._launch(30) 
-
+            msg1 = "  step1: Demultiplexing raw reads."
+            msg2 = "  step1: Linking fastq data to Samples."
             ## if Samples already exist then no demultiplexing
             if self.samples:
                 if not force:
@@ -753,22 +753,27 @@ class Assembly(object):
                 else:
                     assemble.demultiplex.run(self, preview, ipyclient)
                     self._stamp("s1_demultiplexing:")
+                    print(msg1)
                     #print("Overwriting Samples with data files in {}".\
                     #      format(self.paramsdict["sorted_fastq_path"]))
                     #self.link_fastqs(force=True)
             ## Creating new Samples
             else:
                 ## first check if demultiplexed files exist in path
-                #if os.path.exists(self.paramsdict["sorted_fastq_path"]):                
-                #    self.link_fastqs(
-                #        path=os.path.join(
-                #            self.paramsdict["working_directory"], "fastqs"))
-                #    print("linking files from {}".\
-                #          format(self.paramsdict["sorted_fastq_path"]))
+                if os.path.exists(self.paramsdict["sorted_fastq_path"]):
+                    try:
+                        self.link_fastqs(path=os.path.join(
+                            self.paramsdict["sorted_fastq_path"], "*"))
+                        print("linking files from {}".\
+                              format(self.paramsdict["sorted_fastq_path"]))
+                    except AssertionError as inst:
+                        SystemExit("inst")
+                        raise
                 ## otherwise do the demultiplexing
-                #else:
-                assemble.demultiplex.run(self, preview, ipyclient)
-                self._stamp("s1_demultiplexing:")
+                else:
+                    assemble.demultiplex.run(self, preview, ipyclient)
+                    self._stamp("s1_demultiplexing:")
+                    print(msg1)
 
         except (KeyboardInterrupt, SystemExit, AttributeError):
             logging.error("assembly step1 interrupted.")
@@ -797,6 +802,7 @@ class Assembly(object):
         use the argument force=True. 
 
         """
+        print("  Step2: Filtering reads ")
         ## launch parallel client within guarded statement
         try: 
             ipyclient = self._launch(30) 
@@ -842,7 +848,7 @@ class Assembly(object):
 
     def step3(self, samples=None, preview=0, noreverse=0, force=False):
         """ step 3: clustering within samples """
-
+        print("  Step3: Clustering/Mapping reads")
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             assert self.paramsdict['reference_sequence'], \
@@ -853,7 +859,7 @@ class Assembly(object):
             index_reference_sequence(self)
 
         try: 
-            ipyclient = self._launch(30) 
+            ipyclient = self._launch(30)
 
             ## if samples not entered use all samples
             if not samples:
@@ -872,6 +878,9 @@ class Assembly(object):
                 if all([i[1].stats.state >= 3 for i in samples]):
                     print("Skipping step3: All {} ".format(len(self.samples))\
                          +"Samples already clustered in `{}`".format(self.name))
+                else:
+                    assemble.cluster_within.run(self, samples, ipyclient, 
+                                                preview, noreverse, force)
             else:
                 assemble.cluster_within.run(self, samples, ipyclient, 
                                             preview, noreverse, force)
@@ -899,7 +908,7 @@ class Assembly(object):
         """ step 4: Joint estimation of error rate and heterozygosity. 
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """
-
+        print("  Step4: Joint estimation of error rate and heterozygosity")
         try: 
             ## launch parallel client            
             ipyclient = self._launch(30) 
@@ -995,7 +1004,8 @@ class Assembly(object):
 
 
     def step6(self, samples="", noreverse=False, force=False):
-        """ Step 6: Cluster consensus reads across samples """
+        """ Step 6: Cluster consensus reads across samples and 
+        align with muscle """
         try: 
             ipyclient = self._launch(30) 
 
@@ -1021,7 +1031,6 @@ class Assembly(object):
                 assemble.cluster_across.run(self, samples, ipyclient, 
                                             noreverse, force)
 
-
         except (KeyboardInterrupt, SystemExit) as _:
             print("assembly step3 interrupted by user.")
             raise
@@ -1034,6 +1043,13 @@ class Assembly(object):
 
         ## pickle the data object
         self._save()
+
+
+    def step7():
+        """ Apply filters on aligned clusters to get final data set and 
+        provide output files in a number of formats """
+
+
 
 
 
