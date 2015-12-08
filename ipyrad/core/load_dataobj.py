@@ -26,16 +26,14 @@ def load_assembly(name, controller="Local", quiet=False, launch=True):
             fullcurdir = os.path.realpath(os.path.curdir)
             name = name.replace(fullcurdir, ".")
             if not quiet:
-                print("Loading Assembly: {}  [{}]".\
+                print("  loading Assembly: {} [{}]".\
                       format(data.name, name))
     
             ## relaunch ipcluster
             if launch:
-                data.__ipname__ = ipcontroller_init(nproc="",
-                                                    controller=controller,
-                                                    quiet=quiet)
-            else:
-                data.__ipname__ = "nolaunch"
+                data._ipclusterid = ipcontroller_init(nproc="",
+                                                      controller=controller,
+                                                      quiet=quiet)
 
         except (IOError, AttributeError):
             pass

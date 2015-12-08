@@ -59,9 +59,8 @@ def start(name, nproc, controller, quiet, delay):
          	                  shell=True, 
                               stderr=subprocess.STDOUT)
         LOGGER.info("%s connection to %s engines [%s]", controller, nproc, name)
-        if not quiet:
-            print("ipyparallel setup: {} connection to {} engines\n".\
-                  format(controller, nproc))
+        print("  ipyparallel setup: {} connection to {} engines\n".\
+                 format(controller, nproc))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
@@ -101,6 +100,9 @@ def ipcontroller_init(nproc=None, controller="Local", quiet=False):
     atexit.register(stop, ipname)
     return ipname
 
+
+#global IPNAME
+#IPNAME = "ipyrad-"+str(os.getpid())
 
 
 # # def parallel(engines, controller="Local"):

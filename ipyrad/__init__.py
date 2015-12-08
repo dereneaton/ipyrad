@@ -67,3 +67,6 @@ else:
     LOGGER.info("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
 
 
+if __name__ == "__main__":
+    __interactive__ = 0
+

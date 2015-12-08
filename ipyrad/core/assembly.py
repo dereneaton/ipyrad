@@ -4,6 +4,7 @@
 
 # pylint: disable=E1101
 # pylint: disable=E1103
+# pylint: disable=W0142
 
 from __future__ import print_function
 import os
@@ -22,7 +23,6 @@ from types import *
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.core.sample import Sample
-from ipyrad.core.parallel import ipcontroller_init
 from ipyrad import assemble
 
 import logging
@@ -84,14 +84,15 @@ class Assembly(object):
      """
 
 
-    def __init__(self, name, nproc="", controller="Local"):
+    def __init__(self, name):
 
         ## obj name
         self.name = name
-        print("New Assembly: {}".format(self.name))
+        print("  New Assembly: {}".format(self.name))
 
-        ## launch ipcluster and register for later destruction
-        self.__ipname__ = ipcontroller_init(nproc=nproc, controller=controller)
+        ## stores ipcluster launch info
+        self._ipclusterid = ""
+        self._ipprofile = ""
 
         ## get binaries of dependencies
         self.vsearch, self.muscle, self.smalt, self.samtools = getbins()
@@ -365,13 +366,6 @@ class Assembly(object):
         ## set attribute on Assembly object
         self.barcodes = dict(zip(bdf[0], bdf[1]))
 
-            # ## for each barcode create a Sample
-            # for key in self.barcodes:
-            #     samp = Sample(key)
-            #     samp.state = 0
-            #     samp.barcode = self.barcodes[key]
-            #     if samp not in self.samples:
-            #         self.samples[samp.name] = samp
 
 
     def get_params(self, param=""):
@@ -715,22 +709,31 @@ class Assembly(object):
         """
         while tries:
             try:
-                ipyclient = ipp.Client(cluster_id=self.__ipname__)
+                ## launches ipcluster with arguments if present in self
+                clusterargs = [self._ipclusterid, self._ipprofile]
+                argnames = ["--cluster-id", "--profile"]
+                args = {key:value for key, value in zip(argnames, clusterargs)}
+                ipyclient = ipp.Client(**args)
+
                 if tries > 1:
                     LOGGER.debug('try %s: starting controller', tries)                  
                 tries = 0
                 ## make sure all engines are connected
                 try:
-                    assert len(ipyclient.ids) == psutil.cpu_count()
-                    LOGGER.info('OK! Connected to %s/%s engines', 
-                                len(ipyclient.ids), psutil.cpu_count())                    
+                    assert ipyclient.ids
+                    LOGGER.info('OK! Connected to (%s) engines', 
+                                len(ipyclient.ids))
                 except AssertionError as _: 
                     LOGGER.debug('connected to %s engines', len(ipyclient.ids))
                     raise
             except (IOError, ipp.NoEnginesRegistered, AssertionError):
                 time.sleep(1)
                 tries -= 1
-        return ipyclient
+        try:
+            return ipyclient
+        except UnboundLocalError as inst:
+            LOGGER.error(inst)
+            SystemExit("Error: failed to launch ipcluster")
 
 
 

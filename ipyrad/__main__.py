@@ -4,6 +4,7 @@
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.newparamsfile import write_params
+from ipyrad.core.parallel import ipcontroller_init
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -67,15 +68,20 @@ def showstats(parsedict):
 
 
 def getassembly(args, parsedict):
-    """ loads assembly or creates a new one and set its params from dict"""
+    """ loads assembly or creates a new one and set its params from 
+    parsedict. Sets Assembly object __ipname__ to custom pid/profile
+    """
     ## if '1' then do not load existing Assembly
     if '1' in args.steps:
+        ## create a new assembly object
         if args.force:
             data = ip.Assembly(parsedict['14'])
         else:
+            ## try loading an existing one
             try:
                 data = ip.load_assembly(os.path.join(parsedict['1'], 
                                                      parsedict['14']))
+            ## if not found then create a new one
             except AssertionError:
                 data = ip.Assembly(parsedict['14'])
 
@@ -111,6 +117,12 @@ def parse_command_line():
     ipyrad -p params.txt -s 4567    ## run steps 4, 5, 6 and 7 of assembly.
     ipyrad -p params.txt -s 3 -f    ## run step 3, overwrite existing data.
 
+  * HPC parallelization options
+    ipyrad -p params.txt -s 3 -c 64 --MPI   ## Access 64 cores using MPI.
+
+  * Results summary quick view
+    ipyrad -p params.txt -r         ## print summary stats to screen for params.
+
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
 
@@ -127,7 +139,6 @@ def parse_command_line():
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
 
-
     #parser.add_argument('-q', "--quiet", action='store_true',
     #    help="do not print to stderror and stdout.")
 
@@ -138,6 +149,17 @@ def parse_command_line():
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
         help="subset of assembly steps to perform. Default=1234567")
+
+    parser.add_argument("-c", metavar="cores", dest="cores",
+        type=int, default=4,
+        help="number of CPU cores to use")
+
+    parser.add_argument("--MPI", action='store_true',
+        help="connect to parallel CPU cores using MPI")
+
+    #parser.add_argument("--PBS", action='store_true',
+    #    help="Connect to CPU Engines and submit jobs using PBS")
+
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -161,11 +183,6 @@ def main():
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
 
-    ## used to restrict some CLI workflow vs. interactive features
-    ## does it need to be global?
-    ip.__interactive__ = 1
-    LOGGER.info("Running *CLI*")
-
     ## create new paramsfile if -n
     if args.new:
         write_params(ip.__version__)
@@ -173,7 +190,7 @@ def main():
                format(os.path.realpath(os.path.curdir)))
         sys.exit(2)
 
-    ## if showing results, do not do step 1
+    ## if showing results, do not do any steps and do not print header
     if args.results:
         args.steps = ""
         print("")
@@ -184,6 +201,7 @@ def main():
     "\n  Interactive assembly and analysis of RADseq data"+\
     "\n --------------------------------------------------\n"
         print(header)
+    
 
 
     ## create new Assembly or load existing Assembly, quit if args.results
@@ -194,14 +212,27 @@ def main():
             showstats(parsedict)
 
         else:
-            data = getassembly(args, parsedict)
-            ## For now print the params. 
-            for key, item in data.paramsdict.items():
-                LOGGER.debug("%s, %s", key, item)
-
             ## run Assembly steps
-            steps = list(args.steps)
-            data.run(steps=steps, force=args.force)
+            if args.steps:
+                ## launch ipcluster and register for later destruction
+                if args.MPI:
+                    controller = "MPI"
+                #elif args.PBS:
+                #    controller = "PBS"
+                else:
+                    controller = "Local"
+
+                ## might want to use custom profiles instead of ...
+                _ipclusterid = ipcontroller_init(nproc=args.cores,
+                                                 controller=controller)
+        
+                ## launch or load assembly with custom profile/pid
+                data = getassembly(args, parsedict)
+                data._ipclusterid = _ipclusterid
+
+                ## run assembly steps
+                steps = list(args.steps)
+                data.run(steps=steps, force=args.force)
 
     print("")
 

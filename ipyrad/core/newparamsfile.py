@@ -12,7 +12,7 @@ def write_params(version):
 ./                         ## [1] Working directory
 ./*.fastq.gz               ## [2] Location of raw non-demultiplexed fastq files
 ./*_barcodes.txt           ## [3] Location of barcodes file.
-./fastqs/*.fastq.gz        ## [4] Location of demultiplexed/sorted fastq files
+                           ## [4] Location of demultiplexed/sorted fastq files
 TGCAG                      ## [5] Restriction overhang (cut1) or (cut1, cut2)
 5                          ## [6] max low quality base calls (Q<20) in a read
 4                          ## [7] N engines (threads) per job
@@ -36,7 +36,7 @@ ipyrad_test                ## [14] prefix name for saved output files
 1,2,2,1                    ## [25] trim overhang (see docs)
 0                          ## [26] hierarchical clustering (prob deprecated...)
 denovo                     ## [27] clustering method (denovo, reference, hybrid)
-./*.fa                     ## [28] reference genome file
+                           ## [28] reference genome file
 lpn                        ## [29] output formats (see docs)
 ------ optional: list group/clade assignments below this line (see docs) ---
 """ % version
