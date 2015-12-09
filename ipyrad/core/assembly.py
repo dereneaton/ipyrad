@@ -17,7 +17,6 @@ import copy
 import subprocess
 import pandas as pd
 import ipyparallel as ipp
-from types import *
 
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
@@ -449,9 +448,6 @@ class Assembly(object):
                 fullrawpath = os.path.join(fullrawpath, "*.gz")
             self.paramsdict['raw_fastq_path'] = fullrawpath
             self._stamp("[2] set to "+newvalue)
-            #if not self.paramdict["raw_fastq_path"]:
-            #self.dirs["fastqs"] = os.path.dirname(
-            #                         self.paramsdict["raw_fastq_path"])
 
 
         elif param in ['3', 'barcodes_path']:
@@ -480,8 +476,6 @@ class Assembly(object):
                 newvalue = os.path.join(newvalue, "*.gz")
             self.paramsdict['sorted_fastq_path'] = newvalue
             self._stamp("[4] set to "+newvalue)
-            #self.dirs["fastqs"] = os.path.dirname(
-            #                       self.paramsdict["sorted_fastq_path"])
 
 
         elif param in ['5', 'restriction_overhang']:
@@ -676,9 +670,6 @@ class Assembly(object):
         """ prints the project data structure. TODO: this needs work.
         prints way too much other junk if [work] is home dir. """
         startpath = self.paramsdict["working_directory"]
-        #if startpath in [".", "", "./", os.path.expanduser(startpath)]:
-        #    print("./")
-        #else:
         for root, _, files in os.walk(startpath):
             level = root.replace(startpath, '').count(os.sep)
             indent = ' ' * 4 * (level)
