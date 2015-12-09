@@ -318,7 +318,6 @@ if __name__ == "__main__":
     #LOCI = ms2loci(MSFILE)
     LOCI = loci2loci(LOCIFILE, TAXONLIST)
     print(LOCI)
-    LOCI
 
     ## get data frame of site counts by loci
     NTOTAL = 10000
