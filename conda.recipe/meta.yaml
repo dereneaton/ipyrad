@@ -11,7 +11,7 @@ build:
 
 requirements:
   build:
-    - ipython
+    - ipython ==4.0.0
     - ipyparallel
     - cython
     - scipy 
