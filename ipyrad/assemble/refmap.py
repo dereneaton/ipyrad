@@ -22,6 +22,7 @@ from ipyrad.assemble.rawedit import comp
 import logging
 LOGGER = logging.getLogger(__name__)
 
+
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
     samples.files.edits .fasta files, and attempts to map each read to the 
