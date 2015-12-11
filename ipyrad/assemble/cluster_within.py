@@ -25,7 +25,6 @@ from .refmap import *
 
 import logging
 LOGGER = logging.getLogger(__name__)
-print(__name__)
 
 
 def cleanup(data, sample):
@@ -77,19 +76,7 @@ def cleanup(data, sample):
     ## the number of reads in the bam file as the first element
     ## of the first line, this call makes this assumption.
     if not data.paramsdict["assembly_method"] == "denovo":
-        cmd = data.samtools+\
-            " flagstat "+sample.files.unmapped_reads
-        result = subprocess.check_output(cmd, shell=True,
-                                              stderr=subprocess.STDOUT)
-        sample.stats["refseq_unmapped_reads"] = int(result.split()[0])
-
-        cmd = data.samtools+\
-            " flagstat "+sample.files.mapped_reads
-        result = subprocess.check_output(cmd, shell=True,
-                                              stderr=subprocess.STDOUT)
-        sample.stats["refseq_mapped_reads"] = int(result.split()[0])
-
-
+        refmap_stats( data, sample )
 
 def muscle_align2(args):
     """ aligns reads, does split then aligning for paired reads """

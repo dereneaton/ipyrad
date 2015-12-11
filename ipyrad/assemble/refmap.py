@@ -21,7 +21,6 @@ from ipyrad.assemble.rawedit import comp
 
 import logging
 LOGGER = logging.getLogger(__name__)
-print(LOGGER)
 
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
@@ -76,7 +75,7 @@ def mapreads(args):
     # TODO: Why is this fucking broken? If I import copy2 at the top of the file
     # it tells me "global name shutil not found". UGNN!
     from shutil import copy2
-    if os.path.isfile( fastq_dotfile ) 
+    if os.path.isfile( fastq_dotfile ): 
         copy2( fastq_dotfile, fastq_file )
 
     # Preserve the original full .fq file as a hidden "dot" file.
@@ -366,6 +365,22 @@ def pileuptofasta( data, sample):
             incomplete_reads = np.delete( incomplete_reads, completed_reads )
         print(incomplete_reads)
     print( seqs )  
+
+def refmap_stats( data, sample ):
+    """ Get the number of mapped and unmapped reads for a sample
+    and update sample.stats """
+    cmd = data.samtools+\
+    " flagstat "+sample.files.unmapped_reads
+    result = subprocess.check_output(cmd, shell=True,
+                                          stderr=subprocess.STDOUT)
+    sample.stats["refseq_unmapped_reads"] = int(result.split()[0])
+
+    cmd = data.samtools+\
+    " flagstat "+sample.files.mapped_reads
+    result = subprocess.check_output(cmd, shell=True,
+                                          stderr=subprocess.STDOUT)
+    sample.stats["refseq_mapped_reads"] = int(result.split()[0])
+
 
 if __name__ == "__main__":
     from ipyrad.core.assembly import Assembly
