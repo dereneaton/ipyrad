@@ -1240,10 +1240,6 @@ def index_reference_sequence(self):
     also test for existence of both index files, but i'm choosing to just let
     smalt do that for us ;) """
 
-    print("Checking for reference sequence index, otherwise creating new one.")
-    print("This could take several minutes, but it's a one time penalty, "\
-          +"so be patient.")
-
     refseq_file = self.paramsdict['reference_sequence']
 
     #TODO: Here test if the indices exist already
@@ -1262,8 +1258,6 @@ def index_reference_sequence(self):
 
         print(cmd)
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-
-
 
 def tuplecheck(newvalue, conv=int):
     """ Takes a string argument and returns value as a tuple. 
