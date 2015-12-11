@@ -65,6 +65,9 @@ class Assembly(object):
     samtools : str
         The path to the default samtools executable. If not found, this can be 
         changed by setting `[Assembly].samtools = [newpath]`.
+    bedtools : str
+        The path to the default bedtools executable. If not found, this can be 
+        changed by setting `[Assembly].bedtools = [newpath]`.
     log : list
         A list of all modifications to the Assembly object and its Samples with
         time stamps. Use `print [Assembly].log` for easier viewing.
@@ -93,7 +96,7 @@ class Assembly(object):
         self._ipprofile = ""
 
         ## get binaries of dependencies
-        self.vsearch, self.muscle, self.smalt, self.samtools = getbins()
+        self.vsearch, self.muscle, self.smalt, self.samtools, self.bedtools = getbins()
 
         ## link a log history of executed workflow
         self.log = []
@@ -1133,36 +1136,43 @@ def getbins():
     if 'linux' in _platform:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
-                       "vsearch-1.9.2-linux-x86_64")
+                       "vsearch-linux-x86_64")
         muscle = os.path.join(
                        os.path.abspath(bin_path),
-                       "muscle3.8.31_i86linux64")
+                       "muscle-linux-x86_64")
         smalt = os.path.join(
                        os.path.abspath(bin_path),
-                       "smalt-0.7.6-linux-x86_64")
+                       "smalt-linux-x86_64")
         samtools = os.path.join(
                        os.path.abspath(bin_path),
                        "samtools-linux-x86_64")
+        bedtools = os.path.join(
+                       os.path.abspath(bin_path),
+                       "bedtools-linux-x86_64")
     else:
         vsearch = os.path.join(
                        os.path.abspath(bin_path),
-                       "vsearch-1.1.3-osx-x86_64")
+                       "vsearch-osx-x86_64")
         muscle = os.path.join(
                        os.path.abspath(bin_path),
-                       "muscle3.8.31_i86darwin64")
+                       "muscle-osx-x86_64")
         smalt = os.path.join(
                        os.path.abspath(bin_path),
-                       "smalt-0.7.6-osx-x86_64")
+                       "smalt-osx-x86_64")
         samtools = os.path.join(
                        os.path.abspath(bin_path),
                        "samtools-osx-x86_64")
+        bedtools = os.path.join(
+                       os.path.abspath(bin_path),
+                       "bedtools-osx-x86_64")
 
     # Test for existence of binaries
     assert cmd_exists(muscle), "muscle not found here: "+muscle
     assert cmd_exists(vsearch), "vsearch not found here: "+vsearch
     assert cmd_exists(smalt), "smalt not found here: "+smalt
     assert cmd_exists(samtools), "samtools not found here: "+samtools
-    return vsearch, muscle, smalt, samtools
+    assert cmd_exists(bedtools), "samtools not found here: "+bedtools
+    return vsearch, muscle, smalt, samtools, bedtools
 
 
 

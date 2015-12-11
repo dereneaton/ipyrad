@@ -452,9 +452,9 @@ def oldpre():
 
     else:
         ## Hierarchical clustering
-        print gids
-        print groups
-        print minhits
+        print(gids)
+        print(groups)
+        print(minhits)
 
         ## make a new dir/ for hierarchs
         if not os.path.exists(params["work"]+"prefix/"):
@@ -488,7 +488,7 @@ def oldpre():
         ## cluster second tier
         tier2clust.main(params)
         #  Hgids, seed, WORK, MASK)
-        print "\n\tfinished clustering\n"
+        print("\n\tfinished clustering\n")
 
 
 if __name__ == "__main__":
