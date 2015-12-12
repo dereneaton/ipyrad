@@ -237,24 +237,50 @@ def getalignedreads( data, sample ):
        of reads within each contiguous region.
     4) Decompile the mpileup format into fasta to get the raw sequences within
        each stack.
+    4.5) Write the aligned sequences out to a fasta file (vsearch doesn't handle piping data)
     5) Call vsearch to derep reads
     6) Append to the clustS.gz file.
     """
 
-    ## Regions is a giant list of 
+    ## Regions is a giant list of 5-tuples, of which we're only really interested
+    ## in the first three, chrom, start and end position.
     regions = bedtools_merge( data, sample ).split("\n")
+
+    ## Keep track of all the derep'd fasta files per stack, we'll concatenate them
+    ## all to the end of the clustS.gz file at the very end of the process
+    derep_fasta_files = []
 
     ## For each identified region, build the pileup and write out the fasta
     for line in regions:
-        LOGGER.debug( "line - %s", line )
+
+        # Blank lines returned from bedtools make the rest of the pipeline angry. Filter them.
         if line == "":
-            pass
+            continue
+
         chrom, region_start, region_end = line.strip().split()[0:3]
 
-        pileup_file = bam_to_pileup( data, sample, chrom, region_start, region_end )
+        pileup_file, read_labels = bam_to_pileup( data, sample, chrom, region_start, region_end )
 
-        aligned_fasta = mpileup_to_fasta( data, sample, pileup_file )
-        LOGGER.debug( "out_fasta - %s", aligned_fasta )
+        ## Test the return from bam_to_pileup. If mindepth isn't satisfied this function will return
+        ## an empty string and empty list. In this case just bail out on this pileup, bad data.
+        if pileup_file == "":
+            LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, region_start, region_end )
+            continue
+
+        aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
+
+        aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
+
+        derep_fasta = derep_and_sort( data, sample, aligned_fasta_file )
+
+        LOGGER.debug( "out_fasta - %s", derep_fasta )
+        derep_fasta_files.append( derep_fasta )
+
+        ## TODO: Cleanup all the nasty files hanging around.
+
+    append_clusters( data, sample, derep_fasta_files )
+
+
 
 
 def bedtools_merge( data, sample):
@@ -277,8 +303,14 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     of all reads that overlap these sites. This is the command we're building:
 
         samtools mpileup -f MusChr1.fa -r 1:116202035-116202060 -o out.pileup 1A_0.sorted.bam
+
+    We also have to track the names of each read name (QNAME) in this region, 
+    so we can reconstruct the fasta downstream. This command will output all
+    overlapping reads in headerless sam format. QNAME is the first field.
+
+        samtools view 1A_sorted.bam 1:116202035-116202060
     """
-    LOGGER.debug( "Entering bam_to_pileup: %s", sample.name )
+    LOGGER.debug( "Entering bam_to_pileup: %s %s %s %s", sample.name, chrom, region_start, region_end )
 
     ## make output directory for pileups
     ## These aren't really strictly necessary to keep around, but for
@@ -296,6 +328,23 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     pileup_file = pileup_dir+"/"+sample.name+"-"+region_start+".pileup"
 
     cmd = data.samtools+\
+        " view "+\
+        sample.files.mapped_reads+\
+        " " + chrom + ":" + region_start + "-" + region_end
+    result = subprocess.check_output(cmd, shell=True,
+                                          stderr=subprocess.STDOUT)
+
+    # Use list comprehension to pull out the first element of each row,
+    read_labels = [x.split("\t")[0] for x in result.strip("\n").split("\n")]
+    
+    # Test the number of reads overlapping in this region. If it's strictly
+    # less than mindepth parameter, then just toss it out, save us some time.
+    # I fuckin hate multiple returns, but in this case i'll make an exception.
+    # I still might move this to the end, just on principle.
+    if len(read_labels) < data.paramsdict["mindepth_majrule"]:
+        return( "", [] )
+
+    cmd = data.samtools+\
         " mpileup "+\
         " -f " + data.paramsdict['reference_sequence']+\
         " -r " + chrom+":"+region_start+"-"+region_end+\
@@ -304,11 +353,12 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
 #    LOGGER.debug( "%s", cmd )
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
-    return pileup_file
+
+    return pileup_file, read_labels
 
 
 def mpileup_to_fasta( data, sample, pileup_file ):
-    LOGGER.debug( "Entering mpileup_to_fasta: %s", sample.name, pileup_file )
+    LOGGER.debug( "Entering mpileup_to_fasta: %s %s", sample.name, pileup_file )
 
     with open( pileup_file, 'r' ) as pfile:
         pileup = []
@@ -438,6 +488,75 @@ def mpileup_to_fasta( data, sample, pileup_file ):
             incomplete_reads = np.delete( incomplete_reads, completed_reads )
         ## Done processing one line of the pileup
     return( seqs )
+
+def write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels ):
+    """ Because vsearch doesn't handle named pipes, or piping at all
+    we need to write the aligned sequences per read out to a fasta
+    formatted file. 
+    """
+    with tempfile.NamedTemporaryFile( 'w', 
+                                  delete=False,
+                                  dir=data.dirs.refmapping,
+                                  prefix=sample.name+"_",
+                                  suffix='.fa') as out:
+        for i, line in enumerate( aligned_seqs ):
+            out.write( ">"+read_labels[i]+"\n" )
+            out.write( line+"\n" )
+    return( out.name )
+
+def derep_and_sort( data, sample, aligned_fasta_file ):
+
+    #TODO: Delete this. I'm setting filter_min_trim_len
+    # to 10 for testing, should delete this prior to shipping
+    data.set_params(18, 10)
+
+    # This is how it's done in cluster_within
+    if sample.merged:
+    # if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
+        reverse = " -strand both "
+    else:
+        reverse = " "
+
+    outfile = os.path.join(data.dirs.refmapping, aligned_fasta_file.split("/")[-1]+sample.name+".map_derep.fa")
+
+    # Stacks are never going to be too big, so faking this to set
+    # nthreads to 1, maybe fix this to use the real value if it'll 
+    # help performance
+    nthreads = 1
+    ## do dereplication with vsearch
+    cmd = data.vsearch+\
+          " -derep_fulllength "+ aligned_fasta_file+\
+          reverse+\
+          " -output "+outfile+\
+          " -sizeout "+\
+          " -threads "+str(nthreads)+\
+          " -fasta_width 0"+\
+          " --minseqlength "+ str(data.paramsdict["filter_min_trim_len"])
+
+    ## run vsearch
+    LOGGER.debug("%s",cmd)
+    try:
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        LOGGER.error(cmd)
+        LOGGER.error(inst)
+        sys.exit("Error in vsearch: \n{}\n{}\n{}."\
+                 .format(inst, subprocess.STDOUT, cmd))
+
+    return(outfile)
+
+def append_clusters( data, sample, derep_fasta_files ):
+    ## get clustfile
+    sample.files.clusters = os.path.join(data.dirs.clusts,
+                                         sample.name+".clustS.gz")
+
+    with gzip.open(sample.files.clusters, 'ab') as out:
+        for fname in derep_fasta_files:
+                with open(fname) as infile:
+                    out.write(infile.read()+"//\n//\n")
+
 
 def refmap_init( data, sample ):
     """Set the mapped and unmapped reads files for this sample
