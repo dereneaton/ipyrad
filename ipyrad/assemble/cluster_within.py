@@ -336,6 +336,20 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     if not os.path.exists(data.dirs.clusts):
         os.makedirs(data.dirs.clusts)
 
+    ## If reference sequence mapping, init samples
+    ## and make the refmapping output directory.
+    if not data.paramsdict["assembly_method"] == "denovo":
+        ## make output directory for read mapping process
+        data.dirs.refmapping = os.path.join(
+                        os.path.realpath(data.paramsdict["working_directory"]),
+                        data.name+"_refmapping")
+        if not os.path.exists(data.dirs.refmapping):
+            os.makedirs(data.dirs.refmapping)
+
+        ## Initialize the mapped and unmapped file paths per sample
+        for sample in samples:
+            sample = refmap_init( data, sample )
+
     ## submit files and args to queue, for func clustall
     submitted_args = []
     for sample in samples:
@@ -351,21 +365,6 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
 
     # If reference sequence is specified then try read mapping, else pass.
     if not data.paramsdict["assembly_method"] == "denovo":
-        ## make output directory for read mapping process
-        data.dirs.refmapping = os.path.join(
-                        os.path.realpath(data.paramsdict["working_directory"]),
-                        data.name+"_refmapping")
-      
-        if not os.path.exists(data.dirs.refmapping):
-            os.makedirs(data.dirs.refmapping)
-        ## Set the mapped and unmapped reads files for this sample
-        for sample in samples:
-            sorted_unmapped_bamhandle = os.path.join(data.dirs.refmapping,
-                                            sample.name+"-sorted-unmapped.bam")
-            sorted_mapped_bamhandle = os.path.join(data.dirs.refmapping, 
-                                            sample.name+"-sorted-mapped.bam")
-            sample.files.unmapped_reads = sorted_unmapped_bamhandle
-            sample.files.mapped_reads = sorted_mapped_bamhandle
 
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
@@ -413,10 +412,6 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     ## mapped bam files and write them out to the clustS files to fold
     ## them back into the pipeline.
     if not data.paramsdict["assembly_method"] == "denovo":
-        ## make output directory for read mapping process
-        data.dirs.refmapping = os.path.join(
-                        os.path.realpath(data.paramsdict["working_directory"]),
-                        data.name+"_refmapping")
         for sample in samples:
             results = getalignedreads(data, sample)
 

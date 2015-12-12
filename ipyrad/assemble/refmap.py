@@ -55,8 +55,8 @@ def mapreads(args):
     ##    writes out unmapped reads to the 'edits' directory as .fq
     ##    which is what downstream analysis expects
     samhandle = os.path.join(data.dirs.refmapping, sample.name+".sam")
-    unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
-    mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
+    sample.files.unmapped_reads = unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    sample.files.mapped_reads = mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     sorted_unmapped_bamhandle = sample.files["unmapped_reads"]
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
 
@@ -159,6 +159,17 @@ def mapreads(args):
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
 
+    ## Step 3 index mapped reads
+    ## Samtools pileup needs the bam to be indexed
+    ## No arguments, a very simple function. It writes the index to 
+    ## a default location
+    LOGGER.debug( "%s", cmd )
+    cmd = data.samtools+\
+        " index " + mapped_bamhandle
+    subprocess.call(cmd, shell=True,
+                         stderr=subprocess.STDOUT,
+                         stdout=subprocess.PIPE)
+
     ##############################################
     ## Do unmapped
     ##############################################
@@ -204,47 +215,110 @@ def mapreads(args):
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
 
-    ## bs for experimentation. is samtools/smalt fscking the output?
-    ## TODO: get rid of this when mapped reads get returned to the 
-    ## pipeline right. or whenever, it's not useful.
-#    cmd = data.samtools+\
-#        " bam2fq "+sorted_mapped_bamhandle+\
-#        " | gzip >> "+unmapped_fastq_handle
-#    subprocess.call(cmd, shell=True,
-#                         stderr=subprocess.STDOUT,
-#                         stdout=subprocess.PIPE)
-
     ## This is the end of processing for each sample. Stats
     ## are appended to the sample for mapped and unmapped reads 
     ## during cluster_within.cleanup()
 
 def getalignedreads( data, sample ):
     """Pull aligned reads out of sorted mapped bam files and
-    append them to the clustS.gz file so the fall into downstream analysis """
+    append them to the clustS.gz file so the fall into downstream analysis
+    Here's the exact order of ops:
+    
+    1) Coming into this function we have sample.files.mapped_reads 
+        as a sorted bam file.
+    2) Run bedtools merge to get a list of all contiguous blocks of bases
+        in the reference seqeunce where one or more of our reads overlap.
+        The output will look like this:
+            1       45230754        45230783
+            1       74956568        74956596
+            ...
+            1       116202035       116202060
+    3) Samtools pileup in each region individually. This will build stacks
+       of reads within each contiguous region.
+    4) Decompile the mpileup format into fasta to get the raw sequences within
+       each stack.
+    5) Call vsearch to derep reads
+    6) Append to the clustS.gz file.
+    """
 
-    mapped_fastq_handle = "/tmp/wat.fq"
-    ## Build the samtools bam2fq command to push bam out
+    ## Regions is a giant list of 
+    regions = bedtools_merge( data, sample ).split("\n")
+
+    ## For each identified region, build the pileup and write out the fasta
+    for line in regions:
+        LOGGER.debug( "line - %s", line )
+        if line == "":
+            pass
+        chrom, region_start, region_end = line.strip().split()[0:3]
+
+        pileup_file = bam_to_pileup( data, sample, chrom, region_start, region_end )
+
+        aligned_fasta = mpileup_to_fasta( data, sample, pileup_file )
+        LOGGER.debug( "out_fasta - %s", aligned_fasta )
+
+
+def bedtools_merge( data, sample):
+    """ Get all contiguous genomic regions with one or more overlapping
+    reads. This is the shell command we'll eventually run
+
+        bedtools bamtobed -i 1A_0.sorted.bam | bedtools merge
+    """
+    LOGGER.debug( "Entering bedtools_merge: %s", sample.name )
+    cmd = data.bedtools+\
+        " bamtobed "+\
+        " -i " + sample.files.mapped_reads+\
+        " | bedtools merge"
+    result = subprocess.check_output(cmd, shell=True,
+                                          stderr=subprocess.STDOUT)
+    return result
+
+def bam_to_pileup( data, sample, chrom, region_start, region_end ):
+    """ Take the chromosome position, and start and end bases and output a pileup
+    of all reads that overlap these sites. This is the command we're building:
+
+        samtools mpileup -f MusChr1.fa -r 1:116202035-116202060 -o out.pileup 1A_0.sorted.bam
+    """
+    LOGGER.debug( "Entering bam_to_pileup: %s", sample.name )
+
+    ## make output directory for pileups
+    ## These aren't really strictly necessary to keep around, but for
+    ## dev and debugging it's good to be able to see what's going on.
+    ## This dir should probably be cleaned up after execution.  
+    ## This is actually stupid here, but it's just for testing
+    ## TODO: Remove the function to keep pileups before shipping.
+    ##
+    ## Just replace all this shit with this:
+    ##     pileup_file = data.dirs.refmapping+"/"+sample.name+"-"+region_start+".pileup"
+    pileup_dir = os.path.join(data.dirs.refmapping, "pileups" )
+    if not os.path.exists(pileup_dir):
+        os.makedirs(pileup_dir)
+
+    pileup_file = pileup_dir+"/"+sample.name+"-"+region_start+".pileup"
+
     cmd = data.samtools+\
-        " bam2fq "+sample.files["mapped_reads"]+\
-        " > "+mapped_fastq_handle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
+        " mpileup "+\
+        " -f " + data.paramsdict['reference_sequence']+\
+        " -r " + chrom+":"+region_start+"-"+region_end+\
+        " -o " + pileup_file+\
+        " " + sample.files.mapped_reads
+#    LOGGER.debug( "%s", cmd )
+    result = subprocess.check_output(cmd, shell=True,
+                                          stderr=subprocess.STDOUT)
+    return pileup_file
 
-def bamtopileup( data, sample):
-    LOGGER.debug( "Entering bamtopileup: %s", sample.name )
 
-def pileuptofasta( data, sample):
-        # Read in the mpileup file for one locus
-        #TESTFILE = "/Volumes/WorkDrive/ipyrad/refhacking/pero.1locus.mpileup"
-    #    TESTFILE = "/Volumes/WorkDrive/ipyrad/refhacking/perom/pero.1locus.pileup"
-    #TESTFILE = "/Volumes/WorkDrive/ipyrad/refhacking/1A.pileup"
-    with open( TESTFILE, 'r' ) as pfile:
+def mpileup_to_fasta( data, sample, pileup_file ):
+    LOGGER.debug( "Entering mpileup_to_fasta: %s", sample.name, pileup_file )
+
+    with open( pileup_file, 'r' ) as pfile:
         pileup = []
         for line in pfile:
             dat = np.array(line.strip().split())
+
             # Handle the case where the number of aligned reads is 0, in which case there
-            # is no 4th field for the sequence info. Maybe just pass overit.
+            # is no 4th field for the sequence info. If this line has 0 reads, just skip it.
+            if len(dat) == 4:
+                continue
             refbase, count, seqs = dat[[2,3,4]]
             pileup.append([refbase, count, seqs])
     
@@ -348,9 +422,11 @@ def pileuptofasta( data, sample):
                         ret+=next(b).upper()
                 elif base == "$":
                     # Return the N's to pad the remaining sequence
-                    ret = "N" * (len(seqs[pos]))
-                    print(len(seqs[pos]))
-                    print(ret)
+                    # TODO: Handle padding of sequences in a better way.
+                    # It could be done here, but it seems messy.
+                    #ret = "N" * (len(seqs[pos]))
+                    #print(len(seqs[pos]))
+                    #print(ret)
                     # Update the count of dollar signs per line
                     n_dollarsigns +=1
                     completed_reads = np.append( completed_reads, pos-n_dollarsigns)
@@ -359,13 +435,16 @@ def pileuptofasta( data, sample):
                     ret = "wat"
                 if pos < len(incomplete_reads):
                     seqs[incomplete_reads[pos]] = seqs[incomplete_reads[pos]]+ret
-            if( completed_reads.size > 1 ):
-                print("completed-", completed_reads)
-                print("incomplete-", incomplete_reads)
-                print("\n")
             incomplete_reads = np.delete( incomplete_reads, completed_reads )
-        print(incomplete_reads)
-    print( seqs )  
+        ## Done processing one line of the pileup
+    return( seqs )
+
+def refmap_init( data, sample ):
+    """Set the mapped and unmapped reads files for this sample
+    """
+    sample.files.unmapped_reads = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    sample.files.mapped_reads  = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
+    return sample
 
 def refmap_stats( data, sample ):
     """ Get the number of mapped and unmapped reads for a sample
