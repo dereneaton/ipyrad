@@ -413,7 +413,7 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     ## them back into the pipeline.
     if not data.paramsdict["assembly_method"] == "denovo":
         for sample in samples:
-            results = getalignedreads(data, sample)
+            finalize_aligned_reads(data, sample, ipyclient)
 
     ## write stats to samples
     for sample in samples:

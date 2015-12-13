@@ -219,33 +219,68 @@ def mapreads(args):
     ## are appended to the sample for mapped and unmapped reads 
     ## during cluster_within.cleanup()
 
-def getalignedreads( data, sample ):
-    """Pull aligned reads out of sorted mapped bam files and
-    append them to the clustS.gz file so the fall into downstream analysis
-    Here's the exact order of ops:
-    
-    1) Coming into this function we have sample.files.mapped_reads 
-        as a sorted bam file.
-    2) Run bedtools merge to get a list of all contiguous blocks of bases
+def finalize_aligned_reads( data, sample, ipyclient ):
+    """ Run bedtools to get all overlapping regions. Then split this
+        list of regions and distribute it across a bunch if parallel threads.
+
+        1) Run bedtools merge to get a list of all contiguous blocks of bases
         in the reference seqeunce where one or more of our reads overlap.
         The output will look like this:
             1       45230754        45230783
             1       74956568        74956596
             ...
             1       116202035       116202060
-    3) Samtools pileup in each region individually. This will build stacks
+
+        The structure here is copied from multi_muscle_align. Each thread will
+        run on 1000 clusters.
+    """
+
+    lbview = ipyclient.load_balanced_view()
+
+    try:
+        ## Regions is a giant list of 5-tuples, of which we're only really interested
+        ## in the first three, chrom, start and end position.
+        regions = bedtools_merge( data, sample )
+        
+        ## Empty array to hold our chunks
+        tmp_chunks = []
+
+        all_regions = iter(regions.strip().split("\n"))
+        grabchunk = list(itertools.islice(all_regions, 100))
+        while grabchunk:
+            tmp_chunks.append(grabchunk)
+            grabchunk = list(itertools.islice(all_regions, 100))
+
+        submitted_args = []
+        for chunk in tmp_chunks:
+            submitted_args.append( [data, sample, chunk] )
+
+        ## run get_aligned_reads on all region chunks            
+        results = lbview.map_async( get_aligned_reads, submitted_args)
+        results.get()
+
+    except Exception as inst:
+        LOGGER.warn(inst)
+        raise
+
+def get_aligned_reads( args ):
+    """Pull aligned reads out of sorted mapped bam files and
+    append them to the clustS.gz file so the fall into downstream analysis
+    Here's the exact order of ops:
+    
+    1) Coming into this function we have sample.files.mapped_reads 
+        as a sorted bam file, and a passed in list of regions to evaluate.
+    2) Samtools pileup in each region individually. This will build stacks
        of reads within each contiguous region.
-    4) Decompile the mpileup format into fasta to get the raw sequences within
+    3) Decompile the mpileup format into fasta to get the raw sequences within
        each stack.
-    4.5) Write the aligned sequences out to a fasta file (vsearch doesn't handle piping data)
+    4) Write the aligned sequences out to a fasta file (vsearch doesn't handle piping data)
     5) Call vsearch to derep reads
     6) Append to the clustS.gz file.
     """
 
-    ## Regions is a giant list of 5-tuples, of which we're only really interested
-    ## in the first three, chrom, start and end position.
-    regions = bedtools_merge( data, sample ).split("\n")
-
+    import ipyrad.assemble.refmap
+    data, sample, regions = args
     ## Keep track of all the derep'd fasta files per stack, we'll concatenate them
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
@@ -296,6 +331,7 @@ def bedtools_merge( data, sample):
         " | bedtools merge"
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
+    LOGGER.debug( "Got # regions: %s", str(len(result)))
     return result
 
 def bam_to_pileup( data, sample, chrom, region_start, region_end ):
@@ -341,8 +377,12 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     # less than mindepth parameter, then just toss it out, save us some time.
     # I fuckin hate multiple returns, but in this case i'll make an exception.
     # I still might move this to the end, just on principle.
-    if len(read_labels) < data.paramsdict["mindepth_majrule"]:
-        return( "", [] )
+    #
+    # We'll leave low depth clusters in for now. If you decide to get
+    # rid of them just uncomment these two lines.
+    # 
+    #if len(read_labels) < data.paramsdict["mindepth_majrule"]:
+    #    return( "", [] )
 
     cmd = data.samtools+\
         " mpileup "+\
@@ -552,12 +592,26 @@ def append_clusters( data, sample, derep_fasta_files ):
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
 
+    ## A little bit of monkey business here to get the expected
+    ## format right. Downstream expects name lines to end with
+    ## *0 or +1, +2, .., +5
+    ## TODO: refmapping is not currently checking for a max *
+    ## of snps per locus. Probably should fix that.
     with gzip.open(sample.files.clusters, 'ab') as out:
         for fname in derep_fasta_files:
-                with open(fname) as infile:
-                    out.write(infile.read()+"//\n//\n")
-
-
+            # We need to update and accumulate all the seqs before
+            # we write out to the file or the ipp threads will step
+            # all over each other
+            seqs = []
+            with open(fname) as infile:
+                for i, duo in enumerate( itertools.izip(*[iter(infile)]*2) ):
+                    if i == 0:
+                        name = duo[0].strip()+"*"+str(i)
+                    else:
+                        name = duo[0].strip()+"+"+str(i)
+                    seqs.append( name+"\n"+duo[1] )
+            out.write(str("".join(seqs))+"//\n//\n")
+            
 def refmap_init( data, sample ):
     """Set the mapped and unmapped reads files for this sample
     """
