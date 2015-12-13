@@ -105,6 +105,7 @@ def mapreads(args):
     ## get call string
     cmd = data.smalt+\
         " map -f sam -n " + str(nthreads) +\
+        " -x -c " + str(data.paramsdict['clust_threshold'])+\
         " -o " + samhandle +\
         " " + data.paramsdict['reference_sequence'] +\
         " " + sample.files.edits[0][0]
@@ -637,7 +638,8 @@ def append_clusters( data, sample, derep_fasta_files ):
 
     ## A little bit of monkey business here to get the expected
     ## format right. Downstream expects name lines to end with
-    ## *0 or +1, +2, .., +5
+    ## * if it's the most abundant read, and + if it's anything else
+    ##
     ## TODO: refmapping is not currently checking for a max *
     ## of snps per locus. Probably should fix that.
     with gzip.open(sample.files.clusters, 'ab') as out:
@@ -649,9 +651,9 @@ def append_clusters( data, sample, derep_fasta_files ):
             with open(fname) as infile:
                 for i, duo in enumerate( itertools.izip(*[iter(infile)]*2) ):
                     if i == 0:
-                        name = duo[0].strip()+"*"+str(i)
+                        name = duo[0].strip()+"*"
                     else:
-                        name = duo[0].strip()+"+"+str(i)
+                        name = duo[0].strip()+"+"
                     seqs.append( name+"\n"+duo[1] )
             out.write(str("".join(seqs))+"//\n//\n")
             
