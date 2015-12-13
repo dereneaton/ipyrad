@@ -102,7 +102,14 @@ def mapreads(args):
 ################
 
 
-    ## get call string
+    ## get smalt call string
+    ##  -f sam : Output as sam format
+    ##  -n #   : Number of threads to use
+    ##  -x     : Perform a more exhaustive search
+    ##  -c #   : fraction of the query read length that must be covered
+    ##  -o     : output file
+    ##         : Reference sequence
+    ##         : Input file (fq in this case)
     cmd = data.smalt+\
         " map -f sam -n " + str(nthreads) +\
         " -x -c " + str(data.paramsdict['clust_threshold'])+\
@@ -174,22 +181,6 @@ def mapreads(args):
     ##############################################
     ## Do unmapped
     ##############################################
-
-    ## Fetch up the unmapped reads and write them to the edits .fasta file
-    ## In order to do this we have to go through a little process:
-    ##   1) Get the unmapped reads and convert to bam
-    ##   2) Sort them 
-    ##   3) Dump bam to fastq
-
-    ## Step 1 get unmapped reads with samtools view
-    ##   -b = write out to .bam
-    ##   -f = Select only reads with associated flags set (0x4 means unmapped)
-#    cmd = data.samtools+\
-#        " view -b -f 0x4 "+samhandle+\
-#            " > " + unmapped_bamhandle
-#    subprocess.call(cmd, shell=True,
-#                         stderr=subprocess.STDOUT,
-#                         stdout=subprocess.PIPE)
 
     ## Step 2 sort unmapped bam
     ##   -T = Temporary file name, this is required by samtools, you can ignore it
