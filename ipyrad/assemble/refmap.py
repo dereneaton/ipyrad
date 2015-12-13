@@ -232,7 +232,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
             1       116202035       116202060
 
         The structure here is copied from multi_muscle_align. Each thread will
-        run on 1000 clusters.
+        run on 100 regions.
     """
 
     lbview = ipyclient.load_balanced_view()
@@ -279,7 +279,8 @@ def get_aligned_reads( args ):
     6) Append to the clustS.gz file.
     """
 
-    import ipyrad.assemble.refmap
+    #reload(ipyrad.assemble.refmap)
+    #import ipyrad.assemble.refmap
     data, sample, regions = args
     ## Keep track of all the derep'd fasta files per stack, we'll concatenate them
     ## all to the end of the clustS.gz file at the very end of the process
@@ -294,15 +295,19 @@ def get_aligned_reads( args ):
 
         chrom, region_start, region_end = line.strip().split()[0:3]
 
-        pileup_file, read_labels = bam_to_pileup( data, sample, chrom, region_start, region_end )
+        aligned_seqs, read_labels = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
 
+        # This whole block is getting routed around at this point. I'm not deleting it cuz
+        # i'm precious about it, and cuz if we ever decide to use pileup to call snps it could
+        # be useful. The next two functions generate pileups per region and then backtransform
+        # pileup to aligned fasta.
+        #pileup_file, read_labels = bam_to_pileup( data, sample, chrom, region_start, region_end )
         ## Test the return from bam_to_pileup. If mindepth isn't satisfied this function will return
         ## an empty string and empty list. In this case just bail out on this pileup, bad data.
-        if pileup_file == "":
-            LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, region_start, region_end )
-            continue
-
-        aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
+        #if pileup_file == "":
+        #    LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, region_start, region_end )
+        #    continue
+        #aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
 
         aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
 
@@ -314,8 +319,6 @@ def get_aligned_reads( args ):
         ## TODO: Cleanup all the nasty files hanging around.
 
     append_clusters( data, sample, derep_fasta_files )
-
-
 
 
 def bedtools_merge( data, sample):
@@ -334,6 +337,33 @@ def bedtools_merge( data, sample):
     LOGGER.debug( "Got # regions: %s", str(len(result)))
     return result
 
+def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
+    """ Take the chromosome position, and start and end bases and output sequences
+    of all reads that overlap these sites. This is the command we're building:
+
+        samtools view 1A_sorted.bam 1:116202035-116202060
+
+    We also have to track the names of each read name (QNAME) in this region, 
+    so we can reconstruct the fasta downstream. This command will output all
+    overlapping reads in headerless sam format. QNAME is the first field and
+    sequence data is the 9th.
+    """
+    LOGGER.debug( "Entering bam_region_to_fasta: %s %s %s %s", sample.name, chrom, region_start, region_end )
+
+    cmd = data.samtools+\
+        " view "+\
+        sample.files.mapped_reads+\
+        " " + chrom + ":" + region_start + "-" + region_end
+    result = subprocess.check_output(cmd, shell=True,
+                                          stderr=subprocess.STDOUT)
+
+    # Use list comprehension to pull out the zeroth/ninth element of each row
+    # TODO: Easy optimization here, here's probably a "smart" way to do this in one line.
+    read_labels = [x.split("\t")[0] for x in result.strip("\n").split("\n")]
+    sequence_data = [x.split("\t")[9] for x in result.strip("\n").split("\n")]
+
+    return sequence_data, read_labels
+
 def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     """ Take the chromosome position, and start and end bases and output a pileup
     of all reads that overlap these sites. This is the command we're building:
@@ -345,6 +375,9 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     overlapping reads in headerless sam format. QNAME is the first field.
 
         samtools view 1A_sorted.bam 1:116202035-116202060
+
+    NB: This function is not currently used in the pipeline. It works good tho,
+        so I'm keeping it around in case we need it in the future.
     """
     LOGGER.debug( "Entering bam_to_pileup: %s %s %s %s", sample.name, chrom, region_start, region_end )
 
@@ -398,6 +431,12 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
 
 
 def mpileup_to_fasta( data, sample, pileup_file ):
+    """ Takes a pileup file and decompiles it to fasta. It is currently "working"
+    but there are some bugs. If you want to actually use this it'll need some tlc.
+    
+    NB: This function is not currently used in the pipeline. It's a good idea tho,
+        so I'm keeping it around in case we need it in the future.
+    """
     LOGGER.debug( "Entering mpileup_to_fasta: %s %s", sample.name, pileup_file )
 
     with open( pileup_file, 'r' ) as pfile:
@@ -588,9 +627,13 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
     return(outfile)
 
 def append_clusters( data, sample, derep_fasta_files ):
+    """ Append derep'd mapped fasta stacks to the clust.gz file.
+    This goes back into the pipeline _before_ the call to muscle
+    for alignment.
+    """
     ## get clustfile
     sample.files.clusters = os.path.join(data.dirs.clusts,
-                                         sample.name+".clustS.gz")
+                                         sample.name+".clust.gz")
 
     ## A little bit of monkey business here to get the expected
     ## format right. Downstream expects name lines to end with

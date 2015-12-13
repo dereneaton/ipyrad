@@ -402,18 +402,18 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                 raise SystemExit("step3 clustering error.")
     del threaded_view 
 
+    ## If reference sequence is specified then pull in alignments from 
+    ## mapped bam files and write them out to the clust.gz files to fold
+    ## them back into the pipeline.
+    if not data.paramsdict["assembly_method"] == "denovo":
+        for sample in samples:
+            finalize_aligned_reads(data, sample, ipyclient)
+
     ## call to ipp for aligning
     #lbview = ipyclient.load_balanced_view()
     for sample in samples:
         multi_muscle_align(data, sample, ipyclient)
     #del lbview
-
-    ## If reference sequence is specified then pull in alignments from 
-    ## mapped bam files and write them out to the clustS files to fold
-    ## them back into the pipeline.
-    if not data.paramsdict["assembly_method"] == "denovo":
-        for sample in samples:
-            finalize_aligned_reads(data, sample, ipyclient)
 
     ## write stats to samples
     for sample in samples:
