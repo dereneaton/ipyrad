@@ -10,11 +10,11 @@ from __future__ import print_function
 from collections import OrderedDict
 
 
-def get_params_info(param=""):
+def paramsinfo(param=""):
     """ Returns detailed information for the numbered parameter. 
         Further information is available in the tutorial."""
 
-    paramsinfo = OrderedDict([
+    pinfo = OrderedDict([
     ("1", """
         (1) working_directory ------------------------------------------------
         Path to the working directory where all data files will be saved. 
@@ -223,17 +223,17 @@ def get_params_info(param=""):
     ])
 
     if param == "*":
-        for key in paramsinfo:
-            print(paramsinfo[str(key)])
+        for key in pinfo:
+            print(pinfo[str(key)])
     elif param:
         try: 
-            print(paramsinfo[str(param)])
+            print(pinfo[str(param)])
         except (KeyError, ValueError) as err:
             print("\tKey name/number not recognized", err)
     else:
         print("Enter a name or number for explanation of the parameter\n")
-        for key in paramsinfo:
-            print(paramsinfo[str(key)].split("\n")[1][2:-10])
+        for key in pinfo:
+            print(pinfo[str(key)].split("\n")[1][2:-10])
 
 
 if __name__ == "__main__":

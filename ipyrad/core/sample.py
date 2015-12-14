@@ -26,7 +26,7 @@ class Sample(object):
                    "refseq_mapped_reads",
                    "refseq_unmapped_reads",
                    "clusters_total",
-                   "clusters_kept",
+                   "clusters_hidepth",
                    "hetero_est",
                    "error_est",
                    "reads_consens",])

@@ -591,7 +591,7 @@ def collate_tmps(args):
 
 
 
-def prechecks(data, preview):
+def prechecks(data):
     """ todo before starting analysis """
     ## check for data
     assert glob.glob(data.paramsdict["raw_fastq_path"]), \
@@ -624,13 +624,6 @@ def prechecks(data, preview):
         raws = combinefiles(data.paramsdict["raw_fastq_path"])
     else:
         raws = zip(glob.glob(data.paramsdict["raw_fastq_path"]), iter(int, 1))
-
-    ## preview rawdata files
-    if preview:
-        for sample in data.barcodes:
-            print("preview:", sample, data.barcodes[sample])
-        for rawfile in raws:
-            print("preview:", rawfile)
 
     ## make list of all perfect matching cut sites
     cut1, _ = [ambigcutters(i) for i in \
@@ -762,18 +755,16 @@ def make_stats(data, raws):
 
 
 
-def run(data, preview, ipyclient):
+def run(data, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
-    raws, longbar, cut1 = prechecks(data, preview)
+    raws, longbar, cut1 = prechecks(data)
 
     ## nested structure to prevent abandoned temp files
     try: 
         ## splits up all files into chunks, returns list of list
         ## of chunks names in tuples
-        if preview:
-            print('splitting large files')
         datatuples = parallel_chunker(data, raws, ipyclient) 
 
         filenum = 0            
@@ -784,8 +775,8 @@ def run(data, preview, ipyclient):
                     parallel_sorter(data, rawfilename, chunks, cutter,
                                     longbar, filenum, ipyclient)
             filenum += 1
-            ## combine tmps for ambiguous cuts
-            ## TODO: somefunc()
+            ## TODO: combine tmps for ambiguous cuts
+            ## ...
         ## collate tmps back into one file
         parallel_collate(data, ipyclient)
         #collate_tmps(data, paired)

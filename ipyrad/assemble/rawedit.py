@@ -390,7 +390,7 @@ def nfilter(data, read1, read2, nreplace=True):
 
 
 
-def prechecks(data, preview):
+def prechecks(data):
     """ checks before starting analysis """
     ## link output directories 
     data.dirs.edits = os.path.join(os.path.realpath(
@@ -408,14 +408,13 @@ def roundup(num):
 
 
 
-def run_full(data, sample, ipyclient, nreplace):
+def run_full(data, sample, nreplace, ipyclient):
     """ 
     Splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them .
     """
     ## before starting
-    preview = 0
-    prechecks(data, preview)
+    prechecks(data)
 
     ## load up work queue
     submitted = 0
@@ -560,7 +559,7 @@ def cleanup(data, sample, submitted, results):
 
 
 
-def run(data, samples, ipyclient, force=False, nrep=True):
+def run(data, samples, nreplace, force, ipyclient):
     """ run the major functions for editing raw reads """
     ## print warning if skipping all samples
     if not force:
@@ -578,7 +577,7 @@ def run(data, samples, ipyclient, force=False, nrep=True):
                          +"Too few reads ({}). Use force=True to overwrite.".\
                            format(sample.stats.reads_raw))
                 else:
-                    submitted, results = run_full(data, sample, ipyclient, nrep)
+                    submitted, results = run_full(data, sample, nreplace, ipyclient)
                     cleanup(data, sample, submitted, results)
     else:
         for sample in samples:
@@ -587,7 +586,7 @@ def run(data, samples, ipyclient, force=False, nrep=True):
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))
             else:
-                submitted, results = run_full(data, sample, ipyclient, nrep)
+                submitted, results = run_full(data, sample, nreplace, ipyclient)
                 cleanup(data, sample, submitted, results)
 
 
