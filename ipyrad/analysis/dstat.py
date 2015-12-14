@@ -416,7 +416,7 @@ def loci2loci(handle, taxonlist, maxlen=200):
                 ## make 1s all sites that match to outg
                 tmparr = np.int8(seqs[names.index(taxonlist[itax])] == outvals)
                 ## make 9s all sites that have (N-RKSMW)
-                tmparr[
+                #tmparr[
                 arr[itax][:tmparr.shape[0]] = tmparr
             farr[iloc] = arr
 
