@@ -1,18 +1,16 @@
 #!/usr/bin/env ipython2
 
 ## main ip.functions
-from . import assemble
-from . import plotting
-from . import analysis
-
+from . import load
+from . import assemble 
+#from . import plotting  ## do not autoimport plotting, import as ipp
+#from . import analysis  ## do not autoimport analysis, import as ipa
 
 ## bring nested functions to ip.
 from ipyrad.core.assembly import Assembly
 from ipyrad.core.assembly import merge
 from ipyrad.core.sample import Sample
-from ipyrad.core.paramsinfo import get_params_info
-from ipyrad.core.load_dataobj import load_assembly
-
+from ipyrad.core.paramsinfo import paramsinfo
 
 ## define state vars
 __version__ = "0.0.7"
@@ -22,14 +20,14 @@ __loglevel__ = "DEBUG"   ##  "DEBUG"  "INFO"  "WARN"  "ERROR"
 
 ## this needs to come after __loglevel__ definition
 ## sets log config and prints warning if __loglevel__ is in hackers mode
-import logging
-import logging.config
+import logging as _logging
+import logging.config as _lconfig
 
 ## clear the log file 
 #with open("/tmp/ipyrad_debug.txt", 'w') as logfile: 
 #    pass
 
-logging.config.dictConfig({
+_lconfig.dictConfig({
     'version': 1,              
     'disable_existing_loggers': False,  
 
@@ -60,11 +58,11 @@ logging.config.dictConfig({
     }
 })
 
-LOGGER = logging.getLogger(__name__)
+_LOG = _logging.getLogger(__name__)
 if __loglevel__ == "DEBUG":
-    LOGGER.debug("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
+    _LOG.debug("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
 else:
-    LOGGER.info("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
+    _LOG.info("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
 
 
 if __name__ == "__main__":
