@@ -117,7 +117,7 @@ def muscle_align(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if 'pair' in data.paramsdict["datatype"]:
+            if 'ssss' in seqs:
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
 
@@ -131,23 +131,22 @@ def muscle_align(args):
                 somedic = OrderedDict()
                 for i in range(len(anames)):
                     ## filter for max indels
-                    allindels = aseqs.count('-')
+                    #allindels = aseqs.count('-')
                     intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
                     somedic[anames[i]] = aseqs[i]
                     if intindels > sum(data.paramsdict["max_Indels_locus"]):
                         LOGGER.info("high indels: %s", aseqs[i])
-                        indels[x] = 1
+                        #indels[x] = 1
 
             else:
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(string1)
                 somedic = OrderedDict()
                 for i in range(len(anames)):
-                    ## filter for max indel                    
-                    nind = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    if nind <= sum(list(data.paramsdict["max_Indels_locus"])):
-                        somedic[anames[i]] = aseqs[i]
-                    else:
+                    ## filter for max internal indels
+                    somedic[anames[i]] = aseqs[i]                       
+                    intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
+                    if intindels > sum(data.paramsdict["max_Indels_locus"]):
                         LOGGER.info("high indels: %s", aseqs[i])
 
             for key in somedic.keys():
@@ -217,7 +216,7 @@ def build_clusters(data, sample):
     to create .clust files, which contain un-aligned clusters """
 
     ## derepfile 
-    derepfile = os.path.join(data.dirs.edits, sample.name+".derep")
+    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
     ## vsearch results files
     ufile = os.path.join(data.dirs.clusts, sample.name+".utemp")
@@ -319,7 +318,29 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
 
     :returns: None
     """
-    ## nthreads per job for clustering
+    ## nthreads per job for clustering. Find optimal splitting.
+    ncpus = len(ipyclient.ids)  
+    
+    threads_per = 1
+    if ncpus >= 4:
+        threads_per = 2
+    if ncpus >= 8:
+        threads_per = 4
+    if ncpus >20:
+        threads_per = ncpus/4
+
+    if ncpus > 8:
+        threads_per = 4
+    if ncpus > 12:
+        threads_per = 3
+    if ncpus > 16:
+        threads_per = 4
+    if ncpus > 16:
+        threads_per = 4
+
+    ## we could create something like the following when there are leftovers:
+    ## [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
+
     threaded_view = ipyclient.load_balanced_view(
                     targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
     tpp = len(threaded_view)
@@ -586,7 +607,7 @@ def concat_edits(data, sample):
 def derep_and_sort(data, sample, nthreads):
     """ dereplicates reads and sorts so reads that were highly
     replicated are at the top, and singletons at bottom, writes
-    output to .derep file """
+    output to derep file """
 
     ## reverse complement clustering for some types    
     #if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
@@ -599,12 +620,12 @@ def derep_and_sort(data, sample, nthreads):
 
     ## do dereplication with vsearch
     cmd = data.bins.vsearch+\
-          " -derep_fulllength "+sample.files.edits[0][0]+\
-          reverse+\
-          " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
-          " -sizeout "+\
-          " -threads "+str(nthreads)+\
-          " -fasta_width 0"
+          " -derep_fulllength "+sample.files.edits[0][0]\
+         +reverse \
+         +" -output "+os.path.join(data.dirs.edits, sample.name+"_derep.fastq")\
+         +" -sizeout " \
+         +" -threads "+str(nthreads) \
+         +" -fasta_width 0"
 
     ## run vsearch
     try:
@@ -623,15 +644,15 @@ def cluster(data, sample, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
     values were chosen based on experience, but could be edited by users """
     ## get files
-    derephandle = os.path.join(data.dirs.edits, sample.name+".derep")
+    derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## datatype variables
-    if data.paramsdict["datatype"] in ['gbs']:
+    if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
         cov = " -query_cov .35 " 
-    elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
+    elif data.paramsdict["datatype"] == 'pairgbs':
         reverse = "  -strand both "
         cov = " -query_cov .60 " 
     else:  ## rad, ddrad
@@ -658,8 +679,7 @@ def cluster(data, sample, noreverse, nthreads):
         " -threads "+str(nthreads)+\
         " -usersort "+\
         " -notmatched "+temphandle+\
-        " -fasta_width 0" \
-        " --samout "+temphandle.replace("htemp", "sam")
+        " -fasta_width 0"
 
     ## run vsearch
     try:

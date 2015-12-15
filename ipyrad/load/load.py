@@ -34,6 +34,8 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
                 data._ipclusterid = ipcontroller_init(nproc="",
                                                       controller=controller,
                                                       quiet=quiet)
+            else:
+                data._ipclusterid = ""
 
         except (IOError, AttributeError):
             pass

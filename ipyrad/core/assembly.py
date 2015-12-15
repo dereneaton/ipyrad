@@ -162,8 +162,10 @@ class Assembly(object):
                        ("trim_overhang", (1, 2, 2, 1)), 
                        ("hierarchical_clustering", 0),
                        ("assembly_method", "denovo"),
-                       ("reference_sequence", "")
+                       ("reference_sequence", ""), 
+                       ("edit_cutsites", (0, 0))
         ])
+
 
 
     def __str__(self):
@@ -225,6 +227,9 @@ class Assembly(object):
             additional fastq files to a Sample (file names should be formatted 
             the same as usual, e.g., [name]_R1_[optional].fastq.gz).
 
+        force : bool
+            ...
+
         Returns
         -------
         str
@@ -243,12 +248,12 @@ class Assembly(object):
                 +"add additional files to existing Samples.")
 
         ## make sure there is an out directory
-        data.dirs.fastqs = os.path.join(data.paramsdict["working_directory"],
-                                        data.name+"_fastqs")
-        if not os.path.exists(data.paramsdict["working_directory"]):
-            os.mkdir(data.paramsdict["working_directory"])
-        if not os.path.exists(data.dirs.fastqs):
-            os.mkdir(data.dirs.fastqs)
+        self.dirs.fastqs = os.path.join(self.paramsdict["working_directory"],
+                                        self.name+"_fastqs")
+        if not os.path.exists(self.paramsdict["working_directory"]):
+            os.mkdir(self.paramsdict["working_directory"])
+        if not os.path.exists(self.dirs.fastqs):
+            os.mkdir(self.dirs.fastqs)
 
 
         ## get path to data files
@@ -295,6 +300,12 @@ class Assembly(object):
         created = 0
         linked = 0
         appended = 0
+
+        ## clear samples if force
+        if force:
+            self.samples = {}
+
+        ## iterate over input files
         for fastqtuple in list(fastqs):
             assert isinstance(fastqtuple, tuple), "fastqs not a tuple."
             ## local counters
@@ -611,7 +622,7 @@ class Assembly(object):
 
 
         elif param in ['21', 'max_Ns_consens']:
-            newvalue = tuplecheck(newvalue)                        
+            newvalue = tuplecheck(newvalue, int)                        
             assert isinstance(newvalue, tuple), \
             "max_Ns_consens should be a tuple e.g., (8,8)"
             self.paramsdict['max_Ns_consens'] = newvalue
@@ -619,7 +630,7 @@ class Assembly(object):
 
 
         elif param in ['22', 'max_Hs_consens']:
-            newvalue = tuplecheck(newvalue)                        
+            newvalue = tuplecheck(newvalue, int)                        
             assert isinstance(newvalue, tuple), \
             "max_Hs_consens should be a tuple e.g., (1,2,2,1)"
             self.paramsdict['max_Hs_consens'] = newvalue
@@ -627,7 +638,7 @@ class Assembly(object):
 
 
         elif param in ['23', 'max_SNPs_locus']:
-            newvalue = tuplecheck(newvalue)                        
+            newvalue = tuplecheck(newvalue, int)                        
             assert isinstance(newvalue, tuple), \
             "max_SNPs_locus should be a tuple e.g., (20,20)"
             self.paramsdict['max_SNPs_locus'] = newvalue
@@ -635,7 +646,7 @@ class Assembly(object):
 
 
         elif param in ['24', 'max_Indels_locus']:
-            newvalue = tuplecheck(newvalue)            
+            newvalue = tuplecheck(newvalue, int)            
             assert isinstance(newvalue, tuple), \
             "max_Indels_locus should be a tuple e.g., (5, 100)" 
             self.paramsdict['max_Indels_locus'] = newvalue
@@ -643,7 +654,7 @@ class Assembly(object):
 
 
         elif param in ['25', 'trim_overhang']:
-            newvalue = tuplecheck(newvalue)
+            newvalue = tuplecheck(newvalue, int)
             assert isinstance(newvalue, tuple), \
             "trim_overhang should be a tuple e.g., (1,2,2,1)"
             self.paramsdict['trim_overhang'] = newvalue
@@ -670,6 +681,15 @@ class Assembly(object):
        +"You entered: %s\n" % fullrawpath)
             self.paramsdict['reference_sequence'] = fullrawpath
             self._stamp("[28] set to "+fullrawpath)
+
+
+        elif param in ['29', 'edits_cutsites']:
+            newvalue = tuplecheck(newvalue)
+            assert isinstance(newvalue, tuple), \
+            "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
+            .format(newvalue)
+            self.paramsdict['edit_cutsites'] = newvalue
+            self._stamp("[29] set to {}".format(newvalue))
 
 
 
@@ -780,6 +800,7 @@ class Assembly(object):
                 stepfunc(*args)
         except (KeyboardInterrupt, SystemExit, AttributeError):
             logging.error("assembly interrupted.")
+            ipyclient.abort
             raise
         except UnboundLocalError as inst:
             print(\
@@ -1253,19 +1274,23 @@ def index_reference_sequence(self):
 
 
 
-def tuplecheck(newvalue, conv=int):
+def tuplecheck(newvalue, dtype=None):
     """ Takes a string argument and returns value as a tuple. 
     Needed for paramfile conversion from CLI to set_params args """
     if isinstance(newvalue, str):
         newvalue = newvalue.rstrip(")").strip("(")
-        try:
-            newvalue = tuple([conv(i) for i in newvalue.split(",")])
-        except TypeError:
-            newvalue = tuple(conv(newvalue))
-        except Exception as inst:
-            LOGGER.info(inst)
-            sys.exit("\nError: arg `{}` is not formatted correctly.\n({})\n"\
+        if dtype:
+            try:
+                newvalue = tuple([dtype(i) for i in newvalue.split(",")])
+            except TypeError:
+                newvalue = tuple(dtype(newvalue))
+            except Exception as inst:
+                LOGGER.info(inst)
+                raise SystemExit(\
+                "\nError: arg `{}` is not formatted correctly.\n({})\n"\
                      .format(newvalue, inst))
+        else:
+            newvalue = tuple(newvalue)
     return newvalue
 
 

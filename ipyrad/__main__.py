@@ -12,14 +12,19 @@ import logging
 import sys
 import os
 
+# pylint: disable=W0212
+
 LOGGER = logging.getLogger(__name__)
 
 
 def parse_params(args):
     """ Parse the params file args, create and return Assembly object."""
     ## check that params.txt file is correctly formatted.
-    with open(args.params) as paramsin:
-        plines = paramsin.readlines()
+    try:
+        with open(args.params) as paramsin:
+            plines = paramsin.readlines()
+    except IOError as _:
+        sys.exit("No params file found")
 
     ## check header: big version changes can be distinguished by the header
     assert len(plines[0].split()[0]) == 6, \
@@ -80,9 +85,9 @@ def getassembly(args, parsedict):
             ## try loading an existing one
             try:
                 data = ip.load.load_assembly(os.path.join(parsedict['1'], 
-                                                     parsedict['14']))
+                                                     parsedict['14']), 
+                                                     launch=False)
                                                      #quiet=True)
-                                                     #launch=True)
 
             ## if not found then create a new one
             except AssertionError:
@@ -92,9 +97,9 @@ def getassembly(args, parsedict):
     else:
         try:
             data = ip.load.load_assembly(os.path.join(parsedict['1'], 
-                                                 parsedict['14']))
+                                                 parsedict['14']),
+                                                 launch=False)
                                                  #quiet=True)
-                                                 #launch=True)
         except AssertionError:
             data = ip.Assembly(parsedict['14'])
 
@@ -232,9 +237,9 @@ def main():
                 ## might want to use custom profiles instead of ...
                 data._ipclusterid = ipcontroller_init(nproc=args.cores,
                                                       controller=controller)
-                ## indicate print headers
+                ## set to print headers
                 data._headers = 1
-                
+
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force)

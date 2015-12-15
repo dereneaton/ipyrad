@@ -29,15 +29,17 @@ ipyrad_test                ## [14] prefix name for saved output files
 32                         ## [18] minimum length of reads after adapter trim
 2                          ## [19] ploidy: 1=haploid, 2=diploid, >2=(see docs)
 1000                       ## [20] max cluster depth within samples
-5                          ## [21] max Ns (uncalled bases) in consensus reads
-5                          ## [22] max Hs (heterozygotes) in consensus reads
-100,100                    ## [23] max SNPs in a locus (first,second for pairs)
-5,100                      ## [24] max indels in a locus ("")
-1,2,2,1                    ## [25] trim overhang (see docs)
+5                          ## [21] maxNs (uncalled bases) in consensus (R1, R2)
+5                          ## [22] maxHs (heterozygotes) in consensus (R1, R2)
+(100,100)                  ## [23] maxSNPs in a locus (R1, R2)
+(5,100)                    ## [24] maxIndels in a locus (R1, R2)
+(1,2,2,1)                  ## [25] trim overhang (see docs) (R1>, <R1, R2>, <R2)
 0                          ## [26] hierarchical clustering (prob deprecated...)
 denovo                     ## [27] clustering method (denovo, reference, hybrid)
                            ## [28] reference genome file
-lpn                        ## [29] output formats (see docs)
+(0,0)                      ## [29] edit cut-sites (R1, R2) (see docs)
+lpn                        ## [30] output formats (see docs)
+
 ------ optional: list group/clade assignments below this line (see docs) ---
 """ % version
 
