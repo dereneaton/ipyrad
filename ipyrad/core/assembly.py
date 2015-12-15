@@ -242,6 +242,15 @@ class Assembly(object):
                 +"Use force=True to replace all files, or append=True to "
                 +"add additional files to existing Samples.")
 
+        ## make sure there is an out directory
+        data.dirs.fastqs = os.path.join(data.paramsdict["working_directory"],
+                                        data.name+"_fastqs")
+        if not os.path.exists(data.paramsdict["working_directory"]):
+            os.mkdir(data.paramsdict["working_directory"])
+        if not os.path.exists(data.dirs.fastqs):
+            os.mkdir(data.dirs.fastqs)
+
+
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
