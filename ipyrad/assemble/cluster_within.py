@@ -983,20 +983,22 @@ def run(data, samples, noreverse, force, ipyclient):
     for _, sample in samples:
         if not force:
             if sample.files.clusters:
-                print("Skipping {}; aleady clustered.".\
+                print("  Skipping {}; aleady clustered.".\
                       format(sample.name))
             else:
-                subsamples.append(sample)
+                if sample.stats.reads_filtered:
+                    subsamples.append(sample)
         else:
             ## force to overwrite
-            subsamples.append(sample)
+            if sample.stats.reads_filtered:            
+                subsamples.append(sample)
 
     ## run subsamples 
-    assert subsamples, "No Samples ready to be clustered. To rewrite existing" \
-                      +"data use force=True."
-    args = [data, subsamples, ipyclient, noreverse, force]
-    split_among_processors(*args)
-
+    if not subsamples:
+        print("  No Samples ready to be clustered. First run step2().")
+    else:
+        args = [data, subsamples, ipyclient, noreverse, force]
+        split_among_processors(*args)
 
 
 

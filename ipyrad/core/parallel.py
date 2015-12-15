@@ -5,7 +5,7 @@ from __future__ import print_function
 import subprocess
 import psutil
 import atexit
-#import time
+import time
 import sys
 import os
 
@@ -47,23 +47,25 @@ def start(name, nproc, controller, quiet, delay):
     """ Start ipcluster """
     if nproc != None:
         nproc = str(psutil.cpu_count())
+
     standard = ["ipcluster", "start", 
                 "--daemon", 
-                "--delay="+delay,
                 "--cluster-id="+name,
                 "--controller="+controller,
                 "-n", str(nproc)]
 
     try: 
-        subprocess.check_call(" ".join(standard), 
-         	                  shell=True, 
-                              stderr=subprocess.STDOUT)
+        #if not quiet:
+        #    print(standard)
+        LOGGER.info(" ".join(standard))
+        subprocess.check_call(" ".join(standard), shell=True)
         LOGGER.info("%s connection to %s engines [%s]", controller, nproc, name)
-        print("  ipyparallel setup: {} connection to {} engines\n".\
-                 format(controller, nproc))
+        print("  ipyparallel setup: {} connection to {} Engines\n"\
+              .format(controller, nproc))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
+        raise
     except Exception as inst:
         sys.exit("Error launching ipcluster for parallelization:\n({})\n".\
                  format(inst))

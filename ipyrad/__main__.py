@@ -41,7 +41,7 @@ def parse_params(args):
 def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
     try:
-        data = ip.load_assembly(
+        data = ip.load.load_assembly(
                     name=os.path.join(parsedict['1'], 
                                       parsedict['14']),
                     quiet=True, 
@@ -69,7 +69,7 @@ def showstats(parsedict):
 
 def getassembly(args, parsedict):
     """ loads assembly or creates a new one and set its params from 
-    parsedict. Sets Assembly object __ipname__ to custom pid/profile
+    parsedict. Does not launch ipcluster. 
     """
     ## if '1' then do not load existing Assembly
     if '1' in args.steps:
@@ -79,9 +79,10 @@ def getassembly(args, parsedict):
         else:
             ## try loading an existing one
             try:
-                data = ip.load_assembly(os.path.join(parsedict['1'], 
-                                                     parsedict['14']),
-                                                     quiet=True)
+                data = ip.load.load_assembly(os.path.join(parsedict['1'], 
+                                                     parsedict['14']))
+                                                     #quiet=True)
+                                                     #launch=True)
 
             ## if not found then create a new one
             except AssertionError:
@@ -90,9 +91,10 @@ def getassembly(args, parsedict):
     ## otherwise look for existing
     else:
         try:
-            data = ip.load_assembly(os.path.join(parsedict['1'], 
-                                                 parsedict['14']),
-                                                 quiet=True)
+            data = ip.load.load_assembly(os.path.join(parsedict['1'], 
+                                                 parsedict['14']))
+                                                 #quiet=True)
+                                                 #launch=True)
         except AssertionError:
             data = ip.Assembly(parsedict['14'])
 
@@ -224,14 +226,15 @@ def main():
                 else:
                     controller = "Local"
 
-                ## might want to use custom profiles instead of ...
-                _ipclusterid = ipcontroller_init(nproc=args.cores,
-                                                 controller=controller)
-        
                 ## launch or load assembly with custom profile/pid
                 data = getassembly(args, parsedict)
-                data._ipclusterid = _ipclusterid
 
+                ## might want to use custom profiles instead of ...
+                data._ipclusterid = ipcontroller_init(nproc=args.cores,
+                                                      controller=controller)
+                ## indicate print headers
+                data._headers = 1
+                
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force)

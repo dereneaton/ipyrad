@@ -414,6 +414,7 @@ def build_input_file(data, samples, outgroups, randomseed):
     ## remove outgroup sequences, add back in later to bottom after shuffling
     ## outgroups could be put to end of sorted list
     conshandles.sort()
+    assert conshandles, "no consensus files found"
                 
     ## output file for consens seqs from all taxa in consfiles list
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")

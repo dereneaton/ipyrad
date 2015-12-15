@@ -22,6 +22,7 @@ import ipyparallel as ipp
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.core.sample import Sample
+import ipyrad as ip
 from .. import assemble
 
 import logging
@@ -96,6 +97,9 @@ class Assembly(object):
         self._ipclusterid = ""
         self._ipprofile = ""
 
+        ## print headers
+        self._headers = 0
+
         ## get binaries of dependencies
         self.bins = ObjDict()
         binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools"]
@@ -112,6 +116,9 @@ class Assembly(object):
 
         ## multiplex files linked
         self.barcodes = ObjDict()
+
+        ## outfiles locations
+        self.outfiles = ObjDict()
 
         ## an object for storing data directories for this Assembly
         self.dirs = ObjDict()
@@ -365,13 +372,15 @@ class Assembly(object):
             print("Barcodes file not found:", self.paramsdict["barcodes_path"])
 
         ## parse barcodefile
-        bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
-        bdf = bdf.dropna()
-        ## make sure upper case
-        bdf[1] = bdf[1].str.upper()
-        ## set attribute on Assembly object
-        self.barcodes = dict(zip(bdf[0], bdf[1]))
-
+        try:
+            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
+            bdf = bdf.dropna()
+            ## make sure upper case
+            bdf[1] = bdf[1].str.upper()
+            ## set attribute on Assembly object
+            self.barcodes = dict(zip(bdf[0], bdf[1]))
+        except ValueError:
+            print("Barcodes file not recognized.")
 
 
     def get_params(self, param=""):
@@ -700,27 +709,49 @@ class Assembly(object):
 
 
 
-    def _launch(self, tries):
+    def _launch(self, inittries):
         """ launch ipyclient.
         launch within try statement in case engines aren't ready yet
         and try 30 one second sleep/wait cycles before giving up on engines
         """
+        tries = inittries
         while tries:
             try:
                 ## launches ipcluster with arguments if present in self
                 clusterargs = [self._ipclusterid, self._ipprofile]
-                argnames = ["--cluster-id", "--profile"]
+                argnames = ["cluster_id", "profile"]
                 args = {key:value for key, value in zip(argnames, clusterargs)}
                 ipyclient = ipp.Client(**args)
-
                 if tries > 1:
-                    LOGGER.debug('try %s: starting controller', tries)                  
-                tries = 0
+                    LOGGER.info('try %s: starting controller', tries)
                 ## make sure all engines are connected
                 try:
-                    assert ipyclient.ids
-                    LOGGER.info('OK! Connected to (%s) engines', 
-                                len(ipyclient.ids))
+                    assert ipyclient.ids                    
+                    if tries != inittries:                        
+                        ## get initial number of ids
+                        ## ugly hack to find all engines while they're spinng up
+                        ## waiting on ipython members to answer my question 
+                        ## about better ways to do this...
+                        initid = ipyclient.ids
+                        if len(initid) > 10:
+                            LOGGER.warn("waiting 3 seconds to find Engines")
+                            time.sleep(3)
+                        else:
+                            time.sleep(1)                                            
+                        try:
+                            ## make sure more engines aren't found
+                            assert len(ipyclient.ids) == len(initid)
+                            LOGGER.warn('OK! Connected to (%s) engines', 
+                                        len(ipyclient.ids))
+                            tries = 0
+                        except AssertionError as _: 
+                            LOGGER.warn('finding engines (%s, %s)', 
+                                         len(initid), len(ipyclient.ids))
+                            raise
+                    else:
+                        LOGGER.debug('OK! Connected to (%s) engines', 
+                                    len(ipyclient.ids))
+                        tries = 0                        
                 except AssertionError as _: 
                     LOGGER.debug('connected to %s engines', len(ipyclient.ids))
                     raise
@@ -742,9 +773,10 @@ class Assembly(object):
             logging.error("assembly interrupted.")
             raise
         except UnboundLocalError as inst:
-            print("Error: ipcluster does not appear to be running. When using "\
-                +"the API you must run `ipcluster start` outside of "\
-                +"IPython/Jupyter to launch parallel engines. (See Docs) \n")
+            print(\
+                "\nError: ipcluster does not appear to be running. When using "\
+                +"\nthe API you must run `ipcluster start` outside of "\
+                +"\nIPython/Jupyter to launch parallel engines. (See Docs) \n")
         except Exception as inst:
             print("other error: %s" % inst)
             raise
@@ -771,7 +803,8 @@ class Assembly(object):
                     +"Samples already found in `{}` ".format(self.name)\
                     +"(see --force).")
             else:
-                print(msg1)
+                if self._headers:
+                    print(msg1)
                 assemble.demultiplex.run(self, ipyclient)
                 self._stamp("s1_demultiplexing:")
         ## Creating new Samples
@@ -781,14 +814,16 @@ class Assembly(object):
                 try:
                     self.link_fastqs(path=os.path.join(
                         self.paramsdict["sorted_fastq_path"], "*"))
-                    print(msg2, "\n  linking files from {}".\
+                    if self._headers:
+                        print(msg2, "\n  linking files from {}".\
                           format(self.paramsdict["sorted_fastq_path"]))
                 except AssertionError as _:
                     print("failed to link fastqs")
                     raise
             ## otherwise do the demultiplexing
             else:
-                print(msg1)                        
+                if self._headers:
+                    print(msg1)                        
                 assemble.demultiplex.run(self, ipyclient)
                 self._stamp("s1_demultiplexing:")
 
@@ -801,7 +836,8 @@ class Assembly(object):
         =1 will be edited, all others are skipped. To overwrite data
         use the argument force=True. 
         """
-        print("  Step2: Filtering reads ")
+        if self._headers:
+            print("  Step2: Filtering reads ")
         ## if samples not entered use all samples
         if not samples:
             samples = self.samples.keys()
@@ -824,8 +860,8 @@ class Assembly(object):
 
     def _step3func(self, samples, noreverse, force, ipyclient):
         """ step 3: clustering within samples """
-
-        print("  Step3: Clustering/Mapping reads")
+        if self._headers:
+            print("  Step3: Clustering/Mapping reads")
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             assert self.paramsdict['reference_sequence'], \
@@ -849,9 +885,10 @@ class Assembly(object):
 
         ## skip if all are finished
         if not force:
-            if all([i[1].stats.state >= 3 for i in samples]):
-                print("Skipping step3: All {} ".format(len(self.samples))\
+            if all([int(i[1].stats.state) >= 3 for i in samples]):
+                print("  Skipping: All {} ".format(len(self.samples))\
                      +"Samples already clustered in `{}`".format(self.name))
+            
             else:
                 assemble.cluster_within.run(self, samples, noreverse, 
                                             force, ipyclient)
@@ -865,7 +902,8 @@ class Assembly(object):
         """ step 4: Joint estimation of error rate and heterozygosity. 
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """
-        print("  Step4: Joint estimation of error rate and heterozygosity")
+        if self._headers:
+            print("  Step4: Joint estimation of error rate and heterozygosity")
 
         ## sampling
         if samples:
@@ -897,6 +935,9 @@ class Assembly(object):
         """ step 5: Consensus base calling from clusters within samples.
         If you want to overwrite data for a file, first set its state to 
         3 or 4. e.g., data.samples['sample'].stats['state'] = 3 """
+        ## print header
+        if self._headers:
+            print("  Step5: Consensus base calling ")
 
         ## if samples not entered use all samples
         if not samples:
@@ -927,8 +968,9 @@ class Assembly(object):
         "to subselect samples enter as a list, e.g., [A, B]."
         samples = [self.samples[key] for key in samples]
 
-        print("  Step 6: clustering across {} samples at {} similarity".\
-        format(len(samples), self.paramsdict["clust_threshold"]))
+        if self._headers:
+            print("  Step 6: clustering across {} samples at {} similarity".\
+            format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## require Samples 
         assert samples, "No Samples in {}".format(self.name)
@@ -939,7 +981,7 @@ class Assembly(object):
 
         if not force:
             if os.path.exists(self.database):
-                print("Skipping step6: Clust file already exists:"\
+                print("  Skipping step6: Clust file already exists:"\
                       +"{}\n".format(self.database))
             else:
                 assemble.cluster_across.run(self, samples, noreverse,
@@ -952,19 +994,19 @@ class Assembly(object):
 
     def step1(self, force=False):
         """ test """
-        self._clientwrapper(self._step1func, [force], 5)
+        self._clientwrapper(self._step1func, [force], 10)
 
     def step2(self, samples=None, nreplace=True, force=False):
         """ test """
-        self._clientwrapper(self._step2func, [samples, nreplace, force], 2)
+        self._clientwrapper(self._step2func, [samples, nreplace, force], 10)
 
     def step3(self, samples=None, noreverse=False, force=False):
         """ test """
-        self._clientwrapper(self._step3func, [samples, noreverse, force], 2)
+        self._clientwrapper(self._step3func, [samples, noreverse, force], 10)
 
     def step4(self, samples=None, subsample=None, force=False):
         """ test """
-        self._clientwrapper(self._step4func, [samples, subsample, force], 2)
+        self._clientwrapper(self._step4func, [samples, subsample, force], 10)
 
     def step5(self, samples=None, force=False):
         """ test """
@@ -973,17 +1015,17 @@ class Assembly(object):
     def step6(self, samples=None, noreverse=False, force=False, randomseed=0):
         """ test """
         self._clientwrapper(self._step6func, [samples, noreverse, force,
-                                              randomseed], 5)
+                                              randomseed], 10)
 
     def step7(self, samples=None, noreverse=False, force=False, randomseed=0):
         """ test """
         self._clientwrapper(self._step6func, [samples, noreverse, force,
-                                              randomseed], 5)
+                                              randomseed], 10)
 
 
 
 
-    def run(self, steps=0, force=False, preview=False):
+    def run(self, steps=0, force=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
@@ -992,19 +1034,19 @@ class Assembly(object):
             steps = list(steps)
 
         if '1' in steps:
-            self.step1(preview=preview)
+            self.step1()
         if '2' in steps:
-            self.step2(force=force, preview=preview)
+            self.step2(force=force)
         if '3' in steps:
-            self.step3(force=force, preview=preview)
+            self.step3(force=force)
         if '4' in steps:
-            self.step4(force=force, preview=preview)            
+            self.step4(force=force)
         if '5' in steps:
-            self.step5(force=force, preview=preview)            
-        # if '6' in steps:
-        #     self.step6()            
-        # if '7' in steps:
-        #     self.step7()
+            self.step5(force=force)
+        if '6' in steps:
+            self.step6()            
+        if '7' in steps:
+            self.step7()
 
 
 
@@ -1194,8 +1236,8 @@ def index_reference_sequence(self):
         cmd = self.smalt+\
             " index "\
             " -s 2 "+\
-	    refseq_file+" "+\
-	    refseq_file
+        refseq_file+" "+\
+        refseq_file
 
         print(cmd)
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)

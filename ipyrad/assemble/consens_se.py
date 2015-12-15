@@ -714,12 +714,13 @@ def run_full(data, sample, ipyclient):
 
 def run(data, samples, force, ipyclient):
     """ checks if the sample should be run and passes the args """
-
     ## message to skip all samples
+    skip = 0
     if not force:
         if all([i.stats.state >= 5 for i in samples]):
-            print("Skipping step5: All {} ".format(len(data.samples))\
+            print("  Skipping step5: All {} ".format(len(data.samples))\
                  +"Samples already have consens reads ")
+            skip = 1
 
     ## prepare dirs
     data.dirs.consens = os.path.join(data.dirs.working, data.name+"_consens")
@@ -741,42 +742,43 @@ def run(data, samples, force, ipyclient):
             sample.stats.error_est = 0.0001
 
     if data.paramsdict["ploidy"] == 1:
-        print("  Haploid base calls and paralog filter (max haplos = 1)")
+        print("      Haploid base calls and paralog filter (max haplos = 1)")
     elif data.paramsdict["ploidy"] == 2:
-        print("  Diploid base calls and paralog filter (max haplos = 2)")
+        print("      Diploid base calls and paralog filter (max haplos = 2)")
     elif data.paramsdict["ploidy"] == 2:
-        print("  Diploid base calls and no paralog filter "\
+        print("      Diploid base calls and no paralog filter "\
                 "(max haplos = {})".format(data.paramsdict["ploidy"]))
-    print("  error rate (mean, std):  " \
+    print("      error rate (mean, std):  " \
              +"{:.5f}, ".format(data.stats.error_est.mean()) \
              +"{:.5f}\n".format(data.stats.error_est.std()) \
-          +"  heterozyg. (mean, std):  " \
+         +"      heterozyg. (mean, std):  " \
              +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
-             +"{:.5f}\n".format(data.stats.hetero_est.std()))
+             +"{:.5f}".format(data.stats.hetero_est.std()))
 
-    ## Samples on queue
-    for sample in samples:
-        ## not force need checks
-        if not force:
-            if sample.stats.state >= 5:
-                print("Skipping Sample {}; ".format(sample.name)
+
+    if not skip:
+        ## Samples on queue
+        for sample in samples:
+            ## not force need checks
+            if not force:
+                if sample.stats.state >= 5:
+                    print("Skipping Sample {}; ".format(sample.name)
                      +"Already has consens reads. Use force=True to overwrite.")
-            elif sample.stats.clusters_hidepth < 100:
-                print("Skipping Sample {}; ".format(sample.name)
-                     +"Too few clusters ({}). Use force=True to run anyway.".\
+                elif sample.stats.clusters_hidepth < 100:
+                    print("Skipping Sample {}; ".format(sample.name)
+                       +"Too few clusters ({}). Use force=True to run anyway.".\
                        format(sample.stats.clusters_hidepth))
+                else:
+                    statsdicts = run_full(data, sample, ipyclient)
+                    cleanup(data, sample, statsdicts)
             else:
-                statsdicts = run_full(data, sample, ipyclient)
-                cleanup(data, sample, statsdicts)
-
-        else:
-            if not sample.stats.clusters_hidepth:
-                print("Skipping Sample {}; ".format(sample.name)
-                     +"No clusters found in file {}".\
-                       format(sample.files.clusters_hidepth))
-            else:
-                statsdicts = run_full(data, sample, ipyclient)
-                cleanup(data, sample, statsdicts)
+                if not sample.stats.clusters_hidepth:
+                    print("Skipping Sample {}; ".format(sample.name)
+                         +"No clusters found in file {}".\
+                           format(sample.files.clusters_hidepth))
+                else:
+                    statsdicts = run_full(data, sample, ipyclient)
+                    cleanup(data, sample, statsdicts)
 
 
 
