@@ -235,6 +235,14 @@ class Assembly(object):
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
 
+        ## make sure there is an out directory
+        self.dirs.fastqs = os.path.join(self.paramsdict["working_directory"],
+                                        self.name+"_fastqs")
+        if not os.path.exists(self.paramsdict["working_directory"]):
+            os.mkdir(self.paramsdict["working_directory"])
+        if not os.path.exists(self.dirs.fastqs):
+            os.mkdir(self.dirs.fastqs)
+
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
             path += "*"

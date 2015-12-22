@@ -558,7 +558,6 @@ def merge_fastq_pairs(data, sample):
 
 def concat_edits(data, sample):
     """ concatenate if multiple edits files for a sample """
-    LOGGER.debug("Entering concat_edits()")
     LOGGER.debug("Entering concat_edits: %s", sample.name)
     ## if more than one tuple in the list
     if len(sample.files.edits) > 1:
