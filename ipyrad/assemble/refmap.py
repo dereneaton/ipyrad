@@ -22,6 +22,7 @@ from ipyrad.assemble.rawedit import comp
 import logging
 LOGGER = logging.getLogger(__name__)
 
+PREVIEW_TRUNCATE_LENGTH = 10000
 
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
@@ -41,19 +42,42 @@ def mapreads(args):
     ## Set the edited fastq to align for this individual, we set this here
     ## so we can overwrite it with a truncated version if we're in preview mode.
     ## Set the default sample_fastq file to align as the entire original
-    sample_fastq = sample.files.edits[0][0]
+    sample_fastq = [ sample.files.edits[0][0] ]
+
+    ## If pair append R2 to sample_fastq
+    if 'pair' in data.paramsdict["datatype"]:
+        sample_fastq.append( sample.files.edits[0][1] )
+
+
+    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
+    ## might want to preserve the full .fq file in case of a later 'force' command
+    unmapped_fastq_handle = fastq_file = sample.files.edits[0][0]
+
+    ## If it exists, recover the hidden .fq.gz file that contains the original
+    ## data. Also, preserve the unmolested fastq files as .(dot) files in the 
+    ## if it doesn't already exist.
+    for fastq_file in sample_fastq:
+
+        fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
+
+        import shutil
+        if os.path.isfile( fastq_dotfile ): 
+            # .dot file already exists, recover it
+            shutil.copy2( fastq_dotfile, fastq_file )
+        else:
+            # Preserve the original full .fq file as a hidden "dot" file.
+            shutil.copy2( fastq_file, fastq_dotfile )
 
     ## preview
     if preview:
-        LOGGER.info("preview: in run_full, using", nthreads)
+        LOGGER.info( "mapreads() preview - truncating input fq files" )
 
         ## Truncate the input fq.gz so it'll run faster
         ## This function returns the file name of a truncated
         ## fq file. The file should be cleaned up at the end
         ## of at the end of mapreads()
         sample_fastq = preview_truncate_fq( data, sample_fastq )
-        #sys.exit( sample_fastq )
-    LOGGER.debug( "Using fq - %s", sample_fastq )
+
     ## Files we'll use during reference sequence mapping
     ##
     ## samhandle - Raw output from smalt reference mapping
@@ -61,37 +85,23 @@ def mapreads(args):
     ## mapped_bamhandle - bam file with only successfully mapped reads
     ##    In the case of paired end, we only consider pairs where both
     ##    reads map successfully
-    ## sorted_*_bamhandle - Sorted bam files for mapped and unmapped
-    ##    This is a precursor to bam2fq which requires sorted bams
+    ## sorted_bamhandle - Sorted bam file
+    ##    This is a precursor for mpileup (bam must be sorted for piluep to work)
+    ##    I don't think this is strictly necessary any more....
+    ##    TODO: Delete sorting?
     ## unmapped_fastq_handle - The final output file of this function
     ##    writes out unmapped reads to the 'edits' directory as .fq
     ##    which is what downstream analysis expects
     samhandle = os.path.join(data.dirs.refmapping, sample.name+".sam")
     sample.files.unmapped_reads = unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
     sample.files.mapped_reads = mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
-    sorted_unmapped_bamhandle = sample.files["unmapped_reads"]
+    
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
 
     ## TODO, figure out why edits is a tuple? There could be multiple edits files, yes?
     ## but by the time we get to step three they are all collapsed in to one big file
     ## which is the first element of the tuple, yes?
 
-    ##
-    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
-    ## might want to preserve the full .fq file in case of a later 'force' command
-    unmapped_fastq_handle = fastq_file = sample.files.edits[0][0]
-
-    ## Check for a hidden .fastq file, this is the original fq, pre-ref mapping.
-    ## if it exists, recover it. 
-    fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
-
-    import shutil
-    if os.path.isfile( fastq_dotfile ): 
-        # .dot file already exists, recover it
-        shutil.copy2( fastq_dotfile, fastq_file )
-    else:
-        # Preserve the original full .fq file as a hidden "dot" file.
-        shutil.copy2( fastq_file, fastq_dotfile )
 
 ################
 # TODO: Paired end isn't handled yet, but it needs to be.
@@ -121,13 +131,13 @@ def mapreads(args):
     ##  -c #         : fraction of the query read length that must be covered
     ##  -o           : output file
     ##               : Reference sequence
-    ##               : Input file (fq in this case)
+    ##               : Input file(s), in a list. One for forward and one for reverse reads.
     cmd = data.smalt+\
         " map -f sam -n " + str(nthreads) +\
         " -x -c " + str(data.paramsdict['clust_threshold'])+\
         " -o " + samhandle +\
         " " + data.paramsdict['reference_sequence'] +\
-        " " + sample_fastq
+        " " + " ".join( sample_fastq )
 
     LOGGER.debug( "%s", cmd )
     ## run smalt
@@ -141,7 +151,7 @@ def mapreads(args):
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
 
-    ## Get the reads that map successfully. For PE both reads must map
+    ## Get the mapped and unmapped reads from the sam. For PE both reads must map
     ## successfully in order to qualify.
     ##   1) Get mapped reads and convert to bam
     ##   2) Sort them and save the path to the bam to sample.files.mapped_reads
@@ -194,25 +204,11 @@ def mapreads(args):
     ## Do unmapped
     ##############################################
 
-    ## Step 2 sort unmapped bam
-    ##   -T = Temporary file name, this is required by samtools, you can ignore it
-    ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
-    ##   -O = Output file format, in this case bam
-    ##   -o = Output file name
-    cmd = data.samtools+\
-        " sort -T "+samhandle+".tmp" +\
-        " -O bam "+unmapped_bamhandle+\
-        " -o "+sorted_unmapped_bamhandle
-    LOGGER.debug( "%s", cmd )
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## Step 3 Dump sorted bam to fastq
+    ## Dump sorted bam to fastq
     ## No args for this one. Pipe it through gzip, because the downstream
     ## analysis expects gzipped fq
     cmd = data.samtools+\
-        " bam2fq "+sorted_unmapped_bamhandle+\
+        " bam2fq "+unmapped_bamhandle+\
         " | gzip > "+unmapped_fastq_handle
     LOGGER.debug( "%s", cmd )
     subprocess.call(cmd, shell=True,
@@ -226,7 +222,8 @@ def mapreads(args):
     ## Clean up the temp fq.gz file
     if preview:
         print( "preview: Exiting mapreads(). Do cleanpup." )
-        os.remove( sample_fastq )
+        for f in sample_fastq:
+            os.remove( f )
 
 
 def finalize_aligned_reads( data, sample, ipyclient ):
@@ -252,22 +249,25 @@ def finalize_aligned_reads( data, sample, ipyclient ):
         ## in the first three, chrom, start and end position.
         regions = bedtools_merge( data, sample )
         
-        ## Empty array to hold our chunks
-        tmp_chunks = []
+        if regions > 0:
+            ## Empty array to hold our chunks
+            tmp_chunks = []
 
-        all_regions = iter(regions.strip().split("\n"))
-        grabchunk = list(itertools.islice(all_regions, 100))
-        while grabchunk:
-            tmp_chunks.append(grabchunk)
+            all_regions = iter(regions.strip().split("\n"))
             grabchunk = list(itertools.islice(all_regions, 100))
+            while grabchunk:
+                tmp_chunks.append(grabchunk)
+                grabchunk = list(itertools.islice(all_regions, 100))
 
-        submitted_args = []
-        for chunk in tmp_chunks:
-            submitted_args.append( [data, sample, chunk] )
+            submitted_args = []
+            for chunk in tmp_chunks:
+                submitted_args.append( [data, sample, chunk] )
 
-        ## run get_aligned_reads on all region chunks            
-        results = lbview.map_async( get_aligned_reads, submitted_args)
-        results.get()
+            ## run get_aligned_reads on all region chunks            
+            results = lbview.map_async( get_aligned_reads, submitted_args)
+            results.get()
+        else:
+            LOGGER.info( "No reads mapped to reference sequence." )
 
     except Exception as inst:
         LOGGER.warn(inst)
@@ -299,40 +299,52 @@ def get_aligned_reads( args ):
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
 
-    ## For each identified region, build the pileup and write out the fasta
-    for line in regions:
+    ## Track these so we can clean them up ;ater
+    aligned_fasta_files = []
 
-        # Blank lines returned from bedtools make the rest of the pipeline angry. Filter them.
-        if line == "":
-            continue
+    # Wrap this in a try so we can clean up if it fails.
 
-        chrom, region_start, region_end = line.strip().split()[0:3]
+    try:
+        ## For each identified region, build the pileup and write out the fasta
+        for line in regions:
 
-        aligned_seqs, read_labels = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
+            # Blank lines returned from bedtools make the rest of the pipeline angry. Filter them.
+            if line == "":
+                continue
 
-        # This whole block is getting routed around at this point. I'm not deleting it cuz
-        # i'm precious about it, and cuz if we ever decide to use pileup to call snps it could
-        # be useful. The next two functions generate pileups per region and then backtransform
-        # pileup to aligned fasta.
-        #pileup_file, read_labels = bam_to_pileup( data, sample, chrom, region_start, region_end )
-        ## Test the return from bam_to_pileup. If mindepth isn't satisfied this function will return
-        ## an empty string and empty list. In this case just bail out on this pileup, bad data.
-        #if pileup_file == "":
-        #    LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, region_start, region_end )
-        #    continue
-        #aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
+            chrom, region_start, region_end = line.strip().split()[0:3]
 
-        aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
+            aligned_seqs, read_labels = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
 
-        derep_fasta = derep_and_sort( data, sample, aligned_fasta_file )
+            # This whole block is getting routed around at this point. I'm not deleting it cuz
+            # i'm precious about it, and cuz if we ever decide to use pileup to call snps it could
+            # be useful. The next two functions generate pileups per region and then backtransform
+            # pileup to aligned fasta.
+            #pileup_file, read_labels = bam_to_pileup( data, sample, chrom, region_start, region_end )
+            ## Test the return from bam_to_pileup. If mindepth isn't satisfied this function will return
+            ## an empty string and empty list. In this case just bail out on this pileup, bad data.
+            #if pileup_file == "":
+            #    LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, region_start, region_end )
+            #    continue
+            #aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
 
-        LOGGER.debug( "out_fasta - %s", derep_fasta )
-        derep_fasta_files.append( derep_fasta )
+            aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
+    
+            derep_fasta = derep_and_sort( data, sample, aligned_fasta_file )
 
-        ## TODO: Cleanup all the nasty files hanging around.
+            derep_fasta_files.append( derep_fasta )
 
-    append_clusters( data, sample, derep_fasta_files )
+        append_clusters( data, sample, derep_fasta_files )
 
+    except Exception as inst:
+        LOGGER.warn( inst )
+
+    finally:
+        # Clean up all the tmp files
+        for i in derep_fasta_files:
+            os.remove( i )
+        for i in aligned_fasta_files:
+            os.remove( i ) 
 
 def bedtools_merge( data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
@@ -348,7 +360,7 @@ def bedtools_merge( data, sample):
     LOGGER.debug( "%s", cmd )
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
-    LOGGER.debug( "Got # regions: %s", str(len(result)))
+    LOGGER.debug( "bedtools_merge: Got # regions: %s", str(len(result)))
     return result
 
 def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
@@ -610,7 +622,7 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
     else:
         reverse = " "
 
-    outfile = os.path.join(data.dirs.refmapping, aligned_fasta_file.split("/")[-1]+sample.name+".map_derep.fa")
+    outfile = os.path.join(data.dirs.refmapping, aligned_fasta_file.split("/")[-1]+".map_derep.fa")
 
     # Stacks are never going to be too big, so faking this to set
     # nthreads to 1, maybe fix this to use the real value if it'll 
@@ -698,61 +710,87 @@ def refmap_cleanup( data, sample ):
     when we dropped the unmapped reads back on top of edits and hid
     the originals.
     """
-    ##
-    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
-    ## might want to preserve the full .fq file in case of a later 'force' command
-    fastq_file = sample.files.edits[0][0]
+    sample_fastq = [ sample.files.edits[0][0] ]
 
-    ## Check for a hidden .fastq file, this is the original fq, pre-ref mapping.
-    ## if it exists, recover it. 
-    fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
+    ## If pair append R2 to sample_fastq
+    if 'pair' in data.paramsdict["datatype"]:
+        sample_fastq.append( sample.files.edits[0][1] )
 
-    if os.path.isfile( fastq_dotfile ):
-        shutil.move( fastq_dotfile, fastq_file )
+    ## If it exists, recover the hidden .fq.gz file that contains the original
+    ## data. Also, preserve the unmolested fastq files as .(dot) files in the
+    ## if it doesn't already exist.
+    for fastq_file in sample_fastq:
+
+        fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
+
+        import shutil
+        if os.path.isfile( fastq_dotfile ):
+            shutil.move( fastq_dotfile, fastq_file )
+
 
 def preview_truncate_fq( data, sample_fastq ):
     """ If we are running in preview mode, truncate the input fq.gz file
     so it'll run quicker, just so we can see if it works. Input is the file
-    name of the sample fq. Function returns the path to a temp file of the
-    sample fq truncated to some much smaller size.
+    name of the sample fq. Function returns a list of 1 or 2 elements
+    depending on whether you're doing paired or single end. The elements are
+    paths to a temp files of the sample fq truncated to some much smaller size.
     """
 
-    if sample_fastq.endswith(".gz"):
-        fr1 = gzip.open(os.path.realpath(sample_fastq), 'rb')
-    else:
-        fr1 = open(os.path.realpath(sample_fastq), 'rb')
+    ## Return a list of filenames
+    truncated_fq = []    
+
+    for read in sample_fastq:
+        if read.endswith(".gz"):
+            f = gzip.open(os.path.realpath(read), 'rb')
+        else:
+            f = open(os.path.realpath(read), 'rb')
+
+        ## create iterators to sample 4 lines at a time 
+        quart = itertools.izip(*[iter(f)]*4)
+
+
+        with tempfile.NamedTemporaryFile( 'w+b', delete=False,
+                dir=os.path.realpath( data.dirs.refmapping ),
+                prefix="tmp_", suffix=".fq") as tmp_fq:
+
+            ## Sample the first 10000 reads. This should be sufficient.        
+            for i in range(PREVIEW_TRUNCATE_LENGTH):
+                tmp_fq.write( "".join( quart.next() ) )
+
+        truncated_fq.append( tmp_fq.name )
+        f.close()
 
     ## the read2 demultiplexed reads file, if paired
     ## TODO: This is broken for PE
-    if "pair" in data.paramsdict["datatype"]:
-        if tmptuple[1].endswith(".gz"):
-            fr2 = gzip.open(os.path.realpath(tmptuple[1]), 'rb')
-        else:
-            fr2 = open(os.path.realpath(tmptuple[1]), 'rb')
+#    if "pair" in data.paramsdict["datatype"]:
+#        if tmptuple[1].endswith(".gz"):
+#            fr2 = gzip.open(os.path.realpath(tmptuple[1]), 'rb')
+#        else:
+#            fr2 = open(os.path.realpath(tmptuple[1]), 'rb')
 
     ## create iterators to sample 4 lines at a time 
-    quart1 = itertools.izip(*[iter(fr1)]*4)
-    if "pair" in data.paramsdict["datatype"]:
+#    quart1 = itertools.izip(*[iter(fr1)]*4)
+#    if "pair" in data.paramsdict["datatype"]:
         ## pair second read files, quarts samples both
-        quart2 = itertools.izip(*[iter(fr2)]*4)
-        quarts = itertools.izip(quart1, quart2)
-    else:
+#        quart2 = itertools.izip(*[iter(fr2)]*4)
+#        quarts = itertools.izip(quart1, quart2)
+#    else:
         ## read in single end read file, quarts samples 1 for other
-        quarts = itertools.izip(quart1, iter(int, 1))
+#        quarts = itertools.izip(quart1, iter(int, 1))
 
-    with tempfile.NamedTemporaryFile( 'w+b', delete=False,
-            dir=os.path.realpath( data.dirs.refmapping ),
-            prefix="tmp_", suffix=".fq") as tmp_fq:
+#    with tempfile.NamedTemporaryFile( 'w+b', delete=False,
+#            dir=os.path.realpath( data.dirs.refmapping ),
+#            prefix="tmp_", suffix=".fq") as tmp_fq:
 
         ## Sample the first 10000 reads. This should be sufficient.        
-        for i in range(10000):
-            tmp_fq.write( "".join( quarts.next()[0] ) )
+#        for i in range(PREVIEW_TRUNCATE_LENGTH):
+#            tmp_fq.write( "".join( quarts.next()[0] ) )
 
-    fr1.close()
-    if "pair" in data.paramsdict["datatype"]:
-        fr2.close()
+#    fr1.close()
+#    if "pair" in data.paramsdict["datatype"]:
+#        fr2.close()
 
-    return tmp_fq.name
+    return truncated_fq 
 
 if __name__ == "__main__":
     from ipyrad.core.assembly import Assembly
