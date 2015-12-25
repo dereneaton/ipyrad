@@ -17,7 +17,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 from collections import OrderedDict
-from ipyrad.assemble.consens_se import unhetero, uplow
+from .util import *
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 
