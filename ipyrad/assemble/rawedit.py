@@ -14,8 +14,7 @@ import gzip
 import math
 import itertools
 import numpy as np
-from .demultiplex import ambigcutters
-from .demultiplex import zcat_make_temps
+from .util import *
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -128,18 +127,6 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     except (TypeError, ValueError):
         where = 0
     return where 
-
-
-
-def comp(seq):
-    """ returns a seq with small complement"""
-    return seq.replace("A", 't')\
-           .replace('T', 'a')\
-           .replace('C', 'g')\
-           .replace('G', 'c')\
-           .replace('n', 'Z')\
-           .upper().replace("Z", "n")
-
 
 
 def adapterfilter(args):

@@ -13,6 +13,7 @@ import numpy
 import gzip
 import glob
 import os
+from .util import *
 
 from collections import Counter
 
@@ -96,44 +97,6 @@ def hetero(base1, base2):
             else:
                 LOGGER.error("unrecognized sequence: %s %s", base1, base2)
     return iupac
-
-
-
-def unhetero(amb):
-    " returns bases from ambiguity code"
-    amb = amb.upper()
-    trans = {"R":("G", "A"),
-             "K":("G", "T"),
-             "S":("G", "C"),
-             "Y":("T", "C"),
-             "W":("T", "A"),
-             "M":("C", "A")}
-    return trans.get(amb)
-
-
-
-def uplow(hsite):
-    """ allele precedence used in assigning upper and lower case letters to 
-    a consensus sequence to store the the phased allele pattern for diploids. 
-    G > T > C > A """
-    prec = {('G', 'A'):"G",
-            ('A', 'G'):"G",
-            ('G', 'T'):"G",
-            ('T', 'G'):"G",
-            ('G', 'C'):"G",
-            ('C', 'G'):"G",
-            ('T', 'C'):"T",
-            ('C', 'T'):"T",
-            ('T', 'A'):"T",
-            ('A', 'T'):"T",
-            ('C', 'A'):"C",
-            ('A', 'C'):"C"}
-    bigbase = prec.get(hsite)
-    if not bigbase:
-        bigbase = hsite[0]
-    return bigbase
-    
-
 
 
 def removerepeat_Ns(shortcon, stacked):

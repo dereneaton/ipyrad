@@ -16,6 +16,7 @@ import numpy as np
 import cPickle as pickle
 import ipyparallel as ipp
 from ipyrad.core.sample import Sample
+from .util import *
 from collections import defaultdict, Counter
 
 import logging
@@ -37,19 +38,6 @@ def combinefiles(filepath):
 
     return zip(firsts, seconds)
 
-
-
-def revcomp(sequence):
-    "returns reverse complement of a string"
-    sequence = sequence[::-1].strip()\
-                             .replace("A", "t")\
-                             .replace("T", "a")\
-                             .replace("C", "g")\
-                             .replace("G", "c").upper()
-    return sequence
-
-
-
 def matching(barcode, data):
     "allows for N base difference between barcodes"
     match = 0
@@ -60,28 +48,6 @@ def matching(barcode, data):
             if diffs <= data.paramsdict["max_barcode_mismatch"]:
                 match = name
     return match
-
-
-
-def ambigcutters(seq):
-    """ returns both resolutions of a cut site that has an ambiguous base in 
-    it, else the single cut site """
-    resos = []
-    ambigs = {"R":("G", "A"),
-              "K":("G", "T"),
-              "S":("G", "C"),
-              "Y":("T", "C"),
-              "W":("T", "A"),
-              "M":("C", "A")}
-    if any([i in list("RKSYWM") for i in seq]):
-        for base in list("RKSYWM"):
-            if base in seq:
-                resos.append(seq.replace(base, ambigs[base][0]))
-                resos.append(seq.replace(base, ambigs[base][1]))
-        return resos
-    else:
-        return [seq, ""]
-
 
 
 def findbcode(cut, longbar, read1):
@@ -237,45 +203,6 @@ def barmatch(args):
     return "done"
 
 
-
-def getoptim(filename):
-    """ Calculate optimum splitting based on file size. 
-    Does not unzip files, assumes average rate of compression. 
-    This is a fast alternative to counting lines which takes 
-    too long on huge files.
-    """
-    filesize = os.stat(filename).st_size
-    if filesize < 160000000:
-        optim = 40000
-    elif filesize < 4000000000:
-        optim = 800000
-    elif filesize < 8000000000:        
-        optim = 12000000
-    else:
-        optim = 24000000
-    return optim
-
-
-
-def getsplits(filename):
-    """ Calculate optimum splitting based on file size. 
-    Does not unzip files, assumes average rate of compression. 
-    This is a fast alternative to counting lines which takes 
-    too long on huge files.
-    """
-    filesize = os.stat(filename).st_size
-    if filesize < 10000000:
-        optim = 400000
-    elif filesize < 4000000000:
-        optim = 1000000
-    elif filesize < 8000000000:        
-        optim = 4000000
-    else:
-        optim = 8000000
-    return optim
-
-
-
 def maketempfiles(data, chunk1, chunk2):
     """ writes data chunks to temp files """
 
@@ -372,55 +299,6 @@ def maketempfiles(data, chunk1, chunk2):
 #                       "chunks_"+str(num)+".pickle"), "wb")
 #     pickle.dump([fastq[0], zip(chunks1, chunks2)], pickout)
 #     pickout.close()
-
-
-
-def zcat_make_temps(args):
-    """ call bash command zcat and split to split large files """
-    ## split args
-    data, raws, num, optim = args
-
-    ## get optimum lines per file
-    if not optim:
-        optim = getsplits(raws[0])
-    #LOGGER.info("optim = %s", optim)
-
-    ## is it gzipped
-    cat = "cat"
-    if raws[0].endswith(".gz"):
-        cat = "gunzip -c"
-
-    ### run splitter
-    cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
-                   "-", os.path.join(data.dirs.fastqs, "chunk1_"+str(num)+"_")])
-    _ = subprocess.call(cmd, shell=True,
-                             stdin=subprocess.PIPE,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE,
-                             close_fds=True)
-    chunks1 = glob.glob(os.path.join(
-                        data.dirs.fastqs, "chunk1_"+str(num)+"_*"))
-    chunks1.sort()
-
-    if "pair" in data.paramsdict["datatype"]:
-        cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
-                  "-", os.path.join(data.dirs.fastqs, "chunk2_"+str(num)+"_")])
-        _ = subprocess.call(cmd, shell=True,
-                             stdin=subprocess.PIPE,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE,
-                             close_fds=True)
-        chunks2 = glob.glob(os.path.join(
-                        data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
-        chunks2.sort()
-        #LOGGER.debug("chunksfiles: %s %s", chunks1, chunks2)
-        assert len(chunks1) == len(chunks2), \
-            "R1 and R2 files are not the same length."
-    else:
-        chunks2 = [0]*len(chunks1)
-
-    return [raws[0], zip(chunks1, chunks2)]
-
 
 
 # def parallel_chunker2(data, raws):

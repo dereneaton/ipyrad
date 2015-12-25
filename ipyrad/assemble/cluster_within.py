@@ -20,8 +20,8 @@ import itertools
 import subprocess
 import numpy as np
 from collections import OrderedDict
-from .rawedit import comp
 from .refmap import *
+from .util import comp
 
 import logging
 LOGGER = logging.getLogger(__name__)

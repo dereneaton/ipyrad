@@ -15,7 +15,14 @@ import itertools
 import subprocess
 import numpy as np
 import cPickle as pickle
-from ipyrad.assemble.consens_se import unhetero, uplow
+import pandas as pd
+from collections import OrderedDict
+from .util import *
+from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
+
+
+import logging
+LOGGER = logging.getLogger(__name__)
 
 
 def breakalleles(consensus):
