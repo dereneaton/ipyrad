@@ -39,6 +39,11 @@ def mapreads(args):
     data, sample, preview, noreverse, nthreads = args
     LOGGER.debug("Entering mapreads(): %s %s %s %s", sample.name, preview, noreverse, nthreads )
 
+    ## Test edits actually exist
+    if sample.files.edits == []:
+        LOGGER.debug( "Sample edits empty. Rerun step2(force=True)")
+        sys.exit( "Sample edits empty. Rerun step2(force=True)" )
+
     ## Set the edited fastq to align for this individual, we set this here
     ## so we can overwrite it with a truncated version if we're in preview mode.
     ## Set the default sample_fastq file to align as the entire original
@@ -104,37 +109,28 @@ def mapreads(args):
     if 'pair' in data.paramsdict["datatype"]:
         unmapped_fastq_handle_R2 = sample.files.edits[0][1]
 
-################
-# TODO: Paired end isn't handled yet, but it needs to be.
-    ## datatype variables
-    if data.paramsdict["datatype"] in ['gbs']:
-        reverse = " -strand both "
-        cov = " -query_cov .35 "
-    elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
-        reverse = "  -strand both "
-        cov = " -query_cov .60 "
-    else:  ## rad, ddrad, ddradmerge
-        reverse = " -leftjust "
-        cov = " -query_cov .90 "
 
-    ## override reverse clustering option
-    if noreverse:
-            reverse = " -leftjust "
-            print(noreverse, "not performing reverse complement clustering")
-################
-
+        
 
     ## get smalt call string
     ##  -f sam       : Output as sam format, tried :clip: to hard mask output but it fsck
     ##                 and shreds the unmapped reads (outputs empty fq)
+    ##  -l [pe,mp,pp]: If paired end select the orientation of each read
     ##  -n #         : Number of threads to use
     ##  -x           : Perform a more exhaustive search
     ##  -c #         : fraction of the query read length that must be covered
     ##  -o           : output file
     ##               : Reference sequence
     ##               : Input file(s), in a list. One for forward and one for reverse reads.
+
+    if 'pair' in data.paramsdict["datatype"]:
+        pairtype = " -l pp "
+    else:
+        pairtype = " "
+
     cmd = data.smalt+\
         " map -f sam -n " + str(nthreads) +\
+        pairtype+\
         " -x -c " + str(data.paramsdict['clust_threshold'])+\
         " -o " + samhandle +\
         " " + data.paramsdict['reference_sequence'] +\
@@ -224,7 +220,8 @@ def mapreads(args):
         outflags = " -0 " + outfiles[0]
 
     cmd = data.samtools+\
-        " bam2fq " + outflags
+        " bam2fq " + outflags+\
+            " " + unmapped_bamhandle
 
     LOGGER.debug( "%s", cmd )
     subprocess.call(cmd, shell=True,
@@ -232,10 +229,14 @@ def mapreads(args):
                          stdout=subprocess.PIPE)
 
     ## gzip the output unmapped fastq files because downstream expects .gz
-    ## and bam2fq doesn't output gzip
+    ## and bam2fq doesn't output gzip. Have to do some monkey business
+    ## with the files here (write to a tmp file, then move the temp file
+    ## to the proper path). This is kinda stupid, but it works.
     for f in outfiles:
-        with open(f, 'r') as f_in, gzip.open(f+".gz", 'wb') as f_out:
+        with open(f, 'r') as f_in, gzip.open(f+".tmp", 'wb') as f_out:
             shutil.copyfileobj(f_in, f_out) 
+        
+        shutil.move( f+".tmp", f )
 
     ## This is the end of processing for each sample. Stats
     ## are appended to the sample for mapped and unmapped reads 
@@ -271,7 +272,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
         ## in the first three, chrom, start and end position.
         regions = bedtools_merge( data, sample )
         
-        if regions > 0:
+        if len(regions) > 0:
             ## Empty array to hold our chunks
             tmp_chunks = []
 
