@@ -42,16 +42,15 @@ def mapreads(args):
     ## Set the edited fastq to align for this individual, we set this here
     ## so we can overwrite it with a truncated version if we're in preview mode.
     ## Set the default sample_fastq file to align as the entire original
+    ## TODO, figure out why edits is a tuple? There could be multiple edits files, yes?
+    ## but by the time we get to step three they are all collapsed in to one big file
+    ## which is the first element of the tuple, yes?
     sample_fastq = [ sample.files.edits[0][0] ]
 
     ## If pair append R2 to sample_fastq
     if 'pair' in data.paramsdict["datatype"]:
         sample_fastq.append( sample.files.edits[0][1] )
 
-
-    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
-    ## might want to preserve the full .fq file in case of a later 'force' command
-    unmapped_fastq_handle = fastq_file = sample.files.edits[0][0]
 
     ## If it exists, recover the hidden .fq.gz file that contains the original
     ## data. Also, preserve the unmolested fastq files as .(dot) files in the 
@@ -97,11 +96,13 @@ def mapreads(args):
     sample.files.mapped_reads = mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
+    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
+    ## might want to preserve the full .fq file in case of a later 'force' command
+    unmapped_fastq_handle = sample.files.edits[0][0]
 
-    ## TODO, figure out why edits is a tuple? There could be multiple edits files, yes?
-    ## but by the time we get to step three they are all collapsed in to one big file
-    ## which is the first element of the tuple, yes?
-
+    ## If PE set the output file path for R2
+    if 'pair' in data.paramsdict["datatype"]:
+        unmapped_fastq_handle_R2 = sample.files.edits[0][1]
 
 ################
 # TODO: Paired end isn't handled yet, but it needs to be.
@@ -160,14 +161,22 @@ def mapreads(args):
     ##
     ## samtools view arguments
     ##   -b = write to .bam
-    ##   -F = Select all reads that DON'T have this flag (0x4 means unmapped)
+    ##   -F = Select all reads that DON'T have this flag. 
+    ##         0x4 (segment unmapped)
     ##   -U = Write out all reads that don't pass the -F filter (all unmapped reads
     ##        go to this file.
     ##        <TODO>: This is deeply hackish right now, it will need some
     ##                serious thinking to make this work for PE, etc.
+    sam_filter_flag = " -F 0x4 "
+
+    if 'pair' in data.paramsdict["datatype"]:
+        ## Additionally for PE only output read pairs that both align
+        sam_filter_flag += " -f 0x2 "
+
     cmd = data.samtools+\
-        " view -b -F 0x4 "+\
-            " -U " + unmapped_bamhandle + \
+        " view -b"+\
+            sam_filter_flag+\
+            " -U " + unmapped_bamhandle+\
             " " + samhandle+\
             " > " + mapped_bamhandle
     LOGGER.debug( "%s", cmd )
@@ -202,18 +211,31 @@ def mapreads(args):
 
     ##############################################
     ## Do unmapped
+    ## Output the unmapped reads to the original
+    ## sample.edits fq path.
     ##############################################
 
-    ## Dump sorted bam to fastq
-    ## No args for this one. Pipe it through gzip, because the downstream
-    ## analysis expects gzipped fq
+    outfiles = [ unmapped_fastq_handle ]
+    if 'pair' in data.paramsdict["datatype"]:
+        outfiles.append( unmapped_fastq_handle_R2 )
+        outflags =  " -1 " + outfiles[0]+\
+                    " -2 " + outfiles[1]
+    else:
+        outflags = " -0 " + outfiles[0]
+
     cmd = data.samtools+\
-        " bam2fq "+unmapped_bamhandle+\
-        " | gzip > "+unmapped_fastq_handle
+        " bam2fq " + outflags
+
     LOGGER.debug( "%s", cmd )
     subprocess.call(cmd, shell=True,
                          stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE)
+
+    ## gzip the output unmapped fastq files because downstream expects .gz
+    ## and bam2fq doesn't output gzip
+    for f in outfiles:
+        with open(f, 'r') as f_in, gzip.open(f+".gz", 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out) 
 
     ## This is the end of processing for each sample. Stats
     ## are appended to the sample for mapped and unmapped reads 
