@@ -25,6 +25,9 @@ LOGGER = logging.getLogger(__name__)
 PREVIEW_TRUNCATE_LENGTH = 10000
 MAX_PE_DISTANCE = 60
 
+#Hax til preview mode gets fixed
+preview = False
+
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
     samples.files.edits .fasta files, and attempts to map each read to the 
@@ -37,12 +40,13 @@ def mapreads(args):
     Mapped reads stay in the sam file and are pulled out of the pileup later."""
 
     ## get args
-    data, sample, preview, noreverse, nthreads = args
-    LOGGER.debug("Entering mapreads(): %s %s %s %s", sample.name, preview, noreverse, nthreads )
+    data, sample, noreverse, nthreads = args
+    LOGGER.debug("Entering mapreads(): %s %s %s %s", sample.name, noreverse, nthreads )
 
     ## Test edits actually exist
     if sample.files.edits == []:
         LOGGER.debug( "Sample edits empty. Rerun step2(force=True)")
+        LOGGER.debug( "Sample files - %s", sample.files )
         sys.exit( "Sample edits empty. Rerun step2(force=True)" )
 
     ## Set the edited fastq to align for this individual, we set this here
@@ -129,7 +133,7 @@ def mapreads(args):
     else:
         pairtype = " "
 
-    cmd = data.smalt+\
+    cmd = data.bins.smalt+\
         " map -f sam -n " + str(nthreads) +\
         pairtype+\
         " -x -c " + str(data.paramsdict['clust_threshold'])+\
@@ -170,7 +174,7 @@ def mapreads(args):
         ## Additionally for PE only output read pairs that both align
         sam_filter_flag += " -f 0x2 "
 
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " view -b"+\
             sam_filter_flag+\
             " -U " + unmapped_bamhandle+\
@@ -186,7 +190,7 @@ def mapreads(args):
     ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
     ##   -O = Output file format, in this case bam
     ##   -o = Output file name
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " sort -T "+samhandle+".tmp" +\
         " -O bam "+mapped_bamhandle+\
         " -o "+sorted_mapped_bamhandle
@@ -199,7 +203,7 @@ def mapreads(args):
     ## Samtools pileup needs the bam to be indexed
     ## No arguments, a very simple function. It writes the index to 
     ## a default location
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " index " + mapped_bamhandle
     LOGGER.debug( "%s", cmd )
     subprocess.call(cmd, shell=True,
@@ -220,7 +224,7 @@ def mapreads(args):
     else:
         outflags = " -0 " + outfiles[0]
 
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " bam2fq " + outflags+\
             " " + unmapped_bamhandle
 
@@ -329,7 +333,7 @@ def get_aligned_reads( args ):
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
 
-    ## Track these so we can clean them up ;ater
+    ## Track these so we can clean them up later
     aligned_fasta_files = []
 
     # Wrap this in a try so we can clean up if it fails.
@@ -391,7 +395,7 @@ def bedtools_merge( data, sample):
     else:
         bedtools_dflag = " "
 
-    cmd = data.bedtools+\
+    cmd = data.bins.bedtools+\
         " bamtobed "+\
         " -i " + sample.files.mapped_reads+\
         " | bedtools merge "+\
@@ -424,9 +428,9 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
 
     try:
         ## Make the samtools view command to output bam in the region of interest
-        view_cmd = data.samtools+\
+        view_cmd = data.bins.samtools+\
             " view "+\
-            " -b -o " + tmp_outfile
+            " -b "+\
             sample.files.mapped_reads+\
             " " + chrom + ":" + region_start + "-" + region_end
 
@@ -439,12 +443,12 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
         else:
             outflags = " -0 " + outfiles[0]
 
-        bam2fq_cmd = data.samtools+\
+        bam2fq_cmd = data.bins.samtools+\
             " bam2fq " + outflags + " - "
 
-        cmd = " | ".join(view_cmd, bam2fq_cmd
+        cmd = " | ".join( (view_cmd, bam2fq_cmd) )
         LOGGER.debug( "%s", cmd )
-        subprocess.call( cmd ), shell=True,
+        subprocess.call( cmd , shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
 
@@ -468,7 +472,7 @@ def bam_region_to_fasta2( data, sample, chrom, region_start, region_end):
     """
     LOGGER.debug( "Entering bam_region_to_fasta: %s %s %s %s", sample.name, chrom, region_start, region_end )
 
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " view "+\
         sample.files.mapped_reads+\
         " " + chrom + ":" + region_start + "-" + region_end
@@ -514,7 +518,7 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
 
     pileup_file = pileup_dir+"/"+sample.name+"-"+region_start+".pileup"
 
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " view "+\
         sample.files.mapped_reads+\
         " " + chrom + ":" + region_start + "-" + region_end
@@ -535,7 +539,7 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     #if len(read_labels) < data.paramsdict["mindepth_majrule"]:
     #    return( "", [] )
 
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
         " mpileup "+\
         " -f " + data.paramsdict['reference_sequence']+\
         " -r " + chrom+":"+region_start+"-"+region_end+\
@@ -721,7 +725,7 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
     # help performance
     nthreads = 1
     ## do dereplication with vsearch
-    cmd = data.vsearch+\
+    cmd = data.bins.vsearch+\
           " -derep_fulllength "+ aligned_fasta_file+\
           reverse+\
           " -output "+outfile+\
@@ -784,13 +788,13 @@ def refmap_init( data, sample ):
 def refmap_stats( data, sample ):
     """ Get the number of mapped and unmapped reads for a sample
     and update sample.stats """
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
     " flagstat "+sample.files.unmapped_reads
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
     sample.stats["refseq_unmapped_reads"] = int(result.split()[0])
 
-    cmd = data.samtools+\
+    cmd = data.bins.samtools+\
     " flagstat "+sample.files.mapped_reads
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
