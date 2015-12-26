@@ -20,7 +20,7 @@ import itertools
 import subprocess
 import numpy as np
 from collections import OrderedDict
-from .util import comp
+from .util import comp, merge_pairs
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -472,112 +472,6 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
 
 
 
-def combine_pairs(data, sample):
-    """ in prep """
-    #LOGGER.info("in combine_pairs: %s", sample.files.edits)
-
-    ## open file for writing to
-    combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
-    combout = open(combined, 'wb')
-
-    ## get nonmerged pairs
-    nonmerged1 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R1_.fastq")
-    nonmerged2 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R2_.fastq")
-
-    ## read in paired end read files"
-    ## create iterators to sample 4 lines at a time
-    fr1 = open(nonmerged1, 'rb')
-    quart1 = itertools.izip(*[iter(fr1)]*4)
-    fr2 = open(nonmerged2, 'rb')
-    quart2 = itertools.izip(*[iter(fr2)]*4)
-    quarts = itertools.izip(quart1, quart2)
-
-    ## a list to store until writing
-    writing = []
-    counts = 0
-
-    ## iterate until done
-    while 1:
-        try:
-            read1s, read2s = quarts.next()
-        except StopIteration:
-            break
-        writing.append("\n".join([
-                        read1s[0].strip(),
-                        read1s[1].strip()+\
-                            "ssss"+comp(read2s[1].strip())[::-1],
-                        read1s[2].strip(),
-                        read1s[3].strip()+\
-                            "ssss"+read2s[3].strip()[::-1]]
-                        ))
-        counts += 1
-        if not counts % 1000:
-            combout.write("\n".join(writing)+"\n")
-            writing = []
-
-    combout.write("\n".join(writing))
-    combout.close()
-
-    sample.files.edits = [(combined, )]
-    sample.files.pairs = combined
-    return sample
-
-
-
-def merge_fastq_pairs(data, sample):
-    """ Merge paired fastq reads. """
-    #LOGGER.info("merging reads")
-
-    ## tempnames for merge files
-    merged = os.path.join(data.dirs.edits,
-                          sample.name+"_merged_.fastq")
-    nonmerged1 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R1_.fastq")
-    nonmerged2 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R2_.fastq")
-
-    try:
-        maxn = sum(data.paramsdict['max_low_qual_bases'])
-    except TypeError:
-        maxn = data.paramsdict['max_low_qual_bases']
-
-    assert os.path.exists(sample.files.edits[0][1]), \
-           "No paired read file (_R2_ file) found."
-
-    ## vsearch merging
-    cmd = data.bins.vsearch \
-      +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.edits[0][1] \
-      +" --fastqout "+merged \
-      +" --fastqout_notmerged_fwd "+nonmerged1 \
-      +" --fastqout_notmerged_rev "+nonmerged2 \
-      +" --fasta_width 0 " \
-      +" --fastq_allowmergestagger " \
-      +" --fastq_minmergelen 32 " \
-      +" --fastq_maxns "+str(maxn) \
-      +" --fastq_minovlen 12 "
-
-    try:
-        subprocess.check_call(cmd, shell=True,   
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error(subprocess.STDOUT)
-        LOGGER.error(cmd)        
-        sys.exit("Error in merging pairs: \n({}).".format(inst))
-    finally:
-        ## record merge file name temporarily
-        sample.files.merged = merged       
-        ## record how many read pairs were merged
-        with open(sample.files.merged, 'r') as tmpf:
-            sample.stats.reads_merged = len(tmpf.readlines())
-
-    return sample
-
-
-
 def concat_edits(data, sample):
     """ concatenate if multiple edits files for a sample """
     ## if more than one tuple in the list
@@ -601,8 +495,6 @@ def concat_edits(data, sample):
         else:
             sample.files.edits = [(tmphandle1, )]
     return sample
-
-
 
 def derep_and_sort(data, sample, nthreads):
     """ dereplicates reads and sorts so reads that were highly
@@ -637,8 +529,6 @@ def derep_and_sort(data, sample, nthreads):
         LOGGER.error(inst)
         sys.exit("Error in vsearch: \n{}\n{}\n{}."\
                  .format(inst, subprocess.STDOUT, cmd))
-
-
 
 def cluster(data, sample, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
@@ -759,20 +649,25 @@ def clustall(args):
     ## get args
     data, sample, noreverse, nthreads = args
 
+    LOGGER.debug( "clustall() %s", sample.name )
+
     ## concatenate edits files in case a Sample has multiple, and 
     ## returns a new Sample.files.edits with the concat file
     sample = concat_edits(data, sample)
 
     ## merge fastq pairs
     if 'pair' in data.paramsdict['datatype']:
-        ## merge pairs that overlap into a merge file
-        sample = merge_fastq_pairs(data, sample)
-        ## pair together remaining pairs into a pairs file
-        sample = combine_pairs(data, sample)
-        ## if merge file, append to pairs file
-        with open(sample.files.pairs, 'a') as tmpout:
-            with open(sample.files.merged, 'r') as tmpin:
-                tmpout.write("\n"+tmpin.read())
+        ## merge pairs that overlap and combine non-overlapping
+        ## pairs into one merged file. merge_pairs takes the unmerged
+        ## files list as an argument because we're reusing this code 
+        ## in the refmap pipeline, trying to generalize.
+        LOGGER.debug( "Merging pairs - %s", sample.files )
+        unmerged_files =  [ sample.files.edits[0][0], sample.files.edits[0][1] ]
+        mergefile, nmerged = merge_pairs( data, sample, unmerged_files )
+        sample.files.edits = [(mergefile, )]
+        sample.files.pairs = mergefile
+        sample.stats.reads_merged = nmerged
+        sample.merged = 1
         LOGGER.info(sample.files.edits)
 
     ## convert fastq to fasta, then derep and sort reads by their size
@@ -785,212 +680,6 @@ def clustall(args):
 
     ## cluster_rebuild
     build_clusters(data, sample)
-
-
-
-def mapreads(args):
-    """ Attempt to map reads to reference sequence. This reads in the 
-    samples.files.edits .fasta files, and attempts to map each read to the 
-    reference sequences. Unmapped reads are dropped right back in the de novo 
-    pipeline. Reads that map successfully are processed and pushed downstream 
-    and joined with the rest of the data post musle_align. The read mapping 
-    produces a sam file, unmapped reads are pulled out of this and dropped back 
-    in place of the edits (.fasta) file. The raw edits .fasta file is moved to 
-    .<sample>.fasta to hide it in case the mapping screws up and we need to roll-back.
-    Mapped reads stay in the sam file and are pulled out of the pileup later."""
-
-    ## TODO: Right now this is coded to read in the edits which are .fasta format
-    ## It would be ideal to read in the fastq instead, since this contains info
-    ## about base quality scores, improves the mapping confidence.
-
-    ## get args
-    data, sample, noreverse, nthreads = args
-
-    ## Files we'll use during reference sequence mapping
-    ##
-    ## samhandle - Raw output from smalt reference mapping
-    ## unmapped_bamhandle - bam file containing only unmapped reads
-    ## mapped_bamhandle - bam file with only successfully mapped reads
-    ##    In the case of paired end, we only consider pairs where both
-    ##    reads map successfully
-    ## sorted_*_bamhandle - Sorted bam files for mapped and unmapped
-    ##    This is a precursor to bam2fq which requires sorted bams
-    ## unmapped_fastq_handle - The final output file of this function
-    ##    writes out unmapped reads to the 'edits' directory as .fq
-    ##    which is what downstream analysis expects
-    samhandle = os.path.join(data.dirs.refmapping, sample.name+".sam")
-    unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
-    mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
-    sorted_unmapped_bamhandle = sample.files["unmapped_reads"]
-    sorted_mapped_bamhandle = sample.files["mapped_reads"]
-
-    ## TODO, figure out why edits is a tuple? There could be multiple edits files, yes?
-    ## but by the time we get to step three they are all collapsed in to one big file
-    ## which is the first element of the tuple, yes?
-    ##
-    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
-    ## might want to preserve the full .fq file in case of a later 'force' command
-    unmapped_fastq_handle = sample.files.edits[0][0] #os.path.join(data.dirs.edits, sample.name+".fastq")
-
-################
-# TODO: Paired end isn't handled yet, but it needs to be.
-    ## datatype variables
-    if data.paramsdict["datatype"] in ['gbs']:
-        reverse = " -strand both "
-        cov = " -query_cov .35 "
-    elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
-        reverse = "  -strand both "
-        cov = " -query_cov .60 "
-    else:  ## rad, ddrad, ddradmerge
-        reverse = " -leftjust "
-        cov = " -query_cov .90 "
-
-    ## override reverse clustering option
-    if noreverse:
-            reverse = " -leftjust "
-            print(noreverse, "not performing reverse complement clustering")
-################
-
-
-    ## get call string
-    cmd = data.smalt+\
-        " map -f sam -n " + str(nthreads) +\
-        " -o " + samhandle +\
-        " " + data.paramsdict['reference_sequence'] +\
-        " " + sample.files.edits[0][0]
-
-    ## run smalt
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## Get the reads that map successfully. For PE both reads must map
-    ## successfully in order to qualify.
-    ##   1) Get mapped reads and convert to bam
-    ##   2) Sort them and save the path to the bam to sample.files.mapped_reads
-    ## The mapped reads are synced back into the pipeline downstream, after
-    ## muscle aligns the umapped reads.
-    ##
-    ## samtools view arguments
-    ##   -b = write to .bam
-    ##   -F = Select all reads that DON'T have this flag (0x4 means unmapped)
-    ##        <TODO>: This is deeply hackish right now, it will need some
-    ##                serious thinking to make this work for PE, etc.
-    cmd = data.samtools+\
-        " view -b -F 0x4 "+samhandle+\
-            " > " + mapped_bamhandle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-    ## Step 2 sort mapped bam
-    ##   -T = Temporary file name, this is required by samtools, you can ignore it
-    ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
-    ##   -O = Output file format, in this case bam
-    ##   -o = Output file name
-    cmd = data.samtools+\
-        " sort -T "+samhandle+".tmp" +\
-        " -O bam "+mapped_bamhandle+\
-        " -o "+sorted_mapped_bamhandle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ##############################################
-    ## Do unmapped
-    ##############################################
-
-    ## Fetch up the unmapped reads and write them to the edits .fasta file
-    ## In order to do this we have to go through a little process:
-    ##   1) Get the unmapped reads and convert to bam
-    ##   2) Sort them 
-    ##   3) Dump bam to fastq
-
-    ## Step 1 get unmapped reads with samtools view
-    ##   -b = write out to .bam
-    ##   -f = Select only reads with associated flags set (0x4 means unmapped)
-    cmd = data.samtools+\
-        " view -b -f 0x4 "+samhandle+\
-            " > " + unmapped_bamhandle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## Step 2 sort unmapped bam
-    ##   -T = Temporary file name, this is required by samtools, you can ignore it
-    ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
-    ##   -O = Output file format, in this case bam
-    ##   -o = Output file name
-    cmd = data.samtools+\
-        " sort -T "+samhandle+".tmp" +\
-        " -O bam "+unmapped_bamhandle+\
-        " -o "+sorted_unmapped_bamhandle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## Step 3 Dump sorted bam to fastq
-    ## No args for this one. Pipe it through gzip, because the downstream
-    ## analysis expects gzipped fq
-    cmd = data.samtools+\
-        " bam2fq "+sorted_unmapped_bamhandle+\
-        " | gzip > "+unmapped_fastq_handle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## bs for experimentation. is samtools/smalt fscking the output?
-    ## TODO: get rid of this when mapped reads get returned to the 
-    ## pipeline right. or whenever, it's not useful.
-    cmd = data.samtools+\
-        " bam2fq "+sorted_mapped_bamhandle+\
-        " | gzip >> "+unmapped_fastq_handle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## This is the end of processing for each sample. Stats
-    ## are appended to the sample for mapped and unmapped reads 
-    ## during cluster_within.cleanup()
-
-    ## This is hax to get fastq to fasta to get this off the ground.
-    ## samtools bam2fq natively returns fastq, you just delete this code
-    ## when fastq pipleline is working
-#    writing = []
-#    with open(os.path.realpath(unmapped_fastq_handle), 'rb') as fq:
-#        quart1 = itertools.izip(*[iter(fq)]*4)
-#        quarts = itertools.izip(quart1, iter(int, 1))
-#        writing = []
-#        j=0
-#        while 1:
-#            try:
-#                quart = quarts.next()
-#            except StopIteration:
-#                break
-#            read1 = [i.strip() for i in quart[0]]
-#            sseq = ">"+sample.name+"_"+str(j)+\
-#                           "_r1\n"+read1[1]+"\n"
-#            writing.append(sseq)
-#            j = j+1
-#
-#    with open( sample.files.edits[0], 'w' ) as out:
-#        out.write("".join(writing))
-    #####################################################################
-    ## End block of dummy code, delete this when fastq works
-
-
-def getalignedreads(data, sample):
-    """Pull aligned reads out of sorted mapped bam files and
-    append them to the clustS.gz file so the fall into downstream analysis """
-
-    mapped_fastq_handle = "/tmp/wat.fq"
-    ## Build the samtools bam2fq command to push bam out
-    cmd = data.samtools+\
-        " bam2fq "+sample.files["mapped_reads"]+\
-        " > "+mapped_fastq_handle
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
 
 
 def run(data, samples, noreverse, force, ipyclient):
