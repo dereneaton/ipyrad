@@ -4,6 +4,7 @@
 
 # pylint: disable=E1101
 # pylint: disable=E1103
+# pylint: disable=W0142
 
 
 from __future__ import print_function
@@ -21,7 +22,8 @@ import ipyparallel as ipp
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.core.sample import Sample
-from ipyrad import assemble
+import ipyrad as ip
+from .. import assemble
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -95,8 +97,14 @@ class Assembly(object):
         self._ipclusterid = ""
         self._ipprofile = ""
 
+        ## print headers
+        self._headers = 0
+
         ## get binaries of dependencies
-        self.vsearch, self.muscle, self.smalt, self.samtools, self.bedtools = getbins()
+        self.bins = ObjDict()
+        binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools"]
+        for binn, binx in zip(binnames, getbins()):
+            self.bins[binn] = binx
 
         ## link a log history of executed workflow
         self.log = []
@@ -109,11 +117,14 @@ class Assembly(object):
         ## multiplex files linked
         self.barcodes = ObjDict()
 
+        ## outfiles locations
+        self.outfiles = ObjDict()
+
         ## an object for storing data directories for this Assembly
         self.dirs = ObjDict()
 
         ## storing final results
-        self.loci = ObjDict()
+        self.database = ""
 
         ## the default params dict
         self.paramsdict = OrderedDict([
@@ -151,8 +162,10 @@ class Assembly(object):
                        ("trim_overhang", (1, 2, 2, 1)), 
                        ("hierarchical_clustering", 0),
                        ("assembly_method", "denovo"),
-                       ("reference_sequence", "")
+                       ("reference_sequence", ""), 
+                       ("edit_cutsites", (0, 0))
         ])
+
 
 
     def __str__(self):
@@ -214,6 +227,9 @@ class Assembly(object):
             additional fastq files to a Sample (file names should be formatted 
             the same as usual, e.g., [name]_R1_[optional].fastq.gz).
 
+        force : bool
+            ...
+
         Returns
         -------
         str
@@ -230,6 +246,15 @@ class Assembly(object):
             raise Exception("Files already linked to `{}`. ".format(self.name)\
                 +"Use force=True to replace all files, or append=True to "
                 +"add additional files to existing Samples.")
+
+        ## make sure there is an out directory
+        self.dirs.fastqs = os.path.join(self.paramsdict["working_directory"],
+                                        self.name+"_fastqs")
+        if not os.path.exists(self.paramsdict["working_directory"]):
+            os.mkdir(self.paramsdict["working_directory"])
+        if not os.path.exists(self.dirs.fastqs):
+            os.mkdir(self.dirs.fastqs)
+
 
         ## get path to data files
         if not path:
@@ -283,6 +308,12 @@ class Assembly(object):
         created = 0
         linked = 0
         appended = 0
+
+        ## clear samples if force
+        if force:
+            self.samples = {}
+
+        ## iterate over input files
         for fastqtuple in list(fastqs):
             assert isinstance(fastqtuple, tuple), "fastqs not a tuple."
             ## local counters
@@ -340,7 +371,7 @@ class Assembly(object):
                 nreads = 0
                 ## iterate over files if there are multiple
                 for alltuples in self.samples[sname].files.fastqs:
-                    nreads += bufcount(alltuples[0], gzipped)
+                    nreads += bufcountlines(alltuples[0], gzipped)
                 self.samples[sname].stats.reads_raw = nreads/4
                 created += createdinc
                 linked += linkedinc
@@ -351,6 +382,7 @@ class Assembly(object):
         if linked:
             print("{} fastq files linked to {} new Samples.".\
                   format(linked, len(self.samples)))
+            self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
         if appended:
             print("{} fastq files appended to {} existing Samples.".\
                   format(appended, len(self.samples)))
@@ -368,13 +400,15 @@ class Assembly(object):
             print("Barcodes file not found:", self.paramsdict["barcodes_path"])
 
         ## parse barcodefile
-        bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
-        bdf = bdf.dropna()
-        ## make sure upper case
-        bdf[1] = bdf[1].str.upper()
-        ## set attribute on Assembly object
-        self.barcodes = dict(zip(bdf[0], bdf[1]))
-
+        try:
+            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
+            bdf = bdf.dropna()
+            ## make sure upper case
+            bdf[1] = bdf[1].str.upper()
+            ## set attribute on Assembly object
+            self.barcodes = dict(zip(bdf[0], bdf[1]))
+        except ValueError:
+            print("Barcodes file not recognized.")
 
 
     def get_params(self, param=""):
@@ -596,7 +630,7 @@ class Assembly(object):
 
 
         elif param in ['21', 'max_Ns_consens']:
-            newvalue = tuplecheck(newvalue)                        
+            newvalue = tuplecheck(newvalue, int)                        
             assert isinstance(newvalue, tuple), \
             "max_Ns_consens should be a tuple e.g., (8,8)"
             self.paramsdict['max_Ns_consens'] = newvalue
@@ -604,7 +638,7 @@ class Assembly(object):
 
 
         elif param in ['22', 'max_Hs_consens']:
-            newvalue = tuplecheck(newvalue)                        
+            newvalue = tuplecheck(newvalue, int)                        
             assert isinstance(newvalue, tuple), \
             "max_Hs_consens should be a tuple e.g., (1,2,2,1)"
             self.paramsdict['max_Hs_consens'] = newvalue
@@ -612,7 +646,7 @@ class Assembly(object):
 
 
         elif param in ['23', 'max_SNPs_locus']:
-            newvalue = tuplecheck(newvalue)                        
+            newvalue = tuplecheck(newvalue, int)                        
             assert isinstance(newvalue, tuple), \
             "max_SNPs_locus should be a tuple e.g., (20,20)"
             self.paramsdict['max_SNPs_locus'] = newvalue
@@ -620,7 +654,7 @@ class Assembly(object):
 
 
         elif param in ['24', 'max_Indels_locus']:
-            newvalue = tuplecheck(newvalue)            
+            newvalue = tuplecheck(newvalue, int)            
             assert isinstance(newvalue, tuple), \
             "max_Indels_locus should be a tuple e.g., (5, 100)" 
             self.paramsdict['max_Indels_locus'] = newvalue
@@ -628,7 +662,7 @@ class Assembly(object):
 
 
         elif param in ['25', 'trim_overhang']:
-            newvalue = tuplecheck(newvalue)
+            newvalue = tuplecheck(newvalue, int)
             assert isinstance(newvalue, tuple), \
             "trim_overhang should be a tuple e.g., (1,2,2,1)"
             self.paramsdict['trim_overhang'] = newvalue
@@ -657,6 +691,15 @@ class Assembly(object):
             self._stamp("[28] set to "+fullrawpath)
 
 
+        elif param in ['29', 'edits_cutsites']:
+            newvalue = tuplecheck(newvalue)
+            assert isinstance(newvalue, tuple), \
+            "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
+            .format(newvalue)
+            self.paramsdict['edit_cutsites'] = newvalue
+            self._stamp("[29] set to {}".format(newvalue))
+
+
 
     def copy(self, newname):
         """ Returns a copy of the Assembly object. Does not allow Assembly 
@@ -677,7 +720,7 @@ class Assembly(object):
 
 
 
-    def file_tree(self):
+    def filetree(self):
         """ prints the project data structure. TODO: this needs work.
         prints way too much other junk if [work] is home dir. """
         startpath = self.paramsdict["working_directory"]
@@ -703,83 +746,75 @@ class Assembly(object):
 
 
 
-    def _launch(self, tries):
+    def _launch(self, inittries):
         """ launch ipyclient.
         launch within try statement in case engines aren't ready yet
         and try 30 one second sleep/wait cycles before giving up on engines
         """
+        tries = inittries
         while tries:
             try:
                 ## launches ipcluster with arguments if present in self
                 clusterargs = [self._ipclusterid, self._ipprofile]
-                argnames = ["--cluster-id", "--profile"]
+                argnames = ["cluster_id", "profile"]
                 args = {key:value for key, value in zip(argnames, clusterargs)}
                 ipyclient = ipp.Client(**args)
-
                 if tries > 1:
-                    LOGGER.debug('try %s: starting controller', tries)                  
-                tries = 0
+                    LOGGER.info('try %s: starting controller', tries)
                 ## make sure all engines are connected
                 try:
-                    assert ipyclient.ids
-                    LOGGER.info('OK! Connected to (%s) engines', 
-                                len(ipyclient.ids))
+                    assert ipyclient.ids                    
+                    if tries != inittries:                        
+                        ## get initial number of ids
+                        ## ugly hack to find all engines while they're spinng up
+                        ## waiting on ipython members to answer my question 
+                        ## about better ways to do this...
+                        initid = ipyclient.ids
+                        if len(initid) > 10:
+                            LOGGER.warn("waiting 3 seconds to find Engines")
+                            time.sleep(3)
+                        else:
+                            time.sleep(1)                                            
+                        try:
+                            ## make sure more engines aren't found
+                            assert len(ipyclient.ids) == len(initid)
+                            LOGGER.warn('OK! Connected to (%s) engines', 
+                                        len(ipyclient.ids))
+                            tries = 0
+                        except AssertionError as _: 
+                            LOGGER.warn('finding engines (%s, %s)', 
+                                         len(initid), len(ipyclient.ids))
+                            raise
+                    else:
+                        LOGGER.debug('OK! Connected to (%s) engines', 
+                                    len(ipyclient.ids))
+                        tries = 0                        
                 except AssertionError as _: 
                     LOGGER.debug('connected to %s engines', len(ipyclient.ids))
                     raise
             except (IOError, ipp.NoEnginesRegistered, AssertionError):
                 time.sleep(1)
                 tries -= 1
+        return ipyclient
+
+
+
+    def _clientwrapper(self, stepfunc, args, nwait):
+        """ wraps a call with error messages for when ipyparallel fails"""
         try:
-            return ipyclient
-        except UnboundLocalError as inst:
-            LOGGER.error(inst)
-            SystemExit("Error: failed to launch ipcluster")
-
-
-
-    def step1(self, force=False, preview=0):
-        """ step 1: demultiplex raw reads or link pre-demultiplexed files."""
-
-        ## launch parallel client within guarded statement
-        try: 
-            ipyclient = self._launch(30) 
-            msg1 = "  step1: Demultiplexing raw reads."
-            msg2 = "  step1: Linking fastq data to Samples."
-            ## if Samples already exist then no demultiplexing
-            if self.samples:
-                if not force:
-                    print("Skipping step1: {} ".format(len(self.samples)) \
-                         +"Samples already found in `{}` ".format(self.name) \
-                         +"(see --force).")
-                else:
-                    assemble.demultiplex.run(self, preview, ipyclient)
-                    self._stamp("s1_demultiplexing:")
-                    print(msg1)
-                    #print("Overwriting Samples with data files in {}".\
-                    #      format(self.paramsdict["sorted_fastq_path"]))
-                    #self.link_fastqs(force=True)
-            ## Creating new Samples
-            else:
-                ## first check if demultiplexed files exist in path
-                if os.path.exists(self.paramsdict["sorted_fastq_path"]):
-                    try:
-                        self.link_fastqs(path=os.path.join(
-                            self.paramsdict["sorted_fastq_path"], "*"))
-                        print("linking files from {}".\
-                              format(self.paramsdict["sorted_fastq_path"]))
-                    except AssertionError as inst:
-                        SystemExit("inst")
-                        raise
-                ## otherwise do the demultiplexing
-                else:
-                    assemble.demultiplex.run(self, preview, ipyclient)
-                    self._stamp("s1_demultiplexing:")
-                    print(msg1)
-
+            ipyclient = self._launch(nwait)
+            if ipyclient.ids:
+                args.append(ipyclient)
+                stepfunc(*args)
         except (KeyboardInterrupt, SystemExit, AttributeError):
-            logging.error("assembly step1 interrupted.")
+            logging.error("assembly interrupted.")
+            ipyclient.abort
             raise
+        except UnboundLocalError as inst:
+            print(\
+                "\nError: ipcluster does not appear to be running. When using "\
+                +"\nthe API you must run `ipcluster start` outside of "\
+                +"\nIPython/Jupyter to launch parallel engines. (See Docs) \n")
         except Exception as inst:
             print("other error: %s" % inst)
             raise
@@ -788,69 +823,83 @@ class Assembly(object):
         finally:
             try:
                 ipyclient.close()
-            except UnboundLocalError as inst:
-                LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
-
-        ## pickle the data obj
-        self._save()
-
+                ## pickle the data obj
+                self._save()
+            except (UnboundLocalError, AttributeError, IOError) as inst:
+                LOGGER.error("NO IPCLUSTER RUNNING")
 
 
-    def step2(self, samples="", preview=0, force=False):
+
+    def _step1func(self, force, ipyclient):
+        """ testing"""
+        msg1 = "  step1: Demultiplexing raw reads."
+        msg2 = "  step1: Linking fastq data to Samples."
+        ## if Samples already exist then no demultiplexing
+        if self.samples:
+            if not force:
+                print("Skipping step1: {} ".format(len(self.samples)) \
+                    +"Samples already found in `{}` ".format(self.name)\
+                    +"(see --force).")
+            else:
+                if self._headers:
+                    print(msg1)
+                assemble.demultiplex.run(self, ipyclient)
+                self._stamp("s1_demultiplexing:")
+        ## Creating new Samples
+        else:
+            ## first check if demultiplexed files exist in path
+            if os.path.exists(self.paramsdict["sorted_fastq_path"]):
+                try:
+                    self.link_fastqs(path=os.path.join(
+                        self.paramsdict["sorted_fastq_path"], "*"))
+                    if self._headers:
+                        print(msg2, "\n  linking files from {}".\
+                          format(self.paramsdict["sorted_fastq_path"]))
+                except AssertionError as _:
+                    print("failed to link fastqs")
+                    raise
+            ## otherwise do the demultiplexing
+            else:
+                if self._headers:
+                    print(msg1)                        
+                assemble.demultiplex.run(self, ipyclient)
+                self._stamp("s1_demultiplexing:")
+
+
+
+    def _step2func(self, samples, nreplace, force, ipyclient):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
         select all samples in the Assembly object. Only samples in state
         =1 will be edited, all others are skipped. To overwrite data
         use the argument force=True. 
-
         """
-        print("  Step2: Filtering reads ")
-        ## launch parallel client within guarded statement
-        try: 
-            ipyclient = self._launch(30) 
+        if self._headers:
+            print("  Step2: Filtering reads ")
+        ## if samples not entered use all samples
+        if not samples:
+            samples = self.samples.keys()
 
-            ## if samples not entered use all samples
-            if not samples:
-                samples = self.samples.keys()
+        if not samples:
+            self.link_fastqs()
 
-            if not samples:
-                self.link_fastqs()
+        ## require Samples 
+        assert samples, "No Samples in {}".format(self.name)
 
-            ## require Samples 
-            assert samples, "No Samples in {}".format(self.name)
+        ## if sample keys, replace with sample obj
+        assert isinstance(samples, list), \
+        "to subselect samples enter as a list, e.g., [A, B]."
+        samples = [self.samples[key] for key in samples]
 
-            ## if sample keys, replace with sample obj
-            assert isinstance(samples, list), \
-            "to subselect samples enter as a list, e.g., [A, B]."
-            samples = [self.samples[key] for key in samples]
-
-            ## pass samples to rawedit
-            assemble.rawedit.run(self, samples, ipyclient, force)
-
-        except (KeyboardInterrupt, SystemExit):
-            LOGGER.error("assembly step2 interrupted by user.")
-            raise
-            
-        except Exception as inst:
-            LOGGER.error("crashed step2 error: %s", inst)
-            print("error during step2 ...\n({})\n".format(inst))
-            raise
-
-        ## close parallel client if done or interrupted
-        finally:
-            try:
-                ipyclient.close()
-            except UnboundLocalError as inst:
-                LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
-
-        ## checkpoint the data obj
-        self._save()
+        ## pass samples to rawedit
+        assemble.rawedit.run(self, samples, nreplace, force, ipyclient)
 
 
 
-    def step3(self, samples=None, preview=0, noreverse=0, force=False):
+    def _step3func(self, samples, noreverse, force, ipyclient):
         """ step 3: clustering within samples """
-        print("  Step3: Clustering/Mapping reads")
+        if self._headers:
+            print("  Step3: Clustering/Mapping reads")
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             assert self.paramsdict['reference_sequence'], \
@@ -860,202 +909,161 @@ class Assembly(object):
             ## index the reference sequence
             index_reference_sequence(self)
 
-        try: 
-            ipyclient = self._launch(30)
+        ## if samples not entered use all samples
+        if not samples:
+            samples = self.samples.keys()
 
-            ## if samples not entered use all samples
-            if not samples:
-                samples = self.samples.keys()
+        ## if sample keys, replace with sample obj
+        assert isinstance(samples, list), \
+        "to subselect samples enter as a list, e.g., [A, B]."
+        samples = [(key, self.samples[key]) for key in samples]
 
-            ## if sample keys, replace with sample obj
-            assert isinstance(samples, list), \
-            "to subselect samples enter as a list, e.g., [A, B]."
-            samples = [(key, self.samples[key]) for key in samples]
+        ## require Samples 
+        assert samples, "No Samples in {}".format(self.name)
 
-            ## require Samples 
-            assert samples, "No Samples in {}".format(self.name)
-
-            ## skip if all are finished
-            if not force:
-                if all([i[1].stats.state >= 3 for i in samples]):
-                    print("Skipping step3: All {} ".format(len(self.samples))\
-                         +"Samples already clustered in `{}`".format(self.name))
-                else:
-                    assemble.cluster_within.run(self, samples, ipyclient, 
-                                                preview, noreverse, force)
+        ## skip if all are finished
+        if not force:
+            if all([int(i[1].stats.state) >= 3 for i in samples]):
+                print("  Skipping: All {} ".format(len(self.samples))\
+                     +"Samples already clustered in `{}`".format(self.name))
+            
             else:
-                assemble.cluster_within.run(self, samples, ipyclient, 
-                                            preview, noreverse, force)
-
-
-        except (KeyboardInterrupt, SystemExit) as _:
-            print("assembly step3 interrupted by user.")
-            raise
-        except Exception as inst:
-            print("other error: %s" % inst)
-            raise
-
-        ## close parallel client if done or interrupted
-        try:
-            ipyclient.close()
-        except UnboundLocalError as inst:
-            LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
-
-        ## pickle the data object
-        self._save()
+                assemble.cluster_within.run(self, samples, noreverse, 
+                                            force, ipyclient)
+        else:
+            assemble.cluster_within.run(self, samples, noreverse, 
+                                        force, ipyclient)
 
 
 
-    def step4(self, samples=None, preview=0, force=False, subsample=None):
+    def _step4func(self, samples, subsample, force, ipyclient):
         """ step 4: Joint estimation of error rate and heterozygosity. 
         If you want to overwrite data for a file, first set its state to 3:
         data.samples['sample'].stats['state'] = 3 """
-        print("  Step4: Joint estimation of error rate and heterozygosity")
-        try: 
-            ## launch parallel client            
-            ipyclient = self._launch(30) 
+        if self._headers:
+            print("  Step4: Joint estimation of error rate and heterozygosity")
 
-            ## sampling
-            if samples:
-                ## make a list keys or samples
-                if isinstance(samples, str):
-                    samples = list([samples])
-                else:
-                    samples = list(samples)
-
-                ## if keys are in list
-                if any([isinstance(i, str) for i in samples]):
-                    ## make into a subsampled sample dict
-                    subsamples = {i: self.samples[i] for i in samples}
-
-                ## send to function
-                assemble.jointestimate.run(self, subsamples.values(), 
-                                           ipyclient, force, subsample)
+        ## sampling
+        if samples:
+            ## make a list keys or samples
+            if isinstance(samples, str):
+                samples = list([samples])
             else:
-                ## if no sample, then do all samples
-                if not self.samples:
-                    print("Assembly object has no Samples.")
-                ## run clustering for all samples
-                assemble.jointestimate.run(self, self.samples.values(), 
-                                           ipyclient, force, subsample)
+                samples = list(samples)
 
-        except (KeyboardInterrupt, SystemExit) as inst:
-            LOGGER.error("assembly step4 interrupted: %s", inst)
-            print("assembly step4 interrupted.")
-            raise
+            ## if keys are in list
+            if any([isinstance(i, str) for i in samples]):
+                ## make into a subsampled sample dict
+                subsamples = {i: self.samples[i] for i in samples}
 
-        except Exception as inst:
-            LOGGER.error("crashed step4 error: %s", inst)
-            print("error during step4 ...\n({})\n".format(inst))
-            raise
-
-        ## close parallel client if done or interrupted
-        finally:
-            ipyclient.close()
-            if preview:
-                print(".")
-
-        ## pickle the data object
-        self._save()
+            ## send to function
+            assemble.jointestimate.run(self, subsamples.values(), 
+                                       subsample, force, ipyclient)
+        else:
+            ## if no sample, then do all samples
+            if not self.samples:
+                print("Assembly object has no Samples.")
+            ## run clustering for all samples
+            assemble.jointestimate.run(self, self.samples.values(), 
+                                       subsample, force, ipyclient)
 
 
 
-
-    def step5(self, samples="", preview=0, force=False):
+    def _step5func(self, samples, force, ipyclient):
         """ step 5: Consensus base calling from clusters within samples.
         If you want to overwrite data for a file, first set its state to 
         3 or 4. e.g., data.samples['sample'].stats['state'] = 3 """
+        ## print header
+        if self._headers:
+            print("  Step5: Consensus base calling ")
 
-        ## launch parallel client within guarded statement
-        try: 
-            ipyclient = self._launch(30) 
+        ## if samples not entered use all samples
+        if not samples:
+            samples = self.samples.keys()
 
-            ## if samples not entered use all samples
-            if not samples:
-                samples = self.samples.keys()
+        ## require Samples 
+        assert samples, "No Samples in {}".format(self.name)
 
-            ## require Samples 
-            assert samples, "No Samples in {}".format(self.name)
+        ## if sample keys, replace with sample obj
+        assert isinstance(samples, list), \
+        "to subselect samples enter as a list, e.g., [A, B]."
+        samples = [self.samples[key] for key in samples]
 
-            ## if sample keys, replace with sample obj
-            assert isinstance(samples, list), \
-            "to subselect samples enter as a list, e.g., [A, B]."
-            samples = [self.samples[key] for key in samples]
-
-            ## pass samples to rawedit
-            assemble.consens_se.run(self, samples, ipyclient, force)
-
-        except (KeyboardInterrupt, SystemExit):
-            LOGGER.error("assembly step5 interrupted by user.")
-            raise
-            
-        except Exception as inst:
-            LOGGER.error("crashed step5 error: %s", inst)
-            print("error during step5 ...\n({})\n".format(inst))
-            raise
-
-        ## close parallel client if done or interrupted
-        finally:
-            try:
-                ipyclient.close()
-            except UnboundLocalError as inst:
-                LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
-
-        ## checkpoint the data obj
-        self._save()
+        ## pass samples to rawedit
+        assemble.consens_se.run(self, samples, force, ipyclient)
 
 
-    def step6(self, samples="", noreverse=False, force=False):
+
+    def _step6func(self, samples, noreverse, force, randomseed, ipyclient):
         """ Step 6: Cluster consensus reads across samples and 
         align with muscle """
-        try: 
-            ipyclient = self._launch(30) 
+        ## if samples not entered use all samples
+        if not samples:
+            samples = self.samples.keys()
 
-            ## if samples not entered use all samples
-            if not samples:
-                samples = self.samples.keys()
+        ## if sample keys, replace with sample obj
+        assert isinstance(samples, list), \
+        "to subselect samples enter as a list, e.g., [A, B]."
+        samples = [self.samples[key] for key in samples]
 
-            ## if sample keys, replace with sample obj
-            assert isinstance(samples, list), \
-            "to subselect samples enter as a list, e.g., [A, B]."
-            samples = [(key, self.samples[key]) for key in samples]
+        if self._headers:
+            print("  Step 6: clustering across {} samples at {} similarity".\
+            format(len(samples), self.paramsdict["clust_threshold"]))
 
-            ## require Samples 
-            assert samples, "No Samples in {}".format(self.name)
+        ## require Samples 
+        assert samples, "No Samples in {}".format(self.name)
 
-            ## file for all reads
-            self.loci.clusters = os.path.join(self.dirs.consens, 
-                                              "cat.clust.gz")
-            if os.path.exists(self.loci.clusters):
-                print("Skipping step6: Clust file already exists:"\
-                     +"{}\n".format(self.loci.clusters))
+        ## attach filename for all reads database
+        self.database = os.path.join(self.dirs.consens, 
+                                     self.name+"_catclust.hdf5")
+
+        if not force:
+            if os.path.exists(self.database):
+                print("  Skipping step6: Clust file already exists:"\
+                      +"{}\n".format(self.database))
             else:
-                assemble.cluster_across.run(self, samples, ipyclient, 
-                                            noreverse, force)
-
-        except (KeyboardInterrupt, SystemExit) as _:
-            print("assembly step3 interrupted by user.")
-            raise
-
-        ## close parallel client if done or interrupted
-        try:
-            ipyclient.close()
-        except UnboundLocalError as inst:
-            LOGGER.error("problem launching ipcluster: \n(%s)\n", inst)
-
-        ## pickle the data object
-        self._save()
-
-
-    def step7():
-        """ Apply filters on aligned clusters to get final data set and 
-        provide output files in a number of formats """
+                assemble.cluster_across.run(self, samples, noreverse,
+                                            force, randomseed, ipyclient)
+        else:
+            assemble.cluster_across.run(self, samples, noreverse,
+                                        force, randomseed, ipyclient)
 
 
 
+    def step1(self, force=False):
+        """ test """
+        self._clientwrapper(self._step1func, [force], 10)
+
+    def step2(self, samples=None, nreplace=True, force=False):
+        """ test """
+        self._clientwrapper(self._step2func, [samples, nreplace, force], 10)
+
+    def step3(self, samples=None, noreverse=False, force=False):
+        """ test """
+        self._clientwrapper(self._step3func, [samples, noreverse, force], 10)
+
+    def step4(self, samples=None, subsample=None, force=False):
+        """ test """
+        self._clientwrapper(self._step4func, [samples, subsample, force], 10)
+
+    def step5(self, samples=None, force=False):
+        """ test """
+        self._clientwrapper(self._step5func, [samples, force], 2)
+
+    def step6(self, samples=None, noreverse=False, force=False, randomseed=0):
+        """ test """
+        self._clientwrapper(self._step6func, [samples, noreverse, force,
+                                              randomseed], 10)
+
+    def step7(self, samples=None, noreverse=False, force=False, randomseed=0):
+        """ test """
+        self._clientwrapper(self._step6func, [samples, noreverse, force,
+                                              randomseed], 10)
 
 
-    def run(self, steps=0, force=False, preview=False):
+
+
+    def run(self, steps=0, force=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
@@ -1064,19 +1072,19 @@ class Assembly(object):
             steps = list(steps)
 
         if '1' in steps:
-            self.step1(preview=preview)
+            self.step1()
         if '2' in steps:
-            self.step2(force=force, preview=preview)
+            self.step2(force=force)
         if '3' in steps:
-            self.step3(force=force, preview=preview)
+            self.step3(force=force)
         if '4' in steps:
-            self.step4(force=force, preview=preview)            
+            self.step4(force=force)
         if '5' in steps:
-            self.step5(force=force, preview=preview)            
-        # if '6' in steps:
-        #     self.step6()            
-        # if '7' in steps:
-        #     self.step7()
+            self.step5(force=force)
+        if '6' in steps:
+            self.step6()            
+        if '7' in steps:
+            self.step7()
 
 
 
@@ -1179,7 +1187,7 @@ def getbins():
     assert cmd_exists(vsearch), "vsearch not found here: "+vsearch
     assert cmd_exists(smalt), "smalt not found here: "+smalt
     assert cmd_exists(samtools), "samtools not found here: "+samtools
-    assert cmd_exists(bedtools), "samtools not found here: "+bedtools
+    assert cmd_exists(bedtools), "bedtools not found here: "+bedtools
     return vsearch, muscle, smalt, samtools, bedtools
 
 
@@ -1223,8 +1231,9 @@ def merge(name, assemblies):
 
 
 
-def bufcount(filename, gzipped):
-    """ fast line counter """
+def bufcountlines(filename, gzipped):
+    """ fast line counter. Used to quickly sum number of input reads 
+    when running link_fastqs to append files. """
     if gzipped: 
         fin = gzip.open(filename)                  
     else:
@@ -1261,25 +1270,30 @@ def index_reference_sequence(self):
         cmd = self.smalt+\
             " index "\
             " -s 2 "+\
-	    refseq_file+" "+\
-	    refseq_file
+        refseq_file+" "+\
+        refseq_file
 
         print(cmd)
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
 
-def tuplecheck(newvalue, conv=int):
+
+def tuplecheck(newvalue, dtype=None):
     """ Takes a string argument and returns value as a tuple. 
     Needed for paramfile conversion from CLI to set_params args """
     if isinstance(newvalue, str):
         newvalue = newvalue.rstrip(")").strip("(")
-        try:
-            newvalue = tuple([conv(i) for i in newvalue.split(",")])
-        except TypeError:
-            newvalue = tuple(conv(newvalue))
-        except Exception as inst:
-            LOGGER.info(inst)
-            sys.exit("\nError: arg `{}` is not formatted correctly.\n({})\n"\
+        if dtype:
+            try:
+                newvalue = tuple([dtype(i) for i in newvalue.split(",")])
+            except TypeError:
+                newvalue = tuple(dtype(newvalue))
+            except Exception as inst:
+                LOGGER.info(inst)
+                raise SystemExit(\
+                "\nError: arg `{}` is not formatted correctly.\n({})\n"\
                      .format(newvalue, inst))
+        else:
+            newvalue = tuple(newvalue)
     return newvalue
 
 

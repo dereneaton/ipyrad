@@ -7,8 +7,11 @@ parts of the pipeline
 from __future__ import print_function
 import os
 import glob
+import itertools
 import subprocess
 
+import logging
+LOGGER = logging.getLogger(__name__)
 
 def ambigcutters(seq):
     """ returns both resolutions of a cut site that has an ambiguous base in 
@@ -76,6 +79,96 @@ def getsplits(filename):
         optim = 8000000
     return optim
 
+
+def merge_pairs( data, sample, unmerged_files ):
+    """ Merge PE reads. Takes in a tuple of unmerged files
+    and returns the file name of the merged/combined PE
+    reads and the number of reads that were merged (overlapping)
+    """
+    LOGGER.debug("Entering merge_pairs - %s", unmerged_files)
+
+    ## tempnames for merge files
+    merged = os.path.join(data.dirs.edits,
+                          sample.name+"_merged_.fastq")
+    nonmerged1 = os.path.join(data.dirs.edits,
+                          sample.name+"_nonmerged_R1_.fastq")
+    nonmerged2 = os.path.join(data.dirs.edits,
+                          sample.name+"_nonmerged_R2_.fastq")
+
+    try:
+        maxn = sum(data.paramsdict['max_low_qual_bases'])
+    except TypeError:
+        maxn = data.paramsdict['max_low_qual_bases']
+
+    assert os.path.exists(unmerged_files[1]), \
+           "No paired read file (_R2_ file) found." 
+
+    ## vsearch merging
+    cmd = data.bins.vsearch \
+      +" --fastq_mergepairs "+unmerged_files[0] \
+      +" --reverse "+unmerged_files[1] \
+      +" --fastqout "+merged \
+      +" --fastqout_notmerged_fwd "+nonmerged1 \
+      +" --fastqout_notmerged_rev "+nonmerged2 \
+      +" --fasta_width 0 " \
+      +" --fastq_allowmergestagger " \
+      +" --fastq_minmergelen 32 " \
+      +" --fastq_maxns "+str(maxn) \
+      +" --fastq_minovlen 12 "
+
+    LOGGER.debug( cmd )
+    try:
+        subprocess.check_call(cmd, shell=True,
+                                   stderr=subprocess.STDOUT,
+                                   stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        LOGGER.error(subprocess.STDOUT)
+        LOGGER.error(cmd)
+        sys.exit("Error in merging pairs: \n({}).".format(inst))
+    finally:
+        ## record how many read pairs were merged
+        with open(merged, 'r') as tmpf:
+            nmerged = len(tmpf.readlines())
+
+    ## Combine the unmerged pairs and append to the merge file
+    with open(merged, 'ab') as combout:
+        ## read in paired end read files"
+        ## create iterators to sample 4 lines at a time
+        fr1 = open(nonmerged1, 'rb')
+        quart1 = itertools.izip(*[iter(fr1)]*4)
+        fr2 = open(nonmerged2, 'rb')
+        quart2 = itertools.izip(*[iter(fr2)]*4)
+        quarts = itertools.izip(quart1, quart2)
+
+        ## a list to store until writing
+        writing = []
+        counts = 0
+
+        ## iterate until done
+        while 1:
+            try:
+                read1s, read2s = quarts.next()
+            except StopIteration:
+                break
+            writing.append("\n".join([
+                            read1s[0].strip(),
+                            read1s[1].strip()+\
+                                "ssss"+comp(read2s[1].strip())[::-1],
+                            read1s[2].strip(),
+                            read1s[3].strip()+\
+                                "ssss"+read2s[3].strip()[::-1]]
+                            ))
+            counts += 1
+            if not counts % 1000:
+                combout.write("\n".join(writing)+"\n")
+                writing = []
+
+        combout.write("\n".join(writing))
+
+    os.remove( nonmerged1 )
+    os.remove( nonmerged2 )
+
+    return merged, nmerged
 
 def revcomp(sequence):
     "returns reverse complement of a string"

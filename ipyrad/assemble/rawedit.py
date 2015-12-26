@@ -155,7 +155,10 @@ def adapterfilter(args):
         elif wheretocut1 or wheretocut2:
             cutter = max(wheretocut1, wheretocut2)
 
-    ## if the read needs to be trimmed
+    ## pairgbs need to be trimmed to the same length
+    if data.paramsdict['datatype'] == 'pairgbs':
+        readlens = [len(i) for i in (read1[1], read2[1])]
+        cutter = min([i for i in readlens+[cutter] if i])
     #LOGGER.debug("@cutter w1:%s w2:%s ", wheretocut1, wheretocut2)
 
     if cutter:
@@ -195,7 +198,6 @@ def adapterfilter(args):
                                read2[2].tostring(),
                                read2[3].tostring()])
             write2.append(sseq2)
-
     return write1, write2, read1, read2, point, kept
 
 
@@ -268,22 +270,23 @@ def rawedit(args):
         read1, read2 = nfilter(data, read1, read2, nreplace)
 
         if len(read1):
-            ## replace cut sites            
-            read1, read2 = replace_cuts(data, read1, read2, cuts1, cuts2)
+            ## replace cut sites unless cuts already removed
+            if any(data.paramsdict["edit_cutsites"]):
+                read1, read2 = modify_cuts(data, read1, read2)
 
-            ## filter for adapters 
+            ## filter for adapters, and trim to size if pairgbs
             args = [data, sample, read1, read2, cuts1, cuts2, 
                     write1, write2, point]
             write1, write2, read1, read2, point, kept = adapterfilter(args)
+            #LOGGER.debug("down HERE")
+
+            ## counters
             if kept:
                 counts["keep"] += 1
             else:
                 counts["adapter"] += 1
         else:
             counts["quality"] += 1
-
-        ## TODO: print to file after N to retain low memory load
-
 
         ## advance number for read names
         point += 1
@@ -310,27 +313,29 @@ def rawedit(args):
 
 
 
-def replace_cuts(data, read1, read2, cuts1, cuts2):
+def modify_cuts(data, read1, read2):
     """ fix cut sites to be error free and not carry ambiguities """
+    ## shorthand
+    cutsmod = data.paramsdict["edit_cutsites"]
 
     ## replace cut region with a single resolution of cut w/o ambiguities
-    read1[1][:len(cuts1[0])] = list(cuts1[0])
-    read1[3][:len(cuts1[0])] = ["B"]*len(cuts1[0])
-    #read1[1] = read1[1][:len(cut1[0])] 
+    if len(read1) and cutsmod[0]:
+        if isinstance(cutsmod[0], str):
+            read1[1][:len(cutsmod[0])] = list(cutsmod[0])
+            read1[3][:len(cutsmod[0])] = ["B"]*len(cutsmod[0])
+        elif isinstance(cutsmod[0], int):
+            read1[1] = read1[1][abs(cutsmod[0]):]      
+            read1[3] = read1[3][abs(cutsmod[0]):]        
 
     ## same for cut2 and end of second read
-    if len(read2):
+    if len(read2) and cutsmod[1]:
         ## fix cut sites to be error free before counting Ns
-        if 'gbs' in data.paramsdict["datatype"]:
-            ## single digest use overhang for enzyme 1
-            read2[1][:len(cuts1[0])] = list(cuts1[0])
-            read2[3][:len(cuts1[0])] = ["B"]*len(cuts1[0])
-            #read2[1] = read2[1][len(cut1[0]):] # = list(cut1[0])            
-        else:
-            ## double digest use overhang for enzyme 2
-            read2[1][:len(cuts2[0])] = list(cuts2[0])
-            read2[3][:len(cuts2[0])] = ["B"]*len(cuts2[0])
-            #read2[1] = read2[1][len(cut2[0]):] # = list(cut2[0])            
+        if isinstance(cutsmod[1], str):
+            read2[1][:len(cutsmod[1])] = list(cutsmod[1])
+            read2[3][:len(cutsmod[1])] = ["B"]*len(cutsmod[1])
+        elif isinstance(cutsmod[1], int):
+            read2[1] = read1[1][abs(cutsmod[1]):]   
+            read2[3] = read1[3][abs(cutsmod[1]):]
     return read1, read2
 
 
@@ -340,7 +345,6 @@ def nfilter(data, read1, read2, nreplace=True):
     Filters based on max allowed Ns, and either replaces the Ns, or leaves 
     them. Right now replaces. Also fixes cut site to be error free.
     """
-
     ## get qscores
     qscore = np.array([ord(i) for i in read1[3]])
     phred1 = qscore - data.paramsdict["phred_Qscore_offset"]
@@ -377,7 +381,7 @@ def nfilter(data, read1, read2, nreplace=True):
 
 
 
-def prechecks(data, preview):
+def prechecks(data):
     """ checks before starting analysis """
     ## link output directories 
     data.dirs.edits = os.path.join(os.path.realpath(
@@ -395,14 +399,13 @@ def roundup(num):
 
 
 
-def run_full(data, sample, ipyclient, nreplace):
+def run_full(data, sample, nreplace, ipyclient):
     """ 
     Splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them .
     """
     ## before starting
-    preview = 0
-    prechecks(data, preview)
+    prechecks(data)
 
     ## load up work queue
     submitted = 0
@@ -547,7 +550,7 @@ def cleanup(data, sample, submitted, results):
 
 
 
-def run(data, samples, ipyclient, force=False, nrep=True):
+def run(data, samples, nreplace, force, ipyclient):
     """ run the major functions for editing raw reads """
     ## print warning if skipping all samples
     if not force:
@@ -565,7 +568,8 @@ def run(data, samples, ipyclient, force=False, nrep=True):
                          +"Too few reads ({}). Use force=True to overwrite.".\
                            format(sample.stats.reads_raw))
                 else:
-                    submitted, results = run_full(data, sample, ipyclient, nrep)
+                    submitted, results = run_full(data, sample, nreplace, 
+                                                  ipyclient)
                     cleanup(data, sample, submitted, results)
     else:
         for sample in samples:
@@ -574,7 +578,7 @@ def run(data, samples, ipyclient, force=False, nrep=True):
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))
             else:
-                submitted, results = run_full(data, sample, ipyclient, nrep)
+                submitted, results = run_full(data, sample, nreplace, ipyclient)
                 cleanup(data, sample, submitted, results)
 
 

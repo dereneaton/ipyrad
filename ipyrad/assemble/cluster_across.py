@@ -9,12 +9,12 @@ from __future__ import print_function
 import os
 import sys
 import gzip
-import copy
+import h5py
 import random
+import shutil
 import itertools
 import subprocess
 import numpy as np
-import cPickle as pickle
 import pandas as pd
 from collections import OrderedDict
 from .util import *
@@ -26,35 +26,34 @@ LOGGER = logging.getLogger(__name__)
 
 
 def breakalleles(consensus):
-    """ break ambiguity code consensus seqs
-    into two alleles """
-    a1 = ""
-    a2 = ""
+    """ break ambiguity code consensus seqs into two alleles """
+    allele1 = ""
+    allele2 = ""
     bigbase = ""
     for base in consensus:
         if base in tuple("RKSYWM"):
-            a,b = unhetero(base)
-            d = set([a,b])
-            a1 += uplow((a,b))
-            a2 += d.difference(uplow((a,b))).pop()
+            unhet1, unhet2 = unhetero(base)
+            hetset = set([unhet1, unhet2])
+            allele1 += uplow((unhet1, unhet2))
+            allele2 += hetset.difference(uplow((unhet1, unhet2))).pop()
             if not bigbase:
-                bigbase = uplow((a,b))
+                bigbase = uplow((allele1, allele2))
         elif base in tuple("rksywm"):
-            a,b = unhetero(base)
-            d = set([a,b])
-            a2 += uplow((a,b))
-            a1 += d.difference(uplow((a,b))).pop()
+            unhet1, unhet2 = unhetero(base)
+            hetset = set([unhet1, unhet2])
+            allele2 += uplow((unhet1, unhet2))
+            allele1 += hetset.difference(uplow((unhet1, unhet2))).pop()
         else:
-            a1 += base
-            a2 += base
-    return a1,a2
+            allele1 += base
+            allele2 += base
+    return allele1, allele2
 
 
 
 def fullcomp(seq):
     """ returns complement of sequence including ambiguity characters,
     and saves lower case info for multiple hetero sequences"""
-    ## this is probably not the most efficient...
+    ## this is surely not the most efficient...
     seq = seq.replace("A", 'u')\
              .replace('T', 'v')\
              .replace('C', 'p')\
@@ -85,12 +84,155 @@ def fullcomp(seq):
 
 
 
-def cluster(data, noreverse, nthreads):
+def muscle_align_across(args):
+    """ aligns reads, does split then aligning for paired reads """
+    ## parse args
+    data, samples, chunk = args
+    snames = [sample.name for sample in samples]
+
+    ## data are already chunked, read in the whole thing
+    infile = open(chunk, 'rb')
+    clusts = infile.read().split("//\n//\n")[:-1]
+    out = []
+    ## array to store indel information
+    maxlen = [225 if 'pair' in data.paramsdict["datatype"] else 125][0]
+    indels = np.zeros((len(clusts), len(samples), maxlen), dtype=np.int8)
+
+    ## iterate over clusters and align
+    loc = 0
+    for loc, clust in enumerate(clusts):
+        stack = []
+        lines = clust.strip().split("\n")
+        names = [i.split()[0][1:] for i in lines]
+        seqs = [i.split()[1] for i in lines]
+
+        ## append counter to end of names b/c muscle doesn't retain order
+        names = [j+";*"+str(i) for i, j in enumerate(names)]
+
+        ## don't bother aligning singletons
+        if len(names) <= 1:
+            if names:
+                stack = [names[0]+"\n"+seqs[0]]
+        else:
+            ## split seqs if paired end seqs
+            if 'pair' in data.paramsdict["datatype"]:
+                seqs1 = [i.split("ssss")[0] for i in seqs] 
+                seqs2 = [i.split("ssss")[1] for i in seqs]
+
+                string1 = muscle_call(data, names[:200], seqs1[:200])
+                string2 = muscle_call(data, names[:200], seqs2[:200])
+                anames, aseqs1 = parsemuscle(string1)
+                anames, aseqs2 = parsemuscle(string2)
+
+                ## resort so they're in same order
+                aseqs = [i+"ssss"+j for i, j in zip(aseqs1, aseqs2)]
+                somedic = OrderedDict()
+                for i in range(len(anames)):
+                    somedic[anames[i].rsplit(';', 1)[0]] = aseqs[i]
+                    locinds = np.array(aseqs[i] == "-", dtype=np.int32)
+                    indels[loc][snames.index(anames[i]\
+                                .rsplit("_", 1)[0])][:maxlen] = locinds
+
+            else:
+                string1 = muscle_call(data, names[:200], seqs[:200])
+                anames, aseqs = parsemuscle(string1)
+                somedic = OrderedDict()
+                for i in range(len(anames)):
+                    somedic[anames[i].rsplit(";", 1)[0]] = aseqs[i]
+                    locinds = np.array(aseqs[i] == "-", dtype=np.int32)
+                    indels[loc][snames.index(anames[i]\
+                                .rsplit("_", 1)[0])][:maxlen] = locinds
+
+            for key in somedic.iterkeys():
+                stack.append(key+"\n"+somedic[key])
+            #for key in keys:
+            #    if key[-1] == '-':
+            #        ## reverse matches should have --- overhang
+            #        if set(somedic[key][:4]) == {"-"}:
+            #            stack.append(key+"\n"+somedic[key])
+            #        else:
+            #            pass ## excluded
+            #    else:
+            #        stack.append(key+"\n"+somedic[key])
+
+        if stack:
+            out.append("\n".join(stack))
+
+    ## write to file after
+    infile.close()
+    outfile = open(chunk, 'wb')#+"_tmpout_"+str(num))
+    outfile.write("\n//\n//\n".join(out)+"\n")#//\n//\n")
+    outfile.close()
+
+    return chunk, indels, loc+1
+
+
+
+def multi_muscle_align(data, samples, clustbits, ipyclient):
+    """ Splits the muscle alignment across nthreads processors, each runs on 
+    1000 clusters at a time. This is a kludge until I find how to write a 
+    better wrapper for muscle. 
+    """
+    ## create loaded 
+    lbview = ipyclient.load_balanced_view()
+
+    try: 
+        ## create job queue for clustbits
+        submitted_args = []
+        for fname in clustbits:
+            submitted_args.append([data, samples, fname])
+
+        ## run muscle on all tmp files            
+        results = lbview.map_async(muscle_align_across, submitted_args)
+        indeltups = results.get()
+        ## concatenate indel arrays in correct order
+        nloci = 1000
+        maxlen = [225 if 'pair' in data.paramsdict["datatype"] else 125][0]
+        ioh5 = h5py.File(os.path.join(
+                            data.dirs.consens, data.name+"indels"), 'w')
+        dset = ioh5.create_dataset("indels", (nloci, len(samples), maxlen),
+                                   dtype='i4', 
+                                   chunks=(nloci/10, len(samples), maxlen),
+                                   compression="gzip")
+        ## sort into input order
+        indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
+        for tup in indeltups:
+            #print(tup[0][-10:], tup[1].shape, tup[2])
+            start = int(tup[0].rsplit("_", 1)[1])
+            dset[start:start+tup[2]] = tup[1]
+        ioh5.close()
+
+        ## concatenate finished reads
+        outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
+        with gzip.open(outhandle, 'wb') as out:
+            for fname in clustbits:
+                with open(fname) as infile:
+                    out.write(infile.read()+"//\n//\n")
+        #return nloci
+
+    except Exception as inst:
+        LOGGER.warn(inst)
+        raise
+
+    finally:
+        ## still delete tmpfiles if job was interrupted
+        for path in ["_cathaps.tmp", "_catcons.tmp", ".utemp", ".htemp"]:
+            fname = os.path.join(data.dirs.consens, data.name+path)
+            if os.path.exists(path):
+                pass
+                #os.remove(path)
+        tmpdir = os.path.join(data.dirs.consens, "tmpaligns")
+        if os.path.exists(tmpdir):
+            shutil.rmtree(tmpdir)
+
+
+
+def cluster(data, noreverse):
     """ calls vsearch for clustering across samples. """
     ## input and output file handles
-    cathaplos = os.path.join(data.dirs.consens, "cat.haplos")
-    uhaplos = os.path.join(data.dirs.consens, "cat.utemp")
-    hhaplos = os.path.join(data.dirs.consens, "cat.htemp")    
+    cathaplos = os.path.join(data.dirs.consens, data.name+"_cathaps.tmp")
+    uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
+    hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
 
     ## parameters that vary by datatype
     if data.paramsdict["datatype"] == "gbs":
@@ -109,21 +251,21 @@ def cluster(data, noreverse, nthreads):
         print(noreverse, "not performing reverse complement clustering")
 
     ## get call string
-    cmd = data.vsearch+\
+    cmd = data.bins.vsearch+\
         " -cluster_smallmem "+cathaplos \
        +reverse \
        +cov \
        +" -id "+str(data.paramsdict["clust_threshold"]) \
        +" -userout "+uhaplos \
+       +" -notmatched "+hhaplos \
        +" -userfields query+target+id+gaps+qstrand+qcov" \
        +" -maxaccepts 1" \
        +" -maxrejects 0" \
        +" -minsl 0.5" \
-       +" -fulldp " \
-       +" -threads "+str(nthreads) \
-       +" -usersort "+\
-       +" -notmatched "+hhaplos \
        +" -fasta_width 0" \
+       +" -threads 0" \
+       +" -fulldp " \
+       +" -usersort " \
        +" -quiet"
 
     try:
@@ -135,369 +277,227 @@ def cluster(data, noreverse, nthreads):
 
 
 
-def oldcluster(data, handle, gid, quiet):
-    """ clusters with vsearch across samples """
+def build_catg_file(data, samples, udic):
+    """ build full catgs file """
+    ## catg array of prefiltered loci (4-dimensional) aye-aye!
+    ## this can be multiprocessed!! just sum arrays at the end
+    ## but one big array will overload memory, so need to be done in slices
+    ## or better yet, using dask to automatically chunk it up...
 
-    if params["datatype"] == 'pairddrad':
-        ## use first files for split clustering "
-        if gid:
-            ## hierarchical clustering save temps
-            notmatched = " -notmatched "+params["work"]+\
-                           "prefix/"+handle.split("/")[-1].\
-                           replace(".firsts_", "._temp_")
-            userout = " -userout "+params["work"]+"prefix/"+\
-                      handle.split("/")[-1].replace(".firsts_", ".u_")
-        else:
-            notmatched = ""
-            userout = " -userout "+handle.replace(".firsts_", ".u")
-    else:
-        ## use haplos files "
-        if gid:
-            ## hierarchical clustering save temps
-            notmatched = " -notmatched "+params["work"]+"prefix/"+\
-                         handle.split("/")[-1].replace(".haplos_", "._temp_")
-            userout = " -userout "+params["work"]+"prefix/"+\
-                        handle.split("/")[-1].replace(".haplos_", ".u_")
-        else:
-            notmatched = ""
-            userout = " -userout "+handle.replace(".haplos_", ".u")
+    ## from dask.distributed import dask_client_from_ipclient
+    ## dclient = dask_client_from_ipclient(ipclient)
 
-    if params["datatype"] in ['gbs', 'pairgbs', 'merged']:
-        parg = " -strand both"
-        cov = " -query_cov .60 "
-    else:
-        parg = " -leftjust "
-        cov = " -query_cov .90 "
-    if 'vsearch' not in params["vsearch"]:
-        mask = ""
-        threads = " -threads 1"
-    else:
-        mask = " -qmask "+params["mask"]
-        threads = " -threads 8"
-    if quiet:
-        quietarg = " -quiet "
-    else:
-        quietarg = ""
+    ## for each catg sample fill its own hdf5
+    for sample in samples:
+        singlecat(data, sample, udic)
 
-    cmd = params["vsearch"]+\
-        " -cluster_smallmem "+handle+\
-        parg+\
-        mask+\
-        threads+\
-        " -id "+params["wclust"]+\
-        userout+\
-        " -userfields query+target+id+gaps+qstrand+qcov"+\
-        " -maxaccepts 1"+\
-        " -maxrejects 0"+\
-        " -fulldp"+\
-        " -usersort"+\
-        cov+\
-        notmatched+\
-        quietarg
-    subprocess.call(cmd, shell=True)
+    ## initialize an hdf5 array of the super catg matrix
+    maxlen = 125
+    nloci = 1000
+    ioh5 = h5py.File(data.database, 'w')
+    ## probably have to do something better than .10 loci chunk size
+    supercatg = ioh5.create_dataset("catgs", (nloci, len(samples), maxlen, 4),
+                                    dtype='i4', 
+                                    chunks=(nloci/10, len(samples), maxlen, 4),
+                                    compression="gzip")
+
+    ## sum individual hdf5 arrays into supercatg
 
 
-def makeclust(params, handle, gid, minmatch):
-    """ reconstitutes clusters from .u and temp files and
-    stores consens file names to cluster numbers and dumps to a dict """
 
-    ## locus counter
-    olddict = {}
-    locus = 1
+def singlecat(data, sample, udic):
+    """ run one samples """
+    ## create 
+    ioh5 = h5py.File(os.path.join(data.dirs.consens, sample.name+".hdf5"), 'w')
+    ## probably have to do something better than .10 loci chunk size
+    maxlen = 125
+    nloci = 1000
+    icatg = ioh5.create_dataset(sample.name, (nloci, maxlen, 4),
+                                dtype='i4',) 
+                                #chunks=(nloci/10, len(samples), maxlen, 4),
+                                #compression="gzip")
 
-    ## read in cluster hits and seeds files
-    if not gid:
-        userout = open(handle.replace(".haplos_", ".u"), 'r')
-        outfile = gzip.open(handle.replace(".haplos_"+gid, \
-                                           ".clust_"+gid+".gz"), 'w')
-    else:
-        userout = open(params["work"]+'prefix/'+handle.split("/")[-1].\
-                                       replace(".haplos_", ".u_"), 'r')
-        nomatch = open(params["work"]+'prefix/'+handle.split("/")[-1].\
-                                       replace(".haplos_", "._temp_"), 'r')
-        outfile = open(params["work"]+'prefix/'+handle.split("/")[-1].\
-                                       replace(".haplos_", ".seed_"), 'w')
+    ## get catg for one sample
+    catarr = np.load(sample.files.database)
+    #catarr = np.load(os.path.join(data.dirs.consens, sample.name+".catg"))
+    ## for each read in catarr, if it g ask which locus it is in
+
+    ## gonna want to 'filter' the pdf, e.g., :
+    ## dff.groupby('B').filter(lambda x: len(x) > 2)
+    ## groups.get_group('3J_0_594').apply(lambda x: x[0].rsplit("_", 1)[0], axis=1)
+    for iloc, seed in enumerate(udic.groups.iterkeys()):
+        ipdf = udic.get_group(seed)
+
+    ## for each locus in full data set
+    itax = 10 ## get this
+    nloci = 1000
+    for iloc in xrange(nloci):
+        getloc = udic.get_group('...')
+        dset[iloc][itax] = catarr[getloc]
+
+    print(dset.name, dset.shape)
+    print(catarr.shape)
+
+
+
+
+def build_reads_file(data):
+    """ reconstitutes clusters from .utemp and htemp files and writes them 
+    to chunked files for aligning in muscle. Return a dictionary with 
+    seed:hits info from utemp file
+    """
+    ## read in cluster hits as pandas data frame
+    uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
+    updf = pd.read_table(uhandle, header=None)
 
     ## load full fasta file into a Dic
-    consdic = {}   ## D
-    if params["datatype"] == 'pairddrad':
-        if gid:
-            infile = open(handle.replace(".haplos_"+gid, ".firsts_"+gid))
-        else:
-            infile = gzip.open(handle.replace(".haplos_"+gid,
-                                              ".consens_"+gid+".gz"))
-    else:
-        infile = gzip.open(handle.replace(".haplos_"+gid, 
-                                          ".consens_"+gid+".gz"))
+    conshandle = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
+    consdf = pd.read_table(conshandle, delim_whitespace=1, header=None)
+    printstring = "{:<%s}    {}" % max([len(i) for i in set(consdf[0])])
+    consdic = consdf.set_index(0)[1].to_dict()
 
-    duo = itertools.izip(*[iter(infile)]*2)  ## L
-    while 1:
-        try: 
-            name, seq = duo.next()
-        except StopIteration:
-            break
-        consdic[name.strip()] = seq.strip()
-    infile.close()
+    ## make an tmpout directory and a printstring for writing to file
+    tmpdir = os.path.join(data.dirs.consens, "tmpaligns")
+    if not os.path.exists(tmpdir):
+        os.mkdir(tmpdir)
+    optim = 100
 
-    ## load .u match info into a Dic
-    udic = {}
-    for line in [line.split("\t") for line in userout.readlines()]:
-        if ">"+line[1] in udic:
-            udic[">"+line[1]].append([">"+line[0], line[4]])
-        else:
-            udic[">"+line[1]] = [[">"+line[0], line[4]]]
-    
-    ## if tier 1 of hierarchical clustering "
-    if gid:
-        if int(minmatch) == 1:
-            ## no reduction, write seeds only "
-            singles = nomatch.read().split(">")[1:]
-            for i in singles:
-                i = i.split("\n")[0]+"\n"+"".join(i.split("\n")[1:]).upper()
-                print >>outfile, ">"+i+"\n//"
-                #print >>outfile, str(locus)
-            del singles
-        else:       
-            for key, values in udic.items():
-                ## reduction, only write seed if minimum hits reached
-                if (len(values)+1) >= int(minmatch):
-                    ## fix for if short seqs are excluded during clustering
-                    if consdic.get(key):
-                        seq = key+"\n"+consdic[key]+"\n"
-                        seq += "//\n"
-                        #seq += str(locus)+"\n"
-                        outfile.write(seq)
-    else:
-        ## map sequences to clust file in order
-        seq = ""
-        for key, values in udic.items():
-            if consdic.get(key):   
-                ## fix for if short seqs are excluded during clustering
-                seq = key+"\n"+consdic[key]+'\n'
-                names = [i[0] for i in values]
-                orient = [i[1] for i in values]
-                for i in range(len(names)):
-                    if consdic.get(names[i]):  
-                        if orient[i] == "+":
-                            seq += names[i]+'\n'+consdic[names[i]]+"\n"
-                        else:
-                            seq += names[i]+'\n'+\
-                                   fullcomp(consdic[names[i]][::-1])+"\n"
-                seq += str(locus)+"\n//\n"
-                outfile.write(seq)
+    ## groupby index 1 (seeds) 
+    groups = updf.groupby(by=1, sort=False)
 
-                ## store names in locus number
-                ## with ">" char trimmed off
-                #print 'names,'
-                #print names, key
-                olddict[locus] = [i[1:] for i in names+[key]]
-                #print locus
-                #print len(names+[key]), names+[key]
-                locus += 1
+    ## get seqs back from consdic
+    clustbits = []
+    locilist = []
+    loci = 0
+    for seed in set(updf[1].values):
+        ## get sub-DF
+        gdf = groups.get_group(seed)
+        ## set seed name and sequence
+        seedseq = consdic.get(">"+seed)
+        names = [">"+seed]
+        seqs = [seedseq]
+        ## iterate over gdf
+        for i in gdf.index:
+            hit = gdf[0][i]
+            names.append(">"+hit)
+            if gdf[4][i] == "+":
+                seqs.append(consdic[">"+hit])
+            else:
+                seqs.append(fullcomp(hit[::-1]))
+        locilist.append("\n".join([printstring.format(i, j) \
+                        for i, j in zip(names, seqs)]))
 
-    outfile.close()
-    userout.close()
-    if gid:
-        nomatch.close()
+        loci += 1
+        if not loci % optim:
+            ## a file to write results to
+            handle = os.path.join(tmpdir, "tmp_"+str(loci))
+            with open(handle, 'w') as tmpout:
+                tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
+                locilist = []
+                clustbits.append(handle)
+    if locilist:
+        with open(os.path.join(tmpdir, "tmp_"+str(loci)), 'w') as tmpout:
+            tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
+            clustbits.append(handle)
 
-    ## dump the locus2name map
-    pickleout = gzip.open(handle.replace("haplos_", "loc2name.map"), 'wb')
-    pickle.dump(olddict, pickleout)
-    pickleout.close()
-
-
-# def splitter(handle):
-#     """ splits first reads from second reads for pairddrad data
-#         for split clustering method """
-#     infile = open(handle)
-#     if os.path.exists(handle.replace(".haplos", ".firsts")):
-#         os.remove(handle.replace(".haplos", ".firsts"))
-        
-#     orderfirsts = open(handle.replace(".haplos", ".firsts"), 'w')
-#     dp = itertools.izip(*[iter(infile)]*2)
-#     ff = []
-#     cnts = 0
-#     for d in dp:
-#         n,s = d
-#         ## checking fix to pairddrad splitting problem...
-#         ## backwards compatible with pyrad v2
-#         s1 = s.replace("X", "x").replace("x", "n").split("nn")[0]
-#         ff.append(n+s1+"\n")
-#         cnts += 1
-#     orderfirsts.write("".join(ff))
-#     orderfirsts.close()
-#     return handle.replace(".haplos", ".firsts")
+    return groups, clustbits
 
 
 
-def makecons(data, samples, outgroups, randomseed):
+def build_input_file(data, samples, outgroups, randomseed):
     """ Make the concatenated consens files to input to vsearch. 
     Orders reads by length and shuffles randomly within length classes"""
 
     ##  make a copy list that will not have outgroups excluded
-    conshandles = [data.samples[samp].files.consens for samp in samples]
-
-    ## remove outgroup sequences, add back in later to bottom after shuffling "
-    ##    outgroup = ""
+    conshandles = list(itertools.chain(*[samp.files.consens \
+                                         for samp in samples]))
+    ## remove outgroup sequences, add back in later to bottom after shuffling
+    ## outgroups could be put to end of sorted list
+    conshandles.sort()
+    assert conshandles, "no consensus files found"
                 
     ## output file for consens seqs from all taxa in consfiles list
-    allcons = gzip.open(data.dirs.consens, "cat_consens.tmp")
+    allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
+    allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
 
-    ## combine cons files into haplos
+    ## combine cons files and write as pandas readable format to all file
+    ## this is the file that will be read in later to build clusters
+    printstr = "{:<%s}    {}" % 100   ## max len allowable name
     with open(allcons, 'wb') as consout:
         for qhandle in conshandles:
             with gzip.open(qhandle, 'r') as tmpin:
-                consout.write(tmpin.read())
+                data = tmpin.readlines()
+                names = iter(data[::2])
+                seqs = iter(data[1::2])
+                consout.write("".join(printstr.format(i.strip(), j) \
+                              for i, j in zip(names, seqs)))
 
-    ## shuffle sequences in vsearch
-    cmd = data.vsearch \
-        +" --shuffle "+allcons \
-        +" --output "+allcons.replace("_consens.gz", "_shuf.tmp")
-    subprocess.check_call(cmd, shell=True)
-
-    ## order by length in vsearch
-    cmd = data.vsearch \
-        +" --sortbylength "+allcons.replace("_consens.gz", "_shuf.tmp") \
-        +" --output "+allcons.replace("_consens.gz", "_sort.tmp")
-    subprocess.check_call(cmd, shell=True)
-
-    sys.exit()
-    ## message to shell
-    print("Step 6: clustering across {} samples at {} similarity").\
-         format(len(samples), data.paramsdict["clust_threshold"]) 
-
-    ## write output to .consens_.gz file
-
-    ## convert ambiguity codes into a sampled haplotype for any sample
-    ## to use for clustering, but save ambiguities for later
-
-    ## output file
-    outhaplos = open(outhandle, 'w')
-
-    ## input file
-    infile = gzip.open(params["work"]+"clust"+params["wclust"]+\
-                       "/cat.consens_"+gid+".gz")
-    lines = iter(infile.readlines())
-    infile.close()
-    
-    ## write to haplo files in fasta format
-    writinghaplos = []
-
-    for line in lines:
-        if ">" in line:
-            writinghaplos.append(line.strip())
-        else:
-            allele = breakalleles(line)[0]
-            writinghaplos.append(allele.strip())
-    outhaplos.write("\n".join(writinghaplos))
-    outhaplos.close()
+    ## created version with haplos that is also shuffled within seqlen classes
+    random.seed(randomseed)
+    ## read back in cons as a data frame
+    consdat = pd.read_table(allcons, delim_whitespace=1, header=None)
+    ## make a new column with seqlens and then groupby seqlens
+    consdat[2] = pd.Series([len(i) for i in consdat[1]], index=consdat.index)
+    lengroups = consdat.groupby(by=2)
+    lenclasses = sorted(set(consdat[2]), reverse=True)
+    ## write all cons in pandas readable format
+    for lenc in lenclasses:
+        group = lengroups.get_group(lenc)
+        ## shuffle the subgroup
+        shuf = group.reindex(np.random.permutation(group.index))
+        ## convert ambiguity codes into a sampled haplotype for any sample
+        ## to use for clustering, but ambiguities are still saved in allcons
+        writinghaplos = []
+        for ind in shuf.index:
+            writinghaplos.append(shuf[0][ind]+'\n'+\
+                                 breakalleles(shuf[1][ind])[0])
+        allhaps.write("\n".join(writinghaplos))
+    allhaps.close()
 
 
 
-def main(params, inlist, gid, group, minhit, quiet):
-    """ setup to call functions """
-
-    ## make outhandle name, ... why do I need gid?
-    outhandle = params["work"]+"clust"+params["wclust"]+\
-                "/cat.haplos_"+gid
-
-    ## make file with all reads 
-    makecons(params, inlist, outhandle, gid, minhit, quiet) 
-
-    if params["datatype"] == 'pairddrad':
-        ## split first from second reads
-        splithandle = splitter(outhandle)
-        cluster(params, splithandle, gid, quiet)
-    else:
-        cluster(params, outhandle, gid, quiet)
-
-    ## make clusters with .haplos, .u, and .temp files"
-    makeclust(params, outhandle, gid, minhit)
-
-    ## align clusters
-    ##
-
-    ## load into hdf database with site counts..?
-    ##
-
-
-
-
-def run(data, samples, ipyclient, noreverse, force):
+def run(data, samples, noreverse, force, randomseed, ipyclient):
     """ subselect and pass args for across-sample clustering """
 
     ## make file with all samples reads, allow priority to shunt outgroups
     ## to the end of the file
     outgroups = []
-    randomseed = np.random.randint(1, int(1e9))
-    makecons(data, samples, outgroups, randomseed)
+    LOGGER.info("creating input files")
+    build_input_file(data, samples, outgroups, randomseed)
 
-    ## 
+    ## call vsearch
+    LOGGER.info("clustering")    
+    cluster(data, noreverse)
 
+    ## build consens clusters and return hit dict
+    LOGGER.info("building consens clusters")        
+    ugroups, clustbits = build_reads_file(data)
 
+    ## muscle align the consens reads and creates hdf5 indel array
+    LOGGER.info("muscle alignment & building indel database")
+    multi_muscle_align(data, samples, clustbits, ipyclient)
 
-def oldpre():
-    if not params["hierarch"]:
-        ## Regular clustering
-        if "," in params["subset"]:
-            inlist = [params["work"]+"clust"+params["wclust"]+\
-                      "/"+i+".consens*" for i in params["subset"]\
-                      .strip().split(",")]
-        else:
-            inlist = glob.glob(params["work"]+"clust"+params["wclust"]+\
-                               "/"+params["subset"]+"*.consens*")
+    ## build supercatg file and insert indels
+    ## this can't do all loci at once, needs chunking @ < (1e6, 100) 
+    LOGGER.info("... not yet building full database")    
+    #build_catg_file(data, samples, ugroups)
 
-        excludes = params["exclude"].strip().split(",")
-        names = [i.split("/")[-1].replace(".consens.gz", "") for i in inlist]
-        fulllist = [i for i, j in zip(inlist, names) if j not in excludes]
+    ## convert full catg into a vcf file
+    LOGGER.info("...not yet converting to VCF")        
 
-        ## cluster consens files in inlist
-        cluster_cons7_shuf.main(params, fulllist, "", "", "", quiet)
-        if not quiet:
-            sys.stderr.write("\n\tfinished clustering\n")
-
-
-    else:
-        ## Hierarchical clustering
-        print(gids)
-        print(groups)
-        print(minhits)
-
-        ## make a new dir/ for hierarchs
-        if not os.path.exists(params["work"]+"prefix/"):
-            os.makedirs(params["work"]+"prefix/")
-
-        ## queue up jobs
-        work_queue = multiprocessing.Queue()
-        result_queue = multiprocessing.Queue()
-
-        ## submit jobs
-        for (gid, minhit) in zip(gids, minhits):
-            inlist = groups[gid]
-            work_queue.put([params, inlist, gid, minhit, "", quiet])
-    #     inlist = Hgroups[Hgid]
-    #     work_queue.put([vsearch, wclust, datatype, 
-    #         outgroup, seed,
-    #         Hgid, Hminhit, inlist,
-    #         WORK, MASK, 1 ])
-                        
-        ## execute first tier jobs "    
-        jobs = []
-        for i in range(params["parallel"]):
-            worker = Worker(work_queue,
-                            result_queue,
-                            cluster_cons7_shuf.main)
-            jobs.append(worker)
-            worker.start()
-            for j in jobs:
-                j.join()
-
-        ## cluster second tier
-        tier2clust.main(params)
-        #  Hgids, seed, WORK, MASK)
-        print("\n\tfinished clustering\n")
+    ## invarcats()
+    ## invarcats()
 
 
 if __name__ == "__main__":
-    main()
+    ## test...
+    import ipyrad as ip
+
+    ## reload autosaved data. In case you quit and came back 
+    DATA = ip.load.load_assembly(\
+        "/home/deren/Documents/ipyrad/tests/test_rad/data1.assembly")
+
+    ## run step 6
+    DATA.step6(force=True)
+
 

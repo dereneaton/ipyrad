@@ -21,7 +21,7 @@ import subprocess
 import numpy as np
 from collections import OrderedDict
 from .refmap import *
-from .util import comp
+from .util import comp, merge_pairs
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -33,6 +33,8 @@ def cleanup(data, sample):
     ## get clustfile
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
+    sample.files.database = os.path.join(data.dirs.clusts,
+                                         sample.name+".catg")
 
     ## get depth stats
     infile = gzip.open(sample.files.clusters)
@@ -61,11 +63,9 @@ def cleanup(data, sample):
         ## sample assignments
         sample.stats["state"] = 3
         sample.stats["clusters_total"] = len(depth)
-        sample.stats["clusters_kept"] = max([len(i) for i in \
+        sample.stats["clusters_hidepth"] = max([len(i) for i in \
                                              (keepmj, keepstat)])
         sample.depths = depth
-        #sample.depths.mjmin = keepmj
-        #sample.depths.statmin = keepstat
 
         data._stamp("s3 clustering on "+sample.name)        
     else:
@@ -78,7 +78,7 @@ def cleanup(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats( data, sample )
 
-def muscle_align2(args):
+def muscle_align(args):
     """ aligns reads, does split then aligning for paired reads """
     ## parse args
     data, chunk = args
@@ -87,6 +87,7 @@ def muscle_align2(args):
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")
     out = []
+    indels = np.zeros((len(clusts), 2), dtype=np.int32)
 
     ## iterate over clusters and align
     for clust in clusts:
@@ -104,7 +105,7 @@ def muscle_align2(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if 'pair' in data.paramsdict["datatype"]:
+            if 'ssss' in seqs:
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
 
@@ -118,22 +119,22 @@ def muscle_align2(args):
                 somedic = OrderedDict()
                 for i in range(len(anames)):
                     ## filter for max indels
-                    nind = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    if nind <= sum(list(data.paramsdict["max_Indels_locus"])):
-                        somedic[anames[i]] = aseqs[i]
-                    else:
+                    #allindels = aseqs.count('-')
+                    intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
+                    somedic[anames[i]] = aseqs[i]
+                    if intindels > sum(data.paramsdict["max_Indels_locus"]):
                         LOGGER.info("high indels: %s", aseqs[i])
+                        #indels[x] = 1
 
             else:
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(string1)
                 somedic = OrderedDict()
                 for i in range(len(anames)):
-                    ## filter for max indel                    
-                    nind = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    if nind <= sum(list(data.paramsdict["max_Indels_locus"])):
-                        somedic[anames[i]] = aseqs[i]
-                    else:
+                    ## filter for max internal indels
+                    somedic[anames[i]] = aseqs[i]                       
+                    intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
+                    if intindels > sum(data.paramsdict["max_Indels_locus"]):
                         LOGGER.info("high indels: %s", aseqs[i])
 
             for key in somedic.keys():
@@ -180,6 +181,7 @@ def parsemuscle(out):
     names = [line.split("\n", 1)[0] for line in lines]
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
     tups = zip(names, seqs)
+    #LOGGER.debug("TUPS TUPS TUPS %s", tups)
     ## who knew, zip(*) is the inverse of zip
     anames, aseqs = zip(*sorted(tups, 
                         key=lambda x: int(x[0].split(";")[-1][1:])))
@@ -190,28 +192,10 @@ def parsemuscle(out):
 def muscle_call(data, names, seqs):
     """ makes subprocess call to muscle. A little faster than before """
     inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
-    return subprocess.Popen(data.muscle, 
+    return subprocess.Popen(data.bins.muscle, 
                             stdin=subprocess.PIPE, 
                             stdout=subprocess.PIPE)\
                             .communicate(inputstring)[0]
-
-
-# def alignfast(data, names, seqs):
-#     """ makes subprocess call to muscle """
-#     inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
-#     cmd = "/bin/echo '"+inputstring+"' | "+data.muscle+" -quiet -in -"
-#     piped = subprocess.Popen(cmd, shell=True, 
-#                        stdin=subprocess.PIPE,
-#                        stdout=subprocess.PIPE,
-#                        stderr=subprocess.STDOUT,
-#                        close_fds=True)
-#     _, fout = piped.stdin, piped.stdout
-#     #piped = subprocess.Popen(cmd, shell=True, 
-#     #                   stdout=subprocess.PIPE,
-#     #                   stderr=subprocess.STDOUT,
-#     #                   close_fds=True)
-#     #_, fout = piped.stdin, piped.stdout
-#     return fout.read()
 
 
 
@@ -220,7 +204,7 @@ def build_clusters(data, sample):
     to create .clust files, which contain un-aligned clusters """
 
     ## derepfile 
-    derepfile = os.path.join(data.dirs.edits, sample.name+".derep")
+    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
     ## vsearch results files
     ufile = os.path.join(data.dirs.clusts, sample.name+".utemp")
@@ -312,18 +296,39 @@ def build_clusters(data, sample):
 
 
 
-def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
+def split_among_processors(data, samples, ipyclient, noreverse, force):
     """ pass the samples to N engines to execute run_full on each.
 
     :param data: An Assembly object
     :param samples: one or more samples selected from data
-    :param preview: toggle preview printing to stdout
     :param noreverse: toggle revcomp clustering despite datatype default
     :param threaded_view: ipyparallel load_balanced_view client
 
     :returns: None
     """
-    ## nthreads per job for clustering
+    ## nthreads per job for clustering. Find optimal splitting.
+    ncpus = len(ipyclient.ids)  
+    
+    threads_per = 1
+    if ncpus >= 4:
+        threads_per = 2
+    if ncpus >= 8:
+        threads_per = 4
+    if ncpus >20:
+        threads_per = ncpus/4
+
+    if ncpus > 8:
+        threads_per = 4
+    if ncpus > 12:
+        threads_per = 3
+    if ncpus > 16:
+        threads_per = 4
+    if ncpus > 16:
+        threads_per = 4
+
+    ## we could create something like the following when there are leftovers:
+    ## [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
+
     threaded_view = ipyclient.load_balanced_view(
                     targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
     tpp = len(threaded_view)
@@ -354,11 +359,11 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
     submitted_args = []
     for sample in samples:
         if force:
-            submitted_args.append([data, sample, preview, noreverse, tpp])
+            submitted_args.append([data, sample, noreverse, tpp])
         else:
             ## if not already clustered 
             if sample.stats.state != 3.5:
-                submitted_args.append([data, sample, preview, noreverse, tpp])
+                submitted_args.append([data, sample, noreverse, tpp])
             else:
                 ## clustered but not aligned
                 pass
@@ -427,7 +432,7 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
             outfile.write(""+\
             "{:<20}   {:>9}   {:>9}   {:>9}   {:>9}   {:>9}   {:>9}\n""".\
                 format("sample", "N_reads", "clusts_tot", 
-                       "clusts_kept", "avg.depth.tot", 
+                       "clusts_hidepth", "avg.depth.tot", 
                        "avg.depth>mj", "avg.depth>stat"))
 
     ## append stats to file
@@ -439,7 +444,7 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                       format(sample.name, 
                              int(sample.stats["reads_filtered"]),
                              int(sample.stats["clusters_total"]),
-                             int(sample.stats["clusters_kept"]),
+                             int(sample.stats["clusters_hidepth"]),
                              np.mean(sample.depths),
                              np.mean(sample.depths[sample.depths >= \
                                      data.paramsdict["mindepth_majrule"]]),
@@ -447,114 +452,6 @@ def split_among_processors(data, samples, ipyclient, preview, noreverse, force):
                                      data.paramsdict["mindepth_statistical"]])
                              ))
     outfile.close()
-
-
-
-def combine_pairs(data, sample):
-    """ in prep """
-    #LOGGER.info("in combine_pairs: %s", sample.files.edits)
-
-    ## open file for writing to
-    combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
-    combout = open(combined, 'wb')
-
-    ## get nonmerged pairs
-    nonmerged1 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R1_.fastq")
-    nonmerged2 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R2_.fastq")
-
-    ## read in paired end read files"
-    ## create iterators to sample 4 lines at a time
-    fr1 = open(nonmerged1, 'rb')
-    quart1 = itertools.izip(*[iter(fr1)]*4)
-    fr2 = open(nonmerged2, 'rb')
-    quart2 = itertools.izip(*[iter(fr2)]*4)
-    quarts = itertools.izip(quart1, quart2)
-
-    ## a list to store until writing
-    writing = []
-    counts = 0
-
-    ## iterate until done
-    while 1:
-        try:
-            read1s, read2s = quarts.next()
-        except StopIteration:
-            break
-        writing.append("\n".join([
-                        read1s[0].strip(),
-                        read1s[1].strip()+\
-                            "ssss"+comp(read2s[1].strip())[::-1],
-                        read1s[2].strip(),
-                        read1s[3].strip()+\
-                            "ssss"+read2s[3].strip()[::-1]]
-                        ))
-        counts += 1
-        if not counts % 1000:
-            combout.write("\n".join(writing)+"\n")
-            writing = []
-
-    combout.write("\n".join(writing))
-    combout.close()
-
-    sample.files.edits = [(combined, )]
-    sample.files.pairs = combined
-    return sample
-
-
-
-def merge_fastq_pairs(data, sample):
-    """ Merge paired fastq reads. """
-    #LOGGER.info("merging reads")
-
-    ## tempnames for merge files
-    merged = os.path.join(data.dirs.edits,
-                          sample.name+"_merged_.fastq")
-    nonmerged1 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R1_.fastq")
-    nonmerged2 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R2_.fastq")
-
-    try:
-        maxn = sum(data.paramsdict['max_low_qual_bases'])
-    except TypeError:
-        maxn = data.paramsdict['max_low_qual_bases']
-
-    assert os.path.exists(sample.files.edits[0][1]), \
-           "No paired read file (_R2_ file) found."
-
-    ## vsearch merging
-    cmd = data.vsearch \
-      +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.edits[0][1] \
-      +" --fastqout "+merged \
-      +" --fastqout_notmerged_fwd "+nonmerged1 \
-      +" --fastqout_notmerged_rev "+nonmerged2 \
-      +" --fasta_width 0 " \
-      +" --fastq_allowmergestagger " \
-      +" --fastq_minmergelen 32 " \
-      +" --fastq_maxns "+str(maxn) \
-      +" --fastq_minovlen 12 "
-
-    LOGGER.debug( "merge_fastq_pairs: %s", cmd )
-
-    try:
-        subprocess.check_call(cmd, shell=True,   
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error(subprocess.STDOUT)
-        LOGGER.error(cmd)        
-        sys.exit("Error in merging pairs: \n({}).".format(inst))
-    finally:
-        ## record merge file name temporarily
-        sample.files.merged = merged       
-        ## record how many read pairs were merged
-        with open(sample.files.merged, 'r') as tmpf:
-            sample.stats.reads_merged = len(tmpf.readlines())
-
-    return sample
 
 
 
@@ -583,12 +480,10 @@ def concat_edits(data, sample):
             sample.files.edits = [(tmphandle1, )]
     return sample
 
-
-
-def derep_and_sort(data, sample, preview, nthreads):
+def derep_and_sort(data, sample, nthreads):
     """ dereplicates reads and sorts so reads that were highly
     replicated are at the top, and singletons at bottom, writes
-    output to .derep file """
+    output to derep file """
 
     LOGGER.debug( "Entering derep_and_sort: %s", sample.name )
 
@@ -602,13 +497,13 @@ def derep_and_sort(data, sample, preview, nthreads):
     LOGGER.debug("derep FILE %s", sample.files.edits[0][0])
 
     ## do dereplication with vsearch
-    cmd = data.vsearch+\
-          " -derep_fulllength "+sample.files.edits[0][0]+\
-          reverse+\
-          " -output "+os.path.join(data.dirs.edits, sample.name+".derep")+\
-          " -sizeout "+\
-          " -threads "+str(nthreads)+\
-          " -fasta_width 0"
+    cmd = data.bins.vsearch+\
+          " -derep_fulllength "+sample.files.edits[0][0]\
+         +reverse \
+         +" -output "+os.path.join(data.dirs.edits, sample.name+"_derep.fastq")\
+         +" -sizeout " \
+         +" -threads "+str(nthreads) \
+         +" -fasta_width 0"
 
     ## run vsearch
     LOGGER.debug("%s",cmd)
@@ -622,21 +517,19 @@ def derep_and_sort(data, sample, preview, nthreads):
         sys.exit("Error in vsearch: \n{}\n{}\n{}."\
                  .format(inst, subprocess.STDOUT, cmd))
 
-
-
-def cluster(data, sample, preview, noreverse, nthreads):
+def cluster(data, sample, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
     values were chosen based on experience, but could be edited by users """
     ## get files
-    derephandle = os.path.join(data.dirs.edits, sample.name+".derep")
+    derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## datatype variables
-    if data.paramsdict["datatype"] in ['gbs']:
+    if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
         cov = " -query_cov .35 " 
-    elif data.paramsdict["datatype"] in ['pairgbs', 'merged']:
+    elif data.paramsdict["datatype"] == 'pairgbs':
         reverse = "  -strand both "
         cov = " -query_cov .60 " 
     else:  ## rad, ddrad
@@ -649,7 +542,7 @@ def cluster(data, sample, preview, noreverse, nthreads):
         LOGGER.warn(noreverse, "not performing reverse complement clustering")
 
     ## get call string
-    cmd = data.vsearch+\
+    cmd = data.bins.vsearch+\
         " -cluster_smallmem "+derephandle+\
         reverse+\
         cov+\
@@ -663,8 +556,7 @@ def cluster(data, sample, preview, noreverse, nthreads):
         " -threads "+str(nthreads)+\
         " -usersort "+\
         " -notmatched "+temphandle+\
-        " -fasta_width 0" \
-        " --samout "+temphandle.replace("htemp", "sam")
+        " -fasta_width 0"
 
     ## run vsearch
     try:
@@ -715,7 +607,7 @@ def multi_muscle_align(data, sample, ipyclient):
             submitted_args.append([data, fname])
 
         ## run muscle on all tmp files            
-        results = lbview.map_async(muscle_align2, submitted_args)
+        results = lbview.map_async(muscle_align, submitted_args)
         results.get()
 
         ## concatenate finished reads
@@ -743,11 +635,9 @@ def clustall(args):
     then denovo clusters reads. """
 
     ## get args
-    data, sample, preview, noreverse, nthreads = args
+    data, sample, noreverse, nthreads = args
 
-    ## preview
-    if preview:
-        LOGGER.info("preview: in clustall, using %s", nthreads)
+    LOGGER.debug( "clustall() %s", sample.name )
 
     ## concatenate edits files in case a Sample has multiple, and 
     ## returns a new Sample.files.edits with the concat file
@@ -755,27 +645,32 @@ def clustall(args):
 
     ## merge fastq pairs
     if 'pair' in data.paramsdict['datatype']:
-        ## merge pairs that overlap into a merge file
-        sample = merge_fastq_pairs(data, sample)
-        ## pair together remaining pairs into a pairs file
-        sample = combine_pairs(data, sample)
-        ## if merge file, append to pairs file
-        with open(sample.files.pairs, 'a') as tmpout:
-            with open(sample.files.merged, 'r') as tmpin:
-                tmpout.write("\n"+tmpin.read())
+        ## merge pairs that overlap and combine non-overlapping
+        ## pairs into one merged file. merge_pairs takes the unmerged
+        ## files list as an argument because we're reusing this code 
+        ## in the refmap pipeline, trying to generalize.
+        LOGGER.debug( "Merging pairs - %s", sample.files )
+        unmerged_files =  [ sample.files.edits[0][0], sample.files.edits[0][1] ]
+        mergefile, nmerged = merge_pairs( data, sample, unmerged_files )
+        sample.files.edits = [(mergefile, )]
+        sample.files.pairs = mergefile
+        sample.stats.reads_merged = nmerged
+        sample.merged = 1
         LOGGER.info(sample.files.edits)
 
     ## convert fastq to fasta, then derep and sort reads by their size
-    derep_and_sort(data, sample, preview, nthreads)
-
+    #LOGGER.debug(data, sample, nthreads)
+    derep_and_sort(data, sample, nthreads)
+    #LOGGER.debug(data, sample, nthreads)
+    
     ## cluster derep fasta files in vsearch 
-    cluster(data, sample, preview, noreverse, nthreads)
+    cluster(data, sample, noreverse, nthreads)
 
     ## cluster_rebuild
     build_clusters(data, sample)
 
 
-def run(data, samples, ipyclient, preview, noreverse, force):
+def run(data, samples, noreverse, force, ipyclient):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
@@ -785,32 +680,42 @@ def run(data, samples, ipyclient, preview, noreverse, force):
     for _, sample in samples:
         if not force:
             if sample.files.clusters:
-                print("Skipping {}; aleady clustered.".\
+                print("  Skipping {}; aleady clustered.".\
                       format(sample.name))
             else:
-                subsamples.append(sample)
+                if sample.stats.reads_filtered:
+                    subsamples.append(sample)
         else:
             ## force to overwrite
-            subsamples.append(sample)
+            if sample.stats.reads_filtered:            
+                subsamples.append(sample)
 
     ## run subsamples 
-    assert subsamples, "No Samples ready to be clustered. To rewrite existing" \
-                      +"data use force=True."
-    args = [data, subsamples, ipyclient, preview, noreverse, force]
-    split_among_processors(*args)
-
+    if not subsamples:
+        print("  No Samples ready to be clustered. First run step2().")
+    else:
+        args = [data, subsamples, ipyclient, noreverse, force]
+        split_among_processors(*args)
 
 
 
 if __name__ == "__main__":
     ## test...
-    DATA = Assembly("test")
-    DATA.get_params()
-    DATA.set_params(1, "./")
-    DATA.set_params(28, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
-    DATA.get_params()
-    print(DATA.log)
-    DATA.step3()
+    import ipyrad as ip
+
+    ## reload autosaved data. In case you quit and came back 
+    data1 = ip.load.load_assembly("test_rad/data1.assembly")
+
+    ## run step 6
+    data1.step3(force=True)
+
+    # DATA = Assembly("test")
+    # DATA.get_params()
+    # DATA.set_params(1, "./")
+    # DATA.set_params(28, '/Volumes/WorkDrive/ipyrad/refhacking/MusChr1.fa')
+    # DATA.get_params()
+    # print(DATA.log)
+    # DATA.step3()
     #PARAMS = {}
     #FASTQS = []
     #QUIET = 0

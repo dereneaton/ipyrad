@@ -212,7 +212,7 @@ def optim(args):
 
 
 
-def run(data, samples, ipyclient, force, subsample):
+def run(data, samples, subsample, force, ipyclient):
     """ calls the main functions """
 
     # if haploid data
@@ -228,7 +228,7 @@ def run(data, samples, ipyclient, force, subsample):
                       "to overwrite.")
             elif sample.stats.state < 3:
                 print(sample.name+"not clustered yet. Run step3() first.")
-            elif sample.stats.clusters_kept < 100:
+            elif sample.stats.clusters_hidepth < 100:
                 print("skipping {}. Too few reads ({}). Use force=True "+\
                      "to override".format(sample.name, sample.stats.reads_raw))
             else:
@@ -242,7 +242,7 @@ def run(data, samples, ipyclient, force, subsample):
     ## if jobs then run
     if submitted_args:
         ## sort by cluster size
-        submitted_args.sort(key=lambda x: x[1].stats.clusters_kept, 
+        submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
                                                       reverse=True)
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(optim, submitted_args)

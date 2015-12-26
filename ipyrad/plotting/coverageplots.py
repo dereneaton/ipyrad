@@ -14,7 +14,8 @@ from collections import OrderedDict
 # pylint: disable=E1101
 
 
-def depthplot(data, samples=None, dims=(0, 0), xmax=50, outprefix=None):
+def depthplot(data, samples=None, dims=(None,None), canvas=(None,None), 
+              xmax=50, log=False, outprefix=None):
     """ plots histogram of coverages across clusters"""
 
     ## select samples to be plotted, requires depths info
@@ -36,13 +37,21 @@ def depthplot(data, samples=None, dims=(0, 0), xmax=50, outprefix=None):
             dims = (len(subsamples)/4, 4)
 
     ## create canvas
-    canvas = toyplot.Canvas(width=200*dims[1], height=150*dims[0])
+    if any(canvas):
+        print("usercanvas")
+        canvas = toyplot.Canvas(width=canvas[0], height=canvas[1])
+    else:
+        canvas = toyplot.Canvas(width=200*dims[1], height=150*dims[0])
 
     ## fill in each panel of canvas with a sample
+    ## TODO: get all data and then plot, so you know and can set the ymax
+    ## before plotting.
     for panel, sample in enumerate(subsamples):
         axes = canvas.axes(grid=(dims[0], dims[1], panel), gutter=20)
         axes.x.domain.xmax = xmax
         axes.label.text = sample
+        if log:
+            axes.y.scale = "log"
 
         ## statistical called bins
         statdat = subsamples[sample].depths[\

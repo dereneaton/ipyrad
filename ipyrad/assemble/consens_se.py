@@ -8,7 +8,6 @@ from __future__ import print_function
 import scipy.stats
 import scipy.misc
 import itertools
-import time
 import numpy
 import gzip
 import glob
@@ -167,7 +166,7 @@ def consensus(args):
     #nreads = sample.stats.clusters_kept
     ## dimensions: nreads, max_read_length, 4 bases
     ## will store counts of bases only ne
-    catarr = numpy.empty([optim, 210, 4], dtype='int16')
+    catarr = numpy.zeros([optim, 210, 4], dtype='int16')
 
     ## counters 
     counters = Counter()
@@ -184,7 +183,7 @@ def consensus(args):
 
     ## store data for writing
     storeseq = {}
-    storecat = []
+    #storecat = []
 
     ## iterate over clusters
     done = 0
@@ -534,6 +533,7 @@ def cleanup(data, sample, statsdicts):
             os.remove(icat)
         numpy.save(outcat, catg)
         os.remove(cats1[0])
+    sample.files.database = handle1
 
     ## merge finished consens stats
     for i in range(len(combs1)):
@@ -575,13 +575,13 @@ def cleanup(data, sample, statsdicts):
                 +"{:>11} {:>11} {:>11} {:>11} {:>11.5f}\n"
     outfile.write(printblock.format(
         sample.name, 
-        int(sample.stats.clusters_kept),
-        int(sample.stats.clusters_kept - xfilters['depth']),
-        int(sample.stats.clusters_kept - xfilters['depth'] - \
+        int(sample.stats.clusters_hidepth),
+        int(sample.stats.clusters_hidepth - xfilters['depth']),
+        int(sample.stats.clusters_hidepth - xfilters['depth'] - \
             xfilters['heteros']),
-        int(sample.stats.clusters_kept - xfilters['depth'] - \
+        int(sample.stats.clusters_hidepth - xfilters['depth'] - \
             xfilters['heteros'] - xfilters['haplos']),
-        int(sample.stats.clusters_kept - xfilters['depth'] - \
+        int(sample.stats.clusters_hidepth - xfilters['depth'] - \
             xfilters['heteros'] - xfilters['haplos'] - xfilters['maxn']),
         int(sample.stats.reads_consens),
         xcounters["nsites"],
@@ -609,7 +609,7 @@ def run_full(data, sample, ipyclient):
     num = 0
 
     ## set optim size for chunks in N clusters TODO: (make this better)
-    optim = int(sample.stats.clusters_kept/
+    optim = int(sample.stats.clusters_hidepth/
                 float(len(ipyclient.ids)*2))
     optim = 100
     ## break up the file into smaller tmp files for each engine
@@ -633,7 +633,7 @@ def run_full(data, sample, ipyclient):
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
             num += 1
-        LOGGER.debug("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
+        #LOGGER.debug("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
 
     ## close clusters handle
     clusters.close()
@@ -675,14 +675,15 @@ def run_full(data, sample, ipyclient):
         
 
 
-def run(data, samples, ipyclient, force=False):
+def run(data, samples, force, ipyclient):
     """ checks if the sample should be run and passes the args """
-
     ## message to skip all samples
+    skip = 0
     if not force:
         if all([i.stats.state >= 5 for i in samples]):
-            print("Skipping step5: All {} ".format(len(data.samples))\
+            print("  Skipping step5: All {} ".format(len(data.samples))\
                  +"Samples already have consens reads ")
+            skip = 1
 
     ## prepare dirs
     data.dirs.consens = os.path.join(data.dirs.working, data.name+"_consens")
@@ -704,42 +705,43 @@ def run(data, samples, ipyclient, force=False):
             sample.stats.error_est = 0.0001
 
     if data.paramsdict["ploidy"] == 1:
-        print("  Haploid base calls and paralog filter (max haplos = 1)")
+        print("      Haploid base calls and paralog filter (max haplos = 1)")
     elif data.paramsdict["ploidy"] == 2:
-        print("  Diploid base calls and paralog filter (max haplos = 2)")
+        print("      Diploid base calls and paralog filter (max haplos = 2)")
     elif data.paramsdict["ploidy"] == 2:
-        print("  Diploid base calls and no paralog filter "\
+        print("      Diploid base calls and no paralog filter "\
                 "(max haplos = {})".format(data.paramsdict["ploidy"]))
-    print("  error rate (mean, std):  " \
+    print("      error rate (mean, std):  " \
              +"{:.5f}, ".format(data.stats.error_est.mean()) \
              +"{:.5f}\n".format(data.stats.error_est.std()) \
-          +"  heterozyg. (mean, std):  " \
+         +"      heterozyg. (mean, std):  " \
              +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
-             +"{:.5f}\n".format(data.stats.hetero_est.std()))
+             +"{:.5f}".format(data.stats.hetero_est.std()))
 
-    ## Samples on queue
-    for sample in samples:
-        ## not force need checks
-        if not force:
-            if sample.stats.state >= 5:
-                print("Skipping Sample {}; ".format(sample.name)
+
+    if not skip:
+        ## Samples on queue
+        for sample in samples:
+            ## not force need checks
+            if not force:
+                if sample.stats.state >= 5:
+                    print("Skipping Sample {}; ".format(sample.name)
                      +"Already has consens reads. Use force=True to overwrite.")
-            elif sample.stats.clusters_kept < 100:
-                print("Skipping Sample {}; ".format(sample.name)
-                     +"Too few clusters ({}). Use force=True to run anyway.".\
-                       format(sample.stats.clusters_kept))
+                elif sample.stats.clusters_hidepth < 100:
+                    print("Skipping Sample {}; ".format(sample.name)
+                       +"Too few clusters ({}). Use force=True to run anyway.".\
+                       format(sample.stats.clusters_hidepth))
+                else:
+                    statsdicts = run_full(data, sample, ipyclient)
+                    cleanup(data, sample, statsdicts)
             else:
-                statsdicts = run_full(data, sample, ipyclient)
-                cleanup(data, sample, statsdicts)
-
-        else:
-            if not sample.stats.clusters_kept:
-                print("Skipping Sample {}; ".format(sample.name)
-                     +"No clusters found in file {}".\
-                       format(sample.files.clusters_kept))
-            else:
-                statsdicts = run_full(data, sample, ipyclient)
-                cleanup(data, sample, statsdicts)
+                if not sample.stats.clusters_hidepth:
+                    print("Skipping Sample {}; ".format(sample.name)
+                         +"No clusters found in file {}".\
+                           format(sample.files.clusters_hidepth))
+                else:
+                    statsdicts = run_full(data, sample, ipyclient)
+                    cleanup(data, sample, statsdicts)
 
 
 

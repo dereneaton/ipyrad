@@ -9,7 +9,7 @@ import dill
 from ipyrad.core.parallel import ipcontroller_init
 
 
-def load_assembly(name, controller="Local", quiet=False, launch=True):
+def load_assembly(name, controller="Local", quiet=False, launch=False):
     """ loads an ipython dill pickled Assembly object """
     ## flexible name entry
     locations = [name]
@@ -34,6 +34,8 @@ def load_assembly(name, controller="Local", quiet=False, launch=True):
                 data._ipclusterid = ipcontroller_init(nproc="",
                                                       controller=controller,
                                                       quiet=quiet)
+            else:
+                data._ipclusterid = ""
 
         except (IOError, AttributeError):
             pass

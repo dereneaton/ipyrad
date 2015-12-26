@@ -18,6 +18,7 @@ requirements = [
     'scipy>0.10',
     'numpy>=1.9',
     'pandas',
+    'h5py'
     ]
 
 #import ipyrad
