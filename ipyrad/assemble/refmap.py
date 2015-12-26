@@ -23,6 +23,7 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 PREVIEW_TRUNCATE_LENGTH = 10000
+MAX_PE_DISTANCE = 60
 
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
@@ -110,8 +111,6 @@ def mapreads(args):
         unmapped_fastq_handle_R2 = sample.files.edits[0][1]
 
 
-        
-
     ## get smalt call string
     ##  -f sam       : Output as sam format, tried :clip: to hard mask output but it fsck
     ##                 and shreds the unmapped reads (outputs empty fq)
@@ -123,6 +122,8 @@ def mapreads(args):
     ##               : Reference sequence
     ##               : Input file(s), in a list. One for forward and one for reverse reads.
 
+    ## TODO: `pp` is probably wrong. Have to figure out what the orientation of reads
+    ## is for gbs and ddrad.
     if 'pair' in data.paramsdict["datatype"]:
         pairtype = " -l pp "
     else:
@@ -306,13 +307,19 @@ def get_aligned_reads( args ):
     
     1) Coming into this function we have sample.files.mapped_reads 
         as a sorted bam file, and a passed in list of regions to evaluate.
+    2) Get all reads overlapping with each individual region.
+    3) Write the aligned sequences out to a fasta file (vsearch doesn't handle piping data)
+    4) Call vsearch to derep reads
+    5) Append to the clustS.gz file.
+
+    ## The old way was a bit more laborious, and also didn't work great. Plus
+    ## it had the disadvantage of not including bases that don't align to the reference
+    ## (they would get hard masked by the pileup command). Get rid of all this when
+    ## you get sick of looking at it...
     2) Samtools pileup in each region individually. This will build stacks
        of reads within each contiguous region.
     3) Decompile the mpileup format into fasta to get the raw sequences within
        each stack.
-    4) Write the aligned sequences out to a fasta file (vsearch doesn't handle piping data)
-    5) Call vsearch to derep reads
-    6) Append to the clustS.gz file.
     """
 
     #reload(ipyrad.assemble.refmap)
@@ -373,13 +380,22 @@ def bedtools_merge( data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
     reads. This is the shell command we'll eventually run
 
-        bedtools bamtobed -i 1A_0.sorted.bam | bedtools merge
+        bedtools bamtobed -i 1A_0.sorted.bam | bedtools merge [-d 100]
+            -i <input_bam>  :   specifies the input file to bed'ize
+            -d <int>        :   For PE set max distance between reads
     """
     LOGGER.debug( "Entering bedtools_merge: %s", sample.name )
+
+    if 'pair' in data.paramsdict["datatype"]:
+        bedtools_dflag = " -d " + str(MAX_PE_DISTANCE)
+    else:
+        bedtools_dflag = " "
+
     cmd = data.bedtools+\
         " bamtobed "+\
         " -i " + sample.files.mapped_reads+\
-        " | bedtools merge"
+        " | bedtools merge "+\
+        bedtools_dflag
     LOGGER.debug( "%s", cmd )
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
@@ -387,6 +403,59 @@ def bedtools_merge( data, sample):
     return result
 
 def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
+    """ Take the chromosome position, and start and end bases and output sequences
+    of all reads that overlap these sites. This is the command we're building:
+
+        samtools view -b 1A_sorted.bam 1:116202035-116202060 | samtools bam2fq <options> -
+                -b      : output bam format
+                -0      : For SE, output all reads to this file
+                -1/-2   : For PE, output first and second reads to different files
+                -       : Tell samtools to read in from the pipe
+
+    Write out the bam file, then use samtools bam2fq to write out the reads
+    to individual files. Return the file name(s) for each read.
+    """
+    LOGGER.debug( "Entering bam_region_to_fasta: %s %s %s %s", sample.name, chrom, region_start, region_end )
+
+    ## Return it as a list so we can handle SE and PE without a bunch of monkey business.
+    outfiles = []
+
+    tmp_outfile = sample.files.mapped_reads+str(chrom)+str(region_start)
+
+    try:
+        ## Make the samtools view command to output bam in the region of interest
+        view_cmd = data.samtools+\
+            " view "+\
+            " -b -o " + tmp_outfile
+            sample.files.mapped_reads+\
+            " " + chrom + ":" + region_start + "-" + region_end
+
+        ## Set output files and flags for PE/SE
+        outfiles = [ tmp_outfile+"R1.fq" ]
+        if 'pair' in data.paramsdict["datatype"]:
+            outfiles.append( tmp_outfile+"R2.fq" )
+            outflags =  " -1 " + outfiles[0]+\
+                        " -2 " + outfiles[1]
+        else:
+            outflags = " -0 " + outfiles[0]
+
+        bam2fq_cmd = data.samtools+\
+            " bam2fq " + outflags + " - "
+
+        cmd = " | ".join(view_cmd, bam2fq_cmd
+        LOGGER.debug( "%s", cmd )
+        subprocess.call( cmd ), shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+
+    except Exception as inst:
+        LOGGER.warn( inst )
+
+    return outfiles
+
+## This is the "old" way, where i was writing fasta files by hand rather than using
+## bam2fq like makes more sense...
+def bam_region_to_fasta2( data, sample, chrom, region_start, region_end):
     """ Take the chromosome position, and start and end bases and output sequences
     of all reads that overlap these sites. This is the command we're building:
 

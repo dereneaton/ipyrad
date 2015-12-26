@@ -537,6 +537,8 @@ def merge_fastq_pairs(data, sample):
       +" --fastq_maxns "+str(maxn) \
       +" --fastq_minovlen 12 "
 
+    LOGGER.debug( "merge_fastq_pairs: %s", cmd )
+
     try:
         subprocess.check_call(cmd, shell=True,   
                                    stderr=subprocess.STDOUT,
@@ -579,7 +581,6 @@ def concat_edits(data, sample):
             sample.files.edits = [(tmphandle1, tmphandle2)]
         else:
             sample.files.edits = [(tmphandle1, )]
-    LOGGER.debug("Entering concat_edits: %s", sample.name)
     return sample
 
 
