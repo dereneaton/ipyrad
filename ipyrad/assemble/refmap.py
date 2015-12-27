@@ -17,6 +17,7 @@ import tempfile
 import itertools
 import subprocess
 import numpy as np
+from .util import *
 from ipyrad.assemble.rawedit import comp
 
 import logging
@@ -27,6 +28,33 @@ MAX_PE_DISTANCE = 60
 
 #Hax til preview mode gets fixed
 preview = False
+
+def index_reference_sequence(self):
+    """ Attempt to index the reference sequence. This is a little naive
+    in that it'll actually _try_ do to the reference every time, but it's
+    quick about giving up if it detects the indices already exist. You could
+    also test for existence of both index files, but i'm choosing to just let
+    smalt do that for us ;) """
+
+    refseq_file = self.paramsdict['reference_sequence']
+
+    #TODO: Here test if the indices exist already
+    # These are smalt specific index files. We don't ever reference
+    # them directly except here to make sure they exist, so we don't need
+    # to keep them around.
+    index_sma = refseq_file+".sma"
+    index_smi = refseq_file+".smi"
+
+    if not os.path.isfile(index_sma) or not os.path.isfile(index_smi):
+        cmd = self.bins.smalt+\
+            " index "\
+            " -s 2 "+\
+        refseq_file+" "+\
+        refseq_file
+
+        print(cmd)
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+
 
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
@@ -332,9 +360,7 @@ def get_aligned_reads( args ):
     ## Keep track of all the derep'd fasta files per stack, we'll concatenate them
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
-
-    ## Track these so we can clean them up later
-    aligned_fasta_files = []
+    aligned_seq_files = []
 
     # Wrap this in a try so we can clean up if it fails.
 
@@ -348,7 +374,8 @@ def get_aligned_reads( args ):
 
             chrom, region_start, region_end = line.strip().split()[0:3]
 
-            aligned_seqs, read_labels = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
+            # Here aligned seqs is a list of files 1 for SE or 2 for PE
+            aligned_seqs = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
 
             # This whole block is getting routed around at this point. I'm not deleting it cuz
             # i'm precious about it, and cuz if we ever decide to use pileup to call snps it could
@@ -362,12 +389,27 @@ def get_aligned_reads( args ):
             #    continue
             #aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
 
-            aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
+            #aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
+
+            ## merge fastq pairs
+            if 'pair' in data.paramsdict['datatype']:
+                ## merge pairs that overlap and combine non-overlapping
+                ## pairs into one merged file. merge_pairs takes the unmerged
+                ## files list as an argument because we're reusing this code 
+                ## in the refmap pipeline, trying to generalize.
+                LOGGER.debug( "Merging pairs - %s", sample.files )
+                mergefile, nmerged = merge_pairs( data, sample, aligned_seqs )
+                sample.files.edits = [(mergefile, )]
+                sample.files.pairs = mergefile
+                sample.stats.reads_merged = nmerged
+                sample.merged = 1
+                LOGGER.info(sample.files.edits)
     
-            derep_fasta = derep_and_sort( data, sample, aligned_fasta_file )
+            derep_fasta = derep_and_sort( data, sample, mergefile )
 
+            ## Derep_fasta_files are merged for PE
             derep_fasta_files.append( derep_fasta )
-
+            aligned_seq_files.append( aligned_seqs )
         append_clusters( data, sample, derep_fasta_files )
 
     except Exception as inst:
@@ -377,8 +419,10 @@ def get_aligned_reads( args ):
         # Clean up all the tmp files
         for i in derep_fasta_files:
             os.remove( i )
-        for i in aligned_fasta_files:
-            os.remove( i ) 
+        for i in aligned_seq_files:
+            os.remove( i[0] )
+            if 'pair' in data.paramsdict['datatype']:
+                os.remove( i[1] )
 
 def bedtools_merge( data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
@@ -709,7 +753,7 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
 
     #TODO: Delete this. I'm setting filter_min_trim_len
     # to 10 for testing, should delete this prior to shipping
-    data.set_params(18, 10)
+    #data.set_params(18, 10)
 
     # This is how it's done in cluster_within
     if sample.merged:
@@ -718,7 +762,8 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
     else:
         reverse = " "
 
-    outfile = os.path.join(data.dirs.refmapping, aligned_fasta_file.split("/")[-1]+".map_derep.fa")
+#    outfile = os.path.join(data.dirs.refmapping, aligned_fasta_file.split("/")[-1]+".map_derep.fa")
+    outfile = tempfile.NamedTemporaryFile( dir=data.dirs.refmapping, prefix="derep_and_sort", suffix=".fa", delete=False )
 
     # Stacks are never going to be too big, so faking this to set
     # nthreads to 1, maybe fix this to use the real value if it'll 
@@ -728,7 +773,7 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
     cmd = data.bins.vsearch+\
           " -derep_fulllength "+ aligned_fasta_file+\
           reverse+\
-          " -output "+outfile+\
+          " -output "+outfile.name+\
           " -sizeout "+\
           " -threads "+str(nthreads)+\
           " -fasta_width 0"+\
@@ -746,13 +791,15 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
         sys.exit("Error in vsearch: \n{}\n{}\n{}."\
                  .format(inst, subprocess.STDOUT, cmd))
 
-    return(outfile)
+    return(outfile.name)
 
 def append_clusters( data, sample, derep_fasta_files ):
     """ Append derep'd mapped fasta stacks to the clust.gz file.
     This goes back into the pipeline _before_ the call to muscle
     for alignment.
     """
+    LOGGER.debug( "Entering append_clusters." )
+
     ## get clustfile
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clust.gz")

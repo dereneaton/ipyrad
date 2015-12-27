@@ -125,11 +125,11 @@ def merge_pairs( data, sample, unmerged_files ):
         LOGGER.error(subprocess.STDOUT)
         LOGGER.error(cmd)
         sys.exit("Error in merging pairs: \n({}).".format(inst))
-    finally:
-        ## record how many read pairs were merged
-        with open(merged, 'r') as tmpf:
-            nmerged = len(tmpf.readlines())
+    ## record how many read pairs were merged
+    with open(merged, 'r') as tmpf:
+        nmerged = len(tmpf.readlines())
 
+    LOGGER.debug( "Merged pairs - %d", nmerged )
     ## Combine the unmerged pairs and append to the merge file
     with open(merged, 'ab') as combout:
         ## read in paired end read files"

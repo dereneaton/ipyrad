@@ -21,6 +21,7 @@ import ipyparallel as ipp
 
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
+from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.sample import Sample
 import ipyrad as ip
 from .. import assemble
@@ -1247,35 +1248,6 @@ def bufcountlines(filename, gzipped):
         buf = read_f(buf_size)
     fin.close()
     return nlines
-
-
-
-def index_reference_sequence(self):
-    """ Attempt to index the reference sequence. This is a little naive
-    in that it'll actually _try_ do to the reference every time, but it's
-    quick about giving up if it detects the indices already exist. You could
-    also test for existence of both index files, but i'm choosing to just let
-    smalt do that for us ;) """
-
-    refseq_file = self.paramsdict['reference_sequence']
-
-    #TODO: Here test if the indices exist already
-    # These are smalt specific index files. We don't ever reference
-    # them directly except here to make sure they exist, so we don't need
-    # to keep them around.
-    index_sma = refseq_file+".sma"
-    index_smi = refseq_file+".smi"
-
-    if not os.path.isfile(index_sma) or not os.path.isfile(index_smi):
-        cmd = self.smalt+\
-            " index "\
-            " -s 2 "+\
-        refseq_file+" "+\
-        refseq_file
-
-        print(cmd)
-        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-
 
 def tuplecheck(newvalue, dtype=None):
     """ Takes a string argument and returns value as a tuple. 
