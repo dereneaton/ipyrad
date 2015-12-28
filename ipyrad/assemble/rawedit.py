@@ -295,16 +295,16 @@ def rawedit(args):
     fr1.close()
     ## write to file
     handle = os.path.join(data.dirs.edits, 
-                          "tmp1_"+sample.name+"_"+str(point)+".gz")
-    with gzip.open(handle, 'wb') as out1:
+                          "tmp1_"+sample.name+"_"+str(point)+".fq")
+    with open(handle, 'wb') as out1:
         out1.write("\n".join(write1))
         out1.write("\n")
 
     if "pair" in data.paramsdict["datatype"]:    
         fr2.close()
         handle = os.path.join(data.dirs.edits, 
-                          "tmp2_"+sample.name+"_"+str(point)+".gz")
-        with gzip.open(handle, 'wb') as out2:
+                          "tmp2_"+sample.name+"_"+str(point)+".fq")
+        with open(handle, 'wb') as out2:
             out2.write("\n".join(write2))
             out2.write("\n")            
 
@@ -473,14 +473,14 @@ def cleanup(data, sample, submitted, results):
     ## rejoin chunks
     combs1 = glob.glob(os.path.join(
                         data.dirs.edits,
-                        "tmp1_"+sample.name+"_*.gz"))
-    combs1.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")))
-    handle1 = os.path.join(data.dirs.edits, sample.name+"_R1_.fastq.gz")
+                        "tmp1_"+sample.name+"_*.fq"))
+    combs1.sort(key=lambda x: int(x.split("_")[-1].replace(".fq", "")))
+    handle1 = os.path.join(data.dirs.edits, sample.name+"_R1_.fastq")
     handle2 = ""
 
-    with gzip.open(handle1, 'wb') as out:
+    with open(handle1, 'wb') as out:
         for fname in combs1:
-            with gzip.open(fname) as infile:
+            with open(fname) as infile:
                 out.write(infile.read())
             os.remove(fname)
 
@@ -489,13 +489,13 @@ def cleanup(data, sample, submitted, results):
                             data.dirs.edits,
                             "tmp2_"+sample.name+"_*.gz"))
         combs2.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")))    
-        handle2 = os.path.join(data.dirs.edits, sample.name+"_R2_.fastq.gz")        
+        handle2 = os.path.join(data.dirs.edits, sample.name+"_R2_.fastq")        
         assert len(combs1) == len(combs2), \
                "mismatched number of paired read files"
 
-        with gzip.open(handle2, 'wb') as out:
+        with open(handle2, 'wb') as out:
             for fname in combs2:
-                with gzip.open(fname) as infile:
+                with open(fname) as infile:
                     out.write(infile.read())
                 os.remove(fname)
 
