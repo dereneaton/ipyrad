@@ -27,7 +27,7 @@ PREVIEW_TRUNCATE_LENGTH = 10000
 MAX_PE_DISTANCE = 60
 
 #Hax til preview mode gets fixed
-preview = False
+preview = True
 
 def index_reference_sequence(self):
     """ Attempt to index the reference sequence. This is a little naive
@@ -399,13 +399,17 @@ def get_aligned_reads( args ):
                 ## in the refmap pipeline, trying to generalize.
                 LOGGER.debug( "Merging pairs - %s", sample.files )
                 mergefile, nmerged = merge_pairs( data, sample, aligned_seqs )
-                sample.files.edits = [(mergefile, )]
-                sample.files.pairs = mergefile
-                sample.stats.reads_merged = nmerged
+                #sample.files.edits = [(mergefile, )]
+                #sample.files.pairs = mergefile
+                #sample.stats.reads_merged = nmerged
                 sample.merged = 1
-                LOGGER.info(sample.files.edits)
-    
-            derep_fasta = derep_and_sort( data, sample, mergefile )
+                aligned_fasta = mergefile
+            else:
+                ## If SE we don't need to merge, and the aligned fasta are just the first
+                ## element of the list returned above
+                aligned_fasta = aligned_seqs[0]
+
+            derep_fasta = derep_and_sort( data, sample, aligned_fasta )
 
             ## Derep_fasta_files are merged for PE
             derep_fasta_files.append( derep_fasta )
