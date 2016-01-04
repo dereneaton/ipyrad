@@ -14,7 +14,7 @@ from __future__ import print_function
 import os
 import sys
 import gzip
-import shlex
+#import shlex
 import tempfile
 import itertools
 import subprocess
@@ -35,6 +35,15 @@ def cleanup(data, sample):
                                          sample.name+".clustS.gz")
     sample.files.database = os.path.join(data.dirs.clusts,
                                          sample.name+".catg")
+
+    if "pair" in data.paramsdict["datatype"]:
+        ## record merge file name temporarily
+        sample.files.merged = os.path.join(data.dirs.edits,
+                                           sample.name+"_merged_.fastq")
+        ## record how many read pairs were merged
+        with open(sample.files.merged, 'r') as tmpf:
+            ## divide by four b/c its fastq
+            sample.stats.reads_merged = len(tmpf.readlines())/4
 
     ## get depth stats
     infile = gzip.open(sample.files.clusters)
@@ -99,7 +108,7 @@ def muscle_align(args):
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")
     out = []
-    indels = np.zeros((len(clusts), 2), dtype=np.int32)
+    #indels = np.zeros((len(clusts), 225), dtype=np.int32)
 
     ## iterate over clusters and align
     for clust in clusts:
@@ -117,7 +126,7 @@ def muscle_align(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if 'ssss' in seqs:
+            if all(["ssss" in i for i in seqs]):
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
 
@@ -326,23 +335,14 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
         threads_per = 2
     if ncpus >= 8:
         threads_per = 4
-    if ncpus >20:
+    if ncpus > 20:
         threads_per = ncpus/4
-
-    if ncpus > 8:
-        threads_per = 4
-    if ncpus > 12:
-        threads_per = 3
-    if ncpus > 16:
-        threads_per = 4
-    if ncpus > 16:
-        threads_per = 4
 
     ## we could create something like the following when there are leftovers:
     ## [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
 
     threaded_view = ipyclient.load_balanced_view(
-                    targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
+                    targets=ipyclient.ids[::threads_per])
     tpp = len(threaded_view)
 
     ## make output folder for clusters  
@@ -359,8 +359,8 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
         if force:
             submitted_args.append([data, sample, noreverse, tpp])
         else:
-            ## if not already clustered 
-            if sample.stats.state != 3.5:
+            ## if not already clustered/mapped
+            if sample.stats.state <= 2.5:
                 submitted_args.append([data, sample, noreverse, tpp])
             else:
                 ## clustered but not aligned
@@ -407,6 +407,10 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
     results = threaded_view.map(clustall, submitted_args)
     try:
         results.get()
+        clusteredsamples = [i[1] for i in submitted_args]
+        for sample in clusteredsamples:
+            sample.state = 2.5
+
     except (AttributeError, TypeError):
         for key in ipyclient.history:
             if ipyclient.metadata[key].error:
@@ -423,7 +427,8 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
     ## call to ipp for aligning
     #lbview = ipyclient.load_balanced_view()
     for sample in samples:
-        multi_muscle_align(data, sample, ipyclient)
+        if sample.state < 3:
+            multi_muscle_align(data, sample, ipyclient)
     #del lbview
 
     ## If reference sequence is specified then pull in alignments from 
@@ -472,6 +477,54 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
 
 
 
+# def combine_pairs(data, sample):
+#     """ in prep """
+#     #LOGGER.info("in combine_pairs: %s", sample.files.edits)
+
+#     ## open file for writing to
+#     combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
+#     combout = open(combined, 'wb')
+
+#     ## read in paired end read files"
+#     ## create iterators to sample 4 lines at a time
+#     fr1 = open(sample.files.nonmerge1, 'rb')
+#     quart1 = itertools.izip(*[iter(fr1)]*4)
+#     fr2 = open(sample.files.nonmerge2, 'rb')
+#     quart2 = itertools.izip(*[iter(fr2)]*4)
+#     quarts = itertools.izip(quart1, quart2)
+
+#     ## a list to store until writing
+#     writing = []
+#     counts = 0
+
+#     ## iterate until done
+#     while 1:
+#         try:
+#             read1s, read2s = quarts.next()
+#         except StopIteration:
+#             break
+#         writing.append("\n".join([
+#                         read1s[0].strip(),
+#                         read1s[1].strip()+\
+#                             "ssss"+read2s[1].strip(),
+#                         read1s[2].strip(),
+#                         read1s[3].strip()+\
+#                             "ssss"+read2s[3].strip()]
+#                         ))
+#         counts += 1
+#         if not counts % 1000:
+#             combout.write("\n".join(writing)+"\n")
+#             writing = []
+#     if writing:
+#         combout.write("\n".join(writing)+"\n")
+#         combout.close()
+
+#     sample.files.edits = [(combined, )]
+#     sample.files.pairs = combined
+#     return sample
+
+
+
 def concat_edits(data, sample):
     """ concatenate if multiple edits files for a sample """
     ## if more than one tuple in the list
@@ -502,8 +555,7 @@ def derep_and_sort(data, sample, nthreads):
     output to derep file """
 
     ## reverse complement clustering for some types    
-    #if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
-    if sample.merged:
+    if "gbs" in data.paramsdict["datatype"]:
         reverse = " -strand both "
     else:
         reverse = " "
@@ -597,7 +649,7 @@ def multi_muscle_align(data, sample, ipyclient):
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
-        optim = 250
+        optim = 1000
 
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
@@ -649,7 +701,7 @@ def clustall(args):
     ## get args
     data, sample, noreverse, nthreads = args
 
-    LOGGER.debug( "clustall() %s", sample.name )
+    LOGGER.debug("clustall() %s", sample.name)
 
     ## concatenate edits files in case a Sample has multiple, and 
     ## returns a new Sample.files.edits with the concat file
@@ -661,14 +713,25 @@ def clustall(args):
         ## pairs into one merged file. merge_pairs takes the unmerged
         ## files list as an argument because we're reusing this code 
         ## in the refmap pipeline, trying to generalize.
-        LOGGER.debug( "Merging pairs - %s", sample.files )
-        unmerged_files =  [ sample.files.edits[0][0], sample.files.edits[0][1] ]
-        mergefile, nmerged = merge_pairs( data, sample, unmerged_files )
+        LOGGER.debug("Merging pairs - %s", sample.files)
+        unmerged_files = [sample.files.edits[0][0], sample.files.edits[0][1]]
+        mergefile, nmerged = merge_pairs(data, sample, unmerged_files)
         sample.files.edits = [(mergefile, )]
         sample.files.pairs = mergefile
         sample.stats.reads_merged = nmerged
         sample.merged = 1
         LOGGER.info(sample.files.edits)
+
+        ## OLD DEREN CODE w/ combine_pairs (keeping for now)
+        ## merge pairs that overlap into a merge file
+        #sample = merge_fastq_pairs(data, sample)
+        ## pair together remaining pairs into a pairs file
+        #sample = combine_pairs(data, sample)
+        ## if merge file, append to pairs file
+        #with open(sample.files.pairs, 'a') as tmpout:
+        #    with open(sample.files.merged, 'r') as tmpin:
+        #        tmpout.write(tmpin.read().replace("_c1\n", "_m4\n"))
+        #LOGGER.info(sample.files.edits)
 
     ## convert fastq to fasta, then derep and sort reads by their size
     #LOGGER.debug(data, sample, nthreads)
@@ -691,7 +754,7 @@ def run(data, samples, noreverse, force, ipyclient):
     ## if sample is already done skip
     for _, sample in samples:
         if not force:
-            if sample.files.clusters:
+            if sample.stats.state >=3:
                 print("  Skipping {}; aleady clustered.".\
                       format(sample.name))
             else:

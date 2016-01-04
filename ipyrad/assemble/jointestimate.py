@@ -241,15 +241,23 @@ def run(data, samples, subsample, force, ipyclient):
 
     ## if jobs then run
     if submitted_args:
-        ## sort by cluster size
-        submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
+        try:
+            ## sort by cluster size
+            submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
                                                       reverse=True)
-        lbview = ipyclient.load_balanced_view()
-        results = lbview.map_async(optim, submitted_args)
-        results.get()
+            lbview = ipyclient.load_balanced_view()
+            results = lbview.map_async(optim, submitted_args)
+            results.get()
 
-        ## get results and remove temp files
-        cleanup(data, samples)
+            ## get results and remove temp files
+            cleanup(data, samples)
+        except Exception as inst:
+            print(inst)
+            raise
+
+        finally:
+            ## append data to samples and remove tmp files
+            cleanup(data, samples)
 
 
 
