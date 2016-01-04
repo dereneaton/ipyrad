@@ -12,6 +12,7 @@ import numpy
 import gzip
 import glob
 import os
+import ipyparallel
 
 from collections import Counter
 
@@ -188,7 +189,7 @@ def consensus(args):
     """
 
     ## unpack args
-    LOGGER.info(args)    
+    #LOGGER.info(args)    
     data, sample, tmpchunk, optim = args
 
     ## number relative to tmp file
@@ -225,12 +226,19 @@ def consensus(args):
     ## iterate over clusters
     done = 0
     while not done:
-        done, chunk = clustdealer(pairdealer, 1)
+        try:
+            done, chunk = clustdealer(pairdealer, 1)
+        except IndexError:
+            LOGGER.info("ITS HERE IN CLUSTD %s", chunk)
+
         if chunk:
+            ## 
+            #LOGGER.debug("%s %s", done, chunk)            
             ## get names and seqs
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
+            ## pull reps info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
 
             ## apply read depth filter
@@ -243,25 +251,25 @@ def consensus(args):
                 stacked = [Counter(seq) for seq in arrayed.T] 
 
                 ## get consens call for each site, paralog site filter
-                #LOGGER.info('arr %s', arrayed)
                 consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
+
                 ## get hetero sites
                 heteros = [i[0] for i in enumerate(consens) \
                                  if i[1] in list("RKSYWM")]
                 nheteros = len(heteros)
                 counters["heteros"] += nheteros
-                if nheteros > 5:
-                    LOGGER.info("NH: %s", nheteros)
-                    LOGGER.debug("ARR: %s", arrayed)
-                    LOGGER.debug("cons: %s", consens)                    
+                #if nheteros > 5:
+                #    LOGGER.info("NH: %s", nheteros)
+                #    LOGGER.debug("ARR: %s", arrayed)
+                #    LOGGER.debug("cons: %s", consens)                    
                 ## filter for max number of hetero sites
                 if nfilter2(data, nheteros):
 
                     ## filter for max number of haplotypes
                     mpl = 1
-                    if nheteros > 1:
-                        consens, mpl = nfilter3(data, consens, heteros, 
-                                                seqs, reps)
+                    #if nheteros > 1:
+                    #    consens, mpl = nfilter3(data, consens, heteros, 
+                    #                            seqs, reps)
 
                     ## if the locus passed paralog filtering
                     if mpl:
@@ -270,9 +278,9 @@ def consensus(args):
                         ## this function which removes low coverage sites next 
                         ## to poly repeats that are likely sequencing errors 
                         ## TODO: Until this func is optimized
-                        if "N" in shortcon:
-                            LOGGER.debug("preN: %s", shortcon)
-                        shortcon, stacked = removerepeat_Ns(shortcon, stacked)
+                        #if "N" in shortcon:
+                        #    LOGGER.debug("preN: %s", shortcon)
+                        #shortcon, stacked = removerepeat_Ns(shortcon, stacked)
 
                         if shortcon.count("N") <= \
                                        sum(data.paramsdict["max_Ns_consens"]):
@@ -293,21 +301,20 @@ def consensus(args):
                                 storeseq[counters["name"]] = shortcon
                                 counters["name"] += 1
                                 counters["nconsens"] += 1                                
-
                             else:
-                                LOGGER.info("@shortmaxn")
+                                LOGGER.debug("@shortmaxn")
                                 filters['maxn'] += 1
                         else:
-                            LOGGER.info("@maxn")
+                            LOGGER.debug("@maxn")
                             filters['maxn'] += 1
                     else:
-                        LOGGER.info("@haplo")
+                        LOGGER.debug("@haplo")
                         filters['haplos'] += 1
                 else:
-                    LOGGER.info("@hetero")
+                    LOGGER.debug("@hetero")
                     filters['hetero'] += 1
             else:
-                LOGGER.info("@depth")
+                LOGGER.debug("@depth")
                 filters['depth'] += 1
 
     clusters.close()
@@ -315,34 +322,21 @@ def consensus(args):
     consenshandle = os.path.join(data.dirs.consens, 
                                  sample.name+"_tmpcons."+str(tmpnum))
     ## write to file
-    with open(consenshandle, 'wb') as outfile:
-        outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
-                                 storeseq[key] for key in storeseq]))
-    #storecat = numpy.array(storecat)
+    LOGGER.info('writing %s', consenshandle)
+    LOGGER.info('storeseq is big: %s', len(storeseq))
+    if storeseq:
+        with open(consenshandle, 'wb') as outfile:
+            outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
+                                     storeseq[key] for key in storeseq]))
 
     with open(consenshandle.replace("_tmpcons.", "_tmpcats."), 'wb') as dumph:
-        numpy.save(dumph, catarr)#storecat)
-
-    ## count the number of polymorphic sites 
-    ## TODO: make a decision about the pair separator
-    # if 'ddrad' in data.paramsdict["datatype"]:
-    #     if 'pair' in data.paramsdict["datatype"]:
-    #         sub = 4 + len(data.paramsdict["restriction_overhang"][0])
-    #     else:
-    #         sub = len(data.paramsdict["restriction_overhang"][0])
-    # elif 'gbs' in data.paramsdict["datatype"]:
-    #     if 'pair' in data.paramsdict["datatype"]:
-    #         sub = 4 + len(data.paramsdict["restriction_overhang"][0])*2 
-    #         #  (len(params["cut"])*2)
-    #     else:
-    #         sub = len(data.paramsdict["restriction_overhang"][0])
-    # elif data.paramsdict["datatype"] == "merged":
-    #     sub = len(data.paramsdict["restriction_overhang"][0])*2 
-    # else:
-    #     sub = len(data.paramsdict["restriction_overhang"][0])
+        numpy.save(dumph, catarr)
 
     ## final counts and return
-    counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])
+    if storeseq:
+        counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])        
+    else:
+        counters['nsites'] = 0
     return counters, filters
 
 
@@ -350,7 +344,7 @@ def consensus(args):
 def nfilter1(data, reps):
     """ applies read depths filter """
     if sum(reps) >= data.paramsdict["mindepth_majrule"] and \
-        sum(reps) <= data.paramsdict["max_stack_size"]:
+        sum(reps) <= data.paramsdict["maxdepth"]:
         return 1
     else:
         return 0
@@ -358,7 +352,7 @@ def nfilter1(data, reps):
 
 def nfilter2(data, nheteros):
     """ applies max heteros in a seq filter """
-    if nheteros <= data.paramsdict["max_Hs_consens"]:
+    if nheteros <= sum(data.paramsdict["max_Hs_consens"]):
         return 1
     else:
         return 0
@@ -440,7 +434,6 @@ def findalleles(consens, heteros, counted):
 
 def basecall(site, data):
     """ prepares stack for making base calls """
-
     site = Counter(site)
 
     ## remove Ns and (-)s
@@ -449,34 +442,35 @@ def basecall(site, data):
     if "-" in site:
         site.pop("-")
 
-    #assert site, "site is empty, need a catch for this..."
-
     ## get the most common alleles
-    base1 = base2 = 0
-    comms = site.most_common()
-    base1 = comms[0][1]
-    if len(comms) > 1:
-        base2 = comms[1][1]
-        
-    ## if site depth after removing Ns, (-s) and third bases is below limit
-    bidepth = base1 + base2
-    if bidepth < data.paramsdict["mindepth_majrule"]:
-        cons = "N"
-    else:
-        ## if depth > 500 reduce to randomly sampled 500 
-        if bidepth >= 500: 
-            randomsample = numpy.array(tuple("A"*base1+"B"*base2))
-            numpy.random.shuffle(randomsample)
-            base1 = list(randomsample[:500]).count("A")
-            base2 = list(randomsample[:500]).count("B")
+    if site:
+        base1 = base2 = 0
+        comms = site.most_common()
+        base1 = comms[0][1]
+        if len(comms) > 1:
+            base2 = comms[1][1]
 
-        ## make the base call using a method depending on depth
-        ## if highdepth and invariable just call the only base
-        if (bidepth > 10) and (not base2):
-            cons = comms[0][0]
-        ## but if variable then use basecaller
+        ## if site depth after removing Ns, (-s) and third bases is below limit
+        bidepth = base1 + base2
+        if bidepth < data.paramsdict["mindepth_majrule"]:
+            cons = "N"
         else:
-            cons = basecaller(data, site, base1, base2)
+            ## if depth > 500 reduce to randomly sampled 500 
+            if bidepth >= 500: 
+                randomsample = numpy.array(tuple("A"*base1+"B"*base2))
+                numpy.random.shuffle(randomsample)
+                base1 = list(randomsample[:500]).count("A")
+                base2 = list(randomsample[:500]).count("B")
+
+            ## speedhack: make the base call using a method depending on depth
+            ## if highdepth and invariable just call the only base
+            if (bidepth > 10) and (not base2):
+                cons = comms[0][0]
+            ## but if variable then use basecaller
+            else:
+                cons = basecaller(data, site, base1, base2)
+    else:
+        cons = "N"
     return cons
 
 
@@ -648,7 +642,7 @@ def run_full(data, sample, ipyclient):
     ## set optim size for chunks in N clusters TODO: (make this better)
     optim = int(sample.stats.clusters_hidepth/
                 float(len(ipyclient.ids)*2))
-    optim = 100
+    optim = 1000
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
     chunkslist = []
@@ -670,7 +664,7 @@ def run_full(data, sample, ipyclient):
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
             num += 1
-        #LOGGER.debug("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
+            #LOGGER.info("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
 
     ## close clusters handle
     clusters.close()
@@ -689,23 +683,19 @@ def run_full(data, sample, ipyclient):
         statsdicts = results.get()
         del lbview
 
-    except Exception as inst:
-        print(inst)
-        for key in ipyclient.history:
-            if ipyclient.metadata[key].error:
-                LOGGER.error("step5 error: %s", 
-                    ipyclient.metadata[key].error)
-                raise SystemExit
-            if ipyclient.metadata[key].stdout:
-                LOGGER.error("step5 stdout:%s", 
-                    ipyclient.metadata[key].stdout)
-                raise SystemExit            
-        #raise SystemExit
+    except ipyparallel.error.CompositeError:
+        errorengines = [i for i in results.metadata if i["error"]]
+        print("\n  step5 error during sample `{}` with {} crashes"\
+            .format(sample.name, len(errorengines)))
+        print("  {}".format(errorengines[0]["error"]))
 
     finally:
         ## if process failed at any point delete tmp files
         for tmpchunk in chunkslist:
-            os.remove(tmpchunk)
+            if os.path.exists(tmpchunk):
+                os.remove(tmpchunk)
+            else:
+                print("where is " + tmpchunk)
 
     return statsdicts
 
@@ -745,7 +735,7 @@ def run(data, samples, force, ipyclient):
         print("      Haploid base calls and paralog filter (max haplos = 1)")
     elif data.paramsdict["ploidy"] == 2:
         print("      Diploid base calls and paralog filter (max haplos = 2)")
-    elif data.paramsdict["ploidy"] == 2:
+    elif data.paramsdict["ploidy"] > 2:
         print("      Diploid base calls and no paralog filter "\
                 "(max haplos = {})".format(data.paramsdict["ploidy"]))
     print("      error rate (mean, std):  " \
@@ -784,5 +774,7 @@ def run(data, samples, force, ipyclient):
 
 if __name__ == "__main__":
     import ipyrad as ip
-    TESTER = ip.load_dataobj("test")
-    TESTER.step5.run()
+    TESTFILE = "/home/deren/Documents/longi_test_ip/longiflora/longiflora"
+    TESTER = ip.load.load_assembly(TESTFILE)
+    TESTER.set_params(1, "./longiflora")
+    TESTER.step5()

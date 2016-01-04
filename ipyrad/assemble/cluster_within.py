@@ -14,7 +14,7 @@ from __future__ import print_function
 import os
 import sys
 import gzip
-import shlex
+#import shlex
 import tempfile
 import itertools
 import subprocess
@@ -35,6 +35,15 @@ def cleanup(data, sample):
                                          sample.name+".clustS.gz")
     sample.files.database = os.path.join(data.dirs.clusts,
                                          sample.name+".catg")
+
+    if "pair" in data.paramsdict["datatype"]:
+        ## record merge file name temporarily
+        sample.files.merged = os.path.join(data.dirs.edits,
+                                           sample.name+"_merged_.fastq")
+        ## record how many read pairs were merged
+        with open(sample.files.merged, 'r') as tmpf:
+            ## divide by four b/c its fastq
+            sample.stats.reads_merged = len(tmpf.readlines())/4
 
     ## get depth stats
     infile = gzip.open(sample.files.clusters)
@@ -99,7 +108,7 @@ def muscle_align(args):
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")
     out = []
-    indels = np.zeros((len(clusts), 2), dtype=np.int32)
+    #indels = np.zeros((len(clusts), 225), dtype=np.int32)
 
     ## iterate over clusters and align
     for clust in clusts:
@@ -117,7 +126,7 @@ def muscle_align(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if 'ssss' in seqs:
+            if all(["ssss" in i for i in seqs]):
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
 
@@ -326,23 +335,14 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
         threads_per = 2
     if ncpus >= 8:
         threads_per = 4
-    if ncpus >20:
+    if ncpus > 20:
         threads_per = ncpus/4
-
-    if ncpus > 8:
-        threads_per = 4
-    if ncpus > 12:
-        threads_per = 3
-    if ncpus > 16:
-        threads_per = 4
-    if ncpus > 16:
-        threads_per = 4
 
     ## we could create something like the following when there are leftovers:
     ## [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
 
     threaded_view = ipyclient.load_balanced_view(
-                    targets=ipyclient.ids[::data.paramsdict["engines_per_job"]])
+                    targets=ipyclient.ids[::threads_per])
     tpp = len(threaded_view)
 
     ## make output folder for clusters  
@@ -359,8 +359,8 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
         if force:
             submitted_args.append([data, sample, noreverse, tpp])
         else:
-            ## if not already clustered 
-            if sample.stats.state != 3.5:
+            ## if not already clustered/mapped
+            if sample.stats.state <= 2.5:
                 submitted_args.append([data, sample, noreverse, tpp])
             else:
                 ## clustered but not aligned
@@ -407,6 +407,10 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
     results = threaded_view.map(clustall, submitted_args)
     try:
         results.get()
+        clusteredsamples = [i[1] for i in submitted_args]
+        for sample in clusteredsamples:
+            sample.state = 2.5
+
     except (AttributeError, TypeError):
         for key in ipyclient.history:
             if ipyclient.metadata[key].error:
@@ -423,7 +427,8 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
     ## call to ipp for aligning
     #lbview = ipyclient.load_balanced_view()
     for sample in samples:
-        multi_muscle_align(data, sample, ipyclient)
+        if sample.state < 3:
+            multi_muscle_align(data, sample, ipyclient)
     #del lbview
 
     ## If reference sequence is specified then pull in alignments from 
@@ -480,17 +485,11 @@ def combine_pairs(data, sample):
     combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
     combout = open(combined, 'wb')
 
-    ## get nonmerged pairs
-    nonmerged1 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R1_.fastq")
-    nonmerged2 = os.path.join(data.dirs.edits, 
-                              sample.name+"_nonmerged_R2_.fastq")
-
     ## read in paired end read files"
     ## create iterators to sample 4 lines at a time
-    fr1 = open(nonmerged1, 'rb')
+    fr1 = open(sample.files.nonmerge1, 'rb')
     quart1 = itertools.izip(*[iter(fr1)]*4)
-    fr2 = open(nonmerged2, 'rb')
+    fr2 = open(sample.files.nonmerge2, 'rb')
     quart2 = itertools.izip(*[iter(fr2)]*4)
     quarts = itertools.izip(quart1, quart2)
 
@@ -507,18 +506,18 @@ def combine_pairs(data, sample):
         writing.append("\n".join([
                         read1s[0].strip(),
                         read1s[1].strip()+\
-                            "ssss"+comp(read2s[1].strip())[::-1],
+                            "ssss"+read2s[1].strip(),
                         read1s[2].strip(),
                         read1s[3].strip()+\
-                            "ssss"+read2s[3].strip()[::-1]]
+                            "ssss"+read2s[3].strip()]
                         ))
         counts += 1
         if not counts % 1000:
             combout.write("\n".join(writing)+"\n")
             writing = []
-
-    combout.write("\n".join(writing))
-    combout.close()
+    if writing:
+        combout.write("\n".join(writing)+"\n")
+        combout.close()
 
     sample.files.edits = [(combined, )]
     sample.files.pairs = combined
@@ -531,34 +530,53 @@ def merge_fastq_pairs(data, sample):
     #LOGGER.info("merging reads")
 
     ## tempnames for merge files
-    merged = os.path.join(data.dirs.edits,
+    sample.files.merged = os.path.join(data.dirs.edits,
                           sample.name+"_merged_.fastq")
-    nonmerged1 = os.path.join(data.dirs.edits, 
+    sample.files.nonmerge1 = os.path.join(data.dirs.edits, 
                               sample.name+"_nonmerged_R1_.fastq")
-    nonmerged2 = os.path.join(data.dirs.edits, 
+    sample.files.nonmerge2 = os.path.join(data.dirs.edits, 
                               sample.name+"_nonmerged_R2_.fastq")
+    sample.files.rc = os.path.join(data.dirs.edits, 
+                              sample.name+"_revcomp_R2_.fastq")
 
     try:
         maxn = sum(data.paramsdict['max_low_qual_bases'])
     except TypeError:
         maxn = data.paramsdict['max_low_qual_bases']
+    minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
     assert os.path.exists(sample.files.edits[0][1]), \
            "No paired read file (_R2_ file) found."
 
+    ## vsearch revcomp R2
+    cmd = data.bins.vsearch \
+      +" --fastx_revcomp "+sample.files.edits[0][1] \
+      +" --fastqout "+sample.files.rc
+    LOGGER.warning(cmd)
+    try:
+        subprocess.check_call(cmd, shell=True,   
+                                   stderr=subprocess.STDOUT,
+                                   stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        LOGGER.error(subprocess.STDOUT)
+        LOGGER.error(cmd)        
+        sys.exit("Error in merging pairs: \n({}).".format(inst))
+
     ## vsearch merging
+
     cmd = data.bins.vsearch \
       +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.edits[0][1] \
-      +" --fastqout "+merged \
-      +" --fastqout_notmerged_fwd "+nonmerged1 \
-      +" --fastqout_notmerged_rev "+nonmerged2 \
+      +" --reverse "+sample.files.rc \
+      +" --fastqout "+sample.files.merged \
+      +" --fastqout_notmerged_fwd "+sample.files.nonmerge1 \
+      +" --fastqout_notmerged_rev "+sample.files.nonmerge2 \
       +" --fasta_width 0 " \
       +" --fastq_allowmergestagger " \
-      +" --fastq_minmergelen 32 " \
+      +" --fastq_minmergelen "+minlen \
       +" --fastq_maxns "+str(maxn) \
-      +" --fastq_minovlen 12 "
-
+      +" --fastq_minovlen 12 " \
+      +" --fastq_maxdiffs 4 "
+    LOGGER.warning(cmd)
     try:
         subprocess.check_call(cmd, shell=True,   
                                    stderr=subprocess.STDOUT,
@@ -568,11 +586,8 @@ def merge_fastq_pairs(data, sample):
         LOGGER.error(cmd)        
         sys.exit("Error in merging pairs: \n({}).".format(inst))
     finally:
-        ## record merge file name temporarily
-        sample.files.merged = merged       
-        ## record how many read pairs were merged
-        with open(sample.files.merged, 'r') as tmpf:
-            sample.stats.reads_merged = len(tmpf.readlines())
+        pass
+        ## kill unfinished files if they exist
 
     return sample
 
@@ -610,8 +625,7 @@ def derep_and_sort(data, sample, nthreads):
     output to derep file """
 
     ## reverse complement clustering for some types    
-    #if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
-    if sample.merged:
+    if "gbs" in data.paramsdict["datatype"]:
         reverse = " -strand both "
     else:
         reverse = " "
@@ -707,7 +721,7 @@ def multi_muscle_align(data, sample, ipyclient):
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
-        optim = 250
+        optim = 1000
 
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
@@ -772,8 +786,8 @@ def clustall(args):
         ## if merge file, append to pairs file
         with open(sample.files.pairs, 'a') as tmpout:
             with open(sample.files.merged, 'r') as tmpin:
-                tmpout.write("\n"+tmpin.read())
-        LOGGER.info(sample.files.edits)
+                tmpout.write(tmpin.read().replace("_c1\n", "_m4\n"))
+        #LOGGER.info(sample.files.edits)
 
     ## convert fastq to fasta, then derep and sort reads by their size
     #LOGGER.debug(data, sample, nthreads)
@@ -1002,7 +1016,7 @@ def run(data, samples, noreverse, force, ipyclient):
     ## if sample is already done skip
     for _, sample in samples:
         if not force:
-            if sample.files.clusters:
+            if sample.stats.state >=3:
                 print("  Skipping {}; aleady clustered.".\
                       format(sample.name))
             else:
