@@ -687,10 +687,10 @@ def run(data, samples, force, ipyclient):
         os.remove(tmpfile)
 
     ## if sample is already done skip
-    if data.stats.hetero_est.empty:
+    if "hetero_est" not in data.stats:
         print("  No estimates of heterozygosity and error rate. Using default "\
               "values")
-        for sample in data.samples:
+        for _, sample in data.samples.items():
             sample.stats.hetero_est = 0.001
             sample.stats.error_est = 0.0001
 
