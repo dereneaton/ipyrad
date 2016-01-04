@@ -868,20 +868,14 @@ class Assembly(object):
         """
         if self._headers:
             print("  Step2: Filtering reads ")
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
 
-        if not samples:
+        ## If no samples in this assembly then it means you skipped step1,
+        ## so attempt to link existing demultiplexed fastq files
+        if not self.samples.keys():
             self.link_fastqs()
 
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
-
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [self.samples[key] for key in samples]
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         ## pass samples to rawedit
         assemble.rawedit.run(self, samples, nreplace, force, ipyclient)
@@ -901,17 +895,8 @@ class Assembly(object):
             ## index the reference sequence
             index_reference_sequence(self)
 
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
-
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [(key, self.samples[key]) for key in samples]
-
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         ## skip if all are finished
         if not force:
@@ -935,30 +920,17 @@ class Assembly(object):
         if self._headers:
             print("  Step4: Joint estimation of error rate and heterozygosity")
 
-        ## sampling
-        if samples:
-            ## make a list keys or samples
-            if isinstance(samples, str):
-                samples = list([samples])
-            else:
-                samples = list(samples)
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
-            ## if keys are in list
-            if any([isinstance(i, str) for i in samples]):
-                ## make into a subsampled sample dict
-                subsamples = {i: self.samples[i] for i in samples}
+        ## if keys are in list
+        if any([isinstance(i, str) for i in samples]):
+            ## make into a subsampled sample dict
+            subsamples = {i: self.samples[i] for i in samples}
 
-            ## send to function
-            assemble.jointestimate.run(self, subsamples.values(), 
-                                       subsample, force, ipyclient)
-        else:
-            ## if no sample, then do all samples
-            if not self.samples:
-                print("Assembly object has no Samples.")
-            ## run clustering for all samples
-            assemble.jointestimate.run(self, self.samples.values(), 
-                                       subsample, force, ipyclient)
-
+        ## send to function
+        assemble.jointestimate.run(self, subsamples.values(), 
+                                   subsample, force, ipyclient)
 
 
     def _step5func(self, samples, force, ipyclient):
@@ -969,17 +941,8 @@ class Assembly(object):
         if self._headers:
             print("  Step5: Consensus base calling ")
 
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
-
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
-
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [self.samples[key] for key in samples]
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
@@ -989,21 +952,13 @@ class Assembly(object):
     def _step6func(self, samples, noreverse, force, randomseed, ipyclient):
         """ Step 6: Cluster consensus reads across samples and 
         align with muscle """
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
 
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [self.samples[key] for key in samples]
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         if self._headers:
             print("  Step 6: clustering across {} samples at {} similarity".\
             format(len(samples), self.paramsdict["clust_threshold"]))
-
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
 
         ## attach filename for all reads database
         self.database = os.path.join(self.dirs.consens, 
@@ -1020,6 +975,16 @@ class Assembly(object):
             assemble.cluster_across.run(self, samples, noreverse,
                                         force, randomseed, ipyclient)
 
+    def _step7func(self, samples, force, ipyclient):
+        """ Step 7: Filter and write output files """
+
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
+
+        if not force:
+            print( "wat" )
+        else:
+            print( "watt")
 
 
     def step1(self, force=False):
@@ -1047,10 +1012,9 @@ class Assembly(object):
         self._clientwrapper(self._step6func, [samples, noreverse, force,
                                               randomseed], 10)
 
-    def step7(self, samples=None, noreverse=False, force=False, randomseed=0):
+    def step7(self, samples=None, force=False):
         """ test """
-        self._clientwrapper(self._step6func, [samples, noreverse, force,
-                                              randomseed], 10)
+        self._clientwrapper(self._step7func, [samples, force], 10)
 
 
 
@@ -1079,6 +1043,30 @@ class Assembly(object):
             self.step7()
 
 
+def _get_samples( self, samples ):
+    """ Internal function. Prelude for each step() to read in perhaps
+    non empty list of samples to process. Input is a list of sample names,
+    output is a list of sample objects."""
+    ## if samples not entered use all samples
+    if not samples:
+        samples = self.samples.keys()
+
+    ## Be nice and allow user to pass in only one sample as a string, 
+    ## rather than a one element list. When you make the string into a list
+    ## you have to wrap it in square braces or else list makes a list of 
+    ## each character individually.
+    if isinstance( samples, str ):
+        samples = list( [samples] )
+
+    ## if sample keys, replace with sample obj
+    assert isinstance(samples, list), \
+    "to subselect samples enter as a list, e.g., [A, B]."
+    samples = [self.samples[key] for key in samples]
+
+    ## require Samples 
+    assert samples, "No Samples passed in and none in assembly {}".format(self.name)
+
+    return samples
 
 def _name_from_file(fname):
     """ internal func: get the sample name from any pyrad file """
