@@ -6,6 +6,7 @@ from . import jointestimate
 from . import consens_se
 from . import cluster_across
 from . import util
+from . import write_outfiles
 #from . import cluster_across
 
 

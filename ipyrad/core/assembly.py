@@ -163,6 +163,7 @@ class Assembly(object):
                        ("max_Indels_locus", (5, 99)), 
                        ("edit_cutsites", (0, 0)),
                        ("trim_overhang", (1, 2, 2, 1)),                        
+                       ("output_formats", "*"),
         ])
 
 
@@ -771,10 +772,13 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples( self, samples )
 
-        if not force:
-            print( "wat" )
-        else:
-            print( "watt")
+        if os.path.exists(self.dirs.outfiles) and not force:
+            print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
+                format( self.dirs.outfiles ) )
+            print( "  Step 7: rerun with `force=True` to overwrite" )
+            sys.exit()
+
+        assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
     def step1(self, force=False):
@@ -1147,8 +1151,8 @@ def paramschecker(self, param, newvalue):
         datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
                      'pairgbs', 'merged', '2brad']
         ## raise error if something else
-        if self.paramsdict['datatype'] not in datatypes:
-            print("error: datatype not recognized")
+        if str(newvalue) not in datatypes:
+            sys.exit("error: datatype {} not recognized, must be one of: ".format( newvalue ), datatypes)
         else:
             self.paramsdict['datatype'] = str(newvalue)
             self._stamp("[8] set to "+newvalue)
@@ -1267,6 +1271,26 @@ def paramschecker(self, param, newvalue):
         "trim_overhang should be a tuple e.g., (1, 2, 2, 1)"
         self.paramsdict['trim_overhang'] = newvalue
         self._stamp("[27] set to {}".format(newvalue))
+
+    elif param == 'output_formats':
+        ## Get all allowed file types from write_outfiles
+        output_formats = assemble.write_outfiles.output_formats
+
+        ## If wildcard, then just do them all
+        if "*" in newvalue:
+            requested_formats = output_formats
+        else:
+            ## output_formats should be comma separated, with optional spaces
+            requested_formats = newvalue.replace(" ", "").split(',')
+
+            ## Exit if requested formats are bad
+            ## Only test here if no wildcard present
+            for f in requested_formats:
+                if f not in output_formats:
+                    sys.exit("error: File format {} not recognized, must be one of: ".format( f ), output_formats)
+        
+        self.paramsdict['output_formats'] = requested_formats
+        self._stamp("[28] set to "+newvalue)        
 
     return self
 
