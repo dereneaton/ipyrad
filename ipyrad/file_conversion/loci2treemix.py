@@ -3,16 +3,8 @@
 import numpy as np
 import sys
 import gzip
-try:
-    from collections import OrderedDict
-except ImportError:
-    from ordereddict import OrderedDict
-try:
-    from collections import Counter
-except ImportError:
-    from counter import Counter
-#import alignable
-
+from collections import OrderedDict, Counter
+from ipyrad.assemble.util import *
 
 def make(WORK, outname, taxadict, minhits):
 
@@ -53,8 +45,8 @@ def make(WORK, outname, taxadict, minhits):
         ds = []
         for s in site:
             if s in list("RKSYWM"):
-                ds.append(alignable.unstruct(s)[0])
-                ds.append(alignable.unstruct(s)[1])
+                ds.append(unstruct(s)[0])
+                ds.append(unstruct(s)[1])
             else:
                 ds.append(s)
                 ds.append(s)
@@ -97,8 +89,8 @@ def make(WORK, outname, taxadict, minhits):
         for tax in FREQ:
             bunch = []
             for i in taxa[tax]:
-                bunch.append(alignable.unstruct(SNPS[i][keep])[0])
-                bunch.append(alignable.unstruct(SNPS[i][keep])[1])
+                bunch.append(unstruct(SNPS[i][keep])[0])
+                bunch.append(unstruct(SNPS[i][keep])[1])
                 #print tax, i, SNPS[i][keep], bunch
             FREQ[tax].append("".join(bunch))
 

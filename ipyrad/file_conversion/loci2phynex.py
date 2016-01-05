@@ -48,7 +48,12 @@ def makephy(WORK, outname, names, longname):
     done = 0
     nloci = 0
     nbases = 0
-    while nloci < 50000: #not done:
+
+    ## TODO: This should be fixed. it cycles through reading each locus
+    ## until nloci is less than this large number. It should really just
+    ## read to the end of the file, so it'll do all loci no matter how
+    ## many there are.
+    while nloci < 5000000: 
         seqs = []
         #arrayed = np.array([])
         anames = []
@@ -197,10 +202,27 @@ def makenex(WORK, outname, names, longname, partitions):
     nexout.close()
         
 
-def make(WORK, outfile, names, longname, formats):
+def make( data, samples ):
+    """ Make phylip and nexus formats. This is hackish since
+    I'm recycling the code whole-hog from pyrad V3. Probably
+    could be good to go back through and clean up the conversion
+    code some time."""
+    longname = max(map(len, samples ))
+    WORK = data.paramsdict["working_directory"]+"/"
+    outfile = data.name
+    names = map( lambda x: x.name, samples )
+
     partitions = makephy(WORK, outfile, names, longname)
     makenex(WORK, outfile, names, longname, partitions)
     
 
 if __name__ == "__main__":
-    make()
+    import ipyrad as ip
+    TESTFILE = "/tmp/ipyrad-test/test-refseq.assembly"
+    TESTER = ip.load.load_assembly(TESTFILE)
+#    TESTER = ip.core.assembly.Assembly( "test" )
+#    TESTER.set_params( "output_formats", "vcf,snps" )
+#    TESTER.get_params()
+#    TESTER.set_params( "output_formats", "*" )
+    TESTER.get_params()
+    make( TESTER, TESTER.samples["1A0", "1B0"] )

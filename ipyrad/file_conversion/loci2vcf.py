@@ -2,18 +2,23 @@
 
 import time
 import numpy as np
-#import alignable
+from ipyrad.assemble.util import *
 
-
-def make(WORK, version, outname, mindepth, names):
-    outfile  =  open(WORK+"/outfiles/"+outname+".vcf", 'w')
-    inloci   =  WORK+"/outfiles/"+outname+".loci"
-    names = list(names)
+def make( data, samples ):
+    outfile  =  open(os.path.join(data.dirs.outfiles, data.name+".vcf"), 'w')
+    inloci   =  os.path.join( data.dirs.outfiles, data.name+".loci" )
+    names = map( lambda x: x.name, samples )
     names.sort()
+
+    ## TODO: Get a real version number for the current sw stack
+    version = "0.1"
+    ## TODO: This is just reporting minimum depth per base. Would it be useful to
+    ## report real depth of reads per base?
+    mindepth = data.paramsdict["mindepth_statistical"]
 
     print >>outfile, "##fileformat=VCFv4.1"
     print >>outfile, "##fileDate="+time.strftime("%Y%m%d")
-    print >>outfile, "##source=pyRAD.v."+str(version)
+    print >>outfile, "##source=ipyRAD.v."+version
     print >>outfile, "##reference=common_allele_at_each_locus"
     print >>outfile, "##INFO=<ID=NS,Number=1,Type=Integer,Description=\"Number of Samples With Data\">"
     print >>outfile, "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Total Depth\">"
@@ -39,11 +44,11 @@ def make(WORK, version, outname, mindepth, names):
             if site:
                 for bb in site:
                     if bb in list("RKYSWM"):
-                        col += alignable.unstruct(bb)[0]
-                        col += alignable.unstruct(bb)[1]
+                        col += unstruct(bb)[0]
+                        col += unstruct(bb)[1]
                     else:
                         col += bb
-                REF = alignable.most_common([i for i in col if i not in list("-RKYSWMN")])
+                REF = most_common([i for i in col if i not in list("-RKYSWMN")])
                 ALT = set([i for i in col if (i in list("ATGC-N")) and (i!=REF)])
                 if ALT:
                     snps += 1
@@ -52,7 +57,7 @@ def make(WORK, version, outname, mindepth, names):
                     for samp in names:
                         if samp in samps:
                             idx = samps.index(samp)
-                            f = alignable.unstruct(loc.T[base][idx])
+                            f = unstruct(loc.T[base][idx])
                             if ('-' in f) or ('N' in f):
                                 GENOS.append("./.")
                             else:

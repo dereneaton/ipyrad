@@ -4,6 +4,7 @@
 
 from __future__ import print_function
 
+import h5py
 from ipyrad.file_conversion import *
 
 import logging
@@ -25,22 +26,51 @@ def run( data, samples, force, ipyclient ):
         print("  All samples should be in state 6 for writing outfiles. Try rerunning step6()")
 
     ## prepare dirs
-    data.dirs.outfiles = os.path.join(data.dirs.working, data.name+"_outfiles")
+    data.dirs.outfiles = os.path.join(data.dirs.working, "outfiles")
     if not os.path.exists(data.dirs.outfiles):
         os.mkdir(data.dirs.outfiles)
 
     ## Make the .loci file from the vcf generated in step6()
-#    loci_from_vcf( data, samples, force )
+    loci_from_unfilteredvcf( data, samples, force )
 
     ## Make all requested outfiles
     make_outfiles( data, samples, force )
 
+def loci_from_unfilteredvcf( data, samples, force ):
+    """ Read in the unfiltered vcf and supercatg from step6. Apply filters for coverage,
+    heterozygosity, number of snps, etc. Write out .loci to output directory """
+
+    unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf"), 'r')
+    supercatg = h5py.File(data.database, 'r')
+
+    ## Write out .loci
+    locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
+
 def make_outfiles( data, samples, force ):
     """ Get desired formats from paramsdict and write files to outfiles directory """
 
-    for filetype in data.paramsdict["output_formats"]:
-        print( "Doing - ", filetype )
+    ## Read in the input .loci file that gets transformed into all output formats
+    locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
 
+
+    for filetype in data.paramsdict["output_formats"]:
+        LOGGER.info( "Doing - ", filetype )
+
+        # phy & nex come from loci2phynex
+        if filetype in ["phy", "nex"]:
+            filetype = "phynex"
+        # All these file types come from loci2SNP
+        elif filetype in ["snps", "usnps", "str", "geno"]:
+            filetype = "SNP"
+
+        ## Everything else has its own loci2*.py conversion file.
+        ## Get the correct module for this filetype
+        ## globals() here gets the module name, and then we can call
+        ## the .make() function. This is a little tricky.
+        format_module = globals()[ "loci2"+filetype ]
+
+        ## do the call to make the new file format
+        format_module.make( data, samples )
 
 if __name__ == "__main__":
     import ipyrad as ip

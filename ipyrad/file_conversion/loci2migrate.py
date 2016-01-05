@@ -3,17 +3,10 @@
 import numpy as np
 import sys
 import gzip
-try:
-    from collections import OrderedDict
-except ImportError:
-    from ordereddict import OrderedDict
-try:
-    from collections import Counter
-except ImportError:
-    from counter import Counter
-#import alignable
+from collections import OrderedDict, Counter
 
-def make(WORK, outname, taxadict, minhits, seed):
+def make( data, samples ):
+def make(WORK, outname, taxadict, minhits):
 
     ## outfile
     outfile = open(WORK+"/outfiles/"+outname+".migrate", 'w')
@@ -80,17 +73,5 @@ def make(WORK, outname, taxadict, minhits, seed):
     outfile.close()
 
 
-# WORK = "/home/deren/Dropbox/Public/PyRAD_TUTORIALS/tutorial_RAD"
-# outname = "c85m4p3"
-
-# pops = ['pop1','pop2','pop3']
-# samps = [ ["1A0","1B0","1C0","1D0"],
-#           ["2E0","2F0","2G0","2H0"],
-#           ["3I0","3J0","3K0","3L0"] ]
-
-# taxadict = OrderedDict(zip(pops,samps))
-# minhits = [4,4,4]
-# seed = 112233
-
 if __name__ == "__main__":
-    make(WORK, outname, taxadict, minhits, seed)
+    make(WORK, outname, taxadict, minhits)
