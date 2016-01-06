@@ -8,10 +8,10 @@ def make( data, samples ):
     invcffile   =  os.path.join( data.dirs.consens, data.name+".vcf" )
     outlocifile  =  os.path.join( data.dirs.outfiles, data.name+".loci" )
 
-    import( invcffile, outlocifile )
+    importvcf( invcffile, outlocifile )
 
 
-def import( vcffile, locifile ):
+def importvcf( vcffile, locifile ):
     """ Function for importing a vcf file into loci format. Arguments
         are the input vcffile and the loci file to write out. """
 
@@ -27,4 +27,7 @@ def import( vcffile, locifile ):
                     LOGGER.debug( "Got names - %s", names )
                     break
 
-    ## Get the column to start reading at
+            print( "wat" )
+        ## Get the column to start reading at
+    except Exception:
+        print( "wat" )
