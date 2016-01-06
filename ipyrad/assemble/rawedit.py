@@ -489,20 +489,22 @@ def cleanup(data, sample, submitted, results):
     handle1 = os.path.join(data.dirs.edits, sample.name+"_R1_.fastq")
     handle2 = ""
 
-    with open(handle1, 'wb') as out:
-        for fname in combs1:
-            with open(fname) as infile:
-                out.write(infile.read())
-            os.remove(fname)
 
     if "pair" in data.paramsdict["datatype"]:
         combs2 = glob.glob(os.path.join(
                             data.dirs.edits,
-                            "tmp2_"+sample.name+"_*.gz"))
-        combs2.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")))    
+                            "tmp2_"+sample.name+"_*.fq"))
+        combs2.sort(key=lambda x: int(x.split("_")[-1].replace(".fq", "")))    
         handle2 = os.path.join(data.dirs.edits, sample.name+"_R2_.fastq")        
         assert len(combs1) == len(combs2), \
-               "mismatched number of paired read files"
+               "mismatched number of paired read files - {} {}".format( len(combs1), len(combs2) )
+
+        ## Clean up temp files
+        with open(handle1, 'wb') as out:
+            for fname in combs1:
+                with open(fname) as infile:
+                    out.write(infile.read())
+                os.remove(fname)
 
         with open(handle2, 'wb') as out:
             for fname in combs2:
