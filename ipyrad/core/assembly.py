@@ -649,7 +649,7 @@ class Assembly(object):
 
 
 
-    def _step1func(self, force, ipyclient):
+    def _step1func(self, force, preview, ipyclient):
         """ testing"""
         msg1 = "  step1: Demultiplexing raw reads."
         msg2 = "  step1: Linking fastq data to Samples."
@@ -681,12 +681,12 @@ class Assembly(object):
             else:
                 if self._headers:
                     print(msg1)                        
-                assemble.demultiplex.run(self, ipyclient)
+                assemble.demultiplex.run(self, preview, ipyclient)
                 self._stamp("s1_demultiplexing:")
 
 
 
-    def _step2func(self, samples, nreplace, force, ipyclient):
+    def _step2func(self, samples, nreplace, force, preview, ipyclient):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
         select all samples in the Assembly object. Only samples in state
@@ -705,7 +705,7 @@ class Assembly(object):
         samples = _get_samples( self, samples )
 
         ## pass samples to rawedit
-        assemble.rawedit.run(self, samples, nreplace, force, ipyclient)
+        assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
 
 
 
@@ -817,13 +817,13 @@ class Assembly(object):
         assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
-    def step1(self, force=False):
+    def step1(self, force=False, preview=False):
         """ test """
-        self._clientwrapper(self._step1func, [force], 10)
+        self._clientwrapper(self._step1func, [force, preview], 10)
 
-    def step2(self, samples=None, nreplace=True, force=False):
+    def step2(self, samples=None, nreplace=True, force=False, preview=False):
         """ test """
-        self._clientwrapper(self._step2func, [samples, nreplace, force], 10)
+        self._clientwrapper(self._step2func, [samples, nreplace, force, preview], 10)
 
     def step3(self, samples=None, noreverse=False, force=False):
         """ test """
@@ -1118,7 +1118,7 @@ def tuplecheck(newvalue, dtype=None):
 def paramschecker(self, param, newvalue):
     if param == 'working_directory':
         expandpath = expander(newvalue)
-        if not expandpath.startswith("./"): 
+        if not expandpath.startswith("/"): 
             if os.path.exists(expandpath):
                 expandpath = "./"+expandpath
                 expandpath = expander(expandpath)

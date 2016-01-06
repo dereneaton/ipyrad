@@ -48,6 +48,8 @@ def loci_from_unfilteredvcf( data, samples, force ):
 
     supercatg = h5py.File(data.database, 'r')
 
+    # Do filtering: max_shared_heterozygosity, minsamp, maxSNP, etc.
+
     ## Write out .loci
     locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
 

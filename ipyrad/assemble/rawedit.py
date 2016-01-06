@@ -405,7 +405,7 @@ def roundup(num):
 
 
 
-def run_full(data, sample, nreplace, ipyclient):
+def run_full(data, sample, nreplace, preview, ipyclient):
     """ 
     Splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them .
@@ -435,6 +435,11 @@ def run_full(data, sample, nreplace, ipyclient):
     ## send chunks across processors, will delete if fail
     try: 
         submitted_args = []
+
+        if preview:
+            LOGGER.warn( "Running preview mode. Selecting only one chunk to rawedit." )
+            chunkslist = [ chunkslist[i] for i in [0] ]
+
         for tmptuple in chunkslist:
             ## used to increment names across processors
             point = num*(optim/4)   #10000 #num*(chunksize/2)
@@ -556,7 +561,7 @@ def cleanup(data, sample, submitted, results):
 
 
 
-def run(data, samples, nreplace, force, ipyclient):
+def run(data, samples, nreplace, force, preview, ipyclient):
     """ run the major functions for editing raw reads """
     ## print warning if skipping all samples
     if not force:
@@ -575,7 +580,7 @@ def run(data, samples, nreplace, force, ipyclient):
                            format(sample.stats.reads_raw))
                 else:
                     submitted, results = run_full(data, sample, nreplace, 
-                                                  ipyclient)
+                                                  preview, ipyclient)
                     cleanup(data, sample, submitted, results)
     else:
         for sample in samples:
@@ -584,7 +589,7 @@ def run(data, samples, nreplace, force, ipyclient):
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))
             else:
-                submitted, results = run_full(data, sample, nreplace, ipyclient)
+                submitted, results = run_full(data, sample, nreplace, preview, ipyclient)
                 cleanup(data, sample, submitted, results)
 
 
