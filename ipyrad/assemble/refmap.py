@@ -170,16 +170,16 @@ def mapreads(args):
         " " + " ".join( sample_fastq )
 
     LOGGER.debug( "%s", cmd )
-    ## run smalt
-    if preview:
-        ## make this some kind of wait command that kills after a few mins
-        subprocess.call(cmd, shell=True,
+    try:
+        subprocess.check_call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
-    else:
-        subprocess.call(cmd, shell=True,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst :
+        LOGGER.error( "Error in reference mapping. Try copy/pasting and running this "+\
+                        "command by hand:\n\t%s", cmd)
+        LOGGER.error(inst)
+        sys.exit("Error in smalt: \n{}\n{}\n{}."\
+                 .format(inst, subprocess.STDOUT, cmd))
 
     ## Get the mapped and unmapped reads from the sam. For PE both reads must map
     ## successfully in order to qualify.
@@ -265,11 +265,10 @@ def mapreads(args):
     ## and bam2fq doesn't output gzip. Have to do some monkey business
     ## with the files here (write to a tmp file, then move the temp file
     ## to the proper path). This is kinda stupid, but it works.
-    for f in outfiles:
-        with open(f, 'r') as f_in, gzip.open(f+".tmp", 'wb') as f_out:
-            shutil.copyfileobj(f_in, f_out) 
-        
-        shutil.move( f+".tmp", f )
+#    for f in outfiles:
+#        with open(f, 'r') as f_in, gzip.open(f+".tmp", 'wb') as f_out:
+#            shutil.copyfileobj(f_in, f_out)        
+#        shutil.move( f+".tmp", f )
 
     ## This is the end of processing for each sample. Stats
     ## are appended to the sample for mapped and unmapped reads 
