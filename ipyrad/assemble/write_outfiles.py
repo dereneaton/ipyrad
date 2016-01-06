@@ -38,15 +38,20 @@ def run( data, samples, force, ipyclient ):
     ## Make all requested outfiles
     make_outfiles( data, samples, force )
 
+
+
 def loci_from_unfilteredvcf( data, samples, force ):
     """ Read in the unfiltered vcf and supercatg from step6. Apply filters for coverage,
     heterozygosity, number of snps, etc. Write out .loci to output directory """
 
     unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf")
+
     supercatg = h5py.File(data.database, 'r')
 
     ## Write out .loci
     locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
+
+
 
 def make_outfiles( data, samples, force ):
     """ Get desired formats from paramsdict and write files to outfiles directory """

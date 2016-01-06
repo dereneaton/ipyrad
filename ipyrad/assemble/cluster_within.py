@@ -549,6 +549,8 @@ def concat_edits(data, sample):
             sample.files.edits = [(tmphandle1, )]
     return sample
 
+
+
 def derep_and_sort(data, sample, nthreads):
     """ dereplicates reads and sorts so reads that were highly
     replicated are at the top, and singletons at bottom, writes
@@ -581,6 +583,8 @@ def derep_and_sort(data, sample, nthreads):
         LOGGER.error(inst)
         sys.exit("Error in vsearch: \n{}\n{}\n{}."\
                  .format(inst, subprocess.STDOUT, cmd))
+
+
 
 def cluster(data, sample, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
@@ -752,7 +756,7 @@ def run(data, samples, noreverse, force, ipyclient):
     subsamples = []
 
     ## if sample is already done skip
-    for _, sample in samples:
+    for sample in samples:
         if not force:
             if sample.stats.state >=3:
                 print("  Skipping {}; aleady clustered.".\
