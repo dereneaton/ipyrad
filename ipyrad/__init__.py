@@ -13,7 +13,7 @@ from ipyrad.core.sample import Sample
 from ipyrad.core.paramsinfo import paramsinfo
 
 ## define state vars
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 __interactive__ = 1
 __loglevel__ = "INFO"  #DEBUG"   ##  "DEBUG"  "INFO"  "WARN"  "ERROR" 
 
