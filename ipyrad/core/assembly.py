@@ -164,6 +164,7 @@ class Assembly(object):
                        ("edit_cutsites", (0, 0)),
                        ("trim_overhang", (1, 2, 2, 1)),                        
                        ("output_formats", "*"),
+                       ("pop_assign_file", ""),
         ])
 
 
@@ -400,8 +401,43 @@ class Assembly(object):
             ## set attribute on Assembly object
             self.barcodes = dict(zip(bdf[0], bdf[1]))
         except ValueError:
-            print("Barcodes file not recognized.")
+            LOGGER.warn("Barcodes file not recognized.")
 
+    def link_populations(self):
+        """ Creates self.populations object to save mappings of 
+            individuals to populations/sites. This is used for
+            heirarchical clustering, for generating summary stats
+            and for outputing some file types (.treemix for example).
+            Internally stores a dictionary. File is read in as a parameter
+            from self.paramsdict["pop_assign_file"]
+            The format of the dictionary is { pop1: [ind1, ind2, ind3], pop2: [ind4, ind5] }
+            The format of the infile is space separated pairs:
+            ind1 pop1
+            ind2 pop2
+            ind3 pop3
+            etc... """
+        try:
+            popfile = glob.glob(self.paramsdict["pop_assign_file"])[0]
+        except IndexError:
+            LOGGER.error("Population assignment file not found: {}".format( self.paramsdict["pop_assign_file"] ) )
+
+        ## parse populations file
+        try:
+            popdat = pd.read_csv(popfile, header=None, delim_whitespace=1)
+            
+            ## Get a set of all unique population names
+            pops = set( popdat[1] )
+
+            ## set attribute on Assembly population dict
+            self.populations = {}
+            ## This seems like a stupid way to do this. 
+            tmpdict = dict(zip(popdat[0], popdat[1]))
+            for pop in pops:
+                self.populations[ pop ] = [name for name, population in tmpdict.items() if population == pop ]
+
+        except ValueError:
+            LOGGER.warn("Populations file may be malformed.")
+            sys.exit( "Populations file malformed - {}".format( popfile ) )
 
     def get_params(self, param=""):
         """ pretty prints params if called as a function """
@@ -1273,7 +1309,7 @@ def paramschecker(self, param, newvalue):
         self._stamp("[27] set to {}".format(newvalue))
 
     elif param == 'output_formats':
-        ## Get all allowed file types from write_outfiles
+        ## Get all allowed file types from assembly.write_outfiles
         output_formats = assemble.write_outfiles.output_formats
 
         ## If wildcard, then just do them all
@@ -1291,6 +1327,21 @@ def paramschecker(self, param, newvalue):
         
         self.paramsdict['output_formats'] = requested_formats
         self._stamp("[28] set to "+newvalue)        
+
+    elif param == 'pop_assign_file':
+        fullpoppath = expander(newvalue)
+
+        if not os.path.isfile(fullpoppath):
+            LOGGER.warn("Population assignment file not found.")
+            sys.exit(\
+        "Warning: Population assignment file not found. This must be an\n"\
+       +"absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to \n"\
+       +"the directory where you're running ipyrad (./data/my_popfile.txt).\n"\
+       +"You entered: %s\n" % fullpoppath)
+
+        self.paramsdict['pop_assign_file'] = fullpoppath
+        self.link_populations( )
+        self._stamp("[29] set to "+fullpoppath)
 
     return self
 
