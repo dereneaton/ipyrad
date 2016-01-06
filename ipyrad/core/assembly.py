@@ -671,7 +671,7 @@ class Assembly(object):
             else:
                 if self._headers:
                     print(msg1)
-                assemble.demultiplex.run(self, ipyclient)
+                assemble.demultiplex.run(self, preview, ipyclient)
                 self._stamp("s1_demultiplexing:")
         ## Creating new Samples
         else:
