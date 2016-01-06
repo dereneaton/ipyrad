@@ -10,7 +10,9 @@ from ipyrad.file_conversion import *
 import logging
 LOGGER = logging.getLogger(__name__)
 
-## List of all possible output formats.
+## List of all possible output formats. This is global because it's
+## referenced by assembly.py and also paramsinfo. Easier to have it
+## centralized.
 output_formats = ['alleles', 'phy', 'nex', 'snps', 'vcf', 'usnps',
                      'str', 'geno', 'treemix', 'migrate', 'gphocs']
 
@@ -40,7 +42,7 @@ def loci_from_unfilteredvcf( data, samples, force ):
     """ Read in the unfiltered vcf and supercatg from step6. Apply filters for coverage,
     heterozygosity, number of snps, etc. Write out .loci to output directory """
 
-    unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf"), 'r')
+    unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf")
     supercatg = h5py.File(data.database, 'r')
 
     ## Write out .loci

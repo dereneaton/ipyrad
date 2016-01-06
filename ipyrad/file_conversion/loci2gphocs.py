@@ -10,11 +10,11 @@
 ## import libraries
 import sys, os
 
-def make(WORK, outname):
+def make(data, samples):
     
     #read in loci file
-    infile = open(WORK+"outfiles/"+outname+".loci")
-    outfile = open(WORK+"outfiles/"+outname+".gphocs",'w')
+    outfile  =  open(os.path.join(data.dirs.outfiles, data.name+".gphocs"), 'w')
+    infile =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ), 'r' )
 
     ## parse the loci
     ## Each set of reads at a locus is appended with a line
@@ -24,7 +24,7 @@ def make(WORK, outname):
     loci = infile.read().strip().split("//")[:-1]
     
     # Print the header, the number of loci in this file
-    print >>outfile, len(loci)#-1
+    print >>outfile, len(loci)
     
     # iterate through each locus, print out the header for each locus:
     # <locus_name> <n_samples> <locus_length>
@@ -39,7 +39,7 @@ def make(WORK, outname):
 
         # Strips off 'nnnn' separator for paired data
         # replaces '-' with 'N'
-        editsequences = [seq.replace("n","").replace('-','N') for seq in sequences]
+        editsequences = [seq.replace("s","").replace('-','N') for seq in sequences]
         sequence_length = len(editsequences[0])
 
         # get length of longest name and add 4 spaces

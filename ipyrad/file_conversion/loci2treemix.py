@@ -5,26 +5,51 @@ import sys
 import gzip
 from collections import OrderedDict, Counter
 from ipyrad.assemble.util import *
+from ipyrad.file_conversion import loci2SNP
 
-def make(WORK, outname, taxadict, minhits):
+def make( data, samples ):
 
     ## output files
-    outfile = gzip.open(WORK+"/outfiles/"+outname+".treemix.gz",'w')
+    outfile  =  gzip.open(os.path.join(data.dirs.outfiles, data.name+".treemix.gz"), 'w')
 
-    ## cleanup taxadict to just sample names
-    taxa = OrderedDict()
-    for group in taxadict:
-        taxa[group] = []
-        for samp in taxadict[group]:
-            a = samp.split("/")[-1].replace(".consens.gz","")
-            taxa[group].append(a)
+    try:
+        infile =  open(os.path.join( data.dirs.outfiles, data.name+".usnps" ), 'r' )
+    except FileNotFoundError:
+        LOGGER.info( "unlinked_snps file doesn't exist. Try creating it." )
+        try:
+            ## Try generating the .unlinked_snps file
+            data.paramsdict["output_formats"] = "usnps,"+data.paramsdict["output_formats"]
+            loci2SNP( data, samples )
+        except Exception:
+            LOGGER.error("Treemix file conversion requires .unlinked_snps file, which does not exist. \
+                        Make sure the param `output_formats` includes at least `usnps,treemix` \
+                        and rerun step7()")
+            return
+
+    ## TODO: Allow for subsampling the output by honoring the "samples" list passed in.
+
+    ## Make sure we have population assignments for this format
+    try:
+        taxa = data.populations
+    except AttributeError:
+        LOGGER.error( "Migrate file output requires population assignments \
+                        and this data.populations is empty. Make sure you have \
+                        set the 'pop_assign_file' parameter, and make sure the \
+                        path is correct and the format is right." )
+        return
+
+    ## TODO: Hax. pyRAD v3 used to allow specifying minimum coverage per group
+    ## This is a hackish version where we just use mindepth_statistical. Maybe
+    ## it's best not to filter
+    ## minhits = [ data.paramsdict["mindepth_statistical"] ] * len(taxa)
+
+    ## Hard coding minhits to 2 individuals per group. Fixme.
+    minhits = [ 2 ] * len(taxa)
 
     print "\t    data set reduced for group coverage minimums"        
     for i,j in zip(taxa,minhits):
         print "\t   ",i, taxa[i], 'minimum=',j
     
-    ## read in data from unlinked_snps to sample names
-    infile = open(WORK.rstrip("/")+"/outfiles/"+outname+".unlinked_snps",'r')
     dat = infile.readlines()
     nsamp,nsnps = dat[0].strip().split(" ")
     nsamp = int(nsamp)

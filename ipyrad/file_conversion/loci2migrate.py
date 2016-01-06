@@ -5,19 +5,33 @@ import sys
 import gzip
 from collections import OrderedDict, Counter
 
+import logging
+LOGGER = logging.getLogger(__name__)
+
 def make( data, samples ):
-def make(WORK, outname, taxadict, minhits):
 
-    ## outfile
-    outfile = open(WORK+"/outfiles/"+outname+".migrate", 'w')
+    outfile  =  open(os.path.join(data.dirs.outfiles, data.name+".migrate"), 'w')
+    infile =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ), 'r' )
 
-    ## cleanup taxadict
-    taxa = OrderedDict()
-    for group in taxadict:
-        taxa[group] = []
-        for samp in taxadict[group]:
-            a = samp.split("/")[-1].replace(".consens.gz","")
-            taxa[group].append(a)
+    ## TODO: Allow for subsampling the output by honoring the "samples" list passed in.
+
+    ## Make sure we have population assignments for this format
+    try:
+        taxa = data.populations
+    except AttributeError:
+        LOGGER.error( "Migrate file output requires population assignments \
+                        and this data.populations is empty. Make sure you have \
+                        set the 'pop_assign_file' parameter, and make sure the \
+                        path is correct and the format is right." )
+        return
+
+    ## TODO: Hax. pyRAD v3 used to allow specifying minimum coverage per group
+    ## This is a hackish version where we just use mindepth_statistical. Maybe
+    ## it's best not to filter
+    ## minhits = [ data.paramsdict["mindepth_statistical"] ] * len(taxa)
+
+    ## Hard coding minhits to 2 individuals per group. Fixme.
+    minhits = [ 2 ] * len(taxa)
 
     print "\t    data set reduced for group coverage minimums"
     for i,j in zip(taxa,minhits):
@@ -31,7 +45,7 @@ def make(WORK, outname, taxadict, minhits):
     MINS = zip(taxa.keys(), minhits)
 
     ## read in data to sample names
-    loci  = open(WORK+"/outfiles/"+outname+".loci",'r').read().strip().split("|")[:-1]
+    loci  = infile.read().strip().split("|")[:-1]
     for loc in loci:
         samps = [i.split()[0].replace(">","") for i in loc.split("\n") if ">" in i]
         ## filter for coverage
@@ -42,7 +56,7 @@ def make(WORK, outname, taxadict, minhits):
             keep.append(loc)
 
     ## print data to file
-    print >>outfile, len(taxa), len(keep), "( npops nloci for data set", outname+".loci",")"
+    print >>outfile, len(taxa), len(keep), "( npops nloci for data set", data.name+".loci",")"
     
     ## print all data for each population at a time
     done = 0
@@ -74,4 +88,4 @@ def make(WORK, outname, taxadict, minhits):
 
 
 if __name__ == "__main__":
-    make(WORK, outname, taxadict, minhits)
+    make( data, samples )
