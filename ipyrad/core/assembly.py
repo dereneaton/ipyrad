@@ -5,6 +5,7 @@
 # pylint: disable=E1101
 # pylint: disable=E1103
 # pylint: disable=W0142
+# pylint: disable=W0212
 
 
 from __future__ import print_function
@@ -23,11 +24,16 @@ from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.sample import Sample
-import ipyrad as ip
 from .. import assemble
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
+
+class IPyradParamsError(Exception):
+    """ Exception handler indicating error in parameter entry """
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
 
 
 
@@ -56,21 +62,9 @@ class Assembly(object):
         Returns a dictionary with Sample names as keys and barcodes as values.
         The barcodes information is fetched from parameter 3
         `[Assembly].paramsdict['barcodes_path']`.
-    vsearch : str
-        The path to the default vsearch executable. If not found, this can be 
-        changed by setting [Assembly].vsearch = [newpath].
-    muscle : str
-        The path to the default muscle executable. If not found, this can be 
-        changed by setting `[Assembly].muscle = [newpath]`.
-    smalt : str
-        The path to the default smalt executable. If not found, this can be 
-        changed by setting `[Assembly].smalt = [newpath]`.
-    samtools : str
-        The path to the default samtools executable. If not found, this can be 
-        changed by setting `[Assembly].samtools = [newpath]`.
-    bedtools : str
-        The path to the default bedtools executable. If not found, this can be 
-        changed by setting `[Assembly].bedtools = [newpath]`.
+    bins : dict
+        Keys: values for the path to vsearch, muscle, smalt, samtools
+        executables. 
     log : list
         A list of all modifications to the Assembly object and its Samples with
         time stamps. Use `print [Assembly].log` for easier viewing.
@@ -78,12 +72,19 @@ class Assembly(object):
         Returns a dictionary with the location of directories that contain 
         linked Sample object files and stats results.
 
+
+    Functions
+    ---------
+    step[x]()
+        runs step x of assembly
+    toparamsfile(filehandle)
+        writes params dictionary to params.txt file format
+
         
     Returns
     -------
     object
          A new assembly object is returned.
-
 
      """
 
@@ -131,6 +132,7 @@ class Assembly(object):
         self.paramsdict = OrderedDict([
                        ("working_directory", os.path.realpath(
                                                 os.path.curdir)),
+                       ("prefix_outname", self.name),                       
                        ("raw_fastq_path", os.path.join(
                                             os.path.realpath(
                                                  os.path.curdir),
@@ -140,31 +142,30 @@ class Assembly(object):
                                                 os.path.curdir),
                                                 "*.barcodes.txt")),
                        ("sorted_fastq_path", ""),
+                       ("assembly_method", "denovo"),
+                       ("reference_sequence", ""), 
+                       ("datatype", 'rad'), 
                        ("restriction_overhang", ("TGCAG", "")),
                        ("max_low_qual_bases", 5),
-                       ("engines_per_job", 4),
+                       ("phred_Qscore_offset", 33),
                        ("mindepth_statistical", 6), 
                        ("mindepth_majrule", 6), 
-                       ("datatype", 'rad'), 
+                       ("maxdepth", 1000),
                        ("clust_threshold", .85),
                        ("minsamp", 4), 
                        ("max_shared_heterozygosity", .25), 
-                       ("prefix_outname", self.name),
-                       ("phred_Qscore_offset", 33),
                        ("max_barcode_mismatch", 1),
                        ("filter_adapters", 0), 
                        ("filter_min_trim_len", 35), 
                        ("ploidy", 2), 
-                       ("max_stack_size", 1000),
                        ("max_Ns_consens", (5, 5)), 
                        ("max_Hs_consens", (8, 8)), 
                        ("max_SNPs_locus", (100, 100)), 
                        ("max_Indels_locus", (5, 99)), 
-                       ("trim_overhang", (1, 2, 2, 1)), 
-                       ("hierarchical_clustering", 0),
-                       ("assembly_method", "denovo"),
-                       ("reference_sequence", ""), 
-                       ("edit_cutsites", (0, 0))
+                       ("edit_cutsites", (0, 0)),
+                       ("trim_overhang", (1, 2, 2, 1)),                        
+                       ("output_formats", "*"),
+                       ("pop_assign_file", ""),
         ])
 
 
@@ -409,8 +410,43 @@ class Assembly(object):
             ## set attribute on Assembly object
             self.barcodes = dict(zip(bdf[0], bdf[1]))
         except ValueError:
-            print("Barcodes file not recognized.")
+            LOGGER.warn("Barcodes file not recognized.")
 
+    def link_populations(self):
+        """ Creates self.populations object to save mappings of 
+            individuals to populations/sites. This is used for
+            heirarchical clustering, for generating summary stats
+            and for outputing some file types (.treemix for example).
+            Internally stores a dictionary. File is read in as a parameter
+            from self.paramsdict["pop_assign_file"]
+            The format of the dictionary is { pop1: [ind1, ind2, ind3], pop2: [ind4, ind5] }
+            The format of the infile is space separated pairs:
+            ind1 pop1
+            ind2 pop2
+            ind3 pop3
+            etc... """
+        try:
+            popfile = glob.glob(self.paramsdict["pop_assign_file"])[0]
+        except IndexError:
+            LOGGER.error("Population assignment file not found: {}".format( self.paramsdict["pop_assign_file"] ) )
+
+        ## parse populations file
+        try:
+            popdat = pd.read_csv(popfile, header=None, delim_whitespace=1)
+            
+            ## Get a set of all unique population names
+            pops = set( popdat[1] )
+
+            ## set attribute on Assembly population dict
+            self.populations = {}
+            ## This seems like a stupid way to do this. 
+            tmpdict = dict(zip(popdat[0], popdat[1]))
+            for pop in pops:
+                self.populations[ pop ] = [name for name, population in tmpdict.items() if population == pop ]
+
+        except ValueError:
+            LOGGER.warn("Populations file may be malformed.")
+            sys.exit( "Populations file malformed - {}".format( popfile ) )
 
     def get_params(self, param=""):
         """ pretty prints params if called as a function """
@@ -481,224 +517,16 @@ class Assembly(object):
         ## make string
         param = str(param)
 
-        ## if matching
-        if param in ['1', 'working_directory']:
-            self.paramsdict['working_directory'] = expander(newvalue)
-            self._stamp("[1] set to "+newvalue)
-            self.dirs["working"] = self.paramsdict["working_directory"]
+        ## get index if param is keyword arg (this index is not zero based!)
+        if len(param) < 3:
+            param = self.paramsdict.keys()[int(param)-1]
 
-
-        elif param in ['2', 'raw_fastq_path']:
-            fullrawpath = expander(newvalue)
-            if os.path.isdir(fullrawpath):
-                fullrawpath = os.path.join(fullrawpath, "*.gz")
-            self.paramsdict['raw_fastq_path'] = fullrawpath
-            self._stamp("[2] set to "+newvalue)
-
-
-        elif param in ['3', 'barcodes_path']:
-            #assert type(newvalue) is StringType, "arg must be a string"
-            fullbarpath = expander(newvalue)
-            if glob.glob(fullbarpath):
-                self.paramsdict['barcodes_path'] = fullbarpath
-                self.link_barcodes()
-                self._stamp("[3] set to "+newvalue)
-            elif not fullbarpath:
-                self.paramsdict['barcodes_path'] = fullbarpath                
-                self._stamp("[3] set to empty")
-            else:
-                print(
-        "Warning: barcodes file not found. This must be an absolute \n"\
-       +"path (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the \n"\
-       +"directory where you're running ipyrad (./data/data_barcodes.txt).\n"\
-       +"You entered: %s\n" % fullbarpath)
-
-
-        elif param in ['4', 'sorted_fastq_path']:
-            assert isinstance(newvalue, str), \
-            "sorted_fastq_path must be a string, e.g., /home/data/fastqs/*"
-            newvalue = expander(newvalue)
-            if os.path.isdir(newvalue):
-                newvalue = os.path.join(newvalue, "*.gz")
-            self.paramsdict['sorted_fastq_path'] = newvalue
-            self._stamp("[4] set to "+newvalue)
-
-
-        elif param in ['5', 'restriction_overhang']:
-            newvalue = tuplecheck(newvalue, str)                        
-            assert isinstance(newvalue, tuple), \
-            "cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"
-            if len(newvalue) == 1:
-                newvalue = (newvalue, "")
-            assert len(newvalue) == 2, \
-            "must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"
-            self.paramsdict['restriction_overhang'] = newvalue
-            self._stamp("[5] set to "+str(newvalue))
-
-
-        elif param in ['6', 'max_low_qual_bases']:
-            self.paramsdict['max_low_qual_bases'] = int(newvalue)
-            self._stamp("[6] set to "+str(newvalue))
-
-
-        elif param in ['7', "engines_per_job"]:
-            self.paramsdict['engines_per_job'] = int(newvalue)
-            self._stamp("[7] set to "+str(newvalue))
-
-
-        elif param in ['8', 'mindepth_statistical']:
-            ## do not allow values below 5
-            if int(newvalue) < 5:
-                print("error: mindepth statistical cannot be set < 5")
-            ## do not allow majrule to be > statistical
-            elif int(newvalue) < self.paramsdict["mindepth_majrule"]:
-                print("error: mindepth statistical cannot be less than \
-                       mindepth_majrule")                
-            else:
-                self.paramsdict['mindepth_statistical'] = int(newvalue)
-                self._stamp("[8] set to "+str(newvalue))
-
-
-        elif param in ['9', 'mindepth_majrule']:
-            if int(newvalue) > self.paramsdict["mindepth_statistical"]:
-                print("error: mindepth_majrule cannot be > \
-                       mindepth_statistical")
-            else:
-                self.paramsdict['mindepth_majrule'] = int(newvalue)
-                self._stamp("[9] set to "+str(newvalue))
-
-
-        elif param in ['10', 'datatype']:
-            ## list of allowed datatypes
-            datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
-                         'pairgbs', 'merged', '2brad']
-            ## raise error if something else
-            if self.paramsdict['datatype'] not in datatypes:
-                print("error: datatype not recognized")
-            else:
-                self.paramsdict['datatype'] = str(newvalue)
-                self._stamp("[10] set to "+newvalue)
-
-
-        elif param in ['11', 'clust_threshold']:
-            self.paramsdict['clust_threshold'] = float(newvalue)
-            self._stamp("[11] set to {}".format(newvalue))
-
-
-        elif param in ['12', 'minsamp']:
-            self.paramsdict['minsamp'] = int(newvalue)
-            self._stamp("[12] set to {}".format(int(newvalue)))
-
-
-        elif param in ['13', 'max_shared_heterozygosity']:
-            self.paramsdict['max_shared_heterozygosity'] = newvalue
-            self._stamp("[13] set to {}".format(newvalue))
-
-
-        elif param in ['14', 'prefix_outname']:
-            self.paramsdict['prefix_outname'] = newvalue
-            self._stamp("[14] set to {}".format(newvalue))
-
-
-        elif param in ['15', 'phred_Qscore_offset']:
-            self.paramsdict['phred_Qscore_offset'] = int(newvalue)
-            self._stamp("[15] set to {}".format(int(newvalue)))
-
-
-        elif param in ['16', 'max_barcode_mismatch']:
-            self.paramsdict['max_barcode_mismatch'] = int(newvalue)
-            self._stamp("[16] set to {}".format(int(newvalue)))
-
-        ### ....
-        elif param in ['17', 'filter_adapters']:
-            self.paramsdict['filter_adapters'] = int(newvalue)
-            self._stamp("[17] set to "+str(newvalue))
-
-
-        elif param in ['18', 'filter_min_trim_len']:
-            self.paramsdict['filter_min_trim_len'] = int(newvalue)
-            self._stamp("[18] set to {}".format(int(newvalue)))
-
-
-        elif param in ['19', 'ploidy']:
-            self.paramsdict['ploidy'] = int(newvalue)
-            self._stamp("[19] set to {}".format(int(newvalue)))
-
-
-        elif param in ['20', 'max_stack_size']:
-            self.paramsdict['max_stack_size'] = int(newvalue)
-            self._stamp("[20] set to {}".format(int(newvalue)))
-
-
-        elif param in ['21', 'max_Ns_consens']:
-            newvalue = tuplecheck(newvalue, int)                        
-            assert isinstance(newvalue, tuple), \
-            "max_Ns_consens should be a tuple e.g., (8,8)"
-            self.paramsdict['max_Ns_consens'] = newvalue
-            self._stamp("[21] set to {}".format(newvalue))
-
-
-        elif param in ['22', 'max_Hs_consens']:
-            newvalue = tuplecheck(newvalue, int)                        
-            assert isinstance(newvalue, tuple), \
-            "max_Hs_consens should be a tuple e.g., (1,2,2,1)"
-            self.paramsdict['max_Hs_consens'] = newvalue
-            self._stamp("[22] set to {}".format(newvalue))
-
-
-        elif param in ['23', 'max_SNPs_locus']:
-            newvalue = tuplecheck(newvalue, int)                        
-            assert isinstance(newvalue, tuple), \
-            "max_SNPs_locus should be a tuple e.g., (20,20)"
-            self.paramsdict['max_SNPs_locus'] = newvalue
-            self._stamp("[23] set to {}".format(newvalue))
-
-
-        elif param in ['24', 'max_Indels_locus']:
-            newvalue = tuplecheck(newvalue, int)            
-            assert isinstance(newvalue, tuple), \
-            "max_Indels_locus should be a tuple e.g., (5, 100)" 
-            self.paramsdict['max_Indels_locus'] = newvalue
-            self._stamp("[24] set to {}".format(newvalue))
-
-
-        elif param in ['25', 'trim_overhang']:
-            newvalue = tuplecheck(newvalue, int)
-            assert isinstance(newvalue, tuple), \
-            "trim_overhang should be a tuple e.g., (1,2,2,1)"
-            self.paramsdict['trim_overhang'] = newvalue
-            self._stamp("[25] set to {}".format(newvalue))
-
-
-        elif param in ['27', 'assembly_method']:
-            self.paramsdict['assembly_method'] = newvalue
-            assert self.paramsdict['assembly_method'] in \
-                              ["denovo", "reference", "hybrid"], \
-                 "The assembly_method setting must be one of the following: "+\
-                 "denovo, reference, or hybrid."
-            self._stamp("[27] set to {}".format(newvalue))
-
-
-        elif param in ['28', 'reference_sequence']:
-            fullrawpath = expander(newvalue)
-            if not os.path.isfile(fullrawpath):
-                LOGGER.info("reference sequence file not found.")
-                print(\
-        "Warning: reference sequence file not found. This must be an\n"\
-       +"absolute path (/home/wat/ipyrad/data/reference.gz) or relative to \n"\
-       +"the directory where you're running ipyrad (./data/reference.gz).\n"\
-       +"You entered: %s\n" % fullrawpath)
-            self.paramsdict['reference_sequence'] = fullrawpath
-            self._stamp("[28] set to "+fullrawpath)
-
-
-        elif param in ['29', 'edits_cutsites']:
-            newvalue = tuplecheck(newvalue)
-            assert isinstance(newvalue, tuple), \
-            "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
-            .format(newvalue)
-            self.paramsdict['edit_cutsites'] = newvalue
-            self._stamp("[29] set to {}".format(newvalue))
+        ## run assertions on new param 
+        try:
+            self = paramschecker(self, param, newvalue)
+        except Exception as inst:
+            #print("\nError:", inst, "\n")
+            raise IPyradParamsError(inst)
 
 
 
@@ -809,7 +637,6 @@ class Assembly(object):
                 stepfunc(*args)
         except (KeyboardInterrupt, SystemExit, AttributeError):
             logging.error("assembly interrupted.")
-            ipyclient.abort
             raise
         except UnboundLocalError as inst:
             print(\
@@ -831,7 +658,7 @@ class Assembly(object):
 
 
 
-    def _step1func(self, force, ipyclient):
+    def _step1func(self, force, preview, ipyclient):
         """ testing"""
         msg1 = "  step1: Demultiplexing raw reads."
         msg2 = "  step1: Linking fastq data to Samples."
@@ -863,12 +690,12 @@ class Assembly(object):
             else:
                 if self._headers:
                     print(msg1)                        
-                assemble.demultiplex.run(self, ipyclient)
+                assemble.demultiplex.run(self, preview, ipyclient)
                 self._stamp("s1_demultiplexing:")
 
 
 
-    def _step2func(self, samples, nreplace, force, ipyclient):
+    def _step2func(self, samples, nreplace, force, preview, ipyclient):
         """ step 2: edit raw reads. Takes dictionary keys (sample names)
         either individually, or as a list, or it takes no argument to 
         select all samples in the Assembly object. Only samples in state
@@ -877,23 +704,17 @@ class Assembly(object):
         """
         if self._headers:
             print("  Step2: Filtering reads ")
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
 
-        if not samples:
+        ## If no samples in this assembly then it means you skipped step1,
+        ## so attempt to link existing demultiplexed fastq files
+        if not self.samples.keys():
             self.link_fastqs()
 
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
-
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [self.samples[key] for key in samples]
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         ## pass samples to rawedit
-        assemble.rawedit.run(self, samples, nreplace, force, ipyclient)
+        assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
 
 
 
@@ -910,17 +731,8 @@ class Assembly(object):
             ## index the reference sequence
             index_reference_sequence(self)
 
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
-
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [(key, self.samples[key]) for key in samples]
-
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         ## skip if all are finished
         if not force:
@@ -944,30 +756,17 @@ class Assembly(object):
         if self._headers:
             print("  Step4: Joint estimation of error rate and heterozygosity")
 
-        ## sampling
-        if samples:
-            ## make a list keys or samples
-            if isinstance(samples, str):
-                samples = list([samples])
-            else:
-                samples = list(samples)
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
-            ## if keys are in list
-            if any([isinstance(i, str) for i in samples]):
-                ## make into a subsampled sample dict
-                subsamples = {i: self.samples[i] for i in samples}
+        ## if keys are in list
+        if any([isinstance(i, str) for i in samples]):
+            ## make into a subsampled sample dict
+            subsamples = {i: self.samples[i] for i in samples}
 
-            ## send to function
-            assemble.jointestimate.run(self, subsamples.values(), 
-                                       subsample, force, ipyclient)
-        else:
-            ## if no sample, then do all samples
-            if not self.samples:
-                print("Assembly object has no Samples.")
-            ## run clustering for all samples
-            assemble.jointestimate.run(self, self.samples.values(), 
-                                       subsample, force, ipyclient)
-
+        ## send to function
+        assemble.jointestimate.run(self, subsamples.values(), 
+                                   subsample, force, ipyclient)
 
 
     def _step5func(self, samples, force, ipyclient):
@@ -978,17 +777,8 @@ class Assembly(object):
         if self._headers:
             print("  Step5: Consensus base calling ")
 
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
-
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
-
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [self.samples[key] for key in samples]
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
@@ -998,21 +788,13 @@ class Assembly(object):
     def _step6func(self, samples, noreverse, force, randomseed, ipyclient):
         """ Step 6: Cluster consensus reads across samples and 
         align with muscle """
-        ## if samples not entered use all samples
-        if not samples:
-            samples = self.samples.keys()
 
-        ## if sample keys, replace with sample obj
-        assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-        samples = [self.samples[key] for key in samples]
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
 
         if self._headers:
             print("  Step 6: clustering across {} samples at {} similarity".\
             format(len(samples), self.paramsdict["clust_threshold"]))
-
-        ## require Samples 
-        assert samples, "No Samples in {}".format(self.name)
 
         ## attach filename for all reads database
         self.database = os.path.join(self.dirs.consens, 
@@ -1029,15 +811,28 @@ class Assembly(object):
             assemble.cluster_across.run(self, samples, noreverse,
                                         force, randomseed, ipyclient)
 
+    def _step7func(self, samples, force, ipyclient):
+        """ Step 7: Filter and write output files """
+
+        ## Get sample objects from list of strings
+        samples = _get_samples( self, samples )
+
+        if os.path.exists(self.dirs.outfiles) and not force:
+            print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
+                format( self.dirs.outfiles ) )
+            print( "  Step 7: rerun with `force=True` to overwrite" )
+            sys.exit()
+
+        assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
-    def step1(self, force=False):
+    def step1(self, force=False, preview=False):
         """ test """
-        self._clientwrapper(self._step1func, [force], 10)
+        self._clientwrapper(self._step1func, [force, preview], 10)
 
-    def step2(self, samples=None, nreplace=True, force=False):
+    def step2(self, samples=None, nreplace=True, force=False, preview=False):
         """ test """
-        self._clientwrapper(self._step2func, [samples, nreplace, force], 10)
+        self._clientwrapper(self._step2func, [samples, nreplace, force, preview], 10)
 
     def step3(self, samples=None, noreverse=False, force=False):
         """ test """
@@ -1056,10 +851,9 @@ class Assembly(object):
         self._clientwrapper(self._step6func, [samples, noreverse, force,
                                               randomseed], 10)
 
-    def step7(self, samples=None, noreverse=False, force=False, randomseed=0):
+    def step7(self, samples=None, force=False):
         """ test """
-        self._clientwrapper(self._step6func, [samples, noreverse, force,
-                                              randomseed], 10)
+        self._clientwrapper(self._step7func, [samples, force], 10)
 
 
 
@@ -1088,6 +882,30 @@ class Assembly(object):
             self.step7()
 
 
+def _get_samples( self, samples ):
+    """ Internal function. Prelude for each step() to read in perhaps
+    non empty list of samples to process. Input is a list of sample names,
+    output is a list of sample objects."""
+    ## if samples not entered use all samples
+    if not samples:
+        samples = self.samples.keys()
+
+    ## Be nice and allow user to pass in only one sample as a string, 
+    ## rather than a one element list. When you make the string into a list
+    ## you have to wrap it in square braces or else list makes a list of 
+    ## each character individually.
+    if isinstance( samples, str ):
+        samples = list( [samples] )
+
+    ## if sample keys, replace with sample obj
+    assert isinstance(samples, list), \
+    "to subselect samples enter as a list, e.g., [A, B]."
+    samples = [self.samples[key] for key in samples]
+
+    ## require Samples 
+    assert samples, "No Samples passed in and none in assembly {}".format(self.name)
+
+    return samples
 
 def _name_from_file(fname):
     """ internal func: get the sample name from any pyrad file """
@@ -1095,7 +913,8 @@ def _name_from_file(fname):
                        ".clustS", ".consens"]
     base, ext = os.path.splitext(os.path.basename(fname))
     ## remove read number from name
-    base = base.replace("_R1_", "")\
+    base = base.replace("_R1_.", ".")\
+               .replace("_R1_", "_")\
                .replace("_R1.", ".")
     ## remove extensions
     while ext in file_extensions:
@@ -1113,6 +932,7 @@ def expander(namepath):
         namepath = os.path.abspath(
                     os.path.join(
                         os.path.dirname(""), '..', post))
+
     elif "./" in namepath:
         _, post = namepath.split("./")
         namepath = os.path.abspath("")+"/"+post
@@ -1267,6 +1087,239 @@ def tuplecheck(newvalue, dtype=None):
         else:
             newvalue = tuple(newvalue)
     return newvalue
+
+
+
+def paramschecker(self, param, newvalue):
+    if param == 'working_directory':
+        expandpath = expander(newvalue)
+        if not expandpath.startswith("/"): 
+            if os.path.exists(expandpath):
+                expandpath = "./"+expandpath
+                expandpath = expander(expandpath)
+        self._stamp("[1] set to "+expandpath)
+        self.paramsdict["working_directory"] = expandpath
+        self.dirs["working"] = expandpath
+
+    elif param == 'prefix_outname':
+        self.paramsdict['prefix_outname'] = newvalue
+        self._stamp("[2] set to {}".format(newvalue))
+
+    elif param == 'raw_fastq_path':
+        fullrawpath = expander(newvalue)
+        if os.path.isdir(fullrawpath):
+            fullrawpath = os.path.join(fullrawpath, "*.gz")
+        self.paramsdict['raw_fastq_path'] = fullrawpath
+        self._stamp("[3] set to "+newvalue)
+
+    elif param == 'barcodes_path':
+        #assert type(newvalue) is StringType, "arg must be a string"
+        fullbarpath = expander(newvalue)
+        if glob.glob(fullbarpath):
+            self.paramsdict['barcodes_path'] = fullbarpath
+            self.link_barcodes()
+            self._stamp("[4] set to "+newvalue)
+        elif not fullbarpath:
+            self.paramsdict['barcodes_path'] = fullbarpath                
+            self._stamp("[4] set to empty")
+        else:
+            print(
+        "Warning: barcodes file not found. This must be an absolute \n"\
+       +"path (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the \n"\
+       +"directory where you're running ipyrad (./data/data_barcodes.txt).\n"\
+       +"You entered: %s\n" % fullbarpath)
+
+    elif param == 'sorted_fastq_path':
+        assert isinstance(newvalue, str), \
+        "sorted_fastq_path must be a string, e.g., /home/data/fastqs/*"
+        newvalue = expander(newvalue)
+        if os.path.isdir(newvalue):
+            newvalue = os.path.join(newvalue, "*.gz")
+        self.paramsdict['sorted_fastq_path'] = newvalue
+        self._stamp("[5] set to "+newvalue)
+
+    elif param == 'assembly_method':
+        assert newvalue in ["denovo", "reference", "hybrid"], \
+            "The `assembly_method` parameter must be one of the following: "+\
+            "denovo, reference, or hybrid. You entered: %s." % newvalue
+        self.paramsdict['assembly_method'] = newvalue            
+        self._stamp("[6] set to {}".format(newvalue))
+
+    elif param == 'reference_sequence':
+        fullrawpath = expander(newvalue)
+        if not os.path.isfile(fullrawpath):
+            LOGGER.info("reference sequence file not found.")
+            print(\
+        "Warning: reference sequence file not found. This must be an\n"\
+       +"absolute path (/home/wat/ipyrad/data/reference.gz) or relative to \n"\
+       +"the directory where you're running ipyrad (./data/reference.gz).\n"\
+       +"You entered: %s\n" % fullrawpath)
+        self.paramsdict['reference_sequence'] = fullrawpath
+        self._stamp("[7] set to "+fullrawpath)
+
+    elif param == 'datatype':
+        ## list of allowed datatypes
+        datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
+                     'pairgbs', 'merged', '2brad']
+        ## raise error if something else
+        if str(newvalue) not in datatypes:
+            sys.exit("error: datatype {} not recognized, must be one of: ".format( newvalue ), datatypes)
+        else:
+            self.paramsdict['datatype'] = str(newvalue)
+            self._stamp("[8] set to "+newvalue)
+
+    elif param == 'restriction_overhang':
+        newvalue = tuplecheck(newvalue, str)                        
+        assert isinstance(newvalue, tuple), \
+        "cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"
+        if len(newvalue) == 1:
+            newvalue = (newvalue, "")
+        assert len(newvalue) == 2, \
+        "must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"
+        self.paramsdict['restriction_overhang'] = newvalue
+        self._stamp("[9] set to "+str(newvalue))
+
+    elif param == 'max_low_qual_bases':
+        self.paramsdict['max_low_qual_bases'] = int(newvalue)
+        self._stamp("[10] set to "+str(newvalue))
+
+    elif param == 'phred_Qscore_offset':
+        self.paramsdict['phred_Qscore_offset'] = int(newvalue)
+        self._stamp("[11] set to {}".format(int(newvalue)))
+
+    elif param == 'mindepth_statistical':
+        ## do not allow values below 5
+        if int(newvalue) < 5:
+            print("error: mindepth statistical cannot be set < 5")
+        ## do not allow majrule to be > statistical
+        elif int(newvalue) < self.paramsdict["mindepth_majrule"]:
+            print("error: mindepth statistical cannot be less than \
+                   mindepth_majrule")                
+        else:
+            self.paramsdict['mindepth_statistical'] = int(newvalue)
+            self._stamp("[12] set to "+str(newvalue))
+
+    elif param == 'mindepth_majrule':
+        if int(newvalue) > self.paramsdict["mindepth_statistical"]:
+            print("error: mindepth_majrule cannot be > \
+                   mindepth_statistical")
+        else:
+            self.paramsdict['mindepth_majrule'] = int(newvalue)
+            self._stamp("[13] set to "+str(newvalue))
+
+    ## TODO: not yet implemented
+    elif param == 'maxdepth':
+        self.paramsdict['maxdepth'] = int(newvalue)
+        self._stamp("[14] set to {}".format(int(newvalue)))
+
+    elif param == 'clust_threshold':
+        self.paramsdict['clust_threshold'] = float(newvalue)
+        self._stamp("[15] set to {}".format(newvalue))
+
+    elif param == 'minsamp':
+        self.paramsdict['minsamp'] = int(newvalue)
+        self._stamp("[16] set to {}".format(int(newvalue)))
+
+    elif param == 'max_shared_heterozygosity':
+        self.paramsdict['max_shared_heterozygosity'] = newvalue
+        self._stamp("[17] set to {}".format(newvalue))
+
+    elif param == 'max_barcode_mismatch':
+        self.paramsdict['max_barcode_mismatch'] = int(newvalue)
+        self._stamp("[18] set to {}".format(int(newvalue)))
+
+    elif param == 'filter_adapters':
+        self.paramsdict['filter_adapters'] = int(newvalue)
+        self._stamp("[19] set to "+str(newvalue))
+
+    elif param == 'filter_min_trim_len':
+        self.paramsdict['filter_min_trim_len'] = int(newvalue)
+        self._stamp("[20] set to {}".format(int(newvalue)))
+
+    elif param == 'ploidy':
+        self.paramsdict['ploidy'] = int(newvalue)
+        self._stamp("[21] set to {}".format(int(newvalue)))
+
+    elif param == 'max_Ns_consens':
+        newvalue = tuplecheck(newvalue, int)                        
+        assert isinstance(newvalue, tuple), \
+        "max_Ns_consens should be a tuple e.g., (8, 8)"
+        self.paramsdict['max_Ns_consens'] = newvalue
+        self._stamp("[22] set to {}".format(newvalue))
+
+    elif param == 'max_Hs_consens':
+        newvalue = tuplecheck(newvalue, int)                        
+        assert isinstance(newvalue, tuple), \
+        "max_Hs_consens should be a tuple e.g., (5, 5)"
+        self.paramsdict['max_Hs_consens'] = newvalue
+        self._stamp("[23] set to {}".format(newvalue))
+
+    elif param == 'max_SNPs_locus':
+        newvalue = tuplecheck(newvalue, int)                        
+        assert isinstance(newvalue, tuple), \
+        "max_SNPs_locus should be a tuple e.g., (20, 20)"
+        self.paramsdict['max_SNPs_locus'] = newvalue
+        self._stamp("[24] set to {}".format(newvalue))
+
+    elif param == 'max_Indels_locus':
+        newvalue = tuplecheck(newvalue, int)            
+        assert isinstance(newvalue, tuple), \
+        "max_Indels_locus should be a tuple e.g., (5, 100)" 
+        self.paramsdict['max_Indels_locus'] = newvalue
+        self._stamp("[25] set to {}".format(newvalue))
+ 
+    elif param == 'edits_cutsites':
+        newvalue = tuplecheck(newvalue)
+        assert isinstance(newvalue, tuple), \
+        "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
+        .format(newvalue)
+        self.paramsdict['edit_cutsites'] = newvalue
+        self._stamp("[26] set to {}".format(newvalue))
+
+    elif param == 'trim_overhang':
+        newvalue = tuplecheck(newvalue, int)
+        assert isinstance(newvalue, tuple), \
+        "trim_overhang should be a tuple e.g., (1, 2, 2, 1)"
+        self.paramsdict['trim_overhang'] = newvalue
+        self._stamp("[27] set to {}".format(newvalue))
+
+    elif param == 'output_formats':
+        ## Get all allowed file types from assembly.write_outfiles
+        output_formats = assemble.write_outfiles.output_formats
+
+        ## If wildcard, then just do them all
+        if "*" in newvalue:
+            requested_formats = output_formats
+        else:
+            ## output_formats should be comma separated, with optional spaces
+            requested_formats = newvalue.replace(" ", "").split(',')
+
+            ## Exit if requested formats are bad
+            ## Only test here if no wildcard present
+            for f in requested_formats:
+                if f not in output_formats:
+                    sys.exit("error: File format {} not recognized, must be one of: ".format( f ), output_formats)
+        
+        self.paramsdict['output_formats'] = requested_formats
+        self._stamp("[28] set to "+newvalue)        
+
+    elif param == 'pop_assign_file':
+        fullpoppath = expander(newvalue)
+
+        if not os.path.isfile(fullpoppath):
+            LOGGER.warn("Population assignment file not found.")
+            sys.exit(\
+        "Warning: Population assignment file not found. This must be an\n"\
+       +"absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to \n"\
+       +"the directory where you're running ipyrad (./data/my_popfile.txt).\n"\
+       +"You entered: %s\n" % fullpoppath)
+
+        self.paramsdict['pop_assign_file'] = fullpoppath
+        self.link_populations( )
+        self._stamp("[29] set to "+fullpoppath)
+
+    return self
+
 
 
 

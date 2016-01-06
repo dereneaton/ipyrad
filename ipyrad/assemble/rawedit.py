@@ -44,44 +44,48 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
         lookfor2 = rvcuts[1]+"AGA"
     else:
         ## read 2 will have the barcode between: rvcut+[barcode]+[adapter]
-        if sample.barcode:
-            lookfor1 = rvcuts[0]+comp(sample.barcode)[::-1][:3]
-            lookfor2 = rvcuts[1]+comp(sample.barcode)[::-1][:3]
+        if sample.name in data.barcodes:
+            barcode = data.barcodes[sample.name]
+            lookfor1 = rvcuts[0]+comp(barcode)[::-1][:3]
+            lookfor2 = rvcuts[1]+comp(barcode)[::-1][:3]
         else:
-            lookfor1 = rvcuts[0]+"NN"
-            lookfor2 = rvcuts[1]+"NN"
+            lookfor1 = rvcuts[0]+"NNN"
+            lookfor2 = rvcuts[1]+"NNN"
 
-    ## if strict then shorter lookfor
+    ## if strict then shorter lookfor, 3=only look for rvcut
     if data.paramsdict["filter_adapters"] == 2:
         lookfor1 = lookfor1[:-2]
         lookfor2 = lookfor2[:-2]
+    elif data.paramsdict["filter_adapters"] == 3:
+        lookfor1 = lookfor1[:-3]
+        lookfor2 = lookfor2[:-3]
 
     ## if cutter has ambiguous base (2 in cuts) look for both otherwise just one
     try: 
-        check1 = max(0, bases[1].tostring().rfind(lookfor1))
+        check1 = max(0, bases[1].tostring().find(lookfor1))
     except Exception as inst:
         LOGGER.error([bases, lookfor1, inst])
-
+    ## looks for second resolution
     if sum([1 for i in rvcuts]) == 2:
-        check2 = max(0, bases[1].tostring().rfind(lookfor2))
+        check2 = max(0, bases[1].tostring().find(lookfor2))
 
     if check1 or check2:
         where1 = min([i for i in [check1, check2] if i])
 
     #LOGGER.debug("where1:%s, ch1:%s, ch2:%s, read:%s", 
-    #             where1, check1, check2, read)
+    #              where1, check1, check2, read)
 
     ## look for adapter sequence directly in two parts: "AGATCGGA.AGAGCGTC"
-    lookfor1 = "AGATCGGA"
-    lookfor2 = "AGAGCGTC"
+    lookfor1 = "AGATCGG"
+    lookfor2 = "AGAGCGT"
 
     ## if strict then shorter lookfor
-    if data.paramsdict["filter_adapters"] == 2:        
+    if data.paramsdict["filter_adapters"] in [2, 3]:        
         lookfor1 = lookfor1[:-2]
         lookfor2 = lookfor2[:-2]
 
-    check1 = max(0, bases[1].tostring().rfind(lookfor1))
-    check2 = max(0, bases[1].tostring().rfind(lookfor2))
+    check1 = max(0, bases[1].tostring().find(lookfor1))
+    check2 = max(0, bases[1].tostring().find(lookfor2))
     mincheck = min(check1, check2)
 
     ## How far back from adapter to trim to remove cutsite and barcodes
@@ -129,6 +133,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     return where 
 
 
+
 def adapterfilter(args):
     """ filters for adapters """
 
@@ -155,7 +160,8 @@ def adapterfilter(args):
         elif wheretocut1 or wheretocut2:
             cutter = max(wheretocut1, wheretocut2)
 
-    ## pairgbs need to be trimmed to the same length
+    ## pairgbs need to be trimmed to the same length. This means it will
+    ## always have _c in read names
     if data.paramsdict['datatype'] == 'pairgbs':
         readlens = [len(i) for i in (read1[1], read2[1])]
         cutter = min([i for i in readlens+[cutter] if i])
@@ -399,7 +405,7 @@ def roundup(num):
 
 
 
-def run_full(data, sample, nreplace, ipyclient):
+def run_full(data, sample, nreplace, preview, ipyclient):
     """ 
     Splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them .
@@ -429,6 +435,11 @@ def run_full(data, sample, nreplace, ipyclient):
     ## send chunks across processors, will delete if fail
     try: 
         submitted_args = []
+
+        if preview:
+            LOGGER.warn( "Running preview mode. Selecting only one chunk to rawedit." )
+            chunkslist = [ chunkslist[i] for i in [0] ]
+
         for tmptuple in chunkslist:
             ## used to increment names across processors
             point = num*(optim/4)   #10000 #num*(chunksize/2)
@@ -521,8 +532,8 @@ def cleanup(data, sample, submitted, results):
 
     if not os.path.exists(data.statsfiles.s2):
         with open(data.statsfiles.s2, 'w') as outfile:
-            outfile.write(printblock.format("sample", "Nreads_orig", "-qscore", 
-                                            "-adapters", "Nreads_kept"))
+            outfile.write(printblock.format("sample", "Nreads_orig", 
+                    "filter_qscore", "filter_adapter", "Nreads_kept"))
 
     ## append stats to file
     outfile = open(data.statsfiles.s2, 'a+')
@@ -550,7 +561,7 @@ def cleanup(data, sample, submitted, results):
 
 
 
-def run(data, samples, nreplace, force, ipyclient):
+def run(data, samples, nreplace, force, preview, ipyclient):
     """ run the major functions for editing raw reads """
     ## print warning if skipping all samples
     if not force:
@@ -569,7 +580,7 @@ def run(data, samples, nreplace, force, ipyclient):
                            format(sample.stats.reads_raw))
                 else:
                     submitted, results = run_full(data, sample, nreplace, 
-                                                  ipyclient)
+                                                  preview, ipyclient)
                     cleanup(data, sample, submitted, results)
     else:
         for sample in samples:
@@ -578,7 +589,7 @@ def run(data, samples, nreplace, force, ipyclient):
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))
             else:
-                submitted, results = run_full(data, sample, nreplace, ipyclient)
+                submitted, results = run_full(data, sample, nreplace, preview, ipyclient)
                 cleanup(data, sample, submitted, results)
 
 

@@ -170,6 +170,9 @@ def merge_pairs( data, sample, unmerged_files ):
 
     return merged, nmerged
 
+def most_common(L):
+    return max(groupby(sorted(L)), key=lambda(x, v):(len(list(v)),-L.index(x)))[0]
+
 def revcomp(sequence):
     "returns reverse complement of a string"
     sequence = sequence[::-1].strip()\
@@ -210,6 +213,30 @@ def uplow(hsite):
     if not bigbase:
         bigbase = hsite[0]
     return bigbase
+
+def unstruct(amb):
+    """ This is copied from pyrad.alignable, and is referenced in
+    several of the loci2*.py conversion modules. It duplicates some
+    of the effort of unhetero(), but i guess it's fine for now. Probably
+    could merge these two functions if you wanted to. 
+    TODO: Also could make the D dict{} a global so you wouldn't have to 
+    recreate it every time this function is called. Could save some cycles.
+    """
+    amb = amb.upper()
+    " returns bases from ambiguity code"
+    D = {"R":["G","A"],
+         "K":["G","T"],
+         "S":["G","C"],
+         "Y":["T","C"],
+         "W":["T","A"],
+         "M":["C","A"],
+         "A":["A","A"],
+         "T":["T","T"],
+         "G":["G","G"],
+         "C":["C","C"],
+         "N":["N","N"],
+         "-":["-","-"]}
+    return D.get(amb)
 
 def zcat_make_temps(args):
     """ call bash command zcat and split to split large files """

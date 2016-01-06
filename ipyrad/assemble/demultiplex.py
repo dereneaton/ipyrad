@@ -633,7 +633,7 @@ def make_stats(data, raws):
 
 
 
-def run(data, ipyclient):
+def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
@@ -644,6 +644,10 @@ def run(data, ipyclient):
         ## splits up all files into chunks, returns list of list
         ## of chunks names in tuples
         datatuples = parallel_chunker(data, raws, ipyclient) 
+
+        if preview:
+            LOGGER.warn( "Running preview mode. Selecting only one chunk to demultiplex." )
+            datatuples = [ (datatuples[0][0], datatuples[0][1]) ]
 
         filenum = 0            
         for rawfilename, chunks in datatuples:

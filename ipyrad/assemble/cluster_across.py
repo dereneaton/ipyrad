@@ -298,8 +298,8 @@ def build_catg_file(data, samples, udic):
     ## probably have to do something better than .10 loci chunk size
     supercatg = ioh5.create_dataset("catgs", (nloci, len(samples), maxlen, 4),
                                     dtype='i4', 
-                                    chunks=(nloci/10, len(samples), maxlen, 4),
-                                    compression="gzip")
+                                    chunks=(nloci/10, len(samples), maxlen, 4))
+                                    #compression="gzip")
 
     ## sum individual hdf5 arrays into supercatg
 
@@ -449,6 +449,8 @@ def build_input_file(data, samples, outgroups, randomseed):
         ## to use for clustering, but ambiguities are still saved in allcons
         writinghaplos = []
         for ind in shuf.index:
+            ## TODO: Is this too much in memory for super huge data sets?
+            ## may need to be chunked.
             writinghaplos.append(shuf[0][ind]+'\n'+\
                                  breakalleles(shuf[1][ind])[0])
         allhaps.write("\n".join(writinghaplos))
@@ -483,7 +485,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     #build_catg_file(data, samples, ugroups)
 
     ## convert full catg into a vcf file
-    LOGGER.info("...not yet converting to VCF")        
+    LOGGER.info("... not yet converting to VCF")        
 
     ## invarcats()
     ## invarcats()
