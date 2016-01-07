@@ -224,13 +224,15 @@ def run(data, samples, subsample, force, ipyclient):
     for sample in samples:
         if not force:
             if sample.stats.state >= 4:
-                print(sample.name+"already estimated. Use force=True "+\
-                      "to overwrite.")
+                print("skipping {}; ".format(sample.name)+\
+                      "already estimated. Use force=True to overwrite.")
             elif sample.stats.state < 3:
-                print(sample.name+"not clustered yet. Run step3() first.")
+                print("skipping {}; ".format(sample.name)+\
+                      "not clustered yet. Run step3() first.")
             elif sample.stats.clusters_hidepth < 100:
-                print("skipping {}. Too few reads ({}). Use force=True "+\
-                     "to override".format(sample.name, sample.stats.reads_raw))
+                print("skipping {}. Too few reads ({}). "\
+                      .format(sample.name, sample.stats.reads_raw)+\
+                      "Use force=True to override")
             else:
                 submitted_args.append([data, sample, subsample])
         else:
@@ -241,57 +243,46 @@ def run(data, samples, subsample, force, ipyclient):
 
     ## if jobs then run
     if submitted_args:
-        try:
-            ## sort by cluster size
-            submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
-                                                      reverse=True)
-            lbview = ipyclient.load_balanced_view()
-            results = lbview.map_async(optim, submitted_args)
-            results.get()
+        ## sort by cluster size
+        submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
+                                                 reverse=True)
+        lbview = ipyclient.load_balanced_view()
+        results = lbview.map_async(optim, submitted_args)
+        results.get()
 
-            ## get results and remove temp files
-            cleanup(data, samples)
-        except Exception as inst:
-            print(inst)
-            raise
-
-        finally:
-            ## append data to samples and remove tmp files
-            cleanup(data, samples)
+        ## get results and remove temp files
+        for sub in submitted_args:
+            cleanup(sub[0], sub[1])
 
 
 
-def cleanup(data, samples):
+def cleanup(data, sample):
     """ stores results to the Assembly object, writes to stats file, 
     and cleans up temp files """
 
     ## collect all samples that have finished
-    for sampobj in samples:
-        tempres = os.path.join(
-                      os.path.dirname(
-                          sampobj.files["clusters"]),
-                          "tmp_"+sampobj.name+".het")
+    tempres = os.path.join(
+                  os.path.dirname(
+                      sample.files.clusters), 
+                      "tmp_"+sample.name+".het")
 
-        ## if sample finished
-        if os.path.exists(tempres):
-            ## get stats
-            _, est_h, est_e = open(tempres).read().split("\t")
+    ## if sample finished
+    if os.path.exists(tempres):
+        ## get stats
+        _, est_h, est_e = open(tempres).read().split("\t")
 
-            ## sample assignments
-            sampobj.stats["state"] = 4
-            sampobj.stats["hetero_est"] = est_h
-            sampobj.stats["error_est"] = est_e
-            data._stamp("s4 params estimated on "+sampobj.name)
-            os.remove(tempres)
-        else:
-            pass
-            #print("{} did not finish".format(sampobj.name))
-
+        ## sample assignments
+        sample.stats.state = 4
+        sample.stats.hetero_est = est_h
+        sample.stats.error_est = est_e
+        data._stamp("s4 params estimated on "+sample.name)
+        os.remove(tempres)
+    else:
+        pass
 
     ## create a final stats file
     #statsfile = os.path.join(os.path.dir(""))
     #data.statsfiles["s4"] = statsfile
-
 
     #if not os.path.exists(data.paramsdict["working_directory"]+\
     #    "stats/Pi_E_estimate.txt"):
