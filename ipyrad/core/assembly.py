@@ -847,7 +847,7 @@ class Assembly(object):
         """ Step 7: Filter and write output files """
 
         ## Get sample objects from list of strings
-        samples = _get_samples( self, samples )
+        samples = _get_samples(self, samples)
 
         if os.path.exists(self.dirs.outfiles) and not force:
             print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
@@ -1033,7 +1033,7 @@ class Assembly(object):
             self.step7()
 
 
-def _get_samples( self, samples ):
+def _get_samples(self, samples):
     """ Internal function. Prelude for each step() to read in perhaps
     non empty list of samples to process. Input is a list of sample names,
     output is a list of sample objects."""
@@ -1045,18 +1045,30 @@ def _get_samples( self, samples ):
     ## rather than a one element list. When you make the string into a list
     ## you have to wrap it in square braces or else list makes a list of 
     ## each character individually.
-    if isinstance( samples, str ):
-        samples = list( [samples] )
+    if isinstance(samples, str):
+        samples = list([samples])
 
     ## if sample keys, replace with sample obj
     assert isinstance(samples, list), \
     "to subselect samples enter as a list, e.g., [A, B]."
-    samples = [self.samples[key] for key in samples]
+    newsamples = [self.samples.get(key) for key in samples \
+                  if self.samples.get(key)]
+    strnewsamples = [i.name for i in newsamples]
+
+    ## are there any samples that did not make it into the dict?
+    badsamples = set(samples).difference(set(strnewsamples))
+    if badsamples:
+        outstring = ", ".join(badsamples)
+        raise IPyradError(\
+        "Unrecognized Sample name(s) not linked to {}: {}"\
+        .format(self.name, outstring))
 
     ## require Samples 
-    assert samples, "No Samples passed in and none in assembly {}".format(self.name)
+    assert newsamples, \
+           "No Samples passed in and none in assembly {}".format(self.name)
 
-    return samples
+    return newsamples
+
 
 
 def _name_from_file(fname):
@@ -1220,6 +1232,7 @@ def bufcountlines(filename, gzipped):
         buf = read_f(buf_size)
     fin.close()
     return nlines
+
 
 def tuplecheck(newvalue, dtype=None):
     """ Takes a string argument and returns value as a tuple. 
