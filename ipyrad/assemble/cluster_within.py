@@ -396,11 +396,9 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
                 finalize_aligned_reads(data, sample, ipyclient)
 
     ## call to ipp for aligning
-    #lbview = ipyclient.load_balanced_view()
     for sample in samples:
         if sample.state < 3:
             multi_muscle_align(data, sample, ipyclient)
-    #del lbview
 
     ## write stats to samples
     for sample in samples:
@@ -612,13 +610,17 @@ def multi_muscle_align(data, sample, ipyclient):
 
     ## split clust.gz file into nthreads*10 bits cluster bits
     tmpnames = []
-    #LOGGER.debug("aligning %s", sample.name)
-
     try: 
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
-        optim = 1000
+        optim = 1000    
+        if sample.stats.clusters_total <= 1000:
+            optim = 100
+        if sample.stats.clusters_total > 5000:
+            optim = 500
+        if sample.stats.clusters_total > 10000:
+            optim = 1000
 
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
@@ -630,10 +632,10 @@ def multi_muscle_align(data, sample, ipyclient):
                                              prefix=sample.name+"_", 
                                              suffix='.ali') as out:
                 out.write("//\n//\n".join(grabchunk))
-                #out.write("\n")
             tmpnames.append(out.name)
             grabchunk = list(itertools.islice(inclusts, optim))
-    
+        clustio.close()
+
         ## create job queue
         submitted_args = []
         for fname in tmpnames:
@@ -660,6 +662,7 @@ def multi_muscle_align(data, sample, ipyclient):
         for fname in tmpnames:
             if os.path.exists(fname):
                 os.remove(fname)
+        del lbview
 
 
 
