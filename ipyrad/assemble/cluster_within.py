@@ -85,7 +85,9 @@ def cleanup(data, sample):
     ## the number of reads in the bam file as the first element
     ## of the first line, this call makes this assumption.
     if not data.paramsdict["assembly_method"] == "denovo":
-        refmap_stats( data, sample )
+        refmap_stats(data, sample)
+
+
 
 def muscle_align(args):
     """ aligns reads, does split then aligning for paired reads """
