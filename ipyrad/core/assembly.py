@@ -616,7 +616,8 @@ class Assembly(object):
                             assert len(ipyclient.ids) == len(initid)
                             LOGGER.warn('OK! Connected to (%s) engines', 
                                         len(ipyclient.ids))
-                            tries = 0
+                            return ipyclient
+
                         except AssertionError as _: 
                             LOGGER.warn('finding engines (%s, %s)', 
                                          len(initid), len(ipyclient.ids))
@@ -624,14 +625,15 @@ class Assembly(object):
                     else:
                         LOGGER.debug('OK! Connected to (%s) engines', 
                                     len(ipyclient.ids))
-                        tries = 0                        
+                        return ipyclient
+
                 except AssertionError as _: 
                     LOGGER.debug('connected to %s engines', len(ipyclient.ids))
                     raise
             except (IOError, ipp.NoEnginesRegistered, AssertionError):
                 time.sleep(1)
                 tries -= 1
-        return ipyclient
+        raise ipp.NoEnginesRegistered
 
 
 
@@ -642,27 +644,44 @@ class Assembly(object):
             if ipyclient.ids:
                 args.append(ipyclient)
                 stepfunc(*args)
-        except (KeyboardInterrupt, SystemExit, AttributeError):
-            logging.error("assembly interrupted.")
-            raise
-        except UnboundLocalError as inst:
-            print(\
-                "\nError: ipcluster does not appear to be running. When using "\
-                +"\nthe API you must run `ipcluster start` outside of "\
-                +"\nIPython/Jupyter to launch parallel engines. (See Docs) \n")
+
+        except ipp.NoEnginesRegistered:
+            ## maybe different messages depending on whether it is CLI or API
+            inst = """
+        Error: check to make sure ipcluster is running. When using the API 
+        you must run `ipcluster start` outside of IPython/Jupyter to launch
+        parallel engines. (See Docs)
+            """
+            ## raise right away since there is no ipyclient to close
             raise IPyradError(inst)
-        except Exception as inst:
-            print("other error: %s" % inst)
+
+        ## except user or system interrupt
+        except KeyboardInterrupt as inst:
+            logging.error("assembly interrupted by user.")
             raise
 
-        ## close client when done or if interrupted
+        except SystemExit as inst:
+            logging.error("assembly interrupted by sys.exit.")
+            raise  
+
+        except (AssertionError, IPyradError) as inst:
+            logging.error("Assertion %s", inst)
+            raise IPyradError(inst)
+
+        except Exception as inst:
+            print("other error: %s" % inst)
+            raise #IPyradError(inst)            
+
+        ## close client when done or interrupted
         finally:
+            ## can't close client if it was never open
             try:
                 ipyclient.close()
-                ## pickle the data obj
-                self._save()
-            except (UnboundLocalError, AttributeError, IOError) as inst:
-                LOGGER.error("NO IPCLUSTER RUNNING")
+            except UnboundLocalError:
+                pass
+            ## pickle the data obj
+            self._save()
+
 
 
 
