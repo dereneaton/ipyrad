@@ -1367,7 +1367,7 @@ def paramschecker(self, param, newvalue):
                     sys.exit("error: File format {} not recognized, must be one of: ".format( f ), output_formats)
         
         self.paramsdict['output_formats'] = requested_formats
-        self._stamp("[28] set to "+newvalue)        
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'pop_assign_file':
         fullpoppath = expander(newvalue)
@@ -1382,7 +1382,7 @@ def paramschecker(self, param, newvalue):
 
         self.paramsdict['pop_assign_file'] = fullpoppath
         self.link_populations( )
-        self._stamp("[29] set to "+fullpoppath)
+        self._stamp("[{}] set to {}".format(param,fullpoppath))
 
     return self
 
