@@ -185,7 +185,6 @@ def consensus(args):
 
     ## store data for writing
     storeseq = {}
-    #storecat = []
 
     ## iterate over clusters
     done = 0
@@ -196,7 +195,6 @@ def consensus(args):
             LOGGER.info("ITS HERE IN CLUSTD %s", chunk)
 
         if chunk:
-            ## 
             #LOGGER.debug("%s %s", done, chunk)            
             ## get names and seqs
             piece = chunk[0].strip().split("\n")
@@ -607,6 +605,11 @@ def run_full(data, sample, ipyclient):
     optim = int(sample.stats.clusters_hidepth/
                 float(len(ipyclient.ids)*2))
     optim = 1000
+    if sample.stats.clusters_hidepth > 10000:
+        optim = 1000
+    elif sample.stats.clusters_hidepth < 1000:
+        optim = 100
+
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
     chunkslist = []
