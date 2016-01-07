@@ -168,7 +168,10 @@ def consensus(args):
     #nreads = sample.stats.clusters_kept
     ## dimensions: nreads, max_read_length, 4 bases
     ## will store counts of bases only ne
-    catarr = numpy.zeros([optim, 210, 4], dtype='int16')
+    maxlen = data._hackersonly["max_fragment_length"]
+    if 'pair' in data.paramsdict["datatype"]:
+        maxlen*=2
+    catarr = numpy.zeros([optim, maxlen, 4], dtype='int16')
 
     ## counters 
     counters = Counter()

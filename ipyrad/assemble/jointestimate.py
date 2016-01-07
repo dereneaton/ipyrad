@@ -227,7 +227,7 @@ def run(data, samples, subsample, force, ipyclient):
                 print(sample.name+"already estimated. Use force=True "+\
                       "to overwrite.")
             elif sample.stats.state < 3:
-                print(sample.name+"not clustered yet. Run step3() first.")
+                print(sample.name+" not clustered yet. Run step3() first.")
             elif sample.stats.clusters_hidepth < 100:
                 print("skipping {}. Too few reads ({}). Use force=True "+\
                      "to override".format(sample.name, sample.stats.reads_raw))
