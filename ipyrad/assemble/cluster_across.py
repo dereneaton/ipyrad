@@ -5,6 +5,7 @@
 
 from __future__ import print_function
 # pylint: disable=E1101
+# pylint: disable=E1103
 
 import os
 import sys
@@ -189,7 +190,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         nloci = 1000
         maxlen = [225 if 'pair' in data.paramsdict["datatype"] else 125][0]
         ioh5 = h5py.File(os.path.join(
-                            data.dirs.consens, data.name+"indels"), 'w')
+                            data.dirs.consens, data.name+".indels"), 'w')
         dset = ioh5.create_dataset("indels", (nloci, len(samples), maxlen),
                                    dtype='i4', 
                                    chunks=(nloci/10, len(samples), maxlen),
@@ -250,7 +251,8 @@ def cluster(data, noreverse):
         reverse = " -leftjust "
         print(noreverse, "not performing reverse complement clustering")
 
-    ## get call string
+    ## get call string. Thread=0 means all. 
+    ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
     cmd = data.bins.vsearch+\
         " -cluster_smallmem "+cathaplos \
        +reverse \
@@ -258,7 +260,7 @@ def cluster(data, noreverse):
        +" -id "+str(data.paramsdict["clust_threshold"]) \
        +" -userout "+uhaplos \
        +" -notmatched "+hhaplos \
-       +" -userfields query+target+id+gaps+qstrand+qcov" \
+       +" -userfields query+target+qstrand" \
        +" -maxaccepts 1" \
        +" -maxrejects 0" \
        +" -minsl 0.5" \
@@ -277,7 +279,7 @@ def cluster(data, noreverse):
 
 
 
-def build_catg_file(data, samples, udic):
+def build_catg_file(data, samples):
     """ build full catgs file """
     ## catg array of prefiltered loci (4-dimensional) aye-aye!
     ## this can be multiprocessed!! just sum arrays at the end
@@ -289,55 +291,88 @@ def build_catg_file(data, samples, udic):
 
     ## for each catg sample fill its own hdf5
     for sample in samples:
-        singlecat(data, sample, udic)
+        singlecat(data, sample)
 
     ## initialize an hdf5 array of the super catg matrix
-    maxlen = 125
+    maxlen = [125][0] ## use hackersdict
     nloci = 1000
     ioh5 = h5py.File(data.database, 'w')
     ## probably have to do something better than .10 loci chunk size
-    supercatg = ioh5.create_dataset("catgs", (nloci, len(samples), maxlen, 4),
-                                    dtype='i4', 
-                                    chunks=(nloci/10, len(samples), maxlen, 4))
-                                    #compression="gzip")
+    supercatg = ioh5.create_dataset("catgs", 
+                               (nloci, len(samples), maxlen, 4),
+                               dtype='i4', 
+                               chunks=(nloci/10, len(samples), maxlen, 4),
+                               compression="gzip")
 
-    ## sum individual hdf5 arrays into supercatg
+    ## combine individual hdf5 arrays into supercatg
+    ## sort to ensure samples will be in alphabetical order
+    h5handles = []
+    samples.sort(key=lambda x: x.name)
+    for idx, sample in enumerate(samples):
+        h5handle = os.path.join(data.dirs.consens, sample.name+".hdf5")
+        h5handles.append(h5handle)
+        ## open, read, and close individual data base
+        with h5py.File(h5handle, 'r') as indh5:
+            icatg = indh5[sample.name]
+            supercatg[:, idx, :, :] = icatg
+
+    ## close the big boy
+    ioh5.close()
+
+    ## clean up / remove individual catg files
+    for handle in h5handles:
+        os.remove(handle)
 
 
 
-def singlecat(data, sample, udic):
-    """ run one samples """
-    ## create 
-    ioh5 = h5py.File(os.path.join(data.dirs.consens, sample.name+".hdf5"), 'w')
-    ## probably have to do something better than .10 loci chunk size
-    maxlen = 125
+def singlecat(data, sample):
+    """ 
+    Orders catg data for each sample into the same locus order. This allows
+    all of the individual catgs to simple be combined later. 
+    """
+    ## if an hdf5 file already exists delete it.
+    h5handle = os.path.join(data.dirs.consens, sample.name+".hdf5")
+    if os.path.exists(h5handle):
+        os.remove(h5handle)
+
+    ## create an h5 array at that handle named for the sample.  
+    ioh5 = h5py.File(h5handle, 'w')
+    maxlen = [125][0] ## TODO: use hackersdict
     nloci = 1000
-    icatg = ioh5.create_dataset(sample.name, (nloci, maxlen, 4),
-                                dtype='i4',) 
-                                #chunks=(nloci/10, len(samples), maxlen, 4),
+    icatg = ioh5.create_dataset(sample.name, (nloci, maxlen, 4), dtype='i4',
+                                chunks=(nloci/10, maxlen, 4))
                                 #compression="gzip")
 
-    ## get catg for one sample
+    ## get catg from step5 for this sample
     catarr = np.load(sample.files.database)
-    #catarr = np.load(os.path.join(data.dirs.consens, sample.name+".catg"))
-    ## for each read in catarr, if it g ask which locus it is in
 
-    ## gonna want to 'filter' the pdf, e.g., :
-    ## dff.groupby('B').filter(lambda x: len(x) > 2)
-    ## groups.get_group('3J_0_594').apply(lambda x: x[0].rsplit("_", 1)[0], axis=1)
+    ## get utemp cluster hits as pandas data frame
+    uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
+    updf = pd.read_table(uhandle, header=None)
+    ## add name and index columns to dataframe
+    updf.loc[:, 3] = [i.rsplit("_", 1)[0] for i in updf[0]]
+    ## create a column with only consens index
+    updf.loc[:, 4] = [i.rsplit("_", 1)[1] for i in updf[0]]
+
+    ## for each locus in the udic (groups) ask if sample is in it
+    udic = updf.groupby(by=1, sort=False)
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
+        ask = ipdf.where(ipdf[3] == sample.name).dropna()
+        if not ask.empty:
+            icatg[iloc] = catarr[int(ask[4])][:icatg.shape[1], :]
 
-    ## for each locus in full data set
-    itax = 10 ## get this
-    nloci = 1000
-    for iloc in xrange(nloci):
-        getloc = udic.get_group('...')
-        dset[iloc][itax] = catarr[getloc]
+    ## for each locus in which Sample was the seed
+    seedmatch = (sample.name in i for i in udic.groups.keys())
+    seedmatch = (i for i, j in enumerate(seedmatch) if j)
+    for iloc in seedmatch:
+        icatg[iloc] = catarr[iloc][:icatg.shape[1], :]
 
-    print(dset.name, dset.shape)
-    print(catarr.shape)
+    ## trim off the extra empty columns
+    ## ... maybe someday, it would save memory.
 
+    ## close the hdf5 connection
+    ioh5.close()
 
 
 
@@ -360,6 +395,7 @@ def build_reads_file(data):
     tmpdir = os.path.join(data.dirs.consens, "tmpaligns")
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
+    ## a chunker for writing every N
     optim = 100
 
     ## groupby index 1 (seeds) 
@@ -369,25 +405,30 @@ def build_reads_file(data):
     clustbits = []
     locilist = []
     loci = 0
+
+    ## iterate over seeds and add in hits seqs
     for seed in set(updf[1].values):
-        ## get sub-DF
+        ## get dataframe for this locus/group (gdf) 
         gdf = groups.get_group(seed)
         ## set seed name and sequence
         seedseq = consdic.get(">"+seed)
         names = [">"+seed]
         seqs = [seedseq]
-        ## iterate over gdf
+        ## iterate over group dataframe (gdf) and add hits names and seqs
+        ## revcomp the hit if not '+' in the df.
         for i in gdf.index:
             hit = gdf[0][i]
             names.append(">"+hit)
-            if gdf[4][i] == "+":
+            if gdf[2][i] == "+":
                 seqs.append(consdic[">"+hit])
             else:
                 seqs.append(fullcomp(hit[::-1]))
+        ## append the newly created locus to the locus list
         locilist.append("\n".join([printstring.format(i, j) \
                         for i, j in zip(names, seqs)]))
-
         loci += 1
+
+        ## if enough loci have finished write to file to clear the mem
         if not loci % optim:
             ## a file to write results to
             handle = os.path.join(tmpdir, "tmp_"+str(loci))
@@ -395,12 +436,14 @@ def build_reads_file(data):
                 tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
                 locilist = []
                 clustbits.append(handle)
+    ## write the final remaining to file
     if locilist:
         with open(os.path.join(tmpdir, "tmp_"+str(loci)), 'w') as tmpout:
             tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
             clustbits.append(handle)
 
-    return groups, clustbits
+    ## return stuff
+    return clustbits
 
 
 
@@ -471,9 +514,9 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     LOGGER.info("clustering")    
     cluster(data, noreverse)
 
-    ## build consens clusters and return hit dict
+    ## build consens clusters and returns chunk handles to be aligned
     LOGGER.info("building consens clusters")        
-    ugroups, clustbits = build_reads_file(data)
+    clustbits = build_reads_file(data)
 
     ## muscle align the consens reads and creates hdf5 indel array
     LOGGER.info("muscle alignment & building indel database")
@@ -481,8 +524,8 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## build supercatg file and insert indels
     ## this can't do all loci at once, needs chunking @ < (1e6, 100) 
-    LOGGER.info("... not yet building full database")    
-    #build_catg_file(data, samples, ugroups)
+    LOGGER.info("building full database")    
+    build_catg_file(data, samples)
 
     ## convert full catg into a vcf file
     LOGGER.info("... not yet converting to VCF")        
