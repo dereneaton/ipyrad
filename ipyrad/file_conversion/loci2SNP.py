@@ -27,8 +27,7 @@ def make( data, samples ):
     ## The output formats to write
     formats = data.paramsdict["output_formats"]
 
-    ## TODO: watdo seed?
-    seed = 10
+    seed = data._hackersonly["random_seed"]
     np.random.seed(int(seed))
 
     " output .snps and .unlinked_snps"

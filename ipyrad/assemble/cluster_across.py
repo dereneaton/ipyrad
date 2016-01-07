@@ -96,7 +96,9 @@ def muscle_align_across(args):
     clusts = infile.read().split("//\n//\n")[:-1]
     out = []
     ## array to store indel information
-    maxlen = [225 if 'pair' in data.paramsdict["datatype"] else 125][0]
+    maxlen = data._hackersonly["max_fragment_length"]
+    if 'pair' in data.paramsdict["datatype"]:
+        maxlen*=2
     indels = np.zeros((len(clusts), len(samples), maxlen), dtype=np.int8)
 
     ## iterate over clusters and align
@@ -188,7 +190,9 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         indeltups = results.get()
         ## concatenate indel arrays in correct order
         nloci = 1000
-        maxlen = [225 if 'pair' in data.paramsdict["datatype"] else 125][0]
+        maxlen = data._hackersonly["max_fragment_length"]
+        if 'pair' in data.paramsdict["datatype"]:
+            maxlen*=2
         ioh5 = h5py.File(os.path.join(
                             data.dirs.consens, data.name+".indels"), 'w')
         dset = ioh5.create_dataset("indels", (nloci, len(samples), maxlen),
@@ -294,7 +298,9 @@ def build_catg_file(data, samples):
         singlecat(data, sample)
 
     ## initialize an hdf5 array of the super catg matrix
-    maxlen = [125][0] ## use hackersdict
+    maxlen = data._hackersonly["max_fragment_length"]
+    if 'pair' in data.paramsdict["datatype"]:
+        maxlen*=2
     nloci = 1000
     ioh5 = h5py.File(data.database, 'w')
     ## probably have to do something better than .10 loci chunk size
@@ -337,7 +343,9 @@ def singlecat(data, sample):
 
     ## create an h5 array at that handle named for the sample.  
     ioh5 = h5py.File(h5handle, 'w')
-    maxlen = [125][0] ## TODO: use hackersdict
+    maxlen = data._hackersonly["max_fragment_length"]
+    if 'pair' in data.paramsdict["datatype"]:
+        maxlen*=2
     nloci = 1000
     icatg = ioh5.create_dataset(sample.name, (nloci, maxlen, 4), dtype='i4',
                                 chunks=(nloci/10, maxlen, 4))
