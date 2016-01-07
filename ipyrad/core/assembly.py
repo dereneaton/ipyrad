@@ -34,6 +34,11 @@ class IPyradParamsError(Exception):
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, **kwargs)
 
+class IPyradError(Exception):
+    """ Exception handler indicating error in during assembly """
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
 
 
 class Assembly(object):
@@ -439,6 +444,8 @@ class Assembly(object):
             LOGGER.warn("Populations file may be malformed.")
             sys.exit( "Populations file malformed - {}".format( popfile ) )
 
+
+
     def get_params(self, param=""):
         """ pretty prints params if called as a function """
         fullcurdir = os.path.realpath(os.path.curdir)
@@ -634,6 +641,7 @@ class Assembly(object):
                 "\nError: ipcluster does not appear to be running. When using "\
                 +"\nthe API you must run `ipcluster start` outside of "\
                 +"\nIPython/Jupyter to launch parallel engines. (See Docs) \n")
+            raise IPyradError(inst)
         except Exception as inst:
             print("other error: %s" % inst)
             raise
@@ -723,14 +731,13 @@ class Assembly(object):
             index_reference_sequence(self)
 
         ## Get sample objects from list of strings
-        samples = _get_samples( self, samples )
+        samples = _get_samples(self, samples)
 
         ## skip if all are finished
         if not force:
             if all([int(i[1].stats.state) >= 3 for i in samples]):
                 print("  Skipping: All {} ".format(len(self.samples))\
                      +"Samples already clustered in `{}`".format(self.name))
-            
             else:
                 assemble.cluster_within.run(self, samples, noreverse, 
                                             force, ipyclient)
@@ -748,28 +755,25 @@ class Assembly(object):
             print("  Step4: Joint estimation of error rate and heterozygosity")
 
         ## Get sample objects from list of strings
-        samples = _get_samples( self, samples )
+        samples = _get_samples(self, samples)
 
         ## if keys are in list
-        if any([isinstance(i, str) for i in samples]):
+        #if any([isinstance(i, str) for i in samples]):
             ## make into a subsampled sample dict
-            subsamples = {i: self.samples[i] for i in samples}
+        #    subsamples = {i: self.samples[i] for i in samples}
 
         ## send to function
-        assemble.jointestimate.run(self, subsamples.values(), 
-                                   subsample, force, ipyclient)
+        assemble.jointestimate.run(self, samples, subsample, force, ipyclient)
 
 
     def _step5func(self, samples, force, ipyclient):
-        """ step 5: Consensus base calling from clusters within samples.
-        If you want to overwrite data for a file, first set its state to 
-        3 or 4. e.g., data.samples['sample'].stats['state'] = 3 """
+        """ hidden wrapped function to start step 5 """
         ## print header
         if self._headers:
             print("  Step5: Consensus base calling ")
 
         ## Get sample objects from list of strings
-        samples = _get_samples( self, samples )
+        samples = _get_samples(self, samples)
 
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
@@ -777,20 +781,19 @@ class Assembly(object):
 
 
     def _step6func(self, samples, noreverse, force, randomseed, ipyclient):
-        """ Step 6: Cluster consensus reads across samples and 
-        align with muscle """
+        """ hidden function to start Step 6"""
 
         ## Get sample objects from list of strings
-        samples = _get_samples( self, samples )
+        samples = _get_samples(self, samples)
 
         if self._headers:
             print("  Step 6: clustering across {} samples at {} similarity".\
             format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## attach filename for all reads database
-        self.database = os.path.join(self.dirs.consens, 
-                                     self.name+"_catclust.hdf5")
+        self.database = os.path.join(self.dirs.consens, self.name+".hdf5")
 
+        ## check for existing and force
         if not force:
             if os.path.exists(self.database):
                 print("  Skipping step6: Clust file already exists:"\
@@ -801,6 +804,7 @@ class Assembly(object):
         else:
             assemble.cluster_across.run(self, samples, noreverse,
                                         force, randomseed, ipyclient)
+
 
     def _step7func(self, samples, force, ipyclient):
         """ Step 7: Filter and write output files """
@@ -833,14 +837,71 @@ class Assembly(object):
         """ test """
         self._clientwrapper(self._step4func, [samples, subsample, force], 10)
 
+
+
     def step5(self, samples=None, force=False):
-        """ test """
+        """ 
+        Consensus base calling and filtering from within-sample clusters. 
+        Samples must be in state 3 or 4 (passed step3 and/or step4).
+
+        The following parameters are used in this step: 
+            - max_Ns_consens
+            - max_Hs_consens
+            - maxdepth
+            - mindepth_statistical
+            - mindepth_majrule
+            - ploidy
+
+        If you want to overwrite data for a file, first set its state to 
+        3 or 4. e.g., data.samples['sample'].stats['state'] = 3 
+
+        Parameters
+        ----------
+        samples : list or str
+            By default all Samples linked to an Assembly object are run. 
+            If a subset of Samples is entered as a list then only those samples
+            will be executed. 
+
+        force : bool
+            Force to overwrite existing files. By default files will not be 
+            overwritten unless force=True. 
+        """
+
         self._clientwrapper(self._step5func, [samples, force], 2)
 
-    def step6(self, samples=None, noreverse=False, force=False, randomseed=0):
-        """ test """
+
+
+    def step6(self, samples=None, noreverse=False, force=False, randomseed=123):
+        """ 
+        Cluster consensus reads across samples and align with muscle. 
+
+        Parameters
+        ----------
+        samples : list or str
+            By default all Samples linked to an Assembly object are clustered. 
+            If a subset of Samples is entered as a list then only those samples
+            will be clustered. It is recommended to create .copy() Assembly 
+            objects if step6 is performed on different subsets of Samples. 
+
+        noreverse : bool
+            Reverse complement clustering is performed on gbs and pairgbs data
+            types by default. If noreverse=True then reverse complement 
+            clustering will not be performed. This can improve clustering speed.
+
+        force : bool
+            Force to overwrite existing files. By default files will not be 
+            overwritten unless force=True. 
+
+        randomseed : int
+            Consensus reads are sorted by length and then randomized within 
+            size classes prior to clustering. The order of sequences in this 
+            list can (probably minimally) affect their clustering. The default
+            randomseed is 123. Thus, unless it is changed results should be 
+            reproducible. 
+        """
         self._clientwrapper(self._step6func, [samples, noreverse, force,
                                               randomseed], 10)
+
 
     def step7(self, samples=None, force=False):
         """ test """
@@ -897,6 +958,7 @@ def _get_samples( self, samples ):
     assert samples, "No Samples passed in and none in assembly {}".format(self.name)
 
     return samples
+
 
 def _name_from_file(fname):
     """ internal func: get the sample name from any pyrad file """
@@ -1122,20 +1184,20 @@ def paramschecker(self, param, newvalue):
             if os.path.exists(expandpath):
                 expandpath = "./"+expandpath
                 expandpath = expander(expandpath)
-        self._stamp("[1] set to "+expandpath)
+        self._stamp("[{}] set to {}".format(param, newvalue))
         self.paramsdict["working_directory"] = expandpath
         self.dirs["working"] = expandpath
 
     elif param == 'prefix_outname':
         self.paramsdict['prefix_outname'] = newvalue
-        self._stamp("[2] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'raw_fastq_path':
         fullrawpath = expander(newvalue)
         if os.path.isdir(fullrawpath):
             fullrawpath = os.path.join(fullrawpath, "*.gz")
         self.paramsdict['raw_fastq_path'] = fullrawpath
-        self._stamp("[3] set to "+newvalue)
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'barcodes_path':
         #assert type(newvalue) is StringType, "arg must be a string"
@@ -1143,10 +1205,10 @@ def paramschecker(self, param, newvalue):
         if glob.glob(fullbarpath):
             self.paramsdict['barcodes_path'] = fullbarpath
             self.link_barcodes()
-            self._stamp("[4] set to "+newvalue)
+            self._stamp("[{}] set to {}".format(param, newvalue))
         elif not fullbarpath:
             self.paramsdict['barcodes_path'] = fullbarpath                
-            self._stamp("[4] set to empty")
+            self._stamp("[{}] set to {}".format(param, newvalue))
         else:
             print(
         "Warning: barcodes file not found. This must be an absolute \n"\
@@ -1161,14 +1223,14 @@ def paramschecker(self, param, newvalue):
         if os.path.isdir(newvalue):
             newvalue = os.path.join(newvalue, "*.gz")
         self.paramsdict['sorted_fastq_path'] = newvalue
-        self._stamp("[5] set to "+newvalue)
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'assembly_method':
         assert newvalue in ["denovo", "reference", "hybrid"], \
             "The `assembly_method` parameter must be one of the following: "+\
             "denovo, reference, or hybrid. You entered: %s." % newvalue
         self.paramsdict['assembly_method'] = newvalue            
-        self._stamp("[6] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'reference_sequence':
         fullrawpath = expander(newvalue)
@@ -1180,7 +1242,7 @@ def paramschecker(self, param, newvalue):
        +"the directory where you're running ipyrad (./data/reference.gz).\n"\
        +"You entered: %s\n" % fullrawpath)
         self.paramsdict['reference_sequence'] = fullrawpath
-        self._stamp("[7] set to "+fullrawpath)
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'datatype':
         ## list of allowed datatypes
@@ -1191,7 +1253,7 @@ def paramschecker(self, param, newvalue):
             sys.exit("error: datatype {} not recognized, must be one of: ".format( newvalue ), datatypes)
         else:
             self.paramsdict['datatype'] = str(newvalue)
-            self._stamp("[8] set to "+newvalue)
+            self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'restriction_overhang':
         newvalue = tuplecheck(newvalue, str)                        
@@ -1202,15 +1264,19 @@ def paramschecker(self, param, newvalue):
         assert len(newvalue) == 2, \
         "must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"
         self.paramsdict['restriction_overhang'] = newvalue
-        self._stamp("[9] set to "+str(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_low_qual_bases':
+        assert isinstance(newvalue, int), \
+            "max_low_qual_bases must be an integer."        
         self.paramsdict['max_low_qual_bases'] = int(newvalue)
-        self._stamp("[10] set to "+str(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'phred_Qscore_offset':
+        assert isinstance(newvalue, int), \
+            "phred_Qscore_offset must be an integer."
         self.paramsdict['phred_Qscore_offset'] = int(newvalue)
-        self._stamp("[11] set to {}".format(int(newvalue)))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_statistical':
         ## do not allow values below 5
@@ -1222,7 +1288,7 @@ def paramschecker(self, param, newvalue):
                    mindepth_majrule")                
         else:
             self.paramsdict['mindepth_statistical'] = int(newvalue)
-            self._stamp("[12] set to "+str(newvalue))
+            self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_majrule':
         if int(newvalue) > self.paramsdict["mindepth_statistical"]:
@@ -1230,68 +1296,68 @@ def paramschecker(self, param, newvalue):
                    mindepth_statistical")
         else:
             self.paramsdict['mindepth_majrule'] = int(newvalue)
-            self._stamp("[13] set to "+str(newvalue))
+            self._stamp("[{}] set to {}".format(param, newvalue))
 
     ## TODO: not yet implemented
     elif param == 'maxdepth':
         self.paramsdict['maxdepth'] = int(newvalue)
-        self._stamp("[14] set to {}".format(int(newvalue)))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'clust_threshold':
         self.paramsdict['clust_threshold'] = float(newvalue)
-        self._stamp("[15] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'minsamp':
         self.paramsdict['minsamp'] = int(newvalue)
-        self._stamp("[16] set to {}".format(int(newvalue)))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_shared_heterozygosity':
         self.paramsdict['max_shared_heterozygosity'] = newvalue
-        self._stamp("[17] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_barcode_mismatch':
         self.paramsdict['max_barcode_mismatch'] = int(newvalue)
-        self._stamp("[18] set to {}".format(int(newvalue)))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'filter_adapters':
         self.paramsdict['filter_adapters'] = int(newvalue)
-        self._stamp("[19] set to "+str(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'filter_min_trim_len':
         self.paramsdict['filter_min_trim_len'] = int(newvalue)
-        self._stamp("[20] set to {}".format(int(newvalue)))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'ploidy':
         self.paramsdict['ploidy'] = int(newvalue)
-        self._stamp("[21] set to {}".format(int(newvalue)))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Ns_consens':
         newvalue = tuplecheck(newvalue, int)                        
         assert isinstance(newvalue, tuple), \
         "max_Ns_consens should be a tuple e.g., (8, 8)"
         self.paramsdict['max_Ns_consens'] = newvalue
-        self._stamp("[22] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Hs_consens':
         newvalue = tuplecheck(newvalue, int)                        
         assert isinstance(newvalue, tuple), \
         "max_Hs_consens should be a tuple e.g., (5, 5)"
         self.paramsdict['max_Hs_consens'] = newvalue
-        self._stamp("[23] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_SNPs_locus':
         newvalue = tuplecheck(newvalue, int)                        
         assert isinstance(newvalue, tuple), \
         "max_SNPs_locus should be a tuple e.g., (20, 20)"
         self.paramsdict['max_SNPs_locus'] = newvalue
-        self._stamp("[24] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Indels_locus':
         newvalue = tuplecheck(newvalue, int)            
         assert isinstance(newvalue, tuple), \
         "max_Indels_locus should be a tuple e.g., (5, 100)" 
         self.paramsdict['max_Indels_locus'] = newvalue
-        self._stamp("[25] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
  
     elif param == 'edits_cutsites':
         newvalue = tuplecheck(newvalue)
@@ -1299,14 +1365,14 @@ def paramschecker(self, param, newvalue):
         "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
         .format(newvalue)
         self.paramsdict['edit_cutsites'] = newvalue
-        self._stamp("[26] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'trim_overhang':
         newvalue = tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "trim_overhang should be a tuple e.g., (1, 2, 2, 1)"
         self.paramsdict['trim_overhang'] = newvalue
-        self._stamp("[27] set to {}".format(newvalue))
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'output_formats':
         ## Get all allowed file types from assembly.write_outfiles

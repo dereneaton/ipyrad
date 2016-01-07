@@ -5,7 +5,8 @@ import sys
 import gzip
 from collections import OrderedDict, Counter
 
-def make( data, samples ):
+
+#def make( data, samples ):
 def make(WORK, outname, taxadict, minhits):
 
     ## outfile

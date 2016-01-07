@@ -108,7 +108,7 @@ def tabledstack(stack):
 
 
 
-def countlist(data, sample, subsample=None):
+def countlist(data, sample, subsample):
     """ makes a list of lists of reads at each site """
     infile = gzip.open(sample.files.clusters)
     duo = itertools.izip(*[iter(infile)]*2)
