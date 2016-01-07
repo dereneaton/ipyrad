@@ -716,7 +716,6 @@ def run(data, samples, force, ipyclient):
                  +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
                  +"{:.5f}".format(data.stats.hetero_est.std()))
 
-
     if not skip:
         ## Samples on queue
         for sample in samples:

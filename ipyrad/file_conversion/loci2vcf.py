@@ -4,17 +4,20 @@ import time
 import numpy as np
 from ipyrad.assemble.util import *
 
-def make( data, samples ):
-    outfile  =  open(os.path.join(data.dirs.outfiles, data.name+".vcf"), 'w')
-    inloci   =  os.path.join( data.dirs.outfiles, data.name+".loci" )
-    names = map( lambda x: x.name, samples )
+
+def make(data, samples):
+    """ build a vcf file from the supercatg array and the cat.clust.gz output"""
+    
+    outfile = open(os.path.join(data.dirs.outfiles, data.name+".vcf"), 'w')
+    inloci = os.path.join(data.dirs.outfiles, data.name+".loci")
+    names = [i.name for i in samples]
     names.sort()
 
     ## TODO: Get a real version number for the current sw stack
     version = "0.1"
     ## TODO: This is just reporting minimum depth per base. Would it be useful to
-    ## report real depth of reads per base?
-    mindepth = data.paramsdict["mindepth_statistical"]
+    ## report real depth of reads per base? YEAH, that's what supercatg is for.
+    mindepth = data.paramsdict["mindepth_statistical"] 
 
     print >>outfile, "##fileformat=VCFv4.1"
     print >>outfile, "##fileDate="+time.strftime("%Y%m%d")

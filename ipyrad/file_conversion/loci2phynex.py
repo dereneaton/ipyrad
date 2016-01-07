@@ -7,9 +7,8 @@ import glob
 
 
 def update(idict, count, WORK, outname):
-    """ updates dictionary with the next .5M reads 
-    from the super long string phylip file. Makes
-    for faster reading. """
+    """ updates dictionary with the next .5M reads from the super long string 
+    phylip file. Makes for faster reading. """
 
     data = iter(open(WORK+"outfiles/"+outname+".phy"))
     ntax, nchar = data.next().strip().split()
@@ -25,26 +24,27 @@ def update(idict, count, WORK, outname):
     
 
 
-def makephy(WORK, outname, names, longname):
-    """ builds phy output. If large files writes 50000 loci 
-        at a time to tmp files and rebuilds at the end"""
+def makephy(data, samples, longname):
+    """ builds phy output. If large files writes 50000 loci at a time to tmp
+    files and rebuilds at the end"""
 
-    " order names "
-    names = list(names)
+    ## order names
+    names = [i.name for i in samples]
     names.sort()
     
-    " read in loci file "
-    locus = iter(open(WORK+"outfiles/"+outname+".loci", 'rb'))
+    ## read in loci file
+    locifile = os.path.join(data.paramsdict["working_directory"], 
+                            data.name+".loci")
+    locus = iter(open(locifile, 'rb'))
 
-    " dict for saving the full matrix "
+    ## dict for saving the full matrix
     fdict = {name:[] for name in names}
 
-    " list for saving locus number and locus range for partitions "
+    ## list for saving locus number and locus range for partitions
     partitions = []
-    loc_number = 1
     initial_pos = 1
 
-    " remove empty column sites and append edited seqs to dict F "
+    ## remove empty column sites and append edited seqs to dict F
     done = 0
     nloci = 0
     nbases = 0
@@ -150,7 +150,7 @@ def makephy(WORK, outname, names, longname):
 def makenex(WORK, outname, names, longname, partitions):
     """ PRINT NEXUS """
 
-    " make nexus output "
+    ## make nexus output
     data   = iter(open(WORK+"outfiles/"+outname+".phy"))
     nexout = open(WORK+"outfiles/"+outname+".nex", 'wb')
 
@@ -202,17 +202,18 @@ def makenex(WORK, outname, names, longname, partitions):
     nexout.close()
         
 
-def make( data, samples ):
-    """ Make phylip and nexus formats. This is hackish since
-    I'm recycling the code whole-hog from pyrad V3. Probably
-    could be good to go back through and clean up the conversion
-    code some time."""
-    longname = max(map(len, samples ))
-    WORK = data.paramsdict["working_directory"]+"/"
-    outfile = data.name
-    names = map( lambda x: x.name, samples )
+def make(data, samples):
+    """ Make phylip and nexus formats. This is hackish since I'm recycling the 
+    code whole-hog from pyrad V3. Probably could be good to go back through 
+    and clean up the conversion code some time.
+    """
 
-    partitions = makephy(WORK, outfile, names, longname)
+    ## get the longest name
+    longname = max([len(i) for i in samples])
+    #outfile = data.name
+    names = [i.name for i in samples]
+
+    partitions = makephy(data, samples, longname)
     makenex(WORK, outfile, names, longname, partitions)
     
 
