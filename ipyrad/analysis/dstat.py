@@ -15,6 +15,7 @@ try:
     import numba
 except ImportError:
     sys.exit('Python package `numba` not found')
+    ## IS THERE A WAY TO TURN OFF JIT IN THIS INSTANCE?
 
 pd.options.display.float_format = '{:.4f}'.format
 

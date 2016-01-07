@@ -4,6 +4,7 @@
 
 from __future__ import print_function
 # pylint: disable=E1101
+# pylint: disable=W0212
 
 import ipyparallel
 import scipy.stats
@@ -694,19 +695,20 @@ def run(data, samples, force, ipyclient):
             sample.stats.hetero_est = 0.001
             sample.stats.error_est = 0.0001
 
-    if data.paramsdict["ploidy"] == 1:
-        print("      Haploid base calls and paralog filter (max haplos = 1)")
-    elif data.paramsdict["ploidy"] == 2:
-        print("      Diploid base calls and paralog filter (max haplos = 2)")
-    elif data.paramsdict["ploidy"] > 2:
-        print("      Diploid base calls and no paralog filter "\
-                "(max haplos = {})".format(data.paramsdict["ploidy"]))
-    print("      error rate (mean, std):  " \
-             +"{:.5f}, ".format(data.stats.error_est.mean()) \
-             +"{:.5f}\n".format(data.stats.error_est.std()) \
-         +"      heterozyg. (mean, std):  " \
-             +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
-             +"{:.5f}".format(data.stats.hetero_est.std()))
+    if data._headers:
+        if data.paramsdict["ploidy"] == 1:
+            print("    Haploid base calls and paralog filter (max haplos = 1)")
+        elif data.paramsdict["ploidy"] == 2:
+            print("    Diploid base calls and paralog filter (max haplos = 2)")
+        elif data.paramsdict["ploidy"] > 2:
+            print("    Diploid base calls and no paralog filter "\
+                    "(max haplos = {})".format(data.paramsdict["ploidy"]))
+        print("    error rate (mean, std):  " \
+                 +"{:.5f}, ".format(data.stats.error_est.mean()) \
+                 +"{:.5f}\n".format(data.stats.error_est.std()) \
+             +"    heterozyg. (mean, std):  " \
+                 +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
+                 +"{:.5f}".format(data.stats.hetero_est.std()))
 
 
     if not skip:
