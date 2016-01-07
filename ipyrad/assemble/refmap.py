@@ -23,9 +23,6 @@ from ipyrad.assemble.rawedit import comp
 import logging
 LOGGER = logging.getLogger(__name__)
 
-PREVIEW_TRUNCATE_LENGTH = 10000
-MAX_PE_DISTANCE = 60
-
 def index_reference_sequence(self):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
@@ -443,7 +440,7 @@ def bedtools_merge( data, sample):
     LOGGER.debug( "Entering bedtools_merge: %s", sample.name )
 
     if 'pair' in data.paramsdict["datatype"]:
-        bedtools_dflag = " -d " + str(MAX_PE_DISTANCE)
+        bedtools_dflag = " -d " + str(data._hackersonly["max_inner_mate_distance"])
     else:
         bedtools_dflag = " "
 
@@ -512,9 +509,9 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
         len1 = sum(1 for line in open(outfiles[0]))
         len2 = sum(1 for line in open(outfiles[1]))
         if not len1 == len2:
-            LOGGER.warn( "Read files in region {}:{}-{} different lengths, probably \
-                        distance between reads exceeds MAX_PE_DISTANCE={}".format( \
-                        chrom, region_start, region_end, MAX_PE_DISTANCE ) )
+            LOGGER.warn("Read files in region {}:{}-{} different lengths, probably"+\
+                        "distance between reads exceeds data._hackersonly[`max_inner_mate_distance`]={}".format(\
+                        chrom, region_start, region_end, data._hackersonly["max_inner_mate_distance"]))
             outfiles = []
 
     return outfiles
@@ -913,10 +910,15 @@ def preview_truncate_fq( data, sample_fastq ):
         with tempfile.NamedTemporaryFile( 'w+b', delete=False,
                 dir=os.path.realpath( data.dirs.refmapping ),
                 prefix="tmp_", suffix=".fq") as tmp_fq:
-
-            ## Sample the first 10000 reads. This should be sufficient.        
-            for i in range(PREVIEW_TRUNCATE_LENGTH):
-                tmp_fq.write( "".join( quart.next() ) )
+            try:
+                ## Sample the first 10000 reads. This should be sufficient.        
+                for i in range(data._hackersonly["preview_truncate_length"]):
+                    tmp_fq.write( "".join( quart.next() ) )
+            except StopIteration:
+                LOGGER.info("preview_truncate_length > size of sample, means "+\
+                            "your sample is small, nbd")
+            except Exception as e:
+                LOGGER.info("preview truncate length, caught exception {}".format(e))
 
         truncated_fq.append( tmp_fq.name )
         f.close()

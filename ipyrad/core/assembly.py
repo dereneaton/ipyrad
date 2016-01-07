@@ -19,6 +19,7 @@ import copy
 import subprocess
 import pandas as pd
 import ipyparallel as ipp
+import ipyrad as ip
 
 from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
@@ -100,6 +101,9 @@ class Assembly(object):
         self.name = name
         print("  New Assembly: {}".format(self.name))
 
+        ## Store assembly version #
+        self._version = ip.__version__ 
+
         ## stores ipcluster launch info
         self._ipclusterid = ""
         self._ipprofile = ""
@@ -173,7 +177,16 @@ class Assembly(object):
                        ("pop_assign_file", ""),
         ])
 
-
+        ## Default hackers only parameters dictionary
+        ## None of the safeguards of the paramsdict, no nice accessor
+        ## functions, so you have to be sure of what you're doing if
+        ## you change these values.
+        self._hackersonly = OrderedDict([
+                        ("random_seed", 42),
+                        ("max_fragment_length", 125),
+                        ("max_inner_mate_distance", 60),
+                        ("preview_truncate_length", 10000),
+        ])
 
     def __str__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
