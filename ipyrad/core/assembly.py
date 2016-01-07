@@ -658,11 +658,11 @@ class Assembly(object):
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
             logging.error("assembly interrupted by user.")
-            raise
+            raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
             logging.error("assembly interrupted by sys.exit.")
-            raise  
+            raise IPyradError("SystemExit Interrupt")
 
         except (AssertionError, IPyradError) as inst:
             logging.error("Assertion %s", inst)
@@ -723,12 +723,6 @@ class Assembly(object):
 
 
     def _step2func(self, samples, nreplace, force, preview, ipyclient):
-        """ step 2: edit raw reads. Takes dictionary keys (sample names)
-        either individually, or as a list, or it takes no argument to 
-        select all samples in the Assembly object. Only samples in state
-        =1 will be edited, all others are skipped. To overwrite data
-        use the argument force=True. 
-        """
         if self._headers:
             print("  Step2: Filtering reads ")
 
@@ -738,7 +732,7 @@ class Assembly(object):
             self.link_fastqs()
 
         ## Get sample objects from list of strings
-        samples = _get_samples( self, samples )
+        samples = _get_samples(self, samples)
 
         ## pass samples to rawedit
         assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
@@ -746,9 +740,11 @@ class Assembly(object):
 
 
     def _step3func(self, samples, noreverse, force, preview, ipyclient):
-        """ step 3: clustering within samples """
+        """ hidden wrapped function to start step 3 """
+        ## print headers
         if self._headers:
             print("  Step3: Clustering/Mapping reads")
+
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             assert self.paramsdict['reference_sequence'], \
@@ -763,7 +759,7 @@ class Assembly(object):
 
         ## skip if all are finished
         if not force:
-            if all([int(i[1].stats.state) >= 3 for i in samples]):
+            if all([i.stats.state >= 3 for i in samples]):
                 print("  Skipping: All {} ".format(len(self.samples))\
                      +"Samples already clustered in `{}`".format(self.name))
             else:
@@ -854,12 +850,74 @@ class Assembly(object):
         self._clientwrapper(self._step1func, [force, preview], 10)
 
     def step2(self, samples=None, nreplace=True, force=False, preview=False):
-        """ test """
-        self._clientwrapper(self._step2func, [samples, nreplace, force, preview], 10)
+        """ 
+        Edit/Filter raw demultiplexed reads based on read quality scores and the
+        presence of Illumina adapter sequences. 
+
+        The following parameters are used in this step:
+            - datatype
+            - phred_Qscore_offset
+            - max_low_qual_bases
+            - filter_adapters
+            - filter_min_trim_len
+            - edit_cutsites
+            - restriction_overhang
+            ...
+
+        Parameters
+        ----------
+        samples : list or str
+            By default all Samples linked to an Assembly object are run. If a 
+            subset of Sampled is entered as a list then only those Samples will 
+            be run. 
+
+        nreplace : bool
+            If True (default) low quality base calls (Q < 20 given the 
+            `phred_Qscore_offset`) are converted to Ns. If False, low quality 
+            bases are not converted, but simply counted. Reads with > 
+            `max_low_qual_bases` are excluded. 
+
+        force : bool
+            If force=True existing files are overwritten, otherwise Samples in 
+            state 2 will return a warning that the Sample has already been run. 
+
+        preview : bool
+            ...
+        """
+        self._clientwrapper(self._step2func, 
+                           [samples, nreplace, force, preview], 10)
 
     def step3(self, samples=None, noreverse=False, force=False, preview=False):
-        """ test """
-        self._clientwrapper(self._step3func, [samples, noreverse, force, preview], 10)
+        """ 
+        Demultiplex reads and then cluster/map denovo or with a reference 
+        sequence file. 
+
+        The following parameters are used in this step:
+            - datatype
+            - assembly_method
+            - clust_threshold
+            - 
+            ...
+
+        Parameters
+        ----------
+        samples : list or str
+            By default all Samples linked to an Assembly object are run. If a 
+            subset of Sampled is entered as a list then only those Samples will 
+            be run. 
+
+        noreverse : bool
+            ...
+
+        force : bool
+            ...
+
+        preview : bool
+            ...
+        """
+        self._clientwrapper(self._step3func, 
+                           [samples, noreverse, force, preview], 10)
+
 
     def step4(self, samples=None, subsample=None, force=False):
         """ test """
