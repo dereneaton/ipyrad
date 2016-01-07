@@ -170,7 +170,7 @@ def paramsinfo(param=""):
         """),
     ("27", """
         (27) assembly_method -------------------------------------------------
-        A string specifying the desired assembly method. There are three 
+        A string specifying the desired assembly method. There are four 
         available options for assembly method:
             denovo    -   Denovo assembly is the classic pyrad method, and
                           it is the <default> unless otherwise specified.
@@ -189,6 +189,13 @@ def paramsinfo(param=""):
                           unmapped for downstream analysis. This is what you'll
                           want most of the time if you're passing in a refer-
                           ence sequence.
+            denovo_only   In this mode reads are mapped to the reference but
+                          only unmapped reads are retained for further
+                          analysis. Since lots of downstream applications assume 
+                          neutralality of markers and reads that map to 
+                          reference are demonstrably more highly conserved, 
+                          it is probable that unmapped reads are neutral or 
+                          unlinked to non-neutral.
         ----------------------------------------------------------------------
         data.setparams(27) = denovo        ## set a name
         data.setparams(27) = hybrid        ## set a name of parameters values

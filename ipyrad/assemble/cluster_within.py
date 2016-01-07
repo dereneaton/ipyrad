@@ -417,8 +417,12 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     ## mapped bam files and write them out to the clust.gz files to fold
     ## them back into the pipeline.
     if not data.paramsdict["assembly_method"] == "denovo":
-        for sample in samples:
-            finalize_aligned_reads(data, sample, ipyclient)
+
+        ## If we're doing denovo_only then skip this and just throw out the reference
+        ## mapped reads, only keep unmapped.
+        if not data.paramsdict["assembly_method"] == "denovo_only":
+            for sample in samples:
+                finalize_aligned_reads(data, sample, ipyclient)
 
     ## call to ipp for aligning
     #lbview = ipyclient.load_balanced_view()

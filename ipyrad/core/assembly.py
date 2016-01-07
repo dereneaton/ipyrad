@@ -1220,9 +1220,9 @@ def paramschecker(self, param, newvalue):
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'assembly_method':
-        assert newvalue in ["denovo", "reference", "hybrid"], \
+        assert newvalue in ["denovo", "reference", "hybrid", "denovo_only"], \
             "The `assembly_method` parameter must be one of the following: "+\
-            "denovo, reference, or hybrid. You entered: %s." % newvalue
+            "denovo, reference, hybrid, or denovo_only. You entered: %s." % newvalue
         self.paramsdict['assembly_method'] = newvalue            
         self._stamp("[{}] set to {}".format(param, newvalue))
 
