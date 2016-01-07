@@ -23,9 +23,6 @@ from ipyrad.assemble.rawedit import comp
 import logging
 LOGGER = logging.getLogger(__name__)
 
-PREVIEW_TRUNCATE_LENGTH = 10000
-MAX_PE_DISTANCE = 60
-
 def index_reference_sequence(self):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
