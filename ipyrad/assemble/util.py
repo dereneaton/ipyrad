@@ -6,6 +6,7 @@ parts of the pipeline
 
 from __future__ import print_function
 import os
+import sys
 import glob
 import itertools
 import subprocess
@@ -122,6 +123,7 @@ def merge_pairs( data, sample, unmerged_files ):
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
     except subprocess.CalledProcessError as inst:
+        LOGGER.error( "Error in merging pairs: \n({}).".format(inst))
         LOGGER.error(subprocess.STDOUT)
         LOGGER.error(cmd)
         sys.exit("Error in merging pairs: \n({}).".format(inst))

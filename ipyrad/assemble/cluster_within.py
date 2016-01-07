@@ -305,7 +305,7 @@ def build_clusters(data, sample):
 
 
 
-def split_among_processors(data, samples, ipyclient, noreverse, force):
+def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     """ pass the samples to N engines to execute run_full on each.
 
     :param data: An Assembly object
@@ -359,11 +359,11 @@ def split_among_processors(data, samples, ipyclient, noreverse, force):
     submitted_args = []
     for sample in samples:
         if force:
-            submitted_args.append([data, sample, noreverse, tpp])
+            submitted_args.append([data, sample, noreverse, tpp, preview])
         else:
             ## if not already clustered/mapped
             if sample.stats.state <= 2.5:
-                submitted_args.append([data, sample, noreverse, tpp])
+                submitted_args.append([data, sample, noreverse, tpp, preview])
             else:
                 ## clustered but not aligned
                 pass
@@ -691,7 +691,7 @@ def clustall(args):
     then denovo clusters reads. """
 
     ## get args
-    data, sample, noreverse, nthreads = args
+    data, sample, noreverse, nthreads, preview = args
 
     LOGGER.debug("clustall() %s", sample.name)
 
@@ -712,7 +712,7 @@ def clustall(args):
         sample.files.pairs = mergefile
         sample.stats.reads_merged = nmerged
         sample.merged = 1
-        LOGGER.info(sample.files.edits)
+        LOGGER.debug( "Merged file - {}".format( mergefile ) )
 
         ## OLD DEREN CODE w/ combine_pairs (keeping for now)
         ## merge pairs that overlap into a merge file
@@ -737,7 +737,7 @@ def clustall(args):
     build_clusters(data, sample)
 
 
-def run(data, samples, noreverse, force, ipyclient):
+def run(data, samples, noreverse, force, preview, ipyclient):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
@@ -761,7 +761,7 @@ def run(data, samples, noreverse, force, ipyclient):
     if not subsamples:
         print("  No Samples ready to be clustered. First run step2().")
     else:
-        args = [data, subsamples, ipyclient, noreverse, force]
+        args = [data, subsamples, ipyclient, noreverse, force, preview]
         split_among_processors(*args)
 
 

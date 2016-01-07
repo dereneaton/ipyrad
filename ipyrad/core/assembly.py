@@ -718,7 +718,7 @@ class Assembly(object):
 
 
 
-    def _step3func(self, samples, noreverse, force, ipyclient):
+    def _step3func(self, samples, noreverse, force, preview, ipyclient):
         """ step 3: clustering within samples """
         if self._headers:
             print("  Step3: Clustering/Mapping reads")
@@ -742,10 +742,10 @@ class Assembly(object):
             
             else:
                 assemble.cluster_within.run(self, samples, noreverse, 
-                                            force, ipyclient)
+                                            force, preview, ipyclient)
         else:
             assemble.cluster_within.run(self, samples, noreverse, 
-                                        force, ipyclient)
+                                        force, preview, ipyclient)
 
 
 
@@ -834,9 +834,9 @@ class Assembly(object):
         """ test """
         self._clientwrapper(self._step2func, [samples, nreplace, force, preview], 10)
 
-    def step3(self, samples=None, noreverse=False, force=False):
+    def step3(self, samples=None, noreverse=False, force=False, preview=False):
         """ test """
-        self._clientwrapper(self._step3func, [samples, noreverse, force], 10)
+        self._clientwrapper(self._step3func, [samples, noreverse, force, preview], 10)
 
     def step4(self, samples=None, subsample=None, force=False):
         """ test """
@@ -858,7 +858,7 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0, force=False):
+    def run(self, steps=0, force=False, preview=False):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:

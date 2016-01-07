@@ -26,9 +26,6 @@ LOGGER = logging.getLogger(__name__)
 PREVIEW_TRUNCATE_LENGTH = 10000
 MAX_PE_DISTANCE = 60
 
-#Hax til preview mode gets fixed
-preview = True
-
 def index_reference_sequence(self):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
@@ -68,8 +65,8 @@ def mapreads(args):
     Mapped reads stay in the sam file and are pulled out of the pileup later."""
 
     ## get args
-    data, sample, noreverse, nthreads = args
-    LOGGER.debug("Entering mapreads(): %s %s %s %s", sample.name, noreverse, nthreads )
+    data, sample, noreverse, nthreads, preview = args
+    LOGGER.debug("Entering mapreads(): %s %s %s %s", sample.name, noreverse, nthreads, preview )
 
     ## Test edits actually exist
     if sample.files.edits == []:
@@ -107,13 +104,14 @@ def mapreads(args):
 
     ## preview
     if preview:
-        LOGGER.info( "mapreads() preview - truncating input fq files" )
+        LOGGER.warn( "mapreads() preview - truncating input fq files" )
 
-        ## Truncate the input fq.gz so it'll run faster
+        ## Truncate the input fq so it'll run faster
         ## This function returns the file name of a truncated
         ## fq file. The file should be cleaned up at the end
         ## of at the end of mapreads()
         sample_fastq = preview_truncate_fq( data, sample_fastq )
+        LOGGER.warn( "preview sample_fastq files {}".format( sample_fastq ) )
 
     ## Files we'll use during reference sequence mapping
     ##
@@ -376,6 +374,11 @@ def get_aligned_reads( args ):
             # Here aligned seqs is a list of files 1 for SE or 2 for PE
             aligned_seqs = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
 
+            ## If bam_region_to_fasta fails for some reason it'll return [], in which case
+            ## skip the rest of this. Normally happens if reads map successfully, but too far apart.
+            if not aligned_seqs:
+                continue
+
             # This whole block is getting routed around at this point. I'm not deleting it cuz
             # i'm precious about it, and cuz if we ever decide to use pileup to call snps it could
             # be useful. The next two functions generate pileups per region and then backtransform
@@ -400,7 +403,9 @@ def get_aligned_reads( args ):
                 mergefile, nmerged = merge_pairs( data, sample, aligned_seqs )
                 #sample.files.edits = [(mergefile, )]
                 #sample.files.pairs = mergefile
-                #sample.stats.reads_merged = nmerged
+                
+                ## Update the total number of merged pairs
+                sample.stats.reads_merged += nmerged
                 sample.merged = 1
                 aligned_fasta = mergefile
             else:
@@ -501,6 +506,16 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
 
     except Exception as inst:
         LOGGER.warn( inst )
+
+    ## post-flight checks for consistency
+    if 'pair' in data.paramsdict["datatype"]:
+        len1 = sum(1 for line in open(outfiles[0]))
+        len2 = sum(1 for line in open(outfiles[1]))
+        if not len1 == len2:
+            LOGGER.warn( "Read files in region {}:{}-{} different lengths, probably \
+                        distance between reads exceeds MAX_PE_DISTANCE={}".format( \
+                        chrom, region_start, region_end, MAX_PE_DISTANCE ) )
+            outfiles = []
 
     return outfiles
 
@@ -905,36 +920,6 @@ def preview_truncate_fq( data, sample_fastq ):
 
         truncated_fq.append( tmp_fq.name )
         f.close()
-
-    ## the read2 demultiplexed reads file, if paired
-    ## TODO: This is broken for PE
-#    if "pair" in data.paramsdict["datatype"]:
-#        if tmptuple[1].endswith(".gz"):
-#            fr2 = gzip.open(os.path.realpath(tmptuple[1]), 'rb')
-#        else:
-#            fr2 = open(os.path.realpath(tmptuple[1]), 'rb')
-
-    ## create iterators to sample 4 lines at a time 
-#    quart1 = itertools.izip(*[iter(fr1)]*4)
-#    if "pair" in data.paramsdict["datatype"]:
-        ## pair second read files, quarts samples both
-#        quart2 = itertools.izip(*[iter(fr2)]*4)
-#        quarts = itertools.izip(quart1, quart2)
-#    else:
-        ## read in single end read file, quarts samples 1 for other
-#        quarts = itertools.izip(quart1, iter(int, 1))
-
-#    with tempfile.NamedTemporaryFile( 'w+b', delete=False,
-#            dir=os.path.realpath( data.dirs.refmapping ),
-#            prefix="tmp_", suffix=".fq") as tmp_fq:
-
-        ## Sample the first 10000 reads. This should be sufficient.        
-#        for i in range(PREVIEW_TRUNCATE_LENGTH):
-#            tmp_fq.write( "".join( quarts.next()[0] ) )
-
-#    fr1.close()
-#    if "pair" in data.paramsdict["datatype"]:
-#        fr2.close()
 
     return truncated_fq 
 
