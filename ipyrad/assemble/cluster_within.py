@@ -355,7 +355,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
 
         ## Initialize the mapped and unmapped file paths per sample
         for sample in samples:
-            sample = refmap_init( data, sample )
+            sample = refmap_init(data, sample)
 
     ## submit files and args to queue, for func clustall
     submitted_args = []
@@ -363,7 +363,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         if force:
             submitted_args.append([data, sample, noreverse, tpp, preview])
         else:
-            ## if not already clustered/mapped
+            ## if not clustered or aligned
             if sample.stats.state <= 2.5:
                 submitted_args.append([data, sample, noreverse, tpp, preview])
             else:
@@ -375,43 +375,14 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
 
         ## call to ipp for read mapping
         results = threaded_view.map(mapreads, submitted_args)
-        try:
-            results.get()
-        except (AttributeError, TypeError):
-            for key in ipyclient.history:
-                if ipyclient.metadata[key].error:
-                    LOGGER.error("step3 readmapping error: %s", 
-                        ipyclient.metadata[key].error)
-                    raise SystemExit("step3 readmapping error.\n({})."\
-                                     .format(ipyclient.metadata[key].error))
-                if ipyclient.metadata[key].stdout:
-                    LOGGER.error("step3 readmapping stdout:%s", 
-                        ipyclient.metadata[key].stdout)
-                    raise SystemExit("step3 readmapping error.")
-            LOGGER.error(ipyclient.metadata)
-            sys.exit("")
-
+        results.get()
 
     ## DENOVO calls
     results = threaded_view.map(clustall, submitted_args)
-    try:
-        results.get()
-        clusteredsamples = [i[1] for i in submitted_args]
-        for sample in clusteredsamples:
-            sample.state = 2.5
-
-    except (AttributeError, TypeError):
-        for key in ipyclient.history:
-            if ipyclient.metadata[key].error:
-                LOGGER.error("step3 clustering error: %s", 
-                    ipyclient.metadata[key].error)
-                raise SystemExit("step3 clustering error.\n({})."\
-                                 .format(ipyclient.metadata[key].error))
-            if ipyclient.metadata[key].stdout:
-                LOGGER.error("step3 clustering stdout:%s", 
-                    ipyclient.metadata[key].stdout)
-                raise SystemExit("step3 clustering error.")
-    del threaded_view 
+    results.get()
+    clusteredsamples = [i[1] for i in submitted_args]
+    for sample in clusteredsamples:
+        sample.state = 2.5
 
     ## If reference sequence is specified then pull in alignments from 
     ## mapped bam files and write them out to the clust.gz files to fold
@@ -743,6 +714,7 @@ def clustall(args):
     build_clusters(data, sample)
 
 
+
 def run(data, samples, noreverse, force, preview, ipyclient):
     """ run the major functions for clustering within samples """
 
@@ -752,7 +724,7 @@ def run(data, samples, noreverse, force, preview, ipyclient):
     ## if sample is already done skip
     for sample in samples:
         if not force:
-            if sample.stats.state >=3:
+            if sample.stats.state >= 3:
                 print("  Skipping {}; aleady clustered.".\
                       format(sample.name))
             else:

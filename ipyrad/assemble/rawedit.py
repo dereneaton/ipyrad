@@ -437,8 +437,8 @@ def run_full(data, sample, nreplace, preview, ipyclient):
         submitted_args = []
 
         if preview:
-            LOGGER.warn( "Running preview mode. Selecting only one chunk to rawedit." )
-            chunkslist = [ chunkslist[i] for i in [0] ]
+            LOGGER.warn("Running preview mode. Selecting only one chunk to rawedit.")
+            chunkslist = [chunkslist[i] for i in [0]]
 
         for tmptuple in chunkslist:
             ## used to increment names across processors
@@ -453,18 +453,7 @@ def run_full(data, sample, nreplace, preview, ipyclient):
         results = lbview.map_async(rawedit, submitted_args)
 
         ## return errors if an engine fails
-        try:
-            results.get()
-        except (AttributeError, TypeError):
-            for key in ipyclient.history:
-                if ipyclient.metadata[key].error:
-                    LOGGER.error("step2 error: %s", 
-                        ipyclient.metadata[key].error)
-                    raise SystemExit
-                if ipyclient.metadata[key].stdout:
-                    LOGGER.error("step2 stdout:%s", 
-                        ipyclient.metadata[key].stdout)
-                    raise SystemExit            
+        results.get()
         del lbview
     
     finally:
@@ -489,7 +478,7 @@ def cleanup(data, sample, submitted, results):
     handle1 = os.path.join(data.dirs.edits, sample.name+"_R1_.fastq")
     handle2 = ""
 
-
+    ## 
     if "pair" in data.paramsdict["datatype"]:
         combs2 = glob.glob(os.path.join(
                             data.dirs.edits,
@@ -497,15 +486,17 @@ def cleanup(data, sample, submitted, results):
         combs2.sort(key=lambda x: int(x.split("_")[-1].replace(".fq", "")))    
         handle2 = os.path.join(data.dirs.edits, sample.name+"_R2_.fastq")        
         assert len(combs1) == len(combs2), \
-               "mismatched number of paired read files - {} {}".format( len(combs1), len(combs2) )
+            "mismatched number of paired read files - {} {}"\
+            .format(len(combs1), len(combs2))
 
-        ## Clean up temp files
-        with open(handle1, 'wb') as out:
-            for fname in combs1:
-                with open(fname) as infile:
-                    out.write(infile.read())
-                os.remove(fname)
+    ## Clean up temp files
+    with open(handle1, 'wb') as out:
+        for fname in combs1:
+            with open(fname) as infile:
+                out.write(infile.read())
+            os.remove(fname)
 
+    if "pair" in data.paramsdict["datatype"]:
         with open(handle2, 'wb') as out:
             for fname in combs2:
                 with open(fname) as infile:
