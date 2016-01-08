@@ -141,7 +141,6 @@ class Assembly(object):
         self.paramsdict = OrderedDict([
                        ("working_directory", os.path.realpath(
                                                 os.path.curdir)),
-                       ("prefix_outname", self.name),                       
                        ("raw_fastq_path", os.path.join(
                                             os.path.realpath(
                                                  os.path.curdir),
@@ -1266,10 +1265,6 @@ def paramschecker(self, param, newvalue):
         self._stamp("[{}] set to {}".format(param, newvalue))
         self.paramsdict["working_directory"] = expandpath
         self.dirs["working"] = expandpath
-
-    elif param == 'prefix_outname':
-        self.paramsdict['prefix_outname'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'raw_fastq_path':
         fullrawpath = expander(newvalue)
