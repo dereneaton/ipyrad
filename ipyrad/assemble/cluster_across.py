@@ -98,7 +98,7 @@ def muscle_align_across(args):
     ## array to store indel information
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
-        maxlen*=2
+        maxlen *= 2
     indels = np.zeros((len(clusts), len(samples), maxlen), dtype=np.int8)
 
     ## iterate over clusters and align
@@ -118,7 +118,7 @@ def muscle_align_across(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if 'pair' in data.paramsdict["datatype"]:
+            try:
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
 
@@ -135,8 +135,7 @@ def muscle_align_across(args):
                     locinds = np.array(aseqs[i] == "-", dtype=np.int32)
                     indels[loc][snames.index(anames[i]\
                                 .rsplit("_", 1)[0])][:maxlen] = locinds
-
-            else:
+            except IndexError:
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(string1)
                 somedic = OrderedDict()
@@ -193,6 +192,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         maxlen = data._hackersonly["max_fragment_length"]
         if 'pair' in data.paramsdict["datatype"]:
             maxlen*=2
+
         ioh5 = h5py.File(os.path.join(
                             data.dirs.consens, data.name+".indels"), 'w')
         dset = ioh5.create_dataset("indels", (nloci, len(samples), maxlen),
@@ -239,13 +239,14 @@ def cluster(data, noreverse):
     uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
     hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
 
-    ## parameters that vary by datatype
+    ## parameters that vary by datatype 
+    ## (too low of cov values yield too many poor alignments)
     if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
-        cov = " -query_cov .35 "
+        cov = " -query_cov .60 "
     elif data.paramsdict["datatype"] == "pairgbs":
         reverse = " -strand both "
-        cov = " -query_cov .60 "
+        cov = " -query_cov .90 "
     else:
         reverse = " -leftjust "
         cov = " -query_cov .90 "
@@ -345,7 +346,7 @@ def singlecat(data, sample):
     ioh5 = h5py.File(h5handle, 'w')
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
-        maxlen*=2
+        maxlen *= 2
     nloci = 1000
     icatg = ioh5.create_dataset(sample.name, (nloci, maxlen, 4), dtype='i4',
                                 chunks=(nloci/10, maxlen, 4))
@@ -367,7 +368,11 @@ def singlecat(data, sample):
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
-        if not ask.empty:
+        if ask.size == 1: #empty:
+            ## if multiple hits of a sample to a locus then it is not added
+            ## to the locus. Its possible then that no samples could be added 
+            ## to a locus. Thus the whole locus should probably be excluded. 
+            ## Need to make sure cat.clust.gz also excludes these loci (TODO)
             icatg[iloc] = catarr[int(ask[4])][:icatg.shape[1], :]
 
     ## for each locus in which Sample was the seed
@@ -430,7 +435,8 @@ def build_reads_file(data):
             if gdf[2][i] == "+":
                 seqs.append(consdic[">"+hit])
             else:
-                seqs.append(fullcomp(hit[::-1]))
+                seqs.append(fullcomp(consdic[">"+hit][::-1]))
+
         ## append the newly created locus to the locus list
         locilist.append("\n".join([printstring.format(i, j) \
                         for i, j in zip(names, seqs)]))
