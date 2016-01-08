@@ -5,6 +5,7 @@
 from __future__ import print_function
 
 import h5py
+import os
 from ipyrad.file_conversion import *
 
 import logging
@@ -13,45 +14,49 @@ LOGGER = logging.getLogger(__name__)
 ## List of all possible output formats. This is global because it's
 ## referenced by assembly.py and also paramsinfo. Easier to have it
 ## centralized.
-output_formats = ['alleles', 'phy', 'nex', 'snps', 'vcf', 'usnps',
-                     'str', 'geno', 'treemix', 'migrate', 'gphocs']
+OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'vcf', 'usnps',
+                  'str', 'geno', 'treemix', 'migrate', 'gphocs']
 
-def run( data, samples, force, ipyclient ):
+
+def run(data, samples, force, ipyclient):
     """ Check all samples requested have been clustered (state=6), 
     make output directory, then create the requested outfiles.
     """
-    if any([i.stats.state <=5 for i in samples]):
+    if any([i.stats.state <= 5 for i in samples]):
         print("  Step 7: Not all samples are aligned.")
         print("  Here are states for all the samples requested:")
         for i in samples:
-            print("\t{}\t=\t{}".format( i.name, str(i.stats.state ) ) )
-        print("  All samples should be in state 6 for writing outfiles. Try rerunning step6()")
+            print("\t{}\t=\t{}".format(i.name, str(i.stats.state)))
+        print("  All samples should be in state 6 for writing outfiles. "\
+               +"Try rerunning step6()")
 
     ## prepare dirs
     data.dirs.outfiles = os.path.join(data.dirs.working, "outfiles")
     if not os.path.exists(data.dirs.outfiles):
         os.mkdir(data.dirs.outfiles)
 
-    ## Make the .loci file from the vcf generated in step6()
-    loci_from_unfilteredvcf( data, samples, force )
+    ## Apply filters and make the .loci file from the vcf generated in step6()
+    loci_from_unfilteredvcf(data, samples, force)
 
     ## Make all requested outfiles
-    make_outfiles( data, samples, force )
+    make_outfiles(data, samples, force)
 
 
 
-def loci_from_unfilteredvcf( data, samples, force ):
-    """ Read in the unfiltered vcf and supercatg from step6. Apply filters for coverage,
-    heterozygosity, number of snps, etc. Write out .loci to output directory """
-
+def loci_from_unfilteredvcf(data, samples, force):
+    """ Read in the unfiltered vcf and supercatg from step6. Apply filters for
+    coverage, heterozygosity, number of snps, etc. Write out .loci to output 
+    directory """
+    ## get unfiltered vcf handle
     unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf")
 
     supercatg = h5py.File(data.database, 'r')
 
     # Do filtering: max_shared_heterozygosity, minsamp, maxSNP, etc.
+    finalfilter(data, samples, supercatg, unfiltered_vcf)
 
     ## Write out .loci
-    locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
+    locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
 
 
 
@@ -60,7 +65,6 @@ def make_outfiles( data, samples, force ):
 
     ## Read in the input .loci file that gets transformed into all output formats
     locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
-
 
     for filetype in data.paramsdict["output_formats"]:
         LOGGER.info( "Doing - ", filetype )
@@ -80,6 +84,7 @@ def make_outfiles( data, samples, force ):
 
         ## do the call to make the new file format
         format_module.make( data, samples )
+
 
 if __name__ == "__main__":
     import ipyrad as ip

@@ -529,10 +529,11 @@ class Assembly(object):
         """
 
         ## require parameter recognition
-        assert (param in range(50)) or \
-               (param in [str(i) for i in range(50)]) or \
-               (param in self.paramsdict.keys()), \
-            "Parameter key not recognized: `{}`.".format(param)
+        if not ((param in range(50)) or \
+                (param in [str(i) for i in range(50)]) or \
+                (param in self.paramsdict.keys())):
+            raise IPyradParamsError("Parameter key not recognized: {}"\
+                                    .format(param))
 
         ## make string
         param = str(param)
@@ -1437,7 +1438,7 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['max_Indels_locus'] = newvalue
         self._stamp("[{}] set to {}".format(param, newvalue))
  
-    elif param == 'edits_cutsites':
+    elif param == 'edit_cutsites':
         newvalue = tuplecheck(newvalue)
         assert isinstance(newvalue, tuple), \
         "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
