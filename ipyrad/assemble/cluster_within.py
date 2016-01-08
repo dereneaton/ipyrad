@@ -686,13 +686,13 @@ def clustall(args):
         ## files list as an argument because we're reusing this code 
         ## in the refmap pipeline, trying to generalize.
         LOGGER.debug("Merging pairs - %s", sample.files)
-        unmerged_files = [sample.files.edits[0][0], sample.files.edits[0][1]]
-        mergefile, nmerged = merge_pairs(data, sample, unmerged_files)
+        #unmerged_files = [sample.files.edits[0][0], sample.files.edits[0][1]]
+        mergefile, nmerged = merge_pairs(data, sample) #, unmerged_files)
         sample.files.edits = [(mergefile, )]
         sample.files.pairs = mergefile
         sample.stats.reads_merged = nmerged
         sample.merged = 1
-        LOGGER.debug( "Merged file - {}".format( mergefile ) )
+        LOGGER.debug( "Merged file - {}".format(mergefile))
 
         ## OLD DEREN CODE w/ combine_pairs (keeping for now)
         ## merge pairs that overlap into a merge file

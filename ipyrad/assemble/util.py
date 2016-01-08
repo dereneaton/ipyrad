@@ -82,12 +82,15 @@ def getsplits(filename):
     return optim
 
 
-def merge_pairs( data, sample, unmerged_files ):
-    """ Merge PE reads. Takes in a tuple of unmerged files
-    and returns the file name of the merged/combined PE
-    reads and the number of reads that were merged (overlapping)
+
+def merge_pairs(data, sample): #, unmerged_files):
+    """ 
+    Merge PE reads. Takes in a tuple of unmerged files and returns the file 
+    name of the merged/combined PE reads and the number of reads that were 
+    merged (overlapping)
     """
-    LOGGER.debug("Entering merge_pairs - %s", unmerged_files)
+
+    #LOGGER.debug("Entering merge_pairs - %s", unmerged_files)
 
     ## tempnames for merge files
     sample.files.merged = os.path.join(data.dirs.edits,
@@ -105,7 +108,8 @@ def merge_pairs( data, sample, unmerged_files ):
         maxn = data.paramsdict['max_low_qual_bases']
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
-    assert os.path.exists(unmerged_files[1]), \
+    # unmerged_files[1])
+    assert os.path.exists(sample.files.edits[0][1]), \
            "No paired read file (_R2_ file) found." 
 
     ## make revcomp file
@@ -113,6 +117,7 @@ def merge_pairs( data, sample, unmerged_files ):
       + " --fastx_revcomp "+sample.files.edits[0][1] \
       + " --fastqout "+sample.files.revcomp
     LOGGER.warning(cmd)
+    LOGGER.debug(cmd)    
     try:
         subprocess.check_call(cmd, shell=True, 
                                    stderr=subprocess.STDOUT, 
@@ -152,6 +157,7 @@ def merge_pairs( data, sample, unmerged_files ):
         nmerged = len(tmpf.readlines())
 
     LOGGER.debug("Merged pairs - %d", nmerged)
+
     ## Combine the unmerged pairs and append to the merge file
     with open(sample.files.merged, 'ab') as combout:
         ## read in paired end read files"
@@ -184,8 +190,9 @@ def merge_pairs( data, sample, unmerged_files ):
             if not counts % 1000:
                 combout.write("\n".join(writing)+"\n")
                 writing = []
-
-        combout.write("\n".join(writing))
+        if writing:
+            combout.write("\n".join(writing))
+            combout.close()
 
     os.remove(sample.files.nonmerged1)
     os.remove(sample.files.nonmerged2)
