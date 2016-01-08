@@ -319,7 +319,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     """
     ## nthreads per job for clustering. Find optimal splitting.
     ncpus = len(ipyclient.ids)  
-    
+    ## TODO: improve    
     threads_per = 1
     if ncpus >= 4:
         threads_per = 2
@@ -559,10 +559,10 @@ def cluster(data, sample, noreverse, nthreads):
     ## datatype variables
     if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
-        cov = " -query_cov .35 " 
+        cov = " -query_cov .60 " 
     elif data.paramsdict["datatype"] == 'pairgbs':
         reverse = "  -strand both "
-        cov = " -query_cov .60 " 
+        cov = " -query_cov .90 " 
     else:  ## rad, ddrad
         reverse = " -leftjust "
         cov = " -query_cov .90 "
@@ -614,6 +614,7 @@ def multi_muscle_align(data, sample, ipyclient):
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
+        ## TODO: improve
         optim = 1000    
         if sample.stats.clusters_total <= 1000:
             optim = 100
@@ -621,6 +622,8 @@ def multi_muscle_align(data, sample, ipyclient):
             optim = 500
         if sample.stats.clusters_total > 10000:
             optim = 1000
+        if sample.stats.clusters_total > 50000:
+            optim = 2000
 
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
@@ -692,7 +695,7 @@ def clustall(args):
         sample.files.pairs = mergefile
         sample.stats.reads_merged = nmerged
         sample.merged = 1
-        LOGGER.debug( "Merged file - {}".format(mergefile))
+        LOGGER.debug("Merged file - {}".format(mergefile))
 
         ## OLD DEREN CODE w/ combine_pairs (keeping for now)
         ## merge pairs that overlap into a merge file
