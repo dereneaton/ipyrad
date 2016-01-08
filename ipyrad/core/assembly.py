@@ -128,13 +128,16 @@ class Assembly(object):
         ## multiplex files linked
         self.barcodes = ObjDict()
 
+        ## population assignments
+        self.populations = ObjDict()
+
         ## outfiles locations
         self.outfiles = ObjDict()
 
         ## an object for storing data directories for this Assembly
         self.dirs = ObjDict()
 
-        ## storing final results
+        ## storing supercatg file
         self.database = ""
 
         ## the default params dict
@@ -219,15 +222,15 @@ class Assembly(object):
 
 
     def link_fastqs(self, path=None, merged=False, force=False, append=False):
-        """ Create Sample objects for samples in sorted_fastq_path.
+        """ Create Sample objects from demultiplexed fastq files in 
+        sorted_fastq_path, or append additional fastq files to existing Samples.
 
         Note
         ----
         link_fastqs() is called automatically during step2() if no Samples
         are yet present in the Assembly object (data were not demultiplexed
         in step1().) It looks for demultiplexed data files located in the
-        [sorted_fastq_path].
-
+        `sorted_fastq_path`.
 
         Parameters
         ----------
@@ -247,58 +250,51 @@ class Assembly(object):
             the same as usual, e.g., [name]_R1_[optional].fastq.gz).
 
         force : bool
-            ...
+            Overwrites existing Sample data and statistics.
 
         Returns
         -------
         str
             Prints the number of new Sample objects created and the number of 
             fastq files linked to Sample objects in the Assembly object. 
-        
         """
 
         ## cannot both force and append at once
         if force and append:
-            raise Exception("Cannot use force and append at the same time.")
+            raise IPyradError("Cannot use force and append at the same time.")
 
         if self.samples and not (force or append):
-            raise Exception("Files already linked to `{}`. ".format(self.name)\
-                +"Use force=True to replace all files, or append=True to "
-                +"add additional files to existing Samples.")
+            raise IPyradError("Files already linked to `{}`.".format(self.name)\
+                +" Use force=True to replace all files, or append=True to add"
+                +" additional files to existing Samples.")
 
-        ## make sure there is an out directory
+        ## make sure there is a workdir and workdir/fastqdir 
         self.dirs.fastqs = os.path.join(self.paramsdict["working_directory"],
                                         self.name+"_fastqs")
         if not os.path.exists(self.paramsdict["working_directory"]):
             os.mkdir(self.paramsdict["working_directory"])
         if not os.path.exists(self.dirs.fastqs):
             os.mkdir(self.dirs.fastqs)
-
 
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
 
-        ## make sure there is an out directory
-        self.dirs.fastqs = os.path.join(self.paramsdict["working_directory"],
-                                        self.name+"_fastqs")
-        if not os.path.exists(self.paramsdict["working_directory"]):
-            os.mkdir(self.paramsdict["working_directory"])
-        if not os.path.exists(self.dirs.fastqs):
-            os.mkdir(self.dirs.fastqs)
-
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
             path += "*"
 
-        ## grab fastqs/fq/gzip/all
+        ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
-
-        ## sort alphabetical
         fastqs.sort()
+
+        ## raise error if no files are found
+        if not fastqs:
+            raise IPyradError("No files found in `sorted_fastq_path`: {}".
+                              format(self.paramsdict["sorted_fastq_path"]))
 
         ## link pairs into tuples        
         if 'pair' in self.paramsdict["datatype"]:
@@ -309,18 +305,20 @@ class Assembly(object):
             if r1_files:
                 if not any(["_R1_" in i for i in fastqs]) or \
                        (len(r1_files) != len(r2_files)):
-                    raise Exception(\
-                "File name format error: paired file names " \
-                +"must be identical except for _R1_ and _R2_ in their names.")
+                    raise IPyradError(\
+               "Paired file names must be identical except for _R1_ and _R2_")
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
         ## data are not paired, create empty tuple pair
         else:
+            ## print warning if _R2_ is in names when not paired
             if any(["_R2_" in i for i in fastqs]):
-                print("Given the presence of '_R2_' in file names, this "\
-              +"is a warning that if your data are paired-end you should set "\
-              +"the Assembly object datatype to a paired type (e.g., "\
-              +"pairddrad or pairgbs) prior to running link_fastqs().")
+                print("""
+        Warning: '_R2_' was detected in a file name, which suggests the data
+        may be paired-end. If so, you should set the Assembly parameter
+        `datatype` to a paired type (e.g., pairddrad or pairgbs) and run
+        link_fastqs(force=True) to re-link fastq data.
+        """)
             fastqs = [(i, ) for i in fastqs]
 
         ## counters for the printed output
@@ -369,9 +367,10 @@ class Assembly(object):
                     createdinc += 1
                     linkedinc += 1
                 else:
-                    print("The files {} are already in Sample.".format(sname) \
-                    + " Use append=True to append additional files to a Sample"\
-                    + " or force=True to replace all existing Samples.")
+                    print("""
+        The files {} are already in Sample. Use append=True to append additional
+        files to a Sample or force=True to replace all existing Samples.
+        """.format(sname))
 
             ## record whether data were merged.
             if merged:
@@ -379,10 +378,10 @@ class Assembly(object):
 
             ## do not allow merged=False and .forward in file names
             if (merged == False) and ('forward' in fastqtuple[0]):
-                print(\
-                "If R1 and R2 data are merged (e.g., with PEAR) " \
-              + "use link_fastqs(merge=True) to indicate this. You " \
-              + "may need force=True to overwrite existing files.\n")
+                print("""
+        Warning: If R1 and R2 data are merged use link_fastqs(merge=True) to 
+        indicate this. You may need force=True to overwrite existing files.
+        """)
 
             ## if fastqs already demultiplexed, try to link stats
             if any([linkedinc, createdinc, appendinc]):
@@ -409,9 +408,9 @@ class Assembly(object):
 
 
     def link_barcodes(self):
-        """ creates a self.barcodes object to save barcodes info 
-            as a dictionary, if there is a barcodes file in 
-            self.paramsdict["barcodes_path"] """
+        """ 
+        Saves Sample barcodes in a dictionary at [Assembly].barcodes. Barcodes
+        are parsed from the file in `barcodes_path`."""
         ## in case fuzzy selected
         try: 
             barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
@@ -429,41 +428,43 @@ class Assembly(object):
         except ValueError:
             LOGGER.warn("Barcodes file not recognized.")
 
+
+
     def link_populations(self):
-        """ Creates self.populations object to save mappings of 
-            individuals to populations/sites. This is used for
-            heirarchical clustering, for generating summary stats
-            and for outputing some file types (.treemix for example).
-            Internally stores a dictionary. File is read in as a parameter
-            from self.paramsdict["pop_assign_file"]
-            The format of the dictionary is { pop1: [ind1, ind2, ind3], pop2: [ind4, ind5] }
-            The format of the infile is space separated pairs:
+        """ Creates self.populations object to save mappings of individuals to 
+        populations/sites. This is used for heirarchical clustering, for 
+        generating summary stats and for outputing some file types (.treemix 
+        for example). Internally stores a dictionary. File is read in as a 
+        parameter from self.paramsdict["pop_assign_file"]. The format of the 
+        dictionary is { pop1: [ind1, ind2, ind3], pop2: [ind4, ind5]}. The 
+        format of the infile is space separated pairs:
             ind1 pop1
             ind2 pop2
             ind3 pop3
-            etc... """
+            etc... 
+        """
         try:
             popfile = glob.glob(self.paramsdict["pop_assign_file"])[0]
         except IndexError:
-            LOGGER.error("Population assignment file not found: {}".format( self.paramsdict["pop_assign_file"] ) )
+            LOGGER.error("Population assignment file not found: {}"\
+                         .format(self.paramsdict["pop_assign_file"]))
 
         ## parse populations file
         try:
             popdat = pd.read_csv(popfile, header=None, delim_whitespace=1)
             
             ## Get a set of all unique population names
-            pops = set( popdat[1] )
+            pops = set(popdat[1])
 
-            ## set attribute on Assembly population dict
-            self.populations = {}
             ## This seems like a stupid way to do this. 
             tmpdict = dict(zip(popdat[0], popdat[1]))
             for pop in pops:
-                self.populations[ pop ] = [name for name, population in tmpdict.items() if population == pop ]
+                self.populations[pop] = [name for name, population in \
+                                         tmpdict.items() if population == pop]
 
         except ValueError:
             LOGGER.warn("Populations file may be malformed.")
-            sys.exit( "Populations file malformed - {}".format( popfile ) )
+            raise IPyradError("Populations file malformed - {}".format(popfile))
 
 
 
@@ -671,6 +672,15 @@ class Assembly(object):
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
             logging.error("assembly interrupted by user.")
+            ## prevent standing jobs from executing
+            ipyclient.abort()
+            ## kill jobs in execution
+            #try:
+            #    pid = how do I find this?
+            #    os.kill(pid, '9')
+            #except OSError:
+            #    ## probably already dead
+            #    pass
             raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
@@ -682,7 +692,7 @@ class Assembly(object):
             raise IPyradError(inst)
 
         except Exception as inst:
-            print("other error: %s" % inst)
+            print("Error: %s" % inst)
             raise #IPyradError(inst)            
 
         ## close client when done or interrupted
@@ -760,9 +770,9 @@ class Assembly(object):
 
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
-            assert self.paramsdict['reference_sequence'], \
-            "Reference or hybrid assembly requires a value for "+\
-            "reference_sequence_path paramter."
+            if not self.paramsdict['reference_sequence']:
+                raise IPyradError("Reference or hybrid assembly requires a "+\
+                                  "value for reference_sequence_path paramter.")
 
             ## index the reference sequence
             index_reference_sequence(self)
