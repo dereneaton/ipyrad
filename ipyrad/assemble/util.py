@@ -268,6 +268,7 @@ def zcat_make_temps(args):
     """ call bash command zcat and split to split large files """
     ## split args
     data, raws, num, optim = args
+    LOGGER.debug("zcat splittin' %s", os.path.split(raws[0])[-1])
 
     ## get optimum lines per file
     if not optim:
@@ -282,11 +283,8 @@ def zcat_make_temps(args):
     ### run splitter
     cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
                    "-", os.path.join(data.dirs.fastqs, "chunk1_"+str(num)+"_")])
-    _ = subprocess.check_call(cmd, shell=True)#,
-                             #stdin=subprocess.PIPE,
-                             #stderr=subprocess.STDOUT,
-                             #stdout=subprocess.PIPE,
-                             #close_fds=True)
+    _ = subprocess.check_call(cmd, shell=True)
+
     chunks1 = glob.glob(os.path.join(
                         data.dirs.fastqs, "chunk1_"+str(num)+"_*"))
     chunks1.sort()
@@ -294,11 +292,8 @@ def zcat_make_temps(args):
     if "pair" in data.paramsdict["datatype"]:
         cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
                   "-", os.path.join(data.dirs.fastqs, "chunk2_"+str(num)+"_")])
-        _ = subprocess.check_call(cmd, shell=True)#,
-                             #stdin=subprocess.PIPE,
-                             #stderr=subprocess.STDOUT,
-                             #stdout=subprocess.PIPE,
-                             #close_fds=True)
+        _ = subprocess.check_call(cmd, shell=True)
+
         chunks2 = glob.glob(os.path.join(
                         data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
