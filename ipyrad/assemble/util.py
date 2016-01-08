@@ -34,6 +34,9 @@ def ambigcutters(seq):
     else:
         return [seq, ""]
 
+
+
+
 def comp(seq):
     """ returns a seq with small complement"""
     return seq.replace("A", 't')\
@@ -45,24 +48,7 @@ def comp(seq):
            .replace("Z", "n")\
            .replace("S", "s")
 
-## TODO: Delete this? This function isn't used in the codebase
-## maybe delete it.
-def getoptim(filename):
-    """ Calculate optimum splitting based on file size. 
-    Does not unzip files, assumes average rate of compression. 
-    This is a fast alternative to counting lines which takes 
-    too long on huge files.
-    """
-    filesize = os.stat(filename).st_size
-    if filesize < 160000000:
-        optim = 40000
-    elif filesize < 4000000000:
-        optim = 800000
-    elif filesize < 8000000000:
-        optim = 12000000
-    else:
-        optim = 24000000
-    return optim
+
 
 def getsplits(filename):
     """ Calculate optimum splitting based on file size. 
@@ -80,6 +66,7 @@ def getsplits(filename):
     else:
         optim = 8000000
     return optim
+
 
 
 
@@ -285,7 +272,7 @@ def zcat_make_temps(args):
     ## get optimum lines per file
     if not optim:
         optim = getsplits(raws[0])
-    #LOGGER.info("optim = %s", optim)
+    LOGGER.info("optim = %s", optim)
 
     ## is it gzipped
     cat = "cat"
@@ -295,11 +282,11 @@ def zcat_make_temps(args):
     ### run splitter
     cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
                    "-", os.path.join(data.dirs.fastqs, "chunk1_"+str(num)+"_")])
-    _ = subprocess.call(cmd, shell=True,
-                             stdin=subprocess.PIPE,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE,
-                             close_fds=True)
+    _ = subprocess.check_call(cmd, shell=True)#,
+                             #stdin=subprocess.PIPE,
+                             #stderr=subprocess.STDOUT,
+                             #stdout=subprocess.PIPE,
+                             #close_fds=True)
     chunks1 = glob.glob(os.path.join(
                         data.dirs.fastqs, "chunk1_"+str(num)+"_*"))
     chunks1.sort()
@@ -307,19 +294,20 @@ def zcat_make_temps(args):
     if "pair" in data.paramsdict["datatype"]:
         cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
                   "-", os.path.join(data.dirs.fastqs, "chunk2_"+str(num)+"_")])
-        _ = subprocess.call(cmd, shell=True,
-                             stdin=subprocess.PIPE,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE,
-                             close_fds=True)
+        _ = subprocess.check_call(cmd, shell=True)#,
+                             #stdin=subprocess.PIPE,
+                             #stderr=subprocess.STDOUT,
+                             #stdout=subprocess.PIPE,
+                             #close_fds=True)
         chunks2 = glob.glob(os.path.join(
                         data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
-        #LOGGER.debug("chunksfiles: %s %s", chunks1, chunks2)
-        assert len(chunks1) == len(chunks2), \
-            "R1 and R2 files are not the same length."
+    
     else:
         chunks2 = [0]*len(chunks1)
+
+    assert len(chunks1) == len(chunks2), \
+        "R1 and R2 files are not the same length."
 
     return [raws[0], zip(chunks1, chunks2)]
 
