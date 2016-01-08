@@ -5,15 +5,12 @@
 from __future__ import print_function
 # pylint: disable=E1101
 import os
-import sys
 import gzip
 import glob
-import time
 import tempfile
 import itertools
 import numpy as np
 import cPickle as pickle
-import ipyparallel as ipp
 from ipyrad.core.sample import Sample
 from .util import *
 from collections import defaultdict, Counter
@@ -30,15 +27,16 @@ def combinefiles(filepath):
 
     ## check names
     if not firsts:
-        sys.exit("\n\tFirst read files names must contain '_R1_'.")
+        raise AssertionError("First read files names must contain '_R1_'.")
 
     ## get paired reads
     seconds = [ff.replace("_R1_", "_R2_") for ff in firsts]
-
     return zip(firsts, seconds)
+
 
 def matching(barcode, data):
     "allows for N base difference between barcodes"
+    LOGGER.debug("in matching")
     match = 0
     for name, realbar in data.barcodes.items():
         if len(barcode) == len(realbar):
@@ -51,8 +49,9 @@ def matching(barcode, data):
 
 def findbcode(cut, longbar, read1):
     """ find barcode sequence in the beginning of read """
+    LOGGER.debug("in findbcode. cut %s, longbar %s", cut, longbar)
     ## default barcode string
-    search = read1[1][:longbar+len(cut)]
+    search = read1[1][:int(longbar[0]+len(cut)+1)]
     countcuts = search.count(cut)
     if countcuts == 1:
         barcode = search.split(cut, 1)[0]
@@ -60,15 +59,19 @@ def findbcode(cut, longbar, read1):
         barcode = search.rsplit(cut, 2)[0]
     else:
         barcode = ""
+    LOGGER.debug("search_: %s", search)
+    LOGGER.debug("barcode: %s", barcode)
     return barcode
 
 
 
+
 def barmatch(args):
-    """matches reads to barcodes in barcode file
-    and writes to individual temp files, after all
-    read files have been split, temp files are collated
-    into .fq files"""
+    """
+    Matches reads to barcodes in barcode file and writes to individual temp 
+    files, after all read files have been split, temp files are collated into 
+    .fastq files
+    """
 
     ## read in list of args
     data, rawfile, chunk, cut, longbar, chunknum, filenum = args
@@ -105,6 +108,22 @@ def barmatch(args):
         dsort2[sample] = []
         dbars[sample] = set()
 
+    ## get func for finding barcode
+    LOGGER.debug("longbar: %s", longbar)
+    if longbar[1] == 'same':
+        if data.paramsdict["datatype"] == '2brad':
+            def getbarcode(_, read1, longbar):
+                """ find barcode for 2bRAD data """
+                return read1[1][-longbar[0]:]
+        else:
+            def getbarcode(_, read1, longbar):
+                """ finds barcode for invariable length barcode data """
+                return read1[1][:longbar[0]]
+    else:
+        def getbarcode(cut, read1, longbar):
+            """ finds barcode for variable barcode lengths"""
+            return findbcode(cut, longbar, read1)
+
     ## go until end of the file
     while 1:
         try: 
@@ -120,13 +139,7 @@ def barmatch(args):
 
         ## Parse barcode from sequence 
         ## very simple sorting if barcodes are invariable
-        if longbar[1] == 'same':
-            if data.paramsdict["datatype"] == '2brad':
-                barcode = read1[1][-longbar[0]:]
-            else:
-                barcode = read1[1][:longbar[0]]
-        else:
-            barcode = findbcode(cut, longbar[0], read1)
+        barcode = getbarcode(cut, read1, longbar)
 
         ## find if it matches 
         didmatch = matching(barcode, data)
@@ -141,6 +154,7 @@ def barmatch(args):
             else:
                 read1[1] = read1[1][len(barcode):]
                 read1[3] = read1[3][len(barcode):]
+
             ## record who matched
             if didmatch in samplehits:
                 samplehits[didmatch] += 1
@@ -154,7 +168,8 @@ def barmatch(args):
             ## append to dsort
             dsort1[didmatch].append("\n".join(read1).strip())
             if 'pair' in data.paramsdict["datatype"]:
-                dsort2[didmatch].append("\n".join(read2).strip())                
+                dsort2[didmatch].append("\n".join(read2).strip())
+
         else:
             ## record whether cut found                
             if barcode:
@@ -166,21 +181,21 @@ def barmatch(args):
             else:
                 misses["_"] += 1
 
-    ## write the remaining reads to file"
-    for sample in dsort1:
-        handle = os.path.join(data.dirs.fastqs,
-                              "tmp_"+sample+"_R1_"+\
-                              str(filenum)+"_"+str(chunknum))
-        with open(handle, 'wb') as out:
-            out.write("\n".join(dsort1[sample])+"\n")
+        ## write out at 10K to keep memory low
+        if not total % 10000:
+            ## write the remaining reads to file"
+            writetofile(data, dsort1, 1, filenum, chunknum)
+            if 'pair' in data.paramsdict["datatype"]:
+                writetofile(data, dsort2, 2, filenum, chunknum) 
+            ## clear out dsorts
+            for sample in data.barcodes:
+                dsort1[sample] = []
+                dsort2[sample] = []
 
+    ## write the remaining reads to file"
+    writetofile(data, dsort1, 1, filenum, chunknum)
     if 'pair' in data.paramsdict["datatype"]:
-        for sample in dsort2:
-            handle = os.path.join(data.dirs.fastqs,
-                                  "tmp_"+sample+"_R2_"+\
-                                  str(filenum)+"_"+str(chunknum))
-            with open(handle, 'wb') as out:
-                out.write("\n".join(dsort2[sample])+"\n")
+        writetofile(data, dsort2, 2, filenum, chunknum)        
 
     ## close file handles
     fr1.close()
@@ -200,6 +215,24 @@ def barmatch(args):
     pickout.close()
 
     return "done"
+
+
+
+def writetofile(data, dsort, read, filenum, chunknum, mode='a'):
+    """ writes dsort dict to a tmp file. Used in barmatch. """
+    if read == 1:
+        rname = "_R1_"
+    else:
+        rname = "_R2_"
+
+    for sample in dsort:
+        ## skip writing if empty
+        if dsort[sample]:
+            handle = os.path.join(data.dirs.fastqs,
+                             "tmp_"+sample+rname+str(filenum)+"_"+str(chunknum))
+            with open(handle, mode) as out:
+                out.write("\n".join(dsort[sample])+"\n")
+
 
 
 def maketempfiles(data, chunk1, chunk2):
@@ -248,6 +281,7 @@ def parallel_sorter(data, rawtups, chunks, cutter, longbar, filenum, ipyclient):
     """ takes list of chunk files and runs barmatch function on them across
     all engines and outputs temp file results. This is parallelized on N chunks.
     """
+    LOGGER.debug("in parallel_sorter") 
     ## send file to multiprocess queue"
     chunknum = 0
     submitted_args = []
@@ -266,6 +300,7 @@ def parallel_sorter(data, rawtups, chunks, cutter, longbar, filenum, ipyclient):
 def parallel_collate(data, ipyclient):
     """ parallel calls to collate_tmps function """
     ## send file to multiprocess queue"
+    LOGGER.debug("in parallel_collate")
     submitted_args = []
     for samplename in data.barcodes.keys():
         submitted_args.append([data, samplename])
@@ -291,18 +326,19 @@ def collate_tmps(args):
     handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.fastq.gz")
     with gzip.open(handle_r1, 'wb') as out:
         for fname in combs:
-            with gzip.open(fname) as infile:
+            with open(fname) as infile:
                 out.write(infile.read())
+   
     if "pair" in data.paramsdict["datatype"]:
         ## nproc len list of chunks
         combs = glob.glob(os.path.join(
-                          data.dirs.fastqs, "tmp_"+name)+"_R2_*.gz")
+                          data.dirs.fastqs, "tmp_"+name)+"_R2_*")
         combs.sort()                        
         ## one outfile to write to
         handle_r2 = os.path.join(data.dirs.fastqs, name+"_R2_.fastq.gz")
         with gzip.open(handle_r2, 'wb') as out:
             for fname in combs:
-                with gzip.open(fname) as infile:
+                with open(fname) as infile:
                     out.write(infile.read())
 
 
@@ -321,7 +357,7 @@ def prechecks(data):
     else:
         longbar = (max(barlens), 'diff')
 
-    ## make sure there is an out directory
+    ## make sure there is a [workdir] and a [workdir/name_fastqs]
     data.dirs.fastqs = os.path.join(data.paramsdict["working_directory"],
                                     data.name+"_fastqs")
     if not os.path.exists(data.paramsdict["working_directory"]):
@@ -331,9 +367,8 @@ def prechecks(data):
 
     ## if leftover tmp files, remove
     oldtmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
-    if oldtmps:
-        for oldtmp in oldtmps:
-            os.remove(oldtmp)
+    for oldtmp in oldtmps:
+        os.remove(oldtmp)
 
     ## gather raw sequence data
     if "pair" in data.paramsdict["datatype"]:
@@ -470,7 +505,6 @@ def make_stats(data, raws):
 
 
 
-
 def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
@@ -484,8 +518,9 @@ def run(data, preview, ipyclient):
         datatuples = parallel_chunker(data, raws, ipyclient) 
 
         if preview:
-            LOGGER.warn( "Running preview mode. Selecting only one chunk to demultiplex." )
-            datatuples = [ (datatuples[0][0], datatuples[0][1]) ]
+            LOGGER.warn(\
+        "Running preview mode. Selecting subset of data for demultiplexing.")
+            datatuples = [(datatuples[0][0], datatuples[0][1])]
 
         filenum = 0            
         for rawfilename, chunks in datatuples:
