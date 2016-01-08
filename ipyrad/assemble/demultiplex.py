@@ -11,7 +11,6 @@ import glob
 import time
 import tempfile
 import itertools
-import subprocess
 import numpy as np
 import cPickle as pickle
 import ipyparallel as ipp
@@ -171,16 +170,16 @@ def barmatch(args):
     for sample in dsort1:
         handle = os.path.join(data.dirs.fastqs,
                               "tmp_"+sample+"_R1_"+\
-                              str(filenum)+"_"+str(chunknum)+".gz")
-        with gzip.open(handle, 'wb') as out:
+                              str(filenum)+"_"+str(chunknum))
+        with open(handle, 'wb') as out:
             out.write("\n".join(dsort1[sample])+"\n")
 
     if 'pair' in data.paramsdict["datatype"]:
         for sample in dsort2:
             handle = os.path.join(data.dirs.fastqs,
                                   "tmp_"+sample+"_R2_"+\
-                                  str(filenum)+"_"+str(chunknum)+".gz")
-            with gzip.open(handle, 'wb') as out:
+                                  str(filenum)+"_"+str(chunknum))
+            with open(handle, 'wb') as out:
                 out.write("\n".join(dsort2[sample])+"\n")
 
     ## close file handles
@@ -224,95 +223,6 @@ def maketempfiles(data, chunk1, chunk2):
 
 
 
-# def chunker(args):
-#     """ splits fastq file into nchunks, preserving that
-#     the data are in 4-line groups. Split across N processors. """
-
-#     ## split args
-#     data, fastq, paired, num, optim = args
-    
-#     ## is gzipped?
-#     gzipped = bool(fastq[0].endswith(".gz"))
-
-#     ## count nlines in read1 file
-#     #totlen = bufcount(fastq[0], gzipped)
-#     if not optim:
-#         optim = getoptim(fastq[0])
-
-#     ## open data file for reading
-#     if gzipped:
-#         indata1 = gzip.open(fastq[0])
-#         if paired:
-#             indata2 = gzip.open(fastq[1])
-
-#     else:
-#         indata1 = open(fastq[0])
-#         if paired:
-#             indata2 = open(fastq[1])            
-
-#     grabchunk1 = itertools.izip(*[indata1]*optim)
-#     if paired:
-#         grabchunk2 = itertools.izip(*[indata2]*optim)    
-
-#     ## read in data optim lines at a time and write to temp files
-#     done = 0
-#     chunks1 = []
-#     chunks2 = []
-#     chunk2 = None
-
-#     #submitted_args = []
-#     while not done:
-#         try:
-#             chunk1 = grabchunk1.next()
-#             if paired:
-#                 chunk2 = grabchunk2.next()
-
-#         except StopIteration:
-#             chunk1 = indata1
-#             if paired:
-#                 chunk2 = indata2
-#             done = 1
-
-#         chk1, chk2 = maketempfiles(data, chunk1, chunk2)
-#         chunks1.append(chk1)
-#         chunks2.append(chk2)        
-#         #submitted_args.append([data, chunk1, chunk2])
-
-#     ## parallelize
-#     #dview = ipyclient.load_balanced_view()
-#     #res = dview.map_async(maketempfiles, submitted_args)
-#     #res.get()
-#     #del dview
-
-#     #for result in res:
-#     #    chunks1.append(result[0])
-#     #    chunks2.append(result[1])
-
-#     ## cleanup
-#     indata1.close()
-#     if paired:
-#         indata2.close()
-
-#     ## return as a pickle
-#     pickout = open(os.path.join(
-#                       data.dirs.fastqs, 
-#                       "chunks_"+str(num)+".pickle"), "wb")
-#     pickle.dump([fastq[0], zip(chunks1, chunks2)], pickout)
-#     pickout.close()
-
-
-# def parallel_chunker2(data, raws):
-#     """ breaks files into chunks and returns chunk names. If data are in 
-#     multiple files then each is split using a separate processor. """
-#     datatuples = []
-#     for num, rawtuple in enumerate(list(raws)):
-#         args = [data, rawtuple, num, 0]
-#         raws, chunks = zcat_make_temps(args)
-#         datatuples.append((raws, chunks))
-#     return datatuples
-
-
-
 def parallel_chunker(data, raws, ipyclient):
     """ iterate over raw data files and split into N pieces. This is 
     parallelized across N files, so works faster if there are multiple input 
@@ -327,21 +237,9 @@ def parallel_chunker(data, raws, ipyclient):
     ## call to ipp
     lbview = ipyclient.load_balanced_view()
     results = lbview.map_async(zcat_make_temps, submitted_args)
-
-    try:
-        datatuples = results.get()
-    except (AttributeError, TypeError):
-        for key in ipyclient.history:
-            if ipyclient.metadata[key].error:
-                LOGGER.error("step1 chunking error: %s", 
-                    ipyclient.metadata[key].error)
-                raise SystemExit("step1 chunking error.\n({})."\
-                                 .format(ipyclient.metadata[key].error))
-            if ipyclient.metadata[key].stdout:
-                LOGGER.error("step1 chunking stdout:%s", 
-                    ipyclient.metadata[key].stdout)
-                raise SystemExit("step3 chunking error.")
+    datatuples = results.get()
     del lbview
+
     return datatuples
 
 
@@ -358,38 +256,9 @@ def parallel_sorter(data, rawtups, chunks, cutter, longbar, filenum, ipyclient):
                                longbar, chunknum, filenum])
         chunknum += 1
 
-    ## first launch of ipyclient
-    def launch():
-        """ launch ipyclient, and return threading value """
-        lbview = ipyclient.load_balanced_view()
-        return lbview
-
-    ## launch within try statement in case engines aren't ready yet
-    ## and try 30 one second sleep/wait cycles before giving up on engines
-    tries = 30
-    while tries:
-        try:
-            lbview = launch()
-            tries = 0
-        except ipp.NoEnginesRegistered:
-            time.sleep(1)
-            tries -= 1
-
-    ## uses all available processors
+    lbview = ipyclient.load_balanced_view()
     results = lbview.map_async(barmatch, submitted_args)
-    try:
-        results.get()
-    except (AttributeError, TypeError):
-        for key in ipyclient.history:
-            if ipyclient.metadata[key].error:
-                LOGGER.error("step3 readmapping error: %s", 
-                    ipyclient.metadata[key].error)
-                raise SystemExit("step3 readmapping error.\n({})."\
-                                 .format(ipyclient.metadata[key].error))
-            if ipyclient.metadata[key].stdout:
-                LOGGER.error("step3 readmapping stdout:%s", 
-                    ipyclient.metadata[key].stdout)
-                raise SystemExit("step3 readmapping error.")
+    results.get()
     del lbview
  
 
@@ -401,40 +270,9 @@ def parallel_collate(data, ipyclient):
     for samplename in data.barcodes.keys():
         submitted_args.append([data, samplename])
 
-    ## uses all available processors
-    def launch():
-        """ launch ipyclient, and return threading value """
-        lbview = ipyclient.load_balanced_view()
-        return lbview
-
-    ## launch within try statement in case engines aren't ready yet
-    ## and try 30 one second sleep/wait cycles before giving up on engines
-    tries = 30
-    while tries:
-        try:
-            lbview = launch()
-            tries = 0
-        except ipp.NoEnginesRegistered:
-            time.sleep(1)
-            tries -= 1
-
+    lbview = ipyclient.load_balanced_view()
     results = lbview.map_async(collate_tmps, submitted_args)
-    try:
-        results.get()
-    except (AttributeError, TypeError):
-        for key in ipyclient.history:
-            if ipyclient.metadata[key].error:
-                LOGGER.error("step1 tmp splitting error: %s", 
-                    ipyclient.metadata[key].error)
-                raise SystemExit("step1 tmp splitting error.\n({})."\
-                                 .format(ipyclient.metadata[key].error))
-            if ipyclient.metadata[key].stdout:
-                LOGGER.error("step1 tmp splitting stdout:%s", 
-                    ipyclient.metadata[key].stdout)
-                raise SystemExit("step1 tmp splitting error.")
-
-        LOGGER.error(ipyclient.metadata)
-        sys.exit("")
+    results.get()
     del lbview
 
 
@@ -446,8 +284,8 @@ def collate_tmps(args):
 
     ## nproc len list of chunks
     combs = glob.glob(os.path.join(
-                      data.dirs.fastqs, "tmp_"+name)+"_R1_*.gz")
-    combs.sort(key=lambda x: int(x.split("_")[-1].replace(".gz", "")[0]))
+                      data.dirs.fastqs, "tmp_"+name)+"_R1_*")
+    combs.sort(key=lambda x: int(x.split("_")[-1][0]))
 
     ## one outfile to write to
     handle_r1 = os.path.join(data.dirs.fastqs, name+"_R1_.fastq.gz")
