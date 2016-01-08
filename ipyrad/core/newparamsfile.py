@@ -9,16 +9,18 @@ def write_params(version):
     """ write default parameter settings to file params.txt. """
     paramstr = \
 """------ ipyrad params file (v.{}) ---------------------------------------
+test                       ## [{}] Assembly name (unique prefix for file names)
 ./                         ## [{}] Working dir (made in curdir if not present)
-test                       ## [{}] Assembly name (prefix name for outputs)
-./*.fastq.gz               ## [{}] Location of raw non-demultiplexed fastq files
-./*_barcodes.txt           ## [{}] Location of barcodes file
+./null_*.fastq.gz          ## [{}] Location of raw non-demultiplexed fastq files
+./null_barcodes.txt        ## [{}] Location of barcodes file
                            ## [{}] Location of demultiplexed/sorted fastq files
-(TGCAG,)                   ## [{}] Restriction overhang (cut1) or (cut1, cut2)
-5                          ## [{}] max low quality base calls (Q<20) in a read
+                           ## [{}] Location of reference genome file
+denovo                     ## [{}] Assembly method (denovo, ref., hyb., subref.)
+rad                        ## [{}] Datatype (see docs): rad, gbs, ddrad, etc.
+(TGCAG,)                   ## [{}] Restriction overhang (cut1,) or (cut1, cut2)
+5                          ## [{}] Max low quality base calls (Q<20) in a read
 6                          ## [{}] Mindepth for statistical base calls
 6                          ## [{}] Mindepth for majority rule base calls
-rad                        ## [{}] datatype (see docs): rad, gbs, ddrad, etc.
 0.85                       ## [{}] clustering threshold for de novo assembly
 4                          ## [{}] min number of Samples with data at a locus
 .25                        ## [{}] max number/prop Samples heterozyg. at a site
@@ -33,8 +35,6 @@ rad                        ## [{}] datatype (see docs): rad, gbs, ddrad, etc.
 (100,100)                  ## [{}] maxSNPs in a locus (R1, R2)
 (5,100)                    ## [{}] maxIndels in a locus (R1, R2)
 (1,2,2,1)                  ## [{}] trim overhang (see docs) (R1>, <R1, R2>, <R2)
-denovo                     ## [{}] clustering method (denovo, reference, hybrid)
-                           ## [{}] reference genome file
 (0,0)                      ## [{}] edit cut-sites (R1, R2) (see docs)
 lpn                        ## [{}] output formats (see docs)
 ------ optional: list group/clade assignments below this line (see docs) ---
