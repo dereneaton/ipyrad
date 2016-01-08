@@ -1,7 +1,10 @@
 #!/usr/bin/env python2.7
 
 from setuptools import setup, find_packages
+import subprocess
+import fileinput
 import glob
+import os
 import re
 
 requirements = [
@@ -21,18 +24,36 @@ requirements = [
     'h5py'
     ]
 
-#import ipyrad
-#version=ipyrad.__version__,
-    
+## Auto-update ipyrad version from git repo tag
+
+# Fetch version from git tags, and write to version.py.
+# Also, when git is not available (PyPi package), use stored version.py.
+initfile = "ipyrad/__init__.py"
+
+# If git is available and working pull version from github, else read from ipyrad/__init__.py
+try:
+    version_git = subprocess.check_output(["git", "describe"]).rstrip()
+except:
+    version_git = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+        open(initfile, "r").read(), 
+        re.M).group(1)
+
+# Write version to ipyrad/__init__.py
+for line in fileinput.input(initfile, inplace=1):
+        if "__version__" in line:
+            line = "__version__ = \""+version_git+"\""    
+        print(line.strip("\n"))
+
 setup(
     name="ipyrad",
 
-    version=re.search(
-       r"^__version__ = ['\"]([^'\"]*)['\"]",
-           open(
-               "ipyrad/__init__.py",
-               "r").read(),
-       re.M).group(1),
+    version = version_git,
+#    version=re.search(
+#       r"^__version__ = ['\"]([^'\"]*)['\"]",
+#           open(
+#               "ipyrad/__init__.py",
+#               "r").read(),
+#       re.M).group(1),
 
     url="https://github.com/dereneaton/ipyrad",
 
