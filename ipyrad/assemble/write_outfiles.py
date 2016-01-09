@@ -1,6 +1,13 @@
 #!/usr/bin/env python2.7
 
-""" Apply filters and write output files """
+""" Apply filters and write output files. The basic body plan of this
+code is as follows:
+  * Read in the final aligned clusters file
+  * Make sizeable chunks of loci
+  * Distribute these chunks to parallel filters
+  * Combine output of parallel filters into final loci file
+  * Write out the output in full vcf format
+"""
 
 from __future__ import print_function
 
@@ -118,6 +125,12 @@ def filter_stacks(data, samples, fname):
     """ Filter one chunk of stacks and write out .tmp vcf/loci files
     This function runs in parallel, reads in a chunk of the stacks of reads,
     applies user specified filters, and writes out a tmp vcf style file of the results.
+
+    The design of the filtering steps intentionally sacrifices some performance
+    for an increase in readability, and extensibility. Calling multiple filter
+    functions ends up running through the sequences per stack several times, 
+    but I felt this design made more sense, and also will easily allow us to
+    add more filters in the future.
     """
 
     ## Read in chunk file
@@ -133,16 +146,39 @@ def filter_stacks(data, samples, fname):
     loci = filter_maxindels(data, loci)
 
     ## Write out .tmp vcf
+    print("wat. do stuff")
 
 def filter_excludes(data, loci):
     """ Remove excludes and outgroups
     """
+    ## Get all the samples to exclude
+    excludes = data.paramsdict["excludes"] + data.paramsdict["outgroups"]
+
+    for i, loc in enumerate(loci):
+        ## Iterate over each individual/sequence in this locus
+        seq = itertools.izip(*[iter(loc.split())]*2)
+
+        ## Locus names are of the form "samplename_4532", so we split on the
+        ## underscore and filter any elements in the excludes list
+        loci[i] = filter(lambda x: x[0].split("_")[0] not in excludes, seq)
+
+    return loci
 
 def filter_minsamp(data, loci):
     """ Filter minimum # of samples per locus
     """
-    # data.paramsdict["minsamp"]
+    ## TODO: Do we want to keep track of the number of filtered? How much
+    ## info about filtered loci do we want?
+    minsamp = data.paramsdict["minsamp"]
+    
+    for i, loc in enumerate(loci):
+        seq = itertools.izip(*[iter(loc.split())]*2)
+        nseqs = sum(1 for _ in seq)
+        if minsamp < nseqs:
+            loci[i] = []
 
+    ## Filter out the empty lists left in the wake
+    loci = filter(lambda x: x != [], loci)
     return loci
 
 def filter_maxSNP(data, loci):
