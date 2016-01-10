@@ -861,11 +861,16 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        if os.path.exists(self.dirs.outfiles) and not force:
-            print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
-                format( self.dirs.outfiles ) )
-            print( "  Step 7: rerun with `force=True` to overwrite" )
-            sys.exit()
+        if not force:
+            try:
+                if os.path.exists(self.dirs.outfiles):
+                    print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
+                    format( self.dirs.outfiles ) )
+                    print( "  Step 7: rerun with `force=True` to overwrite" )
+                    sys.exit()
+            except AttributeError as e:
+                ## If not force and directory doesn't exist then nbd.
+                pass
 
         assemble.write_outfiles.run(self, samples, force, ipyclient)
 
