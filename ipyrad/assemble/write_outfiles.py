@@ -11,7 +11,11 @@ code is as follows:
 
 from __future__ import print_function
 
+import numpy as np
+import itertools
+import tempfile
 import h5py
+import gzip
 import os
 from ipyrad.file_conversion import *
 
@@ -46,7 +50,7 @@ def run(data, samples, force, ipyclient):
 
     LOGGER.info("Applying filters")
     ## Apply filters to supercatg and superhdf5 and write vcf
-    filter_all_clusters( data, samples, ipyclient )
+    filter_all_clusters(data, samples, ipyclient)
 
     LOGGER.info("Make .loci from filtered .vcf")
     ## Make .loci from the filtered vcf
@@ -57,7 +61,8 @@ def run(data, samples, force, ipyclient):
     make_outfiles(data, samples, force)
 
 
-def filter_all_clusters( data, samples, ipyclient ):
+
+def filter_all_clusters(data, samples, ipyclient):
     """ Read in the catclust.gz aligned clusters and the HDF5 supercatg
     database. Run through and filter each cluster
 
@@ -153,7 +158,7 @@ def filter_stacks(data, samples, fname):
     ## Write out .tmp vcf
     print("wat. do stuff")
 
-    
+
 
 def filter_excludes(data, loci):
     """ Remove excludes and outgroups
@@ -170,6 +175,8 @@ def filter_excludes(data, loci):
         loci[i] = filter(lambda x: x[0].split("_")[0] not in excludes, seq)
 
     return loci
+
+
 
 def filter_minsamp(data, loci):
     """ Filter minimum # of samples per locus
@@ -188,12 +195,16 @@ def filter_minsamp(data, loci):
     loci = filter(lambda x: x != [], loci)
     return loci
 
+
+
 def filter_maxSNP(data, loci):
     """ Filter max # of SNPs per locus
     """
     # data.paramsdict["max_SNPs_locus"]
 
     return loci
+
+
 
 def filter_maxhet(data, loci):
     """ Filter max shared heterozygosity per locus
@@ -209,6 +220,7 @@ def filter_maxindels(data, loci):
     # data.paramsdict["max_Indels_locus"]
 
     return loci
+
 
 
 def loci_from_unfilteredvcf(data, samples, force):
