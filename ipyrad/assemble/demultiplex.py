@@ -36,7 +36,6 @@ def combinefiles(filepath):
 
 def matching(barcode, data):
     "allows for N base difference between barcodes"
-    LOGGER.debug("in matching")
     match = 0
     for name, realbar in data.barcodes.items():
         if len(barcode) == len(realbar):
@@ -49,7 +48,7 @@ def matching(barcode, data):
 
 def findbcode(cut, longbar, read1):
     """ find barcode sequence in the beginning of read """
-    LOGGER.debug("in findbcode. cut %s, longbar %s", cut, longbar)
+    #LOGGER.debug("in findbcode. cut %s, longbar %s", cut, longbar)
     ## default barcode string
     search = read1[1][:int(longbar[0]+len(cut)+1)]
     countcuts = search.count(cut)
@@ -345,7 +344,7 @@ def collate_tmps(args):
 
 def prechecks(data):
     """ todo before starting analysis """
-    ## check for data
+    ## check for data, do glob for fuzzy matching
     assert glob.glob(data.paramsdict["raw_fastq_path"]), \
         "No data found in {}. Fix path to data files".\
         format(data.paramsdict["raw_fastq_path"])
@@ -365,7 +364,7 @@ def prechecks(data):
     if not os.path.exists(data.dirs.fastqs):
         os.mkdir(data.dirs.fastqs)
 
-    ## if leftover tmp files, remove
+    ## insure no leftover tmp files from a previous run (there shouldn't be)
     oldtmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
     for oldtmp in oldtmps:
         os.remove(oldtmp)
@@ -376,12 +375,15 @@ def prechecks(data):
     else:
         raws = zip(glob.glob(data.paramsdict["raw_fastq_path"]), iter(int, 1))
 
-    ## make list of all perfect matching cut sites
-    cut1, _ = [ambigcutters(i) for i in \
-                   data.paramsdict["restriction_overhang"]][0]
-    assert cut1, "Must have a restriction overhang entered for demultiplexing."
+    ## returns a list of both resolutions of cut site 1
+    ## (TGCAG, ) ==> [TGCAG, ]
+    ## (TWGC, ) ==> [TAGC, TTGC]
+    ## (TWGC, AATT) ==> [TAGC, TTGC]
+    cutters = [ambigcutters(i) for i in \
+               data.paramsdict["restriction_overhang"]][0]
+    assert cutters, "Must have a `restriction_overhang` for demultiplexing."
 
-    return raws, longbar, cut1
+    return raws, longbar, cutters
 
 
 
@@ -509,7 +511,7 @@ def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
-    raws, longbar, cut1 = prechecks(data)
+    raws, longbar, cutters = prechecks(data)
 
     ## nested structure to prevent abandoned temp files
     try: 
@@ -524,13 +526,13 @@ def run(data, preview, ipyclient):
 
         filenum = 0            
         for rawfilename, chunks in datatuples:
-            for cutter in cut1:
+            for cutter in cutters:
                 if cutter:     
                     ## sort chunks for this list     
                     parallel_sorter(data, rawfilename, chunks, cutter,
                                     longbar, filenum, ipyclient)
             filenum += 1
-            ## TODO: combine tmps for ambiguous cuts
+            ## TODO: combine tmps when there are two cutters
             ## ...
         ## collate tmps back into one file
         parallel_collate(data, ipyclient)
@@ -540,7 +542,7 @@ def run(data, preview, ipyclient):
     finally:
         ## cleans up chunk files and stats pickles
         tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "chunk*"))        
-        tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.gz"))
+        tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*"))
         tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
         if tmpfiles:
             for tmpfile in tmpfiles:
