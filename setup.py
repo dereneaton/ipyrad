@@ -12,7 +12,7 @@ requirements = [
     'dill>0.2',
     'sphinx',
     'cython',
-    'ipython==4.0.0',
+    'ipython>=4.0.0',
     'ipyparallel',
     'ipykernel>=4.1',
     'jupyter',
