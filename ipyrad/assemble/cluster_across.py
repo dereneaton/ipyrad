@@ -6,6 +6,7 @@
 from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=E1103
+# pylint: disable=W0212
 
 import os
 import sys
@@ -24,6 +25,20 @@ from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
+
+def cleanup(data, samples):
+    """ link results to Samples and remove intermediate files """
+
+    ## save stats to Sample if successful
+    for sample in samples:
+        sample.stats.state = 6
+        ## save stats to data
+        data._stamp("step6 clustered "+sample.name)
+
+    ## link any file names to data that were made within Engines
+    ## ...
+
 
 
 def breakalleles(consensus):
@@ -546,6 +561,10 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## invarcats()
     ## invarcats()
+
+    ## clean up. Update Sample states. Record stats
+    LOGGER.info("cleaning up")
+    cleanup(data, samples)
 
 
 if __name__ == "__main__":
