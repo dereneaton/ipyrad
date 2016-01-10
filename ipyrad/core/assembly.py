@@ -1505,7 +1505,7 @@ def paramschecker(self, param, newvalue):
         ## TODO: Maybe do this, maybe not.
 
         self.paramsdict['excludes'] = excluded_individuals
-        self._stamp("[{}] set to {}".format(param, newvalue)
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'outgroups':
         outgroup_individuals = newvalue.replace(" ", "").split(',')
@@ -1517,7 +1517,7 @@ def paramschecker(self, param, newvalue):
         ## TODO: Maybe do this, maybe not.
 
         self.paramsdict['excludes'] = outgroup_individuals
-        self._stamp("[{}] set to {}".format(param, newvalue)
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     return self
 
