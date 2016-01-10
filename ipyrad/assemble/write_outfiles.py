@@ -22,7 +22,7 @@ def run(data, samples, force, ipyclient):
     """ Check all samples requested have been clustered (state=6), 
     make output directory, then create the requested outfiles.
     """
-    if any([i.stats.state <= 5 for i in samples]):
+    if any([i.stats.state <= 6 for i in samples]):
         print("  Step 7: Not all samples are aligned.")
         print("  Here are states for all the samples requested:")
         for i in samples:
@@ -117,13 +117,17 @@ def filter_all_clusters( data, samples, ipyclient ):
 def filter_stacks(data, samples, fname):
     """ Filter one chunk of stacks and write out .tmp vcf/loci files
     This function runs in parallel, reads in a chunk of the stacks of reads,
-    applies user specified filters, and writes out a tmp vcf style file of the results.
+    applies user specified filters, and writes out a tmp vcf style file of 
+    the results.
     """
 
     ## Read in chunk file
     try:
         with open(fname) as infile:
             loci = infile.read().split("//\n//\n")
+
+    finally:
+        pass
 
     ## Apply various filters
     loci = filter_excludes(data, loci)
