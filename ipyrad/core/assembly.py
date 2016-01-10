@@ -177,6 +177,8 @@ class Assembly(object):
                        ("trim_overhang", (1, 2, 2, 1)),                        
                        ("output_formats", "*"),
                        ("pop_assign_file", ""),
+                       ("excludes",""),
+                       ("outgroups",""),
         ])
 
         ## Default hackers only parameters dictionary
@@ -859,11 +861,16 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        if os.path.exists(self.dirs.outfiles) and not force:
-            print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
-                format( self.dirs.outfiles ) )
-            print( "  Step 7: rerun with `force=True` to overwrite" )
-            sys.exit()
+        if not force:
+            try:
+                if os.path.exists(self.dirs.outfiles):
+                    print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
+                    format( self.dirs.outfiles ) )
+                    print( "  Step 7: rerun with `force=True` to overwrite" )
+                    sys.exit()
+            except AttributeError as e:
+                ## If not force and directory doesn't exist then nbd.
+                pass
 
         assemble.write_outfiles.run(self, samples, force, ipyclient)
 
@@ -1492,6 +1499,30 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['pop_assign_file'] = fullpoppath
         self.link_populations( )
         self._stamp("[{}] set to {}".format(param,fullpoppath))
+
+    elif param == 'excludes':
+        excluded_individuals = newvalue.replace(" ", "").split(',')
+
+        ## Test if the individuals requested for exclusion actually
+        ## exist in sample list? I hate implicit failure, but it could
+        ## be tricky to handle the case where people set excludes before
+        ## they run step1?
+        ## TODO: Maybe do this, maybe not.
+
+        self.paramsdict['excludes'] = excluded_individuals
+        self._stamp("[{}] set to {}".format(param, newvalue))
+
+    elif param == 'outgroups':
+        outgroup_individuals = newvalue.replace(" ", "").split(',')
+
+        ## Test if the outgroup individuals actually
+        ## exist in sample list? I hate implicit failure, but it could
+        ## be tricky to handle the case where people set excludes before
+        ## they run step1?
+        ## TODO: Maybe do this, maybe not.
+
+        self.paramsdict['excludes'] = outgroup_individuals
+        self._stamp("[{}] set to {}".format(param, newvalue))
 
     return self
 

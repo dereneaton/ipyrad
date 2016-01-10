@@ -345,6 +345,10 @@ def build_catg_file(data, samples):
     for handle in h5handles:
         os.remove(handle)
 
+    for sample in samples:
+        sample.stats.state = 6
+        ## save stats to data
+        data._stamp("s6 clustered across "+sample.name)
 
 
 def singlecat(data, sample):
