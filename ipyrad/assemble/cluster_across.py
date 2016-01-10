@@ -27,19 +27,6 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
-def cleanup(data, samples):
-    """ link results to Samples and remove intermediate files """
-
-    ## save stats to Sample if successful
-    for sample in samples:
-        sample.stats.state = 6
-        ## save stats to data
-        data._stamp("step6 clustered "+sample.name)
-
-    ## link any file names to data that were made within Engines
-    ## ...
-
-
 
 def breakalleles(consensus):
     """ break ambiguity code consensus seqs into two alleles """
@@ -110,7 +97,8 @@ def muscle_align_across(args):
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")[:-1]
     out = []
-    ## array to store indel information
+
+    ## array to store indel information (not being used yet!)
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
         maxlen *= 2
@@ -132,7 +120,8 @@ def muscle_align_across(args):
             if names:
                 stack = [names[0]+"\n"+seqs[0]]
         else:
-            ## split seqs if paired end seqs
+            ## split seqs before align if PE. If 'ssss' not found (single end 
+            ## or merged reads) then `except` will pass it to SE alignment. 
             try:
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
@@ -206,7 +195,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         nloci = 1000
         maxlen = data._hackersonly["max_fragment_length"]
         if 'pair' in data.paramsdict["datatype"]:
-            maxlen*=2
+            maxlen *= 2
 
         ioh5 = h5py.File(os.path.join(
                             data.dirs.consens, data.name+".indels"), 'w')
@@ -565,10 +554,6 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## invarcats()
     ## invarcats()
-
-    ## clean up. Update Sample states. Record stats
-    LOGGER.info("cleaning up")
-    cleanup(data, samples)
 
 
 if __name__ == "__main__":
