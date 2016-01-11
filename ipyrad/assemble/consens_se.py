@@ -267,19 +267,19 @@ def consensus(args):
                                 counters["name"] += 1
                                 counters["nconsens"] += 1                                
                             else:
-                                LOGGER.debug("@shortmaxn")
+                                #LOGGER.debug("@shortmaxn")
                                 filters['maxn'] += 1
                         else:
-                            LOGGER.debug("@maxn")
+                            #LOGGER.debug("@maxn")
                             filters['maxn'] += 1
                     else:
-                        LOGGER.debug("@haplo")
+                        #LOGGER.debug("@haplo")
                         filters['haplos'] += 1
                 else:
-                    LOGGER.debug("@hetero")
+                    #LOGGER.debug("@hetero")
                     filters['hetero'] += 1
             else:
-                LOGGER.debug("@depth")
+                #LOGGER.debug("@depth")
                 filters['depth'] += 1
 
     clusters.close()
