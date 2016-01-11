@@ -17,7 +17,7 @@ for line in fileinput.input(initfile, inplace=1):
         if "__version__" in line:
             line = "__version__ = \""+version_git+"\""
         print(line.strip("\n"))
-        elif: "__loglevel__" in line:
+        elif "__loglevel__" in line:
             line = "__loglevel__ = \"ERROR\""
 try:
     subprocess.call(["git", "add", initfile])
