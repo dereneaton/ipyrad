@@ -17,8 +17,10 @@ for line in fileinput.input(initfile, inplace=1):
         if "__version__" in line:
             line = "__version__ = \""+version_git+"\""
         print(line.strip("\n"))
-        elif "__loglevel__" in line:
+        
+        if "__loglevel__" in line:
             line = "__loglevel__ = \"ERROR\""
+        print(line.strip("\n"))
 try:
     subprocess.call(["git", "add", initfile])
     subprocess.call(["git", "commit", "-m \"Updating ipyrad/__init__.py to "+\
