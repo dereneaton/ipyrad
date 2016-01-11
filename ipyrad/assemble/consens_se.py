@@ -349,13 +349,13 @@ def nfilter3(data, consens, heteros, seqs, reps):
     # LOGGER.info('%s alleles', len(counted.keys()))
 
     ## how many high depth alleles?
-    if nalleles > data.paramsdict["ploidy"]:
+    if nalleles > data.paramsdict["max_alleles_consens"]:
         return consens, 0
     else:
         ## if diploid try to get two alleles and return consens with
         ## lower upper and lower casing to save phased info
         try:
-            if (nalleles > 1) and (data.paramsdict["ploidy"] == 2):
+            if (nalleles > 1) and (data.paramsdict["max_alleles_consens"] == 2):
                 consens = findalleles(consens, heteros, counted)
         except IndexError as inst:
             LOGGER.error("nfilter3 error again: %s", inst)
@@ -702,13 +702,14 @@ def run(data, samples, force, ipyclient):
             sample.stats.error_est = 0.0001
 
     if data._headers:
-        if data.paramsdict["ploidy"] == 1:
+        if data.paramsdict["max_alleles_consens"] == 1:
             print("    Haploid base calls and paralog filter (max haplos = 1)")
-        elif data.paramsdict["ploidy"] == 2:
+        elif data.paramsdict["max_alleles_consens"] == 2:
             print("    Diploid base calls and paralog filter (max haplos = 2)")
-        elif data.paramsdict["ploidy"] > 2:
+        elif data.paramsdict["max_alleles_consens"] > 2:
             print("    Diploid base calls and no paralog filter "\
-                    "(max haplos = {})".format(data.paramsdict["ploidy"]))
+                    "(max haplos = {})".\
+                    format(data.paramsdict["max_alleles_consens"]))
         print("    error rate (mean, std):  " \
                  +"{:.5f}, ".format(data.stats.error_est.mean()) \
                  +"{:.5f}\n".format(data.stats.error_est.std()) \

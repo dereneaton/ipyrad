@@ -16,6 +16,7 @@ import sys
 import gzip
 import dill
 import copy
+import itertools
 import subprocess
 import pandas as pd
 import ipyparallel as ipp
@@ -125,11 +126,11 @@ class Assembly(object):
         ## samples linked 
         self.samples = ObjDict()
 
+        ## samples linked 
+        self.populations = ObjDict()
+
         ## multiplex files linked
         self.barcodes = ObjDict()
-
-        ## population assignments
-        self.populations = ObjDict()
 
         ## outfiles locations
         self.outfiles = ObjDict()
@@ -163,22 +164,22 @@ class Assembly(object):
                        ("mindepth_majrule", 6), 
                        ("maxdepth", 1000),
                        ("clust_threshold", .85),
-                       ("minsamp", 4), 
-                       ("max_shared_heterozygosity", .25), 
                        ("max_barcode_mismatch", 1),
                        ("filter_adapters", 0), 
                        ("filter_min_trim_len", 35), 
-                       ("ploidy", 2), 
+                       ("max_alleles_consens", 2), 
                        ("max_Ns_consens", (5, 5)), 
                        ("max_Hs_consens", (8, 8)), 
+                       ("min_samples_locus", 4), 
                        ("max_SNPs_locus", (100, 100)), 
                        ("max_Indels_locus", (5, 99)), 
+                       ("max_shared_Hs_locus", .25), 
                        ("edit_cutsites", (0, 0)),
                        ("trim_overhang", (1, 2, 2, 1)),                        
                        ("output_formats", "*"),
                        ("pop_assign_file", ""),
-                       ("excludes",""),
-                       ("outgroups",""),
+                       ("excludes", ""),
+                       ("outgroups", ""),
         ])
 
         ## Default hackers only parameters dictionary
@@ -214,7 +215,6 @@ class Assembly(object):
         return pd.DataFrame([self.samples[i].files for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
-
                       
     def _stamp(self, event):
         """ Stamps an event into the log history. """
@@ -225,13 +225,14 @@ class Assembly(object):
 
     def link_fastqs(self, path=None, merged=False, force=False, append=False):
         """ Create Sample objects from demultiplexed fastq files in 
-        sorted_fastq_path, or append additional fastq files to existing Samples.
+        sorted_fastq_path, or append additional fastq files to 
+        existing Samples.
 
         Note
         ----
         link_fastqs() is called automatically during step2() if no Samples
         are yet present in the Assembly object (data were not demultiplexed
-        in step1().) It looks for demultiplexed data files located in the
+        in step1(). It looks for demultiplexed data files located in the
         `sorted_fastq_path`.
 
         Parameters
@@ -411,8 +412,14 @@ class Assembly(object):
 
     def link_barcodes(self):
         """ 
-        Saves Sample barcodes in a dictionary at [Assembly].barcodes. Barcodes
-        are parsed from the file in `barcodes_path`."""
+        Saves Sample barcodes in a dictionary as [Assembly].barcodes. Barcodes
+        are parsed from the file `barcodes_path`.
+
+        Note
+        ----
+        [Assembly].link_barcodes() is run automatically during step1.
+
+        """
         ## in case fuzzy selected
         try: 
             barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
@@ -432,41 +439,68 @@ class Assembly(object):
 
 
 
-    def link_populations(self):
-        """ Creates self.populations object to save mappings of individuals to 
-        populations/sites. This is used for heirarchical clustering, for 
-        generating summary stats and for outputing some file types (.treemix 
-        for example). Internally stores a dictionary. File is read in as a 
-        parameter from self.paramsdict["pop_assign_file"]. The format of the 
-        dictionary is { pop1: [ind1, ind2, ind3], pop2: [ind4, ind5]}. The 
-        format of the infile is space separated pairs:
+    def link_populations(self, popdict=None):
+        """ 
+        Creates self.populations dictionary to save mappings of individuals to 
+        populations/sites, and checks that individual names match with Samples.  
+        Population assigments are used for heirarchical clustering, for 
+        generating summary stats, and for outputing some file types (.treemix 
+        for example). Internally stored as a dictionary. 
+
+        Note
+        ----
+        By default a File is read in from `pop_assign_file` with one individual
+        per line and space separated pairs of ind pop:
+
             ind1 pop1
             ind2 pop2
             ind3 pop3
             etc... 
+
+        Parameters
+        ----------
+        popdict : dict
+            When using the API it may be easier to simply create a dictionary 
+            to pass in as an argument instead of reading from an input file. 
+            This can be done with the `popdict` argument like below:
+
+            pops = {pop1: [ind1, ind2, ind3], pop2: [ind4, ind5]}
+            [Assembly].link_populations(popdict=pops).
+
+
         """
-        try:
+        if not popdict:
+            ## glob it in case of fuzzy matching
             popfile = glob.glob(self.paramsdict["pop_assign_file"])[0]
-        except IndexError:
-            LOGGER.error("Population assignment file not found: {}"\
-                         .format(self.paramsdict["pop_assign_file"]))
+            if not os.path.exists(popfile):
+                raise IPyradError("Population assignment file not found: {}"\
+                                  .format(self.paramsdict["pop_assign_file"]))
 
-        ## parse populations file
-        try:
-            popdat = pd.read_csv(popfile, header=None, delim_whitespace=1)
-            
-            ## Get a set of all unique population names
-            pops = set(popdat[1])
+            ## parse populations file
+            try:
+                popdat = pd.read_csv(popfile, header=None, 
+                                              delim_whitespace=1,
+                                              names=["inds", "pops"])
+                popdict = {key: group.inds.values.tolist() for key, group in \
+                                                        popdat.groupby("pops")}
+            except ValueError:
+                LOGGER.warn("Populations file may be malformed.")
+                raise IPyradError("Populations file malformed - {}"\
+                                  .format(popfile))
+        else:
+            ## pop dict is provided by user
+            pass
 
-            ## This seems like a stupid way to do this. 
-            tmpdict = dict(zip(popdat[0], popdat[1]))
-            for pop in pops:
-                self.populations[pop] = [name for name, population in \
-                                         tmpdict.items() if population == pop]
+        ## filter for bad samples
+        badsamples = [i for i in itertools.chain(*popdict.values()) \
+                      if i not in self.samples]
+        if any(badsamples):
+            raise IPyradError(\
+                "Names from population input do not match Sample names: ".\
+                format(", ".join(badsamples)))
 
-        except ValueError:
-            LOGGER.warn("Populations file may be malformed.")
-            raise IPyradError("Populations file malformed - {}".format(popfile))
+        ## return dict
+        self.populations = popdict
 
 
 
@@ -526,7 +560,7 @@ class Assembly(object):
 
         ## param 13 can be an int or a float:
         [Assembly].set_params(13, 4)
-        [Assembly].set_params('max_shared_heterozygosity', 0.25)
+        [Assembly].set_params('max_shared_H_locus', 0.25)
             
         """
 
@@ -619,8 +653,6 @@ class Assembly(object):
                     if tries != inittries:                        
                         ## get initial number of ids
                         ## ugly hack to find all engines while they're spinng up
-                        ## waiting on ipython members to answer my question 
-                        ## about better ways to do this...
                         initid = ipyclient.ids
                         if len(initid) > 10:
                             LOGGER.warn("waiting 3 seconds to find Engines")
@@ -646,7 +678,7 @@ class Assembly(object):
                 except AssertionError as _: 
                     LOGGER.debug('connected to %s engines', len(ipyclient.ids))
                     raise
-            except (IOError, ipp.NoEnginesRegistered, AssertionError):
+            except (IOError, ipp.NoEnginesRegistered, AssertionError) as _:
                 time.sleep(1)
                 tries -= 1
         raise ipp.NoEnginesRegistered
@@ -661,12 +693,13 @@ class Assembly(object):
                 args.append(ipyclient)
                 stepfunc(*args)
 
-        except ipp.NoEnginesRegistered:
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered):
             ## maybe different messages depending on whether it is CLI or API
             inst = """
-        Error: check to make sure ipcluster is running. When using the API 
-        you must run `ipcluster start` outside of IPython/Jupyter to launch
-        parallel engines. (See Docs)
+        Check to that ipcluster is running. When using the API you must start
+        ipcluster outside of IPython/Jupyter to launch parallel engines using
+        either `ipcluster start`, or in the Clusters tab in a Jupyter notebook.
+        (See Docs)
             """
             ## raise right away since there is no ipyclient to close
             raise IPyradError(inst)
@@ -702,10 +735,10 @@ class Assembly(object):
             ## can't close client if it was never open
             try:
                 ipyclient.close()
+                ## pickle the data obj
+                self._save()                
             except UnboundLocalError:
                 pass
-            ## pickle the data obj
-            self._save()
 
 
 
@@ -713,7 +746,8 @@ class Assembly(object):
     def _step1func(self, force, preview, ipyclient):
         """ testing"""
         msg1 = "  step1: Demultiplexing raw reads."
-        msg2 = "  step1: Linking fastq data to Samples."
+        msg2 = "  step1: Linking demultiplexed fastq data to Samples."
+
         ## if Samples already exist then no demultiplexing
         if self.samples:
             if not force:
@@ -725,19 +759,16 @@ class Assembly(object):
                     print(msg1)
                 assemble.demultiplex.run(self, preview, ipyclient)
                 self._stamp("s1_demultiplexing:")
+
         ## Creating new Samples
         else:
             ## first check if demultiplexed files exist in path
             if os.path.exists(self.paramsdict["sorted_fastq_path"]):
-                try:
-                    self.link_fastqs(path=os.path.join(
-                        self.paramsdict["sorted_fastq_path"], "*"))
-                    if self._headers:
-                        print(msg2, "\n  linking files from {}".\
+                self.link_fastqs(path=os.path.join(
+                    self.paramsdict["sorted_fastq_path"], "*"))
+                if self._headers:
+                    print(msg2, "\n  linking files from {}".\
                           format(self.paramsdict["sorted_fastq_path"]))
-                except AssertionError as _:
-                    print("failed to link fastqs")
-                    raise
             ## otherwise do the demultiplexing
             else:
                 if self._headers:
@@ -1398,14 +1429,6 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['clust_threshold'] = float(newvalue)
         self._stamp("[{}] set to {}".format(param, newvalue))
 
-    elif param == 'minsamp':
-        self.paramsdict['minsamp'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
-
-    elif param == 'max_shared_heterozygosity':
-        self.paramsdict['max_shared_heterozygosity'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
-
     elif param == 'max_barcode_mismatch':
         self.paramsdict['max_barcode_mismatch'] = int(newvalue)
         self._stamp("[{}] set to {}".format(param, newvalue))
@@ -1418,8 +1441,8 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['filter_min_trim_len'] = int(newvalue)
         self._stamp("[{}] set to {}".format(param, newvalue))
 
-    elif param == 'ploidy':
-        self.paramsdict['ploidy'] = int(newvalue)
+    elif param == 'max_alleles_consens':
+        self.paramsdict['max_alleles_consens'] = int(newvalue)
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Ns_consens':
@@ -1434,6 +1457,14 @@ def paramschecker(self, param, newvalue):
         assert isinstance(newvalue, tuple), \
         "max_Hs_consens should be a tuple e.g., (5, 5)"
         self.paramsdict['max_Hs_consens'] = newvalue
+        self._stamp("[{}] set to {}".format(param, newvalue))
+
+    elif param == 'min_samples_locus':
+        self.paramsdict['min_samples_locus'] = int(newvalue)
+        self._stamp("[{}] set to {}".format(param, newvalue))
+
+    elif param == 'max_shared_H_locus':
+        self.paramsdict['max_shared_H_locus'] = newvalue
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_SNPs_locus':

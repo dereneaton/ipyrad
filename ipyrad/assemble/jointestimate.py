@@ -182,7 +182,7 @@ def optim(args):
     del stacked
 
     ## if data are haploid fix H to 0
-    if data.paramsdict["ploidy"] == 1:
+    if data.paramsdict["max_alleles_consens"] == 1:
         starting_params = [0.001]
         hetero = 0.
         errors = scipy.optimize.fmin(
@@ -216,7 +216,7 @@ def run(data, samples, subsample, force, ipyclient):
     """ calls the main functions """
 
     # if haploid data
-    if data.paramsdict["ploidy"] == 1:
+    if data.paramsdict["max_alleles_consens"] == 1:
         print("Applying haploid-based test (infer E with H fixed to 0).")
 
     submitted_args = []

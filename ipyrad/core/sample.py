@@ -5,6 +5,7 @@
 import pandas as pd
 from ipyrad.assemble.worker import ObjDict
 
+# pylint: disable=C0103
 
 class Sample(object):
     """ ipyrad Sample object. Links to files associated
@@ -42,16 +43,39 @@ class Sample(object):
               "database": []
               })
 
+        ## step stats files (builds into data.statsfiles.sX)
+        self.s1 = ObjDict({"reads_raw": []})
+
+        self.s2 = ObjDict({"reads_raw": [],
+                           "filter_qscore": [],
+                           "filter_adapter": [],
+                           "reads_passed": []})
+
+        self.s3 = ObjDict({"reads_raw": [],
+                           "clusts_total": [],
+                           "clusts_hidepth": [],
+                           "avg.depth.tot": [],
+                           "avg.depth>mj": [],
+                           "avg.depth>stat": []}) 
+
+        self.s4 = ObjDict({"hetero_est": [],
+                           "error_est": []})
+
+        self.s5 = ObjDict({"nclusters": [],
+                           "depthfilter": [],
+                           "maxHfilter": [],
+                           "maxAllelefilter": [],
+                           "maxNfilter": [],
+                           "nconsens": [],
+                           "nsites": [],
+                           "nhetero": [],
+                           "heterozygosity": []})
+
+        self.s6 = ObjDict({})
+        self.s7 = ObjDict({})        
+
+        ## store cluster depth information (biggest memory cost)
         self.depths = []
-        ## store cluster depth information
-        #self.depths = ObjDict()
-        ## autogen mins from depth info in Assembly obj
-        #self.depths.mjmin = []
-        #self.depths.statmin = []                
-
-        ## assignments for hierarchical clustering
-        self.group = []
-
 
 
     #def __getstate__(self):

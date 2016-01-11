@@ -11,7 +11,11 @@ code is as follows:
 
 from __future__ import print_function
 
+import numpy as np
+import itertools
+import tempfile
 import h5py
+import gzip
 import os
 import gzip
 import tempfile
@@ -34,7 +38,7 @@ def run(data, samples, force, ipyclient):
     """ Check all samples requested have been clustered (state=6), 
     make output directory, then create the requested outfiles.
     """
-    if any([i.stats.state <= 5 for i in samples]):
+    if any([i.stats.state <= 6 for i in samples]):
         print("  Step 7: Not all samples are aligned.")
         print("  Here are states for all the samples requested:")
         for i in samples:
@@ -51,7 +55,7 @@ def run(data, samples, force, ipyclient):
 
     LOGGER.info("Applying filters")
     ## Apply filters to supercatg and superhdf5 and write vcf
-    filter_all_clusters( data, samples, ipyclient )
+    filter_all_clusters(data, samples, ipyclient)
 
     LOGGER.info("Make .loci from filtered .vcf")
     ## Make .loci from the filtered vcf
@@ -62,7 +66,8 @@ def run(data, samples, force, ipyclient):
     make_outfiles(data, samples, force)
 
 
-def filter_all_clusters( data, samples, ipyclient ):
+
+def filter_all_clusters(data, samples, ipyclient):
     """ Read in the catclust.gz aligned clusters and the HDF5 supercatg
     database. Run through and filter each cluster
 
@@ -141,7 +146,8 @@ def filter_all_clusters( data, samples, ipyclient ):
 def filter_stacks(args):
     """ Filter one chunk of stacks and write out .tmp vcf/loci files
     This function runs in parallel, reads in a chunk of the stacks of reads,
-    applies user specified filters, and writes out a tmp vcf style file of the results.
+    applies user specified filters, and writes out a tmp vcf style file of 
+    the results.
 
     The design of the filtering steps intentionally sacrifices some performance
     for an increase in readability, and extensibility. Calling multiple filter
@@ -187,12 +193,17 @@ def filter_stacks(args):
         ## Do something real here
         LOGGER.warn(e)
         raise
+    finally:
+        pass
 
     ## Write out .tmp loci
     write_tmp_loci(data, loci, fname)
 
+
     ## Write out .tmp vcf
     #write_tmp_vcf(data, loci, fname)
+
+
 
 def filter_excludes(data, loci):
     """ Remove excludes and outgroups
@@ -355,6 +366,7 @@ def filter_maxindels(data, loci):
 
     LOGGER.info("Filterered max indels- {}".format(count))
     return loci
+
 
 ## This isn't being used
 def loci_from_unfilteredvcf(data, samples, force):

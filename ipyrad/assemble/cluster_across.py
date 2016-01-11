@@ -6,6 +6,7 @@
 from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=E1103
+# pylint: disable=W0212
 
 import os
 import sys
@@ -24,6 +25,7 @@ from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
 
 
 def breakalleles(consensus):
@@ -95,7 +97,8 @@ def muscle_align_across(args):
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")[:-1]
     out = []
-    ## array to store indel information
+
+    ## array to store indel information (not being used yet!)
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
         maxlen *= 2
@@ -117,7 +120,8 @@ def muscle_align_across(args):
             if names:
                 stack = [names[0]+"\n"+seqs[0]]
         else:
-            ## split seqs if paired end seqs
+            ## split seqs before align if PE. If 'ssss' not found (single end 
+            ## or merged reads) then `except` will pass it to SE alignment. 
             try:
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
@@ -191,7 +195,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         nloci = 1000
         maxlen = data._hackersonly["max_fragment_length"]
         if 'pair' in data.paramsdict["datatype"]:
-            maxlen*=2
+            maxlen *= 2
 
         ioh5 = h5py.File(os.path.join(
                             data.dirs.consens, data.name+".indels"), 'w')

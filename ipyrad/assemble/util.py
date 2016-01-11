@@ -15,25 +15,28 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
+
+
+AMBIGS = {"R":("G", "A"),
+          "K":("G", "T"),
+          "S":("G", "C"),
+          "Y":("T", "C"),
+          "W":("T", "A"),
+          "M":("C", "A")}
+
+
 def ambigcutters(seq):
-    """ returns both resolutions of a cut site that has an ambiguous base in 
+    """ Returns both resolutions of a cut site that has an ambiguous base in 
     it, else the single cut site """
     resos = []
-    ambigs = {"R":("G", "A"),
-              "K":("G", "T"),
-              "S":("G", "C"),
-              "Y":("T", "C"),
-              "W":("T", "A"),
-              "M":("C", "A")}
     if any([i in list("RKSYWM") for i in seq]):
         for base in list("RKSYWM"):
             if base in seq:
-                resos.append(seq.replace(base, ambigs[base][0]))
-                resos.append(seq.replace(base, ambigs[base][1]))
+                resos.append(seq.replace(base, AMBIGS[base][0]))
+                resos.append(seq.replace(base, AMBIGS[base][1]))
         return resos
     else:
         return [seq, ""]
-
 
 
 
@@ -201,17 +204,10 @@ def revcomp(sequence):
     return sequence
 
 
-
 def unhetero(amb):
     " returns bases from ambiguity code"
     amb = amb.upper()
-    trans = {"R":("G", "A"),
-             "K":("G", "T"),
-             "S":("G", "C"),
-             "Y":("T", "C"),
-             "W":("T", "A"),
-             "M":("C", "A")}
-    return trans.get(amb)
+    return AMBIGS.get(amb)
 
 
 
@@ -265,7 +261,12 @@ def unstruct(amb):
 
 
 def zcat_make_temps(args):
-    """ call bash command zcat and split to split large files """
+    """ 
+    Call bash command 'zcat' and 'split' to split large files. The goal
+    is to create N splitfiles where N is a multiple of the number of processors
+    so that each processor can work on a file in parallel.
+    """
+
     ## split args
     data, raws, num, optim = args
     LOGGER.debug("zcat splittin' %s", os.path.split(raws[0])[-1])
