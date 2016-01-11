@@ -52,7 +52,6 @@ def make( data, samples ):
                 ss.append(line.split()[-1])
             else:
                 pis = [i[0] for i in enumerate(line) if i[1] in list('*-')]
-                LOGGER.debug("pis - {}".format(pis))                
 
         " assign snps to S, and record coverage for usnps"
         for tax in S:
@@ -61,7 +60,6 @@ def make( data, samples ):
                     for snpsite in pis:
                         snpsite -= (longname+5)
                         S[tax].append(ss[ns.index(tax)][snpsite])
-                        LOGGER.debug("pis2 - snpsite {} tax {} ss {}".format(snpsite, tax, ss[ns.index(tax)]))
                         if snpsite not in cov:
                             cov[snpsite] = 1
                         else:

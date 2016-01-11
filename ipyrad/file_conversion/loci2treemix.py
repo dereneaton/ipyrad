@@ -70,7 +70,6 @@ def make( data, samples ):
     ## at every SNP site, save to a list
     alleles = []
     for site in sites:
-        LOGGER.debug("site - {}".format(site))
         ds = []
         for s in site:
             if s in list("RKSYWM"):
@@ -82,7 +81,6 @@ def make( data, samples ):
         snp = [s for s in ds if s not in ["N",'-']]
         a = Counter(snp).most_common(3)
         try:
-            LOGGER.debug("treemix - {}".format(a))
             alleles.append([a[0][0],a[1][0]])
         except IndexError as e:
             msg = "Got a monomorphic site. usnps file is malformed,"\
