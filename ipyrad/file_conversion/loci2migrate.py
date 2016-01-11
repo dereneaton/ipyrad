@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 
 import numpy as np
+import os
 import sys
 import gzip
 from collections import OrderedDict, Counter
@@ -9,6 +10,10 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 def make( data, samples ):
+
+    ## TODO: Fix migrate format
+    print("Migrate format is still in development")
+    return
 
     outfile  =  open(os.path.join(data.dirs.outfiles, data.name+".migrate"), 'w')
     infile =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ), 'r' )
@@ -30,14 +35,14 @@ def make( data, samples ):
     ## it's best not to filter
     ## minhits = [ data.paramsdict["mindepth_statistical"] ] * len(taxa)
 
-    ## Hard coding minhits to 2 individuals per group. Fixme.
+    ## Hard coding minhits to 2 individuals per group.
+    ## TODO: Fixme.
     minhits = [ 2 ] * len(taxa)
 
     print "\t    data set reduced for group coverage minimums"
     for i,j in zip(taxa,minhits):
         print "\t   ",i, taxa[i], "minimum=",j
 
-    #print taxadict.keys()
 
     ## filter data to only the loci that have data
     ## for at least N individuals in each pop
@@ -60,7 +65,7 @@ def make( data, samples ):
     
     ## print all data for each population at a time
     done = 0
-    for group in taxadict:
+    for group in taxa:
         ## print a list of lengths of each locus
         if not done:
             loclens = [len(loc.split("\n")[1].split()[-1].replace("x","n").replace("n","")) for loc in keep]
