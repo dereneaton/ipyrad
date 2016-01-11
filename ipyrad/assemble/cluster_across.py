@@ -27,32 +27,6 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
-
-def breakalleles(consensus):
-    """ break ambiguity code consensus seqs into two alleles """
-    allele1 = ""
-    allele2 = ""
-    bigbase = ""
-    for base in consensus:
-        if base in tuple("RKSYWM"):
-            unhet1, unhet2 = unhetero(base)
-            hetset = set([unhet1, unhet2])
-            allele1 += uplow((unhet1, unhet2))
-            allele2 += hetset.difference(uplow((unhet1, unhet2))).pop()
-            if not bigbase:
-                bigbase = uplow((allele1, allele2))
-        elif base in tuple("rksywm"):
-            unhet1, unhet2 = unhetero(base)
-            hetset = set([unhet1, unhet2])
-            allele2 += uplow((unhet1, unhet2))
-            allele1 += hetset.difference(uplow((unhet1, unhet2))).pop()
-        else:
-            allele1 += base
-            allele2 += base
-    return allele1, allele2
-
-
-
 def fullcomp(seq):
     """ returns complement of sequence including ambiguity characters,
     and saves lower case info for multiple hetero sequences"""

@@ -391,7 +391,11 @@ def make_outfiles( data, samples, force ):
     ## Read in the input .loci file that gets transformed into all output formats
     locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
 
-    for filetype in data.paramsdict["output_formats"]:
+    output_formats = data.paramsdict["output_formats"]
+    if "*" in output_formats:
+        output_formats = OUTPUT_FORMATS
+
+    for filetype in output_formats:
         LOGGER.info( "Doing - ", filetype )
 
         # phy & nex come from loci2phynex
@@ -478,7 +482,9 @@ def write_tmp_loci(data, loci, fname):
 
     ## Get longest sample name for pretty printing
     longname_len = max(len(x) for x in data.samples.keys())
-    ## Padding distance between name and seq this could be a hackers only param
+    ## Padding distance between name and seq.
+    ## This variable is used at least here and in loci2alleles. If you _ever_
+    ## have to change this, consider adding it to hackesonly.
     name_padding = 5
 
     with open(fname.replace("chunk","loci"), 'w') as outfile:
