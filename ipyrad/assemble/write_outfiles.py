@@ -391,6 +391,12 @@ def make_outfiles( data, samples, force ):
     ## Read in the input .loci file that gets transformed into all output formats
     locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
 
+    excludes = (data.paramsdict["excludes"] or [""]) \
+                + (data.paramsdict["outgroups"] or [""])
+    LOGGER.warn("Excluding these individuals - {}".format(excludes))
+
+    samples = filter(lambda x: x.name not in excludes, samples)
+
     output_formats = data.paramsdict["output_formats"]
     if "*" in output_formats:
         output_formats = OUTPUT_FORMATS

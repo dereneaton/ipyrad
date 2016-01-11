@@ -212,8 +212,10 @@ def merge_pairs(data, sample): #, unmerged_files):
     return sample.files.merged, nmerged
 
 
+## This is hold-over code from pyrad V3 alignable, it's only used
+## by loci2vcf so you could move it there if you like
 def most_common(L):
-    return max(groupby(sorted(L)), key=lambda(x, v):(len(list(v)),-L.index(x)))[0]
+    return max(itertools.groupby(sorted(L)), key=lambda(x, v):(len(list(v)),-L.index(x)))[0]
 
 
 def revcomp(sequence):

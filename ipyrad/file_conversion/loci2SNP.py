@@ -12,7 +12,7 @@ def make( data, samples ):
     ploidy = data.paramsdict["ploidy"]
     names = map( lambda x: x.name, samples )
     longname = max(map(len,names))
-    inloci   =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ).read(), 'r' )
+    inloci   =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ), 'r').read()
 
     ## Potential outfiles
     snpsout = os.path.join( data.dirs.outfiles, data.name+".snps" )
@@ -22,7 +22,7 @@ def make( data, samples ):
     ugenoout = os.path.join( data.dirs.outfiles, data.name+".usnps.geno" )
 
     ## Output file for writing some stats
-    statsout  = os.path.join( data.dirs.outfiles, data.name+".snps.stats" )
+    statsfile= os.path.join( data.dirs.outfiles, data.name+".snps.stats" )
 
     ## The output formats to write
     formats = data.paramsdict["output_formats"]
@@ -52,7 +52,8 @@ def make( data, samples ):
                 ss.append(line.split()[-1])
             else:
                 pis = [i[0] for i in enumerate(line) if i[1] in list('*-')]
-                
+                LOGGER.debug("pis - {}".format(pis))                
+
         " assign snps to S, and record coverage for usnps"
         for tax in S:
             if tax in ns:
@@ -60,6 +61,7 @@ def make( data, samples ):
                     for snpsite in pis:
                         snpsite -= (longname+5)
                         S[tax].append(ss[ns.index(tax)][snpsite])
+                        LOGGER.debug("pis2 - snpsite {} tax {} ss {}".format(snpsite, tax, ss[ns.index(tax)]))
                         if snpsite not in cov:
                             cov[snpsite] = 1
                         else:
