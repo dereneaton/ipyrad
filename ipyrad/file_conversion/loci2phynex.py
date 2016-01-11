@@ -5,12 +5,17 @@ import sys
 import os
 import glob
 
+## phylip and nexus conversion.
+## Assembly objects are sometimes called 'assembly' in this file
+## rather than 'data' which is standard througout the rest of the codebase
+## because we recycled this code from pyrad V3 and it already had
+## a variable called data that was predominant. Change it if you want.
 
-def update(idict, count, WORK, outname):
+def update(assembly, idict, count):
     """ updates dictionary with the next .5M reads from the super long string 
     phylip file. Makes for faster reading. """
 
-    data = iter(open(WORK+"outfiles/"+outname+".phy"))
+    data = iter(open(os.path.join( assembly.dirs.outfiles, assembly.name+".phy" ), 'r' )) 
     ntax, nchar = data.next().strip().split()
 
     ## read in max N bp at a time                                                                            
@@ -24,7 +29,7 @@ def update(idict, count, WORK, outname):
     
 
 
-def makephy(data, samples, longname):
+def makephy(assembly, samples, longname):
     """ builds phy output. If large files writes 50000 loci at a time to tmp
     files and rebuilds at the end"""
 
@@ -33,8 +38,7 @@ def makephy(data, samples, longname):
     names.sort()
     
     ## read in loci file
-    locifile = os.path.join(data.paramsdict["working_directory"], 
-                            data.name+".loci")
+    locifile = os.path.join(assembly.dirs.outfiles, assembly.name+".loci")
     locus = iter(open(locifile, 'rb'))
 
     ## dict for saving the full matrix
@@ -113,14 +117,14 @@ def makephy(data, samples, longname):
         if not nloci % 1e4:
             ## concat strings
             for name in fdict:
-                with open(os.path.join(WORK, "tmp", 
-                    "{}_{}.tmp".format(name, nloci)), 'wb') as wout:
+                with open(os.path.join(assembly.dirs.outfiles , "tmp", 
+                    "{}_{}.phy.tmp".format(name, nloci)), 'wb') as wout:
                     wout.write("".join(fdict[name]))
             del fdict
             fdict = {name:[] for name in names}
 
     ## print out .PHY file, if really big, pull form multiple tmp pickle
-    superout = open(WORK+"outfiles/"+outname+".phy", 'wb')
+    superout = open(os.path.join( assembly.dirs.outfiles, assembly.name+".phy" ), 'wb')
     print >>superout, len(names), nbases
     if nloci < 1e4:
         for name in names:
@@ -132,14 +136,15 @@ def makephy(data, samples, longname):
                             name,
                             " "*((longname+3)-len(name)),
                             "".join(fdict[name])))
-            tmpfiles = glob.glob(os.path.join(WORK, "tmp", name+"*.tmp"))
+            tmpfiles = glob.glob(os.path.join(assembly.dirs.outfiles, "tmp", name+"*.phy.tmp"))
             tmpfiles.sort()
             for tmpf in tmpfiles:
                 with open(tmpf, 'rb') as tmpin:
                     superout.write(tmpin.read())
+                os.remove(tmpf)
             superout.write("\n")
     superout.close()
-    raxml_part_out = open(WORK+"outfiles/"+outname+".phy.partitions", 'w')
+    raxml_part_out = open(os.path.join(assembly.dirs.outfiles, assembly.name+".phy.partitions"), 'w')
     for partition in partitions:
         print >>raxml_part_out, "DNA, %s" % (partition)
     raxml_part_out.close()
@@ -147,12 +152,12 @@ def makephy(data, samples, longname):
     return partitions
 
 
-def makenex(WORK, outname, names, longname, partitions):
+def makenex(assembly, names, longname, partitions):
     """ PRINT NEXUS """
 
     ## make nexus output
-    data   = iter(open(WORK+"outfiles/"+outname+".phy"))
-    nexout = open(WORK+"outfiles/"+outname+".nex", 'wb')
+    data = iter(open(os.path.join(assembly.dirs.outfiles, assembly.name+".phy" ), 'r' ))
+    nexout = open(os.path.join(assembly.dirs.outfiles, assembly.name+".nex" ), 'wb' )
 
     ntax, nchar = data.next().strip().split(" ")
 
@@ -187,7 +192,7 @@ def makenex(WORK, outname, names, longname, partitions):
 
         if not n % 100000:
             #print idict[tax][tempn:tempn+sz]
-            idict = update(idict, n, WORK, outname)
+            idict = update(assembly, idict, n)
             tempn -= 100000
             
     print >>nexout, ';'
@@ -202,19 +207,18 @@ def makenex(WORK, outname, names, longname, partitions):
     nexout.close()
         
 
-def make(data, samples):
+def make(assembly, samples):
     """ Make phylip and nexus formats. This is hackish since I'm recycling the 
     code whole-hog from pyrad V3. Probably could be good to go back through 
     and clean up the conversion code some time.
     """
 
     ## get the longest name
-    longname = max([len(i) for i in samples])
-    #outfile = data.name
+    longname = max([len(i) for i in assembly.samples.keys()])
     names = [i.name for i in samples]
 
-    partitions = makephy(data, samples, longname)
-    makenex(WORK, outfile, names, longname, partitions)
+    partitions = makephy(assembly, samples, longname)
+    makenex(assembly, names, longname, partitions)
     
 
 if __name__ == "__main__":

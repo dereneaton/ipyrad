@@ -396,7 +396,7 @@ def make_outfiles( data, samples, force ):
         output_formats = OUTPUT_FORMATS
 
     for filetype in output_formats:
-        LOGGER.info( "Doing - ", filetype )
+        LOGGER.info( "Doing - {}".format(filetype) )
 
         # phy & nex come from loci2phynex
         if filetype in ["phy", "nex"]:
