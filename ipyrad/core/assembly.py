@@ -26,7 +26,7 @@ from collections import OrderedDict
 from ipyrad.assemble.worker import ObjDict
 from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.sample import Sample
-from .. import assemble
+from ipyrad import assemble
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -190,7 +190,8 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 125),
                         ("max_inner_mate_distance", 60),
-                        ("preview_truncate_length", 10000),
+                        ("preview_truncate_length", 100000),
+                        ("output_loci_name_buffer", 5),
         ])
 
     def __str__(self):
@@ -1066,11 +1067,11 @@ class Assembly(object):
             steps = list(steps)
 
         if '1' in steps:
-            self.step1()
+            self.step1(preview=preview)
         if '2' in steps:
-            self.step2(force=force)
+            self.step2(force=force, preview=preview)
         if '3' in steps:
-            self.step3(force=force)
+            self.step3(force=force, preview=preview)
         if '4' in steps:
             self.step4(force=force)
         if '5' in steps:
@@ -1498,7 +1499,7 @@ def paramschecker(self, param, newvalue):
 
     elif param == 'output_formats':
         ## Get all allowed file types from assembly.write_outfiles
-        output_formats = assemble.write_outfiles.output_formats
+        output_formats = write_outfiles.OUTPUT_FORMATS
 
         ## If wildcard, then just do them all
         if "*" in newvalue:
@@ -1511,7 +1512,7 @@ def paramschecker(self, param, newvalue):
             ## Only test here if no wildcard present
             for f in requested_formats:
                 if f not in output_formats:
-                    sys.exit("error: File format {} not recognized, must be one of: ".format( f ), output_formats)
+                    sys.exit("error: File format {} not recognized, must be one of: ".format(f , output_formats))
         
         self.paramsdict['output_formats'] = requested_formats
         self._stamp("[{}] set to {}".format(param, newvalue))
