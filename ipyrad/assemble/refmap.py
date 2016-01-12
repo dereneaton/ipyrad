@@ -271,7 +271,7 @@ def mapreads(args):
 
     ## Clean up the temp fq.gz file
     if preview:
-        print( "preview: Exiting mapreads(). Do cleanpup." )
+        LOGGER.info( "preview: Exiting mapreads(). Do cleanpup." )
         for f in sample_fastq:
             os.remove( f )
 
@@ -886,44 +886,6 @@ def refmap_cleanup( data, sample ):
             shutil.move( fastq_dotfile, fastq_file )
 
 
-def preview_truncate_fq( data, sample_fastq ):
-    """ If we are running in preview mode, truncate the input fq.gz file
-    so it'll run quicker, just so we can see if it works. Input is the file
-    name of the sample fq. Function returns a list of 1 or 2 elements
-    depending on whether you're doing paired or single end. The elements are
-    paths to a temp files of the sample fq truncated to some much smaller size.
-    """
-
-    ## Return a list of filenames
-    truncated_fq = []    
-
-    for read in sample_fastq:
-        if read.endswith(".gz"):
-            f = gzip.open(os.path.realpath(read), 'rb')
-        else:
-            f = open(os.path.realpath(read), 'rb')
-
-        ## create iterators to sample 4 lines at a time 
-        quart = itertools.izip(*[iter(f)]*4)
-
-
-        with tempfile.NamedTemporaryFile( 'w+b', delete=False,
-                dir=os.path.realpath( data.dirs.refmapping ),
-                prefix="tmp_", suffix=".fq") as tmp_fq:
-            try:
-                ## Sample the first 10000 reads. This should be sufficient.        
-                for i in range(data._hackersonly["preview_truncate_length"]):
-                    tmp_fq.write( "".join( quart.next() ) )
-            except StopIteration:
-                LOGGER.info("preview_truncate_length > size of sample, means "+\
-                            "your sample is small, nbd")
-            except Exception as e:
-                LOGGER.info("preview truncate length, caught exception {}".format(e))
-
-        truncated_fq.append( tmp_fq.name )
-        f.close()
-
-    return truncated_fq 
 
 if __name__ == "__main__":
     from ipyrad.core.assembly import Assembly
