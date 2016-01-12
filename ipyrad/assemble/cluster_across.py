@@ -148,7 +148,7 @@ def muscle_align_across(args):
 
 
 
-def multi_muscle_align(data, samples, clustbits, ipyclient):
+def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
     """ Splits the muscle alignment across nthreads processors, each runs on 
     1000 clusters at a time. This is a kludge until I find how to write a 
     better wrapper for muscle. 
@@ -165,18 +165,18 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         ## run muscle on all tmp files            
         results = lbview.map_async(muscle_align_across, submitted_args)
         indeltups = results.get()
-        ## concatenate indel arrays in correct order
-        nloci = 1000
         maxlen = data._hackersonly["max_fragment_length"]
         if 'pair' in data.paramsdict["datatype"]:
             maxlen *= 2
 
+        ## build an indel array for ALL loci in cat.clust.gz
         ioh5 = h5py.File(os.path.join(
                             data.dirs.consens, data.name+".indels"), 'w')
         dset = ioh5.create_dataset("indels", (nloci, len(samples), maxlen),
                                    dtype='i4', 
                                    chunks=(nloci/10, len(samples), maxlen),
                                    compression="gzip")
+
         ## sort into input order
         indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
         for tup in indeltups:
@@ -191,7 +191,6 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
             for fname in clustbits:
                 with open(fname) as infile:
                     out.write(infile.read()+"//\n//\n")
-        #return nloci
 
     except Exception as inst:
         LOGGER.warn(inst)
@@ -262,7 +261,7 @@ def cluster(data, noreverse):
 
 
 
-def build_catg_file(data, samples):
+def build_catg_file(data, samples, nloci):
     """ build full catgs file """
     ## catg array of prefiltered loci (4-dimensional) aye-aye!
     ## this can be multiprocessed!! just sum arrays at the end
@@ -279,8 +278,8 @@ def build_catg_file(data, samples):
     ## initialize an hdf5 array of the super catg matrix
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
-        maxlen*=2
-    nloci = 1000
+        maxlen *= 2
+    ## the total number of clusters
     ioh5 = h5py.File(data.database, 'w')
     ## probably have to do something better than .10 loci chunk size
     supercatg = ioh5.create_dataset("catgs", 
@@ -314,6 +313,7 @@ def build_catg_file(data, samples):
         data._stamp("s6 clustered across "+sample.name)
 
 
+
 def singlecat(data, sample):
     """ 
     Orders catg data for each sample into the same locus order. This allows
@@ -329,7 +329,7 @@ def singlecat(data, sample):
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
         maxlen *= 2
-    nloci = 1000
+    nloci = sample.stats.clusters_hidepth
     icatg = ioh5.create_dataset(sample.name, (nloci, maxlen, 4), dtype='i4',
                                 chunks=(nloci/10, maxlen, 4))
                                 #compression="gzip")
@@ -391,6 +391,7 @@ def build_reads_file(data):
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
     ## a chunker for writing every N
+    ## TODO: optimize 
     optim = 100
 
     ## groupby index 1 (seeds) 
@@ -439,7 +440,7 @@ def build_reads_file(data):
             clustbits.append(handle)
 
     ## return stuff
-    return clustbits
+    return clustbits, loci
 
 
 
@@ -512,19 +513,19 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## build consens clusters and returns chunk handles to be aligned
     LOGGER.info("building consens clusters")        
-    clustbits = build_reads_file(data)
+    clustbits, nloci = build_reads_file(data)
 
     ## muscle align the consens reads and creates hdf5 indel array
     LOGGER.info("muscle alignment & building indel database")
-    multi_muscle_align(data, samples, clustbits, ipyclient)
+    multi_muscle_align(data, samples, nloci, clustbits, ipyclient)
 
     ## build supercatg file and insert indels
     ## this can't do all loci at once, needs chunking @ < (1e6, 100) 
     LOGGER.info("building full database")    
-    build_catg_file(data, samples)
+    build_catg_file(data, samples, nloci)
 
     ## convert full catg into a vcf file
-    LOGGER.info("... not yet converting to VCF")        
+    #LOGGER.info("... not yet converting to VCF")        
 
     ## invarcats()
     ## invarcats()

@@ -26,6 +26,25 @@ AMBIGS = {"R":("G", "A"),
           "M":("C", "A")}
 
 
+class ObjDict(dict):
+    """ object dictionary allows calling dictionaries in a more 
+    pretty and Python fashion for storing Assembly data """
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        else:
+            raise AttributeError("No such attribute: " + name)
+
+    def __setattr__(self, name, value):
+        self[name] = value
+
+    def __delattr__(self, name):
+        if name in self:
+            del self[name]
+        else:
+            raise AttributeError("No such attribute: " + name)
+
+
 def ambigcutters(seq):
     """ Returns both resolutions of a cut site that has an ambiguous base in 
     it, else the single cut site """
@@ -78,16 +97,15 @@ def comp(seq):
 
 
 def getsplits(filename):
-    """ Calculate optimum splitting based on file size. 
-    Does not unzip files, assumes average rate of compression. 
-    This is a fast alternative to counting lines which takes 
-    too long on huge files.
+    """ Calculate optimum splitting based on file size. Does not unzip files, 
+    assumes average rate of compression. This is a fast alternative to counting 
+    lines which takes too long on huge files.
     """
     filesize = os.stat(filename).st_size
     if filesize < 10000000:
-        optim = 400000
+        optim = 200000
     elif filesize < 4000000000:
-        optim = 1000000
+        optim = 500000
     elif filesize < 8000000000:
         optim = 4000000
     else:
@@ -299,30 +317,27 @@ def uplow(hsite):
     return bigbase
 
 
-
+DUCT = {"R":["G", "A"], 
+        "K":["G", "T"], 
+        "S":["G", "C"],
+        "Y":["T", "C"],
+        "W":["T", "A"],
+        "M":["C", "A"],
+        "A":["A", "A"],
+        "T":["T", "T"],
+        "G":["G", "G"],
+        "C":["C", "C"],
+        "N":["N", "N"],
+        "-":["-", "-"]}
 def unstruct(amb):
     """ This is copied from pyrad.alignable, and is referenced in
     several of the loci2*.py conversion modules. It duplicates some
     of the effort of unhetero(), but i guess it's fine for now. Probably
     could merge these two functions if you wanted to. 
-    TODO: Also could make the D dict{} a global so you wouldn't have to 
-    recreate it every time this function is called. Could save some cycles.
     """
     amb = amb.upper()
-    " returns bases from ambiguity code"
-    D = {"R":["G","A"],
-         "K":["G","T"],
-         "S":["G","C"],
-         "Y":["T","C"],
-         "W":["T","A"],
-         "M":["C","A"],
-         "A":["A","A"],
-         "T":["T","T"],
-         "G":["G","G"],
-         "C":["C","C"],
-         "N":["N","N"],
-         "-":["-","-"]}
-    return D.get(amb)
+    ## returns bases from ambiguity code"
+    return DUCT.get(amb)
 
 
 
@@ -334,7 +349,7 @@ def zcat_make_temps(args):
     """
 
     ## split args
-    data, raws, num, optim = args
+    data, raws, num, tmpdir, optim = args
     LOGGER.debug("zcat splittin' %s", os.path.split(raws[0])[-1])
 
     ## get optimum lines per file
@@ -349,20 +364,18 @@ def zcat_make_temps(args):
 
     ### run splitter
     cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
-                   "-", os.path.join(data.dirs.fastqs, "chunk1_"+str(num)+"_")])
+                   "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")])
     _ = subprocess.check_call(cmd, shell=True)
 
-    chunks1 = glob.glob(os.path.join(
-                        data.dirs.fastqs, "chunk1_"+str(num)+"_*"))
+    chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
     chunks1.sort()
 
     if "pair" in data.paramsdict["datatype"]:
         cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
-                  "-", os.path.join(data.dirs.fastqs, "chunk2_"+str(num)+"_")])
+                  "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
         _ = subprocess.check_call(cmd, shell=True)
 
-        chunks2 = glob.glob(os.path.join(
-                        data.dirs.fastqs, "chunk2_"+str(num)+"_*"))
+        chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
     
     else:

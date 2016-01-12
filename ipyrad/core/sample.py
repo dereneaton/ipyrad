@@ -3,9 +3,11 @@
 
 #import os
 import pandas as pd
-from ipyrad.assemble.worker import ObjDict
+from ipyrad.assemble.util import ObjDict
 
 # pylint: disable=C0103
+# pylint: disable=R0903
+
 
 class Sample(object):
     """ ipyrad Sample object. Links to files associated
@@ -18,7 +20,7 @@ class Sample(object):
         self.barcode = ""
         self.merged = 0
 
-        ## stats dictionary
+        ## summary stats dictionary
         self.stats = pd.Series(
             index=["state",
                    "reads_raw",
@@ -43,36 +45,33 @@ class Sample(object):
               "database": []
               })
 
-        ## step stats files (builds into data.statsfiles.sX)
-        self.s1 = ObjDict({"reads_raw": []})
-
-        self.s2 = ObjDict({"reads_raw": [],
-                           "filter_qscore": [],
-                           "filter_adapter": [],
-                           "reads_passed": []})
-
-        self.s3 = ObjDict({"reads_raw": [],
-                           "clusts_total": [],
-                           "clusts_hidepth": [],
-                           "avg.depth.tot": [],
-                           "avg.depth>mj": [],
-                           "avg.depth>stat": []}) 
-
-        self.s4 = ObjDict({"hetero_est": [],
-                           "error_est": []})
-
-        self.s5 = ObjDict({"nclusters": [],
-                           "depthfilter": [],
-                           "maxHfilter": [],
-                           "maxAllelefilter": [],
-                           "maxNfilter": [],
-                           "nconsens": [],
-                           "nsites": [],
-                           "nhetero": [],
-                           "heterozygosity": []})
-
-        self.s6 = ObjDict({})
-        self.s7 = ObjDict({})        
+        ## stats for each step
+        self.statsfiles = ObjDict({
+              "s1": pd.Series(index=["reads_raw"]),
+              "s2": pd.Series(index=["reads_raw",
+                                     "filter_qscore",
+                                     "filter_adapter",
+                                     "reads_passed"]),
+              "s3": pd.Series(index=["reads_raw",
+                                     "clusts_total",
+                                     "clusts_hidepth",
+                                     "avg.depth.tot",
+                                     "avg.depth>mj",
+                                     "avg.depth>stat"]),
+              "s4": pd.Series(index=["hetero_est",
+                                     "error_est"]),
+              "s5": pd.Series(index=["nclusters",
+                                     "depthfilter",
+                                     "maxHfilter",
+                                     "maxAllelefilter",
+                                     "maxNfilter",
+                                     "nconsens",
+                                     "nsites",
+                                     "nhetero",
+                                     "heterozygosity"]),
+              "s6": pd.Series(index=["null"]),
+              "s7": pd.Series(index=["null"]),              
+          })      
 
         ## store cluster depth information (biggest memory cost)
         self.depths = []

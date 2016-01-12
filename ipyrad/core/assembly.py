@@ -23,7 +23,7 @@ import ipyparallel as ipp
 import ipyrad as ip
 
 from collections import OrderedDict
-from ipyrad.assemble.worker import ObjDict
+from ipyrad.assemble.util import ObjDict
 from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.sample import Sample
 from ipyrad import assemble
@@ -121,7 +121,17 @@ class Assembly(object):
         ## link a log history of executed workflow
         self.log = []
         self._stamp(self.name+" created")
-        self.statsfiles = ObjDict()
+
+        ## statsfiles is a dict where keys return a func... 
+        ## can't get this to work with a @property func.
+        self.statsfiles = ObjDict({})
+        #                            {"s1": self.statsfile("s1"), 
+        #                            "s2": self.statsfile("s2"), 
+        #                            "s3": self.statsfile("s3"), 
+        #                            "s4": self.statsfile("s4"), 
+        #                            "s5": self.statsfile("s5"), 
+        #                            "s6": self.statsfile("s6"), 
+        #                            "s7": self.statsfile("s7")})
 
         ## samples linked 
         self.samples = ObjDict()
@@ -206,6 +216,24 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
 
+    #@property
+    def statsfile(self, idx):
+        """ Returns a data frame with Sample stats for each step """
+        nameordered = self.samples.keys()
+        nameordered.sort()
+        return pd.DataFrame([self.samples[i].statsfiles[idx] \
+                      for i in nameordered], 
+                      index=nameordered).dropna(axis=1, how='all')
+
+    @property
+    def s1(self):
+        """ Returns a data frame with Sample stats for step1 """
+        nameordered = self.samples.keys()
+        nameordered.sort()
+        return pd.DataFrame([self.samples[i].statsfiles["s1"] \
+                      for i in nameordered], 
+                      index=nameordered).dropna(axis=1, how='all')
+
     @property
     def files(self):
         """ Returns a data frame with Sample files. Not very readable... """
@@ -216,7 +244,7 @@ class Assembly(object):
         return pd.DataFrame([self.samples[i].files for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
-                      
+
     def _stamp(self, event):
         """ Stamps an event into the log history. """
         tev = time.strftime("%m/%d/%y %H:%M:%S", time.gmtime())
@@ -418,7 +446,8 @@ class Assembly(object):
 
         Note
         ----
-        [Assembly].link_barcodes() is run automatically during step1.
+        [Assembly].link_barcodes() is run automatically if set_params() is used
+        to change barcodes_path.
 
         """
         ## in case fuzzy selected
@@ -598,7 +627,6 @@ class Assembly(object):
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
-            newobj.set_params('prefix_outname', newname)
 
             ## create copies of each Sample obj
             for sample in self.samples:
@@ -754,7 +782,7 @@ class Assembly(object):
             if not force:
                 print("Skipping step1: {} ".format(len(self.samples)) \
                     +"Samples already found in `{}` ".format(self.name)\
-                    +"(see --force).")
+                    +"(can overwrite with force option).")
             else:
                 if self._headers:
                     print(msg1)
@@ -1404,20 +1432,23 @@ def paramschecker(self, param, newvalue):
     elif param == 'mindepth_statistical':
         ## do not allow values below 5
         if int(newvalue) < 5:
-            print("error: mindepth statistical cannot be set < 5")
+            print(\
+        "error: mindepth statistical cannot be set < 5. Use mindepth_majrule.")
         ## do not allow majrule to be > statistical
         elif int(newvalue) < self.paramsdict["mindepth_majrule"]:
-            print("error: mindepth statistical cannot be less than \
-                   mindepth_majrule")                
+            print(\
+        "error: mindepth statistical cannot be less than mindepth_majrule")                
         else:
             self.paramsdict['mindepth_statistical'] = int(newvalue)
+            ## TODO: calculate new clusters_hidepth if passed step3
             self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_majrule':
         if int(newvalue) > self.paramsdict["mindepth_statistical"]:
-            print("error: mindepth_majrule cannot be > \
-                   mindepth_statistical")
+            print(\
+        "error: mindepth_majrule cannot be > mindepth_statistical")
         else:
+            ## TODO: calculate new clusters_hidepth if passed step3
             self.paramsdict['mindepth_majrule'] = int(newvalue)
             self._stamp("[{}] set to {}".format(param, newvalue))
 

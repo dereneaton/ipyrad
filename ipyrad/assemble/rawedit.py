@@ -15,6 +15,7 @@ import math
 import itertools
 import numpy as np
 from .util import *
+import shutil
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -405,7 +406,7 @@ def roundup(num):
 
 
 
-def run_full(data, sample, nreplace, preview, ipyclient):
+def run_sample(data, sample, nreplace, preview, ipyclient):
     """ 
     Splits fastq file into smaller chunks and distributes them across
     multiple processors, and runs the rawedit func on them .
@@ -425,10 +426,15 @@ def run_full(data, sample, nreplace, preview, ipyclient):
             ## must be divisible by 4
             assert not optim % 4
 
+    ## make tmpdir to hold chunks
+    tmpdir = os.path.join(data.dirs.working, "tmpchunks")
+    if not os.path.exists(tmpdir):
+        os.mkdir(tmpdir)
+
     ## break up the file into smaller tmp files for each processor
     chunkslist = []
     for fastqtuple in sample.files.fastqs:
-        args = [data, fastqtuple, num, optim]
+        args = [data, fastqtuple, num, tmpdir, optim]
         _, achunk = zcat_make_temps(args)
         chunkslist += achunk
 
@@ -437,7 +443,8 @@ def run_full(data, sample, nreplace, preview, ipyclient):
         submitted_args = []
 
         if preview:
-            LOGGER.warn("Running preview mode. Selecting only one chunk to rawedit.")
+            LOGGER.warn(\
+                "Running preview mode. Selecting only one chunk to rawedit.")
             chunkslist = [chunkslist[i] for i in [0]]
 
         for tmptuple in chunkslist:
@@ -468,7 +475,7 @@ def run_full(data, sample, nreplace, preview, ipyclient):
 
 
 def cleanup(data, sample, submitted, results):
-    """ cleaning up """
+    """ cleaning up one sample """
 
     ## rejoin chunks
     combs1 = glob.glob(os.path.join(
@@ -478,7 +485,7 @@ def cleanup(data, sample, submitted, results):
     handle1 = os.path.join(data.dirs.edits, sample.name+"_R1_.fastq")
     handle2 = ""
 
-    ## 
+    ## same for pairs
     if "pair" in data.paramsdict["datatype"]:
         combs2 = glob.glob(os.path.join(
                             data.dirs.edits,
@@ -489,7 +496,7 @@ def cleanup(data, sample, submitted, results):
             "mismatched number of paired read files - {} {}"\
             .format(len(combs1), len(combs2))
 
-    ## Clean up temp files
+    ## Clean up tmp files
     with open(handle1, 'wb') as out:
         for fname in combs1:
             with open(fname) as infile:
@@ -502,6 +509,11 @@ def cleanup(data, sample, submitted, results):
                 with open(fname) as infile:
                     out.write(infile.read())
                 os.remove(fname)
+
+    ## should be in assembly_cleanup
+    tmpdir = os.path.join(data.dirs.working, "tmpchunks")
+    if os.path.exists(tmpdir):
+        shutil.rmtree(tmpdir)
 
     ## record results
     fcounts = {"orig": 0,
@@ -517,19 +529,18 @@ def cleanup(data, sample, submitted, results):
         fcounts["adapter"] += counts["adapter"]
         fcounts["keep"] += counts["keep"]
 
-    data.statsfiles.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
-
+    outhandle = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
     ## find longest name to make printing code block
     longestname = max([len(i) for i in data.samples.keys()])
     printblock = "{:<%d}  {:>13} {:>13} {:>13} {:>13}\n" % (longestname + 4)
 
-    if not os.path.exists(data.statsfiles.s2):
-        with open(data.statsfiles.s2, 'w') as outfile:
+    if not os.path.exists(outhandle):
+        with open(outhandle, 'w') as outfile:
             outfile.write(printblock.format("sample", "Nreads_orig", 
                     "filter_qscore", "filter_adapter", "Nreads_kept"))
 
     ## append stats to file
-    outfile = open(data.statsfiles.s2, 'a+')
+    outfile = open(outhandle, 'a+')
     outfile.write(printblock.format(sample.name, 
                                     str(fcounts["orig"]),
                                     str(fcounts["quality"]),
@@ -572,7 +583,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
                          +"Too few reads ({}). Use force=True to overwrite.".\
                            format(sample.stats.reads_raw))
                 else:
-                    submitted, results = run_full(data, sample, nreplace, 
+                    submitted, results = run_sample(data, sample, nreplace, 
                                                   preview, ipyclient)
                     cleanup(data, sample, submitted, results)
     else:
@@ -582,7 +593,8 @@ def run(data, samples, nreplace, force, preview, ipyclient):
                      +"No reads found in file {}".\
                      format(sample.files.fastqs))
             else:
-                submitted, results = run_full(data, sample, nreplace, preview, ipyclient)
+                submitted, results = run_sample(data, sample, nreplace, 
+                                              preview, ipyclient)
                 cleanup(data, sample, submitted, results)
 
 
