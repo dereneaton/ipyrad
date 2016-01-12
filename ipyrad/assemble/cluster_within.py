@@ -153,9 +153,10 @@ def muscle_align(args):
                 if 'gbs' in data.paramsdict['datatype']:
                     ## left side filter is the left limit of the seed
                     idxs = [i for i, j in enumerate(aseqs[0]) if j != "-"]
-                    leftlimit = min(0, idxs)
-                    aseqs = [i[leftlimit:] for i in aseqs]
-                    LOGGER.info('leftlimit %s', leftlimit)
+                    if idxs:
+                        leftlimit = max(0, min(idxs))
+                        aseqs = [i[leftlimit:] for i in aseqs]
+                        LOGGER.info('leftlimit %s', leftlimit)
 
                     ## right side filter is the reverse seq that goes the least
                     ## far to the right.
@@ -167,8 +168,8 @@ def muscle_align(args):
                             [i for i, j in enumerate(rseq) if j != "-"]))
                     if idxs:
                         rightlimit = min(idxs)
-                    aseqs = [i[:rightlimit] for i in aseqs]
-                    LOGGER.info('rightlimit %s', leftlimit)                    
+                        aseqs = [i[:rightlimit] for i in aseqs]
+                        LOGGER.info('rightlimit %s', leftlimit)                    
 
                 somedic = OrderedDict()
                 for i in range(len(anames)):
