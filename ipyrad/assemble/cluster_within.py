@@ -98,7 +98,6 @@ def muscle_align(args):
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")
     out = []
-    #indels = np.zeros((len(clusts), 225), dtype=np.int32)
 
     ## iterate over clusters and align
     for clust in clusts:
@@ -119,46 +118,69 @@ def muscle_align(args):
             if all(["ssss" in i for i in seqs]):
                 seqs1 = [i.split("ssss")[0] for i in seqs] 
                 seqs2 = [i.split("ssss")[1] for i in seqs]
-
+                ## muscle align
                 string1 = muscle_call(data, names[:200], seqs1[:200])
                 string2 = muscle_call(data, names[:200], seqs2[:200])
+                ## resort so they're in same order as original
                 anames, aseqs1 = parsemuscle(string1)
                 anames, aseqs2 = parsemuscle(string2)
-
-                ## resort so they're in same order
-                aseqs = [i+"ssss"+j for i, j in zip(aseqs1, aseqs2)]
+                ## get leftlimit of seed, no hits can go left of this 
+                ## this can save pairgbs from garbage
+                idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
+                leftlimit = min(0, idxs)
+                aseqs1 = [i[leftlimit:] for i in aseqs1]
+                ## preserve order in ordereddict
+                aseqs = zip(aseqs1, aseqs2) 
                 somedic = OrderedDict()
+
+                ## append to somedic if not bad align
                 for i in range(len(anames)):
-                    ## filter for max indels
-                    #allindels = aseqs.count('-')
-                    intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    somedic[anames[i]] = aseqs[i]
-                    if intindels > sum(data.paramsdict["max_Indels_locus"]):
+                    ## filter for max internal indels
+                    intindels1 = aseqs[i][0].rstrip('-').lstrip('-').count('-')
+                    intindels2 = aseqs[i][1].rstrip('-').lstrip('-').count('-')
+
+                    if intindels1 <= data.paramsdict["max_Indels_locus"][0] & \
+                       intindels2 <= data.paramsdict["max_Indels_locus"][1]:
+                        somedic[anames[i]] = aseqs[i][0]+"ssss"+aseqs[i][1]
+                    else:
                         LOGGER.info("high indels: %s", aseqs[i])
-                        #indels[x] = 1
 
             else:
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(string1)
+                ## Get left and right limits, no hits can go outside of this. 
+                ## This can save gbs overlap data significantly. 
+                if 'gbs' in data.paramsdict['datatype']:
+                    ## left side filter is the left limit of the seed
+                    idxs = [i for i, j in enumerate(aseqs[0]) if j != "-"]
+                    leftlimit = min(0, idxs)
+                    aseqs = [i[leftlimit:] for i in aseqs]
+                    LOGGER.info('leftlimit %s', leftlimit)
+
+                    ## right side filter is the reverse seq that goes the least
+                    ## far to the right.
+                    revs = [aseqs[i] for i in range(len(aseqs)) if \
+                            anames[i].split(";")[-1][0] == '-']
+                    idxs = []
+                    for rseq in revs:
+                        idxs.append(max(\
+                            [i for i, j in enumerate(rseq) if j != "-"]))
+                    if idxs:
+                        rightlimit = min(idxs)
+                    aseqs = [i[:rightlimit] for i in aseqs]
+                    LOGGER.info('rightlimit %s', leftlimit)                    
+
                 somedic = OrderedDict()
                 for i in range(len(anames)):
                     ## filter for max internal indels
-                    somedic[anames[i]] = aseqs[i]                       
                     intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    if intindels > sum(data.paramsdict["max_Indels_locus"]):
+                    if intindels <= data.paramsdict["max_Indels_locus"][0]:
+                        somedic[anames[i]] = aseqs[i]
                         LOGGER.info("high indels: %s", aseqs[i])
 
+            ## save dict into a list ready for printing
             for key in somedic.keys():
                 stack.append(key+"\n"+somedic[key])
-            #for key in keys:
-            #    if key[-1] == '-':
-            #        ## reverse matches should have --- overhang
-            #        if set(somedic[key][:4]) == {"-"}:
-            #            stack.append(key+"\n"+somedic[key])
-            #        else:
-            #            pass ## excluded
-            #    else:
-            #        stack.append(key+"\n"+somedic[key])
 
         if stack:
             out.append("\n".join(stack))
@@ -171,28 +193,12 @@ def muscle_align(args):
 
 
 
-# def sortalign(stringnames):
-#     """ parses muscle output from a string to two lists """
-#     objs = stringnames.split("\n>")
-#     seqs = [i.split("\n")[0].replace(">", "")+"\n"+\
-#               "".join(i.split('\n')[1:]) for i in objs]
-              
-#     aligned = [i.split("\n") for i in seqs]
-#     newnames = [">"+i[0] for i in aligned]
-#     seqs = [i[1] for i in aligned]     
-#     ## return in sorted order by names
-#     sortedtups = [(i, j) for i, j in zip(*sorted(zip(newnames, seqs), 
-#                                          key=lambda pair: pair[0]))]
-#     return sortedtups
-
-
 def parsemuscle(out):
     """ parse muscle string output into two sorted lists """
     lines = out[1:].split("\n>")
     names = [line.split("\n", 1)[0] for line in lines]
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
     tups = zip(names, seqs)
-    #LOGGER.debug("TUPS TUPS TUPS %s", tups)
     ## who knew, zip(*) is the inverse of zip
     anames, aseqs = zip(*sorted(tups, 
                         key=lambda x: int(x[0].split(";")[-1][1:])))
@@ -201,7 +207,10 @@ def parsemuscle(out):
 
 
 def muscle_call(data, names, seqs):
-    """ makes subprocess call to muscle. A little faster than before """
+    """ Makes subprocess call to muscle. A little faster than before. 
+    TODO: Need to make sure this works on super large strings and does not 
+    overload the PIPE buffer.
+     """
     inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
     return subprocess.Popen(data.bins.muscle, 
                             stdin=subprocess.PIPE, 
@@ -263,24 +272,21 @@ def build_clusters(data, sample):
     ## map sequences to clust file in order
     seqslist = [] 
     for key, values in udic.iteritems():
-        seq = [key.strip()+"*\n"+hits[key][1]]
+        ## this is the seed. Store the left most non indel base for the seed. 
+        ## Do not allow any other hits to go left of this (for pairddrad)
+        seedhit = hits[key][1]
+        seq = [key.strip()+"*\n"+seedhit]
 
-        ## allow only 6 internal indels in hits to seed for within-sample clust
-        if not any([int(i[3]) > 6 for i in values]):
-            for i in xrange(len(values)):
+        ## allow only N internal indels in hits to seed for within-sample clust
+        for i in xrange(len(values)):
+            if int(values(i[3])) < 6:
+                ## flip to the right orientation 
                 if values[i][1] == "+":
-                    ## only match forward reads if high Cov
-                    #if cov[i] >= 90:
-                    seq.append(values[i][0].strip()+"+\n"+\
-                               hits[values[i][0]][1])
+                    seq.append(values[i][0].strip()+"+\n"+hits[values[i][0]][1])
                 else:
-                    ## name change for reverse hits
-                    ## allow low Cov for reverse hits
-                    ## .replace("_r1;", "_c1;")+\
-                    ## reverse matches should have left terminal gaps
-                    ## if not it is a bad alignment and exclude
                     revseq = comp(hits[values[i][0]][1][::-1])
                     seq.append(values[i][0].strip()+"-\n"+revseq)
+
         seqslist.append("\n".join(seq))
     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
 
@@ -364,7 +370,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             submitted_args.append([data, sample, noreverse, tpp, preview])
         else:
             ## if not clustered or aligned
-            if sample.stats.state <= 2.5:
+            if sample.stats.state < 2.5:
                 submitted_args.append([data, sample, noreverse, tpp, preview])
             else:
                 ## clustered but not aligned
@@ -435,54 +441,6 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
 
 
 
-# def combine_pairs(data, sample):
-#     """ in prep """
-#     #LOGGER.info("in combine_pairs: %s", sample.files.edits)
-
-#     ## open file for writing to
-#     combined = os.path.join(data.dirs.edits, sample.name+"_pairs.fastq")
-#     combout = open(combined, 'wb')
-
-#     ## read in paired end read files"
-#     ## create iterators to sample 4 lines at a time
-#     fr1 = open(sample.files.nonmerge1, 'rb')
-#     quart1 = itertools.izip(*[iter(fr1)]*4)
-#     fr2 = open(sample.files.nonmerge2, 'rb')
-#     quart2 = itertools.izip(*[iter(fr2)]*4)
-#     quarts = itertools.izip(quart1, quart2)
-
-#     ## a list to store until writing
-#     writing = []
-#     counts = 0
-
-#     ## iterate until done
-#     while 1:
-#         try:
-#             read1s, read2s = quarts.next()
-#         except StopIteration:
-#             break
-#         writing.append("\n".join([
-#                         read1s[0].strip(),
-#                         read1s[1].strip()+\
-#                             "ssss"+read2s[1].strip(),
-#                         read1s[2].strip(),
-#                         read1s[3].strip()+\
-#                             "ssss"+read2s[3].strip()]
-#                         ))
-#         counts += 1
-#         if not counts % 1000:
-#             combout.write("\n".join(writing)+"\n")
-#             writing = []
-#     if writing:
-#         combout.write("\n".join(writing)+"\n")
-#         combout.close()
-
-#     sample.files.edits = [(combined, )]
-#     sample.files.pairs = combined
-#     return sample
-
-
-
 def concat_edits(data, sample):
     """ concatenate if multiple edits files for a sample """
     LOGGER.debug("Entering concat_edits: %s", sample.name)
@@ -511,11 +469,10 @@ def concat_edits(data, sample):
 
 
 def derep_and_sort(data, sample, nthreads):
-    """ dereplicates reads and sorts so reads that were highly
-    replicated are at the top, and singletons at bottom, writes
-    output to derep file """
+    """ dereplicates reads and sorts so reads that were highly replicated are at
+    the top, and singletons at bottom, writes output to derep file """
 
-    LOGGER.debug( "Entering derep_and_sort: %s", sample.name )
+    LOGGER.debug("Entering derep_and_sort: %s", sample.name)
 
     ## reverse complement clustering for some types    
     if "gbs" in data.paramsdict["datatype"]:
@@ -535,7 +492,7 @@ def derep_and_sort(data, sample, nthreads):
          +" -fasta_width 0"
 
     ## run vsearch
-    LOGGER.debug("%s",cmd)
+    LOGGER.debug("%s", cmd)
     try:
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
@@ -556,7 +513,7 @@ def cluster(data, sample, noreverse, nthreads):
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
-    ## datatype variables
+    ## datatype variables (Cov variables could go in the hackerz dict)
     if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
         cov = " -query_cov .60 " 
@@ -610,28 +567,23 @@ def multi_muscle_align(data, sample, ipyclient):
 
     ## split clust.gz file into nthreads*10 bits cluster bits
     tmpnames = []
+    tmpdir = os.path.join(data.dirs.working, 'tmpalign')
+    if not os.path.exists(tmpdir):
+        os.mkdir(tmpdir)
+
     try: 
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
-        ## TODO: improve
-        optim = 1000    
-        if sample.stats.clusters_total <= 1000:
-            optim = 100
-        if sample.stats.clusters_total > 5000:
-            optim = 500
-        if sample.stats.clusters_total > 10000:
-            optim = 1000
-        if sample.stats.clusters_total > 50000:
-            optim = 2000
-
+        optim = 100
+        if sample.stats.clusters_total > 2000:
+            optim = int(sample.stats.clusters_total/len(ipyclient))/2
+            print("optim: ", optim)
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
         grabchunk = list(itertools.islice(inclusts, optim))
         while grabchunk:
-            with tempfile.NamedTemporaryFile('w+b', 
-                                             delete=False, 
-                                             dir=data.dirs.clusts,
+            with tempfile.NamedTemporaryFile('w+b', delete=False, dir=tmpdir,
                                              prefix=sample.name+"_", 
                                              suffix='.ali') as out:
                 out.write("//\n//\n".join(grabchunk))
@@ -665,6 +617,9 @@ def multi_muscle_align(data, sample, ipyclient):
         for fname in tmpnames:
             if os.path.exists(fname):
                 os.remove(fname)
+        if os.path.exists(tmpdir):
+            shutil.rmtree(tmpdir)
+
         del lbview
 
 
