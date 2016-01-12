@@ -7,6 +7,9 @@ from collections import OrderedDict, Counter
 from ipyrad.assemble.util import *
 from ipyrad.file_conversion import loci2SNP
 
+import logging
+LOGGER = logging.getLogger(__name__)
+
 def make( data, samples ):
 
     ## output files
@@ -14,16 +17,16 @@ def make( data, samples ):
 
     try:
         infile =  open(os.path.join( data.dirs.outfiles, data.name+".usnps" ), 'r' )
-    except FileNotFoundError:
+    except IOError as e:
         LOGGER.info( "unlinked_snps file doesn't exist. Try creating it." )
         try:
             ## Try generating the .unlinked_snps file
             data.paramsdict["output_formats"] = "usnps,"+data.paramsdict["output_formats"]
             loci2SNP( data, samples )
         except Exception:
-            LOGGER.error("Treemix file conversion requires .unlinked_snps file, which does not exist. \
-                        Make sure the param `output_formats` includes at least `usnps,treemix` \
-                        and rerun step7()")
+            LOGGER.error("Treemix file conversion requires .unlinked_snps file, which does not exist." \
+                        + "Make sure the param `output_formats` includes at least `usnps,treemix`" \
+                        + "and rerun step7()")
             return
 
     ## TODO: Allow for subsampling the output by honoring the "samples" list passed in.
@@ -77,7 +80,13 @@ def make( data, samples ):
                 ds.append(s)
         snp = [s for s in ds if s not in ["N",'-']]
         a = Counter(snp).most_common(3)
-        alleles.append([a[0][0],a[1][0]])
+        try:
+            alleles.append([a[0][0],a[1][0]])
+        except IndexError as e:
+            msg = "Got a monomorphic site. usnps file is malformed,"\
+                  + "try rebuilding it. Here's the site - {}".format(a)
+            LOGGER.warn(msg)
+            raise
 
     ## create a dictionary mapping sample names to SNPs    
     SNPS = OrderedDict()
