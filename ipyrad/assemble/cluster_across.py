@@ -178,11 +178,11 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
                                    compression="gzip")
 
         ## sort into input order
-        #indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
-        #for tup in indeltups:
-        #    #print(tup[0][-10:], tup[1].shape, tup[2])
-        #    start = int(tup[0].rsplit("_", 1)[1])
-        #    dset[start:start+tup[2]] = tup[1]
+        indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
+        for tup in indeltups:
+            #print(tup[0][-10:], tup[1].shape, tup[2])
+            start = int(tup[0].rsplit("_", 1)[1])
+            dset[start:start+tup[2]] = tup[1]
         ioh5.close()
 
         ## concatenate finished reads
