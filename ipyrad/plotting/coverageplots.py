@@ -15,7 +15,7 @@ from collections import OrderedDict
 
 
 def depthplot(data, samples=None, dims=(None,None), canvas=(None,None), 
-              xmax=50, log=False, outprefix=None):
+              xmax=50, log=False, outprefix=None, use_maxdepth=False):
     """ plots histogram of coverages across clusters"""
 
     ## select samples to be plotted, requires depths info
@@ -54,22 +54,28 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
             axes.y.scale = "log"
 
         ## statistical called bins
-        statdat = subsamples[sample].depths[\
-                      subsamples[sample].depths >= \
-                      data.paramsdict["mindepth_statistical"]]
+        statdat = subsamples[sample].depths
+        statdat = statdat[statdat >= data.paramsdict["mindepth_statistical"]]
+        if use_maxdepth:
+            statdat = statdat[statdat < data.paramsdict["maxdepth"]]
+        #subsamples[sample].depths >= data.paramsdict["mindepth_statistical"]]
+
         sdat = np.histogram(statdat, range(50))
 
         ## majrule called bins
-        statdat = subsamples[sample].depths[\
-                      subsamples[sample].depths < \
-                      data.paramsdict["mindepth_statistical"]]
+        statdat = subsamples[sample].depths
+        statdat = statdat[statdat < data.paramsdict["mindepth_statistical"]]
         statdat = statdat[statdat >= data.paramsdict["mindepth_majrule"]]
+        if use_maxdepth:
+            statdat = statdat[statdat < data.paramsdict["maxdepth"]]
         mdat = np.histogram(statdat, range(50))
 
         ## excluded bins
         tots = data.samples[sample].depths
-        totsdat = tots[tots < data.paramsdict["mindepth_majrule"]]
-        edat = np.histogram(totsdat, range(50))
+        tots = tots[tots < data.paramsdict["mindepth_majrule"]]
+        if use_maxdepth:
+            tots = tots[tots < data.paramsdict["maxdepth"]]
+        edat = np.histogram(tots, range(50))
 
         # ## set ymax using highest bin...
         # #ymax = ...
