@@ -163,14 +163,13 @@ def consensus(args):
     clusters = open(tmpchunk, 'rb')
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-    ## array to store all the coverage data, including
-    ## the consens reads that are excluded (for now)
+    ## array to store all the coverage data, including consens reads that are 
+    ## excluded (for now). 
     #nreads = sample.stats.clusters_kept
     ## dimensions: nreads, max_read_length, 4 bases
-    ## will store counts of bases only ne
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
-        maxlen*=2
+        maxlen *= 2
     catarr = numpy.zeros([optim, maxlen, 4], dtype='int16')
 
     ## counters 
@@ -604,14 +603,10 @@ def run_full(data, sample, ipyclient):
     ## counter for split job submission
     num = 0
 
-    ## set optim size for chunks in N clusters TODO: (make this better)
-    optim = int(sample.stats.clusters_hidepth/
-                float(len(ipyclient.ids)*2))
-    optim = 1000
-    if sample.stats.clusters_hidepth > 10000:
-        optim = 1000
-    elif sample.stats.clusters_hidepth < 1000:
-        optim = 100
+    ## set optim size for chunks in N clusters
+    optim = 100
+    if sample.stats.clusters_total > 2000:
+        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/2
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
@@ -625,16 +620,16 @@ def run_full(data, sample, ipyclient):
     ## Use iterator to sample til end of cluster
     done = 0
     while not done:
-        ## grab optim clusters and write to file
+        ## grab optim clusters and write to file. Clustdealer breaks by clusters
         done, chunk = clustdealer(pairdealer, optim)
         chunkhandle = os.path.join(data.dirs.clusts, 
-                                "tmp_"+str(sample.name)+"."+str(num*optim))
+                                   "tmp_"+str(sample.name)+"."+str(num*optim))
         if chunk:
             chunkslist.append(chunkhandle)            
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
             num += 1
-            #LOGGER.info("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
+            LOGGER.info("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
 
     ## close clusters handle
     clusters.close()
@@ -653,19 +648,19 @@ def run_full(data, sample, ipyclient):
         statsdicts = results.get()
         del lbview
 
-    except ipyparallel.error.CompositeError:
-        errorengines = [i for i in results.metadata if i["error"]]
-        print("\n  step5 error during sample `{}` with {} crashes"\
-            .format(sample.name, len(errorengines)))
-        print("  {}".format(errorengines[0]["error"]))
+    #except ipyparallel.error.CompositeError:
+    #    errorengines = [i for i in results.metadata if i["error"]]
+    #    print("\n  step5 error during sample `{}` with {} crashes"\
+    #        .format(sample.name, len(errorengines)))
+    #    print("  {}".format(errorengines[0]["error"]))
 
     finally:
         ## if process failed at any point delete tmp files
-        for tmpchunk in chunkslist:
+        tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+        tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+        for tmpchunk in tmpcons+tmpcats+chunkslist:
             if os.path.exists(tmpchunk):
                 os.remove(tmpchunk)
-            else:
-                print("where is " + tmpchunk)
 
     return statsdicts
 
