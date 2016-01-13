@@ -200,7 +200,7 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 125),
                         ("max_inner_mate_distance", 60),
-                        ("preview_truncate_length", 100000),
+                        ("preview_truncate_length", 500000),
                         ("output_loci_name_buffer", 5),
         ])
 
