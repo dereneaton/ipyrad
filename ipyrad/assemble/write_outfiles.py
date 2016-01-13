@@ -250,7 +250,7 @@ def filter_duplicates(data, loci):
 def filter_minsamp(data, loci):
     """ Filter minimum # of samples per locus
     """
-    minsamp = data.paramsdict["minsamp"]
+    minsamp = data.paramsdict["min_samples_locus"]
     
     count = 0
     for i, loc in enumerate(loci):
@@ -262,7 +262,7 @@ def filter_minsamp(data, loci):
     ## Filter out the empty lists left in the wake
     loci = filter(lambda x: x != [], loci)
 
-    LOGGER.info("Filterered minsamp - {}".format(count))
+    LOGGER.info("Filterered min samples per locus - {}".format(count))
 
     return loci
 
@@ -318,7 +318,7 @@ def filter_maxhet(data, loci):
     ## maxHet can be either an absolute value or a proportion.
     ## Since loci can be of different lengths we have to set
     ## it differently for each locus
-    maxHet = data.paramsdict["max_shared_heterozygosity"]
+    maxHet = data.paramsdict["max_shared_Hs_locus"]
 
     count = 0
     for i, loc in enumerate(loci):
@@ -423,7 +423,7 @@ def make_outfiles( data, samples, force ):
 ## Utility subfunctions
 def count_shared_polymorphisms(seqs):
     """ Count the number of shared polymorphic sites at every base in a locus. If any 
-    base contains too may shared polymorphisms (paramsdict[max_shared_heterozygosity])
+    base contains too may shared polymorphisms (paramsdict[max_shared_Hs_locus])
     then we'll throw out the whole locus.
     Input is a list of sequences, output is a list of ints representing counts
     of shared polyorphisms per base

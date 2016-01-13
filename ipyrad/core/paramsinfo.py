@@ -136,7 +136,7 @@ def paramsinfo(param=""):
         """),
 
     ("11", """
-        (11) minsamp ---------------------------------------------------------
+        (11) min_samples_locus ---------------------------------------------------------
         Minimum number of samples a locus must be shared across to be included
         in the exported data set following filtering for sequencing depth, 
         paralogs, ...
@@ -145,17 +145,17 @@ def paramsinfo(param=""):
         data.setparams(11) = 4            ## min 4; most inclusive phylo data 
         data.setparams(11) = 20           ## min 20; less data, less missing
         data.setparams(11) = 1            ## min 1; most data, most missing
-        data.setparams("minsamp") = 4     ## verbose
+        data.setparams("min_samples_locus") = 4     ## verbose
         ----------------------------------------------------------------------
         """),
     ("12", """
-        (12) max_shared_heterozygosity ---------------------------------------
+        (12) max_shared_Hs_locus ---------------------------------------
         ...
         ----------------------------------------------------------------------
         data.setparams(12) = .25          ## set as proportion of samples
         data.setparams(12) = 4            ## set as number of samples
         data.setparams(12) = 9999         ## set arbitrarily high
-        data.setparams("max_shared_heterozygosity) = 4      ## verbose
+        data.setparams("max_shared_Hs_locus") = 4      ## verbose
         ----------------------------------------------------------------------
         """),
 

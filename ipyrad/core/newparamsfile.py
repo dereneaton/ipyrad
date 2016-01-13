@@ -28,7 +28,7 @@ rad                        ## [{}] Datatype (see docs): rad, gbs, ddrad, etc.
 1                          ## [{}] max number mismatches in barcodes
 0                          ## [{}] filter for adapters/primers (1 or 2=stricter)
 32                         ## [{}] minimum length of reads after adapter trim
-2                          ## [{}] ploidy: 1=haploid, 2=diploid, >2=(see docs)
+2                          ## [{}] max_alleles_consens: 1=haploid, 2=diploid, >2=(see docs)
 1000                       ## [{}] max cluster depth within samples
 5                          ## [{}] maxNs (uncalled bases) in consensus (R1, R2)
 5                          ## [{}] maxHs (heterozygotes) in consensus (R1, R2)
