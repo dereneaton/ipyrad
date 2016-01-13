@@ -21,9 +21,9 @@ def paramsinfo(param=""):
         This parameter affects all steps of assembly (1-7). 
         Examples: 
         ----------------------------------------------------------------------
-        data.setparams(1) = "/home/user/rad_analysis/"   ## full path example
-        data.setparams(1) = "./"                         ## current work. dir.
-        data.setparams('working_directory') = "./"       ## verbose
+        data.set_params(1) = "/home/user/rad_analysis/"   ## full path example
+        data.set_params(1) = "./"                         ## current work. dir.
+        data.set_params('working_directory') = "./"       ## verbose
         ----------------------------------------------------------------------
         """),
 
@@ -33,10 +33,10 @@ def paramsinfo(param=""):
         FASTQ data files reside. Files can be gzipped. This parameter affects 
         only step 1 of assembly. Examples:
         ----------------------------------------------------------------------
-        data.setparams(2) = "/home/user/rad_analysis/*.fastq  ## full path
-        data.setparams(2) = "raw/*.fq"                        ## relative path
-        data.setparams(2) = "raw/*.fastq.gz"                  ## gzipped data 
-        data.setparams("raw_fastq_path") = "raw/*.fastq.gz"   ## verbose 
+        data.set_params(2) = "/home/user/rad_analysis/*.fastq  ## full path
+        data.set_params(2) = "raw/*.fq"                        ## relative path
+        data.set_params(2) = "raw/*.fastq.gz"                  ## gzipped data 
+        data.set_params("raw_fastq_path") = "raw/*.fastq.gz"   ## verbose 
         ----------------------------------------------------------------------
         """),
 
@@ -46,9 +46,9 @@ def paramsinfo(param=""):
         demultiplexing. If data are already demultiplexed this can be left 
         blank. This parameter affects only step 1 of assembly. Examples:
         ----------------------------------------------------------------------
-        data.setparams(3) = "/home/user/rad_analysis/barcodes.txt ## full path
-        data.setparams(3) = "./barcodes.txt                   ## relative path
-        data.setparams("barcodes_path") = "./barcodes.txt"    ## verbose
+        data.set_params(3) = "/home/user/rad_analysis/barcodes.txt ## full path
+        data.set_params(3) = "./barcodes.txt                   ## relative path
+        data.set_params("barcodes_path") = "./barcodes.txt"    ## verbose
         ----------------------------------------------------------------------
         """),
 
@@ -62,114 +62,15 @@ def paramsinfo(param=""):
         This parameter affects only step 2 of assembly. 
         Examples:
         ----------------------------------------------------------------------
-        data.setparams(4) = "/home/user/data/*.fastq    ## set data location
-        data.setparams(4) = ""                ## defaults to working directory
-        data.setparams(4) = "./"                  ## uses current directory
-        data.setparams("sorted_fastq_path") = ""  ## Use default
+        data.set_params(4) = "/home/user/data/*.fastq    ## set data location
+        data.set_params(4) = ""                ## defaults to working directory
+        data.set_params(4) = "./"                  ## uses current directory
+        data.set_params("sorted_fastq_path") = ""  ## Use default
         ----------------------------------------------------------------------
         """),
 
     ("5", """
-        (5) datatype ---------------------------------------------------------
-        Options: rad, gbs, ddrad, pairddrad, pairgbs, merged.
-        This parameter affects all steps of assembly (1-7).         
-        Examples:
-        ----------------------------------------------------------------------
-        data.setparams(7) = 'rad'                     ## rad data type
-        data.setparams(7) = 'gbs'                     ## gbs data type
-        data.setparams(7) = 'pairddrad'               ## gbs data type        
-        data.setparams(7) = 'merged'                  ## merged data type
-        data.setparams("datatype") = 'ddrad'          ## verbose
-        ----------------------------------------------------------------------
-        """),
-
-    ("6", """
-        (6) restriction_overhang ---------------------------------------------
-        A tuple containing one or two restriction overhangs. Single digest 
-        RADseq with sonication requires only one overhange, all other data 
-        types should have two. The first is used for detecting barcodes, the 
-        second is not required, but is used in filtering, and is needed for 
-        removal from short DNA fragments. Use .preview() methods (see 
-        documentation) to ensure that restriction overhangs are entered 
-        correctly. This parameter affects steps 1,2,4,5, and 7 of assembly. 
-        Examples:
-        ----------------------------------------------------------------------
-        data.setparams(8) = ("TGCAG", "")           ## default rad (PstI)
-        data.setparams(8) = ("CWGC", "CWGC")        ## gbs or pairgbs (ApeKI)
-        data.setparams(8) = ("CAGT", "AATT")        ## ddrad (ApeKI, MSI)
-        data.setparams(8) = ("CAGT", "AATT")        ## pairddrad (ApeKI, MSI)        
-        data.setparams("restriction_overhang") = ("CAGT", "AATT")   ## verbose
-        ----------------------------------------------------------------------
-        """),
-
-    ("7", """
-        (7) mindepths --------------------------------------------------------
-        A tuple containing two values, the mindepth for statistical base calls
-        based a binomial probability with H and E estimated from the data, and
-        the mindepth for majority-rule base calls. Base calls are made at >= 
-        the value entered. For most reasonable estimates of E and H, 
-        statistical base calls cannot be made below 5 or 6, and will instead 
-        be called N. It may often be advantageous to use a low value for 
-        majrule calls to preserve most data during assembly within-samples, 
-        so that more data is clustered between samples. Low depth data can be 
-        filtered out later from the final data set if needed. 
-        The parameter affects steps 5 and 7 of assembly. 
-        Examples:
-        ----------------------------------------------------------------------
-        data.setparams(9) = (6, 6)    ## only stat base calls down to depth=6
-        data.setparams(9) = (10, 5)   ## stat calls above 9, majrule from 9-5.
-        data.setparams(9) = (10, 1)   ## stat calls above 9, majrule from 9-1.
-        data.setparams(mindepths) = (6, 1)    ## verbose
-        ----------------------------------------------------------------------
-        """),
-
-    ("10", """
-        (10) clust_threshold -------------------------------------------------
-        Clustering threshold. 
-        Examples:
-        ----------------------------------------------------------------------
-        data.setparams(10) = .85          ## clustering similarity threshold
-        data.setparams(10) = .90          ## clustering similarity threshold
-        data.setparams(10) = .95          ## very high values not recommended 
-        data.setparams("clust_threshold") = .83  ## verbose
-        ----------------------------------------------------------------------
-        """),
-
-    ("11", """
-        (11) min_samples_locus ---------------------------------------------------------
-        Minimum number of samples a locus must be shared across to be included
-        in the exported data set following filtering for sequencing depth, 
-        paralogs, ...
-        Examples
-        ----------------------------------------------------------------------
-        data.setparams(11) = 4            ## min 4; most inclusive phylo data 
-        data.setparams(11) = 20           ## min 20; less data, less missing
-        data.setparams(11) = 1            ## min 1; most data, most missing
-        data.setparams("min_samples_locus") = 4     ## verbose
-        ----------------------------------------------------------------------
-        """),
-    ("12", """
-        (12) max_shared_Hs_locus ---------------------------------------
-        ...
-        ----------------------------------------------------------------------
-        data.setparams(12) = .25          ## set as proportion of samples
-        data.setparams(12) = 4            ## set as number of samples
-        data.setparams(12) = 9999         ## set arbitrarily high
-        data.setparams("max_shared_Hs_locus") = 4      ## verbose
-        ----------------------------------------------------------------------
-        """),
-
-    ("13", """
-        (13) prefix_outname --------------------------------------------------
-
-        ----------------------------------------------------------------------
-        data.setparams(13) = test          ## set a name
-        data.setparams(13) = c85d4m8p4     ## set a name of parameters values
-        data.setparams("prefix_outname") = c85d4m8p4   ## verbose
-        ---------------------------------------------------------------------- 
-        """),
-    ("27", """
-        (27) assembly_method -------------------------------------------------
+        (5) assembly_method --------------------------------------------------
         A string specifying the desired assembly method. There are four 
         available options for assembly method:
             denovo    -   Denovo assembly is the classic pyrad method, and
@@ -197,13 +98,14 @@ def paramsinfo(param=""):
                           it is probable that unmapped reads are neutral or 
                           unlinked to non-neutral.
         ----------------------------------------------------------------------
-        data.setparams(27) = denovo        ## set a name
-        data.setparams(27) = hybrid        ## set a name of parameters values
-        data.setparams("assembly_method") = reference   ## verbose
+        data.set_params(5) = denovo        ## set a name
+        data.set_params(5) = hybrid        ## set a name of parameters values
+        data.set_params("assembly_method") = reference   ## verbose
         ---------------------------------------------------------------------- 
         """),
-    ("28", """
-        (28) reference_sequence ----------------------------------------------
+
+    ("6", """
+        (6) reference_sequence -----------------------------------------------
         The path to the reference sequence you desire to map your reads to.
         The reference may be either fasta or gzipped fasta. It should be a 
         complete reference sequence, including all chromosomes, scaffolds, and
@@ -221,10 +123,267 @@ def paramsinfo(param=""):
         either be a full path (desirable) or a path relative to the directory
         you are running ipyrad from (supported but be careful of the path).
         ----------------------------------------------------------------------
-        data.setparams(28) = /home/wat/data/reference.fa  ## set a full path
-        data.setparams(28) = ./data/reference.fa.gz       ## set a relative path
-        data.setparams("reference_sequence") = ./data/reference.fa   ## verbose
+        data.set_params(6) = /home/wat/data/reference.fa  ## set a full path
+        data.set_params(6) = ./data/reference.fa.gz       ## set a relative path
+        data.set_params("reference_sequence") = ./data/reference.fa   ## verbose
         ---------------------------------------------------------------------- 
+        """),
+
+    ("7", """
+        (7) datatype ---------------------------------------------------------
+        Options: rad, gbs, 2brad, ddrad, pairddrad, pairgbs, merged.
+        This parameter affects all steps of assembly (1-7).         
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(7) = 'rad'                     ## rad data type
+        data.set_params(7) = 'gbs'                     ## gbs data type
+        data.set_params(7) = 'pairddrad'               ## gbs data type        
+        data.set_params(7) = 'merged'                  ## merged data type
+        data.set_params("datatype") = 'ddrad'          ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("8", """
+        (8) restriction_overhang ---------------------------------------------
+        A tuple containing one or two restriction overhangs. Single digest 
+        RADseq with sonication requires only one overhange, all other data 
+        types should have two. The first is used for detecting barcodes, the 
+        second is not required, but is used in filtering, and is needed for 
+        removal from short DNA fragments. Use .preview() methods (see 
+        documentation) to ensure that restriction overhangs are entered 
+        correctly. This parameter affects steps 1,2,4,5, and 7 of assembly. 
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(8) = ("TGCAG", "")           ## default rad (PstI)
+        data.set_params(8) = ("CWGC", "CWGC")        ## gbs or pairgbs (ApeKI)
+        data.set_params(8) = ("CAGT", "AATT")        ## ddrad (ApeKI, MSI)
+        data.set_params(8) = ("CAGT", "AATT")        ## pairddrad (ApeKI, MSI)        
+        data.set_params("restriction_overhang") = ("CAGT", "AATT")   ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("9", """
+        (9) max_low_qual_bases -----------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(9) = 10
+        data.set_params("max_low_qual_bases") = 6
+        ----------------------------------------------------------------------
+        """),
+
+    ("10", """
+        (10) phred_Qscore_offset ---------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(10) = 33
+        data.set_params("phred_Qscore_offset") = 33
+        ----------------------------------------------------------------------
+        """),
+
+    ("11", """
+        (11) mindepth_statistical --------------------------------------------
+        An integer value indicating the mindepth for statistical base calls
+        based a binomial probability with H and E estimated from the data.
+        Base calls are made at >= the value entered. For most reasonable 
+        estimates of E and H, statistical base calls cannot be made below 5 
+        or 6, and will instead be called N. 
+        The parameter affects steps 5 and 7 of assembly. 
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(11) = (6, 6)    ## only stat base calls down to depth=6
+        data.set_params(11) = (10, 5)   ## stat calls above 9, majrule from 9-5.
+        data.set_params(11) = (10, 1)   ## stat calls above 9, majrule from 9-1.
+        data.set_params(mindepth_statistical) = 6    ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("12", """
+        (12) mindepth_majrule ------------------------------------------------
+        An integer value indicating the mindepth for majority-rule base calls. 
+        Base calls are made at >= the value entered. It may often be advant-
+        ageous to use a low value for majrule calls to preserve most data during 
+        assembly within-samples, so that more data is clustered between samples. 
+        Low depth data can be filtered out later from the final data set if needed. 
+        The parameter affects steps 5 and 7 of assembly. 
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(12) = (6, 6)    ## only stat base calls down to depth=6
+        data.set_params(12) = (10, 5)   ## stat calls above 9, majrule from 9-5.
+        data.set_params(12) = (10, 1)   ## stat calls above 9, majrule from 9-1.
+        data.set_params(mindepth_majrule) = 6    ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("13", """
+        (13) maxdepth --------------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(13) = 33
+        data.set_params("maxdepth") = 33
+        ----------------------------------------------------------------------
+        """),
+
+    ("14", """
+        (14) clust_threshold -------------------------------------------------
+        Clustering threshold. 
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(14) = .85          ## clustering similarity threshold
+        data.set_params(14) = .90          ## clustering similarity threshold
+        data.set_params(14) = .95          ## very high values not recommended 
+        data.set_params("clust_threshold") = .83  ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("15", """
+        (15) max_barcode_mismatch --------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(15) = 1
+        data.set_params("max_barcode_mismatch") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("16", """
+        (16) filter_adapters -------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(16) = 1
+        data.set_params("filter_adapters") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("17", """
+        (17) filter_min_trim_len ---------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(17) = 1
+        data.set_params("filter_min_trim_len") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("18", """
+        (18) max_alleles_consens ---------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(18) = 1
+        data.set_params("max_alleles_consens") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("19", """
+        (19) max_Ns_consens --------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(19) = 1
+        data.set_params("max_Ns_consens") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("20", """
+        (20) max_Hs_consens --------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(20) = 1
+        data.set_params("max_Hs_consens") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("21", """
+        (21) min_samples_locus -----------------------------------------------
+        Minimum number of samples a locus must be shared across to be included
+        in the exported data set following filtering for sequencing depth, 
+        paralogs, ...
+        Examples
+        ----------------------------------------------------------------------
+        data.set_params(21) = 4            ## min 4; most inclusive phylo data 
+        data.set_params(21) = 20           ## min 20; less data, less missing
+        data.set_params(21) = 1            ## min 1; most data, most missing
+        data.set_params("min_samples_locus") = 4     ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("22", """
+        (22) max_SNPs_locus --------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(22) = 1
+        data.set_params("max_SNPs_locus") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("23", """
+        (23) max_Indels_locus ------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(23) = 1
+        data.set_params("max_Indels_locus") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("24", """
+        (24) max_shared_Hs_locus ---------------------------------------------
+        ...
+        ----------------------------------------------------------------------
+        data.set_params(24) = .25          ## set as proportion of samples
+        data.set_params(24) = 4            ## set as number of samples
+        data.set_params(24) = 9999         ## set arbitrarily high
+        data.set_params("max_shared_Hs_locus") = 4      ## verbose
+        ----------------------------------------------------------------------
+        """),
+
+    ("25", """
+        (25) edit_cutsites ---------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(25) = 1
+        data.set_params("edit_cutsites") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("26", """
+        (26) trim_overhang ---------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(26) = 1
+        data.set_params("trim_overhang") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("27", """
+        (27) output_formats --------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(27) = 1
+        data.set_params("output_formats") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("28", """
+        (28) pop_assign_file -------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(28) = 1
+        data.set_params("pop_assign_file") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("29", """
+        (29) excludes --------------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(29) = 1
+        data.set_params("excludes") = 1
+        ----------------------------------------------------------------------
+        """),
+
+    ("30", """
+        (30) outgroups -------------------------------------------------------
+        Examples:
+        ----------------------------------------------------------------------
+        data.set_params(30) = 1
+        data.set_params("outgroups") = 1
+        ----------------------------------------------------------------------
         """),
 
     ])
@@ -236,6 +395,11 @@ def paramsinfo(param=""):
         try: 
             print(pinfo[str(param)])
         except (KeyError, ValueError) as err:
+            ## TODO: paramsinfo get description by param string not working.
+            ## It would be cool to have an assembly object bcz then you could
+            ## just do this:
+            ##
+            ## print(pinfo[data.paramsinfo.keys().index(param)])
             print("\tKey name/number not recognized", err)
     else:
         print("Enter a name or number for explanation of the parameter\n")
