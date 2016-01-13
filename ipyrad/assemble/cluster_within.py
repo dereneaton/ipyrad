@@ -242,6 +242,12 @@ def build_clusters(data, sample):
         LOGGER.error("no .utemp file found for %s", sample.name)
         sys.exit("no .utemp file found for sample {}".format(sample.name))
     userout = open(ufile, 'rb').readlines()
+    ## if .u file is empty then bail out
+    ## TODO: Handle this more intelligently. If one individual is bad it
+    ## shouldn't crash the entire step3
+    if not userout:
+        LOGGER.error(".utemp file exists but is empty for %s", sample.name)
+        sys.exit("utemp file exists but is empty for {}".format(sample.name))
 
     ## load derep reads into a dictionary
     hits = {}  
