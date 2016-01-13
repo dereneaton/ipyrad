@@ -261,7 +261,7 @@ def preview_truncate_fq( data, sample_fastq ):
 
         with tempfile.NamedTemporaryFile( 'w+b', delete=False,
                 dir=os.path.realpath(data.dirs.working),
-                prefix="preview_tmp_", suffix=".fq") as tmp_fq:
+                prefix=read+".preview_tmp", suffix=".fq") as tmp_fq:
             try:
                 ## Sample the first 10000 reads. This should be sufficient.        
                 for i in range(data._hackersonly["preview_truncate_length"]):
