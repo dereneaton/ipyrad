@@ -656,9 +656,7 @@ def run_full(data, sample, ipyclient):
 
     finally:
         ## if process failed at any point delete tmp files
-        tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-        tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-        for tmpchunk in tmpcons+tmpcats+chunkslist:
+        for tmpchunk in chunkslist:
             if os.path.exists(tmpchunk):
                 os.remove(tmpchunk)
 
@@ -716,25 +714,33 @@ def run(data, samples, force, ipyclient):
         ## Samples on queue
         for sample in samples:
             ## not force need checks
-            if not force:
-                if sample.stats.state >= 5:
-                    print("Skipping Sample {}; ".format(sample.name)
-                     +"Already has consens reads. Use force=True to overwrite.")
-                elif sample.stats.clusters_hidepth < 100:
-                    print("Skipping Sample {}; ".format(sample.name)
-                       +"Too few clusters ({}). Use force=True to run anyway.".\
-                       format(sample.stats.clusters_hidepth))
+            try:
+                if not force:
+                    if sample.stats.state >= 5:
+                        print("Skipping Sample {}; ".format(sample.name)
+                         +"Already has consens reads. Use force=True to overwrite.")
+                    elif sample.stats.clusters_hidepth < 100:
+                        print("Skipping Sample {}; ".format(sample.name)
+                           +"Too few clusters ({}). Use force=True to run anyway.".\
+                           format(sample.stats.clusters_hidepth))
+                    else:
+                        statsdicts = run_full(data, sample, ipyclient)
+                        cleanup(data, sample, statsdicts)
                 else:
-                    statsdicts = run_full(data, sample, ipyclient)
-                    cleanup(data, sample, statsdicts)
-            else:
-                if not sample.stats.clusters_hidepth:
-                    print("Skipping Sample {}; ".format(sample.name)
-                         +"No clusters found in file {}".\
-                           format(sample.files.clusters_hidepth))
-                else:
-                    statsdicts = run_full(data, sample, ipyclient)
-                    cleanup(data, sample, statsdicts)
+                    if not sample.stats.clusters_hidepth:
+                        print("Skipping Sample {}; ".format(sample.name)
+                             +"No clusters found in file {}".\
+                               format(sample.files.clusters_hidepth))
+                    else:
+                        statsdicts = run_full(data, sample, ipyclient)
+                        cleanup(data, sample, statsdicts)
+            finally:
+                ## if process failed at any point delete tmp files
+                tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+                tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+                for tmpchunk in tmpcons+tmpcats:
+                    if os.path.exists(tmpchunk):
+                        os.remove(tmpchunk)
 
 
 
