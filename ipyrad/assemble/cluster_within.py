@@ -280,7 +280,7 @@ def build_clusters(data, sample):
 
         ## allow only N internal indels in hits to seed for within-sample clust
         for i in xrange(len(values)):
-            if int(values(i[3])) < 6:
+            if int(values[i][3]) < 6:
                 ## flip to the right orientation 
                 if values[i][1] == "+":
                     seq.append(values[i][0].strip()+"+\n"+hits[values[i][0]][1])
