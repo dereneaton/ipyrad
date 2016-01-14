@@ -621,7 +621,7 @@ class Assembly(object):
         """ Write out the parameters of this assembly to a file properly
         formatted as input for `ipyrad -p <params.txt>`. A good and
         simple way to share/archive parameter settings for assemblies.
-        This is also the function that's used by newparamsfile() to 
+        This is also the function that's used by __main__ to 
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:

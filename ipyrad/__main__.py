@@ -3,7 +3,6 @@
 
 from __future__ import print_function, division  # Requires Python 2.7+
 
-from ipyrad.core.newparamsfile import write_params
 from ipyrad.core.parallel import ipcontroller_init
 import pkg_resources
 import ipyrad as ip
