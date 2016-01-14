@@ -28,7 +28,7 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
-def cleanup(data, sample):
+def sample_cleanup(data, sample):
     """ stats, cleanup, and link to samples """
     
     ## get clustfile
@@ -247,9 +247,9 @@ def build_clusters(data, sample):
     the size of the truncated input file isn't big enough try increasing the 
     size of <your_assembly>._hackersonly[\"preview_truncate_length\"
     """.format(sample.name)
-
         LOGGER.warn(inst)
         raise IPyradError(inst)
+
     ## load derep reads into a dictionary
     hits = {}  
     ioderep = open(derepfile, 'rb')
@@ -317,6 +317,7 @@ def build_clusters(data, sample):
     del userout
     del udic
     del seedsdic
+
 
 
 def get_threaded_view(ipyclient):
@@ -428,10 +429,17 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         results = threaded_view.map(mapreads, submitted_args)
         results.get()
 
-    ## DENOVO CLUSTER unless otherwise specified
+    ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
+    ## for samples in the order in which they were submitted
     results = threaded_view.map(clustall, submitted_args)
-    results.get()
-    clusteredsamples = [i[1] for i in submitted_args]
+    results = results.get()
+
+    ## record that sample is clustered but not yet aligned
+    for success, sample in zip(results, samples):
+        if success:
+            sample.stats.state = 2.5
+
+    ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
 
     ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
     ## bam files and write them to the clust.gz files to fold them back into 
@@ -440,22 +448,22 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         for sample in samples:
             finalize_aligned_reads(data, sample, ipyclient)
 
-    ## record that sample is clustered but not yet aligned
-    for sample in clusteredsamples:
-        sample.state = 2.5
-
     ## call to ipp for muscle aligning only if the Sample passed clust/mapping
     for sample in samples:
-        if sample.state < 3:
+        if sample.stats.state == 2.5:
+            LOGGER.info("muscle aligning")            
             multi_muscle_align(data, sample, ipyclient)
+            ## run sample cleanup 
+            sample_cleanup(data, sample)
 
-    ## write stats to samples
-    for sample in samples:
-        cleanup(data, sample)
+    ## run data cleanup
+    data_cleanup(data, samples)
 
-    ## TODO: update statsfile with mapped and unmapped reads for reference 
-    ## mapping 
 
+
+def data_cleanup(data, samples):
+    """ cleanup / statswriting function for Assembly obj """
+    ## TODO: update statsfile with mapped and unmapped reads for refmapping
     data.statsfiles.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
     if not os.path.exists(data.statsfiles.s3):
         with open(data.statsfiles.s3, 'w') as outfile:
@@ -469,7 +477,9 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     outfile = open(data.statsfiles.s3, 'a+')
     samples.sort(key=lambda x: x.name)
     for sample in samples:
-        outfile.write(""+\
+        ## only do for finished Samples
+        if sample.stats.state == 3:
+            outfile.write(""+\
     "{:<20}   {:>9}   {:>10}   {:>11}   {:>13.2f}   {:>11.2f}   {:>13.2f}\n".\
                       format(sample.name, 
                              int(sample.stats["reads_filtered"]),
@@ -717,8 +727,11 @@ def clustall(args):
     ## cluster_rebuild. Stop and print warning if no .utemp hits
     try:
         build_clusters(data, sample)
+        ## record that it passed the clustfile build
+        return 1
     except IPyradError as inst:
         print(inst)
+        return 0
 
 
 
@@ -754,25 +767,21 @@ def run(data, samples, noreverse, force, preview, ipyclient):
         ## we know can arise (e.g., no utemp file) are handled without fails.
         ## This will catch other exceptions such as KeyboardInterrupt, shut
         ## everything down, and then re-raise the Exception. 
-        try:
+        #try:
             ## get pids in case you need to kill them later            
-            pids = ipyclient[:].apply_async(os.getpid).get()
+            #pids = ipyclient[:].apply_async(os.getpid).get()
             ## submit jobs
-            split_among_processors(*args)
-        except Exception as inst:
+        split_among_processors(*args)
+
+        #except Exception as inst:
             ## prevents waiting jobs from being added to queue
-            ipyclient.abort()
-            ## kill external jobs left executing (e.g., vsearch, smalt). 
-            ## It's OK to kill the Engine's pid b/c new Engine pids are 
-            ## launched on each new connection to ipyclient.
-            if pids:
-                try:
-                    for pid in pids:
-                        os.kill(pid, '9')
-                except OSError: 
-                    pass
-            ## pass exception along
-            raise inst
+        #    ipyclient.abort()
+            ## kill Engines left executing (e.g., vsearch, smalt). 
+            ## currently it kills your ipcluster instance tho... not ideal.
+            ## maybe this should be in the Assembly wrapper...?
+            ##ipyclient.shutdown()
+            ##ipyclient = ipp.Client()
+        #    raise inst
 
 
 
