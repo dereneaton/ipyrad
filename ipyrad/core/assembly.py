@@ -23,24 +23,13 @@ import ipyparallel as ipp
 import ipyrad as ip
 
 from collections import OrderedDict
-from ipyrad.assemble.util import ObjDict
+from ipyrad.assemble.util import *
 from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.sample import Sample
 from ipyrad import assemble
 
 import logging
 LOGGER = logging.getLogger(__name__)
-
-
-class IPyradParamsError(Exception):
-    """ Exception handler indicating error in parameter entry """
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
-
-class IPyradError(Exception):
-    """ Exception handler indicating error in during assembly """
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
 
 
 
@@ -719,6 +708,7 @@ class Assembly(object):
         try:
             ipyclient = self._launch(nwait)
             if ipyclient.ids:
+                ## append client to args and call stepfunc
                 args.append(ipyclient)
                 stepfunc(*args)
 
@@ -736,28 +726,22 @@ class Assembly(object):
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
             logging.error("assembly interrupted by user.")
-            ## prevent standing jobs from executing
-            ipyclient.abort()
-            ## kill jobs in execution
-            #try:
-            #    pid = how do I find this?
-            #    os.kill(pid, '9')
-            #except OSError:
-            #    ## probably already dead
-            #    pass
             raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
             logging.error("assembly interrupted by sys.exit.")
             raise IPyradError("SystemExit Interrupt")
 
-        except (AssertionError, IPyradError) as inst:
-            logging.error("Assertion %s", inst)
+        except AssertionError as inst:
+            logging.error("Assertion: %s", inst)
             raise IPyradError(inst)
 
-        except Exception as inst:
-            print("Error: %s" % inst)
-            raise #IPyradError(inst)            
+        except IPyradWarningExit as inst:
+            print(inst)
+
+        #except Exception as inst:
+        #    print("Exception:", inst)
+        #    raise inst
 
         ## close client when done or interrupted
         finally:
@@ -845,8 +829,8 @@ class Assembly(object):
         ## skip if all are finished
         if not force:
             if all([i.stats.state >= 3 for i in samples]):
-                print("  Skipping: All {} ".format(len(self.samples))\
-                     +"Samples already clustered in `{}`".format(self.name))
+                print("  Skipping: All {} ".format(len(samples))\
+                     +"selected Samples already clustered")
             else:
                 assemble.cluster_within.run(self, samples, noreverse, 
                                             force, preview, ipyclient)

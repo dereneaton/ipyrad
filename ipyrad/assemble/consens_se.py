@@ -100,6 +100,7 @@ def hetero(base1, base2):
     return iupac
 
 
+
 def removerepeat_Ns(shortcon, stacked):
     """ checks for interior Ns in consensus seqs and removes those that arise 
     next to *single repeats* of at least 3 bases on either side, which may be
@@ -648,14 +649,12 @@ def run_full(data, sample, ipyclient):
         statsdicts = results.get()
         del lbview
 
-    #except ipyparallel.error.CompositeError:
-    #    errorengines = [i for i in results.metadata if i["error"]]
-    #    print("\n  step5 error during sample `{}` with {} crashes"\
-    #        .format(sample.name, len(errorengines)))
-    #    print("  {}".format(errorengines[0]["error"]))
+    ## catch an exception and raise it just once instead of on each client
+    #except ipyparallel.CompositeError as inst:
+    #    raise inst
 
+    ## cleanup whether or not a process failed
     finally:
-        ## if process failed at any point delete tmp files
         for tmpchunk in chunkslist:
             if os.path.exists(tmpchunk):
                 os.remove(tmpchunk)
