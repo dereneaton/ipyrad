@@ -743,7 +743,32 @@ def run(data, samples, noreverse, force, preview, ipyclient):
         print("  No Samples ready to be clustered. First run step2().")
     else:
         args = [data, subsamples, ipyclient, noreverse, force, preview]
-        split_among_processors(*args)
+        ## Because this includes long running jobs we want to make sure
+        ## that if any Engine fails then all Engines stop and new jobs
+        ## are not submitted. This also means we need good Exception 
+        ## handling within 'split_among_processors' so that exceptions 
+        ## we know can arise (e.g., no utemp file) are handled without fails.
+        ## This will catch other exceptions such as KeyboardInterrupt, shut
+        ## everything down, and then re-raise the Exception. 
+        try:
+            ## get pids in case you need to kill them later            
+            pids = ipyclient[:].apply_async(os.getpid).get()
+            ## submit jobs
+            split_among_processors(*args)
+        except Exception as inst:
+            ## prevents waiting jobs from being added to queue
+            ipyclient.abort()
+            ## kill external jobs left executing (e.g., vsearch, smalt). 
+            ## It's OK to kill the Engine's pid b/c new Engine pids are 
+            ## launched on each new connection to ipyclient.
+            if pids:
+                try:
+                    for pid in pids:
+                        os.kill(pid, '9')
+                except OSError: 
+                    pass
+            ## pass exception along
+            raise inst
 
 
 
