@@ -653,9 +653,7 @@ class Assembly(object):
                 paramvalue = str(val)
                 padding = (" "*(30-len(str(val))))
                 paramindex = " ## [{}] ".format(self.paramsdict.keys().index(key) + 1)
-                print("{} {} {} {}".format(paramindex, key, val, self.paramsdict.keys().index(key) + 1 ))
                 description = paraminfo(self.paramsdict.keys().index(key) + 1, short=True)
-                print(description)
                 paramsfile.write("\n" + paramvalue + padding + paramindex + description)
 
 
