@@ -23,6 +23,8 @@ from ipyrad.assemble.rawedit import comp
 import logging
 LOGGER = logging.getLogger(__name__)
 
+
+
 def index_reference_sequence(self):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
@@ -50,6 +52,7 @@ def index_reference_sequence(self):
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
 
 
+
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
     samples.files.edits .fasta files, and attempts to map each read to the 
@@ -58,30 +61,32 @@ def mapreads(args):
     and joined with the rest of the data post musle_align. The read mapping 
     produces a sam file, unmapped reads are pulled out of this and dropped back 
     in place of the edits (.fasta) file. The raw edits .fasta file is moved to 
-    .<sample>.fasta to hide it in case the mapping screws up and we need to roll-back.
-    Mapped reads stay in the sam file and are pulled out of the pileup later."""
+    .<sample>.fasta to hide it in case the mapping screws up and we need to 
+    roll-back. Mapped reads stay in the sam file and are pulled out of the 
+    pileup later."""
 
     ## get args
     data, sample, noreverse, nthreads, preview = args
-    LOGGER.debug("Entering mapreads(): %s %s %s %s", sample.name, noreverse, nthreads, preview )
+    LOGGER.debug("Entering mapreads(): %s %s %s %s", \
+                                    sample.name, noreverse, nthreads, preview)
 
     ## Test edits actually exist
     if sample.files.edits == []:
-        LOGGER.debug( "Sample edits empty. Rerun step2(force=True)")
-        LOGGER.debug( "Sample files - %s", sample.files )
-        sys.exit( "Sample edits empty. Rerun step2(force=True)" )
+        LOGGER.debug("Sample edits empty. Rerun step2(force=True)")
+        LOGGER.debug("Sample files - %s", sample.files)
+        sys.exit("Sample edits empty. Rerun step2(force=True)")
 
     ## Set the edited fastq to align for this individual, we set this here
     ## so we can overwrite it with a truncated version if we're in preview mode.
     ## Set the default sample_fastq file to align as the entire original
-    ## TODO, figure out why edits is a tuple? There could be multiple edits files, yes?
-    ## but by the time we get to step three they are all collapsed in to one big file
-    ## which is the first element of the tuple, yes?
-    sample_fastq = [ sample.files.edits[0][0] ]
+    ## TODO, figure out why edits is a tuple? There could be multiple edits 
+    ## files, yes? but by the time we get to step three they are all collapsed 
+    ## in to one big file which is the first element of the tuple, yes?
+    sample_fastq = [sample.files.edits[0][0]]
 
     ## If pair append R2 to sample_fastq
     if 'pair' in data.paramsdict["datatype"]:
-        sample_fastq.append( sample.files.edits[0][1] )
+        sample_fastq.append(sample.files.edits[0][1])
 
 
     ## If it exists, recover the hidden .fq.gz file that contains the original
@@ -295,9 +300,9 @@ def finalize_aligned_reads( data, sample, ipyclient ):
     lbview = ipyclient.load_balanced_view()
 
     try:
-        ## Regions is a giant list of 5-tuples, of which we're only really interested
-        ## in the first three, chrom, start and end position.
-        regions = bedtools_merge( data, sample )
+        ## Regions is a giant list of 5-tuples, of which we're only really 
+        ## interested in the first three: chrom, start, and end position.
+        regions = bedtools_merge(data, sample)
         
         if len(regions) > 0:
             ## Empty array to hold our chunks
@@ -311,20 +316,22 @@ def finalize_aligned_reads( data, sample, ipyclient ):
 
             submitted_args = []
             for chunk in tmp_chunks:
-                submitted_args.append( [data, sample, chunk] )
+                submitted_args.append([data, sample, chunk])
 
             ## run get_aligned_reads on all region chunks            
-            results = lbview.map_async( get_aligned_reads, submitted_args)
+            results = lbview.map_async(get_aligned_reads, submitted_args)
             results.get()
         else:
-            LOGGER.info( "No reads mapped to reference sequence." )
+            LOGGER.info("No reads mapped to reference sequence.")
 
     except Exception as inst:
         LOGGER.warn(inst)
         raise
 
     finally:
-        refmap_cleanup( data, sample )
+        refmap_cleanup(data, sample)
+
+
 
 def get_aligned_reads( args ):
     """Pull aligned reads out of sorted mapped bam files and
@@ -429,6 +436,8 @@ def get_aligned_reads( args ):
             if 'pair' in data.paramsdict['datatype']:
                 os.remove( i[1] )
 
+
+
 def bedtools_merge( data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
     reads. This is the shell command we'll eventually run
@@ -454,6 +463,8 @@ def bedtools_merge( data, sample):
                                           stderr=subprocess.STDOUT)
     LOGGER.debug( "bedtools_merge: Got # regions: %s", str(len(result)))
     return result
+
+
 
 def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
     """ Take the chromosome position, and start and end bases and output sequences
@@ -516,11 +527,14 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
 
     return outfiles
 
+
+
 ## This is the "old" way, where i was writing fasta files by hand rather than using
 ## bam2fq like makes more sense...
-def bam_region_to_fasta2( data, sample, chrom, region_start, region_end):
-    """ Take the chromosome position, and start and end bases and output sequences
-    of all reads that overlap these sites. This is the command we're building:
+def bam_region_to_fasta2(data, sample, chrom, region_start, region_end):
+    """ Take the chromosome position, and start and end bases and output 
+    sequences of all reads that overlap these sites. This is the command we're 
+    building:
 
         samtools view 1A_sorted.bam 1:116202035-116202060
 
@@ -529,7 +543,8 @@ def bam_region_to_fasta2( data, sample, chrom, region_start, region_end):
     overlapping reads in headerless sam format. QNAME is the first field and
     sequence data is the 9th.
     """
-    LOGGER.debug( "Entering bam_region_to_fasta: %s %s %s %s", sample.name, chrom, region_start, region_end )
+    LOGGER.debug("Entering bam_region_to_fasta: %s %s %s %s", \
+                 sample.name, chrom, region_start, region_end)
 
     cmd = data.bins.samtools+\
         " view "+\
@@ -545,11 +560,16 @@ def bam_region_to_fasta2( data, sample, chrom, region_start, region_end):
 
     return sequence_data, read_labels
 
-def bam_to_pileup( data, sample, chrom, region_start, region_end ):
-    """ Take the chromosome position, and start and end bases and output a pileup
-    of all reads that overlap these sites. This is the command we're building:
 
-        samtools mpileup -f MusChr1.fa -r 1:116202035-116202060 -o out.pileup 1A_0.sorted.bam
+
+def bam_to_pileup(data, sample, chrom, region_start, region_end):
+    """ Take the chromosome position, and start and end bases and output a 
+    pileup of all reads that overlap these sites. This is the command we're 
+    building:
+
+        samtools mpileup -f MusChr1.fa \
+                         -r 1:116202035-116202060 \
+                         -o out.pileup 1A_0.sorted.bam
 
     We also have to track the names of each read name (QNAME) in this region, 
     so we can reconstruct the fasta downstream. This command will output all
@@ -560,7 +580,8 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     NB: This function is not currently used in the pipeline. It works good tho,
         so I'm keeping it around in case we need it in the future.
     """
-    LOGGER.debug( "Entering bam_to_pileup: %s %s %s %s", sample.name, chrom, region_start, region_end )
+    LOGGER.debug("Entering bam_to_pileup: %s %s %s %s", \
+                 sample.name, chrom, region_start, region_end)
 
     ## make output directory for pileups
     ## These aren't really strictly necessary to keep around, but for
@@ -570,8 +591,9 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
     ## TODO: Remove the function to keep pileups before shipping.
     ##
     ## Just replace all this shit with this:
-    ##     pileup_file = data.dirs.refmapping+"/"+sample.name+"-"+region_start+".pileup"
-    pileup_dir = os.path.join(data.dirs.refmapping, "pileups" )
+    ##     pileup_file = data.dirs.refmapping+"/"+sample.name+"-"+\
+    ##     region_start+".pileup"
+    pileup_dir = os.path.join(data.dirs.refmapping, "pileups")
     if not os.path.exists(pileup_dir):
         os.makedirs(pileup_dir)
 
@@ -604,23 +626,25 @@ def bam_to_pileup( data, sample, chrom, region_start, region_end ):
         " -r " + chrom+":"+region_start+"-"+region_end+\
         " -o " + pileup_file+\
         " " + sample.files.mapped_reads
-#    LOGGER.debug( "%s", cmd )
+    #    LOGGER.debug( "%s", cmd )
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
 
     return pileup_file, read_labels
 
 
-def mpileup_to_fasta( data, sample, pileup_file ):
-    """ Takes a pileup file and decompiles it to fasta. It is currently "working"
-    but there are some bugs. If you want to actually use this it'll need some tlc.
+def mpileup_to_fasta(data, sample, pileup_file):
+    """ Takes a pileup file and decompiles it to fasta. It is currently 
+    "working" but there are some bugs. If you want to actually use this it'll 
+    need some tlc.
     
-    NB: This function is not currently used in the pipeline. It's a good idea tho,
-        so I'm keeping it around in case we need it in the future.
+    NB: This function is not currently used in the pipeline. It's a good idea 
+    tho, so I'm keeping it around in case we need it in the future.
     """
-    LOGGER.debug( "Entering mpileup_to_fasta: %s %s", sample.name, pileup_file )
 
-    with open( pileup_file, 'r' ) as pfile:
+    LOGGER.debug("Entering mpileup_to_fasta: %s %s", sample.name, pileup_file)
+
+    with open(pileup_file, 'r') as pfile:
         pileup = []
         for line in pfile:
             dat = np.array(line.strip().split())
@@ -749,22 +773,26 @@ def mpileup_to_fasta( data, sample, pileup_file ):
         ## Done processing one line of the pileup
     return( seqs )
 
-def write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels ):
+
+
+
+def write_aligned_seqs_to_file(data, sample, aligned_seqs, read_labels):
     """ Because vsearch doesn't handle named pipes, or piping at all
     we need to write the aligned sequences per read out to a fasta
     formatted file. 
     """
-    with tempfile.NamedTemporaryFile( 'w', 
-                                  delete=False,
-                                  dir=data.dirs.refmapping,
-                                  prefix=sample.name+"_",
-                                  suffix='.fa') as out:
-        for i, line in enumerate( aligned_seqs ):
-            out.write( ">"+read_labels[i]+"\n" )
-            out.write( line+"\n" )
-    return( out.name )
+    with tempfile.NamedTemporaryFile('w', delete=False,
+                                          dir=data.dirs.refmapping,
+                                          prefix=sample.name+"_",
+                                          suffix='.fa') as out:
+        for i, line in enumerate(aligned_seqs):
+            out.write(">"+read_labels[i]+"\n")
+            out.write(line+"\n")
+    return out.name
 
-def derep_and_sort( data, sample, aligned_fasta_file ):
+
+
+def derep_and_sort(data, sample, aligned_fasta_file):
 
     #TODO: Delete this. I'm setting filter_min_trim_len
     # to 10 for testing, should delete this prior to shipping
@@ -777,8 +805,11 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
     else:
         reverse = " "
 
-#    outfile = os.path.join(data.dirs.refmapping, aligned_fasta_file.split("/")[-1]+".map_derep.fa")
-    outfile = tempfile.NamedTemporaryFile( dir=data.dirs.refmapping, prefix="derep_and_sort", suffix=".fa", delete=False )
+    #outfile = os.path.join(data.dirs.refmapping, 
+    #                       aligned_fasta_file.split("/")[-1]+".map_derep.fa")
+    outfile = tempfile.NamedTemporaryFile(dir=data.dirs.refmapping, 
+                                          prefix="derep_and_sort", 
+                                          suffix=".fa", delete=False)
 
     # Stacks are never going to be too big, so faking this to set
     # nthreads to 1, maybe fix this to use the real value if it'll 
@@ -795,7 +826,7 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
           " --minseqlength "+ str(data.paramsdict["filter_min_trim_len"])
 
     ## run vsearch
-    LOGGER.debug("%s",cmd)
+    LOGGER.debug("%s", cmd)
     try:
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
@@ -806,14 +837,16 @@ def derep_and_sort( data, sample, aligned_fasta_file ):
         sys.exit("Error in vsearch: \n{}\n{}\n{}."\
                  .format(inst, subprocess.STDOUT, cmd))
 
-    return(outfile.name)
+    return outfile.name
 
-def append_clusters( data, sample, derep_fasta_files ):
+
+
+def append_clusters(data, sample, derep_fasta_files):
     """ Append derep'd mapped fasta stacks to the clust.gz file.
     This goes back into the pipeline _before_ the call to muscle
     for alignment.
     """
-    LOGGER.debug( "Entering append_clusters." )
+    LOGGER.debug("Entering append_clusters.")
 
     ## get clustfile
     sample.files.clusters = os.path.join(data.dirs.clusts,
@@ -832,22 +865,28 @@ def append_clusters( data, sample, derep_fasta_files ):
             # all over each other
             seqs = []
             with open(fname) as infile:
-                for i, duo in enumerate( itertools.izip(*[iter(infile)]*2) ):
+                for i, duo in enumerate(itertools.izip(*[iter(infile)]*2)):
                     if i == 0:
                         name = duo[0].strip()+"*"
                     else:
                         name = duo[0].strip()+"+"
-                    seqs.append( name+"\n"+duo[1] )
+                    seqs.append(name+"\n"+duo[1])
             out.write(str("".join(seqs))+"//\n//\n")
             
-def refmap_init( data, sample ):
+
+
+def refmap_init(data, sample):
     """Set the mapped and unmapped reads files for this sample
     """
-    sample.files.unmapped_reads = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
-    sample.files.mapped_reads  = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
+    sample.files.unmapped_reads = os.path.join(\
+                             data.dirs.refmapping, sample.name+"-unmapped.bam")
+    sample.files.mapped_reads = os.path.join(\
+                             data.dirs.refmapping, sample.name+"-mapped.bam")
     return sample
 
-def refmap_stats( data, sample ):
+
+
+def refmap_stats(data, sample):
     """ Get the number of mapped and unmapped reads for a sample
     and update sample.stats """
     cmd = data.bins.samtools+\
@@ -862,17 +901,19 @@ def refmap_stats( data, sample ):
                                           stderr=subprocess.STDOUT)
     sample.stats["refseq_mapped_reads"] = int(result.split()[0])
 
-def refmap_cleanup( data, sample ):
+
+
+def refmap_cleanup(data, sample):
     """ Clean up any loose ends here. Nasty files laying around, etc.
     Also, importantly, recover the files.edits files we stepped on earlier
     when we dropped the unmapped reads back on top of edits and hid
     the originals.
     """
-    sample_fastq = [ sample.files.edits[0][0] ]
+    sample_fastq = [sample.files.edits[0][0]]
 
     ## If pair append R2 to sample_fastq
     if 'pair' in data.paramsdict["datatype"]:
-        sample_fastq.append( sample.files.edits[0][1] )
+        sample_fastq.append(sample.files.edits[0][1])
 
     ## If it exists, recover the hidden .fq.gz file that contains the original
     ## data. Also, preserve the unmolested fastq files as .(dot) files in the
@@ -881,15 +922,14 @@ def refmap_cleanup( data, sample ):
 
         fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
 
-        import shutil
-        if os.path.isfile( fastq_dotfile ):
-            shutil.move( fastq_dotfile, fastq_file )
+        if os.path.isfile(fastq_dotfile):
+            shutil.move(fastq_dotfile, fastq_file)
 
 
 
 if __name__ == "__main__":
     from ipyrad.core.assembly import Assembly
-    import shutil
+
     shutil.copy("/tmp/wat", "/tmp/watt")
     ## test...
     DATA = Assembly("test")
@@ -903,4 +943,3 @@ if __name__ == "__main__":
     #FASTQS = []
     #QUIET = 0
     #run(PARAMS, FASTQS, QUIET)
-    pass

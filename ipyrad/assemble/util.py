@@ -16,14 +16,26 @@ import subprocess
 import logging
 LOGGER = logging.getLogger(__name__)
 
+## a subset of functions to import when importing as *
+#__all__ = ["IPyradError", "IPyradParamsError", "IPyradWarningExit", 
+#           "ObjDict", "comp"]
 
 
-AMBIGS = {"R":("G", "A"),
-          "K":("G", "T"),
-          "S":("G", "C"),
-          "Y":("T", "C"),
-          "W":("T", "A"),
-          "M":("C", "A")}
+### custom Exception classes
+class IPyradParamsError(Exception):
+    """ Exception handler indicating error in parameter entry """
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
+class IPyradError(Exception):
+    """ Exception handler indicating error in during assembly """
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
+class IPyradWarningExit(Exception):
+    """ Exception handler indicating error in during assembly """
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
 
 
 class ObjDict(dict):
@@ -45,6 +57,12 @@ class ObjDict(dict):
             raise AttributeError("No such attribute: " + name)
 
 
+AMBIGS = {"R":("G", "A"),
+          "K":("G", "T"),
+          "S":("G", "C"),
+          "Y":("T", "C"),
+          "W":("T", "A"),
+          "M":("C", "A")}
 def ambigcutters(seq):
     """ Returns both resolutions of a cut site that has an ambiguous base in 
     it, else the single cut site """
@@ -84,15 +102,15 @@ def breakalleles(consensus):
 
 
 def comp(seq):
-    """ returns a seq with small complement"""
+    """ returns a seq with complement. Preserves little n's for splitters."""
+    ## makes base to its small complement then makes upper
     return seq.replace("A", 't')\
-           .replace('T', 'a')\
-           .replace('C', 'g')\
-           .replace('G', 'c')\
-           .replace('n', 'Z')\
-           .upper()\
-           .replace("Z", "n")\
-           .replace("S", "s")
+              .replace('T', 'a')\
+              .replace('C', 'g')\
+              .replace('G', 'c')\
+              .replace('n', 'Z')\
+              .upper()\
+              .replace("Z", "n")
 
 
 

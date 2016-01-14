@@ -7,6 +7,7 @@ for all types of cutters """
 from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=W0212
+# pylint: disable=W0142
 
 import os
 import glob
@@ -14,8 +15,8 @@ import gzip
 import math
 import itertools
 import numpy as np
-from .util import *
 import shutil
+from .util import *
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -213,16 +214,14 @@ def rawedit(args):
     """ 
     Applies two filters: Nfilter and adapterfilter.
     """
-
-    ## get args
+    ## parse args
     data, sample, tmptuple, nreplace, point = args
 
-    ## get cut sites
-    #LOGGER.debug(data.paramsdict["restriction_overhang"])
-    #LOGGER.debug([i for i in data.paramsdict["restriction_overhang"]])
+    ## get cut sites 
     cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
     #LOGGER.debug("cutsites %s %s", cuts1, cuts2)
+    #LOGGER.debug([i for i in data.paramsdict["restriction_overhang"]])
 
     ## the read1 demultiplexed reads file
     if tmptuple[0].endswith(".gz"):
@@ -413,9 +412,6 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
     """
     ## before starting
     prechecks(data)
-
-    ## load up work queue
-    submitted = 0
     num = 0
 
     ## set optim size, can only be optimized if reads_raw 
@@ -439,30 +435,25 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         chunkslist += achunk
 
     ## send chunks across processors, will delete if fail
-    try: 
-        submitted_args = []
-
+    try:
+        ## subsample for preview mode       
         if preview:
             LOGGER.warn(\
                 "Running preview mode. Selecting only one chunk to rawedit.")
             chunkslist = [chunkslist[i] for i in [0]]
 
+        submitted_args = []
         for tmptuple in chunkslist:
-            ## used to increment names across processors
-            point = num*(optim/4)   #10000 #num*(chunksize/2)
-            args = [data, sample, tmptuple, nreplace, point]
-            submitted_args.append(args)
-            submitted += 1
+            ## point is used to increment names across processors
+            point = num*(optim/4)  
+            submitted_args.append([data, sample, tmptuple, nreplace, point])
             num += 1
 
-        ## first launch of ipyclient
+        ## create view to auto spread chunks across engines
         lbview = ipyclient.load_balanced_view()
         results = lbview.map_async(rawedit, submitted_args)
-
-        ## return errors if an engine fails
         results.get()
-        del lbview
-    
+
     finally:
         ## if process failed at any point delete temp files
         for tmptuple in chunkslist:
@@ -470,7 +461,7 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
             if "pair" in data.paramsdict["datatype"]:
                 os.remove(tmptuple[1]) 
 
-    return submitted, results
+    return num, results
 
 
 
