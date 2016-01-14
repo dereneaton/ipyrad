@@ -157,7 +157,7 @@ def muscle_align(args):
                     if idxs:
                         leftlimit = max(0, min(idxs))
                         aseqs = [i[leftlimit:] for i in aseqs]
-                        LOGGER.info('leftlimit %s', leftlimit)
+                        #LOGGER.info('leftlimit %s', leftlimit)
 
                     ## right side filter is the reverse seq that goes the least
                     ## far to the right.
@@ -170,7 +170,7 @@ def muscle_align(args):
                     if idxs:
                         rightlimit = min(idxs)
                         aseqs = [i[:rightlimit] for i in aseqs]
-                        LOGGER.info('rightlimit %s', leftlimit)                    
+                        #LOGGER.info('rightlimit %s', leftlimit)                    
 
                 somedic = OrderedDict()
                 for i in range(len(anames)):
@@ -242,10 +242,14 @@ def build_clusters(data, sample):
     try:
         userout = open(ufile, 'rb').readlines()
     except IOError:
-        inst = "No clusters found for sample {}".format(sample.name)
+        inst = """
+    No clusters (.utemp hits) found for {}. If you are running preview mode and
+    the size of the truncated input file isn't big enough try increasing the 
+    size of <your_assembly>._hackersonly[\"preview_truncate_length\"
+    """.format(sample.name)
+
         LOGGER.warn(inst)
         raise IPyradError(inst)
-
     ## load derep reads into a dictionary
     hits = {}  
     ioderep = open(derepfile, 'rb')
