@@ -25,6 +25,7 @@ import ipyrad as ip
 from collections import OrderedDict
 from ipyrad.assemble.util import ObjDict
 from ipyrad.assemble.refmap import index_reference_sequence
+from ipyrad.core.paramsinfo import paraminfo
 from ipyrad.core.sample import Sample
 from ipyrad import assemble
 
@@ -198,7 +199,7 @@ class Assembly(object):
         ## you change these values.
         self._hackersonly = OrderedDict([
                         ("random_seed", 42),
-                        ("max_fragment_length", 125),
+                        ("max_fragment_length", 150),
                         ("max_inner_mate_distance", 60),
                         ("preview_truncate_length", 500000),
                         ("output_loci_name_buffer", 5),
@@ -615,6 +616,47 @@ class Assembly(object):
             #print("\nError:", inst, "\n")
             raise IPyradParamsError(inst)
 
+
+    def write_params(self, outfile=None, force=False):
+        """ Write out the parameters of this assembly to a file properly
+        formatted as input for `ipyrad -p <params.txt>`. A good and
+        simple way to share/archive parameter settings for assemblies.
+        This is also the function that's used by newparamsfile() to 
+        generate default params.txt files for `ipyrad -n`
+        """
+        if outfile is None:
+            outfile = os.path.join(self.paramsdict["working_directory"],
+                                self.name+"-params.txt")
+
+        ## Test if params file already exists?
+        ## If not forcing, test for file and bail out if it exists
+        if not force:
+            if os.path.isfile(outfile):
+                LOGGER.error("Assembly.write_params() attempting to write"\
+                            + " a file that already exists - {}".format(outfile))
+                LOGGER.error("Use write_params(force=True) to override")
+                raise IPyradError("File exists: {}.".format(outfile))
+
+        with open(outfile, 'w') as paramsfile:
+
+            ## Write the header. Format to 80 columns
+            header = "------ ipyrad params file (v.{})".format(ip.__version__)
+            header += ("-"*(80-len(header)))
+            paramsfile.write(header)
+
+            ## Whip through the current paramsdict and write out the current
+            ## param value, the ordered dict index number (paramsinfo is 1-based,
+            ## so we have to increment the index we think it is. Also get the short 
+            ## description from paramsinfo. Make it look pretty, pad nicely 
+            ## if at all possible.
+            for key, val in self.paramsdict.iteritems():
+                paramvalue = str(val)
+                padding = (" "*(30-len(str(val))))
+                paramindex = " ## [{}] ".format(self.paramsdict.keys().index(key) + 1)
+                print("{} {} {} {}".format(paramindex, key, val, self.paramsdict.keys().index(key) + 1 ))
+                description = paraminfo(self.paramsdict.keys().index(key) + 1, short=True)
+                print(description)
+                paramsfile.write("\n" + paramvalue + padding + paramindex + description)
 
 
     def copy(self, newname):
@@ -1377,7 +1419,7 @@ def paramschecker(self, param, newvalue):
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'assembly_method':
-        assert newvalue in ["denovo", "reference", "hybrid", "denovo_only"], \
+        assert newvalue in ["denovo", "reference_only", "hybrid", "denovo_only"], \
             "The `assembly_method` parameter must be one of the following: "+\
             "denovo, reference, hybrid, or denovo_only. You entered: %s." % newvalue
         self.paramsdict['assembly_method'] = newvalue            

@@ -39,6 +39,7 @@ def parse_params(args):
     keys = range(1, 30)
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
+    print(parsedict)
     return parsedict
 
 
@@ -47,8 +48,7 @@ def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
     try:
         data = ip.load.load_assembly(
-                    name=os.path.join(parsedict['1'], 
-                                      parsedict['14']),
+                    name=parsedict['1'], 
                     quiet=True, 
                     launch=False)
 
@@ -80,28 +80,27 @@ def getassembly(args, parsedict):
     if '1' in args.steps:
         ## create a new assembly object
         if args.force:
-            data = ip.Assembly(parsedict['14'])
+            data = ip.Assembly(parsedict['1'])
         else:
             ## try loading an existing one
             try:
-                data = ip.load.load_assembly(os.path.join(parsedict['1'], 
-                                                     parsedict['14']), 
+                print("1 - {}".format(parsedict['1']))
+                data = ip.load.load_assembly(os.path.join(parsedict['1']), 
                                                      launch=False)
                                                      #quiet=True)
 
             ## if not found then create a new one
             except AssertionError:
-                data = ip.Assembly(parsedict['14'])
+                data = ip.Assembly(parsedict['1'])
 
     ## otherwise look for existing
     else:
         try:
             data = ip.load.load_assembly(os.path.join(parsedict['1'], 
-                                                 parsedict['14']),
-                                                 launch=False)
+                                                 launch=False))
                                                  #quiet=True)
         except AssertionError:
-            data = ip.Assembly(parsedict['14'])
+            data = ip.Assembly(parsedict['1'])
 
     ## for entering some params...
     for param in parsedict:
@@ -166,6 +165,10 @@ def parse_command_line():
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPU cores using MPI")
 
+    parser.add_argument("--preview", action='store_true',
+        help="Run ipyrad in preview mode. Subset the input file so it'll run"\
+            + "quickly so you can verify everything is working")
+
     #parser.add_argument("--PBS", action='store_true',
     #    help="Connect to CPU Engines and submit jobs using PBS")
 
@@ -194,9 +197,20 @@ def main():
 
     ## create new paramsfile if -n
     if args.new:
-        write_params(ip.__version__)
+
+        ## Create a tmp assembly and call write_params to write out
+        ## default params.txt file
+        try:
+            tmpassembly = ip.core.assembly.Assembly("")
+            tmpassembly.write_params("params.txt", force=args.force)
+        except Exception as e:
+            print(e)
+            print("\nUse --force to overwrite\n")
+            sys.exit(2)
+
         print("New file `params.txt` created in {}".\
                format(os.path.realpath(os.path.curdir)))
+
         sys.exit(2)
 
     ## if showing results, do not do any steps and do not print header
@@ -242,7 +256,7 @@ def main():
 
                 ## run assembly steps
                 steps = list(args.steps)
-                data.run(steps=steps, force=args.force)
+                data.run(steps=steps, force=args.force, preview=args.preview)
 
 
 
