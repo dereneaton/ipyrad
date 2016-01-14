@@ -31,16 +31,16 @@ def parse_params(args):
     + "Create a new params file with: ipyrad -n"
 
     ## check length
-    assert len(plines) > 30, "params file error. Format not recognized."
+    ## assert len(plines) > 30, "params file error. Format not recognized."
 
     ## make into a dict
     items = [i.split("##")[0].strip() for i in plines[1:]]
+    keys = [i.split("[")[1].split("]")[0] for i in plines[1:]]
     keys = range(1, 30)
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
     print(parsedict)
     return parsedict
-
 
 
 def showstats(parsedict):
