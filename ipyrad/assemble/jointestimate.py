@@ -76,7 +76,9 @@ def get_diploid_lik(starting_params, base_frequencies, stacks, stackcounts):
 
 
 def get_haploid_lik(errors, base_frequencies, tabled_stacks):
-    """ Log likelihood score given values [E] """
+    """ Log likelihood score given values [E]. This can be written to run much
+    faster by executing across the whole array, and/or by also doing it in 
+    parallel. TODO: """
     hetero = 0.
     listofliks = np.zeros([len(tabled_stacks)])
     if errors <= 0.:
@@ -129,9 +131,6 @@ def countlist(data, sample, subsample):
         thisstack = []
         while itera[0] != "//\n":
             nreps = int(itera[0].split(";")[1][5:])
-
-            ## record left and right most for cutting if gbs merge data
-            ## ....
             ## append sequence * number of dereps
             for _ in range(nreps):
                 thisstack.append(tuple(itera[1].strip()))

@@ -192,6 +192,7 @@ class Assembly(object):
                         ("max_inner_mate_distance", 60),
                         ("preview_truncate_length", 500000),
                         ("output_loci_name_buffer", 5),
+                        ("query_cov", None)
         ])
 
     def __str__(self):
@@ -765,6 +766,9 @@ class Assembly(object):
 
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
+            ipyclient.abort()
+            ipyclient.shutdown()
+            ipyclient = self.launch(nwait)
             logging.error("assembly interrupted by user.")
             raise IPyradError("Keyboard Interrupt")
 

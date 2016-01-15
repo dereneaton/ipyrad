@@ -114,7 +114,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
 
     ## if strict filter, do additional search for cut site near edges
     where3 = 0
-    if data.paramsdict["filter_adapters"] == 2:
+    if data.paramsdict["filter_adapters"] in [2, 3]:
         if not (where1 or where2):
             if read == 1:
                 cutback = -15

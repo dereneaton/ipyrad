@@ -12,6 +12,8 @@ from copy import deepcopy
 from ipyrad.core.parallel import ipcontroller_init
 from ipyrad.core.assembly import Assembly
 
+
+
 def load_assembly(name, controller="Local", quiet=False, launch=False):
     """ loads an ipython dill pickled Assembly object """
     ## flexible name entry
@@ -70,7 +72,7 @@ def test_assembly(data):
 
     my_params = set(data.paramsdict.keys())
 
-    ## Find all the params that are in the new paramsdict and not in the old one.
+    ## Find all params that are in the new paramsdict and not in the old one.
     params_diff = new_params.difference(my_params)
 
     result = False

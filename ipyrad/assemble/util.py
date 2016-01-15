@@ -139,7 +139,6 @@ def merge_pairs(data, sample): #, unmerged_files):
     name of the merged/combined PE reads and the number of reads that were 
     merged (overlapping)
     """
-
     #LOGGER.debug("Entering merge_pairs - %s", unmerged_files)
 
     ## tempnames for merge files

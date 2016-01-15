@@ -174,9 +174,12 @@ def muscle_align(args):
 
                 somedic = OrderedDict()
                 for i in range(len(anames)):
-                    ## filter for max internal indels
-                    intindels = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    if intindels <= data.paramsdict["max_Indels_locus"][0]:
+                    ## filter for max internal indels and max indel inserts
+                    intind = aseqs[i].rstrip('-').lstrip('-')
+                    ind1 = intind.count('-') <= \
+                                data.paramsdict["max_Indels_locus"][0]
+                    #ind2 = len([i.split("-") for i in intind if i]) < 3
+                    if not ind1:
                         somedic[anames[i]] = aseqs[i]
                     else:
                         LOGGER.info("high indels: %s", aseqs[i])
@@ -286,14 +289,23 @@ def build_clusters(data, sample):
         seq = [key.strip()+"*\n"+seedhit]
 
         ## allow only N internal indels in hits to seed for within-sample clust
+        ## prior to alignment. This improves alignments. 
+        ## could be written a little more cleanly but this allows better debug.
         for i in xrange(len(values)):
-            if int(values[i][3]) < 6:
-                ## flip to the right orientation 
-                if values[i][1] == "+":
-                    seq.append(values[i][0].strip()+"+\n"+hits[values[i][0]][1])
+            inserts = int(values[i][3])
+            if values[i][1] == "+":
+                if inserts < 6:
+                    fwdseq = hits[values[i][0]][1]
+                    seq.append(values[i][0].strip()+"+\n"+fwdseq)
                 else:
+                    LOGGER.debug("exc indbld: %s %s", inserts, fwdseq)
+            ## flip to the right orientation 
+            else:
+                if inserts < 6:
                     revseq = comp(hits[values[i][0]][1][::-1])
                     seq.append(values[i][0].strip()+"-\n"+revseq)
+                else:
+                    LOGGER.debug("exc indbld: %s %s", inserts, revseq)
 
         seqslist.append("\n".join(seq))
     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
@@ -567,16 +579,21 @@ def cluster(data, sample, noreverse, nthreads):
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
-    ## datatype variables (Cov variables could go in the hackerz dict)
+    ## datatype specific optimization
     if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
-        cov = " -query_cov .60 " 
+        cov = " -query_cov .30 " 
     elif data.paramsdict["datatype"] == 'pairgbs':
         reverse = "  -strand both "
         cov = " -query_cov .90 " 
     else:  ## rad, ddrad
         reverse = " -leftjust "
         cov = " -query_cov .90 "
+
+    ## override query cov
+    if data._hackersonly["query_cov"]:
+        cov = " -query_cov "+str(data._hackersonly["query_cov"])
+        assert data._hackersonly["query_cov"] < 1, "query_cov must be < 1.0"
 
     ## override reverse clustering option
     if noreverse:
@@ -602,7 +619,7 @@ def cluster(data, sample, noreverse, nthreads):
 
     ## run vsearch
     try:
-        LOGGER.debug("%s",cmd)
+        LOGGER.debug("%s", cmd)
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)

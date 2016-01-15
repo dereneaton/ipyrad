@@ -6,11 +6,12 @@ from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=W0212
 
-import ipyparallel
+
 import scipy.stats
 import scipy.misc
 import itertools
 import numpy
+import h5py
 import gzip
 import glob
 import os
@@ -101,7 +102,7 @@ def hetero(base1, base2):
 
 
 
-def removerepeat_Ns(shortcon, stacked):
+def removerepeat_Ns(shortcon):
     """ checks for interior Ns in consensus seqs and removes those that arise 
     next to *single repeats* of at least 3 bases on either side, which may be
     sequencing errors on deep coverage repeats """
@@ -165,27 +166,24 @@ def consensus(args):
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
     ## array to store all the coverage data, including consens reads that are 
-    ## excluded (for now). 
-    #nreads = sample.stats.clusters_kept
-    ## dimensions: nreads, max_read_length, 4 bases
+    ## excluded (for now). The reason we include the low cov data is that this
+    ## Assembly might be branched and the new one use a lower depth filter.
+    #### dimensions: nreads_in_this_chunk, max_read_length, 4 bases
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
         maxlen *= 2
     catarr = numpy.zeros([optim, maxlen, 4], dtype='int16')
 
-    ## counters 
-    counters = Counter()
-    counters["name"] = tmpnum
-    counters["heteros"] = 0
-    counters["nsites"] = 0
-    counters["nconsens"] = 0    
-
-    filters = Counter()
-    filters["depth"] = 0    
-    filters["heteros"] = 0
-    filters["haplos"] = 0
-    filters["maxn"] = 0
-
+    ## store data for stats counters
+    counters = {"name" : tmpnum,
+                "heteros": 0,
+                "nsites" : 0,
+                "nconsens" : 0}
+    ## store data for what got filtered
+    filters = {"depth" : 0,
+               "heteros" : 0,
+               "haplos" : 0,
+               "maxn" : 0}
     ## store data for writing
     storeseq = {}
 
@@ -195,7 +193,7 @@ def consensus(args):
         try:
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
-            LOGGER.info("ITS HERE IN CLUSTD %s", chunk)
+            raise IPyradError("clustfile formatting error in %s", chunk)
 
         if chunk:
             #LOGGER.debug("%s %s", done, chunk)            
@@ -203,7 +201,7 @@ def consensus(args):
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
-            ## pull reps info from seqs
+            ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
 
             ## apply read depth filter
@@ -223,29 +221,26 @@ def consensus(args):
                                  if i[1] in list("RKSYWM")]
                 nheteros = len(heteros)
                 counters["heteros"] += nheteros
-                #if nheteros > 5:
-                #    LOGGER.info("NH: %s", nheteros)
-                #    LOGGER.debug("ARR: %s", arrayed)
-                #    LOGGER.debug("cons: %s", consens)                    
                 ## filter for max number of hetero sites
                 if nfilter2(data, nheteros):
 
-                    ## filter for max number of haplotypes
+                    ## filter for max number of haplotypes, only applied if nH>1 
                     mpl = 1
-                    #if nheteros > 1:
-                    #    consens, mpl = nfilter3(data, consens, heteros, 
-                    #                            seqs, reps)
+                    if nheteros > 1:
+                        f3result = nfilter3(data, consens, heteros, seqs, reps)
+                        consens, mpl = f3result
 
                     ## if the locus passed paralog filtering
                     if mpl:
                         consens = "".join(consens).replace("-", "N")
-                        shortcon = consens.rstrip("N")
+                        ## should we lstrip() all consens? seems reasonable.
+                        ## certainly we should for pairgbs
+                        shortcon = consens.lstrip("N").rstrip("N")
                         ## this function which removes low coverage sites next 
                         ## to poly repeats that are likely sequencing errors 
                         ## TODO: Until this func is optimized
-                        #if "N" in shortcon:
-                        #    LOGGER.debug("preN: %s", shortcon)
-                        #shortcon, stacked = removerepeat_Ns(shortcon, stacked)
+                        
+                        shortcon, edges = removerepeat_Ns(shortcon)
 
                         if shortcon.count("N") <= \
                                        sum(data.paramsdict["max_Ns_consens"]):
@@ -260,9 +255,7 @@ def consensus(args):
                                     [i["T"] for i in stacked],
                                     [i["G"] for i in stacked]], 
                                     dtype='int16').T
-                                catarr[counters["nconsens"]][:catg.shape[0]] = \
-                                catg
-                                #storecat.append(catg)
+                                catarr[counters["nconsens"]][:catg.shape[0]] = catg
                                 storeseq[counters["name"]] = shortcon
                                 counters["name"] += 1
                                 counters["nconsens"] += 1                                
@@ -495,13 +488,49 @@ def clustdealer(pairdealer, optim):
 
 
 def cleanup(data, sample, statsdicts):
-    """ cleaning up """
+    """ cleaning up. optim is the size (nloci) of tmp arrays """
 
     ## rejoin chunks
     combs1 = glob.glob(os.path.join(
                         data.dirs.consens,
                         sample.name+"_tmpcons.*"))
     combs1.sort(key=lambda x: int(x.split(".")[-1]))
+
+    ## merge catg files
+    tmpcats = glob.glob(os.path.join(
+                        data.dirs.consens,
+                        sample.name+"_tmpcats.*"))
+    tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
+
+    ## get shape info from the first cat
+    with open(tmpcats[0]) as cat:
+        catg = numpy.load(cat)
+    ## (optim, maxlen, 4)
+    print("my shapes:", catg.shape)
+    optim, maxlen, _ = catg.shape
+
+    ## replace numpy save with hdf5 array someday
+    handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
+    ioh5 = h5py.File(handle1, 'w')
+    nloci = len(tmpcats) * optim
+    dset = ioh5.create_dataset("catg", (nloci, maxlen, 4), 
+                               dtype='i4', 
+                               chunks=(optim, maxlen, 4),
+                               compression="gzip")
+
+    ## Combine all those tmp cats into the big cat
+    for icat in tmpcats[1:]:
+        icatg = numpy.load(icat)
+        start = 0
+        end = start + optim
+        dset[start:end] = icatg
+        start += optim
+        os.remove(icat)
+    ioh5.close()
+
+    ## remove the first cat
+    os.remove(tmpcats[0])
+    sample.files.database = handle1
 
     ## record results
     xcounters = {"nconsens": 0,
@@ -512,28 +541,10 @@ def cleanup(data, sample, statsdicts):
                "haplos": 0,
                "maxn": 0}
 
-    ## merge catg files
-    cats1 = glob.glob(os.path.join(
-                      data.dirs.consens,
-                      sample.name+"_tmpcats.*"))
-    cats1.sort(key=lambda x: int(x.split(".")[-1]))
-    handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
-    with open(handle1, 'wb') as outcat:
-        ## open first cat
-        with open(cats1[0]) as cat:
-            catg = numpy.load(cat)
-        ## extend with other cats
-        for icat in cats1[1:]:
-            icatg = numpy.load(icat)
-            catg = numpy.concatenate([catg, icatg])
-            os.remove(icat)
-        numpy.save(outcat, catg)
-        os.remove(cats1[0])
-    sample.files.database = handle1
-
     ## merge finished consens stats
     for i in range(len(combs1)):
         counters, filters = statsdicts[i]
+        ## sum individual counters
         for key in xcounters:
             xcounters[key] += counters[key]
         for key in xfilters:
@@ -604,10 +615,16 @@ def run_full(data, sample, ipyclient):
     ## counter for split job submission
     num = 0
 
-    ## set optim size for chunks in N clusters
+    ## set optim size for chunks in N clusters. The first few chunks take longer
+    ## because they contain larger clusters, so we create 4X as many chunks as
+    ## processors so that they are split more evenly.
     optim = 100
     if sample.stats.clusters_total > 2000:
-        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/2
+        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/4
+    if sample.stats.clusters_total > 20000:
+        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/10
+    if sample.stats.clusters_total > 100000:
+        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/20
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
@@ -630,7 +647,8 @@ def run_full(data, sample, ipyclient):
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
             num += 1
-            LOGGER.info("chunking len:%s, done:%s, num:%s", len(chunk), done, num)
+            LOGGER.info("chunking len:%s, done:%s, num:%s", \
+                         len(chunk), done, num)
 
     ## close clusters handle
     clusters.close()
@@ -648,10 +666,6 @@ def run_full(data, sample, ipyclient):
         results = lbview.map_async(consensus, submitted_args)
         statsdicts = results.get()
         del lbview
-
-    ## catch an exception and raise it just once instead of on each client
-    #except ipyparallel.CompositeError as inst:
-    #    raise inst
 
     ## cleanup whether or not a process failed
     finally:
@@ -717,10 +731,10 @@ def run(data, samples, force, ipyclient):
                 if not force:
                     if sample.stats.state >= 5:
                         print("Skipping Sample {}; ".format(sample.name)
-                         +"Already has consens reads. Use force=True to overwrite.")
+                     +"Already has consens reads. Use force=True to overwrite.")
                     elif sample.stats.clusters_hidepth < 100:
                         print("Skipping Sample {}; ".format(sample.name)
-                           +"Too few clusters ({}). Use force=True to run anyway.".\
+                     +"Too few clusters ({}). Use force=True to run anyway.".\
                            format(sample.stats.clusters_hidepth))
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
