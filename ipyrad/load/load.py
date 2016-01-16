@@ -65,7 +65,8 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
 def test_assembly(data):
     """ Check to see if the assembly you're trying to load is concordant
         with the current assembly version. Basically it creates a new tmp
-        assembly and tests whether the paramsdicts are the same. """
+        assembly and tests whether the paramsdicts are the same. It also
+        tests the _hackersonly dict."""
 
     new_assembly = Assembly(data.name)
     new_params = set(new_assembly.paramsdict.keys())
@@ -76,10 +77,16 @@ def test_assembly(data):
     params_diff = new_params.difference(my_params)
 
     result = False
-    if params_diff:
-        result = False
-    else:
+    if not params_diff:
         result = True
+
+    ## Test hackersonly dict as well.
+    my_hackerdict = set(data._hackersonly.keys())
+    new_hackerdict = set(new_assembly._hackersonly.keys())
+    hackerdict_diff = new_hackerdict.difference(my_hackerdict)
+
+    if not hackerdict_diff:
+        results =  True
 
     return result
 
