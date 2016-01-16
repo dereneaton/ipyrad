@@ -102,7 +102,7 @@ def hetero(base1, base2):
 
 
 
-def removerepeat_Ns(shortcon):
+def removerepeat_Ns(shortcon, stacked):
     """ checks for interior Ns in consensus seqs and removes those that arise 
     next to *single repeats* of at least 3 bases on either side, which may be
     sequencing errors on deep coverage repeats """
@@ -240,7 +240,7 @@ def consensus(args):
                         ## to poly repeats that are likely sequencing errors 
                         ## TODO: Until this func is optimized
                         
-                        shortcon, edges = removerepeat_Ns(shortcon)
+                        shortcon, edges = removerepeat_Ns(shortcon, stacked)
 
                         if shortcon.count("N") <= \
                                        sum(data.paramsdict["max_Ns_consens"]):
@@ -270,7 +270,7 @@ def consensus(args):
                         filters['haplos'] += 1
                 else:
                     #LOGGER.debug("@hetero")
-                    filters['hetero'] += 1
+                    filters['heteros'] += 1
             else:
                 #LOGGER.debug("@depth")
                 filters['depth'] += 1

@@ -180,7 +180,8 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
         ## sort into input order
         indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
         for tup in indeltups:
-            #print(tup[0][-10:], tup[1].shape, tup[2])
+        #    print(tup[0][-10:], tup[1].shape, tup[2])
+        #    print(dset.shape)
             start = int(tup[0].rsplit("_", 1)[1])
             dset[start:start+tup[2]] = tup[1]
         ioh5.close()
@@ -253,6 +254,7 @@ def cluster(data, noreverse):
        +" -quiet"
 
     try:
+        LOGGER.debug(cmd)
         subprocess.check_call(cmd, shell=True, 
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
@@ -493,7 +495,7 @@ def build_input_file(data, samples, outgroups, randomseed):
             ## may need to be chunked.
             writinghaplos.append(shuf[0][ind]+'\n'+\
                                  breakalleles(shuf[1][ind])[0])
-        allhaps.write("\n".join(writinghaplos))
+        allhaps.write("\n".join(writinghaplos)+"\n")
     allhaps.close()
 
 
