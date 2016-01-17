@@ -154,131 +154,136 @@ def mapreads(args):
     ##               : Reference sequence
     ##               : Input file(s), in a list. One for forward and one for reverse reads.
 
-    ## TODO: `pp` is probably wrong. Have to figure out what the orientation of reads
-    ## is for gbs and ddrad.
-    if 'pair' in data.paramsdict["datatype"]:
-        pairtype = " -l pp "
-    else:
-        pairtype = " "
-
-    cmd = data.bins.smalt+\
-        " map -f sam -n " + str(nthreads) +\
-        pairtype+\
-        " -x -c " + str(data.paramsdict['clust_threshold'])+\
-        " -o " + samhandle +\
-        " " + data.paramsdict['reference_sequence'] +\
-        " " + " ".join( sample_fastq )
-
-    LOGGER.debug( "%s", cmd )
+    ## Wrap the whole thing in a try so we can clean up if something fails or user cancelse
+    ## This is pretty monolithic, it could get broken up into subroutines
     try:
-        subprocess.check_call(cmd, shell=True,
+
+        ## TODO: `pp` is probably wrong. Have to figure out what the orientation of reads
+        ## is for gbs and ddrad.
+        if 'pair' in data.paramsdict["datatype"]:
+            pairtype = " -l pp "
+        else:
+            pairtype = " "
+    
+        cmd = data.bins.smalt+\
+            " map -f sam -n " + str(nthreads) +\
+            pairtype+\
+            " -x -c " + str(data.paramsdict['clust_threshold'])+\
+            " -o " + samhandle +\
+            " " + data.paramsdict['reference_sequence'] +\
+            " " + " ".join( sample_fastq )
+    
+        LOGGER.debug( "%s", cmd )
+        try:
+            subprocess.check_call(cmd, shell=True,
+                                 stderr=subprocess.STDOUT,
+                                 stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as inst :
+            ## Handle error in outside try statement
+            raise
+    
+        ## Get the mapped and unmapped reads from the sam. For PE both reads must map
+        ## successfully in order to qualify.
+        ##   1) Get mapped reads and convert to bam
+        ##   2) Sort them and save the path to the bam to sample.files.mapped_reads
+        ## The mapped reads are synced back into the pipeline downstream, after
+        ## muscle aligns the umapped reads.
+        ##
+        ## samtools view arguments
+        ##   -b = write to .bam
+        ##   -F = Select all reads that DON'T have this flag. 
+        ##         0x4 (segment unmapped)
+        ##   -U = Write out all reads that don't pass the -F filter (all unmapped reads
+        ##        go to this file.
+        ##        <TODO>: This is deeply hackish right now, it will need some
+        ##                serious thinking to make this work for PE, etc.
+        sam_filter_flag = " -F 0x4 "
+    
+        if 'pair' in data.paramsdict["datatype"]:
+            ## Additionally for PE only output read pairs that both align
+            sam_filter_flag += " -f 0x2 "
+    
+        cmd = data.bins.samtools+\
+            " view -b"+\
+                sam_filter_flag+\
+                " -U " + unmapped_bamhandle+\
+                " " + samhandle+\
+                " > " + mapped_bamhandle
+        LOGGER.debug( "%s", cmd )
+        subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst :
-        LOGGER.error( "Error in reference mapping. Try copy/pasting and running this "+\
-                        "command by hand:\n\t%s", cmd)
-        LOGGER.error(inst)
-        sys.exit("Error in smalt: \n{}\n{}\n{}."\
-                 .format(inst, subprocess.STDOUT, cmd))
+    
+        ## Step 2 sort mapped bam
+        ##   -T = Temporary file name, this is required by samtools, you can ignore it
+        ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
+        ##   -O = Output file format, in this case bam
+        ##   -o = Output file name
+        cmd = data.bins.samtools+\
+            " sort -T "+samhandle+".tmp" +\
+            " -O bam "+mapped_bamhandle+\
+            " -o "+sorted_mapped_bamhandle
+        LOGGER.debug( "%s", cmd )
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+    
+        ## Step 3 index mapped reads
+        ## Samtools pileup needs the bam to be indexed
+        ## No arguments, a very simple function. It writes the index to 
+        ## a default location
+        cmd = data.bins.samtools+\
+            " index " + mapped_bamhandle
+        LOGGER.debug( "%s", cmd )
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+    
+        ##############################################
+        ## Do unmapped
+        ## Output the unmapped reads to the original
+        ## sample.edits fq path.
+        ##############################################
+    
+        outfiles = [ unmapped_fastq_handle ]
+        if 'pair' in data.paramsdict["datatype"]:
+            outfiles.append( unmapped_fastq_handle_R2 )
+            outflags =  " -1 " + outfiles[0]+\
+                        " -2 " + outfiles[1]
+        else:
+            outflags = " -0 " + outfiles[0]
+    
+        cmd = data.bins.samtools+\
+            " bam2fq " + outflags+\
+                " " + unmapped_bamhandle
+    
+        LOGGER.debug( "%s", cmd )
+        subprocess.call(cmd, shell=True,
+                             stderr=subprocess.STDOUT,
+                             stdout=subprocess.PIPE)
+    
+        ## This is the end of processing for each sample. Stats
+        ## are appended to the sample for mapped and unmapped reads 
+        ## during cluster_within.cleanup()
 
-    ## Get the mapped and unmapped reads from the sam. For PE both reads must map
-    ## successfully in order to qualify.
-    ##   1) Get mapped reads and convert to bam
-    ##   2) Sort them and save the path to the bam to sample.files.mapped_reads
-    ## The mapped reads are synced back into the pipeline downstream, after
-    ## muscle aligns the umapped reads.
-    ##
-    ## samtools view arguments
-    ##   -b = write to .bam
-    ##   -F = Select all reads that DON'T have this flag. 
-    ##         0x4 (segment unmapped)
-    ##   -U = Write out all reads that don't pass the -F filter (all unmapped reads
-    ##        go to this file.
-    ##        <TODO>: This is deeply hackish right now, it will need some
-    ##                serious thinking to make this work for PE, etc.
-    sam_filter_flag = " -F 0x4 "
-
-    if 'pair' in data.paramsdict["datatype"]:
-        ## Additionally for PE only output read pairs that both align
-        sam_filter_flag += " -f 0x2 "
-
-    cmd = data.bins.samtools+\
-        " view -b"+\
-            sam_filter_flag+\
-            " -U " + unmapped_bamhandle+\
-            " " + samhandle+\
-            " > " + mapped_bamhandle
-    LOGGER.debug( "%s", cmd )
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## Step 2 sort mapped bam
-    ##   -T = Temporary file name, this is required by samtools, you can ignore it
-    ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
-    ##   -O = Output file format, in this case bam
-    ##   -o = Output file name
-    cmd = data.bins.samtools+\
-        " sort -T "+samhandle+".tmp" +\
-        " -O bam "+mapped_bamhandle+\
-        " -o "+sorted_mapped_bamhandle
-    LOGGER.debug( "%s", cmd )
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## Step 3 index mapped reads
-    ## Samtools pileup needs the bam to be indexed
-    ## No arguments, a very simple function. It writes the index to 
-    ## a default location
-    cmd = data.bins.samtools+\
-        " index " + mapped_bamhandle
-    LOGGER.debug( "%s", cmd )
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ##############################################
-    ## Do unmapped
-    ## Output the unmapped reads to the original
-    ## sample.edits fq path.
-    ##############################################
-
-    outfiles = [ unmapped_fastq_handle ]
-    if 'pair' in data.paramsdict["datatype"]:
-        outfiles.append( unmapped_fastq_handle_R2 )
-        outflags =  " -1 " + outfiles[0]+\
-                    " -2 " + outfiles[1]
-    else:
-        outflags = " -0 " + outfiles[0]
-
-    cmd = data.bins.samtools+\
-        " bam2fq " + outflags+\
-            " " + unmapped_bamhandle
-
-    LOGGER.debug( "%s", cmd )
-    subprocess.call(cmd, shell=True,
-                         stderr=subprocess.STDOUT,
-                         stdout=subprocess.PIPE)
-
-    ## gzip the output unmapped fastq files because downstream expects .gz
-    ## and bam2fq doesn't output gzip. Have to do some monkey business
-    ## with the files here (write to a tmp file, then move the temp file
-    ## to the proper path). This is kinda stupid, but it works.
-#    for f in outfiles:
-#        with open(f, 'r') as f_in, gzip.open(f+".tmp", 'wb') as f_out:
-#            shutil.copyfileobj(f_in, f_out)        
-#        shutil.move( f+".tmp", f )
-
-    ## This is the end of processing for each sample. Stats
-    ## are appended to the sample for mapped and unmapped reads 
-    ## during cluster_within.cleanup()
-
-    ## Clean up the temp fq.gz file
-    if preview:
-        LOGGER.info( "preview: Exiting mapreads(). Do cleanpup." )
-        for f in sample_fastq:
-            os.remove( f )
+    except subprocess.CalledProcessError:
+            LOGGER.error( "Error in reference mapping. Try copy/pasting and running this "+\
+                            "command by hand:\n\t%s", cmd)
+            ## TODO: Maybe make this not bail out hard?
+            sys.exit("Error in program: \n{}\n{}\n{}."\
+                     .format(inst, subprocess.STDOUT, cmd))
+    except KeyboardInterrupt:
+            LOGGER.error(  "Handling user initiated shutdown.")
+            sys.exit("Handling user initiated shutdown.")
+    except Exception as inst:
+            LOGGER.error(  "Error in reference mapping - {}".format(inst))
+            raise
+    finally:
+        ## No matter what happens clean up the temp fq.gz file
+        if preview:
+            LOGGER.info( "preview: Exiting mapreads(). Do cleanpup." )
+            for f in sample_fastq:
+                os.remove( f )
 
 
 def finalize_aligned_reads( data, sample, ipyclient ):
