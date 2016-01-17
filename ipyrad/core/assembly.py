@@ -135,9 +135,6 @@ class Assembly(object):
         ## outfiles locations
         self.outfiles = ObjDict()
 
-        ## an object for storing data directories for this Assembly
-        self.dirs = ObjDict()
-
         ## storing supercatg file
         self.database = ""
 
@@ -181,6 +178,9 @@ class Assembly(object):
                        ("excludes", ""),
                        ("outgroups", ""),
         ])
+
+        ## Store data directories for this Assembly. Init with default working.
+        self.dirs = ObjDict({"working": self.paramsdict["working_directory"]})
 
         ## Default hackers only parameters dictionary
         ## None of the safeguards of the paramsdict, no nice accessor

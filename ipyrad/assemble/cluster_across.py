@@ -337,7 +337,9 @@ def singlecat(data, sample):
                                 #compression="gzip")
 
     ## get catg from step5 for this sample
-    catarr = np.load(sample.files.database)
+    #catarr = np.load(sample.files.database)
+    with h5py.File(sample.files.database, 'r') as inh5:
+        catarr = inh5["catg"]
 
     ## get utemp cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")

@@ -10,7 +10,7 @@ requirements = [
     'sphinx',
     'cython',
     'ipython>=4.0.0',
-    'ipyparallel',
+    'ipyparallel>=4.1',
     'ipykernel>=4.1',
     'jupyter',
     'jupyter-client>=4.1',
@@ -18,7 +18,8 @@ requirements = [
     'scipy>0.10',
     'numpy>=1.9',
     'pandas',
-    'h5py'
+    'h5py',
+    'mpi4py'
     ]
 
 ## Auto-update ipyrad version from git repo tag
