@@ -21,6 +21,7 @@ requirements:
     - sphinx
     - dill
     - pandas
+    - mpi4py
   run:
     - numpy >=1.7
 
