@@ -34,8 +34,6 @@ def sample_cleanup(data, sample):
     ## get clustfile
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
-    #sample.files.database = os.path.join(data.dirs.clusts,
-    #                                     sample.name+".catg")
 
     if "pair" in data.paramsdict["datatype"]:
         ## record merge file name temporarily
@@ -57,7 +55,12 @@ def sample_cleanup(data, sample):
         except StopIteration:
             break
         if itera != "//\n":
-            thisdepth += int(itera.split(";")[-2][5:])
+            try:
+                thisdepth += int(itera.split(";")[-2][5:])
+            except IndexError:
+                ## TODO: if no clusts pass align filter this will raise
+                LOGGER.debug("Here %s, %s", sample.name, itera)
+                raise IPyradError("bad cluster file: %s", sample.name)
         else:
             ## append and reset
             depth.append(thisdepth)
@@ -179,7 +182,7 @@ def muscle_align(args):
                     ind1 = intind.count('-') <= \
                                 data.paramsdict["max_Indels_locus"][0]
                     #ind2 = len([i.split("-") for i in intind if i]) < 3
-                    if not ind1:
+                    if ind1:
                         somedic[anames[i]] = aseqs[i]
                     else:
                         LOGGER.info("high indels: %s", aseqs[i])
