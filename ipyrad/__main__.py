@@ -35,8 +35,8 @@ def parse_params(args):
 
     ## make into a dict
     items = [i.split("##")[0].strip() for i in plines[1:]]
-    keys = [i.split("[")[1].split("]")[0] for i in plines[1:]]
-    keys = range(1, 30)
+    #keys = [i.split("]")[-2][-1] for i in plines[1:]]
+    keys = range(1, len(plines)-1)
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
     print(parsedict)
@@ -75,36 +75,35 @@ def getassembly(args, parsedict):
     """ loads assembly or creates a new one and set its params from 
     parsedict. Does not launch ipcluster. 
     """
-    ## if '1' then do not load existing Assembly
-    if '1' in args.steps:
+
+    working_directory = parsedict['1']
+    prefix = os.path.split(parsedict['1'])[1]
+    my_assembly = os.path.join(working_directory, prefix)
+
+    ## if forcing or doing step 1 then do not load existing Assembly
+    if args.force and '1' in args.steps:
         ## create a new assembly object
-        if args.force:
-            data = ip.Assembly(parsedict['1'])
-        else:
-            ## try loading an existing one
-            try:
-                print("1 - {}".format(parsedict['1']))
-                data = ip.load.load_assembly(os.path.join(parsedict['1']), 
-                                                     launch=False)
-                                                     #quiet=True)
-
-            ## if not found then create a new one
-            except AssertionError:
-                data = ip.Assembly(parsedict['1'])
-
-    ## otherwise look for existing
+        data = ip.Assembly(my_assembly)
     else:
+        ## try loading an existing one
         try:
-            data = ip.load.load_assembly(os.path.join(parsedict['1'], 
-                                                 launch=False))
-                                                 #quiet=True)
+            print("Loading - {}".format(prefix))
+            data = ip.load.load_assembly(prefix, launch=False)
+
+        ## if not found then create a new one
         except AssertionError:
-            data = ip.Assembly(parsedict['1'])
+            LOGGER.info("No current assembly found, create new - {}".format(my_assembly))
+            data = ip.Assembly(my_assembly)
 
     ## for entering some params...
     for param in parsedict:
         if parsedict[param]:
-            data.set_params(param, parsedict[param])
+            try:
+                data.set_params(param, parsedict[param])
+            except Exception as inst:
+                print(inst)
+                print("Bad parameter in the params file - param {} value {}".format(param, parsedict[param]))
+                raise
 
     return data
 
