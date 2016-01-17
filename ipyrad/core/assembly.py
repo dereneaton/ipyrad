@@ -1345,25 +1345,31 @@ def bufcountlines(filename, gzipped):
     return nlines
 
 
-def tuplecheck(newvalue, dtype=None):
+def tuplecheck(newvalue, dtype=str):
     """ Takes a string argument and returns value as a tuple. 
     Needed for paramfile conversion from CLI to set_params args """
     if isinstance(newvalue, str):
         newvalue = newvalue.rstrip(")").strip("(")
-        if dtype:
-            try:
-                newvalue = tuple([dtype(i) for i in newvalue.split(",")])
-            except TypeError:
-                newvalue = tuple(dtype(newvalue))
-            except Exception as inst:
-                LOGGER.info(inst)
-                raise SystemExit(\
-                "\nError: arg `{}` is not formatted correctly.\n({})\n"\
-                     .format(newvalue, inst))
-        else:
-            newvalue = tuple(newvalue)
-    return newvalue
+        try:
+            newvalue = tuple([dtype(i.strip()) for i in newvalue.split(",")])
 
+        ## Type error is thrown by tuple if it's applied to a non-iterable.
+        except TypeError:
+            newvalue = tuple(dtype(newvalue))
+
+        ## If dtype fails to cast any element of newvalue
+        except ValueError:
+            LOGGER.info("Assembly.tuplecheck() failed to cast to {} - {}"\
+                        .format(dtype, newvalue))
+            raise
+            
+        except Exception as inst:
+            LOGGER.info(inst)
+            raise SystemExit(\
+            "\nError: Param`{}` is not formatted correctly.\n({})\n"\
+                 .format(newvalue, inst))
+
+    return newvalue
 
 
 def paramschecker(self, param, newvalue):
@@ -1552,18 +1558,24 @@ def paramschecker(self, param, newvalue):
         self._stamp("[{}] set to {}".format(param, newvalue))
  
     elif param == 'edit_cutsites':
-        newvalue = tuplecheck(newvalue)
-        assert isinstance(newvalue, tuple), \
-        "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
-        .format(newvalue)
+        ## Check if edit_cutsites is int or string values.
+        ## Try int, if it fails the fall back to str
+        try:
+            newvalue = tuplecheck(newvalue, int)
+        except ValueError as e:
+            print("edit_cutsites value error - {}".format(e))
+            newvalue = tuplecheck(newvalue)
+            assert isinstance(newvalue, tuple), \
+                "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
+                .format(newvalue)
 
         ## If edit_cutsites params are ints, then cast the tuple values
         ## to ints. If they aren't ints then just leave them as strings.
-        try:
-            newvalue = (int(newvalue[0]), int(newvalue[1]))
-        except ValueError as e:
-            LOGGER.info("edit_cutsites values are strings - {} {}".format(\
-                        newvalue[0], newvalue[1]))
+        #try:
+        #    newvalue = (int(newvalue[0]), int(newvalue[1]))
+        #except ValueError as e:
+        #    LOGGER.info("edit_cutsites values are strings - {} {}".format(\
+        #                newvalue[0], newvalue[1]))
 
         self.paramsdict['edit_cutsites'] = newvalue
         self._stamp("[{}] set to {}".format(param, newvalue))
