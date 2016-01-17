@@ -45,11 +45,15 @@ def parse_params(args):
 
 def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
+
+    working_directory = parsedict['1']
+    prefix = os.path.split(parsedict['1'])[1]
+    my_assembly = os.path.join(working_directory, prefix)
+
     try:
-        data = ip.load.load_assembly(
-                    name=parsedict['1'], 
-                    quiet=True, 
-                    launch=False)
+        data = ip.load.load_assembly(my_assembly,
+                                    quiet=True, 
+                                    launch=False)
 
         print("Summary stats of Assembly {}".format(data.name) \
              +"\n------------------------------------------------")
