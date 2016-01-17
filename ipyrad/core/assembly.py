@@ -513,12 +513,14 @@ class Assembly(object):
             pass
 
         ## filter for bad samples
+        ## Warn user but don't bail out, could be setting the pops file
+        ## on a new assembly w/o any linked samples.
         badsamples = [i for i in itertools.chain(*popdict.values()) \
-                      if i not in self.samples]
+                      if i not in self.samples.keys()]
         if any(badsamples):
-            raise IPyradError(\
-                "Names from population input do not match Sample names: ".\
-                format(", ".join(badsamples)))
+            LOGGER.warn("Some names from population input do not match Sample "\
+                + "names: ".format(", ".join(badsamples)))
+            LOGGER.warn("If this is a new assembly this is normal.")
 
         ## return dict
         self.populations = popdict
@@ -768,7 +770,7 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             ipyclient.abort()
             ipyclient.shutdown()
-            ipyclient = self.launch(nwait)
+            ipyclient = self._launch(nwait)
             logging.error("assembly interrupted by user.")
             raise IPyradError("Keyboard Interrupt")
 
@@ -1446,18 +1448,20 @@ def paramschecker(self, param, newvalue):
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_low_qual_bases':
-        assert isinstance(newvalue, int), \
+        assert isinstance(int(newvalue), int), \
             "max_low_qual_bases must be an integer."        
         self.paramsdict['max_low_qual_bases'] = int(newvalue)
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'phred_Qscore_offset':
-        assert isinstance(newvalue, int), \
+        assert isinstance(int(newvalue), int), \
             "phred_Qscore_offset must be an integer."
         self.paramsdict['phred_Qscore_offset'] = int(newvalue)
         self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_statistical':
+        assert isinstance(int(newvalue), int), \
+            "mindepth_statistical must be an integer."
         ## do not allow values below 5
         if int(newvalue) < 5:
             print(\
@@ -1472,6 +1476,8 @@ def paramschecker(self, param, newvalue):
             self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_majrule':
+        assert isinstance(int(newvalue), int), \
+            "mindepth_majrule must be an integer."
         if int(newvalue) > self.paramsdict["mindepth_statistical"]:
             print(\
         "error: mindepth_majrule cannot be > mindepth_statistical")
@@ -1558,7 +1564,7 @@ def paramschecker(self, param, newvalue):
 
     elif param == 'output_formats':
         ## Get all allowed file types from assembly.write_outfiles
-        output_formats = write_outfiles.OUTPUT_FORMATS
+        output_formats = assemble.write_outfiles.OUTPUT_FORMATS
 
         ## If wildcard, then just do them all
         if "*" in newvalue:
@@ -1571,7 +1577,7 @@ def paramschecker(self, param, newvalue):
             ## Only test here if no wildcard present
             for f in requested_formats:
                 if f not in output_formats:
-                    sys.exit("error: File format {} not recognized, must be one of: ".format(f , output_formats))
+                    sys.exit("error: File format [ {} ] not recognized, must be one of: {}".format(f , output_formats))
         
         self.paramsdict['output_formats'] = requested_formats
         self._stamp("[{}] set to {}".format(param, newvalue))
