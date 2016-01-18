@@ -86,11 +86,12 @@ class Assembly(object):
      """
 
 
-    def __init__(self, name):
+    def __init__(self, name, quiet=False):
 
         ## obj name
         self.name = name
-        print("  New Assembly: {}".format(self.name))
+        if not quiet:
+            print("  New Assembly: {}".format(self.name))
 
         ## Store assembly version #
         self._version = ip.__version__ 

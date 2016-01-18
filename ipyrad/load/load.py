@@ -41,7 +41,7 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
             ## forceupdate is not on, then test to check if the loaded
             ## assembly is current. If it is then fine, if not bail out with
             ## a hopefully useful error message.
-            if not test_assembly(data):
+            if test_assembly(data):
                 print("  Attempting to update assembly to newest version.")
                 data = update_assembly(data)
 
@@ -59,7 +59,7 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
     try:
         return data
     except UnboundLocalError:
-        raise AssertionError(name)
+        raise AssertionError("Attempting to load assembly. File not found: {}".format(name))
 
 
 def test_assembly(data):
@@ -77,7 +77,7 @@ def test_assembly(data):
     params_diff = new_params.difference(my_params)
 
     result = False
-    if not params_diff:
+    if params_diff:
         result = True
 
     ## Test hackersonly dict as well.
@@ -85,7 +85,7 @@ def test_assembly(data):
     new_hackerdict = set(new_assembly._hackersonly.keys())
     hackerdict_diff = new_hackerdict.difference(my_hackerdict)
 
-    if not hackerdict_diff:
+    if hackerdict_diff:
         results =  True
 
     return result
@@ -98,9 +98,9 @@ def update_assembly(data):
     """
 
     print("##############################################################")
-    print("Updating assembly to current version\n")
+    print("Updating assembly to current version")
     ## New assembly object to update pdate from.
-    new_assembly = Assembly("update")
+    new_assembly = Assembly("update", quiet=True)
 
     ## Hackersonly dict gets automatically overwritten
     ## Always use the current version for params in this dict.
