@@ -43,23 +43,13 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
     else:
         canvas = toyplot.Canvas(width=200*dims[1], height=150*dims[0])
 
-    ## fill in each panel of canvas with a sample
-    ## TODO: get all data and then plot, so you know and can set the ymax
-    ## before plotting.
+    ## get all of the data arrays
     for panel, sample in enumerate(subsamples):
-        axes = canvas.axes(grid=(dims[0], dims[1], panel), gutter=20)
-        axes.x.domain.xmax = xmax
-        axes.label.text = sample
-        if log:
-            axes.y.scale = "log"
-
         ## statistical called bins
         statdat = subsamples[sample].depths
         statdat = statdat[statdat >= data.paramsdict["mindepth_statistical"]]
         if use_maxdepth:
             statdat = statdat[statdat < data.paramsdict["maxdepth"]]
-        #subsamples[sample].depths >= data.paramsdict["mindepth_statistical"]]
-
         sdat = np.histogram(statdat, range(50))
 
         ## majrule called bins
@@ -77,8 +67,13 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
             tots = tots[tots < data.paramsdict["maxdepth"]]
         edat = np.histogram(tots, range(50))
 
-        # ## set ymax using highest bin...
-        # #ymax = ...
+        ## fill in each panel of canvas with a sample
+        axes = canvas.axes(grid=(dims[0], dims[1], panel), gutter=25)
+        axes.x.domain.xmax = xmax
+        axes.label.text = sample
+        if log:
+            axes.y.scale = "log"
+
         # heights = np.column_stack((sdat,mdat,edat))
         axes.bars(sdat)
         axes.bars(mdat)
