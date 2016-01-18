@@ -319,7 +319,7 @@ def build_catg_file(data, samples, nloci):
 def singlecat(data, sample):
     """ 
     Orders catg data for each sample into the same locus order. This allows
-    all of the individual catgs to simple be combined later. 
+    all of the individual catgs to simply be combined later. 
     """
     ## if an hdf5 file already exists delete it.
     h5handle = os.path.join(data.dirs.consens, sample.name+".hdf5")
@@ -338,8 +338,8 @@ def singlecat(data, sample):
 
     ## get catg from step5 for this sample
     #catarr = np.load(sample.files.database)
-    with h5py.File(sample.files.database, 'r') as inh5:
-        catarr = inh5["catg"]
+    inh5 = h5py.File(sample.files.database, 'r')
+    catarr = inh5["catg"]
 
     ## get utemp cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -371,6 +371,7 @@ def singlecat(data, sample):
     ## ... maybe someday, it would save memory.
 
     ## close the hdf5 connection
+    inh5.close()
     ioh5.close()
 
 
@@ -495,8 +496,8 @@ def build_input_file(data, samples, outgroups, randomseed):
         for ind in shuf.index:
             ## TODO: Is this too much in memory for super huge data sets?
             ## may need to be chunked.
-            writinghaplos.append(shuf[0][ind]+'\n'+\
-                                 breakalleles(shuf[1][ind])[0])
+            writinghaplos.append("\n".join([shuf[0][ind], 
+                                            splitalleles(shuf[1][ind])[0]]))
         allhaps.write("\n".join(writinghaplos)+"\n")
     allhaps.close()
 
