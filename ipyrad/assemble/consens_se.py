@@ -102,51 +102,56 @@ def hetero(base1, base2):
 
 
 
-def removerepeat_Ns(shortcon, stacked):
-    """ checks for interior Ns in consensus seqs and removes those that arise 
-    next to *single repeats* of at least 3 bases on either side, which may be
-    sequencing errors on deep coverage repeats """
+def removerepeats(consens, arrayed):
+    """ Checks for interior Ns in consensus seqs and removes those that are at
+    low depth, here defined as less than 1/3 of the average depth. The prop 1/3
+    is chosen so that mindepth=6 requires 2 base calls that are not in [N,-].
+    """
+
     ## default trim no edges
-    edges = (None, None)
+    consens = "".join(consens).replace("-", "N")
+    edges = [None, None]
 
-    ### what is the most common site depth
-    #comdepth = Counter([sum(i.values()) for i in stacked]).most_common(1)[0][1]
-    #print comdepth, 'comdepth'
+    ## trim from left else index starts at zero
+    lcons = len(consens)
+    consens = consens.lstrip("N")
+    edges[0] = lcons - len(consens)
 
-    ### below this depth it is likely a sequencing repeat
-    #mindepth = comdepth/10.
-    #print mindepth, 'mindepth'
+    ## trim from right if nonzero
+    lcons = len(consens)
+    consens = consens.rstrip("N")
+    if lcons - len(consens):
+        edges[1] = -1*(lcons - len(consens))
 
-    nsites = [i for i, j in enumerate(shortcon) if j == "N"]
-    repeats = set()
+    ## trim same from stacked
+    arrayed = arrayed[:, edges[0]:edges[1]]
 
+    ## what is the total site coverage
+    totdepth = arrayed.shape[0]
+    mindepth = max(1, totdepth // 3)
+
+    ## test across N-called sites
+    nsites = [i for (i, j) in enumerate(consens) if j == "N"]
+
+    ## get column counts of Ns and -s
+    ndepths = numpy.sum(arrayed == 'N', axis=0) 
+    idepths = numpy.sum(arrayed == '-', axis=0)
+
+    ## find sites to remove
+    ridx = []
     for nsite in nsites:
         ## grab the five bases to the left of this N site
-        isvar = len(set(list(shortcon)[nsite-5:nsite]))
-        if isvar < 2:
-            ## could use mindepth here to increase stringency
-            repeats.add(nsite)
-            LOGGER.info("N repeat - left repeat")            
-        
-        ## grab the five bases to the right of this n site
-        isvar2 = len(set(list(shortcon)[nsite+1:nsite+6]))
-        if isvar2 < 2:
-            ## could use mindepth here to increase stringency            
-            repeats.add(nsite)
-            LOGGER.info("N repeat - right repeat")
-
-        ## check if most bases were - at this site
-        if stacked[nsite].get("-"):
-            if stacked[nsite].get("-")/sum(stacked[nsite].values()) > 0.5:
-                repeats.add(nsite)
-                LOGGER.info("N repeat - removal")
+        if (idepths[nsite]+ndepths[nsite]) < mindepth:
+            ridx.append(nsite)
 
     ## remove repeat sites from shortcon and stacked
-    shortcon = [j for (i, j) in enumerate(shortcon) if i not in repeats]
-    stacked = stacked[:len(shortcon)]
-    stacked = [j for (i, j) in enumerate(stacked) if i not in repeats]
+    keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
+                         if i not in ridx])
+    #keeps = [i for i in range(len(consens)) if i not in ridx]
+    consens = "".join(list(consens))
+    arrayed = arrayed[:, list(keeps)]
 
-    return "".join(shortcon), stacked
+    return "".join(consens), arrayed
 
 
 
@@ -214,46 +219,35 @@ def consensus(args):
                 sseqs = [list(seq) for seq in seqs]
                 arrayed = numpy.concatenate(
                             [[seq]*rep for seq, rep in zip(sseqs, reps)])
-                stacked = [Counter(seq) for seq in arrayed.T] 
 
                 ## get consens call for each site, paralog site filter
                 consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
 
                 ## get hetero sites
-                heteros = [i[0] for i in enumerate(consens) \
-                                 if i[1] in list("RKSYWM")]
-                nheteros = len(heteros)
+                hidx = [i for (i, j) in enumerate(consens) \
+                        if j in list("RKSYWM")]
+                nheteros = len(hidx)
                 counters["heteros"] += nheteros
                 ## filter for max number of hetero sites
                 if nfilter2(data, nheteros):
+                    ## apply a filter to remove low coverage sites/Ns that
+                    ## are likely sequence repeat errors.
+                    consens, arrayed = removerepeats(consens, arrayed)
 
-                    ## filter for maxN, & minlen after N trim
-                    consens = "".join(consens).replace("-", "N")
-                    consens = consens.lstrip("N").rstrip("N")
+                    ## filter for maxN, & minlen 
                     if nfilter3(data, consens):
 
-                        ## filter for max alleles and get lower case idx
-                        res = nfilter4(data, consens, heteros, seqs, reps)
-                        passed, consens = res
+                        ## filter for max alleles and get lower case in consens
+                        res = nfilter4(data, consens, hidx, arrayed)
+                        consens, passed = res
+
                         if passed:
-
-                            ## apply a filter to remove low coverage sites/
-                            ## Ns that are likely sequence repeat errors.
-                            #TODO
-                            #res = removerepeat_Ns(consens, stacked)
-                            #consens, stacked = res
-
-                            ## list -> string
-
-
                             ## store a reduced array with only CATG
-                            catg = numpy.array([
-                                    [i["C"] for i in stacked], 
-                                    [i["A"] for i in stacked], 
-                                    [i["T"] for i in stacked],
-                                    [i["G"] for i in stacked]], 
-                                    dtype='int16').T
+                            catg = numpy.array(\
+                       [numpy.sum(arrayed == i, axis=0) for i in list("CATG")], 
+                       dtype='int16').T
                             catarr[counters["nconsens"]][:catg.shape[0]] = catg
+                            ## store data for tmpchunk
                             storeseq[counters["name"]] = consens
                             counters["name"] += 1
                             counters["nconsens"] += 1                                
@@ -276,11 +270,11 @@ def consensus(args):
     consenshandle = os.path.join(data.dirs.consens, 
                                  sample.name+"_tmpcons."+str(tmpnum))
     LOGGER.info('writing %s', consenshandle)
-    LOGGER.info('storeseq is big: %s', len(storeseq))
+    LOGGER.info('chunk size: %s', len(storeseq))
     if storeseq:
         with open(consenshandle, 'wb') as outfile:
             outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
-                                     storeseq[key] for key in storeseq]))
+                                   str(storeseq[key]) for key in storeseq]))
 
     ## save tmp catg array that will be combined into hdf5 later
     with open(consenshandle.replace("_tmpcons.", "_tmpcats."), 'wb') as dumph:
@@ -322,76 +316,62 @@ def nfilter3(data, consens):
         return 0
 
 
-def nfilter4(data, consens, heteros, seqs, reps):
+def nfilter4(data, consens, hidx, arrayed):
     """ applies max haplotypes filter returns pass and consens"""
 
-    ## store 
-    ordered = []
+    ## only apply if >1 hetero site
+    if len(hidx) < 2:
+        return consens, 1
 
-    ## get each unique order of polymorphic sites
-    for read, rep in zip(seqs, reps):
-        orderedpolys = []
-        ## exclude low depth haplos
-        if rep/float(sum(reps)) > 0.10:
-            for hsite in heteros:
-                orderedpolys.append(read[hsite])
-            ## exclude with Ns or (-)s
-            if not any([i in orderedpolys for i in ["-", "N"]]):
-                ordered.extend(["".join(orderedpolys)]*rep)
+    ## only apply if organism is diploid
+    if data.paramsdict["max_alleles_consens"] != 2:
+        return consens, 1
 
-    counted = Counter(ordered)
-    nalleles = len(counted.keys())
-    LOGGER.debug("heteros locs %s", heteros)
-    # LOGGER.debug("orderedpolys %s", orderedpolys)
-    # LOGGER.debug("ordered %s", ordered)
-    LOGGER.debug('counted %s', counted)
-    # LOGGER.info('%s alleles', len(counted.keys()))
+    ## store base calls for hetero sites
+    harray = arrayed[:, hidx]
+
+    ## remove any rows that have N base calls at hetero sites
+    harray = harray[~numpy.any(harray == "N", axis=1)]
+
+    ## remove low freq alleles, since they make reflect sequencing errors
+    totdepth = harray.shape[0]
+    cutoff = max(1, totdepth // 4)
+    ccx = Counter([tuple(i) for i in harray])
+    alleles = [i for i in ccx if ccx[i] > cutoff]
+    assert len(alleles[0]) == len(hidx)
 
     ## how many high depth alleles?
-    if nalleles > data.paramsdict["max_alleles_consens"]:
+    if len(alleles) > data.paramsdict["max_alleles_consens"]:
         return consens, 0
     else:
-        ## if diploid try to get two alleles and return consens with
-        ## lower upper and lower casing to save phased info
-        try:
-            consens = findalleles(consens, heteros, counted)
-        except IndexError as inst:
-            LOGGER.error("nfilter3 error again: %s", inst)
-            LOGGER.error("\n"+"\n".join(seqs))
+        ## store order of alleles with lower case lettering in consens
+        consens = storealleles(consens, hidx, alleles)
         return consens, 1
 
 
 
-def findalleles(consens, heteros, counted):
+def storealleles(consens, hidx, alleles):
     """ store phased allele data for diploids """
-    ## find the first hetero site from the left
-    alleles = [i[0] for i in counted.most_common(2)]
-    LOGGER.debug('INSIDE alleles %s', alleles)
-    firstbigbase = uplow(unhetero(consens[heteros[0]]))
-    LOGGER.debug('INSIDE firstbigbase %s', firstbigbase)
-    query = [i for i in alleles if i[0] == firstbigbase][0]
-    LOGGER.debug('INSIDE query %s', query)
+    ## find the first hetero site and choose the priority base
+    ## example, if W: then priority base in T and not A. PRIORITY=(order: CATG)
+    bigbase = PRIORITY[consens[hidx[0]]]
 
-    for idx, site in enumerate(heteros[1:]):
-        if query[idx] != uplow(unhetero(consens[site])):
-            consens[site] = consens[site].lower()
-            LOGGER.debug('newlow %s', consens[site])
-    return consens            
+    ## find which allele has priority based on bigbase
+    bigallele = [i for i in alleles if i[0] == bigbase][0]
 
-    #     uplow(unhetero())
-    #     lastbig = uplow(unhetero(heteros[idx-1]))
-    #     thisbig = uplow(unhetero(heteros[idx]))
-    #     if thisbase
+    ## uplow other bases relative to this one and the priority list
+    ## e.g., if there are two hetero sites (WY) and the two alleles are 
+    ## AT and TC, then since bigbase of (W) is A second hetero site should 
+    ## be stored as y, since the ordering is swapped in this case; the priority
+    ## base (C versus T) is C, but C goes with the minor base at h site 1. 
+    consens = list(consens)
 
-    # for ind, hsite in enumerate(heteros[1:]):
-    #     LOGGER.info('what %s, %s, %s', ind, hsite, consens[hsite])
-    #     bigbase = uplow(unhetero(consens[hsite]))
-    #     ## does this bigbase match the previous bigbase?
-    #     ## if not iupac is small
-    #     if query[ind-1] != bigbase:
-    #         consens[hsite] = consens[hsite].lower()
+    for hsite, pbase in zip(hidx[1:], bigallele[1:]):
+        if PRIORITY[consens[hsite]] != pbase:
+            consens[hsite] = consens[hsite].lower()
 
-    # return consens
+    ## return consens as a string
+    return "".join(consens)
 
 
 
@@ -511,7 +491,6 @@ def cleanup(data, sample, statsdicts):
     with open(tmpcats[0]) as cat:
         catg = numpy.load(cat)
     ## (optim, maxlen, 4)
-    print("my shapes:", catg.shape)
     optim, maxlen, _ = catg.shape
 
     ## replace numpy save with hdf5 array someday
@@ -652,8 +631,8 @@ def run_full(data, sample, ipyclient):
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
             num += 1
-            LOGGER.info("chunking len:%s, done:%s, num:%s", \
-                         len(chunk), done, num)
+            #LOGGER.info("chunking len:%s, done:%s, num:%s", \
+            #             len(chunk), done, num)
 
     ## close clusters handle
     clusters.close()
