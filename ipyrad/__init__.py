@@ -16,7 +16,7 @@ from ipyrad.core.paramsinfo import paramsinfo
 __version__ = "0.1.22"
 __interactive__ = 1
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"                                                                                
-__loglevel__ = "ERROR"
+__loglevel__ = "DEBUG"
 
 
 ## this needs to come after __loglevel__ definition

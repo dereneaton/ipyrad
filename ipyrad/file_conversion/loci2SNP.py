@@ -1,5 +1,7 @@
 #!/usr/bin/env python2
 
+""" functions to create .SNPs from .loci and further formats from .SNPs """
+
 import numpy as np
 import sys
 import gzip
@@ -7,22 +9,29 @@ from collections import Counter
 from itertools import chain
 from ipyrad.assemble.util import *
 
-def make( data, samples ):
 
-    ploidy = data.paramsdict["ploidy"]
-    names = map( lambda x: x.name, samples )
-    longname = max(map(len,names))
-    inloci   =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ), 'r').read()
+
+def make(data, samples):
+    """ builds snps output """
+
+    ## get attr 
+    ploidy = data.paramsdict["max_alleles_consens"]
+    names = [i.name for i in samples]
+    longname = max([len(i) for i in names])
+
+    ## TODO: use iter cuz of super huge files
+    inloci = open(os.path.join(\
+                  data.dirs.outfiles, data.name+".loci" ), 'r').read()
 
     ## Potential outfiles
-    snpsout = os.path.join( data.dirs.outfiles, data.name+".snps" )
-    usnpsout = os.path.join( data.dirs.outfiles, data.name+".usnps" )
-    structout = os.path.join( data.dirs.outfiles, data.name+".str" )
-    genoout = os.path.join( data.dirs.outfiles, data.name+".snps.geno" )
-    ugenoout = os.path.join( data.dirs.outfiles, data.name+".usnps.geno" )
+    snpsout = os.path.join(data.dirs.outfiles, data.name+".snps")
+    usnpsout = os.path.join(data.dirs.outfiles, data.name+".usnps")
+    structout = os.path.join(data.dirs.outfiles, data.name+".str")
+    genoout = os.path.join(data.dirs.outfiles, data.name+".snps.geno")
+    ugenoout = os.path.join(data.dirs.outfiles, data.name+".usnps.geno")
 
     ## Output file for writing some stats
-    statsfile= os.path.join( data.dirs.outfiles, data.name+".snps.stats" )
+    statsfile= os.path.join(data.dirs.outfiles, data.name+".snps.stats")
 
     ## The output formats to write
     formats = data.paramsdict["output_formats"]
@@ -30,17 +39,17 @@ def make( data, samples ):
     seed = data._hackersonly["random_seed"]
     np.random.seed(int(seed))
 
-    " output .snps and .unlinked_snps"
+    ## output .snps and .unlinked_snps"
     S = {}      ## snp dict
     Si = {}     ## unlinked snp dict
     for name in list(names):
         S[name] = []
         Si[name] = []
 
-    " record bi-allelic snps"
+    ## record bi-allelic snps"
     bis = 0
 
-    " for each locus select out the SNPs"
+    ## for each locus select out the SNPs"
     for loc in inloci.strip().split("|")[:-1]:
         pis = ""
         ns = []
@@ -53,7 +62,7 @@ def make( data, samples ):
             else:
                 pis = [i[0] for i in enumerate(line) if i[1] in list('*-')]
 
-        " assign snps to S, and record coverage for usnps"
+        ## assign snps to S, and record coverage for usnps"
         for tax in S:
             if tax in ns:
                 if pis:
@@ -64,7 +73,7 @@ def make( data, samples ):
                             cov[snpsite] = 1
                         else:
                             cov[snpsite] += 1
-                        "downweight selection of gap sites "
+                        ## downweight selection of gap sites "
                         if ss[ns.index(tax)][snpsite] != '-':
                            cov[snpsite] += 1
             else:
@@ -73,13 +82,13 @@ def make( data, samples ):
                         S[tax].append("N")
                     Si[tax].append("N")
 
-        " randomly select among snps w/ greatest coverage for unlinked snp "
+        ## randomly select among snps w/ greatest coverage for unlinked snp "
         maxlist = []
         for j,k in cov.items():
             if k == max(cov.values()):
                 maxlist.append(j)
 
-        " Is bi-allelic ? "
+        ## Is bi-allelic ? "
         bisnps = []
         for i in maxlist:
             if len(set([ss[ns.index(tax)][i] for tax in S if tax in ns])) < 3:
@@ -95,34 +104,34 @@ def make( data, samples ):
         for tax in S:
             if tax in ns:
                 if pis:
-                    " if none are bi-allelic "
+                    ## if none are bi-allelic "
                     if not bisnps:
                         tbi += 1
                     Si[tax].append(ss[ns.index(tax)][rando])
             if pis:
-                " add spacer between loci "                
+                ## add spacer between loci "                
                 S[tax].append(" ")
             else:
-                " invariable locus "
+                ## invariable locus "
                 S[tax].append("_ ")
         bis += tbi
-    " names "
+    ## names
     SF = list(S.keys())
     SF.sort()
 
     ## Write linked snps format
     if "snps" in formats:
         with open(snpsout, 'w') as outfile:
-            print >>outfile, "## %s taxa, %s loci, %s snps" % (len(S),
-                                                               len("".join(S.values()[0]).split(" "))-1,
-                                                               len("".join(S[SF[0]]).replace(" ","")))
+            print >>outfile, "## %s taxa, %s loci, %s snps" % \
+            (len(S), len("".join(S.values()[0]).split(" "))-1,
+                    len("".join(S[SF[0]]).replace(" ", "")))
             for i in SF:
                 print >>outfile, i+(" "*(longname-len(i)+3))+"".join(S[i])
 
     ## Write unlinked snps format
     if "usnps" in formats:
         with open(usnpsout, 'w') as outfile:
-            print >>outfile, len(Si),len("".join(Si.values()[0]))
+            print >>outfile, len(Si), len("".join(Si.values()[0]))
             for i in SF:
                 print >>outfile, i+(" "*(longname-len(i)+3))+"".join(Si[i])
 

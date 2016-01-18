@@ -106,6 +106,9 @@ def removerepeat_Ns(shortcon, stacked):
     """ checks for interior Ns in consensus seqs and removes those that arise 
     next to *single repeats* of at least 3 bases on either side, which may be
     sequencing errors on deep coverage repeats """
+    ## default trim no edges
+    edges = (None, None)
+
     ### what is the most common site depth
     #comdepth = Counter([sum(i.values()) for i in stacked]).most_common(1)[0][1]
     #print comdepth, 'comdepth'
@@ -224,62 +227,54 @@ def consensus(args):
                 ## filter for max number of hetero sites
                 if nfilter2(data, nheteros):
 
-                    ## filter for max number of haplotypes, only applied if nH>1 
-                    mpl = 1
-                    if nheteros > 1:
-                        f3result = nfilter3(data, consens, heteros, seqs, reps)
-                        consens, mpl = f3result
+                    ## filter for maxN, & minlen after N trim
+                    consens = "".join(consens).replace("-", "N")
+                    consens = consens.lstrip("N").rstrip("N")
+                    if nfilter3(data, consens):
 
-                    ## if the locus passed paralog filtering
-                    if mpl:
-                        consens = "".join(consens).replace("-", "N")
-                        ## should we lstrip() all consens? seems reasonable.
-                        ## certainly we should for pairgbs
-                        shortcon = consens.lstrip("N").rstrip("N")
-                        ## this function which removes low coverage sites next 
-                        ## to poly repeats that are likely sequencing errors 
-                        ## TODO: Until this func is optimized
-                        
-                        shortcon, edges = removerepeat_Ns(shortcon, stacked)
+                        ## filter for max alleles and get lower case idx
+                        res = nfilter4(data, consens, heteros, seqs, reps)
+                        passed, consens = res
+                        if passed:
 
-                        if shortcon.count("N") <= \
-                                       sum(data.paramsdict["max_Ns_consens"]):
-                            ## minimum length for clustering in vsearch
-                            if len(shortcon) >= 32:
-                                ## store sequence
+                            ## apply a filter to remove low coverage sites/
+                            ## Ns that are likely sequence repeat errors.
+                            #TODO
+                            #res = removerepeat_Ns(consens, stacked)
+                            #consens, stacked = res
 
-                                ## store a reduced array with only CATG
-                                catg = numpy.array([
+                            ## list -> string
+
+
+                            ## store a reduced array with only CATG
+                            catg = numpy.array([
                                     [i["C"] for i in stacked], 
                                     [i["A"] for i in stacked], 
                                     [i["T"] for i in stacked],
                                     [i["G"] for i in stacked]], 
                                     dtype='int16').T
-                                catarr[counters["nconsens"]][:catg.shape[0]] = catg
-                                storeseq[counters["name"]] = shortcon
-                                counters["name"] += 1
-                                counters["nconsens"] += 1                                
-                            else:
-                                #LOGGER.debug("@shortmaxn")
-                                filters['maxn'] += 1
+                            catarr[counters["nconsens"]][:catg.shape[0]] = catg
+                            storeseq[counters["name"]] = consens
+                            counters["name"] += 1
+                            counters["nconsens"] += 1                                
                         else:
                             #LOGGER.debug("@maxn")
-                            filters['maxn'] += 1
+                            filters['maxhaplos'] += 1
                     else:
                         #LOGGER.debug("@haplo")
-                        filters['haplos'] += 1
+                        filters['maxn'] += 1
                 else:
                     #LOGGER.debug("@hetero")
                     filters['heteros'] += 1
             else:
                 #LOGGER.debug("@depth")
                 filters['depth'] += 1
-
+    ## close file io
     clusters.close()
 
+    ## write to tmp cons to file to be combined later
     consenshandle = os.path.join(data.dirs.consens, 
                                  sample.name+"_tmpcons."+str(tmpnum))
-    ## write to file
     LOGGER.info('writing %s', consenshandle)
     LOGGER.info('storeseq is big: %s', len(storeseq))
     if storeseq:
@@ -287,14 +282,13 @@ def consensus(args):
             outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
                                      storeseq[key] for key in storeseq]))
 
+    ## save tmp catg array that will be combined into hdf5 later
     with open(consenshandle.replace("_tmpcons.", "_tmpcats."), 'wb') as dumph:
         numpy.save(dumph, catarr)
 
     ## final counts and return
-    if storeseq:
-        counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])        
-    else:
-        counters['nsites'] = 0
+    counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])        
+
     return counters, filters
 
 
@@ -316,7 +310,19 @@ def nfilter2(data, nheteros):
         return 0
 
 
-def nfilter3(data, consens, heteros, seqs, reps):
+def nfilter3(data, consens):
+    """ applies filter for maxN """
+    ## minimum length for clustering in vsearch
+    if len(consens) >= 32:
+        if consens.count("N") <= sum(data.paramsdict["max_Ns_consens"]):
+            return 1
+        else:
+            return 0
+    else:
+        return 0
+
+
+def nfilter4(data, consens, heteros, seqs, reps):
     """ applies max haplotypes filter returns pass and consens"""
 
     ## store 
@@ -348,8 +354,7 @@ def nfilter3(data, consens, heteros, seqs, reps):
         ## if diploid try to get two alleles and return consens with
         ## lower upper and lower casing to save phased info
         try:
-            if (nalleles > 1) and (data.paramsdict["max_alleles_consens"] == 2):
-                consens = findalleles(consens, heteros, counted)
+            consens = findalleles(consens, heteros, counted)
         except IndexError as inst:
             LOGGER.error("nfilter3 error again: %s", inst)
             LOGGER.error("\n"+"\n".join(seqs))
@@ -735,7 +740,7 @@ def run(data, samples, force, ipyclient):
                     elif sample.stats.clusters_hidepth < 100:
                         print("Skipping Sample {}; ".format(sample.name)
                      +"Too few clusters ({}). Use force=True to run anyway.".\
-                           format(sample.stats.clusters_hidepth))
+                           format(int(sample.stats.clusters_hidepth)))
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)

@@ -308,6 +308,7 @@ def filter_maxSNP(data, loci):
     return loci
 
 
+
 def filter_maxhet(data, loci):
     """ Filter max shared heterozygosity per locus
     """
