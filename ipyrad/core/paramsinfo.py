@@ -16,8 +16,8 @@ from collections import OrderedDict
 pinfo = OrderedDict([
 ("1", ("""
     (1) working_directory ------------------------------------------------
-    Path to the working directory where all data files will be saved. 
-    This parameter affects all steps of assembly (1-7). 
+    Project name / path for working directory where all data files will be 
+    saved. This parameter affects all steps of assembly (1-7). 
     Examples: 
     ----------------------------------------------------------------------
     data.set_params(1) = "/home/user/rad_analysis/"   ## full path example
