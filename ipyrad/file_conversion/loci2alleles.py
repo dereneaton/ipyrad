@@ -26,15 +26,15 @@ def make(data, samples):
     loc = 0
     for line in lines:
         if ">" in line:
-            a, b = line.split(" ")[0],line.split(" ")[-1]
-            a1, a2 = breakalleles(b.strip())
+            name, seq = line.split(" ")[0], line.split(" ")[-1]
+            allele1, allele2 = splitalleles(seq.strip())
 
             ## Format the output string. the "-2" below accounts for the additional
             ## 2 characters added to the sample name that don't get added to the
             ## snpsites line, so you gotta bump this line back 2 to make it
             ## line up right.
-            writing.append(a+"_0"+" "*(longname-len(a)-2+name_padding)+a1)
-            writing.append(a+"_1"+" "*(longname-len(a)-2+name_padding)+a2)
+            writing.append(name+"_0"+" "*(longname-len(name)-2+name_padding)+allele1)
+            writing.append(name+"_1"+" "*(longname-len(name)-2+name_padding)+allele2)
         else:
             writing.append(line.strip())
         loc += 1
