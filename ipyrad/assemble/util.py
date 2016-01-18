@@ -77,28 +77,32 @@ def ambigcutters(seq):
         return [seq, ""]
 
 
-def breakalleles(consensus):
-    """ break ambiguity code consensus seqs into two alleles """
-    allele1 = ""
-    allele2 = ""
-    bigbase = ""
-    for base in consensus:
-        if base in tuple("RKSYWM"):
-            unhet1, unhet2 = unhetero(base)
-            hetset = set([unhet1, unhet2])
-            allele1 += uplow((unhet1, unhet2))
-            allele2 += hetset.difference(uplow((unhet1, unhet2))).pop()
-            if not bigbase:  
-                bigbase = uplow((allele1, allele2))
-        elif base in tuple("rksywm"):
-            unhet1, unhet2 = unhetero(base)
-            hetset = set([unhet1, unhet2])
-            allele2 += uplow((unhet1, unhet2))
-            allele1 += hetset.difference(uplow((unhet1, unhet2))).pop()
+
+def splitalleles(consensus):
+    """ takes diploid consensus alleles with phase data stored as a mixture 
+    of upper and lower case characters and splits it into 2 alleles """
+
+    ## store two alleles, allele1 will start with bigbase
+    allele1 = list(consensus)
+    allele2 = list(consensus)
+    hidx = [i for (i, j) in enumerate(consensus) if j in list("RKSWYM")]
+
+    ## do remaining h sites
+    for idx in hidx:
+        hsite = consensus[idx]
+        if hsite.isupper:
+            allele1[idx] = PRIORITY.get(hsite)
+            allele2[idx] = MINOR.get(hsite)
         else:
-            allele1 += base
-            allele2 += base
+            allele1[idx] = MINOR.get(hsite)
+            allele2[idx] = PRIORITY.get(hsite)
+
+    ## convert back to strings
+    allele1 = "".join(allele1)
+    allele2 = "".join(allele2)
+
     return allele1, allele2
+
 
 
 def comp(seq):
@@ -311,27 +315,23 @@ def unhetero(amb):
     return AMBIGS.get(amb)
 
 
-
-def uplow(hsite):
-    """ allele precedence used in assigning upper and lower case letters to 
-    a consensus sequence to store the the phased allele pattern for diploids. 
-    G > T > C > A """
-    prec = {('G', 'A'):"G",
-            ('A', 'G'):"G",
-            ('G', 'T'):"G",
-            ('T', 'G'):"G",
-            ('G', 'C'):"G",
-            ('C', 'G'):"G",
-            ('T', 'C'):"T",
-            ('C', 'T'):"T",
-            ('T', 'A'):"T",
-            ('A', 'T'):"T",
-            ('C', 'A'):"C",
-            ('A', 'C'):"C"}
-    bigbase = prec.get(hsite)
-    if not bigbase:
-        bigbase = hsite[0]
-    return bigbase
+## Alleles priority dict. The key:vals are the same as the AMBIGS dict 
+## except it returns just one base, w/ the order/priority being (C>A>T>G)
+## This dict is used to impute lower case into consens to retain allele
+## order for phase in diploids
+PRIORITY = {"M": "C",
+            "Y": "C",
+            "S": "C",
+            "W": "A",
+            "R": "A",
+            "K": "T"}
+## The inverse of priority
+MINOR = {"M": "A",
+         "Y": "T",
+         "S": "G",
+         "W": "T",
+         "R": "G",
+         "K": "G"}
 
 
 DUCT = {"R":["G", "A"], 
