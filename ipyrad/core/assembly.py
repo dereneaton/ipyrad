@@ -239,6 +239,7 @@ class Assembly(object):
 
     def cpus(self):
         """ View the connection  """
+        pass
 
 
 
@@ -1089,7 +1090,7 @@ class Assembly(object):
             overwritten unless force=True. 
         """
 
-        self._clientwrapper(self._step5func, [samples, force], 2)
+        self._clientwrapper(self._step5func, [samples, force], 10)
 
 
 

@@ -39,7 +39,6 @@ def parse_params(args):
     keys = range(1, len(plines)-1)
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
-    print(parsedict)
     return parsedict
 
 
