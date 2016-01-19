@@ -3,6 +3,8 @@
 """ jointly infers heterozygosity and error rate from stacked sequences """
 
 from __future__ import print_function
+# pylint: disable=E1101
+
 import scipy.stats
 import scipy.optimize
 import numpy as np
@@ -10,8 +12,14 @@ import itertools
 import os
 import gzip
 from collections import Counter
+try: 
+    from numba import jit
+    NUMBA = 1
+except ImportError:
+    NUMBA = 0
 
-# pylint: disable=E1101
+## enforce numba off for now
+NUMBA = 0
 
 
 def get_freqs(stack):
@@ -27,6 +35,14 @@ def get_freqs(stack):
                           totalcount["C"]])/float(sump)
     return basefreqs
 
+@jit
+def jlikelihood1(errors, base_frequencies, stacks):
+    """probability homozygous"""
+    ## make sure base_frequencies are in the right order
+    #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
+    totals = np.array([stacks.sum(axis=1)]*4).T
+    prob = scipy.stats.binom.pmf(totals-stacks, totals, errors)
+    return np.sum(base_frequencies*prob, axis=1)
 
 def likelihood1(errors, base_frequencies, stacks):
     """probability homozygous"""
@@ -36,6 +52,25 @@ def likelihood1(errors, base_frequencies, stacks):
     prob = scipy.stats.binom.pmf(totals-stacks, totals, errors)
     return np.sum(base_frequencies*prob, axis=1)
 
+
+@jit
+def jlikelihood2(errors, base_frequencies, stacks):
+    """probability of heterozygous"""
+    returns = np.zeros([len(stacks)])
+    for idx, stackl in enumerate(stacks):
+        spair = list(itertools.combinations(stackl, 2))
+        bpair = list(itertools.combinations(base_frequencies, 2))
+        one = 2.*np.product(bpair, axis=1)
+        tot = stackl.sum() #np.sum(spair, axis=1)
+        atwo = tot - np.array([i[0] for i in spair]) -\
+                     np.array([i[1] for i in spair])
+        two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
+        three = scipy.stats.binom.pmf(np.array([i[0] for i in spair]),
+                                      np.array([i[0]+i[1] for i in spair]),
+                                      0.5)
+        four = 1.-np.sum(base_frequencies**2)
+        returns[idx] = np.sum(one*two*(three/four))
+    return np.array(returns)
 
 
 def likelihood2(errors, base_frequencies, stacks):
@@ -68,6 +103,26 @@ def get_diploid_lik(starting_params, base_frequencies, stacks, stackcounts):
         ## get likelihood for all sites
         lik1 = (1.-hetero)*likelihood1(errors, base_frequencies, stacks)
         lik2 = (hetero)*likelihood2(errors, base_frequencies, stacks)
+        liks = lik1+lik2
+        logliks = np.log(liks[liks > 0])*stackcounts[liks > 0]
+        #logliks = np.log(liks)*stackcounts
+        score = -logliks.sum()
+    return score
+
+
+@jit
+def j_diploid_lik(starting_params, base_frequencies, stacks, stackcounts):
+    """ Log likelihood score given values [H,E]. 
+    TODO: needs testing for jit optimization.
+     """
+    hetero = starting_params[0]
+    errors = starting_params[1]
+    if (hetero <= 0.) or (errors <= 0.):
+        score = np.exp(100)
+    else:
+        ## get likelihood for all sites
+        lik1 = (1.-hetero)*jlikelihood1(errors, base_frequencies, stacks)
+        lik2 = (hetero)*jlikelihood2(errors, base_frequencies, stacks)
         liks = lik1+lik2
         logliks = np.log(liks[liks > 0])*stackcounts[liks > 0]
         #logliks = np.log(liks)*stackcounts
@@ -194,7 +249,11 @@ def optim(args):
                                 full_output=False)
     else:
         starting_params = [0.01, 0.001]
-        hetero, errors = scipy.optimize.fmin(get_diploid_lik,
+        if NUMBA:
+            func = j_diploid_lik
+        else:
+            func = get_diploid_lik
+        hetero, errors = scipy.optimize.fmin(func,
                                              starting_params,
                                              (base_frequencies, 
                                                 stacks,
