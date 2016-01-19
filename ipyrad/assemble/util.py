@@ -4,6 +4,9 @@
 parts of the pipeline
 """
 
+# pylint: disable=E1101
+# pylint: disable=W0212
+
 from __future__ import print_function
 import os
 import sys
@@ -118,24 +121,6 @@ def comp(seq):
 
 
 
-def getsplits(filename):
-    """ Calculate optimum splitting based on file size. Does not unzip files, 
-    assumes average rate of compression. This is a fast alternative to counting 
-    lines which takes too long on huge files.
-    """
-    filesize = os.stat(filename).st_size
-    if filesize < 10000000:
-        optim = 200000
-    elif filesize < 4000000000:
-        optim = 500000
-    elif filesize < 8000000000:
-        optim = 4000000
-    else:
-        optim = 8000000
-    return optim
-
-
-
 
 def merge_pairs(data, sample): #, unmerged_files):
     """ 
@@ -234,10 +219,10 @@ def merge_pairs(data, sample): #, unmerged_files):
             writing.append("\n".join([
                             read1s[0].strip(),
                             read1s[1].strip()+\
-                                "ssss"+comp(read2s[1].strip())[::-1],
+                                "nnnn"+comp(read2s[1].strip())[::-1],
                             read1s[2].strip(),
                             read1s[3].strip()+\
-                                "ssss"+read2s[3].strip()[::-1]]
+                                "nnnn"+read2s[3].strip()[::-1]]
                             ))
             counts += 1
             if not counts % 1000:
@@ -259,66 +244,8 @@ def most_common(L):
     return max(itertools.groupby(sorted(L)), key=lambda(x, v):(len(list(v)),-L.index(x)))[0]
 
 
-def preview_truncate_fq( data, sample_fastq ):
-    """ If we are running in preview mode, truncate the input fq.gz file
-    so it'll run quicker, just so we can see if it works. Input is tuple of the file
-    names of the sample fq. Function returns a list of one tuple of 1 or 2 elements
-    depending on whether you're doing paired or single end. The elements are
-    paths to a temp files of the sample fq truncated to some much smaller size.
-    """
 
-    ## Return a list of filenames
-    truncated_fq = []
 
-    for read in sample_fastq[0]:
-
-        ## If the R2 is empty then exit the loop
-        if not read:
-            continue
-        try:
-            if read.endswith(".gz"):
-                f = gzip.open(os.path.realpath(read), 'rb')
-            else:
-                f = open(os.path.realpath(read), 'rb')
-
-            ## create iterators to sample 4 lines at a time 
-            quart = itertools.izip(*[iter(f)]*4)
-
-            with tempfile.NamedTemporaryFile( 'w+b', delete=False,
-                    dir=os.path.realpath(data.dirs.working),
-                    prefix=read+".preview_tmp", suffix=".fq") as tmp_fq:
-                try:
-                    ## Sample the first x number of reads. On real data 2e6 is enough.  
-                    for i in range(data._hackersonly["preview_truncate_length"]):
-                        tmp_fq.write( "".join( quart.next() ) )
-                except StopIteration:
-                    LOGGER.info("preview_truncate_length > size of sample, means "+\
-                                "your sample is smaller than truncate length already")
-                except Exception as e:
-                    LOGGER.info("preview truncate length, caught exception {}".format(e))
-                    raise
-            truncated_fq.append( tmp_fq.name )
-            f.close()
-        except AttributeError as e:
-            ## R2 during SE is passed out as 0
-            #truncated_fq.append( 0 )
-            pass
-        except KeyboardInterrupt as e:
-            LOGGER.info("Caught keyboard interrupt during preview mode. "\
-                        "Clean up preview files")
-            ## clean up preview files
-            for f in truncated_fq:
-                if(os.path.exists(f)):
-                    os.remove(f)
-            try:
-                if(os.path.exists(tmp_fq)):
-                    os.remove(tmp_fq)
-            except Exception:
-                pass
-            ## Raise the keyboardInterrupt
-            raise(e)
-
-    return [tuple(truncated_fq)]
 
 
 def revcomp(sequence):
@@ -329,6 +256,7 @@ def revcomp(sequence):
                              .replace("C", "g")\
                              .replace("G", "c").upper()
     return sequence
+
 
 
 def unhetero(amb):
@@ -347,6 +275,7 @@ PRIORITY = {"M": "C",
             "W": "A",
             "R": "A",
             "K": "T"}
+
 ## The inverse of priority
 MINOR = {"M": "A",
          "Y": "T",
@@ -380,6 +309,24 @@ def unstruct(amb):
 
 
 
+def getsplits(filename):
+    """ Calculate optimum splitting based on file size. Does not unzip files, 
+    assumes average rate of compression. This is a fast alternative to counting 
+    lines which takes too long on huge files.
+    """
+    filesize = os.stat(filename).st_size
+    if filesize < 10000000:
+        optim = 200000
+    elif filesize < 4000000000:
+        optim = 500000
+    elif filesize < 8000000000:
+        optim = 4000000
+    else:
+        optim = 8000000
+    return optim
+
+
+
 def zcat_make_temps(args):
     """ 
     Call bash command 'zcat' and 'split' to split large files. The goal
@@ -394,7 +341,7 @@ def zcat_make_temps(args):
     ## get optimum lines per file
     if not optim:
         optim = getsplits(raws[0])
-    LOGGER.info("optim = %s", optim)
+    LOGGER.info("zcat is using optim = %s", optim)
 
     ## is it gzipped
     cat = "cat"
@@ -426,3 +373,65 @@ def zcat_make_temps(args):
     return [raws[0], zip(chunks1, chunks2)]
 
 
+
+def preview_truncate_fq(data, sample_fastq):
+    """ 
+    If we are running in preview mode, truncate the input fq.gz file so it'll 
+    run quicker, just so we can see if it works. Input is tuple of the file
+    names of the sample fq. Function returns a list of one tuple of 1 or 2 
+    elements depending on whether you're doing paired or single end. 
+    The elements are paths to a temp files of the sample fq truncated to some
+    much smaller size.
+    """
+
+    ## Return a list of filenames
+    truncated_fq = []
+
+    ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
+    ## do not need to worry about multiple appended fastq files b/c preview
+    ## mode will only want to sample from one file pair.
+    for read in sample_fastq[0]:
+
+        ## If the R2 is empty then exit the loop
+        if not read:
+            continue
+        try:
+            if read.endswith(".gz"):
+                infile = gzip.open(os.path.realpath(read), 'rb')
+            else:
+                infile = open(os.path.realpath(read), 'rb')
+
+            ## slice from data some multiple of 4 lines, no need to worry
+            ## about truncate length being longer than the file this way.
+            optim = data._hackersonly["preview_truncate_length"]*4
+            quarts = itertools.islice(infile, optim)
+
+            ## write to a tmp file in the same place zcat_make_tmps would write
+            with tempfile.NamedTemporaryFile('w+b', delete=False,
+                          dir=os.path.realpath(data.dirs.working),
+                          prefix=read+".preview_tmp_", suffix=".fq") as tmp_fq:
+                tmp_fq.write("".join(quarts))
+            ## save file name and close input
+            truncated_fq.append(tmp_fq.name)
+            infile.close()
+
+        except AttributeError as inst:
+            ## R2 during SE is passed out as 0 
+            #truncated_fq.append( 0 )
+            raise
+
+        except KeyboardInterrupt as inst:
+            LOGGER.info("""
+    Caught keyboard interrupt during preview mode. Cleaning up preview files.
+            """)
+            ## clean up preview files
+            try:
+                for truncfile in truncated_fq + tmp_fq:
+                    if os.path.exists(truncfile):
+                        os.remove(truncfile)
+            except Exception as _:
+                pass
+            ## re-raise the keyboardInterrupt
+            raise inst
+
+    return [tuple(truncated_fq)]
