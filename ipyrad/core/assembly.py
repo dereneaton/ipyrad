@@ -322,8 +322,12 @@ class Assembly(object):
 
         ## raise error if no files are found
         if not fastqs:
-            raise IPyradError("No files found in `sorted_fastq_path`: {}".
-                              format(self.paramsdict["sorted_fastq_path"]))
+            inst = "No files found in `sorted_fastq_path`: {}".\
+                   format(self.paramsdict["sorted_fastq_path"])
+            ## check for simple naming error
+            if any(["_R1." in i for i in fastqs]):
+                inst += "\nNames should contain _R1_, not _R1."
+            raise IPyradError(inst)
 
         ## link pairs into tuples        
         if 'pair' in self.paramsdict["datatype"]:
@@ -334,8 +338,8 @@ class Assembly(object):
             if r1_files:
                 if not any(["_R1_" in i for i in fastqs]) or \
                        (len(r1_files) != len(r2_files)):
-                    raise IPyradError(\
-               "Paired file names must be identical except for _R1_ and _R2_")
+                    raise IPyradError("""
+        Paired file names must be identical except for _R1_ and _R2_.""")
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
         ## data are not paired, create empty tuple pair
