@@ -4,6 +4,8 @@
 
 from __future__ import print_function
 # pylint: disable=E1101
+# pylint: disable=W0212
+
 import os
 import gzip
 import glob
@@ -231,7 +233,7 @@ def writetofile(data, dsort, read, filenum, chunknum):
 
 
 
-def chunker(data, raws):
+def chunker(data, raws, optim):
     """ Chunks big files into smaller bits so that there are at least as many
     files to work on as there are processors. Chunking doesn't gain from being
     parallelized since it is limited by the speed of writing to disk.
@@ -245,36 +247,11 @@ def chunker(data, raws):
     num = 0
     tups = []
     for num, rawtuple in enumerate(list(raws)):
-        tup = zcat_make_temps([data, rawtuple, num, tmpdir, 0])
+        ## pass w/o arg for optim split size
+        tup = zcat_make_temps([data, rawtuple, num, tmpdir, optim])
         tups.append(tup)
         num += 1
     return tups
-
-
-# def parallel_chunker(data, raws, ipyclient):
-#     """ iterate over raw data files and split into N pieces. This is 
-#     parallelized across N files, so works faster if there are multiple input 
-#     files. """
-
-#     ## make tmpdir to hold chunks
-#     tmpdir = os.path.join(data.dirs.working, "tmpchunks")
-#     if not os.path.exists(tmpdir):
-#         os.mkdir(tmpdir)
-
-#     ## count how many rawfiles have been done
-#     num = 0
-#     submitted_args = []
-#     for num, rawtuple in enumerate(list(raws)):
-#         submitted_args.append([data, rawtuple, num, tmpdir, 0])
-#         num += 1
-
-#     ## call to ipp
-#     lbview = ipyclient.load_balanced_view()
-#     results = lbview.map_async(zcat_make_temps, submitted_args)
-#     datatuples = results.get()
-#     del lbview
-
-#     return datatuples
 
 
 
@@ -332,8 +309,9 @@ def collate_tmps(data, name):
 
 
 
-def prechecks(data):
+def prechecks(data, ipyclient, preview):
     """ todo before starting analysis """
+
     ## check for data, do glob for fuzzy matching
     assert glob.glob(data.paramsdict["raw_fastq_path"]), \
         "No data found in {}. Fix path to data files".\
@@ -381,7 +359,27 @@ def prechecks(data):
                data.paramsdict["restriction_overhang"]][0]
     assert cutters, "Must have a `restriction_overhang` for demultiplexing."
 
-    return raws, longbar, cutters
+    ## set optim chunk size
+    ncpus = len(ipyclient)
+    if preview:
+        optim = (data._hackersonly["preview_truncate_length"]) // ncpus
+    else:
+        ## count the len of one file and assume all others are similar len
+        testfile = raws[0][0]
+        if testfile.endswith(".gz"):
+            infile = gzip.open(testfile)
+        else:
+            infile = open(testfile)
+        inputreads = sum(1 for i in infile)
+        ## it's going to be multiplied by 4 to ensure its divisible
+        ## and then again by 4 if inside preview truncate, so x32 here.
+        ## should result in 2X as many chunk files as cpus. 
+        optim = inputreads // (ncpus * 32)
+        ## multiply by 4 to ensure fastq quartet sampling
+        optim *= 4
+    LOGGER.info("precheck optim=%s", optim)
+
+    return raws, longbar, cutters, optim
 
 
 
@@ -514,7 +512,7 @@ def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
     ## checks on data before starting
-    raws, longbar, cutters = prechecks(data)
+    raws, longbar, cutters, optim = prechecks(data, ipyclient, preview)
 
     ## nested structure to prevent abandoned temp files
     try: 
@@ -528,8 +526,12 @@ def run(data, preview, ipyclient):
         ## and preview_truncate_fq. Could be fixed.
         sample_fastq = []
         if preview:
-            LOGGER.warn("Running preview mode. Selecting subset of"\
-                        " data for demultiplexing - {}".format(raws))
+            warning = """
+    Running preview mode. Selecting subset ({}) of reads for demultiplexing - {}
+    """.format(data._hackersonly["preview_truncate_length"], raws)
+            if data._headers:
+                print(warning)
+            LOGGER.warn(warning)
             sample_fastq = preview_truncate_fq(data, raws)
             raws = sample_fastq
 
@@ -538,10 +540,12 @@ def run(data, preview, ipyclient):
         ## than the number of processors then do not chunk, but instead just 
         ## start iterating over the raw files
         if len(raws) < len(ipyclient):
-            #datatuples = parallel_chunker(data, raws, ipyclient) 
-            datatuples = chunker(data, raws)
+            datatuples = chunker(data, raws, optim)
         else:
             datatuples = raws
+
+        LOGGER.info("Executing %s files, in %s chunks, across %s cpus", \
+                     len(raws), len(datatuples), len(ipyclient))
 
         filenum = 0            
         for rawfilename, chunks in datatuples:
@@ -551,7 +555,7 @@ def run(data, preview, ipyclient):
                     parallel_sorter(data, rawfilename, chunks, cutter,
                                     longbar, filenum, ipyclient)
             filenum += 1
-            ## TODO: combine tmps when there are two cutters
+            ## TODO: combine tmps when two resolutions of ambig cutters
             ## ...
 
         ## collate tmps back into one file. Disk limited, parallelizing does 
@@ -569,16 +573,13 @@ def run(data, preview, ipyclient):
         if tmpdirs:
             for tmpdir in tmpdirs:
                 shutil.rmtree(tmpdir)
+        ## cleans up pickle files and tmp files generated by preview
         tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "*.pickle"))
+        tmpfiles += sample_fastq[0]
         if tmpfiles:
             for tmpfile in tmpfiles:
                 os.remove(tmpfile)
 
-        ## Clean up the fake temp files generated by preview
-        if preview:
-            if sample_fastq:
-                for f in sample_fastq[0]:
-                    os.remove(f)
 
 
 if __name__ == "__main__":
