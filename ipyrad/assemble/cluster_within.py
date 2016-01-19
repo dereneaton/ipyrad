@@ -335,7 +335,7 @@ def build_clusters(data, sample):
 
 
 
-def get_threaded_view(ipyclient):
+def get_threaded_view(ipyclient, split=True):
     """ gets optimum threaded view of ids given the host setup """
     ## engine ids
     ## e.g., [0, 1, 2, 3, 4, 5, 6, 7, 8]

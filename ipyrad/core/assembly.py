@@ -236,6 +236,11 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
 
 
+    def cpus(self):
+        """ View the connection  """
+
+
+
     def _stamp(self, event):
         """ Stamps an event into the log history. """
         tev = time.strftime("%m/%d/%y %H:%M:%S", time.gmtime())

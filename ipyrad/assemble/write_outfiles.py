@@ -8,6 +8,8 @@ code is as follows:
   * Combine output of parallel filters into final loci file
   * Write out the output in full vcf format
 """
+# pylint: disable=W0142
+# pylint: disable=E1101
 
 from __future__ import print_function
 
@@ -69,8 +71,9 @@ def run(data, samples, force, ipyclient):
 
 
 def filter_all_clusters(data, samples, ipyclient):
-    """ Read in the catclust.gz aligned clusters and the HDF5 supercatg
-    database. Run through and filter each cluster
+    """ 
+    Read in the catclust.gz aligned clusters and the HDF5 supercatg
+    database. Run through and filter each cluster. 
 
     Modelled on cluster_within.multi_muscle_align
     """
@@ -79,7 +82,7 @@ def filter_all_clusters(data, samples, ipyclient):
 
     ## Find optim cluster size
     ## TODO: Improve this, it's naive.
-    optim = np.mean(data.stats["reads_consens"])/10
+    optim = np.mean(data.stats["reads_consens"]) // 10
 
     ## Split dataset into chunks
     ## tmpnames holds the list of tmpfile names so we can rejoin them at the end
@@ -144,6 +147,8 @@ def filter_all_clusters(data, samples, ipyclient):
                 os.remove(loc_name)
         del lbview
 
+
+
 def filter_stacks(args):
     """ Filter one chunk of stacks and write out .tmp vcf/loci files
     This function runs in parallel, reads in a chunk of the stacks of reads,
@@ -190,10 +195,11 @@ def filter_stacks(args):
         loci = filter_maxSNP(data, loci)
         #LOGGER.debug("loci out after maxSNP - {}".format(loci[0]))
 
-    except Exception as e:
+    except Exception as inst:
         ## Do something real here
-        LOGGER.warn(e)
+        LOGGER.warn(inst)
         raise
+
     finally:
         pass
 
@@ -348,20 +354,19 @@ def filter_maxhet(data, loci):
 
 
 def filter_maxindels(data, loci):
-    """ Filter max # of indels per locus
-    """
+    """ Filter max # of indels per locus """
 
     ## TODO: Fix this to evaluate PE reads individually
-    maxIndel = data.paramsdict["max_Indels_locus"]
+    mindel = data.paramsdict["max_Indels_locus"]
 
     count = 0
     for i, loc in enumerate(loci):
         ## Get just the sequences
-        seqs = [x[1] for x in loci]
+        seqs = [x[1] for x in loc]
         ## Make counters for each sequence
         counts = [Counter(i) for i in seqs]
         ## If any sequence has more than the allowable # of indels then toss it
-        if any([x["-"] > maxIndel for x in counts]):
+        if any([x["-"] > mindel for x in counts]):
             loci[i] = []
             count += 1
 
@@ -374,9 +379,10 @@ def filter_maxindels(data, loci):
 
 ## This isn't being used
 def loci_from_unfilteredvcf(data, samples, force):
-    """ Read in the unfiltered vcf and supercatg from step6. Apply filters for
+    """ 
+    Read in the unfiltered vcf and supercatg from step6. Apply filters for
     coverage, heterozygosity, number of snps, etc. Write out .loci to output 
-    directory """
+    directory. """
     ## get unfiltered vcf handle
     unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf")
 
@@ -389,26 +395,28 @@ def loci_from_unfilteredvcf(data, samples, force):
     locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
 
 
+
 def make_outfiles(data, samples, force):
     """ Get desired formats from paramsdict and write files to outfiles 
     directory 
     """
+    ## Read in the input .loci file that gets transformed into other formats
+    ## locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
 
-    ## Read in the input .loci file that gets transformed into all output formats
-    locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
-
+    ## filter out samples listed as excludes in params.txt
     excludes = (data.paramsdict["excludes"] or [""]) \
              + (data.paramsdict["outgroups"] or [""])
     LOGGER.warn("Excluding these individuals - {}".format(excludes))
+    samples = [i for i in samples if i.name not in excludes]
 
-    samples = filter(lambda x: x.name not in excludes, samples)
-
+    ## select the output formats. Should we allow some kind of fuzzy matching?
     output_formats = data.paramsdict["output_formats"]
     if "*" in output_formats:
         output_formats = OUTPUT_FORMATS
 
+    ## run each func
     for filetype in output_formats:
-        LOGGER.info( "Doing - {}".format(filetype) )
+        LOGGER.info("Doing - {}".format(filetype))
 
         # phy & nex come from loci2phynex
         if filetype in ["phy", "nex"]:
@@ -421,41 +429,47 @@ def make_outfiles(data, samples, force):
         ## Get the correct module for this filetype
         ## globals() here gets the module name, and then we can call
         ## the .make() function. This is a little tricky.
-        format_module = globals()[ "loci2"+filetype ]
+        format_module = globals()["loci2"+filetype]
 
         ## do the call to make the new file format
-        format_module.make( data, samples )
+        format_module.make(data, samples)
+
+
 
 ## Utility subfunctions
 def count_shared_polymorphisms(seqs):
-    """ Count the number of shared polymorphic sites at every base in a locus. If any 
+    """ 
+    Count the number of shared polymorphic sites at every base in a locus. If 
     base contains too may shared polymorphisms (paramsdict[max_shared_Hs_locus])
     then we'll throw out the whole locus.
     Input is a list of sequences, output is a list of ints representing counts
     of shared polyorphisms per base
     """
-    ## Transpose the lost of seqs, so we now have a list of bases at each locus.
+    ## Transpose the list of seqs, so we now have a list of bases at each locus.
     ## Stacks of sequences should always be the same length, but if they aren't
-    ## we'll protect by filling with N's, rather than truncating, which is what zip()
-    ## would do.
+    ## we'll protect by filling with N's, rather than truncating, which is what
+    ## zip() would do.
     ## Makes a list of counters for each stack of bases of this locus
     stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
 
-    ## This is maybe 20% too clever, but i wanted to do it with list comprehension,
-    ## so here we are. Read this as "At each base get the max number of counts of any
-    ## ambiguity code". Below y.items is a counter for each position, and x[0] is the counter
-    ## key, x[1] is the count for that key. Another stupid thing is that max() in python 2.7
-    ## doesn't handle empty lists, so there's this trick max(mylist or [0]), empty list
+    ## This is maybe 20% too clever, but i wanted to do it with list 
+    ## comprehension, so here we are. Read this as "At each base get the max 
+    ## number of counts of any ambiguity code". Below y.items is a counter for 
+    ## each position, and x[0] is the counter key, x[1] is the count for that 
+    ## key. Another stupid thing is that max() in python 2.7 doesn't handle 
+    ## empty lists, so there's this trick max(mylist or [0]), empty list 
     ## evaluates as false, so it effectively defaults max({}) = 0.
-    max_counts = [max([x[1] for x in y.items() if x[0] in "RYSWKM"] or [0]) for y in stacks]
+    max_counts = [max([x[1] for x in y.items() if x[0] in "RYSWKM"] or [0]) \
+                  for y in stacks]
 
     return max_counts
 
-def count_snps(seqs):
-    count = 0
 
-    ## As long as we're ripping through looking for snps, keep track of the snp array
-    ## to output to the .loci file
+
+def count_snps(seqs):
+    """ Finds * and - snps to create snp string for .loci file """
+    ## As long as we're ripping through looking for snps, keep track of the snp
+    ## array to output to the .loci file
     snpsite = [" "]*len(seqs[0])
 
     ## Transpose to make stacks per base, same as count_shared_polymorphisms
@@ -466,11 +480,11 @@ def count_snps(seqs):
     for i, stack in enumerate(stacks):
         if len(stack) > 1:
             LOGGER.debug("Got a snp {}".format(stack))
-            ## Count the number of keys that occur once, these are autapomorphies
+            ## Count the number of keys that occur once = autapomorphies
             autapomorphies = stack.values().count(1)
 
             LOGGER.debug("Autapomorphies - {}".format(autapomorphies))
-            ## If the number of autapomporphies is one less than the total length
+            ## If the number of autapomorphies is one less than the total len
             ## of the counter then this is still a parsimony uninformative site.                
             if autapomorphies == (len(stack) - 1):
                 snpsite[i] = "-"
@@ -478,7 +492,7 @@ def count_snps(seqs):
             else:
                 snpsite[i] = "*"
 
-    ## When you're done, rip through the snpsite string and count snp markers "*" & "-"
+    ## When done, rip through the snpsite string and count snp markers "*" & "-"
     nsnps = sum(1 for x in snpsite if x in "*-")
 
     ## Just return the snpsite line
@@ -501,7 +515,7 @@ def write_tmp_loci(data, loci, fname):
     ## have to change this, consider adding it to hackesonly.
     name_padding = 5
 
-    with open(fname.replace("chunk","loci"), 'w') as outfile:
+    with open(fname.replace("chunk", "loci"), 'w') as outfile:
         for loc in loci:
             for seq in loc:
 
@@ -512,21 +526,23 @@ def write_tmp_loci(data, loci, fname):
                 else:
                     name = ">" + seq[0]
 
-                name +=  " " * (longname_len - len(name)+ name_padding)
-                outfile.write(name + seq[1] +"\n")
+                name += " " * (longname_len - len(name)+ name_padding)
+                outfile.write(name + seq[1] + "\n")
 
 
 
 def make_vcfheader(data, samples, outvcf):
     LOGGER.debug("Entering make_vcfheader()")
 
+
+
 if __name__ == "__main__":
     import ipyrad as ip
     TESTFILE = "/tmp/ipyrad-test/test-refseq.assembly"
     TESTER = ip.load.load_assembly(TESTFILE)
 #    TESTER = ip.core.assembly.Assembly( "/tmp/ipyrad-test-pair" )
-    TESTER.set_params( "output_formats", "vcf,snps" )
+    TESTER.set_params("output_formats", "vcf,snps")
     TESTER.get_params()
-    TESTER.set_params( "output_formats", "*" )
+    TESTER.set_params("output_formats", "*")
     TESTER.get_params()
     TESTER.step7()
