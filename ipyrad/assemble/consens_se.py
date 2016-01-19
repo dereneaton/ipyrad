@@ -123,7 +123,7 @@ def removerepeats(consens, arrayed):
     if lcons - len(consens):
         edges[1] = -1*(lcons - len(consens))
 
-    ## trim same from stacked
+    ## trim same from arrayed
     arrayed = arrayed[:, edges[0]:edges[1]]
 
     ## what is the total site coverage
@@ -140,10 +140,12 @@ def removerepeats(consens, arrayed):
     ## find sites to remove
     ridx = []
     for nsite in nsites:
-        ## grab the five bases to the left of this N site
+        ## grab all N and - sites
         if (idepths[nsite]+ndepths[nsite]) < mindepth:
             ridx.append(nsite)
 
+    LOGGER.info("ridx -------------------------- %s", arrayed[:, ridx])
+    #LOGGER.info("ridx %s", ridx)
     ## remove repeat sites from shortcon and stacked
     keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
                          if i not in ridx])
@@ -270,7 +272,8 @@ def consensus(args):
     consenshandle = os.path.join(data.dirs.consens, 
                                  sample.name+"_tmpcons."+str(tmpnum))
     LOGGER.info('writing %s', consenshandle)
-    LOGGER.info('chunk size: %s', len(storeseq))
+    LOGGER.info('passed in this chunk: %s', len(storeseq))
+    LOGGER.info('caught in this chunk: %s', filters)
     if storeseq:
         with open(consenshandle, 'wb') as outfile:
             outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
@@ -329,15 +332,20 @@ def nfilter4(data, consens, hidx, arrayed):
 
     ## store base calls for hetero sites
     harray = arrayed[:, hidx]
+    LOGGER.debug("harray1 %s", harray)
 
     ## remove any rows that have N base calls at hetero sites
     harray = harray[~numpy.any(harray == "N", axis=1)]
+    LOGGER.debug("harray2 %s", harray)
 
     ## remove low freq alleles, since they make reflect sequencing errors
     totdepth = harray.shape[0]
     cutoff = max(1, totdepth // 4)
     ccx = Counter([tuple(i) for i in harray])
     alleles = [i for i in ccx if ccx[i] > cutoff]
+    ## info
+    dropped = [i for i in ccx if ccx[i] <= cutoff]
+    LOGGER.debug("low freq alleles: %s", dropped)
     assert len(alleles[0]) == len(hidx)
 
     ## how many high depth alleles?
@@ -354,6 +362,8 @@ def storealleles(consens, hidx, alleles):
     """ store phased allele data for diploids """
     ## find the first hetero site and choose the priority base
     ## example, if W: then priority base in T and not A. PRIORITY=(order: CATG)
+    LOGGER.debug("consens %s", consens)
+    LOGGER.debug("alleles %s", alleles)    
     bigbase = PRIORITY[consens[hidx[0]]]
 
     ## find which allele has priority based on bigbase
