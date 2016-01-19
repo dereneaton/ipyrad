@@ -303,6 +303,20 @@ def preview_truncate_fq( data, sample_fastq ):
             ## R2 during SE is passed out as 0
             #truncated_fq.append( 0 )
             pass
+        except KeyboardInterrupt as e:
+            LOGGER.info("Caught keyboard interrupt during preview mode. "\
+                        "Clean up preview files")
+            ## clean up preview files
+            for f in truncated_fq:
+                if(os.path.exists(f)):
+                    os.remove(f)
+            try:
+                if(os.path.exists(tmp_fq)):
+                    os.remove(tmp_fq)
+            except Exception:
+                pass
+            ## Raise the keyboardInterrupt
+            raise(e)
 
     return [tuple(truncated_fq)]
 
