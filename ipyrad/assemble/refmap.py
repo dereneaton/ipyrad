@@ -43,6 +43,13 @@ def index_reference_sequence(self):
     index_smi = refseq_file+".smi"
 
     if not os.path.isfile(index_sma) or not os.path.isfile(index_smi):
+        msg = "*************************************************************\n"\
+            + "Indexing reference sequence. This only needs to be done once.\n"\
+            + "Depending on the size of the reference it should take between\n"\
+            + "10 and 40 minutes.\n"\
+            + "*************************************************************\n"
+        LOGGER.info(msg)
+        print(msg)
         cmd = self.bins.smalt+\
             " index "\
             " -s 2 "+\
