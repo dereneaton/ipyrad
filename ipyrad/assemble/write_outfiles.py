@@ -17,15 +17,14 @@ import tempfile
 import h5py
 import gzip
 import os
-import gzip
-import tempfile
-import itertools
-import numpy as np
 from collections import Counter
 from ipyrad.file_conversion import *
+from .util import *
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
+
 
 ## List of all possible output formats. This is global because it's
 ## referenced by assembly.py and also paramsinfo. Easier to have it
@@ -38,15 +37,17 @@ def run(data, samples, force, ipyclient):
     """ Check all samples requested have been clustered (state=6), 
     make output directory, then create the requested outfiles.
     """
-    if any([i.stats.state <= 6 for i in samples]):
-        print("  Step 7: Not all samples are aligned.")
-        print("  Here are states for all the samples requested:")
+    if any([i.stats.state < 6 for i in samples]):
+        inst = """
+    Step 7: Not all samples are aligned. 
+    Here are states for the selected samples:
+    """
         for i in samples:
-            print("\t{}\t=\t{}".format(i.name, str(i.stats.state)))
-        print("  All samples should be in state 6 for writing outfiles. "\
-               +"Try rerunning step6()")
-        ## TODO: Bail out here? Probably not good to write out data
-        ## if all the requested samples don't exist.
+            inst += "\n\t{}\t=\t{}".format(i.name, str(i.stats.state))
+        inst += """
+    All samples must be in state 6 to write outfiles. Try re-running step6().
+    """
+        raise IPyradError(inst)
 
     ## prepare dirs
     data.dirs.outfiles = os.path.join(data.dirs.working, "outfiles")
@@ -308,6 +309,7 @@ def filter_maxSNP(data, loci):
     return loci
 
 
+
 def filter_maxhet(data, loci):
     """ Filter max shared heterozygosity per locus
     """
@@ -342,6 +344,8 @@ def filter_maxhet(data, loci):
 
     LOGGER.info("Filterered max shared heterozygosity- {}".format(count))
     return loci
+
+
 
 def filter_maxindels(data, loci):
     """ Filter max # of indels per locus
@@ -385,14 +389,16 @@ def loci_from_unfilteredvcf(data, samples, force):
     locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
 
 
-def make_outfiles( data, samples, force ):
-    """ Get desired formats from paramsdict and write files to outfiles directory """
+def make_outfiles(data, samples, force):
+    """ Get desired formats from paramsdict and write files to outfiles 
+    directory 
+    """
 
     ## Read in the input .loci file that gets transformed into all output formats
     locifile = os.path.join( data.dirs.outfiles, data.name+".loci" )
 
     excludes = (data.paramsdict["excludes"] or [""]) \
-                + (data.paramsdict["outgroups"] or [""])
+             + (data.paramsdict["outgroups"] or [""])
     LOGGER.warn("Excluding these individuals - {}".format(excludes))
 
     samples = filter(lambda x: x.name not in excludes, samples)
@@ -481,6 +487,8 @@ def count_snps(seqs):
 
     return nsnps, snps
 
+
+
 ## File output subfunctions
 def write_tmp_loci(data, loci, fname):
     """ Write out the filtered chunk to a tmp file which will be collated by the
@@ -506,6 +514,8 @@ def write_tmp_loci(data, loci, fname):
 
                 name +=  " " * (longname_len - len(name)+ name_padding)
                 outfile.write(name + seq[1] +"\n")
+
+
 
 def make_vcfheader(data, samples, outvcf):
     LOGGER.debug("Entering make_vcfheader()")

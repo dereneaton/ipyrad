@@ -327,11 +327,9 @@ def modify_cuts(data, read1, read2):
     ## replace cut region with a single resolution of cut w/o ambiguities
     if len(read1) and cutsmod[0]:
         if isinstance(cutsmod[0], int):
-            LOGGER.debug("Got int")
             read1[1] = read1[1][abs(cutsmod[0]):]      
             read1[3] = read1[3][abs(cutsmod[0]):]        
         elif isinstance(cutsmod[0], str):
-            LOGGER.debug("Got str")
             read1[1][:len(cutsmod[0])] = list(cutsmod[0])
             read1[3][:len(cutsmod[0])] = ["B"]*len(cutsmod[0])
 
@@ -339,12 +337,14 @@ def modify_cuts(data, read1, read2):
     ## same for cut2 and end of second read
     if len(read2) and cutsmod[1]:
         ## fix cut sites to be error free before counting Ns
+        LOGGER.debug("before %s", read2[1])
         if isinstance(cutsmod[1], int):
             read2[1] = read1[1][abs(cutsmod[1]):]   
             read2[3] = read1[3][abs(cutsmod[1]):]
         elif isinstance(cutsmod[1], str):
             read2[1][:len(cutsmod[1])] = list(cutsmod[1])
             read2[3][:len(cutsmod[1])] = ["B"]*len(cutsmod[1])
+        LOGGER.debug("after_ %s", read2[1])            
 
     return read1, read2
 

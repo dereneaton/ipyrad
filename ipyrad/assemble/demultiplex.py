@@ -312,6 +312,7 @@ def collate_tmps(data, name):
             with open(fname) as infile:
                 out.write(infile.read())
     ## use -f to overwrite already existing
+    LOGGER.debug("gzipping {}".format(name))
     subprocess.check_call("gzip {} {}".format("-f", handle_r1), 
                           shell=True, close_fds=True)
    

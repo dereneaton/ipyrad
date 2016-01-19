@@ -959,11 +959,13 @@ class Assembly(object):
         if not force:
             try:
                 if os.path.exists(self.dirs.outfiles):
-                    print( "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
-                    format( self.dirs.outfiles ) )
-                    print( "  Step 7: rerun with `force=True` to overwrite" )
+                    print(\
+    "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
+                    format(self.dirs.outfiles))
+                    print(\
+    "  Step 7: rerun with `force=True` to overwrite")
                     sys.exit()
-            except AttributeError as e:
+            except AttributeError as _:
                 ## If not force and directory doesn't exist then nbd.
                 pass
 
@@ -1115,7 +1117,18 @@ class Assembly(object):
 
 
     def step7(self, samples=None, force=False):
-        """ test """
+        """ 
+        Create output files in a variety of formats. 
+
+        Parameters
+        ----------
+        samples : list or str
+            ...
+
+        force : bool
+            ...
+
+        """
         self._clientwrapper(self._step7func, [samples, force], 10)
 
 
