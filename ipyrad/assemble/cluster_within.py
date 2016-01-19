@@ -119,9 +119,9 @@ def muscle_align(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if all(["ssss" in i for i in seqs]):
-                seqs1 = [i.split("ssss")[0] for i in seqs] 
-                seqs2 = [i.split("ssss")[1] for i in seqs]
+            if all(["nnnn" in i for i in seqs]):
+                seqs1 = [i.split("nnnn")[0] for i in seqs] 
+                seqs2 = [i.split("nnnn")[1] for i in seqs]
                 ## muscle align
                 string1 = muscle_call(data, names[:200], seqs1[:200])
                 string2 = muscle_call(data, names[:200], seqs2[:200])
@@ -145,7 +145,7 @@ def muscle_align(args):
 
                     if intindels1 <= data.paramsdict["max_Indels_locus"][0] & \
                        intindels2 <= data.paramsdict["max_Indels_locus"][1]:
-                        somedic[anames[i]] = aseqs[i][0]+"ssss"+aseqs[i][1]
+                        somedic[anames[i]] = aseqs[i][0]+"nnnn"+aseqs[i][1]
                     else:
                         LOGGER.info("high indels: %s", aseqs[i])
 
