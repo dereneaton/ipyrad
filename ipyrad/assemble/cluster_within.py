@@ -414,10 +414,6 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         if not os.path.exists(data.dirs.refmapping):
             os.makedirs(data.dirs.refmapping)
 
-        ## Initialize the mapped and unmapped file paths per sample
-        for sample in samples:
-            sample = refmap_init(data, sample)
-
     ## Create threaded_view of engines by grouping only ids that are threaded
     ## load_balanced is not the right thing to use here, since we need to know
     ## which engines are being used for each job
@@ -428,52 +424,101 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     #                    targets=[i[0] for i in threaded])
     #tpproc = [len(i) for i in threaded][0]
 
-    ## single node threading
-    tpp = 3
-    threaded_view = ipyclient.load_balanced_view(targets=ipyclient.ids[::tpp])
-    tpproc = len(threaded_view)
+    try:
+        if preview:
+            ## Truncate the input files and temporarily swap out the values for
+            ## sample.files.edits
 
-    ## LIST ARGS for funcs mapreads and clustall
-    submitted_args = []
-    for sample in samples:
-        #if not align_only:
-        submitted_args.append([data, sample, noreverse, tpproc, preview])
+            for sample in samples:
+                sample.files["edits_preview_bak"] = sample.files.edits
+                sample.files.edits = preview_truncate_fq(data, sample.files.edits_preview_bak)
 
-    ## MAP READS if reference sequence is specified
-    if not data.paramsdict["assembly_method"] == "denovo":
-        results = threaded_view.map(mapreads, submitted_args)
-        results.get()
+        ## single node threading
+        tpp = 3
+        threaded_view = ipyclient.load_balanced_view(targets=ipyclient.ids[::tpp])
+        tpproc = len(threaded_view)
 
-    ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
-    ## for samples in the order in which they were submitted
-    results = threaded_view.map(clustall, submitted_args)
-    results = results.get()
+        ## Initialize the mapped and unmapped file paths per sample
+        if not data.paramsdict["assembly_method"] == "denovo":
+            for sample in samples:
+                sample = refmap_init(data, sample)
 
-    ## record that sample is clustered but not yet aligned
-    for success, sample in zip(results, samples):
-        if success:
-            sample.stats.state = 2.5
-
-    ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
-
-    ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
-    ## bam files and write them to the clust.gz files to fold them back into 
-    ## the pipeline.
-    if "denovo" not in data.paramsdict["assembly_method"]: 
+        ## LIST ARGS for funcs mapreads and clustall
+        submitted_args = []
         for sample in samples:
-            finalize_aligned_reads(data, sample, ipyclient)
+            #if not align_only:
+            submitted_args.append([data, sample, noreverse, tpproc])
+    
+        ## MAP READS if reference sequence is specified
+        if not data.paramsdict["assembly_method"] == "denovo":
+            results = threaded_view.map(mapreads, submitted_args)
+            results.get()
+    
+        ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
+        ## for samples in the order in which they were submitted
+        results = threaded_view.map(clustall, submitted_args)
+        results = results.get()
+    
+        ## record that sample is clustered but not yet aligned
+        for success, sample in zip(results, samples):
+            if success:
+                sample.stats.state = 2.5
+    
+        ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
+    
+        ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
+        ## bam files and write them to the clust.gz files to fold them back into 
+        ## the pipeline.
+        if "denovo" not in data.paramsdict["assembly_method"]: 
+            for sample in samples:
+                finalize_aligned_reads(data, sample, ipyclient)
+    
+        ## call to ipp for muscle aligning only if the Sample passed clust/mapping
+        for sample in samples:
+            if sample.stats.state == 2.5:
+                LOGGER.info("muscle aligning")            
+                multi_muscle_align(data, sample, ipyclient)
+                ## run sample cleanup 
+                sample_cleanup(data, sample)
+    
+        ## run data cleanup
+        data_cleanup(data, samples)
 
-    ## call to ipp for muscle aligning only if the Sample passed clust/mapping
-    for sample in samples:
-        if sample.stats.state == 2.5:
-            LOGGER.info("muscle aligning")            
-            multi_muscle_align(data, sample, ipyclient)
-            ## run sample cleanup 
-            sample_cleanup(data, sample)
+    except Exception as e:
+        LOGGER.warn(e)
+        raise
+    finally:
+        ## For preview/refmap restore original sample.files.edits paths and clean up
+        ## the tmp files.
 
-    ## run data cleanup
-    data_cleanup(data, samples)
+        ## If we did refmapping return the samples.files.edits to their original
+        ## condition. Have to do this before restoring preview files because
+        ## the refmap edits backup will be a backup of the preview truncated files.
+        ## The order of these two functions matters.
+        if "denovo" not in data.paramsdict["assembly_method"]: 
+            for sample in samples:
+                refmap_cleanup(data, sample)
 
+        if preview:
+            for sample in samples:
+                try:
+                    ## If edits and edits_preview_bak are the same then something borked
+                    ## so don't delete any files
+                    if sample.files.edits == sample.files.edits_preview_bak:
+                        sample.files.pop("edits_preview_bak", None)
+                        continue
+
+                    for f in sample.files.edits[0]:
+                        if(os.path.exists(f)):
+                            os.remove( f )
+
+                    ## Restore original paths to full fastq files
+                    sample.files.edits = sample.files.edits_preview_bak
+                    ## Remove the tmp file reference. The second arg defines what to return
+                    ## if the key doesn't exist.
+                    sample.files.pop("edits_preview_bak", None)
+                except:
+                    pass
 
 
 def data_cleanup(data, samples):
@@ -703,7 +748,7 @@ def clustall(args):
     then denovo clusters reads. """
 
     ## get args
-    data, sample, noreverse, nthreads, preview = args
+    data, sample, noreverse, nthreads = args
     LOGGER.debug("clustall() %s", sample.name)
 
     ## concatenate edits files in case a Sample has multiple, and 

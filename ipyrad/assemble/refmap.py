@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import gzip
+import copy
 import shutil
 import tempfile
 import itertools
@@ -66,9 +67,9 @@ def mapreads(args):
     pileup later."""
 
     ## get args
-    data, sample, noreverse, nthreads, preview = args
+    data, sample, noreverse, nthreads = args
     LOGGER.debug("Entering mapreads(): %s %s %s %s", \
-                                    sample.name, noreverse, nthreads, preview)
+                                    sample.name, noreverse, nthreads)
 
     ## Test edits actually exist
     if sample.files.edits == []:
@@ -79,41 +80,17 @@ def mapreads(args):
     ## Set the edited fastq to align for this individual, we set this here
     ## so we can overwrite it with a truncated version if we're in preview mode.
     ## Set the default sample_fastq file to align as the entire original
-    ## TODO, figure out why edits is a tuple? There could be multiple edits 
-    ## files, yes? but by the time we get to step three they are all collapsed 
-    ## in to one big file which is the first element of the tuple, yes?
-    sample_fastq = [sample.files.edits[0][0]]
+    ##
+    ## refmap_init copies the file paths for the full fastq files to
+    ## files.edits_refmap_clean. It makes new temp files at sample.files.edits
+    ## because this is where we'll dump the unmapped reads for downstream denovo.
+    ## files.edits gets put back to point to the original fastq files at the end
+    ## of split_among_processors in cluster_within.
+    sample_fastq = [sample.files.edits_refmap_clean[0][0]]
 
     ## If pair append R2 to sample_fastq
     if 'pair' in data.paramsdict["datatype"]:
-        sample_fastq.append(sample.files.edits[0][1])
-
-
-    ## If it exists, recover the hidden .fq.gz file that contains the original
-    ## data. Also, preserve the unmolested fastq files as .(dot) files in the 
-    ## if it doesn't already exist.
-    for fastq_file in sample_fastq:
-
-        fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
-
-        import shutil
-        if os.path.isfile( fastq_dotfile ): 
-            # .dot file already exists, recover it
-            shutil.copy2( fastq_dotfile, fastq_file )
-        else:
-            # Preserve the original full .fq file as a hidden "dot" file.
-            shutil.copy2( fastq_file, fastq_dotfile )
-
-    ## preview
-    if preview:
-        LOGGER.warn( "mapreads() preview - truncating input fq files" )
-
-        ## Truncate the input fq so it'll run faster
-        ## This function returns the file name of a truncated
-        ## fq file. The file should be cleaned up at the end
-        ## of at the end of mapreads()
-        sample_fastq = preview_truncate_fq( data, sample_fastq )
-        LOGGER.warn( "preview sample_fastq files {}".format( sample_fastq ) )
+        sample_fastq.append(sample.files.edits_refmap_clean[0][1])
 
     ## Files we'll use during reference sequence mapping
     ##
@@ -134,8 +111,7 @@ def mapreads(args):
     sample.files.mapped_reads = mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
-    ## TODO: This is hackish, we are overwriting the fastq that contains all reads
-    ## might want to preserve the full .fq file in case of a later 'force' command
+
     unmapped_fastq_handle = sample.files.edits[0][0]
 
     ## If PE set the output file path for R2
@@ -272,6 +248,7 @@ def mapreads(args):
             ## TODO: Maybe make this not bail out hard?
             sys.exit("Error in program: \n{}\n{}\n{}."\
                      .format(inst, subprocess.STDOUT, cmd))
+            raise
     except KeyboardInterrupt:
             LOGGER.error(  "Handling user initiated shutdown.")
             sys.exit("Handling user initiated shutdown.")
@@ -279,11 +256,7 @@ def mapreads(args):
             LOGGER.error(  "Error in reference mapping - {}".format(inst))
             raise
     finally:
-        ## No matter what happens clean up the temp fq.gz file
-        if preview:
-            LOGGER.info( "preview: Exiting mapreads(). Do cleanpup." )
-            for f in sample_fastq:
-                os.remove( f )
+        pass
 
 
 def finalize_aligned_reads( data, sample, ipyclient ):
@@ -334,8 +307,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
         raise
 
     finally:
-        refmap_cleanup(data, sample)
-
+        pass
 
 
 def get_aligned_reads( args ):
@@ -779,8 +751,6 @@ def mpileup_to_fasta(data, sample, pileup_file):
     return( seqs )
 
 
-
-
 def write_aligned_seqs_to_file(data, sample, aligned_seqs, read_labels):
     """ Because vsearch doesn't handle named pipes, or piping at all
     we need to write the aligned sequences per read out to a fasta
@@ -794,7 +764,6 @@ def write_aligned_seqs_to_file(data, sample, aligned_seqs, read_labels):
             out.write(">"+read_labels[i]+"\n")
             out.write(line+"\n")
     return out.name
-
 
 
 def derep_and_sort(data, sample, aligned_fasta_file):
@@ -845,7 +814,6 @@ def derep_and_sort(data, sample, aligned_fasta_file):
     return outfile.name
 
 
-
 def append_clusters(data, sample, derep_fasta_files):
     """ Append derep'd mapped fasta stacks to the clust.gz file.
     This goes back into the pipeline _before_ the call to muscle
@@ -879,16 +847,27 @@ def append_clusters(data, sample, derep_fasta_files):
             out.write(str("".join(seqs))+"//\n//\n")
             
 
-
 def refmap_init(data, sample):
     """Set the mapped and unmapped reads files for this sample
     """
+    LOGGER.debug("Entering refmap_init - {}".format(sample.name))
     sample.files.unmapped_reads = os.path.join(\
                              data.dirs.refmapping, sample.name+"-unmapped.bam")
     sample.files.mapped_reads = os.path.join(\
                              data.dirs.refmapping, sample.name+"-mapped.bam")
-    return sample
 
+    ## Save original edits paths to a new files reference in sample
+    sample.files["edits_refmap_clean"] = [copy.deepcopy(sample.files.edits[0])]
+
+    ## Build a new tuple for refmap unmapped reads .edits files
+    refmap_unmapped_edits = [sample.files.edits[0][0]+".refmap"]
+    if "pair" in data.paramsdict["datatype"]:
+        refmap_unmapped_edits.append(sample.files.edits[0][1]+".refmap")
+
+    ## Set the edits to point to the unmapped reads
+    ## This gets cleaned up at the end of cluster_within
+    sample.files.edits = [tuple(refmap_unmapped_edits)]
+    return sample
 
 
 def refmap_stats(data, sample):
@@ -907,29 +886,29 @@ def refmap_stats(data, sample):
     sample.stats["refseq_mapped_reads"] = int(result.split()[0])
 
 
-
 def refmap_cleanup(data, sample):
     """ Clean up any loose ends here. Nasty files laying around, etc.
     Also, importantly, recover the files.edits files we stepped on earlier
     when we dropped the unmapped reads back on top of edits and hid
     the originals.
     """
-    sample_fastq = [sample.files.edits[0][0]]
+    LOGGER.debug("Entering refmap_cleanup - {}".format(sample.name))
+    ## If edits and edits_preview_bak are the same then something borked
+    ## so don't delete any files
+    if sample.files.edits == sample.files.edits_refmap_clean:
+        sample.files.pop("edits_refmap_clean", None)
+        return
 
-    ## If pair append R2 to sample_fastq
-    if 'pair' in data.paramsdict["datatype"]:
-        sample_fastq.append(sample.files.edits[0][1])
+    ## Remove the unmapped fastq files
+    for f in sample.files.edits[0]:
+        if(os.path.exists(f)):
+            os.remove( f )
 
-    ## If it exists, recover the hidden .fq.gz file that contains the original
-    ## data. Also, preserve the unmolested fastq files as .(dot) files in the
-    ## if it doesn't already exist.
-    for fastq_file in sample_fastq:
-
-        fastq_dotfile = data.dirs.edits + "/." + fastq_file.split("/")[-1]
-
-        if os.path.isfile(fastq_dotfile):
-            shutil.move(fastq_dotfile, fastq_file)
-
+    ## Restore original paths to full fastq files
+    sample.files.edits = sample.files.edits_refmap_clean
+    ## Remove the tmp file reference. The second arg defines what to return
+    ## if the key doesn't exist.
+    sample.files.pop("edits_refmap_clean", None)
 
 
 if __name__ == "__main__":

@@ -293,7 +293,7 @@ def preview_truncate_fq( data, sample_fastq ):
                         tmp_fq.write( "".join( quart.next() ) )
                 except StopIteration:
                     LOGGER.info("preview_truncate_length > size of sample, means "+\
-                                "your sample is small, nbd")
+                                "your sample is smaller than truncate length already")
                 except Exception as e:
                     LOGGER.info("preview truncate length, caught exception {}".format(e))
                     raise
