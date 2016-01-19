@@ -261,8 +261,8 @@ def most_common(L):
 
 def preview_truncate_fq( data, sample_fastq ):
     """ If we are running in preview mode, truncate the input fq.gz file
-    so it'll run quicker, just so we can see if it works. Input is the file
-    name of the sample fq. Function returns a list of 1 or 2 elements
+    so it'll run quicker, just so we can see if it works. Input is tuple of the file
+    names of the sample fq. Function returns a list of one tuple of 1 or 2 elements
     depending on whether you're doing paired or single end. The elements are
     paths to a temp files of the sample fq truncated to some much smaller size.
     """
@@ -270,33 +270,55 @@ def preview_truncate_fq( data, sample_fastq ):
     ## Return a list of filenames
     truncated_fq = []
 
-    for read in sample_fastq:
-        if read.endswith(".gz"):
-            f = gzip.open(os.path.realpath(read), 'rb')
-        else:
-            f = open(os.path.realpath(read), 'rb')
+    for read in sample_fastq[0]:
 
-        ## create iterators to sample 4 lines at a time 
-        quart = itertools.izip(*[iter(f)]*4)
+        ## If the R2 is empty then exit the loop
+        if not read:
+            continue
+        try:
+            if read.endswith(".gz"):
+                f = gzip.open(os.path.realpath(read), 'rb')
+            else:
+                f = open(os.path.realpath(read), 'rb')
 
+            ## create iterators to sample 4 lines at a time 
+            quart = itertools.izip(*[iter(f)]*4)
 
-        with tempfile.NamedTemporaryFile( 'w+b', delete=False,
-                dir=os.path.realpath(data.dirs.working),
-                prefix=read+".preview_tmp", suffix=".fq") as tmp_fq:
+            with tempfile.NamedTemporaryFile( 'w+b', delete=False,
+                    dir=os.path.realpath(data.dirs.working),
+                    prefix=read+".preview_tmp", suffix=".fq") as tmp_fq:
+                try:
+                    ## Sample the first x number of reads. On real data 2e6 is enough.  
+                    for i in range(data._hackersonly["preview_truncate_length"]):
+                        tmp_fq.write( "".join( quart.next() ) )
+                except StopIteration:
+                    LOGGER.info("preview_truncate_length > size of sample, means "+\
+                                "your sample is smaller than truncate length already")
+                except Exception as e:
+                    LOGGER.info("preview truncate length, caught exception {}".format(e))
+                    raise
+            truncated_fq.append( tmp_fq.name )
+            f.close()
+        except AttributeError as e:
+            ## R2 during SE is passed out as 0
+            #truncated_fq.append( 0 )
+            pass
+        except KeyboardInterrupt as e:
+            LOGGER.info("Caught keyboard interrupt during preview mode. "\
+                        "Clean up preview files")
+            ## clean up preview files
+            for f in truncated_fq:
+                if(os.path.exists(f)):
+                    os.remove(f)
             try:
-                ## Sample the first 10000 reads. This should be sufficient.        
-                for i in range(data._hackersonly["preview_truncate_length"]):
-                    tmp_fq.write( "".join( quart.next() ) )
-            except StopIteration:
-                LOGGER.info("preview_truncate_length > size of sample, means "+\
-                            "your sample is small, nbd")
-            except Exception as e:
-                LOGGER.info("preview truncate length, caught exception {}".format(e))
+                if(os.path.exists(tmp_fq)):
+                    os.remove(tmp_fq)
+            except Exception:
+                pass
+            ## Raise the keyboardInterrupt
+            raise(e)
 
-        truncated_fq.append( tmp_fq.name )
-        f.close()
-
-    return truncated_fq
+    return [tuple(truncated_fq)]
 
 
 def revcomp(sequence):
