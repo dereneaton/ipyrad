@@ -23,6 +23,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 
+## define globals for afilter
+
 def afilter(data, sample, bases, cuts1, cuts2, read):
     """ 
     Applies filter for primers & adapters. Does three checks in order from 
@@ -30,61 +32,63 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     """
     ## set empty
     where1 = where2 = where3 = check1 = check2 = None
+    adapter1 = "AGATCGG"
+    adapter2 = "AGAGCGT"
 
     ## if ddrad we're looking for the second cutter on read1
     rvcuts = [comp(i)[::-1] for i in cuts1]
     if "ddrad" in data.paramsdict["datatype"]:
         rvcuts = [comp(i)[::-1] for i in cuts2]
 
-    ## if not ambiguous cuts then make second Zs
+    ## if not ambiguous cuts then make second null (Zs)
     if not rvcuts[1]:
         rvcuts[1] = "Z"*10
 
-    ## Look for adapters -- rvcut+[adapter]
-    if read == 1:
-        lookfor1 = rvcuts[0]+"AGA"
-        lookfor2 = rvcuts[1]+"AGA"
-    else:
-        ## read 2 will have the barcode between: rvcut+[barcode]+[adapter]
-        if sample.name in data.barcodes:
-            barcode = data.barcodes[sample.name]
-            lookfor1 = rvcuts[0]+comp(barcode)[::-1][:3]
-            lookfor2 = rvcuts[1]+comp(barcode)[::-1][:3]
+    ## only look for cut sites if there are cut sites
+    if any(rvcuts):
+        ## Look for adapters -- rvcut+[adapter]
+        if read == 1:
+            lookfor1 = rvcuts[0]+"AGA"
+            lookfor2 = rvcuts[1]+"AGA"
         else:
-            lookfor1 = rvcuts[0]+"NNN"
-            lookfor2 = rvcuts[1]+"NNN"
+            ## read 2 will have the barcode between: rvcut+[barcode]+[adapter]
+            ## and so should only be checked for if barcode info is available
+            if sample.name in data.barcodes:
+                barcode = data.barcodes[sample.name]
+                lookfor1 = rvcuts[0]+comp(barcode)[::-1][:3]
+                lookfor2 = rvcuts[1]+comp(barcode)[::-1][:3]
+            else:
+                ## this gets cancelled out if there's no barcodes info
+                lookfor1 = rvcuts[0]+"NNN"
+                lookfor2 = rvcuts[1]+"NNN"
 
-    ## if strict then shorter lookfor, 3=only look for rvcut
-    if data.paramsdict["filter_adapters"] == 2:
-        lookfor1 = lookfor1[:-2]
-        lookfor2 = lookfor2[:-2]
-    elif data.paramsdict["filter_adapters"] == 3:
-        lookfor1 = lookfor1[:-3]
-        lookfor2 = lookfor2[:-3]
+        ## if strict then shorter lookfor, 3=only look for rvcut
+        if data.paramsdict["filter_adapters"] == 2:
+            lookfor1 = lookfor1[:-3]
+            lookfor2 = lookfor2[:-3]
+        ## if cutter has ambiguous base (2 in cuts) look for both 
+        ## otherwise just one
+        try: 
+            check1 = max(0, bases[1].tostring().find(lookfor1))
+        except Exception as inst:
+            LOGGER.error("EXCEPTION %s", [bases, lookfor1, inst])
+        ## looks for second resolution
+        if sum([1 for i in rvcuts]) == 2:
+            check2 = max(0, bases[1].tostring().find(lookfor2))
 
-    ## if cutter has ambiguous base (2 in cuts) look for both otherwise just one
-    try: 
-        check1 = max(0, bases[1].tostring().find(lookfor1))
-    except Exception as inst:
-        LOGGER.error([bases, lookfor1, inst])
-    ## looks for second resolution
-    if sum([1 for i in rvcuts]) == 2:
-        check2 = max(0, bases[1].tostring().find(lookfor2))
-
-    if check1 or check2:
-        where1 = min([i for i in [check1, check2] if i])
+        if check1 or check2:
+            where1 = min([i for i in [check1, check2] if i])
 
     #LOGGER.debug("where1:%s, ch1:%s, ch2:%s, read:%s", 
     #              where1, check1, check2, read)
 
     ## look for adapter sequence directly in two parts: "AGATCGGA.AGAGCGTC"
-    lookfor1 = "AGATCGG"
-    lookfor2 = "AGAGCGT"
-
-    ## if strict then shorter lookfor
-    if data.paramsdict["filter_adapters"] in [2, 3]:        
-        lookfor1 = lookfor1[:-2]
-        lookfor2 = lookfor2[:-2]
+    ## if strict then shorten the lookfor string
+    dist = None
+    if data.paramsdict["filter_adapters"] == 2:
+        dist = -2    
+    lookfor1 = adapter1[:dist]
+    lookfor2 = adapter2[:dist]
 
     check1 = max(0, bases[1].tostring().find(lookfor1))
     check2 = max(0, bases[1].tostring().find(lookfor2))
@@ -113,19 +117,20 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     #              where2, check1, check2, read)
 
     ## if strict filter, do additional search for cut site near edges
-    where3 = 0
-    if data.paramsdict["filter_adapters"] in [2, 3]:
-        if not (where1 or where2):
-            if read == 1:
-                cutback = -15
-                tail = bases[1].tostring()[cutback:]
-                if any([i in tail for i in rvcuts]):
-                    where3 = len(bases[1]) + cutback
-            else:
-                cutback = -10
-                tail = bases[1].tostring()[cutback:]
-                if any([i in tail for i in rvcuts]):
-                    where3 = len(bases[1]) + cutback
+    if any(rvcuts):
+        where3 = 0
+        if data.paramsdict["filter_adapters"] == 2:
+            if not (where1 or where2):
+                if read == 1:
+                    cutback = -15
+                    tail = bases[1].tostring()[cutback:]
+                    if any([i in tail for i in rvcuts]):
+                        where3 = len(bases[1]) + cutback
+                else:
+                    cutback = -10
+                    tail = bases[1].tostring()[cutback:]
+                    if any([i in tail for i in rvcuts]):
+                        where3 = len(bases[1]) + cutback
     
     #LOGGER.debug("where3:%s, ......, ......, read:%s", where3, read)
     try:
@@ -333,18 +338,17 @@ def modify_cuts(data, read1, read2):
             read1[1][:len(cutsmod[0])] = list(cutsmod[0])
             read1[3][:len(cutsmod[0])] = ["B"]*len(cutsmod[0])
 
-    LOGGER.debug(read1)
     ## same for cut2 and end of second read
     if len(read2) and cutsmod[1]:
         ## fix cut sites to be error free before counting Ns
-        LOGGER.debug("before %s", read2[1])
+        #LOGGER.debug("before R2: %s", "".join(read2[1]))
         if isinstance(cutsmod[1], int):
-            read2[1] = read1[1][abs(cutsmod[1]):]   
-            read2[3] = read1[3][abs(cutsmod[1]):]
+            read2[1] = read2[1][abs(cutsmod[1]):]   
+            read2[3] = read2[3][abs(cutsmod[1]):]
         elif isinstance(cutsmod[1], str):
             read2[1][:len(cutsmod[1])] = list(cutsmod[1])
             read2[3][:len(cutsmod[1])] = ["B"]*len(cutsmod[1])
-        LOGGER.debug("after_ %s", read2[1])            
+        #LOGGER.debug("after_R2: %s", "".join(read2[1]))
 
     return read1, read2
 
@@ -378,9 +382,6 @@ def nfilter(data, read1, read2, nreplace=True):
         ## replace low qual with N
         if nreplace:
             read2[1][phred2 < 20] = "N"
-
-        ## reverse complement as string
-        ## bases2 = comp(bases2.tostring())[::-1]
 
         ## return passed 
         if max([sum(phred1 < 20), sum(phred2 < 20)]) \
@@ -421,35 +422,48 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
     ## set optim size, can only be optimized if reads_raw 
     optim = 10000
     if sample.stats.reads_raw:
-        if sample.stats.reads_raw > 1e5:
-            optim = roundup(sample.stats.reads_raw/len(ipyclient.ids))*4
-            ## must be divisible by 4
-            assert not optim % 4
+        ### split reads among N processors
+        if preview:
+            inputreads = data._hackersonly["preview_truncate_length"]
+        else:
+            inputreads = sample.stats.reads_raw
+        ncpus = len(ipyclient)
+        ## it's going to be multiplied by 4 to ensure its divisible
+        ## and then again by 4 if inside preview truncate, so x32 here.
+        ## should result in 2X as many chunk files as cpus. 
+        optim = inputreads // (ncpus * 32)
+        ## multiply by 4 to ensure fastq quartet sampling
+        optim *= 4
+        LOGGER.info("optim=%s", optim)
 
-    ## make tmpdir to hold chunks
+    ## truncate fastq if preview-mode
+    if preview:
+        LOGGER.warn("""
+    Running preview mode. Selecting subset ({}) reads for editing - {}\n"""\
+    .format(data._hackersonly["preview_truncate_length"], sample.files.fastqs))
+        sample_fastq = preview_truncate_fq(data, sample.files.fastqs)
+    else:
+        sample_fastq = sample.files.fastqs
+
+    ## break up the file into smaller tmp files for each processor
     tmpdir = os.path.join(data.dirs.working, "tmpchunks")
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
-
-    ## break up the file into smaller tmp files for each processor
     chunkslist = []
-    for fastqtuple in sample.files.fastqs:
+    for fastqtuple in sample_fastq:
         args = [data, fastqtuple, num, tmpdir, optim]
         _, achunk = zcat_make_temps(args)
         chunkslist += achunk
 
+    LOGGER.info("Executing %s file, in %s chunks, across %s cpus", \
+                 len(sample_fastq), len(chunkslist), len(ipyclient))
+
     ## send chunks across processors, will delete if fail
     try:
-        ## subsample for preview mode       
-        if preview:
-            LOGGER.warn(\
-                "Running preview mode. Selecting only one chunk to rawedit.")
-            chunkslist = [chunkslist[i] for i in [0]]
-
         submitted_args = []
         for tmptuple in chunkslist:
             ## point is used to increment names across processors
-            point = num*(optim/4)  
+            point = num*(optim // 4)  
             submitted_args.append([data, sample, tmptuple, nreplace, point])
             num += 1
 
@@ -460,10 +474,16 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
 
     finally:
         ## if process failed at any point delete temp files
-        for tmptuple in chunkslist:
-            os.remove(tmptuple[0])
-            if "pair" in data.paramsdict["datatype"]:
-                os.remove(tmptuple[1]) 
+        tmpdirs = glob.glob(os.path.join(data.dirs.working, "tmpchunks"))
+        if tmpdirs:
+            for tmpdir in tmpdirs:
+                shutil.rmtree(tmpdir)
+
+        ## cleans up tmp files generated by step2 and preview
+        tmpfiles = sample_fastq[0]
+        if tmpfiles:
+            for tmpfile in tmpfiles:
+                os.remove(tmpfile)
 
     return num, results
 
