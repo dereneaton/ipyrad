@@ -1163,9 +1163,9 @@ class Assembly(object):
         if '5' in steps:
             self.step5(force=force)
         if '6' in steps:
-            self.step6()            
+            self.step6(force=force)            
         if '7' in steps:
-            self.step7()
+            self.step7(force=force)
 
 
 def _get_samples(self, samples):
