@@ -220,7 +220,7 @@ def consensus(args):
                 ## get stacks of base counts
                 sseqs = [list(seq) for seq in seqs]
                 arrayed = numpy.concatenate(
-                            [[seq]*rep for seq, rep in zip(sseqs, reps)])
+                          [[seq]*rep for seq, rep in zip(sseqs, reps)])
 
                 ## get consens call for each site, paralog site filter
                 consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
@@ -343,6 +343,7 @@ def nfilter4(data, consens, hidx, arrayed):
     cutoff = max(1, totdepth // 4)
     ccx = Counter([tuple(i) for i in harray])
     alleles = [i for i in ccx if ccx[i] > cutoff]
+    
     ## info
     dropped = [i for i in ccx if ccx[i] <= cutoff]
     LOGGER.debug("low freq alleles: %s", dropped)
@@ -454,31 +455,6 @@ def basecaller(data, site, base1, base2):
     else:
         cons = "N"
     return cons
-
-
-
-def clustdealer(pairdealer, optim):
-    """ return optim clusters given iterators, and whether it got all or not"""
-    ccnt = 0
-    chunk = []
-    while ccnt < optim:
-        ## try refreshing taker, else quit
-        try:
-            taker = itertools.takewhile(lambda x: x[0] != "//\n", pairdealer)
-            oneclust = ["".join(taker.next())]
-        except StopIteration:
-            #LOGGER.debug('last chunk %s', chunk)
-            return 1, chunk
-
-        ## load one cluster
-        while 1:
-            try: 
-                oneclust.append("".join(taker.next()))
-            except StopIteration:
-                break
-        chunk.append("".join(oneclust))
-        ccnt += 1
-    return 0, chunk
 
 
 
