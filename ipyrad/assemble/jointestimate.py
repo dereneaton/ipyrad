@@ -4,6 +4,7 @@
 
 from __future__ import print_function
 # pylint: disable=E1101
+# pylint: disable=W0212
 
 import scipy.stats
 import scipy.optimize
@@ -12,206 +13,199 @@ import itertools
 import os
 import gzip
 from collections import Counter
+from util import *
+
 try: 
     from numba import jit
     NUMBA = 1
 except ImportError:
     NUMBA = 0
 
-## enforce numba off for now
-NUMBA = 0
+
+def frequencies(stacked):
+    """ return frequency counts """
+    totals = stacked.sum(axis=1)
+    totals = totals.sum(axis=0)
+    freqs = totals/np.float32(totals.sum())
+    return freqs
 
 
-def get_freqs(stack):
-    """ returns a list as frequencies for ATGC"""
-    sump = sum([sum(cc.values()) for cc in stack])
-    #sump = sum([sum(i) for i in site])
-    totalcount = Counter()
-    for stackcount in stack:
-        totalcount += stackcount
-    basefreqs = np.array([totalcount["A"],
-                          totalcount["T"],
-                          totalcount["G"],
-                          totalcount["C"]])/float(sump)
-    return basefreqs
-
-@jit
-def jlikelihood1(errors, base_frequencies, stacks):
-    """probability homozygous"""
+@jit(['float32[:,:](float32, float32, int16[:,:])'])
+def jlikelihood1(errors, bfreqs, ustacks):
+    """Probability homozygous. All numpy and no loop so there was 
+    no numba improvement to speed when tested. """
     ## make sure base_frequencies are in the right order
     #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
-    totals = np.array([stacks.sum(axis=1)]*4).T
-    prob = scipy.stats.binom.pmf(totals-stacks, totals, errors)
-    return np.sum(base_frequencies*prob, axis=1)
+    totals = np.array([ustacks.sum(axis=1)]*4).T
+    prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
+    return np.sum(bfreqs*prob, axis=1)
 
-def likelihood1(errors, base_frequencies, stacks):
-    """probability homozygous"""
+def likelihood1(errors, bfreqs, ustacks):
+    """Probability homozygous. All numpy and no loop so there was 
+    no numba improvement to speed when tested. """
     ## make sure base_frequencies are in the right order
     #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
-    totals = np.array([stacks.sum(axis=1)]*4).T
-    prob = scipy.stats.binom.pmf(totals-stacks, totals, errors)
-    return np.sum(base_frequencies*prob, axis=1)
+    totals = np.array([ustacks.sum(axis=1)]*4).T
+    prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
+    return np.sum(bfreqs*prob, axis=1)
 
 
-@jit
-def jlikelihood2(errors, base_frequencies, stacks):
-    """probability of heterozygous"""
-    returns = np.zeros([len(stacks)])
-    for idx, stackl in enumerate(stacks):
-        spair = list(itertools.combinations(stackl, 2))
-        bpair = list(itertools.combinations(base_frequencies, 2))
-        one = 2.*np.product(bpair, axis=1)
-        tot = stackl.sum() #np.sum(spair, axis=1)
-        atwo = tot - np.array([i[0] for i in spair]) -\
-                     np.array([i[1] for i in spair])
+@jit(['float32[:](float32, float32[:], int16[:,:])'])
+def jlikelihood2(errors, bfreqs, ustacks):
+    """probability of heterozygous. Very minimal speedup w/ numba."""
+    returns = np.zeros(len(ustacks), dtype=np.float32)
+    for idx, ustack in enumerate(ustacks):
+        spair = np.array(list(itertools.combinations(ustack, 2)))
+        bpair = np.array(list(itertools.combinations(bfreqs, 2)))
+        one = 2.*bpair.prod(axis=1)
+        tot = ustack.sum()
+        atwo = tot - spair[:, 0] - spair[:, 1]
         two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
-        three = scipy.stats.binom.pmf(np.array([i[0] for i in spair]),
-                                      np.array([i[0]+i[1] for i in spair]),
-                                      0.5)
-        four = 1.-np.sum(base_frequencies**2)
+        three = scipy.stats.binom.pmf(\
+                    spair[:, 0], spair.sum(axis=1), 0.5)
+        four = 1.-np.sum(bfreqs**2)
         returns[idx] = np.sum(one*two*(three/four))
     return np.array(returns)
 
 
-def likelihood2(errors, base_frequencies, stacks):
+def likelihood2(errors, bfreqs, ustacks):
     """probability of heterozygous"""
-    returns = np.zeros([len(stacks)])
-    for idx, stackl in enumerate(stacks):
-        spair = list(itertools.combinations(stackl, 2))
-        bpair = list(itertools.combinations(base_frequencies, 2))
-        one = 2.*np.product(bpair, axis=1)
-        tot = stackl.sum() #np.sum(spair, axis=1)
-        atwo = tot - np.array([i[0] for i in spair]) -\
-                     np.array([i[1] for i in spair])
+    returns = np.zeros([len(ustacks)])
+    for idx, ustack in enumerate(ustacks):
+        spair = np.array(list(itertools.combinations(ustack, 2)))
+        bpair = np.array(list(itertools.combinations(bfreqs, 2)))
+        one = 2.*bpair.prod(axis=1)
+        tot = ustack.sum()
+        atwo = tot - spair[:, 0] - spair[:, 1]
         two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
-        three = scipy.stats.binom.pmf(np.array([i[0] for i in spair]),
-                                      np.array([i[0]+i[1] for i in spair]),
-                                      0.5)
-        four = 1.-np.sum(base_frequencies**2)
+        three = scipy.stats.binom.pmf(\
+                    spair[:, 0], spair.sum(axis=1), 0.5)
+        four = 1.-np.sum(bfreqs**2)
         returns[idx] = np.sum(one*two*(three/four))
     return np.array(returns)
 
 
 
-def get_diploid_lik(starting_params, base_frequencies, stacks, stackcounts):
+def get_diploid_lik(pstart, bfreqs, ustacks, counts):
     """ Log likelihood score given values [H,E] """
-    hetero = starting_params[0]
-    errors = starting_params[1]
+    hetero, errors = pstart
     if (hetero <= 0.) or (errors <= 0.):
         score = np.exp(100)
     else:
         ## get likelihood for all sites
-        lik1 = (1.-hetero)*likelihood1(errors, base_frequencies, stacks)
-        lik2 = (hetero)*likelihood2(errors, base_frequencies, stacks)
+        lik1 = (1.-hetero)*likelihood1(errors, bfreqs, ustacks)
+        lik2 = (hetero)*likelihood2(errors, bfreqs, ustacks)
         liks = lik1+lik2
-        logliks = np.log(liks[liks > 0])*stackcounts[liks > 0]
-        #logliks = np.log(liks)*stackcounts
+        logliks = np.log(liks[liks > 0])*counts[liks > 0]
         score = -logliks.sum()
     return score
 
 
 @jit
-def j_diploid_lik(starting_params, base_frequencies, stacks, stackcounts):
-    """ Log likelihood score given values [H,E]. 
-    TODO: needs testing for jit optimization.
-     """
-    hetero = starting_params[0]
-    errors = starting_params[1]
+def j_diploid_lik(pstart, bfreqs, ustacks, counts):
+    """ Log likelihood score given values [H,E]. """
+    hetero, errors = pstart
+    ## tell it to score terribly if scores are negative
     if (hetero <= 0.) or (errors <= 0.):
         score = np.exp(100)
     else:
         ## get likelihood for all sites
-        lik1 = (1.-hetero)*jlikelihood1(errors, base_frequencies, stacks)
-        lik2 = (hetero)*jlikelihood2(errors, base_frequencies, stacks)
+        lik1 = (1.-hetero)*jlikelihood1(errors, bfreqs, ustacks)
+        lik2 = (hetero)*jlikelihood2(errors, bfreqs, ustacks)
         liks = lik1+lik2
-        logliks = np.log(liks[liks > 0])*stackcounts[liks > 0]
-        #logliks = np.log(liks)*stackcounts
+        logliks = np.log(liks[liks > 0])*counts[liks > 0]
         score = -logliks.sum()
     return score
 
 
-def get_haploid_lik(errors, base_frequencies, tabled_stacks):
+def get_haploid_lik(errors, bfreqs, ustacks, counts):
     """ Log likelihood score given values [E]. This can be written to run much
-    faster by executing across the whole array, and/or by also doing it in 
-    parallel. TODO: """
+    faster by executing across the whole array, and/or by also in parallel """
     hetero = 0.
-    listofliks = np.zeros([len(tabled_stacks)])
+    ## score terribly if below 0
     if errors <= 0.:
         score = np.exp(100)
     else:
-        for idx, uniqstack in enumerate(tabled_stacks):
-            loglik = ((1.-hetero)*\
-                     likelihood1(errors, base_frequencies, uniqstack))+\
-                     (hetero*likelihood2(errors, base_frequencies, uniqstack))
-            if loglik > 0:
-                #listofliks.append(tabled_stacks[uniqstack]*np.log(loglik))
-                listofliks[idx] = tabled_stacks[uniqstack]*np.log(loglik)
-        score = -sum(listofliks)
+        ## get likelihood for all sites
+        lik1 = ((1.-hetero)*likelihood1(errors, bfreqs, ustacks)) 
+        lik2 = (hetero)*likelihood2(errors, bfreqs, ustacks)
+        liks = lik1+lik2
+        logliks = np.log(liks[liks > 0])*counts[liks > 0]
+        score = -logliks.sum()
     return score
 
 
-
-def tabledstack(stack):
-    """ makes a dictionary with counts of base counts [x,x,x,x],
-        greatly speeds up Likelihood calculation"""
-    countedstacks = []
-    for stackcount in stack:
-        ## convert to string for use with counter
-        countedstacks.append(str([stackcount["A"],
-                                  stackcount["T"],
-                                  stackcount["G"],
-                                  stackcount["C"]]))
-    return Counter(countedstacks)
+def tablestack(rstack):
+    """ makes a count dict of each unique array element """
+    ## goes by 10% at a time to minimize memory overhead. Is possible it skips
+    ## the last chunk, but this shouldn't matter.
+    table = Counter()
+    for i in xrange(0, rstack.shape[0], rstack.shape[0]//10):
+        tmp = Counter([j.tostring() for j in rstack[i:i+rstack.shape[0]//10]])
+        table.update(tmp)
+    return table
 
 
 
-def countlist(data, sample, subsample):
+def stackarray(data, sample):
     """ makes a list of lists of reads at each site """
-    infile = gzip.open(sample.files.clusters)
-    duo = itertools.izip(*[iter(infile)]*2)
-    stacked = []
+    ## get clusters file
+    clusters = gzip.open(sample.files.clusters)
+    pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-    ## speed hack for subsampling
-    if subsample:
-        until = int(subsample)
+    ## array will be (nclusters, readlen, 4)
+    if "pair" in data.paramsdict["datatype"]:
+        readlen = 2*data._hackersonly["max_fragment_length"]
     else:
-        until = int(1e6)
+        readlen = data._hackersonly["max_fragment_length"]
+    dims = (int(sample.stats.clusters_hidepth), readlen, 4)
+    stacked = np.zeros(dims, dtype=np.int16)
 
-    while len(stacked) < until:
+    ## don't use sequence edges / restriction overhangs
+    cutlens = [None, None]
+    for cidx, cut in enumerate(data.paramsdict["restriction_overhang"]):
+        if cut:
+            cutlens[cidx] = len(cut)
+    try:
+        cutlens[1] = -1*cutlens[1]
+    except TypeError:
+        pass
+    LOGGER.info(cutlens)
+
+    ## fill stacked
+    done = 0
+    nclust = 0
+    while not done:
         try:
-            itera = duo.next()
-        except StopIteration:
-            break
-        #itera = [first[0], first[1]]
-        thisstack = []
-        while itera[0] != "//\n":
-            nreps = int(itera[0].split(";")[1][5:])
-            ## append sequence * number of dereps
-            for _ in range(nreps):
-                thisstack.append(tuple(itera[1].strip()))
-            itera = duo.next()
-
-        ## don't use sequence edges / restriction overhangs
-        cutl1, cutl2 = [len(i) for i in data.paramsdict["restriction_overhang"]]
-        if cutl2:
-            cutl2 *= -1
-        else:
-            cutl2 = None
-        sarray = np.array(thisstack)[:, cutl1:cutl2]
-
-        ## enforce minimum depth for estimates
-        if sarray.shape[0] >= data.paramsdict["mindepth_statistical"]:
-            ## make list for each site in sequences
-            res = [Counter(seq) for seq in sarray.T]
-            ## exclude sites with indels
-            stacked += [i for i in res if "-" not in i]
+            done, chunk = clustdealer(pairdealer, 1)
+        except IndexError:
+            raise IPyradError("clustfile formatting error in %s", chunk)
+        if chunk:
+            piece = chunk[0].strip().split("\n")
+            names = piece[0::2]
+            seqs = piece[1::2]
+            ## pull replicate read info from seqs
+            reps = [int(sname.split(";")[-2][5:]) for sname in names]
+            sseqs = [list(seq) for seq in seqs]
+            arrayed = np.concatenate(
+                      [[seq]*rep for seq, rep in zip(sseqs, reps)])
+            ## enforce minimum depth for estimates
+            if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
+                ## remove edge columns
+                arrayed = arrayed[:, cutlens[0]:cutlens[1]]
+                ## remove cols that are pair separator
+                arrayed = arrayed[~np.any(arrayed == "n", axis=1)]
+                ## convert - to N
+                arrayed[arrayed == "-"] = "N"
+                ## remove cols that are all Ns
+                arrayed = arrayed[~np.any(arrayed == "n", axis=1)]                
+                ## store in stacked dict
+                catg = np.array(\
+                    [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
+                    dtype='int16').T
+                stacked[nclust, :catg.shape[0], :] = catg
+                nclust += 1
     return stacked
-
-
-
-def toarray(uniqstack):
-    """ converts string lists to arrays"""
-    return np.array([int(i) for i in uniqstack[1:-1].split(',')])
 
 
 
@@ -219,55 +213,49 @@ def optim(args):
     """ func scipy optimize to find best parameters"""
 
     ## split args
-    data, sample, subsample = args
+    data, sample, _ = args
 
-    ## make a list of Counter objects for each site in each stack
-    stacked = countlist(data, sample, subsample)
+    ## get array of all clusters data
+    stacked = stackarray(data, sample)
 
     ## get base frequencies
-    base_frequencies = get_freqs(stacked)
+    bfreqs = frequencies(stacked)
 
-    ## get tabled counts of base patterns
-    tabled_stacks = tabledstack(stacked)
-
-    ## put into array
-    stacks = np.array([toarray(i) for i in tabled_stacks.keys()])
-    stackcounts = np.array(tabled_stacks.values())
-    del stacked
+    ## reshape to concatenate all site rows
+    rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
+                             stacked.shape[2])
+    ## put into array, count array items as Byte strings
+    tstack = tablestack(rstack)
+    ## drop emtpy count [0,0,0,0]
+    tstack.pop(np.zeros(4, dtype=np.int16).tostring())
+    ## get keys back as arrays and store vals as separate arrays
+    ustacks = np.array([np.fromstring(i, dtype=np.int16) \
+                        for i in tstack.iterkeys()])
+    counts = np.array(tstack.values())
+    ## cleanup    
+    del rstack
+    del tstack
 
     ## if data are haploid fix H to 0
     if data.paramsdict["max_alleles_consens"] == 1:
-        starting_params = [0.001]
+        pstart = np.array([0.001], dtype=np.float32)
         hetero = 0.
-        errors = scipy.optimize.fmin(
-                                get_haploid_lik,
-                                starting_params,
-                                (base_frequencies, 
-                                    stacks,
-                                    stackcounts),
-                                disp=False,
-                                full_output=False)
+        errors = scipy.optimize.fmin(get_haploid_lik, pstart,
+                                    (bfreqs, ustacks, counts),
+                                     disp=False,
+                                     full_output=False)
+    ## or do joint diploid estimates
     else:
-        starting_params = [0.01, 0.001]
-        if NUMBA:
-            func = j_diploid_lik
-        else:
-            func = get_diploid_lik
-        hetero, errors = scipy.optimize.fmin(func,
-                                             starting_params,
-                                             (base_frequencies, 
-                                                stacks,
-                                                stackcounts),
+        pstart = np.array([0.01, 0.001], dtype=np.float32)
+        # if NUMBA:
+        #     func = j_diploid_lik
+        # else:
+        #     func = get_diploid_lik
+        hetero, errors = scipy.optimize.fmin(get_diploid_lik, pstart,
+                                            (bfreqs, ustacks, counts), 
                                              disp=False,
                                              full_output=False)
-    ## store result in a tempfile
-    handle = os.path.join(os.path.dirname(sample.files["clusters"]),
-                          "tmp_"+sample.name+".het")
-    with open(handle, 'wb') as out:
-        out.write("{}\t{}\t{}".format(sample.name, hetero, errors))
-
-    return [stacks, stackcounts]
-
+    return [sample.name, hetero, errors]
 
 
 def run(data, samples, subsample, force, ipyclient):
@@ -301,62 +289,44 @@ def run(data, samples, subsample, force, ipyclient):
 
     ## if jobs then run
     if submitted_args:
-        ## sort by cluster size
+        ## first sort by cluster size
         submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
-                                                 reverse=True)
+                                               reverse=True)
+        ## send all jobs to a load balanced map async job
         lbview = ipyclient.load_balanced_view()
-        results = lbview.map_async(optim, submitted_args)
-        results.get()
+        try:
+            results = lbview.map_async(optim, submitted_args)
+            results.get()
+        ## if exception such as keyboard interrupt, save finished jobs
+        except Exception as inst:
+            ## hold the exception for now, do cleanup
+            # for job in ipyclient.metadata:
+            #     if ipyclient.metadata[job]['completed']:
+            #         result = ipyclient.metadata[job]['outputs']
+            #         samplename, hest, eest = result
+            #         sample = data.samples[samplename]
+            #         cleanup(data, sample, hest, eest)
+            ## now raise the exception
+            #print(data.stats)
+            raise inst
+        else:
+            ## do standard cleanup of finished samples
+            for result in results:
+                samplename, hest, eest = result
+                sample = data.samples[samplename]
+                cleanup(data, sample, hest, eest)            
 
-        ## get results and remove temp files
-        for sub in submitted_args:
-            cleanup(sub[0], sub[1])
 
 
-
-def cleanup(data, sample):
+def cleanup(data, sample, hest, eest):
     """ stores results to the Assembly object, writes to stats file, 
     and cleans up temp files """
+    ## sample assignments
+    sample.stats.state = 4
+    sample.stats.hetero_est = hest
+    sample.stats.error_est = eest
+    data._stamp("s4 params estimated on "+sample.name)
 
-    ## collect all samples that have finished
-    tempres = os.path.join(
-                  os.path.dirname(
-                      sample.files.clusters), 
-                      "tmp_"+sample.name+".het")
-
-    ## if sample finished
-    if os.path.exists(tempres):
-        ## get stats
-        _, est_h, est_e = open(tempres).read().split("\t")
-
-        ## sample assignments
-        sample.stats.state = 4
-        sample.stats.hetero_est = est_h
-        sample.stats.error_est = est_e
-        data._stamp("s4 params estimated on "+sample.name)
-        os.remove(tempres)
-    else:
-        pass
-
-    ## create a final stats file
-    #statsfile = os.path.join(os.path.dir(""))
-    #data.statsfiles["s4"] = statsfile
-
-    #if not os.path.exists(data.paramsdict["working_directory"]+\
-    #    "stats/Pi_E_estimate.txt"):
-    #     outstats = open(params["work"]+"stats/Pi_E_estimate.txt", 'w')
-    #     outstats.write("taxa\tH\tE\n")
-    # else:
-    #     outstats = open(params["work"]+"stats/Pi_E_estimate.txt", 'a')
-
-    # ## remove stats temp files
-    # for handle in funcfiles:
-    #     end = handle.split("/")[-1].replace(".clustS.gz", "")
-    #     tempfile = params["work"]+"stats/."+end+".temp"
-    #     line = open(tempfile).readlines()
-    #     outstats.write(line[0])
-    #     os.remove(tempfile)
-    # outstats.close()
 
 
 if __name__ == "__main__":
@@ -373,7 +343,8 @@ if __name__ == "__main__":
        )
 
     ## run test on RAD data1
-    TEST = ip.load_assembly(os.path.join(ROOT, "tests", "test_rad", "data1"))
+    TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", "test_rad", "data1"))
     TEST.step4(force=True)
     print(TEST.stats)
 
