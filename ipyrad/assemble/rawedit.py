@@ -428,11 +428,15 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         else:
             inputreads = sample.stats.reads_raw
         ncpus = len(ipyclient)
-        ## it's going to be multiplied by 4 to ensure its divisible
-        ## and then again by 4 if inside preview truncate, so x32 here.
-        ## should result in 2X as many chunk files as cpus. 
-        optim = inputreads // (ncpus * 32)
+        ## The goal is to get the optimum number of lines per chunk so
+        ## as to split into 2 * ncpus chunks. Devide number of input reads
+        ## by 2*ncpus, then multipy by 4 to get the number of lines
+        ## Cast to an int, since numreads should be a whole number and
+        ## zcat_make_temps doesn't like the '100.0' float part.
+        ## Here optim is measured in nreads.
+        optim = int(inputreads // (ncpus * 2))
         ## multiply by 4 to ensure fastq quartet sampling
+        ## The unit for optim is now nlines now
         optim *= 4
         LOGGER.info("optim=%s", optim)
 

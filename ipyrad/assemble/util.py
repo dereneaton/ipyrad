@@ -349,7 +349,10 @@ def zcat_make_temps(args):
         cat = "gunzip -c"
 
     ### run splitter
-    cmd = " ".join([cat, raws[0], "|", "split", "-l", str(optim),
+    ### The -a flag tells split how long the suffix for each split file
+    ### should be. It uses lowercase letters of the alphabet, so `-a 4`
+    ### will have 26^4 possible tmp file names.
+    cmd = " ".join([cat, raws[0], "|", "split", "-a", "4", "-l", str(optim),
                    "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")])
     _ = subprocess.check_call(cmd, shell=True)
 
@@ -357,7 +360,7 @@ def zcat_make_temps(args):
     chunks1.sort()
 
     if "pair" in data.paramsdict["datatype"]:
-        cmd = " ".join([cat, raws[1], "|", "split", "-l", str(optim),
+        cmd = " ".join([cat, raws[1], "|", "split", "-a", "4", "-l", str(optim),
                   "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
         _ = subprocess.check_call(cmd, shell=True)
 
