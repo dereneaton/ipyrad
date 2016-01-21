@@ -80,8 +80,7 @@ def getassembly(args, parsedict):
     """
 
     working_directory = parsedict['1']
-    prefix = os.path.split(parsedict['1'])[1]
-    my_assembly = os.path.join(working_directory, prefix)
+    my_assembly = os.path.split(parsedict['1'])[1]
 
     ## if forcing or doing step 1 then do not load existing Assembly
     if args.force and '1' in args.steps:
