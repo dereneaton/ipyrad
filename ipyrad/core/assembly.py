@@ -784,8 +784,8 @@ class Assembly(object):
             logging.error("assembly interrupted by user.")
             ## don't reraise the keyboard interrupt, 
             ## it already stopped the Engine jobs,
-            print("Keyboard Interrupt\n")
-            #raise IPyradError("Keyboard Interrupt")
+            #print("Keyboard Interrupt\n")
+            raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
             logging.error("assembly interrupted by sys.exit.")
