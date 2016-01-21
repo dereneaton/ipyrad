@@ -165,7 +165,7 @@ def parse_command_line():
         help="number of CPU cores to use")
 
     parser.add_argument("--MPI", action='store_true',
-        help="connect to parallel CPU cores using MPI")
+        help="connect to parallel CPUs across multiple nodes using MPI")
 
     parser.add_argument("--preview", action='store_true',
         help="Run ipyrad in preview mode. Subset the input file so it'll run"\
