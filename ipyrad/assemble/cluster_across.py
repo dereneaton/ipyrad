@@ -433,14 +433,15 @@ def build_reads_file(data):
         ## if enough loci have finished write to file to clear the mem
         if not loci % optim:
             ## a file to write results to
-            handle = os.path.join(tmpdir, "tmp_"+str(loci))
+            handle = os.path.join(tmpdir, "tmp_"+str(loci - optim))
             with open(handle, 'w') as tmpout:
                 tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
                 locilist = []
                 clustbits.append(handle)
     ## write the final remaining to file
     if locilist:
-        with open(os.path.join(tmpdir, "tmp_"+str(loci)), 'w') as tmpout:
+        handle = os.path.join(tmpdir, "tmp_"+str(loci - len(locilist)))
+        with open(handle, 'w') as tmpout:
             tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
             clustbits.append(handle)
 

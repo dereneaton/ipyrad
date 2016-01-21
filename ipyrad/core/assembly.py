@@ -232,6 +232,7 @@ class Assembly(object):
 
     def cpus(self):
         """ View the connection  """
+        pass
 
 
 
@@ -1087,7 +1088,7 @@ class Assembly(object):
             overwritten unless force=True. 
         """
 
-        self._clientwrapper(self._step5func, [samples, force], 2)
+        self._clientwrapper(self._step5func, [samples, force], 10)
 
 
 
@@ -1160,9 +1161,9 @@ class Assembly(object):
         if '5' in steps:
             self.step5(force=force)
         if '6' in steps:
-            self.step6()            
+            self.step6(force=force)            
         if '7' in steps:
-            self.step7()
+            self.step7(force=force)
 
 
 def _get_samples(self, samples):

@@ -68,7 +68,7 @@ def test_assembly(data):
         assembly and tests whether the paramsdicts are the same. It also
         tests the _hackersonly dict."""
 
-    new_assembly = Assembly(data.name)
+    new_assembly = Assembly(data.name, quiet=True)
     new_params = set(new_assembly.paramsdict.keys())
 
     my_params = set(data.paramsdict.keys())
