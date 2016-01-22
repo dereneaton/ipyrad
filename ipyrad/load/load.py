@@ -86,7 +86,7 @@ def test_assembly(data):
     hackerdict_diff = new_hackerdict.difference(my_hackerdict)
 
     if hackerdict_diff:
-        results =  True
+        result =  True
 
     return result
 
