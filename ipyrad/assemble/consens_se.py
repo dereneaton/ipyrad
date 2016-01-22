@@ -706,6 +706,10 @@ def run(data, samples, force, ipyclient):
                         print("Skipping Sample {}; ".format(sample.name)
                      +"Too few clusters ({}). Use force=True to run anyway.".\
                            format(int(sample.stats.clusters_hidepth)))
+                    elif sample.stats.state < 4:
+                        print("skipping {}; ".format(sample.name)\
+                     + "not yet estimated error rate/heterozygosity. "\
+                     + "Run step4() first.")
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)
@@ -714,6 +718,10 @@ def run(data, samples, force, ipyclient):
                         print("Skipping Sample {}; ".format(sample.name)
                              +"No clusters found in file {}".\
                                format(sample.files.clusters_hidepth))
+                    elif sample.stats.state < 4:
+                        print("skipping {}; ".format(sample.name)\
+                     + "not yet estimated error rate/heterozygosity. "\
+                     + "Run step4() first.")
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)

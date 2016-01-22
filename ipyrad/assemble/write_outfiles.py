@@ -39,22 +39,10 @@ def run(data, samples, force, ipyclient):
     """ Check all samples requested have been clustered (state=6), 
     make output directory, then create the requested outfiles.
     """
-    if any([i.stats.state < 6 for i in samples]):
-        inst = """
-    Step 7: Not all samples are aligned. 
-    Here are states for the selected samples:
-    """
-        for i in samples:
-            inst += "\n\t{}\t=\t{}".format(i.name, str(i.stats.state))
-        inst += """
-    All samples must be in state 6 to write outfiles. Try re-running step6().
-    """
-        raise IPyradError(inst)
 
-    ## prepare dirs
-    data.dirs.outfiles = os.path.join(data.dirs.working, "outfiles")
-    if not os.path.exists(data.dirs.outfiles):
-        os.mkdir(data.dirs.outfiles)
+    LOGGER.info("Checking input")
+    ## Make sure all samples are ready for writing output
+    samples = precheck(data, samples)
 
     LOGGER.info("Applying filters")
     ## Apply filters to supercatg and superhdf5 and write vcf
@@ -68,6 +56,27 @@ def run(data, samples, force, ipyclient):
     ## Make all requested outfiles from the filtered .loci file
     make_outfiles(data, samples, force)
 
+
+def precheck(data, samples):
+    """ Check all samples requested have been clustered (state=6), 
+    make output directory, then create the requested outfiles.
+    """
+
+    ## Make a list of all the samples that are actually ready
+    subsample = []
+    for sample in samples:
+        if sample.stats.state < 6:
+            print("Skipping Sample {}; ".format(sample.name)
+                + "not ready for writing output. Run step6() first.")
+        else:
+            subsample.append(sample)
+
+    ## prepare dirs
+    data.dirs.outfiles = os.path.join(data.dirs.working, "outfiles")
+    if not os.path.exists(data.dirs.outfiles):
+        os.mkdir(data.dirs.outfiles)
+
+    return subsample
 
 
 def filter_all_clusters(data, samples, ipyclient):

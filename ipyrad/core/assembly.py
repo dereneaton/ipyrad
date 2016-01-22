@@ -32,7 +32,8 @@ from ipyrad import assemble
 import logging
 LOGGER = logging.getLogger(__name__)
 
-
+#import sys
+#sys.tracebacklimit = 0
 
 class Assembly(object):
     """ An ipyrad Assembly class object.
@@ -790,7 +791,8 @@ class Assembly(object):
 
         except SystemExit as inst:
             logging.error("assembly interrupted by sys.exit.")
-            raise IPyradError("SystemExit Interrupt")
+            raise IPyradError("SystemExit Interrupt."\
+                + "\n\n{}\n\n".format(inst))
 
         except AssertionError as inst:
             logging.error("Assertion: %s", inst)
@@ -863,6 +865,14 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
+        ## Test if all are already raw edited
+        if not force:
+            ## skip if all are finished
+            if all([i.stats.state >= 2 for i in samples]):
+                print("  Skipping: All {} ".format(len(samples))\
+                     +"selected Samples already edited.")
+                return
+
         ## pass samples to rawedit
         assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
 
@@ -887,18 +897,18 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        ## skip if all are finished
-        if not force:
+        ## Check if all/none in the right state
+        if not self.samples_precheck(samples, 3, force):
+            sys.exit("  No Samples ready to be clustered. First run step2().")
+        elif not force:
+            ## skip if all are finished
             if all([i.stats.state >= 3 for i in samples]):
                 print("  Skipping: All {} ".format(len(samples))\
                      +"selected Samples already clustered")
-            else:
-                assemble.cluster_within.run(self, samples, noreverse, 
-                                            force, preview, ipyclient)
-        else:
-            assemble.cluster_within.run(self, samples, noreverse, 
-                                        force, preview, ipyclient)
+                return
 
+        assemble.cluster_within.run(self, samples, noreverse, 
+                                    force, preview, ipyclient)
 
 
     def _step4func(self, samples, subsample, force, ipyclient):
@@ -916,6 +926,16 @@ class Assembly(object):
             ## make into a subsampled sample dict
         #    subsamples = {i: self.samples[i] for i in samples}
 
+        ## Check if all/none in the right state
+        if not self.samples_precheck(samples, 4, force):
+            sys.exit("  No Samples ready for joint estimation. First run step3().")
+        elif not force:
+            ## skip if all are finished
+            if all([i.stats.state >= 4 for i in samples]):
+                print("  Skipping: All {} ".format(len(samples))\
+                     +"selected Samples already joint estimated")
+                return
+
         ## send to function
         assemble.jointestimate.run(self, samples, subsample, force, ipyclient)
 
@@ -929,6 +949,15 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
+        ## Check if all/none in the right state
+        if not self.samples_precheck(samples, 5, force):
+            sys.exit("  No Samples ready for consensus calling. First run step4().")
+        elif not force:
+            ## skip if all are finished
+            if all([i.stats.state >= 5 for i in samples]):
+                print("  Skipping: All {} ".format(len(samples))\
+                     +"selected Samples already consensus called")
+                return
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
 
@@ -943,6 +972,16 @@ class Assembly(object):
         if self._headers:
             print("  Step 6: clustering across {} samples at {} similarity".\
             format(len(samples), self.paramsdict["clust_threshold"]))
+
+        ## Check if all/none in the right state
+        if not self.samples_precheck(samples, 6, force):
+            sys.exit("  No Samples ready for clustering. First run step5().")
+        elif not force:
+            ## skip if all are finished
+            if all([i.stats.state >= 6 for i in samples]):
+                print("  Skipping: All {} ".format(len(samples))\
+                     +"selected Samples already clustered.")
+                return
 
         ## attach filename for all reads database
         self.database = os.path.join(self.dirs.consens, self.name+".hdf5")
@@ -966,6 +1005,12 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
+        ## Check if all/none in the right state
+        if not self.samples_precheck(samples, 7, force):
+            sys.exit("  Skipping: All {} ".format(len(samples))\
+                 + "selected Samples. No samples ready for writing output. "\
+                 + "Run step6() first.")
+
         if not force:
             try:
                 if os.path.exists(self.dirs.outfiles):
@@ -981,6 +1026,24 @@ class Assembly(object):
 
         assemble.write_outfiles.run(self, samples, force, ipyclient)
 
+
+    def samples_precheck(self, samples, mystep, force):
+        """ Return a list of samples that are actually ready for the next step.
+            Each step runs this prior to calling run, makes it easier to 
+            centralize and normalize how each step is checking sample states.
+
+            mystep is the state produced by the current step.
+        """
+
+        subsample = []
+        for sample in samples:
+            if sample.stats.state < mystep - 1:
+                LOGGER.debug("Sample {} not in proper state.".format(sample.name))
+            else:
+                subsample.append(sample)
+
+        return subsample
+        
 
     def step1(self, force=False, preview=False):
         """ test """

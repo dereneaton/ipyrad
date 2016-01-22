@@ -808,9 +808,15 @@ def run(data, samples, noreverse, force, preview, ipyclient):
 
     ## if sample is already done skip
     for sample in samples:
+        ## If sample not in state 2 don't try to cluster it.
+        if sample.stats.state < 2:
+            print("  Sample not ready for clustering. Please run "
+                    + "step 2 on sample: {}".format(sample.name))
+            continue
+
         if not force:
             if sample.stats.state >= 3:
-                print("  Skipping {}; aleady clustered.".\
+                print("  Skipping {}; aleady clustered. Use force to recluster".\
                       format(sample.name))
             else:
                 if sample.stats.reads_filtered:
