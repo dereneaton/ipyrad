@@ -438,3 +438,84 @@ def preview_truncate_fq(data, sample_fastq):
             raise inst
 
     return [tuple(truncated_fq)]
+
+
+
+def clustdealer(pairdealer, optim):
+    """ return optim clusters given iterators, and whether it got all or not"""
+    ccnt = 0
+    chunk = []
+    while ccnt < optim:
+        ## try refreshing taker, else quit
+        try:
+            taker = itertools.takewhile(lambda x: x[0] != "//\n", pairdealer)
+            oneclust = ["".join(taker.next())]
+        except StopIteration:
+            #LOGGER.debug('last chunk %s', chunk)
+            return 1, chunk
+
+        ## load one cluster
+        while 1:
+            try: 
+                oneclust.append("".join(taker.next()))
+            except StopIteration:
+                break
+        chunk.append("".join(oneclust))
+        ccnt += 1
+    return 0, chunk
+
+
+#### Worker class to hold threaded or non-threaded views
+class Worker():
+    """ independent threaded CPUs"""
+    def __init__(self, name, ipyclient, targets, func, data):
+        ## Engine views
+        self.client = ipyclient
+        self.lview = self.client.load_balanced_view(targets=targets)
+        self.dview = self.client.direct_view(targets=targets)
+        self.ids = targets
+        self.name = name
+        
+        ## how long to wait between checking for available proc
+        self.delay = 0.5
+        
+        ## store the data and func
+        self.data = data
+        self.func = func
+        
+        ## is job finished
+        self.result = {}
+        
+        ## finished results
+        self.running = 0
+        self.finished = 0
+        
+    
+    def synchronize(self):
+        """ checks whether it's finished """
+        try:
+            self.result[self.name] = self.running.get(0)
+        except ipp.error.TimeoutError:
+            pass
+        except Exception as e:
+            self.finished = 1
+            #print(data, ': fail', e.traceback)
+            self.result[self.name] = e
+        else:
+            self.finished = 1
+            self.running = None
+            
+
+    def job(self, data, func):
+        """ while job is running store async result in running."""
+        self.running = self.lview.apply_async(func, data)
+        
+                
+    def run(self):
+        ## starts self.running
+        self.job(self.data, self.func)
+        while self.running:
+            print(self.name, 'pending...')
+            ## check for jobs finished, stops self.running
+            self.synchronize()
+            time.sleep(self.delay)

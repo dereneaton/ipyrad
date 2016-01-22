@@ -116,13 +116,6 @@ class Assembly(object):
         ## statsfiles is a dict where keys return a func... 
         ## can't get this to work with a @property func.
         self.statsfiles = ObjDict({})
-        #                            {"s1": self.statsfile("s1"), 
-        #                            "s2": self.statsfile("s2"), 
-        #                            "s3": self.statsfile("s3"), 
-        #                            "s4": self.statsfile("s4"), 
-        #                            "s5": self.statsfile("s5"), 
-        #                            "s6": self.statsfile("s6"), 
-        #                            "s7": self.statsfile("s7")})
 
         ## samples linked 
         self.samples = ObjDict()
@@ -773,7 +766,7 @@ class Assembly(object):
         except (ipp.TimeoutError, ipp.NoEnginesRegistered):
             ## maybe different messages depending on whether it is CLI or API
             inst = """
-        Check to that ipcluster is running. When using the API you must start
+        Check to ensure ipcluster is running. When using the API you must start
         ipcluster outside of IPython/Jupyter to launch parallel engines using
         either `ipcluster start`, or in the Clusters tab in a Jupyter notebook.
         (See Docs)
@@ -784,9 +777,14 @@ class Assembly(object):
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
             ipyclient.abort()
-            ipyclient.shutdown()
-            ipyclient = self._launch(nwait)
+            ## shutdown the cluster to ensure everything is killed
+            #ipyclient.shutdown()
+            ## relaunch the cluster
+            #ipyclient = self._launch(nwait)
             logging.error("assembly interrupted by user.")
+            ## don't reraise the keyboard interrupt, 
+            ## it already stopped the Engine jobs,
+            #print("Keyboard Interrupt\n")
             raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
