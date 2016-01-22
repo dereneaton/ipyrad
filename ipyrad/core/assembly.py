@@ -186,7 +186,8 @@ class Assembly(object):
                         ("max_inner_mate_distance", 60),
                         ("preview_truncate_length", 500000),
                         ("output_loci_name_buffer", 5),
-                        ("query_cov", None)
+                        ("query_cov", None),
+                        ("smalt_index_wordlen", 16)
         ])
 
     def __str__(self):
@@ -880,7 +881,8 @@ class Assembly(object):
                                   "value for reference_sequence_path paramter.")
 
             ## index the reference sequence
-            index_reference_sequence(self)
+            ## Allow force to reindex the reference sequence
+            index_reference_sequence(self, force)
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
