@@ -19,6 +19,7 @@ requirements = [
     'numpy>=1.9',
     'pandas',
     'h5py',
+    'psutil',
     'mpi4py'
     ]
 
