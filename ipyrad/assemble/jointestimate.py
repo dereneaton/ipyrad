@@ -159,7 +159,7 @@ def stackarray(data, sample):
     else:
         readlen = data._hackersonly["max_fragment_length"]
     dims = (int(sample.stats.clusters_hidepth), readlen, 4)
-    stacked = np.zeros(dims, dtype=np.int16)
+    stacked = np.zeros(dims, dtype=np.uint32)
 
     ## don't use sequence edges / restriction overhangs
     cutlens = [None, None]
@@ -194,15 +194,14 @@ def stackarray(data, sample):
                 ## remove edge columns
                 arrayed = arrayed[:, cutlens[0]:cutlens[1]]
                 ## remove cols that are pair separator
-                arrayed = arrayed[~np.any(arrayed == "n", axis=1)]
-                ## convert - to N
+                arrayed = arrayed[:, ~np.any(arrayed == "n", axis=0)]
+                ## remove cols that are all Ns after converting -s to Ns
                 arrayed[arrayed == "-"] = "N"
-                ## remove cols that are all Ns
-                arrayed = arrayed[~np.any(arrayed == "n", axis=1)]                
+                arrayed = arrayed[:, ~np.all(arrayed == "N", axis=0)]
                 ## store in stacked dict
                 catg = np.array(\
                     [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
-                    dtype='int16').T
+                    dtype=np.uint32).T
                 stacked[nclust, :catg.shape[0], :] = catg
                 nclust += 1
     return stacked
@@ -220,6 +219,7 @@ def optim(args):
 
     ## get base frequencies
     bfreqs = frequencies(stacked)
+    LOGGER.debug(bfreqs)
 
     ## reshape to concatenate all site rows
     rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
@@ -227,9 +227,9 @@ def optim(args):
     ## put into array, count array items as Byte strings
     tstack = tablestack(rstack)
     ## drop emtpy count [0,0,0,0]
-    tstack.pop(np.zeros(4, dtype=np.int16).tostring())
+    tstack.pop(np.zeros(4, dtype=np.uint32).tostring())
     ## get keys back as arrays and store vals as separate arrays
-    ustacks = np.array([np.fromstring(i, dtype=np.int16) \
+    ustacks = np.array([np.fromstring(i, dtype=np.uint32) \
                         for i in tstack.iterkeys()])
     counts = np.array(tstack.values())
     ## cleanup    
@@ -256,6 +256,7 @@ def optim(args):
                                              disp=False,
                                              full_output=False)
     return [sample.name, hetero, errors]
+
 
 
 def run(data, samples, subsample, force, ipyclient):
@@ -296,7 +297,7 @@ def run(data, samples, subsample, force, ipyclient):
         lbview = ipyclient.load_balanced_view()
         try:
             results = lbview.map_async(optim, submitted_args)
-            results.get()
+            results = results.get()
         ## if exception such as keyboard interrupt, save finished jobs
         except Exception as inst:
             ## hold the exception for now, do cleanup
@@ -343,6 +344,11 @@ if __name__ == "__main__":
        )
 
     ## run test on RAD data1
+    TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", "test_pairgbs", "test_pairgbs"))
+    TEST.step4(force=True)
+    print(TEST.stats)
+
     TEST = ip.load.load_assembly(os.path.join(\
                          ROOT, "tests", "test_rad", "data1"))
     TEST.step4(force=True)
