@@ -492,8 +492,7 @@ def cleanup(data, sample, statsdicts):
     start = 0
     for icat in tmpcats:
         icatg = numpy.load(icat)
-        end = start + optim
-        #print(start, end, "\n", icatg[0, :10])        
+        end = start + optim        
         dset[start:end] = icatg
         start += optim
         os.remove(icat)
