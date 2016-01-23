@@ -80,22 +80,29 @@ def getassembly(args, parsedict):
     """
 
     working_directory = parsedict['1']
-    my_assembly = os.path.split(parsedict['1'])[1]
+    assembly_name = os.path.split(parsedict['1'])[1]
+    assembly_file = os.path.join(working_directory, assembly_name)
+
+    ## make sure the working directory exists.
+    if not os.path.exists(working_directory):
+        os.mkdir(working_directory)
+
+    os.chdir(working_directory)
 
     ## if forcing or doing step 1 then do not load existing Assembly
     if args.force and '1' in args.steps:
         ## create a new assembly object
-        data = ip.Assembly(my_assembly)
+        data = ip.Assembly(assembly_name)
     else:
         ## try loading an existing one
         try:
-            print("Loading - {}".format(prefix))
-            data = ip.load.load_assembly(prefix, launch=False)
+            print("Loading - {}".format(assembly_name))
+            data = ip.load.load_assembly(assembly_file, launch=False)
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current assembly found, create new - {}".format(my_assembly))
-            data = ip.Assembly(my_assembly)
+            LOGGER.info("No current assembly found, create new - {}".format(assembly_file))
+            data = ip.Assembly(assembly_name)
 
     ## for entering some params...
     for param in parsedict:

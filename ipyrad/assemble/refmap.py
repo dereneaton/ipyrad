@@ -26,7 +26,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 
-def index_reference_sequence(self):
+def index_reference_sequence(self, force=False):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
     quick about giving up if it detects the indices already exist. You could
@@ -42,22 +42,27 @@ def index_reference_sequence(self):
     index_sma = refseq_file+".sma"
     index_smi = refseq_file+".smi"
 
-    if not os.path.isfile(index_sma) or not os.path.isfile(index_smi):
-        msg = "*************************************************************\n"\
-            + "Indexing reference sequence. This only needs to be done once.\n"\
-            + "Depending on the size of the reference it should take between\n"\
-            + "10 and 40 minutes.\n"\
-            + "*************************************************************\n"
-        LOGGER.info(msg)
-        print(msg)
-        cmd = self.bins.smalt+\
-            " index "\
-            " -s 2 "+\
-        refseq_file+" "+\
-        refseq_file
+    if os.path.isfile(index_sma) and os.path.isfile(index_smi):
+        if force:
+            print("  Force reindexing of reference sequence")
+        else:
+            print("  Reference sequence index exists")
+            return
 
-        print(cmd)
-        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+    msg = "*************************************************************\n"\
+        + "Indexing reference sequence. This only needs to be done once.\n"\
+        + "This should take less than 10 minutes.\n"\
+        + "*************************************************************\n"
+
+    LOGGER.info(msg)
+    print(msg)
+    cmd = self.bins.smalt\
+        + " index "\
+        + " -k "+ str(self._hackersonly["smalt_index_wordlen"])\
+        + " " + refseq_file + " " + refseq_file
+
+    LOGGER.debug(cmd)
+    subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
 
 
 
