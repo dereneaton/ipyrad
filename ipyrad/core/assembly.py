@@ -986,6 +986,9 @@ class Assembly(object):
     def _step7func(self, samples, force, ipyclient):
         """ Step 7: Filter and write output files """
 
+        if self._headers:
+            print("  Step7: Filter and write output files.")
+
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
