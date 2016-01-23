@@ -96,12 +96,13 @@ def getassembly(args, parsedict):
     else:
         ## try loading an existing one
         try:
-            print("Loading - {}".format(assembly_name))
+            #print("Loading - {}".format(assembly_name))
             data = ip.load.load_assembly(assembly_file, launch=False)
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current assembly found, create new - {}".format(assembly_file))
+            LOGGER.info("No current assembly found, create new - {}".\
+                        format(assembly_file))
             data = ip.Assembly(assembly_name)
 
     ## for entering some params...
@@ -111,7 +112,8 @@ def getassembly(args, parsedict):
                 data.set_params(param, parsedict[param])
             except Exception as inst:
                 print(inst)
-                print("Bad parameter in the params file - param {} value {}".format(param, parsedict[param]))
+                print("Bad parameter in the params file - param {} value {}".\
+                      format(param, parsedict[param]))
                 raise
 
     return data
