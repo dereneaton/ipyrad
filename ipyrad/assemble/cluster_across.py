@@ -221,7 +221,7 @@ def cluster(data, noreverse):
 
 
 
-def build_catg_file(data, samples, nloci):
+def build_h5_array(data, samples, nloci):
     """ build full catgs file """
     ## catg array of prefiltered loci (4-dimensional) aye-aye!
     ## this can be multiprocessed!! just sum arrays at the end
@@ -268,16 +268,21 @@ def build_catg_file(data, samples, nloci):
     filters.attrs["edges"] = np.array(["R1_L", "R1_R", "R2_L", "R2_R"])
 
 
-    ## for each sample fill its own hdf5 array with catg data w/ indels. 
+    ## RUN SINGLECAT, FILL FILTERS
+    ## for each sample fill its own hdf5 array with catg data & indels. 
+    ## maybe this can be parallelized. Can't right now since we pass it 
+    ## an open file object (indels). Room for speed improvements, tho.
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     with h5py.File(ipath, 'r') as indh5:
         for sidx, sample in enumerate(samples):
-            ## loads the array for one sample into memory
+            ## loads the array for one sample into memory. 
+            ## TODO: Chunk to allow efficient reading along y axis. 
             indels = indh5["indels"][:, sidx, :]
             ## return which loci were filtered b/c of duplicates.
             tmpfilter = singlecat(data, sample, nloci, indels)
             filters[:, 0] += tmpfilter
 
+    ## FILL SUPERCATG
     ## combine indvidual hdf5 arrays into supercatg
     h5handles = []
     for sidx, sample in enumerate(samples):
@@ -287,6 +292,9 @@ def build_catg_file(data, samples, nloci):
         with h5py.File(h5handle, 'r') as singleh5:
             icatg = singleh5[sample.name]
             supercatg[:, sidx, :, :] = icatg
+
+    ## FILL SUPERSEQS
+    fill_superseqs(data, samples, superseqs)
 
     ## close the big boy
     ioh5.close()
@@ -331,13 +339,11 @@ def singlecat(data, sample, nloci, indels):
                                   dtype=np.uint32)#,
                                   #chunks=(nloci/10, maxlen, 4))#,
                                   #compression="gzip")
-    LOGGER.info("%s catg shape = %s", sample.name, icatg.shape)
 
     ## LOAD IN STEP5 CATG ARRAY
     ## get catg from step5 for this sample, the shape is (nloci, maxlen)
     old_h5 = h5py.File(sample.files.database, 'r')
     catarr = old_h5["catg"][:]
-    LOGGER.debug("old catg shape: %s", catarr.shape)
 
     ## get utemp cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -358,24 +364,14 @@ def singlecat(data, sample, nloci, indels):
             ## if multiple hits of a sample to a locus then it is not added
             ## to the locus, and instead the locus is masked for exclusion
             ## using the filters array.
-            #print(int(ask[4]))
-            #LOGGER.info("being saved %s:", 
-            #    catarr[int(ask[4]), :icatg.shape[1], :])
-            #LOGGER.info("dtype %s", 
-            #    np.dtype(catarr[int(ask[4])][:icatg.shape[1], :]))
             icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
-            LOGGER.info("set %s", iloc)
         elif ask.shape[0] > 1:
             ## store that this cluster failed b/c it had duplicate samples. 
             tmpfilter[iloc] = True
-            LOGGER.debug("ask; %s, %s, %s", ask.size, "\n", ask)
-        else:
-            LOGGER.info("no hit %s", int())
 
     ## for each locus in which Sample was the seed
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
-    LOGGER.info("seedmatch2 %s", 3)
     for iloc in seedmatch2:
         icatg[iloc] = catarr[iloc, :icatg.shape[1], :]
 
@@ -403,6 +399,55 @@ def singlecat(data, sample, nloci, indels):
     ## returns tmpfilter 
     return tmpfilter
 
+
+def fill_superseqs(data, samples, superseqs):
+    """ fills the superseqs array with seq data from cat.clust """
+    ## samples are already sorted
+    snames = [i.name for i in samples]
+    ## get maxlen again
+    maxlen = data._hackersonly["max_fragment_length"]
+    if 'pair' in data.paramsdict["datatype"]:
+        maxlen *= 2
+
+    ## data has to be entered in blocks
+    infile = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
+    clusters = gzip.open(infile, 'r')
+    pairdealer = itertools.izip(*[iter(clusters)]*2)
+
+    ## iterate over clusters
+    done = 0
+    iloc = 0
+    while not done:
+        try:
+            done, chunk = clustdealer(pairdealer, 1)
+        except IndexError:
+            raise IPyradError("clustfile formatting error in %s", chunk)    
+        ## input array must be this shape
+        if chunk:
+            fill = np.zeros(len(samples), dtype=(np.string_, maxlen))
+            piece = chunk[0].strip().split("\n")
+            names = piece[0::2]
+            seqs = piece[1::2]
+
+            ## fill in the hits
+            indices = range(len(snames))
+            for name, seq in zip(names, seqs):
+                sidx = snames.index(name.rsplit("_", 1)[0])
+                fill[sidx] = seq
+                print('seq', seq)
+                indices.remove(sidx)
+
+            ## fill in the misses
+            for idx in indices:
+                fill[idx] = "N"*maxlen
+
+            ## PUT INTO ARRAY
+            superseqs[iloc] = fill
+
+        ## increase counter
+        iloc += 1
+    ## close handle
+    clusters.close()
 
 
 
@@ -568,7 +613,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## /seqs -- contains the clustered sequence data as string arrays
     ##   .attr['samples'] = [samples]
     LOGGER.info("building full database")    
-    build_catg_file(data, samples, nloci)
+    build_h5_array(data, samples, nloci)
 
     ## invarcats()
     ## invarcats()
