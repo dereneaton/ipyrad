@@ -3,7 +3,7 @@
 
 #import os
 import pandas as pd
-from ipyrad.assemble.util import ObjDict
+from ipyrad.assemble.util import ObjDict, IPyradError
 
 # pylint: disable=C0103
 # pylint: disable=R0903
@@ -77,11 +77,19 @@ class Sample(object):
         self.depths = []
 
 
-    #def __getstate__(self):
-    #    return self.__dict__
+    def __getstate__(self):
+        return self.__dict__
 
-    #def __setstate__(self, dicto):
-    #    self.__dict__.update(dicto)
+    def __setstate__(self, dicto):
+        if dicto == 'name':
+            if self.stats.state:
+                if self.stats.state > 1:
+                    raise IPyradError("""
+    Sample names cannot be changed after step2 without breaking file paths""")
+                else:
+                    self.__dict__.update(dicto)
+        else:
+            self.__dict__.update(dicto)
 
     #def save(self):
     #    """ pickle the data object """

@@ -571,7 +571,6 @@ def cleanup(data, sample, statsdicts):
     if sample.stats.reads_consens:
         sample.stats.state = 5
         ## save stats to data
-        data._stamp("s5 consensus base calling on "+sample.name)
 
     else:
         print("No clusters passed filtering in Sample: {}".format(sample.name))

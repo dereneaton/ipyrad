@@ -80,7 +80,6 @@ def sample_cleanup(data, sample):
                                              (keepmj, keepstat)])
         sample.depths = depth
 
-        data._stamp("s3 clustering on "+sample.name)        
     else:
         print("no clusters found for {}".format(sample.name))
 

@@ -578,8 +578,6 @@ def cleanup(data, sample, submitted, results):
         sample.files.edits.append((handle1, handle2))
         sample.files.edits = list(set(sample.files.edits))
 
-        ## save stats to the sample??
-        data._stamp("s2 rawediting on "+sample.name)
     else:
         print("No reads passed filtering in Sample: {}".format(sample.name))
 

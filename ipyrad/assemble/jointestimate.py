@@ -326,7 +326,6 @@ def cleanup(data, sample, hest, eest):
     sample.stats.state = 4
     sample.stats.hetero_est = hest
     sample.stats.error_est = eest
-    data._stamp("s4 params estimated on "+sample.name)
 
 
 
