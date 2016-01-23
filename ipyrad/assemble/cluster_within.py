@@ -203,7 +203,7 @@ def muscle_align(args):
 
 
 def parsemuscle(out):
-    """ parse muscle string output into two sorted lists """
+    """ parse muscle string output into two sorted lists. Sorts them first."""
     lines = out[1:].split("\n>")
     names = [line.split("\n", 1)[0] for line in lines]
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
