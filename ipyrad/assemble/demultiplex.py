@@ -318,11 +318,14 @@ def prechecks(data, ipyclient, preview):
         format(data.paramsdict["raw_fastq_path"])
 
     ## find longest barcode
-    barlens = [len(i) for i in data.barcodes.values()]
-    if len(set(barlens)) == 1:
-        longbar = (barlens[0], 'same')
-    else:
-        longbar = (max(barlens), 'diff')
+    try:
+        barlens = [len(i) for i in data.barcodes.values()]
+        if len(set(barlens)) == 1:
+            longbar = (barlens[0], 'same')
+        else:
+            longbar = (max(barlens), 'diff')
+    except ValueError:
+        raise IPyradError("Barcodes file not found")
 
     ## make sure there is a [workdir] and a [workdir/name_fastqs]
     data.dirs.fastqs = os.path.join(data.paramsdict["working_directory"],
