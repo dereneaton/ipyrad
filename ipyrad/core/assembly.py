@@ -63,9 +63,6 @@ class Assembly(object):
     bins : dict
         Keys: values for the path to vsearch, muscle, smalt, samtools
         executables. 
-    log : list
-        A list of all modifications to the Assembly object and its Samples with
-        time stamps. Use `print [Assembly].log` for easier viewing.
     dirs : dict
         Returns a dictionary with the location of directories that contain 
         linked Sample object files and stats results.
@@ -109,10 +106,6 @@ class Assembly(object):
         binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools"]
         for binn, binx in zip(binnames, getbins()):
             self.bins[binn] = binx
-
-        ## link a log history of executed workflow
-        self.log = []
-        self._stamp(self.name+" created")
 
         ## statsfiles is a dict where keys return a func... 
         ## can't get this to work with a @property func.
@@ -235,13 +228,6 @@ class Assembly(object):
     def cpus(self):
         """ View the connection  """
         pass
-
-
-
-    def _stamp(self, event):
-        """ Stamps an event into the log history. """
-        tev = time.strftime("%m/%d/%y %H:%M:%S", time.gmtime())
-        self.log.append((self.name, tev, event))
 
 
 
@@ -833,7 +819,6 @@ class Assembly(object):
                 if self._headers:
                     print(msg1)
                 assemble.demultiplex.run(self, preview, ipyclient)
-                self._stamp("s1_demultiplexing:")
 
         ## Creating new Samples
         else:
@@ -849,7 +834,6 @@ class Assembly(object):
                 if self._headers:
                     print(msg1)                        
                 assemble.demultiplex.run(self, preview, ipyclient)
-                self._stamp("s1_demultiplexing:")
 
 
 
@@ -1466,7 +1450,6 @@ def paramschecker(self, param, newvalue):
             if os.path.exists(expandpath):
                 expandpath = "./"+expandpath
                 expandpath = expander(expandpath)
-        self._stamp("[{}] set to {}".format(param, newvalue))
         self.paramsdict["working_directory"] = expandpath
         self.dirs["working"] = expandpath
 
@@ -1475,7 +1458,6 @@ def paramschecker(self, param, newvalue):
         if os.path.isdir(fullrawpath):
             fullrawpath = os.path.join(fullrawpath, "*.gz")
         self.paramsdict['raw_fastq_path'] = fullrawpath
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'barcodes_path':
         #assert type(newvalue) is StringType, "arg must be a string"
@@ -1483,16 +1465,14 @@ def paramschecker(self, param, newvalue):
         if glob.glob(fullbarpath):
             self.paramsdict['barcodes_path'] = fullbarpath
             self.link_barcodes()
-            self._stamp("[{}] set to {}".format(param, newvalue))
         elif not fullbarpath:
             self.paramsdict['barcodes_path'] = fullbarpath                
-            self._stamp("[{}] set to {}".format(param, newvalue))
         else:
-            print(
-        "Warning: barcodes file not found. This must be an absolute \n"\
-       +"path (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the \n"\
-       +"directory where you're running ipyrad (./data/data_barcodes.txt).\n"\
-       +"You entered: %s\n" % fullbarpath)
+            print("""
+    Warning: barcodes file not found. This must be an absolute path 
+    (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory 
+    where you're running ipyrad (./data/data_barcodes.txt). You entered: {}\n
+    """.format(fullbarpath))
 
     elif param == 'sorted_fastq_path':
         assert isinstance(newvalue, str), \
@@ -1501,26 +1481,25 @@ def paramschecker(self, param, newvalue):
         if os.path.isdir(newvalue):
             newvalue = os.path.join(newvalue, "*.gz")
         self.paramsdict['sorted_fastq_path'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'assembly_method':
-        assert newvalue in ["denovo", "reference_only", "hybrid", "denovo_only"], \
-            "The `assembly_method` parameter must be one of the following: "+\
-            "denovo, reference, hybrid, or denovo_only. You entered: %s." % newvalue
-        self.paramsdict['assembly_method'] = newvalue            
-        self._stamp("[{}] set to {}".format(param, newvalue))
+        methods = ["denovo", "reference_only", "hybrid", "denovo_only"]
+        assert newvalue in methods, """
+    The `assembly_method` parameter must be one of the following: 
+    denovo, reference, hybrid, or denovo_only. You entered: {}.
+    """.format(newvalue)
+        self.paramsdict['assembly_method'] = newvalue
 
     elif param == 'reference_sequence':
         fullrawpath = expander(newvalue)
         if not os.path.isfile(fullrawpath):
             LOGGER.info("reference sequence file not found.")
-            print(\
-        "Warning: reference sequence file not found. This must be an\n"\
-       +"absolute path (/home/wat/ipyrad/data/reference.gz) or relative to \n"\
-       +"the directory where you're running ipyrad (./data/reference.gz).\n"\
-       +"You entered: %s\n" % fullrawpath)
+            print("""
+    "Warning: reference sequence file not found. This must be an absolute path 
+    (/home/wat/ipyrad/data/reference.gz) or relative to the directory where 
+    you're running ipyrad (./data/reference.gz). You entered: {}\n
+    """.format(fullrawpath))
         self.paramsdict['reference_sequence'] = fullrawpath
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'datatype':
         ## list of allowed datatypes
@@ -1528,33 +1507,31 @@ def paramschecker(self, param, newvalue):
                      'pairgbs', 'merged', '2brad']
         ## raise error if something else
         if str(newvalue) not in datatypes:
-            sys.exit("error: datatype {} not recognized, must be one of: ".format( newvalue ), datatypes)
+            raise IPyradError("""
+    datatype {} not recognized, must be one of: {}
+    """.format(newvalue, datatypes))
         else:
             self.paramsdict['datatype'] = str(newvalue)
-            self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'restriction_overhang':
         newvalue = tuplecheck(newvalue, str)                        
-        assert isinstance(newvalue, tuple), \
-        "cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"
+        assert isinstance(newvalue, tuple), """
+    cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         if len(newvalue) == 1:
             newvalue = (newvalue, "")
-        assert len(newvalue) == 2, \
-        "must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"
+        assert len(newvalue) == 2, """
+    must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         self.paramsdict['restriction_overhang'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_low_qual_bases':
-        assert isinstance(int(newvalue), int), \
-            "max_low_qual_bases must be an integer."        
+        assert isinstance(int(newvalue), int), """
+    max_low_qual_bases must be an integer."""
         self.paramsdict['max_low_qual_bases'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'phred_Qscore_offset':
         assert isinstance(int(newvalue), int), \
             "phred_Qscore_offset must be an integer."
         self.paramsdict['phred_Qscore_offset'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_statistical':
         assert isinstance(int(newvalue), int), \
@@ -1570,7 +1547,6 @@ def paramschecker(self, param, newvalue):
         else:
             self.paramsdict['mindepth_statistical'] = int(newvalue)
             ## TODO: calculate new clusters_hidepth if passed step3
-            self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'mindepth_majrule':
         assert isinstance(int(newvalue), int), \
@@ -1581,76 +1557,64 @@ def paramschecker(self, param, newvalue):
         else:
             ## TODO: calculate new clusters_hidepth if passed step3
             self.paramsdict['mindepth_majrule'] = int(newvalue)
-            self._stamp("[{}] set to {}".format(param, newvalue))
+
 
     ## TODO: not yet implemented
     elif param == 'maxdepth':
         self.paramsdict['maxdepth'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'clust_threshold':
         self.paramsdict['clust_threshold'] = float(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_barcode_mismatch':
         self.paramsdict['max_barcode_mismatch'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'filter_adapters':
         self.paramsdict['filter_adapters'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'filter_min_trim_len':
         self.paramsdict['filter_min_trim_len'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_alleles_consens':
         self.paramsdict['max_alleles_consens'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Ns_consens':
         newvalue = tuplecheck(newvalue, int)                        
         assert isinstance(newvalue, tuple), \
         "max_Ns_consens should be a tuple e.g., (8, 8)"
         self.paramsdict['max_Ns_consens'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Hs_consens':
         newvalue = tuplecheck(newvalue, int)                        
         assert isinstance(newvalue, tuple), \
         "max_Hs_consens should be a tuple e.g., (5, 5)"
         self.paramsdict['max_Hs_consens'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'min_samples_locus':
         self.paramsdict['min_samples_locus'] = int(newvalue)
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_shared_H_locus':
         self.paramsdict['max_shared_H_locus'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_SNPs_locus':
         newvalue = tuplecheck(newvalue, int)                        
         assert isinstance(newvalue, tuple), \
         "max_SNPs_locus should be a tuple e.g., (20, 20)"
         self.paramsdict['max_SNPs_locus'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'max_Indels_locus':
         newvalue = tuplecheck(newvalue, int)            
         assert isinstance(newvalue, tuple), \
         "max_Indels_locus should be a tuple e.g., (5, 100)" 
         self.paramsdict['max_Indels_locus'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
  
     elif param == 'edit_cutsites':
         ## Check if edit_cutsites is int or string values.
         ## Try int, if it fails the fall back to str
         try:
             newvalue = tuplecheck(newvalue, int)
-        except ValueError as e:
-            print("edit_cutsites value error - {}".format(e))
+        except ValueError as inst:
+            print("edit_cutsites value error - {}".format(inst))
             newvalue = tuplecheck(newvalue)
             assert isinstance(newvalue, tuple), \
                 "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
@@ -1665,14 +1629,12 @@ def paramschecker(self, param, newvalue):
         #                newvalue[0], newvalue[1]))
 
         self.paramsdict['edit_cutsites'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'trim_overhang':
         newvalue = tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "trim_overhang should be a tuple e.g., (1, 2, 2, 1)"
         self.paramsdict['trim_overhang'] = newvalue
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'output_formats':
         ## Get all allowed file types from assembly.write_outfiles
@@ -1687,27 +1649,26 @@ def paramschecker(self, param, newvalue):
 
             ## Exit if requested formats are bad
             ## Only test here if no wildcard present
-            for f in requested_formats:
-                if f not in output_formats:
-                    sys.exit("error: File format [ {} ] not recognized, must be one of: {}".format(f , output_formats))
-        
+            for form in requested_formats:
+                if form not in output_formats:
+                    sys.exit("""
+    error: File format [ {} ] not recognized, must be one of: {}.
+    """.format(form, output_formats))
         self.paramsdict['output_formats'] = requested_formats
-        self._stamp("[{}] set to {}".format(param, newvalue))
+
 
     elif param == 'pop_assign_file':
         fullpoppath = expander(newvalue)
 
         if not os.path.isfile(fullpoppath):
             LOGGER.warn("Population assignment file not found.")
-            sys.exit(\
-        "Warning: Population assignment file not found. This must be an\n"\
-       +"absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to \n"\
-       +"the directory where you're running ipyrad (./data/my_popfile.txt).\n"\
-       +"You entered: %s\n" % fullpoppath)
-
+            sys.exit("""
+    Warning: Population assignment file not found. This must be an
+    absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to 
+    the directory where you're running ipyrad (./data/my_popfile.txt)
+    You entered: {}\n""".format(fullpoppath))
         self.paramsdict['pop_assign_file'] = fullpoppath
-        self.link_populations( )
-        self._stamp("[{}] set to {}".format(param,fullpoppath))
+        self.link_populations()
 
     elif param == 'excludes':
         excluded_individuals = newvalue.replace(" ", "").split(',')
@@ -1719,7 +1680,6 @@ def paramschecker(self, param, newvalue):
         ## TODO: Maybe do this, maybe not.
 
         self.paramsdict['excludes'] = excluded_individuals
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     elif param == 'outgroups':
         outgroup_individuals = newvalue.replace(" ", "").split(',')
@@ -1731,7 +1691,6 @@ def paramschecker(self, param, newvalue):
         ## TODO: Maybe do this, maybe not.
 
         self.paramsdict['excludes'] = outgroup_individuals
-        self._stamp("[{}] set to {}".format(param, newvalue))
 
     return self
 

@@ -248,20 +248,19 @@ def build_h5_array(data, samples, nloci):
                                     dtype=np.uint32)
                                     #chunks=(nloci/10, len(samples), maxlen, 4),
                                     #compression="gzip")
-    supercatg.attrs["samples"] = np.array([i.name for i in samples], 
-                                           dtype="S50")
+    supercatg.attrs["samples"] = np.array([i.name for i in samples]) 
+
     ## INIT FULL SEQS ARRAY
     ## array for clusters of consens seqs
-    superseqs = ioh5.create_dataset("seqs", (nloci, len(samples)),
-                                     dtype=np.dtype((str, maxlen)))
-    superseqs.attrs["samples"] = np.array([i.name for i in samples], 
-                                          dtype="S50")    
+    superseqs = ioh5.create_dataset("seqs", (nloci, len(samples), maxlen),
+                                     dtype="|S1")
+    superseqs.attrs["samples"] = np.array([i.name for i in samples])
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
     filters = ioh5.create_dataset("filters", (nloci, 4), dtype=np.bool)
-    filters.attrs["filters"] = np.array(["duplicates",
-                                         "f2", "f3", "f4"], dtype="S10")
+    filters.attrs["filters"] = np.array(["duplicates", "f2", "f3", "f4"])
+
     ## INIT FULL EDGE ARRAY
     ## array for edgetrimming 
     filters = ioh5.create_dataset("edges", (nloci, 4), dtype=np.uint16)
@@ -308,8 +307,6 @@ def build_h5_array(data, samples, nloci):
     ## set sample states
     for sample in samples:
         sample.stats.state = 6
-        ## save stats to data
-        data._stamp("s6 clustered across "+sample.name)
 
 
 
@@ -400,6 +397,7 @@ def singlecat(data, sample, nloci, indels):
     return tmpfilter
 
 
+
 def fill_superseqs(data, samples, superseqs):
     """ fills the superseqs array with seq data from cat.clust """
     ## samples are already sorted
@@ -424,22 +422,22 @@ def fill_superseqs(data, samples, superseqs):
             raise IPyradError("clustfile formatting error in %s", chunk)    
         ## input array must be this shape
         if chunk:
-            fill = np.zeros(len(samples), dtype=(np.string_, maxlen))
+            fill = np.zeros((len(samples), maxlen), dtype="|S1")
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
-            seqs = piece[1::2]
+            seqs = np.array([list(i) for i in piece[1::2]])
 
             ## fill in the hits
             indices = range(len(snames))
+            shlen = seqs.shape[1]
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
-                fill[sidx] = seq
-                print('seq', seq)
+                fill[sidx, :shlen] = seq
                 indices.remove(sidx)
 
             ## fill in the misses
             for idx in indices:
-                fill[idx] = "N"*maxlen
+                fill[idx] = np.array(["N"]*maxlen)
 
             ## PUT INTO ARRAY
             superseqs[iloc] = fill

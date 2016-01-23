@@ -72,7 +72,7 @@ def precheck(data, samples):
             subsample.append(sample)
 
     ## prepare dirs
-    data.dirs.outfiles = os.path.join(data.dirs.working, "outfiles")
+    data.dirs.outfiles = os.path.join(data.dirs.working, data.name+"_outfiles")
     if not os.path.exists(data.dirs.outfiles):
         os.mkdir(data.dirs.outfiles)
 
