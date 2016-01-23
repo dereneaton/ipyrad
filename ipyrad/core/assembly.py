@@ -806,8 +806,8 @@ class Assembly(object):
 
     def _step1func(self, force, preview, ipyclient):
         """ testing"""
-        msg1 = "  step1: Demultiplexing raw reads."
-        msg2 = "  step1: Linking demultiplexed fastq data to Samples."
+        msg1 = "  Step1: Demultiplexing raw reads."
+        msg2 = "  Step1: Linking demultiplexed fastq data to Samples."
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
@@ -954,7 +954,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         if self._headers:
-            print("  Step 6: clustering across {} samples at {} similarity".\
+            print("  Step6: Clustering across {} samples at {} similarity".\
             format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
@@ -1471,7 +1471,7 @@ def paramschecker(self, param, newvalue):
             print("""
     Warning: barcodes file not found. This must be an absolute path 
     (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory 
-    where you're running ipyrad (./data/data_barcodes.txt). You entered: {}\n
+    where you're running ipyrad (./data/data_barcodes.txt). You entered: \n{}
     """.format(fullbarpath))
 
     elif param == 'sorted_fastq_path':
@@ -1486,7 +1486,7 @@ def paramschecker(self, param, newvalue):
         methods = ["denovo", "reference_only", "hybrid", "denovo_only"]
         assert newvalue in methods, """
     The `assembly_method` parameter must be one of the following: 
-    denovo, reference, hybrid, or denovo_only. You entered: {}.
+    denovo, reference, hybrid, or denovo_only. You entered: \n{}.
     """.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
 
@@ -1497,7 +1497,7 @@ def paramschecker(self, param, newvalue):
             print("""
     "Warning: reference sequence file not found. This must be an absolute path 
     (/home/wat/ipyrad/data/reference.gz) or relative to the directory where 
-    you're running ipyrad (./data/reference.gz). You entered: {}\n
+    you're running ipyrad (./data/reference.gz). You entered: \n{}
     """.format(fullrawpath))
         self.paramsdict['reference_sequence'] = fullrawpath
 
