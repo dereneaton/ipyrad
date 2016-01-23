@@ -15,7 +15,7 @@ import h5py
 import gzip
 import glob
 import os
-from .util import *
+from util import *
 
 from collections import Counter
 
@@ -144,7 +144,7 @@ def removerepeats(consens, arrayed):
         if (idepths[nsite]+ndepths[nsite]) < mindepth:
             ridx.append(nsite)
 
-    LOGGER.info("ridx -------------------------- %s", arrayed[:, ridx])
+    #LOGGER.info("ridx -------------------------- %s", arrayed[:, ridx])
     #LOGGER.info("ridx %s", ridx)
     ## remove repeat sites from shortcon and stacked
     keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
@@ -182,7 +182,7 @@ def consensus(args):
     maxlen = data._hackersonly["max_fragment_length"]
     if 'pair' in data.paramsdict["datatype"]:
         maxlen *= 2
-    catarr = numpy.zeros([optim, maxlen, 4], dtype='int16')
+    catarr = numpy.zeros([optim, maxlen, 4], dtype='uint32')
 
     ## store data for stats counters
     counters = {"name" : tmpnum,
@@ -247,7 +247,7 @@ def consensus(args):
                             ## store a reduced array with only CATG
                             catg = numpy.array(\
                        [numpy.sum(arrayed == i, axis=0) for i in list("CATG")], 
-                       dtype='int16').T
+                       dtype='uint32').T
                             catarr[counters["nconsens"]][:catg.shape[0]] = catg
                             ## store data for tmpchunk
                             storeseq[counters["name"]] = consens
@@ -461,19 +461,19 @@ def basecaller(data, site, base1, base2):
 def cleanup(data, sample, statsdicts):
     """ cleaning up. optim is the size (nloci) of tmp arrays """
 
-    ## rejoin chunks
+    ## collect consens chunk files
     combs1 = glob.glob(os.path.join(
                         data.dirs.consens,
                         sample.name+"_tmpcons.*"))
     combs1.sort(key=lambda x: int(x.split(".")[-1]))
 
-    ## merge catg files
+    ## collect tmpcat files
     tmpcats = glob.glob(os.path.join(
                         data.dirs.consens,
                         sample.name+"_tmpcats.*"))
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
-    ## get shape info from the first cat
+    ## get shape info from the first cat, they're all the same size
     with open(tmpcats[0]) as cat:
         catg = numpy.load(cat)
     ## (optim, maxlen, 4)
@@ -484,22 +484,22 @@ def cleanup(data, sample, statsdicts):
     ioh5 = h5py.File(handle1, 'w')
     nloci = len(tmpcats) * optim
     dset = ioh5.create_dataset("catg", (nloci, maxlen, 4), 
-                               dtype='i4', 
-                               chunks=(optim, maxlen, 4),
-                               compression="gzip")
+                               dtype=numpy.uint32)
+                               #chunks=(optim, maxlen, 4),
+                               #compression="gzip")
 
     ## Combine all those tmp cats into the big cat
-    for icat in tmpcats[1:]:
+    start = 0
+    for icat in tmpcats:
         icatg = numpy.load(icat)
-        start = 0
         end = start + optim
+        print(start, end, "\n", icatg[0, :10])        
         dset[start:end] = icatg
         start += optim
         os.remove(icat)
     ioh5.close()
 
-    ## remove the first cat
-    os.remove(tmpcats[0])
+    ## store the handle to the Sample
     sample.files.database = handle1
 
     ## record results
@@ -729,7 +729,30 @@ def run(data, samples, force, ipyclient):
 
 if __name__ == "__main__":
     import ipyrad as ip
-    TESTFILE = "/home/deren/Documents/longi_test_ip/longiflora/longiflora"
-    TESTER = ip.load.load_assembly(TESTFILE)
-    TESTER.set_params(1, "./longiflora")
-    TESTER.step5()
+
+    ## get path to test dir/ 
+    ROOT = os.path.realpath(
+       os.path.dirname(
+           os.path.dirname(
+               os.path.dirname(__file__)
+               )
+           )
+       )
+
+    ## run test on pairgbs data1
+    TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", "test_pairgbs", "test_pairgbs"))
+    TEST.step5(force=True)
+    print(TEST.stats)
+
+    ## run test on rad data1
+    TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", "test_rad", "data1"))
+    TEST.step5(force=True)
+    print(TEST.stats)
+
+    ## run test on empirical pairgbs data1
+    # TEST = ip.load.load_assembly(os.path.join(\
+    #         "/home/deren/Documents/longi_test_ip", "longi"))
+    # TEST.step5(force=True)
+    # print(TEST.stats)
