@@ -1007,9 +1007,10 @@ class Assembly(object):
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 7, force):
-            sys.exit("  Skipping: All {} ".format(len(samples))\
+            print("  Skipping: All {} ".format(len(samples))\
                  + "selected Samples. No samples ready for writing output. "\
                  + "Run step6() first.")
+            return
 
         if not force:
             try:
