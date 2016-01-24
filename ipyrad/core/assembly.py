@@ -799,23 +799,27 @@ class Assembly(object):
         ## if Samples already exist then no demultiplexing
         if self.samples:
             if not force:
-                print("Skipping step1: {} ".format(len(self.samples)) \
-                    +"Samples already found in `{}` ".format(self.name)\
-                    +"(can overwrite with force option).")
+                print("""
+    Skipping step1: {} Samples already found in {}. 
+    (can overwrite with force option).""".\
+    format(len(self.samples), self.name))
+
             else:
+                ## overwrite existing data
                 if self._headers:
                     print(msg1)
                 assemble.demultiplex.run(self, preview, ipyclient)
 
         ## Creating new Samples
         else:
-            ## first check if demultiplexed files exist in path
-            if os.path.exists(self.paramsdict["sorted_fastq_path"]):
-                self.link_fastqs(path=os.path.join(
-                    self.paramsdict["sorted_fastq_path"], "*"))
+            ## first check if demultiplexed files exist in sorted path
+            spath = self.paramsdict["sorted_fastq_path"]+"*"
+            if glob.glob(spath):
                 if self._headers:
                     print(msg2, "\n  linking files from {}".\
                           format(self.paramsdict["sorted_fastq_path"]))
+                self.link_fastqs(spath)
+                    
             ## otherwise do the demultiplexing
             else:
                 if self._headers:
