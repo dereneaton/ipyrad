@@ -302,6 +302,7 @@ def run(data, samples, subsample, force, ipyclient):
         except Exception as inst:
             ## hold the exception for now, do cleanup
             # for job in ipyclient.metadata:
+            #     print("error checking", job)
             #     if ipyclient.metadata[job]['completed']:
             #         result = ipyclient.metadata[job]['outputs']
             #         samplename, hest, eest = result

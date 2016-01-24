@@ -21,8 +21,8 @@ import itertools
 import subprocess
 import numpy as np
 from collections import OrderedDict, defaultdict
-from .refmap import *
-from .util import * #comp, merge_pairs
+from refmap import *
+from util import * 
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -31,10 +31,9 @@ LOGGER = logging.getLogger(__name__)
 def sample_cleanup(data, sample):
     """ stats, cleanup, and link to samples """
     
-    ## get clustfile
+    ## set cluster file handles
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
-
     if "pair" in data.paramsdict["datatype"]:
         ## record merge file name temporarily
         sample.files.merged = os.path.join(data.dirs.edits,
@@ -73,12 +72,26 @@ def sample_cleanup(data, sample):
         keepmj = depth[depth >= data.paramsdict["mindepth_majrule"]]    
         keepstat = depth[depth >= data.paramsdict["mindepth_statistical"]]
 
-        ## sample assignments
+        ## sample summary stat assignments
         sample.stats["state"] = 3
         sample.stats["clusters_total"] = len(depth)
-        sample.stats["clusters_hidepth"] = max([len(i) for i in \
-                                             (keepmj, keepstat)])
+        sample.stats["clusters_hidepth"] = \
+                                    max([len(i) for i in (keepmj, keepstat)])
+        ## store large list of depths. Maybe turn this into a Counter
+        ## dict to save space. We'll see...
         sample.depths = depth
+        mmj = np.mean(sample.depths[sample.depths >= \
+                                    data.paramsdict["mindepth_majrule"]])
+        mms = np.mean(sample.depths[sample.depths >= \
+                                    data.paramsdict["mindepth_statistical"]])
+       
+        ## sample stat assignments
+        sample.statsfiles.s3["clusters_total"] = len(depth)
+        sample.statsfiles.s3["clusters_hidepth"] = \
+                                        int(sample.stats["clusters_hidepth"])
+        sample.statsfiles.s3["avg_depth_total"] = np.mean(sample.depths)
+        sample.statsfiles.s3["avg_depth_mj"] = mmj
+        sample.statsfiles.s3["avg_depth_stat"] = mms
 
     else:
         print("no clusters found for {}".format(sample.name))
@@ -427,14 +440,15 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         if preview:
             ## Truncate the input files and temporarily swap out the values for
             ## sample.files.edits
-
             for sample in samples:
                 sample.files["edits_preview_bak"] = sample.files.edits
-                sample.files.edits = preview_truncate_fq(data, sample.files.edits_preview_bak)
+                sample.files.edits = preview_truncate_fq(data, 
+                                                sample.files.edits_preview_bak)
 
         ## single node threading
-        tpp = 3
-        threaded_view = ipyclient.load_balanced_view(targets=ipyclient.ids[::tpp])
+        tpp = 2
+        threaded_view = ipyclient.load_balanced_view(
+                                                  targets=ipyclient.ids[::tpp])
         tpproc = len(threaded_view)
 
         ## Initialize the mapped and unmapped file paths per sample
@@ -442,7 +456,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             for sample in samples:
                 sample = refmap_init(data, sample)
 
-        ## LIST ARGS for funcs mapreads and clustall
+        ## FILL LIST ARGS for funcs mapreads and clustall
         submitted_args = []
         for sample in samples:
             #if not align_only:
@@ -472,7 +486,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             for sample in samples:
                 finalize_aligned_reads(data, sample, ipyclient)
     
-        ## call to ipp for muscle aligning only if the Sample passed clust/mapping
+        ## call ipp for muscle aligning only if the Sample passed clust/mapping
         for sample in samples:
             if sample.stats.state == 2.5:
                 LOGGER.info("muscle aligning")            
@@ -483,17 +497,18 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         ## run data cleanup
         data_cleanup(data, samples)
 
-    except Exception as e:
-        LOGGER.warn(e)
+    except Exception as inst:
+        LOGGER.warn(inst)
         raise
+
     finally:
-        ## For preview/refmap restore original sample.files.edits paths and clean up
-        ## the tmp files.
+        ## For preview/refmap restore original sample.files.edits paths and 
+        ## clean up the tmp files.
 
         ## If we did refmapping return the samples.files.edits to their original
         ## condition. Have to do this before restoring preview files because
-        ## the refmap edits backup will be a backup of the preview truncated files.
-        ## The order of these two functions matters.
+        ## the refmap edits backup will be a backup of the preview truncated 
+        ## files. The order of these two functions matters.
         if "denovo" not in data.paramsdict["assembly_method"]: 
             for sample in samples:
                 refmap_cleanup(data, sample)
@@ -501,56 +516,33 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         if preview:
             for sample in samples:
                 try:
-                    ## If edits and edits_preview_bak are the same then something borked
-                    ## so don't delete any files
+                    ## If edits and edits_preview_bak are the same then 
+                    ## something borked so don't delete any files
                     if sample.files.edits == sample.files.edits_preview_bak:
                         sample.files.pop("edits_preview_bak", None)
                         continue
 
-                    for f in sample.files.edits[0]:
-                        if(os.path.exists(f)):
-                            os.remove( f )
+                    for tmpf in sample.files.edits[0]:
+                        if os.path.exists(tmpf):
+                            os.remove(tmpf)
 
                     ## Restore original paths to full fastq files
                     sample.files.edits = sample.files.edits_preview_bak
-                    ## Remove the tmp file reference. The second arg defines what to return
-                    ## if the key doesn't exist.
+                    ## Remove the tmp file reference. The second arg defines 
+                    ## what to return if the key doesn't exist.
                     sample.files.pop("edits_preview_bak", None)
-                except:
+                except Exception:
                     pass
+
 
 
 def data_cleanup(data, samples):
     """ cleanup / statswriting function for Assembly obj """
     ## TODO: update statsfile with mapped and unmapped reads for refmapping
-    data.statsfiles.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
-    if not os.path.exists(data.statsfiles.s3):
-        with open(data.statsfiles.s3, 'w') as outfile:
-            outfile.write(""+\
-            "{:<20}   {:>9}   {:>9}   {:>9}   {:>9}   {:>9}   {:>9}\n""".\
-                format("sample", "N_reads", "clusts_tot", 
-                       "clusts_hidepth", "avg.depth.tot", 
-                       "avg.depth>mj", "avg.depth>stat"))
-
-    ## append stats to file
-    outfile = open(data.statsfiles.s3, 'a+')
-    samples.sort(key=lambda x: x.name)
-    for sample in samples:
-        ## only do for finished Samples
-        if sample.stats.state == 3:
-            outfile.write(""+\
-    "{:<20}   {:>9}   {:>10}   {:>11}   {:>13.2f}   {:>11.2f}   {:>13.2f}\n".\
-                      format(sample.name, 
-                             int(sample.stats["reads_filtered"]),
-                             int(sample.stats["clusters_total"]),
-                             int(sample.stats["clusters_hidepth"]),
-                             np.mean(sample.depths),
-                             np.mean(sample.depths[sample.depths >= \
-                                     data.paramsdict["mindepth_majrule"]]),
-                             np.mean(sample.depths[sample.depths >= \
-                                     data.paramsdict["mindepth_statistical"]])
-                             ))
-    outfile.close()
+    data.statsfiles.s3 = data.build_stat("s3")
+    outhandle = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
+    with open(outhandle, 'w') as outfile:
+        data.statsfiles.s3.to_string(outfile)
 
 
 
@@ -809,14 +801,16 @@ def run(data, samples, noreverse, force, preview, ipyclient):
     for sample in samples:
         ## If sample not in state 2 don't try to cluster it.
         if sample.stats.state < 2:
-            print("  Sample not ready for clustering. Please run "
-                    + "step 2 on sample: {}".format(sample.name))
+            print("""\
+    Sample not ready for clustering. First run step2 on sample: {}""".\
+    format(sample.name))
             continue
 
         if not force:
             if sample.stats.state >= 3:
-                print("  Skipping {}; aleady clustered. Use force to recluster".\
-                      format(sample.name))
+                print("""\
+    Skipping {}; aleady clustered. Use force to re-cluster""".\
+    format(sample.name))
             else:
                 if sample.stats.reads_filtered:
                     subsamples.append(sample)
