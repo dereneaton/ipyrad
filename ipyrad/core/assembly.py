@@ -986,17 +986,20 @@ class Assembly(object):
     def _step7func(self, samples, force, ipyclient):
         """ Step 7: Filter and write output files """
 
+        if self._headers:
+            print("  Step7: Filter and write output files.")
+
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
         ## Check if all/none of the samples are in the self.database
         try:
-            ioh5 = h5py.File(self.database, 'r')
-            dbset = set(ioh5["seqs"].attrs['samples'])
-            iset = set([i.name for i in samples])
-            diff = iset.difference(dbset)
-            if diff:
-                raise IPyradError("""
+            with h5py.File(self.database, 'r') as ioh5:
+                dbset = set(ioh5["seqs"].attrs['samples'])
+                iset = set([i.name for i in samples])
+                diff = iset.difference(dbset)
+                if diff:
+                    raise IPyradError("""
     The following Samples do not appear to have been clustered in step6
     (i.e., they are not all in {}): 
     Missing: {}
@@ -1007,6 +1010,14 @@ class Assembly(object):
         except (IOError, ValueError):
             raise IPyradError("""
     Database file {} not found. First run step6""")
+# =======
+#         ## Check if all/none in the right state
+#         if not self.samples_precheck(samples, 7, force):
+#             print("  Skipping: All {} ".format(len(samples))\
+#                  + "selected Samples. No samples ready for writing output. "\
+#                  + "Run step6() first.")
+#             return
+# >>>>>>> a5ad6207267252def7ae1388bb325a721cc9e4a1
 
         if not force:
             try:
@@ -1286,10 +1297,8 @@ def expander(namepath):
     if "~" in namepath:
         namepath = namepath.replace("~", os.path.expanduser("~"))
     if "../" in namepath:
-        _, post = namepath.split("../")
         namepath = os.path.abspath(
-                    os.path.join(
-                        os.path.dirname(""), '..', post))
+                    glob.glob(namepath)[0])
 
     elif "./" in namepath:
         _, post = namepath.split("./")

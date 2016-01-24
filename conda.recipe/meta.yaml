@@ -22,6 +22,7 @@ requirements:
     - dill
     - pandas
     - mpi4py
+    - psutil
   run:
     - numpy >=1.7
 
