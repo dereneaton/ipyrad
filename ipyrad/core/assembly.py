@@ -1278,10 +1278,8 @@ def expander(namepath):
     if "~" in namepath:
         namepath = namepath.replace("~", os.path.expanduser("~"))
     if "../" in namepath:
-        _, post = namepath.split("../")
         namepath = os.path.abspath(
-                    os.path.join(
-                        os.path.dirname(""), '..', post))
+                    glob.glob(namepath)[0])
 
     elif "./" in namepath:
         _, post = namepath.split("./")
