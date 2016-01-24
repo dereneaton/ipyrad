@@ -49,15 +49,14 @@ class Sample(object):
         self.statsfiles = ObjDict({
               "s1": pd.Series(index=["reads_raw"]),
               "s2": pd.Series(index=["reads_raw",
-                                     "filter_qscore",
-                                     "filter_adapter",
+                                     "filtered_by_qscore",
+                                     "filtered_by_adapter",
                                      "reads_passed"]),
-              "s3": pd.Series(index=["reads_raw",
-                                     "clusts_total",
-                                     "clusts_hidepth",
-                                     "avg.depth.tot",
-                                     "avg.depth>mj",
-                                     "avg.depth>stat"]),
+              "s3": pd.Series(index=["clusters_total",
+                                     "clusters_hidepth",
+                                     "avg_depth_tot",
+                                     "avg_depth_mj",
+                                     "avg_depth_stat"]),
               "s4": pd.Series(index=["hetero_est",
                                      "error_est"]),
               "s5": pd.Series(index=["nclusters",
@@ -75,21 +74,6 @@ class Sample(object):
 
         ## store cluster depth information (biggest memory cost)
         self.depths = []
-
-
-    def __getstate__(self):
-        return self.__dict__
-
-    def __setstate__(self, dicto):
-        if dicto == 'name':
-            if self.stats.state:
-                if self.stats.state > 1:
-                    raise IPyradError("""
-    Sample names cannot be changed after step2 without breaking file paths""")
-                else:
-                    self.__dict__.update(dicto)
-        else:
-            self.__dict__.update(dicto)
 
     #def save(self):
     #    """ pickle the data object """
