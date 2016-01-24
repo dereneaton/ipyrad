@@ -206,7 +206,6 @@ def consensus(args):
             raise IPyradError("clustfile formatting error in %s", chunk)
 
         if chunk:
-            #LOGGER.debug("%s %s", done, chunk)            
             ## get names and seqs
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
@@ -225,23 +224,21 @@ def consensus(args):
                 ## get consens call for each site, paralog site filter
                 consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
 
+                ## apply a filter to remove low coverage sites/Ns that
+                ## are likely sequence repeat errors.
+                consens, arrayed = removerepeats(consens, arrayed)
+
                 ## get hetero sites
                 hidx = [i for (i, j) in enumerate(consens) \
                         if j in list("RKSYWM")]
                 nheteros = len(hidx)
-                counters["heteros"] += nheteros
+
                 ## filter for max number of hetero sites
                 if nfilter2(data, nheteros):
-                    ## apply a filter to remove low coverage sites/Ns that
-                    ## are likely sequence repeat errors.
-                    consens, arrayed = removerepeats(consens, arrayed)
-
                     ## filter for maxN, & minlen 
                     if nfilter3(data, consens):
-
                         ## filter for max alleles and get lower case in consens
-                        res = nfilter4(data, consens, hidx, arrayed)
-                        consens, passed = res
+                        consens, passed = nfilter4(data, consens, hidx, arrayed)
 
                         if passed:
                             ## store a reduced array with only CATG
@@ -252,7 +249,8 @@ def consensus(args):
                             ## store data for tmpchunk
                             storeseq[counters["name"]] = consens
                             counters["name"] += 1
-                            counters["nconsens"] += 1                                
+                            counters["nconsens"] += 1
+                            counters["heteros"] += nheteros                            
                         else:
                             #LOGGER.debug("@maxn")
                             filters['maxhaplos'] += 1
@@ -332,31 +330,35 @@ def nfilter4(data, consens, hidx, arrayed):
 
     ## store base calls for hetero sites
     harray = arrayed[:, hidx]
-    LOGGER.debug("harray1 %s", harray)
+    #LOGGER.debug("h array %s", harray)
 
     ## remove any rows that have N base calls at hetero sites
     harray = harray[~numpy.any(harray == "N", axis=1)]
-    LOGGER.debug("harray2 %s", harray)
+    #LOGGER.debug("h array w/o Ns %s", harray)
 
-    ## remove low freq alleles, since they make reflect sequencing errors
+    ## remove low freq alleles if more than 2, since they may reflect 
+    ## sequencing errors instead of true heteros
     totdepth = harray.shape[0]
     cutoff = max(1, totdepth // 4)
     ccx = Counter([tuple(i) for i in harray])
-    alleles = [i for i in ccx if ccx[i] > cutoff]
+    if len(ccx) > 2:
+        alleles = [i for i in ccx if ccx[i] > cutoff]
+    else:
+        alleles = ccx.keys()
     
-    ## info
+    ## info on dropped alleles
     dropped = [i for i in ccx if ccx[i] <= cutoff]
-    LOGGER.debug("low freq alleles: %s", dropped)
-    assert len(alleles[0]) == len(hidx)
+    LOGGER.debug("low freq (dpt=%s) alleles: %s", cutoff, dropped)
+    assert len(alleles[0]) == len(hidx), "haplo filter error"
 
     ## how many high depth alleles?
     if len(alleles) > data.paramsdict["max_alleles_consens"]:
         return consens, 0
     else:
         ## store order of alleles with lower case lettering in consens
-        consens = storealleles(consens, hidx, alleles)
+        if len(alleles) == 2:
+            consens = storealleles(consens, hidx, alleles)
         return consens, 1
-
 
 
 def storealleles(consens, hidx, alleles):
@@ -364,8 +366,17 @@ def storealleles(consens, hidx, alleles):
     ## find the first hetero site and choose the priority base
     ## example, if W: then priority base in T and not A. PRIORITY=(order: CATG)
     LOGGER.debug("consens %s", consens)
-    LOGGER.debug("alleles %s", alleles)    
-    bigbase = PRIORITY[consens[hidx[0]]]
+    LOGGER.debug("alleles %s", alleles)
+
+    try:
+        bigbase = PRIORITY[consens[hidx[0]]]
+    except (KeyError, IndexError) as inst:
+        LOGGER.error("""
+    consens: %s
+    alleles: %s
+    hidx: %s
+    """, consens, alleles, hidx)
+        raise inst
 
     ## find which allele has priority based on bigbase
     bigallele = [i for i in alleles if i[0] == bigbase][0]
@@ -383,7 +394,6 @@ def storealleles(consens, hidx, alleles):
 
     ## return consens as a string
     return "".join(consens)
-
 
 
 def basecall(site, data):
@@ -615,8 +625,6 @@ def run_full(data, sample, ipyclient):
             with open(chunkhandle, 'wb') as outchunk:
                 outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
             num += 1
-            #LOGGER.info("chunking len:%s, done:%s, num:%s", \
-            #             len(chunk), done, num)
 
     ## close clusters handle
     clusters.close()
