@@ -16,6 +16,7 @@ import sys
 import gzip
 import dill
 import copy
+import h5py
 import itertools
 import subprocess
 import pandas as pd
@@ -112,7 +113,7 @@ class Assembly(object):
         self.statsfiles = ObjDict({})
 
         ## samples linked 
-        self.samples = ObjDict()
+        self.samples = {}#ObjDict()
 
         ## samples linked 
         self.populations = ObjDict()
@@ -197,20 +198,11 @@ class Assembly(object):
                       #dtype=[int, int, int, int, int, float, float, int])
 
     #@property
-    def statsfile(self, idx):
+    def build_stat(self, idx):
         """ Returns a data frame with Sample stats for each step """
         nameordered = self.samples.keys()
         nameordered.sort()
         return pd.DataFrame([self.samples[i].statsfiles[idx] \
-                      for i in nameordered], 
-                      index=nameordered).dropna(axis=1, how='all')
-
-    @property
-    def s1(self):
-        """ Returns a data frame with Sample stats for step1 """
-        nameordered = self.samples.keys()
-        nameordered.sort()
-        return pd.DataFrame([self.samples[i].statsfiles["s1"] \
                       for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
@@ -616,23 +608,21 @@ class Assembly(object):
         ## If not forcing, test for file and bail out if it exists
         if not force:
             if os.path.isfile(outfile):
-                LOGGER.error("Assembly.write_params() attempting to write"\
-                            + " a file that already exists - {}".format(outfile))
-                LOGGER.error("Use write_params(force=True) to override")
-                raise IPyradError("File exists: {}. \nUse force=True to overwrite.".format(outfile))
+                raise IPyradError("""
+    File exists: {}
+    Use force=True to overwrite.""".format(outfile))
 
         with open(outfile, 'w') as paramsfile:
-
             ## Write the header. Format to 80 columns
             header = "------ ipyrad params file (v.{})".format(ip.__version__)
             header += ("-"*(80-len(header)))
             paramsfile.write(header)
 
             ## Whip through the current paramsdict and write out the current
-            ## param value, the ordered dict index number (paramsinfo is 1-based,
-            ## so we have to increment the index we think it is. Also get the short 
-            ## description from paramsinfo. Make it look pretty, pad nicely 
-            ## if at all possible.
+            ## param value, the ordered dict index number (paramsinfo is 
+            ## 1-based, so we have to increment the index we think it is. Also 
+            ## get the short description from paramsinfo. Make it look pretty, 
+            ## pad nicely if at all possible.
             for key, val in self.paramsdict.iteritems():
                 ## If multiple elements, write them out comma separated
                 if isinstance(val, list) or isinstance(val, tuple):
@@ -650,7 +640,9 @@ class Assembly(object):
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
         if (newname == self.name) or (os.path.exists(newname+".assembly")):
-            print("Assembly object named {} already exists".format(newname))
+            print("""
+    Assembly object named {} already exists""".format(newname))
+
         else:
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
@@ -662,28 +654,23 @@ class Assembly(object):
             return newobj
 
 
+    def save(self, path=None):
+        """ 
+        Save Assembly object to disk as a serialized Pickle (.assembly file).
+        Used for checkpointing, ipyrad autosaves after every assembly step.
 
-    def filetree(self):
-        """ prints the project data structure. TODO: this needs work.
-        prints way too much other junk if [work] is home dir. """
-        startpath = self.paramsdict["working_directory"]
-        for root, _, files in os.walk(startpath):
-            level = root.replace(startpath, '').count(os.sep)
-            indent = ' ' * 4 * (level)
-            print('{}{}/'.format(indent, os.path.basename(root)))
-            subindent = ' ' * 4 * (level + 1)
-            for fname in files:
-                print('{}{}'.format(subindent, fname))
+        Parameters
+        ----------
+        path : str
+            path to save Assembly. Default is [workingdir]/[name].assembly
 
-
-
-    def _save(self):
-        """ Pickle the Assembly object. Could be used for checkpointing before
-        and after assembly steps. Currently it is called after assembly steps.
         """
-        dillout = open(os.path.join(
-                          self.paramsdict["working_directory"],
-                          self.name+".assembly"), "wb")
+        if not path:
+            path = os.path.join( 
+                        self.paramsdict["working_directory"],
+                        self.name+".assembly")
+
+        dillout = open(path, "wb")
         dill.dump(self, dillout)
         dillout.close()
 
@@ -754,10 +741,10 @@ class Assembly(object):
         except (ipp.TimeoutError, ipp.NoEnginesRegistered):
             ## maybe different messages depending on whether it is CLI or API
             inst = """
-        Check to ensure ipcluster is running. When using the API you must start
-        ipcluster outside of IPython/Jupyter to launch parallel engines using
-        either `ipcluster start`, or in the Clusters tab in a Jupyter notebook.
-        (See Docs)
+    Check to ensure ipcluster is running. When using the API you must start
+    ipcluster outside of IPython/Jupyter to launch parallel engines using
+    either `ipcluster start`, or in the Clusters tab in a Jupyter notebook.
+    (See Docs)
             """
             ## raise right away since there is no ipyclient to close
             raise IPyradError(inst)
@@ -787,9 +774,9 @@ class Assembly(object):
         except IPyradWarningExit as inst:
             print(inst)
 
-        #except Exception as inst:
-        #    print("Exception:", inst)
-        #    raise inst
+        except Exception as inst:
+            print("Exception:", inst)
+            raise inst
 
         ## close client when done or interrupted
         finally:
@@ -797,7 +784,7 @@ class Assembly(object):
             try:
                 ipyclient.close()
                 ## pickle the data obj
-                self._save()                
+                self.save()                
             except UnboundLocalError:
                 pass
 
@@ -849,12 +836,11 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        ## Test if all are already raw edited
         if not force:
             ## skip if all are finished
             if all([i.stats.state >= 2 for i in samples]):
-                print("  Skipping: All {} ".format(len(samples))\
-                     +"selected Samples already edited.")
+                print("""
+    Skipping: All {} selected Samples already edited.""".format(len(samples)))
                 return
 
         ## pass samples to rawedit
@@ -871,53 +857,55 @@ class Assembly(object):
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             if not self.paramsdict['reference_sequence']:
-                raise IPyradError("Reference or hybrid assembly requires a "+\
-                                  "value for reference_sequence_path paramter.")
-
-            ## index the reference sequence
-            ## Allow force to reindex the reference sequence
-            index_reference_sequence(self, force)
+                raise IPyradError("""
+    {} assembly method requires a value for reference_sequence_path.
+    """).format(self.paramsdict["assembly_method"])
+            else:
+                ## index the reference sequence
+                ## Allow force to reindex the reference sequence
+                index_reference_sequence(self, force)
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 3, force):
-            sys.exit("  No Samples ready to be clustered. First run step2().")
+            raise IPyradError("""
+    No Samples ready to be clustered. First run step2().""")
+
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 3 for i in samples]):
-                print("  Skipping: All {} ".format(len(samples))\
-                     +"selected Samples already clustered")
+                print("""
+    Skipping: All {} selected Samples already clustered""".\
+    format(len(samples)))
                 return
 
+        ## run the step function
         assemble.cluster_within.run(self, samples, noreverse, 
                                     force, preview, ipyclient)
 
 
     def _step4func(self, samples, subsample, force, ipyclient):
-        """ step 4: Joint estimation of error rate and heterozygosity. 
-        If you want to overwrite data for a file, first set its state to 3:
-        data.samples['sample'].stats['state'] = 3 """
+        """ hidden wrapped function to start step 4 """
+
         if self._headers:
             print("  Step4: Joint estimation of error rate and heterozygosity")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        ## if keys are in list
-        #if any([isinstance(i, str) for i in samples]):
-            ## make into a subsampled sample dict
-        #    subsamples = {i: self.samples[i] for i in samples}
-
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 4, force):
-            sys.exit("  No Samples ready for joint estimation. First run step3().")
+            raise IPyradError("""
+    No Samples ready for joint estimation. First run step3().""")
+
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 4 for i in samples]):
-                print("  Skipping: All {} ".format(len(samples))\
-                     +"selected Samples already joint estimated")
+                print("""
+    Skipping: All {} selected Samples already joint estimated""".\
+    format(len(samples)))
                 return
 
         ## send to function
@@ -935,12 +923,15 @@ class Assembly(object):
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 5, force):
-            sys.exit("  No Samples ready for consensus calling. First run step4().")
+            raise IPyradError("""
+    No Samples ready for consensus calling. First run step4().""")
+
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 5 for i in samples]):
-                print("  Skipping: All {} ".format(len(samples))\
-                     +"selected Samples already consensus called")
+                print("""
+    Skipping: All {} selected Samples already consensus called""".\
+    format(len(samples)))
                 return
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
@@ -953,19 +944,24 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
+        ## print CLI header
         if self._headers:
-            print("  Step6: Clustering across {} samples at {} similarity".\
-            format(len(samples), self.paramsdict["clust_threshold"]))
+            print(\
+    "  Step6: Clustering across {} samples at {} similarity".\
+    format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 6, force):
-            sys.exit("  No Samples ready for clustering. First run step5().")
+            raise IPyradError(\
+    "  No Samples ready for clustering. First run step5().")
+
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 6 for i in samples]):
-                print("  Skipping: All {} ".format(len(samples))\
-                     +"selected Samples already clustered.")
-                return
+                print(\
+    "  Skipping: All {} selected Samples already clustered."\
+    .format(len(samples)))
+                return 
 
         ## attach filename for all reads database
         self.database = os.path.join(self.dirs.consens, self.name+".hdf5")
@@ -973,8 +969,8 @@ class Assembly(object):
         ## check for existing and force
         if not force:
             if os.path.exists(self.database):
-                print("  Skipping step6: Clust file already exists:"\
-                      +"{}\n".format(self.database))
+                print(\
+    "  Skipping step6: Clust file already exists: {}\n".format(self.database))
             else:
                 assemble.cluster_across.run(self, samples, noreverse,
                                             force, randomseed, ipyclient)
@@ -989,26 +985,38 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        ## Check if all/none in the right state
-        if not self.samples_precheck(samples, 7, force):
-            sys.exit("  Skipping: All {} ".format(len(samples))\
-                 + "selected Samples. No samples ready for writing output. "\
-                 + "Run step6() first.")
+        ## Check if all/none of the samples are in the self.database
+        try:
+            ioh5 = h5py.File(self.database, 'r')
+            dbset = set(ioh5["seqs"].attrs['samples'])
+            iset = set([i.name for i in samples])
+            diff = iset.difference(dbset)
+            if diff:
+                raise IPyradError("""
+    The following Samples do not appear to have been clustered in step6
+    (i.e., they are not all in {}): 
+    Missing: {}
+    Check for typos in Sample names, or try running step6 including all of 
+    the selected samples."""\
+    .format(self.database, ", ".join(list(diff))))
+
+        except (IOError, ValueError):
+            raise IPyradError("""
+    Database file {} not found. First run step6""")
 
         if not force:
             try:
                 if os.path.exists(self.dirs.outfiles):
-                    print(\
-    "  Step 7: Cowardly refusing to overwrite existing output directory {}".\
-                    format(self.dirs.outfiles))
-                    print(\
-    "  Step 7: rerun with `force=True` to overwrite")
-                    sys.exit()
+                    raise IPyradError("""
+    Step 7: Cowardly refusing to overwrite existing output directory {} 
+    rerun with `force=True` to overwrite.""".format(self.dirs.outfiles))
+            
             except AttributeError as _:
                 ## If not force and directory doesn't exist then nbd.
                 pass
 
         assemble.write_outfiles.run(self, samples, force, ipyclient)
+
 
 
     def samples_precheck(self, samples, mystep, force):
@@ -1018,20 +1026,20 @@ class Assembly(object):
 
             mystep is the state produced by the current step.
         """
-
         subsample = []
         for sample in samples:
             if sample.stats.state < mystep - 1:
-                LOGGER.debug("Sample {} not in proper state.".format(sample.name))
+                LOGGER.debug("Sample {} not in proper state."\
+                             .format(sample.name))
             else:
                 subsample.append(sample)
-
         return subsample
         
 
     def step1(self, force=False, preview=False):
-        """ test """
+        """ docsting ... test """
         self._clientwrapper(self._step1func, [force, preview], 10)
+
 
     def step2(self, samples=None, nreplace=True, force=False, preview=False):
         """ 
@@ -1221,7 +1229,7 @@ def _get_samples(self, samples):
     output is a list of sample objects."""
     ## if samples not entered use all samples
     if not samples:
-        samples = self.samples.keys()
+        samples = self.samples.keys()        
 
     ## Be nice and allow user to pass in only one sample as a string, 
     ## rather than a one element list. When you make the string into a list
