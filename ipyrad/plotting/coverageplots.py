@@ -76,8 +76,9 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
 
         # heights = np.column_stack((sdat,mdat,edat))
         axes.bars(sdat)
-        axes.bars(mdat)
         axes.bars(edat)
+        axes.bars(mdat)
+
 
     ## return objects to be saved...
     if outprefix:
