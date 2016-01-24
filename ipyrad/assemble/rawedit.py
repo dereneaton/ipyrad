@@ -494,8 +494,8 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
 
 
 
-def cleanup(data, sample, submitted, results):
-    """ cleaning up one sample """
+def sample_cleanup(data, sample, submitted, results):
+    """ cleaning up for one sample """
 
     ## rejoin chunks
     combs1 = glob.glob(os.path.join(
@@ -530,11 +530,6 @@ def cleanup(data, sample, submitted, results):
                     out.write(infile.read())
                 os.remove(fname)
 
-    ## should be in assembly_cleanup
-    tmpdir = os.path.join(data.dirs.working, "tmpchunks")
-    if os.path.exists(tmpdir):
-        shutil.rmtree(tmpdir)
-
     ## record results
     fcounts = {"orig": 0,
                "quality": 0,
@@ -549,88 +544,98 @@ def cleanup(data, sample, submitted, results):
         fcounts["adapter"] += counts["adapter"]
         fcounts["keep"] += counts["keep"]
 
-    outhandle = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
-    ## find longest name to make printing code block
-    longestname = max([len(i) for i in data.samples.keys()])
-    printblock = "{:<%d}  {:>13} {:>13} {:>13} {:>13}\n" % (longestname + 4)
+    ## store full s2 stats
+    sample.statsfiles.s2["reads_raw"] = fcounts["orig"]
+    sample.statsfiles.s2["filtered_by_qscore"] = fcounts["quality"]
+    sample.statsfiles.s2["filtered_by_adapter"] = fcounts["adapter"]
+    sample.statsfiles.s2["reads_passed"] = fcounts["keep"]
 
-    if not os.path.exists(outhandle):
-        with open(outhandle, 'w') as outfile:
-            outfile.write(printblock.format("sample", "Nreads_orig", 
-                    "filter_qscore", "filter_adapter", "Nreads_kept"))
-
-    ## append stats to file
-    outfile = open(outhandle, 'a+')
-    outfile.write(printblock.format(sample.name, 
-                                    str(fcounts["orig"]),
-                                    str(fcounts["quality"]),
-                                    str(fcounts["adapter"]), 
-                                    str(fcounts["keep"])))
-    outfile.close()
-
-    ## always overwrite stats b/c even if multiple fastq
-    ## files it concatenates them before running.
+    ## store summary stats
     sample.stats.reads_filtered = fcounts["keep"]
 
     ## save stats to Sample if successful
     if sample.stats.reads_filtered:
         sample.stats.state = 2
-        sample.files.edits.append((handle1, handle2))
-        sample.files.edits = list(set(sample.files.edits))
-
+        sample.files.edits = [(handle1, handle2)]
     else:
         print("No reads passed filtering in Sample: {}".format(sample.name))
 
 
 
+def assembly_cleanup(data):
+    """ cleanup for assembly object """
+
+    ## remove tmpchunks dir
+    tmpdir = os.path.join(data.dirs.working, "tmpchunks")
+    if os.path.exists(tmpdir):
+        shutil.rmtree(tmpdir)
+
+    ## build s2 results data frame
+    data.statsfiles.s2 = data.build_stat("s2")
+
+    ## write stats for all samples
+    outhandle = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
+    with open(outhandle, 'w') as outfile:
+        data.statsfiles.s2.to_string(outfile)
+
+
+
 def run(data, samples, nreplace, force, preview, ipyclient):
     """ run the major functions for editing raw reads """
-    ## print warning if skipping all samples
+
+    ## hold samples that pass
+    subsamples = []
+
+    ## filter the samples again
     if not force:
-        if all([i.stats.state >= 2 for i in samples]):
-            print("  Skipping step2: All {} ".format(len(data.samples))\
-                 +"Samples already filtered in `{}`".format(data.name))
-            print("  Use `force` to overwrite (-f or force=True)")
-            
-        else:
-            for sample in samples:
-                if sample.stats.state >= 2:
-                    print("  Skipping Sample {}; ".format(sample.name)
-                         +"Already filtered. Use force=True to overwrite.")
-                elif sample.stats.reads_raw < 100:
-                    print("  Skipping Sample {}; ".format(sample.name)
-                         +"Too few reads ({}). Use force=True to overwrite.".\
-                           format(sample.stats.reads_raw))
-                else:
-                    submitted, results = run_sample(data, sample, nreplace, 
-                                                  preview, ipyclient)
-                    cleanup(data, sample, submitted, results)
+        for sample in samples:
+            if sample.stats.state >= 2:
+                print("""
+    Skipping Sample {}; Already filtered. Use force=True to overwrite.""".\
+    format(sample.name))
+
+            elif sample.stats.reads_raw < 100:
+                print("""
+    Skipping Sample {}; Too few reads ({}). Use force=True to overwrite.""".\
+    format(sample.name, sample.stats.reads_raw))
+
+            else:
+                subsamples.append(sample)
+
     else:
         for sample in samples:
             if not sample.stats.reads_raw:
-                print("  Skipping Sample {}; ".format(sample.name)
-                     +"No reads found in file {}".\
-                     format(sample.files.fastqs))
+                print("""
+    Skipping Sample {}; No reads found in file {}""".\
+    format(sample.name, sample.files.fastqs))
+
             else:
-                submitted, results = run_sample(data, sample, nreplace, 
-                                              preview, ipyclient)
-                cleanup(data, sample, submitted, results)
+                subsamples.append(sample)
+
+    ## RUN THE SAMPLES
+    for sample in subsamples:
+        sub, results = run_sample(data, sample, nreplace, preview, ipyclient)
+        sample_cleanup(data, sample, sub, results)
+    assembly_cleanup(data)
 
 
 
 if __name__ == "__main__":
-    ## run test
+
     import ipyrad as ip
 
-    ## test rad
-    TEST = ip.load_assembly("testrad")
-    TEST.step2(force=True)
+    ## get path to root (ipyrad) dir/ 
+    ROOT = os.path.realpath(
+       os.path.dirname(
+           os.path.dirname(
+               os.path.dirname(__file__))))
 
-    ## test gbs
-    TEST = ip.load_assembly("testgbs")
-    TEST.step2(force=True)
+    ## run tests
+    TESTDIRS = ["test_rad", "test_pairgbs"]
 
-    ## test pairgbs
-    TEST = ip.load_assembly("testpairgbs")
-    TEST.step2(force=True)
+    for tdir in TESTDIRS:
+        TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", tdir, "data1"))
+        TEST.step2(force=True)
+        print(TEST.stats)
 
