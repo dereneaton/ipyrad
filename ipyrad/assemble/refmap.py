@@ -26,14 +26,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 
-def index_reference_sequence(self, force=False):
+def index_reference_sequence(data, force=False):
     """ Attempt to index the reference sequence. This is a little naive
     in that it'll actually _try_ do to the reference every time, but it's
     quick about giving up if it detects the indices already exist. You could
     also test for existence of both index files, but i'm choosing to just let
     smalt do that for us ;) """
 
-    refseq_file = self.paramsdict['reference_sequence']
+    refseq_file = data.paramsdict['reference_sequence']
 
     #TODO: Here test if the indices exist already
     # These are smalt specific index files. We don't ever reference
@@ -44,26 +44,30 @@ def index_reference_sequence(self, force=False):
 
     if os.path.isfile(index_sma) and os.path.isfile(index_smi):
         if force:
-            print("  Force reindexing of reference sequence")
+            print("    Force reindexing of reference sequence")
         else:
-            print("  Reference sequence index exists")
+            print("    Reference sequence index exists")
             return
 
-    msg = "*************************************************************\n"\
-        + "Indexing reference sequence. This only needs to be done once.\n"\
-        + "This should take less than 10 minutes.\n"\
-        + "*************************************************************\n"
+    msg = "    **************************************************************\n"\
+        + "    Indexing reference sequence. This only needs to be done once.\n"\
+        + "    This should take less than 10 minutes.\n"\
+        + "    **************************************************************"
 
     LOGGER.info(msg)
-    print(msg)
-    cmd = self.bins.smalt\
+    if data._headers:
+        print(msg)
+
+    cmd = data.bins.smalt\
         + " index "\
-        + " -k "+ str(self._hackersonly["smalt_index_wordlen"])\
+        + " -k "+ str(data._hackersonly["smalt_index_wordlen"])\
         + " " + refseq_file + " " + refseq_file
 
     LOGGER.debug(cmd)
     subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
 
+    if data._headers:
+        print("    Done indexing reference sequence")
 
 
 def mapreads(args):
