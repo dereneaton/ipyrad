@@ -143,15 +143,20 @@ def removerepeats(consens, arrayed):
         ## grab all N and - sites
         if (idepths[nsite]+ndepths[nsite]) < mindepth:
             ridx.append(nsite)
+    
+    pre = arrayed.shape
 
-    #LOGGER.info("ridx -------------------------- %s", arrayed[:, ridx])
-    #LOGGER.info("ridx %s", ridx)
     ## remove repeat sites from shortcon and stacked
     keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
                          if i not in ridx])
-    #keeps = [i for i in range(len(consens)) if i not in ridx]
     consens = "".join(list(consens))
     arrayed = arrayed[:, list(keeps)]
+
+    if arrayed.shape != pre.shape:
+        LOGGER.info("""
+            ridx %s
+            arr shape %s
+            """, ridx, arrayed.shape)
 
     return "".join(consens), arrayed
 
@@ -239,7 +244,6 @@ def consensus(args):
                     if nfilter3(data, consens):
                         ## filter for max alleles and get lower case in consens
                         consens, passed = nfilter4(data, consens, hidx, arrayed)
-
                         if passed:
                             ## store a reduced array with only CATG
                             catg = numpy.array(\
@@ -253,7 +257,7 @@ def consensus(args):
                             counters["heteros"] += nheteros                            
                         else:
                             #LOGGER.debug("@maxn")
-                            filters['maxhaplos'] += 1
+                            filters['haplos'] += 1
                     else:
                         #LOGGER.debug("@haplo")
                         filters['maxn'] += 1
@@ -324,59 +328,79 @@ def nfilter4(data, consens, hidx, arrayed):
     if len(hidx) < 2:
         return consens, 1
 
-    ## only apply if organism is diploid
+    ## only apply if user arg is to apply diploid filter
     if data.paramsdict["max_alleles_consens"] != 2:
         return consens, 1
 
     ## store base calls for hetero sites
     harray = arrayed[:, hidx]
-    #LOGGER.debug("h array %s", harray)
 
-    ## remove any rows that have N base calls at hetero sites
+    ## remove any rows that have N or - base calls at hetero sites
+    harray = harray[~numpy.any(harray == "-", axis=1)]    
     harray = harray[~numpy.any(harray == "N", axis=1)]
-    #LOGGER.debug("h array w/o Ns %s", harray)
+
+    ## get counts of each allele
+    ccx = Counter([tuple(i) for i in harray])
+
+    ## Two potential problems remain
+    ## 1) a third base came up as a sequencing error but is not a unique allele
+    ## 2) a third or more unique allele is there but at low frequency
+
+    # ## get index of any rows that has a base that is not one of the bi-alleles
+    # rrows = numpy.array([])
+    # for hid, col in zip(hidx, xrange(harray.shape[0])):
+    #     ## the two good bases
+    #     iu1, iu2 = AMBIGS[consens[hid]]
+    #     ## find if there is a bad third base
+    #     ww1 = numpy.where(harray[:, col] != iu1)
+    #     ww2 = numpy.where(harray[:, col] != iu2)
+    #     rrow = numpy.intersect1d(ww1, ww2)
+    #     rrows = numpy.append(rrows, rrow)
+
+    # LOGGER.debug("""harray in 4 before
+    # %s 
+    # %s
+    # """, harray, rrows)
+    # ## remove rows
+    # harray = numpy.delete(harray, rrows, axis=0)
+
+    # LOGGER.debug("""harray in 4 after
+    # %s 
+    # """, harray)
 
     ## remove low freq alleles if more than 2, since they may reflect 
     ## sequencing errors instead of true heteros
-    totdepth = harray.shape[0]
-    cutoff = max(1, totdepth // 4)
-    ccx = Counter([tuple(i) for i in harray])
     if len(ccx) > 2:
+        totdepth = harray.shape[0]
+        cutoff = max(1, totdepth // 10)
         alleles = [i for i in ccx if ccx[i] > cutoff]
     else:
         alleles = ccx.keys()
-    
-    ## info on dropped alleles
-    dropped = [i for i in ccx if ccx[i] <= cutoff]
-    LOGGER.debug("low freq (dpt=%s) alleles: %s", cutoff, dropped)
-    assert len(alleles[0]) == len(hidx), "haplo filter error"
 
     ## how many high depth alleles?
-    if len(alleles) > data.paramsdict["max_alleles_consens"]:
+    nalleles = len(alleles)
+
+    ## if 2 alleles then go ahead to find alleles
+    if nalleles > data.paramsdict["max_alleles_consens"]:
         return consens, 0
     else:
-        ## store order of alleles with lower case lettering in consens
-        if len(alleles) == 2:
-            consens = storealleles(consens, hidx, alleles)
-        return consens, 1
+        if nalleles == 2:
+            try:
+                consens = storealleles(consens, hidx, alleles)
+                return consens, 1 
+            except (IndexError, KeyError):
+                ## the H sites do not form good alleles
+                return consens, 0
+        else:
+            return consens, 0            
+
 
 
 def storealleles(consens, hidx, alleles):
     """ store phased allele data for diploids """
     ## find the first hetero site and choose the priority base
     ## example, if W: then priority base in T and not A. PRIORITY=(order: CATG)
-    LOGGER.debug("consens %s", consens)
-    LOGGER.debug("alleles %s", alleles)
-
-    try:
-        bigbase = PRIORITY[consens[hidx[0]]]
-    except (KeyError, IndexError) as inst:
-        LOGGER.error("""
-    consens: %s
-    alleles: %s
-    hidx: %s
-    """, consens, alleles, hidx)
-        raise inst
+    bigbase = PRIORITY[consens[hidx[0]]]
 
     ## find which allele has priority based on bigbase
     bigallele = [i for i in alleles if i[0] == bigbase][0]
