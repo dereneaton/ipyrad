@@ -155,6 +155,7 @@ def fullcomp(seq):
     return seq
 
 
+
 def merge_pairs(data, sample): #, unmerged_files):
     """ 
     Merge PE reads. Takes in a tuple of unmerged files and returns the file 
@@ -209,7 +210,7 @@ def merge_pairs(data, sample): #, unmerged_files):
       +" --fastq_allowmergestagger " \
       +" --fastq_minmergelen "+minlen \
       +" --fastq_maxns "+str(maxn) \
-      +" --fastq_minovlen 12 " \
+      +" --fastq_minovlen 20 " \
       +" --fastq_maxdiffs 4 "
 
     LOGGER.warning(cmd)
@@ -225,9 +226,9 @@ def merge_pairs(data, sample): #, unmerged_files):
 
     ## record how many read pairs were merged
     with open(sample.files.merged, 'r') as tmpf:
-        nmerged = len(tmpf.readlines())
+        sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
-    LOGGER.debug("Merged pairs - %d", nmerged)
+    LOGGER.debug("Merged pairs - %d", sample.stats.reads_merged)
 
     ## Combine the unmerged pairs and append to the merge file
     with open(sample.files.merged, 'ab') as combout:
@@ -268,7 +269,7 @@ def merge_pairs(data, sample): #, unmerged_files):
     os.remove(sample.files.nonmerged1)
     os.remove(sample.files.nonmerged2)
 
-    return sample.files.merged, nmerged
+    return sample
 
 
 ## This is hold-over code from pyrad V3 alignable, it's only used
