@@ -145,6 +145,8 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
         ioh5.close()
 
         ## concatenate finished reads into a tmp file 
+        ## TODO: Remove this output... no longer necessary. Tho it provides
+        ## a decent sanity check.
         outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
         with gzip.open(outhandle, 'wb') as out:
             for fname in clustbits:
@@ -156,7 +158,7 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
         raise
 
     finally:
-        ## still delete tmpfiles if job was interrupted
+        ## still delete tmpfiles if job was interrupted. 
         for path in ["_cathaps.tmp", "_catcons.tmp", ".utemp", ".htemp"]:
             fname = os.path.join(data.dirs.consens, data.name+path)
             if os.path.exists(path):
@@ -249,23 +251,26 @@ def build_h5_array(data, samples, nloci):
                                     #chunks=(nloci/10, len(samples), maxlen, 4),
                                     #compression="gzip")
     supercatg.attrs["samples"] = np.array([i.name for i in samples]) 
+    supercatg.attrs["chunks"] = 1000
 
     ## INIT FULL SEQS ARRAY
     ## array for clusters of consens seqs
     superseqs = ioh5.create_dataset("seqs", (nloci, len(samples), maxlen),
                                      dtype="|S1")
     superseqs.attrs["samples"] = np.array([i.name for i in samples])
+    superseqs.attrs["chunks"] = 1000    
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
     filters = ioh5.create_dataset("filters", (nloci, 4), dtype=np.bool)
-    filters.attrs["filters"] = np.array(["duplicates", "f2", "f3", "f4"])
+    filters.attrs["filters"] = np.array(["duplicates", "indels", "maxSNP", 
+                                         "maxHET", "minsamp",])
+    filters.attrs["chunks"] = 1000        
 
     ## INIT FULL EDGE ARRAY
     ## array for edgetrimming 
-    filters = ioh5.create_dataset("edges", (nloci, 4), dtype=np.uint16)
-    filters.attrs["edges"] = np.array(["R1_L", "R1_R", "R2_L", "R2_R"])
-
+    edges = ioh5.create_dataset("edges", (nloci, 5), dtype=np.uint16)
+    edges.attrs["names"] = np.array(["R1_L", "R1_R", "R2_L", "R2_R", "sep"])
 
     ## RUN SINGLECAT, FILL FILTERS
     ## for each sample fill its own hdf5 array with catg data & indels. 
@@ -278,10 +283,11 @@ def build_h5_array(data, samples, nloci):
             ## TODO: Chunk to allow efficient reading along y axis. 
             indels = indh5["indels"][:, sidx, :]
             ## return which loci were filtered b/c of duplicates.
-            tmpfilter = singlecat(data, sample, nloci, indels)
-            filters[:, 0] += tmpfilter
+            dupfilter, indfilter = singlecat(data, sample, nloci, indels)
+            filters[:, 0] += dupfilter
+            filters[:, 1] += indfilter
 
-    ## FILL SUPERCATG
+    ## FILL SUPERCATG -- TODO: can still parallelize singlecat.
     ## combine indvidual hdf5 arrays into supercatg
     h5handles = []
     for sidx, sample in enumerate(samples):
@@ -299,8 +305,8 @@ def build_h5_array(data, samples, nloci):
     ioh5.close()
 
     ## clean up / remove individual catg files
-    #for handle in h5handles:
-    #    os.remove(handle)
+    for handle in h5handles:
+        os.remove(handle)
     ## remove indels array
     os.remove(ipath)
 
@@ -351,7 +357,8 @@ def singlecat(data, sample, nloci, indels):
     updf.loc[:, 4] = [i.rsplit("_", 1)[1] for i in updf[0]]
 
     ## for each locus in the udic (groups) ask if sample is in it
-    tmpfilter = np.zeros(nloci, dtype=np.bool)
+    dupfilter = np.zeros(nloci, dtype=np.bool)
+    indfilter = np.zeros(nloci, dtype=np.bool)
     udic = updf.groupby(by=1, sort=False)
 
     for iloc, seed in enumerate(udic.groups.iterkeys()):
@@ -364,7 +371,7 @@ def singlecat(data, sample, nloci, indels):
             icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
         elif ask.shape[0] > 1:
             ## store that this cluster failed b/c it had duplicate samples. 
-            tmpfilter[iloc] = True
+            dupfilter[iloc] = True
 
     ## for each locus in which Sample was the seed
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
@@ -378,9 +385,19 @@ def singlecat(data, sample, nloci, indels):
     ## insert indels into new_h5 (icatg array) which now has loci in the same
     ## order as the final clusters from the utemp file
     for iloc in xrange(icatg.shape[0]):
+        ## indels locations
         indidx = np.where(indels[iloc, :])[0]
         if np.any(indidx):
-            LOGGER.debug("insert %s indels into %s", len(indidx), sample.name)
+            ### apply indel filter 
+            #ind1 = len(indidx1) <= data.paramsdict["max_Indels_locus"][0]
+            #ind2 = len(indidx2) <= data.paramsdict["max_Indels_locus"][1]
+            #if ind1 and ind2:
+            #    indfilter[iloc] = True
+            #    print(iloc, ind1, ind2, icatg.shape[0])
+            if len(indidx) < sum(data.paramsdict["max_Indels_locus"]):
+                indfilter[iloc] = True
+
+            ## insert indels into catg array
             newrows = icatg[iloc].shape[0] + len(indidx)
             not_idx = np.array([k for k in range(newrows) if k not in indidx])
             ## create an empty new array with the right dims
@@ -394,7 +411,7 @@ def singlecat(data, sample, nloci, indels):
     new_h5.close()
 
     ## returns tmpfilter 
-    return tmpfilter
+    return dupfilter, indfilter
 
 
 
@@ -603,14 +620,15 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     LOGGER.info("muscle alignment & building indel database")
     multi_muscle_align(data, samples, nloci, clustbits, ipyclient)
 
-    ## builds the final HDF5 array which includs three main keys
+    ## builds the final HDF5 array which includes three main keys
     ## /catg -- contains all indiv catgs and has indels inserted
     ##   .attr['samples'] = [samples]
     ## /filters -- empty for now, will be filled in step 7
-    ##   .attr['filters'] = [f1, f2, f3, f4]
+    ##   .attr['filters'] = [f1, f2, f3, f4, f5]
     ## /seqs -- contains the clustered sequence data as string arrays
     ##   .attr['samples'] = [samples]
     LOGGER.info("building full database")    
+    ## calls singlecat func inside
     build_h5_array(data, samples, nloci)
 
     ## invarcats()
@@ -632,15 +650,21 @@ if __name__ == "__main__":
 
     ## run test on pairgbs data1
     TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_pairgbs", "test_pairgbs"))
+                         ROOT, "tests", "Ron", "Ron"))
     TEST.step6(force=True)
     print(TEST.stats)
 
-    ## run test on rad data1
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_rad", "data1"))
-    TEST.step6(force=True)
-    print(TEST.stats)
+    ## run test on pairgbs data1
+    # TEST = ip.load.load_assembly(os.path.join(\
+    #                      ROOT, "tests", "test_pairgbs", "test_pairgbs"))
+    # TEST.step6(force=True)
+    # print(TEST.stats)
+
+    # ## run test on rad data1
+    # TEST = ip.load.load_assembly(os.path.join(\
+    #                      ROOT, "tests", "test_rad", "data1"))
+    # TEST.step6(force=True)
+    # print(TEST.stats)
 
     ## load test data (pairgbs)
     # DATA = ip.load.load_assembly(\
