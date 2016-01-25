@@ -47,18 +47,23 @@ class Sample(object):
 
         ## stats for each step
         self.statsfiles = ObjDict({
-              "s1": pd.Series(index=["reads_raw"]),
+              "s1": pd.Series(index=["reads_raw",
+                                     ]),
               "s2": pd.Series(index=["reads_raw",
                                      "filtered_by_qscore",
                                      "filtered_by_adapter",
-                                     "reads_passed"]),
-              "s3": pd.Series(index=["clusters_total",
+                                     "reads_passed",
+                                     ]),
+              "s3": pd.Series(index=["merged_pairs",
+                                     "clusters_total",
                                      "clusters_hidepth",
                                      "avg_depth_tot",
                                      "avg_depth_mj",
-                                     "avg_depth_stat"]),
+                                     "avg_depth_stat",
+                                     ]),
               "s4": pd.Series(index=["hetero_est",
-                                     "error_est"]),
+                                     "error_est",
+                                     ]),
               "s5": pd.Series(index=["nclusters",
                                      "depthfilter",
                                      "maxHfilter",
@@ -67,13 +72,19 @@ class Sample(object):
                                      "nconsens",
                                      "nsites",
                                      "nhetero",
-                                     "heterozygosity"]),
+                                     "heterozygosity",
+                                     ]),
               "s6": pd.Series(index=["null"]),
               "s7": pd.Series(index=["null"]),              
           })      
 
         ## store cluster depth information (biggest memory cost)
         self.depths = []
+
+
+    def __str__(self):
+        return "<ipyrad.Sample object {}>".format(self.name)
+
 
     #def save(self):
     #    """ pickle the data object """
