@@ -220,6 +220,8 @@ def optim(args):
     ## get base frequencies
     bfreqs = frequencies(stacked)
     LOGGER.debug(bfreqs)
+    if np.isnan(bfreqs).any():
+        raise IPyradError("Caught sample with bad stack - {} {}".format(sample.name, bfreqs))
 
     ## reshape to concatenate all site rows
     rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
@@ -271,20 +273,23 @@ def run(data, samples, subsample, force, ipyclient):
     for sample in samples:
         if not force:
             if sample.stats.state >= 4:
-                print("skipping {}; ".format(sample.name)+\
+                print("    skipping {}; ".format(sample.name)+\
                       "already estimated. Use force=True to overwrite.")
             elif sample.stats.state < 3:
-                print("skipping {}; ".format(sample.name)+\
+                print("    skipping {}; ".format(sample.name)+\
                       "not clustered yet. Run step3() first.")
             elif sample.stats.clusters_hidepth < 100:
-                print("skipping {}. Too few reads ({}). "\
-                      .format(sample.name, sample.stats.reads_raw)+\
+                print("    skipping {}. Too few high depth reads ({}). "\
+                      .format(sample.name, sample.stats.clusters_hidepth)+\
                       "Use force=True to override")
             else:
                 submitted_args.append([data, sample, subsample])
         else:
             if sample.stats.state < 3:
-                print(sample.name+" not clustered yet. Run step3() first.")
+                print("    "+sample.name+" not clustered yet. Run step3() first.")
+            elif sample.stats.clusters_hidepth < 2:
+                print("    skipping {}. Too few high depth reads ({}). "\
+                      .format(sample.name, sample.stats.clusters_hidepth))
             else:
                 submitted_args.append([data, sample, subsample])
 
@@ -310,6 +315,7 @@ def run(data, samples, subsample, force, ipyclient):
             #         cleanup(data, sample, hest, eest)
             ## now raise the exception
             #print(data.stats)
+            LOGGER.debug("Error in jointestimate - {}".format(inst))
             raise inst
         else:
             ## do standard cleanup of finished samples
