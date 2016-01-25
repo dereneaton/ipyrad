@@ -516,11 +516,12 @@ def make_stats(data, raws):
 def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
-    ## checks on data before starting
-    raws, longbar, cutters, optim = prechecks(data, ipyclient, preview)
 
     ## nested structure to prevent abandoned temp files
     try: 
+        ## checks on data before starting
+        raws, longbar, cutters, optim = prechecks(data, ipyclient, preview)
+        
         ## Truncate the input fq so it'll run faster
         ## This function returns the file name of a truncated
         ## fq file. The file should be cleaned up at the end
@@ -532,7 +533,7 @@ def run(data, preview, ipyclient):
         sample_fastq = []
         if preview:
             warning = """
-    Running preview mode. Selecting subset ({}) of reads for demultiplexing - {}
+    Running preview mode. Selecting subset of ({}) reads for demultiplexing - {}
     """.format(data._hackersonly["preview_truncate_length"], raws)
             if data._headers:
                 print(warning)
@@ -570,7 +571,9 @@ def run(data, preview, ipyclient):
 
         ## make stats
         make_stats(data, raws)
-
+    except Exception as inst:
+        print("Error in demultiplexing - {}".format(inst))
+        raise
     finally:
         ## cleans up chunk files and stats pickles
         tmpdirs = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*"))

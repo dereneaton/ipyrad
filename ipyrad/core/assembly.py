@@ -813,13 +813,22 @@ class Assembly(object):
         ## Creating new Samples
         else:
             ## first check if demultiplexed files exist in sorted path
-            spath = self.paramsdict["sorted_fastq_path"]+"*"
-            if glob.glob(spath):
+            ## test if spath is set before proceeding.
+            if self.paramsdict["sorted_fastq_path"]:
                 if self._headers:
                     print(msg2, "\n  linking files from {}".\
                           format(self.paramsdict["sorted_fastq_path"]))
-                self.link_fastqs(spath)
+                    try:
+                        self.link_fastqs()
                     
+                    except Exception as e:
+                        ## If linking fails raise the exception. Assuming
+                        ## the user entered a path here it means they're bringing
+                        ## their own demultiplexed fastq, so DO NO attempt
+                        ## to demultiplex.
+                        print("  Failed to link fastq files in path {}".\
+                            format(self.paramsdict["sorted_fastq_path"]))
+                        raise
             ## otherwise do the demultiplexing
             else:
                 if self._headers:

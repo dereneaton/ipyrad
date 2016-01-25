@@ -314,8 +314,8 @@ def build_clusters(data, sample):
         for i in xrange(len(values)):
             inserts = int(values[i][3])
             if values[i][1] == "+":
+                fwdseq = hits[values[i][0]][1]
                 if inserts < 6:
-                    fwdseq = hits[values[i][0]][1]
                     seq.append(values[i][0].strip()+"+\n"+fwdseq)
                 else:
                     fwdseq = hits[values[i][0]][1]                    

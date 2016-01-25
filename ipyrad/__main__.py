@@ -79,6 +79,10 @@ def getassembly(args, parsedict):
     parsedict. Does not launch ipcluster. 
     """
 
+    ## Creating an assembly with a full path in the name will "work"
+    ## but it is potentially dangerous, so here we have assembly_name
+    ## and assembly_file, name is used for creating new in cwd, file is
+    ## used for loading existing.
     working_directory = parsedict['1']
     assembly_name = os.path.split(parsedict['1'])[1]
     assembly_file = os.path.join(working_directory, assembly_name)
@@ -87,6 +91,10 @@ def getassembly(args, parsedict):
     if not os.path.exists(working_directory):
         os.mkdir(working_directory)
 
+    ## Get cwd so we can pop back out after creating the new assembly
+    ## We have to push and pop cwd so the assembly object gets created
+    ## inside the working directory.
+    cwd = os.path.realpath(os.path.curdir)
     os.chdir(working_directory)
 
     ## if forcing or doing step 1 then do not load existing Assembly
@@ -104,6 +112,9 @@ def getassembly(args, parsedict):
             LOGGER.info("No current assembly found, create new - {}".\
                         format(assembly_file))
             data = ip.Assembly(assembly_name)
+
+    ## pop directory
+    os.chdir(cwd)
 
     ## for entering some params...
     for param in parsedict:
