@@ -787,7 +787,8 @@ class Assembly(object):
             ## find and re-raise the error
             for job in ipyclient.metadata:
                 if ipyclient.metadata[job]['error']:
-                    raise IPyradError(ipyclient.metadata[job]['error'])
+                    print(ipyclient.metadata[job]['error'])
+                    #raise IPyradError(ipyclient.metadata[job]['error'])
 
         #except Exception as inst:
         #    raise IPyradError("Uncaught Exception: {}".format(inst))
@@ -828,7 +829,7 @@ class Assembly(object):
         else:
             ## first check if demultiplexed files exist in sorted path
             spath = self.paramsdict["sorted_fastq_path"]+"*"
-            if glob.glob(spath):
+            if os.path.exists(spath):
                 if self._headers:
                     print(msg2, "\n  linking files from {}".\
                           format(self.paramsdict["sorted_fastq_path"]))
