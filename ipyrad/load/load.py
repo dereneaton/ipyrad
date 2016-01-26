@@ -136,7 +136,7 @@ def update_assembly(data):
                 new_assembly.paramsdict[i] = data.paramsdict[i]
         data.paramsdict = deepcopy(new_assembly.paramsdict)
 
-    data._save()
+    data.save()
     return data
 
 def save_dataobj():

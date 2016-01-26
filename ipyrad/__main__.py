@@ -83,8 +83,9 @@ def getassembly(args, parsedict):
     ## but it is potentially dangerous, so here we have assembly_name
     ## and assembly_file, name is used for creating new in cwd, file is
     ## used for loading existing.
-    working_directory = parsedict['1']
-    assembly_name = os.path.split(parsedict['1'])[1]
+    working_directory = ip.core.assembly.expander(parsedict['1'])
+    ## rstrip to remove any pesty trailing slashes
+    assembly_name = os.path.split(working_directory.rstrip("/"))[1]
     assembly_file = os.path.join(working_directory, assembly_name)
 
     ## make sure the working directory exists.
@@ -105,7 +106,7 @@ def getassembly(args, parsedict):
         ## try loading an existing one
         try:
             #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_file, launch=False)
+            data = ip.load.load_assembly(assembly_name, launch=False)
 
         ## if not found then create a new one
         except AssertionError:
