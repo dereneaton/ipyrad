@@ -677,7 +677,7 @@ def multi_muscle_align(data, sample, ipyclient):
 
     ## split clust.gz file into nthreads*10 bits cluster bits
     tmpnames = []
-    tmpdir = os.path.join(data.dirs.working, 'tmpalign')
+    tmpdir = os.path.join(data.dirs.working, data.name+'-tmpalign')
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
 
