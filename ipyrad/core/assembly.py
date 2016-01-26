@@ -179,7 +179,7 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 150),
                         ("max_inner_mate_distance", 60),
-                        ("preview_truncate_length", 500000),
+                        ("preview_truncate_length", 4000000),
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 16)
@@ -872,7 +872,7 @@ class Assembly(object):
             if not self.paramsdict['reference_sequence']:
                 raise IPyradError("""
     {} assembly method requires a value for reference_sequence_path.
-    """).format(self.paramsdict["assembly_method"])
+    """.format(self.paramsdict["assembly_method"]))
             else:
                 ## index the reference sequence
                 ## Allow force to reindex the reference sequence
