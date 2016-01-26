@@ -53,7 +53,7 @@ def run(data, samples, force, ipyclient):
 
     LOGGER.info("Convert .loci to all requested output file formats")
     ## Make all requested outfiles from the filtered .loci file
-    make_outfiles(data, samples, force)
+    #make_outfiles(data, samples, force)
 
 
 
@@ -99,11 +99,12 @@ def filter_all_clusters(data, samples, ipyclient):
         nloci = inh5["seqs"].shape[0]
 
     ## make a tmp directory for saving chunked arrays to
-    chunkdir = os.path.join(data.dirs.outfiles, "tmpchunks")
-    os.mkdir(chunkdir)
+    chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
+    if not os.path.exists(chunkdir):
+        os.mkdir(chunkdir)
 
     ## get the indices of the samples that we are going to include
-    sidx = select_samples(data, dbsamples, samples)
+    sidx = select_samples(data, dbsamples, [i.name for i in samples])
 
     ## Split dataset into chunks
     try:
@@ -115,7 +116,7 @@ def filter_all_clusters(data, samples, ipyclient):
         submitted_args = []
         submitted = 0
         while submitted < nloci:
-            hslice = np.int([submitted, submitted+optim])
+            hslice = np.array([submitted, submitted+optim])
             submitted_args.append([data, sidx, hslice])
             submitted += optim
 
@@ -124,13 +125,23 @@ def filter_all_clusters(data, samples, ipyclient):
         results.get()
 
         ## fill the supercat filter array with chunk filters
-        sys.exit(2)
+        ## get all the saved tmp arrays
+
+        ## ...
+        ## load the full filter array
+        ## ...
+        ## iterate over each, fill its values into super filter
+        ## ...
+        ## delete the tmp arrays
+        ## ...
+        ##
+
 
     finally:
         ## clean up the tmp files/dirs
         try:
             print("finished filtering")
-            shutil.rmtree(chunkdir)
+            #shutil.rmtree(chunkdir)
         except (IOError, OSError):
             pass
 
@@ -184,12 +195,12 @@ def filter_stacks(args):
     try:
         ioh5 = h5py.File(data.database, 'r')
         ## get a chunk (hslice) of loci for the selected samples (sidx)
-        #nloci = ioh5["seqs"].attrs["chunks"]
-        superseqs = ioh5["seqs"][hslice, sidx, ]
+        superseqs = ioh5["seqs"][hslice[0]:hslice[1], sidx,]
+        print('sup', superseqs.shape)
 
-        ## get first index of splits for paired reads
-        if "pair" in data.paramsdict["datatype"]:
-            splits = ioh5["edges"][hslice, 5]
+        ## get first index of splits for paired reads. Only need this until 
+        ## get_edges gets the edges
+        splits = ioh5["edges"][hslice[0]:hslice[1], 4]
         
         ## Empty arrays to be filled in used to later fill in the full 
         ## filter array. Filter dims = (nloci, 5)
@@ -206,37 +217,50 @@ def filter_stacks(args):
         ## to the point that they are below the minlen, and so this also 
         ## constitutes a filter, though one that is uncommon. For this reason
         ## we have a filter also called edgfilter. (needs to be added to filter)
-        edgfilter, edges = get_edges(data, superseqs, splits)
-
+        edgfilter, edgearr = get_edges(data, superseqs, splits)
+        del splits
+        LOGGER.debug("edgfilter %s", edgfilter[:5])
         ## duplicates are already filtered during step6.
 
         ## indels are already filtered during step6 (kinda... todo: pair splits)
 
         ## minsamp coverages filtered from superseqs
         minfilter = filter_minsamp(data, superseqs)
+        LOGGER.debug("minfilter %s", minfilter[:5])
 
         ## maxhets per site column from superseqs after trimming edges
-        hetfilter = filter_maxhet(data, superseqs, edges)
+        hetfilter = filter_maxhet(data, superseqs, edgearr)
 
         ## Build the .loci snpstring as an array (snps) 
         ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
-        snpfilter, snps = filter_maxsnp(data, superseqs, splits, edges)
-
-        ## write to chunkdir
-        chunkdir = os.path.join(data.dirs.outfiles, "tmpchunks")
+        snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
 
         ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
-        filters = {"dupfilter": None,
-                   "indfilter": None,
-                   "edgfilter": edgfilter,
-                   "minfilter": minfilter,
-                   "hetfilter": hetfilter,
-                   "snpfilter": snpfilter}
-        results = {"edges": edges,
-                   "snps": snps}
+        chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
 
-        return filters
+        handle = os.path.join(chunkdir, "edgf.{}.npy".format(hslice[0]))
+        with open(handle, 'w') as out:
+            np.save(out, edgfilter)
 
+        handle = os.path.join(chunkdir, "minf.{}.npy".format(hslice[0]))
+        with open(handle, 'w') as out:
+            np.save(out, minfilter)
+
+        handle = os.path.join(chunkdir, "hetf.{}.npy".format(hslice[0]))
+        with open(handle, 'w') as out:
+            np.save(out, hetfilter)
+
+        handle = os.path.join(chunkdir, "snpf.{}.npy".format(hslice[0]))
+        with open(handle, 'w') as out:
+            np.save(out, snpfilter)
+
+        handle = os.path.join(chunkdir, "snpsarr.{}.npy".format(hslice[0]))
+        with open(handle, 'w') as out:
+            np.save(out, snpsarr)
+
+        handle = os.path.join(chunkdir, "edgearr.{}.npy".format(hslice[0]))
+        with open(handle, 'w') as out:
+            np.save(out, edgearr)
 
     except Exception as inst:
         ## Do something real here
@@ -247,7 +271,7 @@ def filter_stacks(args):
         pass
 
     ## Write out .tmp loci
-    write_tmp_loci(data, loci, fname)
+    #write_tmp_loci(data, loci, fname)
 
 
     ## Write out .tmp vcf
@@ -268,11 +292,14 @@ def select_samples(data, dbsamples, samples):
 
     ## remove excludes from the list
     includes = list(set(samples) - set(excludes))
-    excluded = set(samples).union(set(excludes))
+    print('inc', includes)
+    excluded = set(samples).intersection(set(excludes))
     LOGGER.info("Excluded: {}".format(excluded))
 
     ## get index from dbsamples
-    sidx = [dbsamples.index(i) for i in includes]
+    sidx = [list(dbsamples).index(i) for i in includes]
+    sidx.sort()
+    print("sidx: ", sidx)
     return sidx
 
 
@@ -286,10 +313,10 @@ def get_edges(data, superseqs, splits):
     site if it present.
     """
     ## the filtering arg and parse it into minsamp numbers
-    edgetuple = data.paramsdict["edge_trimming"]
-    minsamp = data.paramsdict["minsamp"]
+    edgetuple = data.paramsdict["trim_overhang"]
+    minsamp = data.paramsdict["min_samples_locus"]
     allsamp = superseqs.shape[0]
-    cut1, cut2 = data.paramsdict["restriction_overhangs"]        
+    cut1, cut2 = data.paramsdict["restriction_overhang"]        
 
     ## a local array for storing edge trims
     edges = np.zeros((superseqs.shape[0], 4), dtype=np.int16)
@@ -307,10 +334,13 @@ def get_edges(data, superseqs, splits):
 
     ## get edges for overhang trimming first, and trim cut sites at end
     ## use .get so that if not in 2,3,4 it returns None
-    edgedict = {2: 4,
+    edgedict = {0: None,
+                1: 0,
+                2: 4,
                 3: minsamp,
                 4: allsamp}
     edgemins = [edgedict.get(i) for i in edgetuple]
+    LOGGER.debug("edgemins %s", edgemins)
 
     ## convert all - to N to make this easier
     superseqs[superseqs == "-"] = "N"
@@ -323,32 +353,49 @@ def get_edges(data, superseqs, splits):
     ccx = np.sum(superseqs != "N", axis=1)
 
     for idx, split in enumerate(splits):
-        r1s = ccx[idx, :split]
-        r2s = ccx[idx, split+4:]
+        if split:
+            r1s = ccx[idx, :split]
+            r2s = ccx[idx, split+4:]
+        else:
+            r1s = ccx[idx, ]
 
         ## set default values
         edge0 = edge1 = edge2 = edge3 = 0
+        
         ## if edge trim fails then locus is filtered
         try:
             edge0 = np.where(r1s > edgemins[0])[0].min()
             edge1 = np.where(r1s > edgemins[1])[0].max()
         except ValueError:
             edgefilter[idx] = True
+        #LOGGER.debug("edge0 %s", edge0)
+        #LOGGER.debug("edge1 %s", edge1)        
+
         ## filter cut1
         if edgetuple[0]:
-            edge0 = edge1+len(cut1)
+            edge0 = edge0+len(cut1)
 
-        if "pair" in data.paramsdict["datatype"]:
+        ## if split then do the second reads separate
+        if split:
             try:
                 edge2 = np.where(r2s > edgemins[2])[0].min()
                 edge3 = np.where(r2s > edgemins[3])[0].max()
             except ValueError:
                 edgefilter[idx] = True
+            #LOGGER.debug("edge0 %s", edge0)
+            #LOGGER.debug("edge1 %s", edge1)        
+            
             ## filter cut2
             if edgetuple[3]:
                 edge3 = edge3-len(cut2)
+        
         ## store edges
         edges[idx] = np.array([edge0, edge1, edge2, edge3])
+
+        ## assertions
+        assert edge0 < edge1 
+        if split:
+            assert edge2 < edge3
 
     return edgefilter, edges
 
@@ -360,10 +407,12 @@ def filter_minsamp(data, superseqs):
     """
     ## the minimum filter
     minsamp = data.paramsdict["min_samples_locus"]
-    ## ask which are not all N along sequence dimension, then sum along sample 
+    ## ask which rows are not all N along seq dimension, then sum along sample 
     ## dimension to get the number of samples that are not all Ns.
     ## minfilt is a boolean array where True means it failed the filter.
-    minfilt = np.all(superseqs != "N", axis=2).sum(axis=1) < minsamp
+    minfilt = np.sum(~np.all(superseqs == "N", axis=2), axis=1) < minsamp
+    LOGGER.debug("minfilt %s", minfilt)
+
     ## print the info
     LOGGER.info("Filtered by min_samples_locus - {}".format(minfilt.sum()))
     return minfilt
@@ -412,41 +461,46 @@ def filter_maxsnp(data, superseqs, edges):
 
     ## an empty array to fill with failed loci
     snpfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
+    snpsarr = np.zeros((superseqs.shape[0], superseqs.shape[2], 2), 
+                       dtype=np.bool)
 
     ## get the per site snp string (snps) shape=(chunk, maxlen)
-    if "pair" not in data.paramsdict["datatype"]:
-        snps = np.apply_along_axis(ucount, 1, superseqs)
+    snps = np.apply_along_axis(ucount, 1, superseqs)
+    ## fill snps array
+    snpsarr[:, :, 0] = snps == "-"
+    snpsarr[:, :, 1] = snps == "*"
 
-        ## count how many snps are within the edges and fill snpfilt
-        for idx, edg in edges:
-            nsnps = np.sum(snps[idx, edg[0]:edg[1]])
-            if nsnps > maxs1:
-                snpfilt[idx] = True
+    ## count how many snps are within the edges and fill snpfilt
+    for idx, edg in enumerate(edges):
+        nsnps = snpsarr[idx, edg[0]:edg[1]].sum(axis=1).sum()
+        if nsnps > maxs1:
+            snpfilt[idx] = True
 
     ## do something much slower for paired data, iterating over each locus and 
     ## splitting r1s from r2s and treating each separately.
-    else:
-        for idx, split, edg in enumerate(zip(splits, edges)):
-            r1s = np.apply_along_axis(\
-                                ucount, 1, superseqs[idx, :, edg[0]:edg[1]])
-            r2s = np.apply_along_axis(\
-                                ucount, 1, superseqs[idx, :, edg[2]:edg[3]])
-            return r1s, r2s
-    #         np.sum(r1s) > maxs1:
-    #             snpfilt[idx] = True
-    #         np.sum(r2s) > maxs2:
-    #             snpfilt[idx] = True
-    # return 0
+    if "pair" in data.paramsdict["datatype"]:
+        for idx, edg in enumerate(edges):
+            nsnps = snpsarr[idx, edg[2]:edg[3]].sum(axis=1).sum()
+            if nsnps > maxs2:
+                snpfilt[idx] = True
+
+    ## return snpsarr and snpfilter
+    return snpfilt, snpsarr
 
 
 
 def filter_maxhet(data, superseqs, edges):
     """ 
     Filter max shared heterozygosity per locus. The dimensions of superseqs
-    are (chunk, len(sidx), maxlen), and splits are saved in the edges.
+    are (chunk, len(sidx), maxlen). Don't need split info since it applies to 
+    entire loci based on site patterns (i.e., location along the seq doesn't 
+    matter.) Current implementation does ints, but does not apply float diff
+    to every loc based on coverage... 
     """
     ## the filter max
-    maxhet = data.paramsdict["max_shared_heterozygosity"]
+    maxhet = data.paramsdict["max_shared_Hs_locus"]
+    if isinstance(maxhet, float):
+        maxhet = superseqs.shape[0]/float(maxhet)
 
     ## an empty array to fill with failed loci
     hetfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
@@ -454,67 +508,15 @@ def filter_maxhet(data, superseqs, edges):
     ## get the per site number of bases in ambig, and get the max per site 
     ## value for each locus, then get boolean array of those > maxhet.
     for idx, edg in enumerate(edges):
-        r1s = np.array(\
+        share = np.array(\
             [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=1)\
             .max() for ambig in "RSKYWM"]).max()
-        r2s = np.array(\
-            [np.sum(superseqs[idx, :, edg[2]:edg[3]] == ambig, axis=1)\
-            .max() for ambig in "RSKYWM"]).max()
-
-        if not "pair" in data.paramsdict["datatype"]:
-            ## if r1 failed then locus fails
-            if not r1s <= maxhet[0]:
-                hetfilt[idx] = True
-        else:
-            ## if r1 or r2 failed then locus fails
-            if not ((r1s <= maxhet[0]) and (r2s <= maxhet[1])):
-                hetfilt[idx] = True
+        ## fill filter
+        if not share <= maxhet:
+            hetfilt[idx] = True
 
     LOGGER.info("Filtered max_shared_heterozygosity- {}".format(hetfilt.sum()))
     return hetfilt
-
-
-
-# def filter_maxindels(data, loci):
-#     """ Filter max # of indels per locus """
-
-#     ## TODO: Fix this to evaluate PE reads individually
-#     mindel = data.paramsdict["max_Indels_locus"]
-
-#     count = 0
-#     for i, loc in enumerate(loci):
-#         ## Get just the sequences
-#         seqs = [x[1] for x in loc]
-#         ## Make counters for each sequence
-#         counts = [Counter(i) for i in seqs]
-#         ## If any sequence has more than the allowable # of indels then toss it
-#         if any([x["-"] > mindel for x in counts]):
-#             loci[i] = []
-#             count += 1
-
-#     ## Filter out the empty lists left in the wake
-#     loci = filter(lambda x: x != [], loci)
-
-#     LOGGER.info("Filterered max indels- {}".format(count))
-#     return loci
-
-
-## This isn't being used
-# def loci_from_unfilteredvcf(data, samples, force):
-#     """ 
-#     Read in the unfiltered vcf and supercatg from step6. Apply filters for
-#     coverage, heterozygosity, number of snps, etc. Write out .loci to output 
-#     directory. """
-#     ## get unfiltered vcf handle
-#     unfiltered_vcf = os.path.join(data.dirs.consens, data.name+".vcf")
-
-#     supercatg = h5py.File(data.database, 'r')
-
-#     # Do filtering: max_shared_heterozygosity, minsamp, maxSNP, etc.
-#     finalfilter(data, samples, supercatg, unfiltered_vcf)
-
-#     ## Write out .loci
-#     locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
 
 
 
@@ -660,11 +662,18 @@ def make_vcfheader(data, samples, outvcf):
 
 if __name__ == "__main__":
     import ipyrad as ip
-    TESTFILE = "/tmp/ipyrad-test/test-refseq.assembly"
-    TESTER = ip.load.load_assembly(TESTFILE)
-#    TESTER = ip.core.assembly.Assembly( "/tmp/ipyrad-test-pair" )
-    TESTER.set_params("output_formats", "vcf,snps")
-    TESTER.get_params()
-    TESTER.set_params("output_formats", "*")
-    TESTER.get_params()
-    TESTER.step7()
+
+    ## get path to test dir/ 
+    ROOT = os.path.realpath(
+       os.path.dirname(
+           os.path.dirname(
+               os.path.dirname(__file__)
+               )
+           )
+       )
+
+    ## run test on pairgbs data1
+    TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", "test_rad", "data1"))
+    TEST.step7(force=True)
+    print(TEST.stats)
