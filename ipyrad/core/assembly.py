@@ -33,8 +33,8 @@ from ipyrad import assemble
 import logging
 LOGGER = logging.getLogger(__name__)
 
-#import sys
 #sys.tracebacklimit = 0
+
 
 class Assembly(object):
     """ An ipyrad Assembly class object.
@@ -94,6 +94,7 @@ class Assembly(object):
 
         ## Store assembly version #
         self._version = ip.__version__ 
+        self._traceback = 0
 
         ## stores ipcluster launch info
         self._ipclusterid = ""
@@ -197,15 +198,6 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
 
-    #@property
-    def build_stat(self, idx):
-        """ Returns a data frame with Sample stats for each step """
-        nameordered = self.samples.keys()
-        nameordered.sort()
-        return pd.DataFrame([self.samples[i].statsfiles[idx] \
-                      for i in nameordered], 
-                      index=nameordered).dropna(axis=1, how='all')
-
     @property
     def files(self):
         """ Returns a data frame with Sample files. Not very readable... """
@@ -214,6 +206,14 @@ class Assembly(object):
         ## replace curdir with . for shorter printing
         #fullcurdir = os.path.realpath(os.path.curdir)
         return pd.DataFrame([self.samples[i].files for i in nameordered], 
+                      index=nameordered).dropna(axis=1, how='all')
+
+    def build_stat(self, idx):
+        """ Returns a data frame with Sample stats for each step """
+        nameordered = self.samples.keys()
+        nameordered.sort()
+        return pd.DataFrame([self.samples[i].statsfiles[idx] \
+                      for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
 
@@ -776,9 +776,24 @@ class Assembly(object):
         except IPyradWarningExit as inst:
             print(inst)
 
-        except Exception as inst:
-            print("Exception:", inst)
-            raise inst
+        ## An Engine Crashed. Raise a readable traceback message.
+        except ipp.error.CompositeError as inst:
+            ## print the trace if it's turned on, tho
+            #if self._traceback:
+            print(inst.print_traceback())
+
+            ## gonna want to hide this ugly trace from the CLI
+            #if not ip.__interactive__:
+            #    sys.tracebacklimit = 0
+
+            ## find and re-raise the error
+            for job in ipyclient.metadata:
+                if ipyclient.metadata[job]['error']:
+                    print(ipyclient.metadata[job]['error'])
+                    #raise IPyradError(ipyclient.metadata[job]['error'])
+
+        #except Exception as inst:
+        #    raise IPyradError("Uncaught Exception: {}".format(inst))
 
         ## close client when done or interrupted
         finally:
@@ -815,8 +830,8 @@ class Assembly(object):
         ## Creating new Samples
         else:
             ## first check if demultiplexed files exist in sorted path
-            ## test if spath is set before proceeding.
-            if self.paramsdict["sorted_fastq_path"]:
+            spath = self.paramsdict["sorted_fastq_path"]+"*"
+            if os.path.exists(spath):
                 if self._headers:
                     print(msg2, "\n  linking files from {}".\
                           format(self.paramsdict["sorted_fastq_path"]))
@@ -1016,35 +1031,27 @@ class Assembly(object):
                 if diff:
                     raise IPyradError("""
     The following Samples do not appear to have been clustered in step6
-    (i.e., they are not all in {}): 
+    (i.e., they are not in {}): 
     Missing: {}
-    Check for typos in Sample names, or try running step6 including all of 
-    the selected samples."""\
+    Check for typos in Sample names, or try running step6 including the 
+    selected samples."""\
     .format(self.database, ", ".join(list(diff))))
 
         except (IOError, ValueError):
             raise IPyradError("""
     Database file {} not found. First run step6""")
-# =======
-#         ## Check if all/none in the right state
-#         if not self.samples_precheck(samples, 7, force):
-#             print("  Skipping: All {} ".format(len(samples))\
-#                  + "selected Samples. No samples ready for writing output. "\
-#                  + "Run step6() first.")
-#             return
-# >>>>>>> a5ad6207267252def7ae1388bb325a721cc9e4a1
 
         if not force:
             try:
                 if os.path.exists(self.dirs.outfiles):
                     raise IPyradError("""
-    Step 7: Cowardly refusing to overwrite existing output directory {} 
-    rerun with `force=True` or -f to overwrite.""".format(self.dirs.outfiles))
-            
-            except AttributeError as _:
-                ## If not force and directory doesn't exist then nbd.
+    Step 7: Cowardly refusing to overwrite existing output directory: 
+    {} 
+    rerun with `force=True` to overwrite.""".format(self.dirs.outfiles))
+            ## If not force and directory doesn't exist then nbd.            
+            except (IOError, AttributeError):
                 pass
-
+        ## Run step7
         assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
@@ -1507,7 +1514,8 @@ def paramschecker(self, param, newvalue):
             print("""
     Warning: barcodes file not found. This must be an absolute path 
     (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory 
-    where you're running ipyrad (./data/data_barcodes.txt). You entered: \n{}
+    where you're running ipyrad (./data/data_barcodes.txt). You entered: 
+    {}
     """.format(fullbarpath))
 
     elif param == 'sorted_fastq_path':

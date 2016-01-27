@@ -250,27 +250,32 @@ def build_h5_array(data, samples, nloci):
                                     dtype=np.uint32)
                                     #chunks=(nloci/10, len(samples), maxlen, 4),
                                     #compression="gzip")
-    supercatg.attrs["samples"] = np.array([i.name for i in samples]) 
-    supercatg.attrs["chunks"] = 1000
+    supercatg.attrs["samples"] = [i.name for i in samples]
+    supercatg.attrs["chunksize"] = 1000
 
     ## INIT FULL SEQS ARRAY
     ## array for clusters of consens seqs
     superseqs = ioh5.create_dataset("seqs", (nloci, len(samples), maxlen),
                                      dtype="|S1")
-    superseqs.attrs["samples"] = np.array([i.name for i in samples])
-    superseqs.attrs["chunks"] = 1000    
+    superseqs.attrs["samples"] = [i.name for i in samples]
+    superseqs.attrs["chunksize"] = 1000    
+
+    ## INIT FULL SNPS ARRAY
+    ## array for snp string, 2 cols, - and *
+    snps = ioh5.create_dataset("snps", (nloci, maxlen, 2), dtype=np.bool)
+    snps.attrs["names"] = ["-", "*"]
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
-    filters = ioh5.create_dataset("filters", (nloci, 4), dtype=np.bool)
-    filters.attrs["filters"] = np.array(["duplicates", "indels", "maxSNP", 
-                                         "maxHET", "minsamp",])
+    filters = ioh5.create_dataset("filters", (nloci, 6), dtype=np.bool)
+    filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
+                                "max_hets", "min_samps", "bad_edges"]
     filters.attrs["chunks"] = 1000        
 
     ## INIT FULL EDGE ARRAY
     ## array for edgetrimming 
     edges = ioh5.create_dataset("edges", (nloci, 5), dtype=np.uint16)
-    edges.attrs["names"] = np.array(["R1_L", "R1_R", "R2_L", "R2_R", "sep"])
+    edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
 
     ## RUN SINGLECAT, FILL FILTERS
     ## for each sample fill its own hdf5 array with catg data & indels. 
@@ -660,11 +665,11 @@ if __name__ == "__main__":
     # TEST.step6(force=True)
     # print(TEST.stats)
 
-    # ## run test on rad data1
-    # TEST = ip.load.load_assembly(os.path.join(\
-    #                      ROOT, "tests", "test_rad", "data1"))
-    # TEST.step6(force=True)
-    # print(TEST.stats)
+    ## run test on rad data1
+    TEST = ip.load.load_assembly(os.path.join(\
+                         ROOT, "tests", "test_rad", "data1"))
+    TEST.step6(force=True)
+    print(TEST.stats)
 
     ## load test data (pairgbs)
     # DATA = ip.load.load_assembly(\

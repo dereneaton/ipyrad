@@ -144,7 +144,7 @@ def removerepeats(consens, arrayed):
         if (idepths[nsite]+ndepths[nsite]) < mindepth:
             ridx.append(nsite)
     
-    pre = arrayed.shape
+    #pre = arrayed.copy()
 
     ## remove repeat sites from shortcon and stacked
     keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
@@ -152,11 +152,11 @@ def removerepeats(consens, arrayed):
     consens = "".join(list(consens))
     arrayed = arrayed[:, list(keeps)]
 
-    if arrayed.shape != pre.shape:
-        LOGGER.info("""
-            ridx %s
-            arr shape %s
-            """, ridx, arrayed.shape)
+    # if arrayed.shape != pre:
+    #     LOGGER.info("""
+    #         ridx %s
+    #         arr shape %s
+    #         """, ridx, arrayed.shape)
 
     return "".join(consens), arrayed
 
