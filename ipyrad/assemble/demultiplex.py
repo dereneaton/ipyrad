@@ -239,7 +239,7 @@ def chunker(data, raws, optim):
     parallelized since it is limited by the speed of writing to disk.
     """
     ## make tmpdir to hold chunks
-    tmpdir = os.path.join(data.dirs.working, "tmpchunks")
+    tmpdir = os.path.join(data.dirs.working, data.name+"-tmpchunks")
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
 
@@ -577,7 +577,7 @@ def run(data, preview, ipyclient):
     finally:
         ## cleans up chunk files and stats pickles
         tmpdirs = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*"))
-        tmpdirs += glob.glob(os.path.join(data.dirs.working, "tmpchunks"))
+        tmpdirs += glob.glob(os.path.join(data.dirs.working, data.name+"-tmpchunks"))
         if tmpdirs:
             for tmpdir in tmpdirs:
                 shutil.rmtree(tmpdir)

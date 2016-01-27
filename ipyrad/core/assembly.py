@@ -179,7 +179,7 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 150),
                         ("max_inner_mate_distance", 60),
-                        ("preview_truncate_length", 500000),
+                        ("preview_truncate_length", 4000000),
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 16)
@@ -282,6 +282,8 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
+
+        print("    Linking to demultiplexed fastq files in {}".format(path))
 
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
@@ -801,7 +803,7 @@ class Assembly(object):
             if not force:
                 print("""
     Skipping step1: {} Samples already found in {}. 
-    (can overwrite with force option).""".\
+    (can overwrite with force option)""".\
     format(len(self.samples), self.name))
 
             else:
@@ -853,7 +855,8 @@ class Assembly(object):
             ## skip if all are finished
             if all([i.stats.state >= 2 for i in samples]):
                 print("""
-    Skipping: All {} selected Samples already edited.""".format(len(samples)))
+    Skipping: All {} selected Samples already edited.
+    (can overwrite with force option)""".format(len(samples)))
                 return
 
         ## pass samples to rawedit
@@ -872,7 +875,7 @@ class Assembly(object):
             if not self.paramsdict['reference_sequence']:
                 raise IPyradError("""
     {} assembly method requires a value for reference_sequence_path.
-    """).format(self.paramsdict["assembly_method"])
+    """.format(self.paramsdict["assembly_method"]))
             else:
                 ## index the reference sequence
                 ## Allow force to reindex the reference sequence
@@ -890,7 +893,8 @@ class Assembly(object):
             ## skip if all are finished
             if all([i.stats.state >= 3 for i in samples]):
                 print("""
-    Skipping: All {} selected Samples already clustered""".\
+    Skipping: All {} selected Samples already clustered.
+    (can overwrite with force option)""".\
     format(len(samples)))
                 return
 
@@ -917,7 +921,8 @@ class Assembly(object):
             ## skip if all are finished
             if all([i.stats.state >= 4 for i in samples]):
                 print("""
-    Skipping: All {} selected Samples already joint estimated""".\
+    Skipping: All {} selected Samples already joint estimated
+    (can overwrite with force option)""".\
     format(len(samples)))
                 return
 
@@ -943,7 +948,8 @@ class Assembly(object):
             ## skip if all are finished
             if all([i.stats.state >= 5 for i in samples]):
                 print("""
-    Skipping: All {} selected Samples already consensus called""".\
+    Skipping: All {} selected Samples already consensus called
+    (can overwrite with force option)""".\
     format(len(samples)))
                 return
         ## pass samples to rawedit
@@ -971,9 +977,9 @@ class Assembly(object):
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 6 for i in samples]):
-                print(\
-    "  Skipping: All {} selected Samples already clustered."\
-    .format(len(samples)))
+                print("""
+    Skipping: All {} selected Samples already clustered.
+    (can overwrite with force option)""".format(len(samples)))
                 return 
 
         ## attach filename for all reads database
@@ -1033,7 +1039,7 @@ class Assembly(object):
                 if os.path.exists(self.dirs.outfiles):
                     raise IPyradError("""
     Step 7: Cowardly refusing to overwrite existing output directory {} 
-    rerun with `force=True` to overwrite.""".format(self.dirs.outfiles))
+    rerun with `force=True` or -f to overwrite.""".format(self.dirs.outfiles))
             
             except AttributeError as _:
                 ## If not force and directory doesn't exist then nbd.

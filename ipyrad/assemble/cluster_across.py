@@ -164,7 +164,7 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
             if os.path.exists(path):
                 pass
                 #os.remove(path)
-        tmpdir = os.path.join(data.dirs.consens, "tmpaligns")
+        tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
         if os.path.exists(tmpdir):
             shutil.rmtree(tmpdir)
 
@@ -482,7 +482,7 @@ def build_reads_file(data):
     consdic = consdf.set_index(0)[1].to_dict()
 
     ## make an tmpout directory and a printstring for writing to file
-    tmpdir = os.path.join(data.dirs.consens, "tmpaligns")
+    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
     ## groupby index 1 (seeds) 
