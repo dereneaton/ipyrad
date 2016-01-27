@@ -431,7 +431,7 @@ def get_aligned_reads( args ):
 
 
 
-def bedtools_merge( data, sample):
+def bedtools_merge(data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
     reads. This is the shell command we'll eventually run
 
@@ -439,7 +439,7 @@ def bedtools_merge( data, sample):
             -i <input_bam>  :   specifies the input file to bed'ize
             -d <int>        :   For PE set max distance between reads
     """
-    LOGGER.debug( "Entering bedtools_merge: %s", sample.name )
+    LOGGER.debug("Entering bedtools_merge: %s", sample.name)
 
     if 'pair' in data.paramsdict["datatype"]:
         bedtools_dflag = " -d " + str(data._hackersonly["max_inner_mate_distance"])
@@ -449,12 +449,14 @@ def bedtools_merge( data, sample):
     cmd = data.bins.bedtools+\
         " bamtobed "+\
         " -i " + sample.files.mapped_reads+\
-        " | bedtools merge "+\
+        " | " +\
+        data.bins.bedtools +\
+        " merge "+\
         bedtools_dflag
-    LOGGER.debug( "%s", cmd )
+    LOGGER.debug("%s", cmd)
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
-    LOGGER.debug( "bedtools_merge: Got # regions: %s", str(len(result)))
+    LOGGER.debug("bedtools_merge: Got # regions: %s", str(len(result)))
     return result
 
 
