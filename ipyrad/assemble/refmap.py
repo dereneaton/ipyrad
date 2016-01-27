@@ -262,7 +262,7 @@ def mapreads(args):
             LOGGER.error( "Error in reference mapping. Try copy/pasting and running this "+\
                             "command by hand:\n\t%s", cmd)
             ## TODO: Maybe make this not bail out hard?
-            sys.exit("Error in program: \n{}\n{}\n{}."\
+            sys.exit("Error in reference mapping \n{}\n{}\n{}."\
                      .format(inst, subprocess.STDOUT, cmd))
             raise
     except KeyboardInterrupt:
@@ -410,28 +410,33 @@ def get_aligned_reads( args ):
                 ## element of the list returned above
                 aligned_fasta = aligned_seqs[0]
 
-            derep_fasta = derep_and_sort( data, sample, aligned_fasta )
+            derep_fasta = derep_and_sort(data, sample, aligned_fasta)
 
             ## Derep_fasta_files are merged for PE
-            derep_fasta_files.append( derep_fasta )
-            aligned_seq_files.append( aligned_seqs )
-        append_clusters( data, sample, derep_fasta_files )
+            derep_fasta_files.append(derep_fasta)
+            aligned_seq_files.append(aligned_seqs)
+        append_clusters(data, sample, derep_fasta_files)
 
     except Exception as inst:
-        LOGGER.warn( inst )
-
+        LOGGER.warn("Caught exception inside get_aligned_reads - {}".format(inst))
+        LOGGER.debug("Current contents of:\nderep_fasta_files {}\n"\
+                "aligned_seq_files {}".format(derep_fasta_files, aligned_seq_files))
+        raise
     finally:
         # Clean up all the tmp files
+        # Be a little careful. Don't remove files if they're already gone :-/
         for i in derep_fasta_files:
-            os.remove( i )
-        for i in aligned_seq_files:
-            os.remove( i[0] )
+            if os.path.isfile(i):
+                os.remove(i)
+        for j in aligned_seq_files:
+            if os.path.isfile(j[0]):
+                os.remove(j[0])
             if 'pair' in data.paramsdict['datatype']:
-                os.remove( i[1] )
+                if os.path.isfile(j[1]):
+                    os.remove(j[1])
 
 
-
-def bedtools_merge( data, sample):
+def bedtools_merge(data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
     reads. This is the shell command we'll eventually run
 
@@ -454,7 +459,8 @@ def bedtools_merge( data, sample):
     LOGGER.debug( "%s", cmd )
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
-    LOGGER.debug( "bedtools_merge: Got # regions: %s", str(len(result)))
+    ## Report the number of regions we're returning
+    LOGGER.debug( "bedtools_merge: Got # regions: %s", str(len(result.strip().split("\n"))))
     return result
 
 
@@ -477,7 +483,7 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
     ## Return it as a list so we can handle SE and PE without a bunch of monkey business.
     outfiles = []
 
-    tmp_outfile = sample.files.mapped_reads+str(chrom)+str(region_start)
+    tmp_outfile = sample.files.mapped_reads+"-"+str(chrom)+"-"+str(region_start)
 
     try:
         ## Make the samtools view command to output bam in the region of interest
