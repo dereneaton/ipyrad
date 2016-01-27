@@ -34,14 +34,12 @@ def sample_cleanup(data, sample):
     ## set cluster file handles
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
-    if "pair" in data.paramsdict["datatype"]:
-        ## record merge file name temporarily
-        sample.files.merged = os.path.join(data.dirs.edits,
-                                           sample.name+"_merged_.fastq")
+    if 'paired' in data.paramsdict["datatype"]:
+        sample.files.merged = os.path.join(data.dirs.clusts,
+                                             sample.name+"_merged_.fastq")
         ## record how many read pairs were merged
         with open(sample.files.merged, 'r') as tmpf:
-            ## divide by four b/c its fastq
-            sample.stats.reads_merged = len(tmpf.readlines())/4
+            sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
     ## get depth stats
     infile = gzip.open(sample.files.clusters)
@@ -131,7 +129,7 @@ def muscle_align(args):
                 stack = [names[0]+"\n"+seqs[0]]
         else:
             ## split seqs if paired end seqs
-            if all(["nnnn" in i for i in seqs]):
+            try:
                 seqs1 = [i.split("nnnn")[0] for i in seqs] 
                 seqs2 = [i.split("nnnn")[1] for i in seqs]
                 ## muscle align
@@ -154,14 +152,19 @@ def muscle_align(args):
                     ## filter for max internal indels
                     intindels1 = aseqs[i][0].rstrip('-').lstrip('-').count('-')
                     intindels2 = aseqs[i][1].rstrip('-').lstrip('-').count('-')
-
-                    if intindels1 <= data.paramsdict["max_Indels_locus"][0] & \
-                       intindels2 <= data.paramsdict["max_Indels_locus"][1]:
-                        somedic[anames[i]] = aseqs[i][0]+"nnnn"+aseqs[i][1]
+                    #if intindels1 <= data.paramsdict["max_Indels_locus"][0] & \
+                    #   intindels2 <= data.paramsdict["max_Indels_locus"][1]:
+                    if (intindels1 <= 5) and (intindels2 <= 5):
+                        stack.append("\n".join([anames[i], 
+                                        aseqs[i][0]+"nnnn"+aseqs[i][1]]))
+                        #somedic[anames[i]] = aseqs[i]]))
                     else:
-                        LOGGER.info("high indels: %s", aseqs[i])
+                        LOGGER.info("""
+                high indels: %s
+                1, 2: (%s, %s)
+                """, aseqs[i], intindels1, intindels2)
 
-            else:
+            except IndexError:
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(string1)
                 ## Get left and right limits, no hits can go outside of this. 
@@ -189,19 +192,21 @@ def muscle_align(args):
 
                 somedic = OrderedDict()
                 for i in range(len(anames)):
-                    ## filter for max internal indels and max indel inserts
+                    ## filter for max internal indels 
                     intind = aseqs[i].rstrip('-').lstrip('-')
                     ind1 = intind.count('-') <= \
                                 data.paramsdict["max_Indels_locus"][0]
+                    ## could also filter by max indel inserts                                
                     #ind2 = len([i.split("-") for i in intind if i]) < 3
                     if ind1:
-                        somedic[anames[i]] = aseqs[i]
+                        stack.append("\n".join([anames[i], aseqs[i]]))
+                        #somedic[anames[i]] = aseqs[i]
                     else:
                         LOGGER.info("high indels: %s", aseqs[i])
 
             ## save dict into a list ready for printing
-            for key in somedic.keys():
-                stack.append(key+"\n"+somedic[key])
+            #for key in somedic.keys():
+            #    stack.append(key+"\n"+somedic[key])
 
         if stack:
             out.append("\n".join(stack))
@@ -313,6 +318,7 @@ def build_clusters(data, sample):
                 if inserts < 6:
                     seq.append(values[i][0].strip()+"+\n"+fwdseq)
                 else:
+                    fwdseq = hits[values[i][0]][1]                    
                     LOGGER.debug("exc indbld: %s %s", inserts, fwdseq)
             ## flip to the right orientation 
             else:
@@ -753,29 +759,20 @@ def clustall(args):
         ## files list as an argument because we're reusing this code 
         ## in the refmap pipeline, trying to generalize.
         LOGGER.debug("Merging pairs - %s", sample.files)
-        #unmerged_files = [sample.files.edits[0][0], sample.files.edits[0][1]]
-        mergefile, nmerged = merge_pairs(data, sample) #, unmerged_files)
-        sample.files.edits = [(mergefile, )]
-        sample.files.pairs = mergefile
-        sample.stats.reads_merged = nmerged
+        #mergefile, nmerged 
+        sample = merge_pairs(data, sample) #, unmerged_files)
+        sample.files.edits = [(sample.files.merged, )]
+        sample.files.pairs = sample.files.merged
+        #sample.stats.reads_merged = nmerged
         sample.merged = 1
-        LOGGER.debug("Merged file - {}".format(mergefile))
+        LOGGER.debug("Merged file - {}".format(sample.files.merged))
 
-        ## OLD DEREN CODE w/ combine_pairs (keeping for now)
-        ## merge pairs that overlap into a merge file
-        #sample = merge_fastq_pairs(data, sample)
-        ## pair together remaining pairs into a pairs file
-        #sample = combine_pairs(data, sample)
-        ## if merge file, append to pairs file
         #with open(sample.files.pairs, 'a') as tmpout:
         #    with open(sample.files.merged, 'r') as tmpin:
         #        tmpout.write(tmpin.read().replace("_c1\n", "_m4\n"))
-        #LOGGER.info(sample.files.edits)
 
     ## convert fastq to fasta, then derep and sort reads by their size
-    #LOGGER.debug(data, sample, nthreads)
     derep_and_sort(data, sample, nthreads)
-    #LOGGER.debug(data, sample, nthreads)
     
     ## cluster derep fasta files in vsearch 
     cluster(data, sample, noreverse, nthreads)

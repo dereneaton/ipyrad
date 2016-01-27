@@ -42,7 +42,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
 
     ## if not ambiguous cuts then make second null (Zs)
     if not rvcuts[1]:
-        rvcuts[1] = "Z"*10
+        rvcuts[1] = "Z"*4
 
     ## only look for cut sites if there are cut sites
     if any(rvcuts):
@@ -59,10 +59,11 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
                 lookfor2 = rvcuts[1]+comp(barcode)[::-1][:3]
             else:
                 ## this gets cancelled out if there's no barcodes info
+                ## unless setting is strict (2)
                 lookfor1 = rvcuts[0]+"NNN"
                 lookfor2 = rvcuts[1]+"NNN"
 
-        ## if strict then shorter lookfor, 3=only look for rvcut
+        ## if strict then shorter lookfor
         if data.paramsdict["filter_adapters"] == 2:
             lookfor1 = lookfor1[:-3]
             lookfor2 = lookfor2[:-3]
@@ -72,10 +73,11 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
             check1 = max(0, bases[1].tostring().find(lookfor1))
         except Exception as inst:
             LOGGER.error("EXCEPTION %s", [bases, lookfor1, inst])
-        ## looks for second resolution
+        
+        ### looks for second resolution
         if sum([1 for i in rvcuts]) == 2:
             check2 = max(0, bases[1].tostring().find(lookfor2))
-
+        ### CHECK FOR FIRST FILTER
         if check1 or check2:
             where1 = min([i for i in [check1, check2] if i])
 
@@ -92,6 +94,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
 
     check1 = max(0, bases[1].tostring().find(lookfor1))
     check2 = max(0, bases[1].tostring().find(lookfor2))
+    ### CHECK FOR SECOND FILTER
     mincheck = min(check1, check2)
 
     ## How far back from adapter to trim to remove cutsite and barcodes
@@ -116,6 +119,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     #LOGGER.debug("where2:%s, ch1:%s, ch2:%s, read:%s",
     #              where2, check1, check2, read)
 
+    ## CHECK FOR THIRD FILTER
     ## if strict filter, do additional search for cut site near edges
     if any(rvcuts):
         where3 = 0
