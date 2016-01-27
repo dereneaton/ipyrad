@@ -667,15 +667,22 @@ class Assembly(object):
             path to save Assembly. Default is [workingdir]/[name].assembly
 
         """
+        print("  Saving current assembly.")
+        ## Trap keyboard interrupt during save to prevent fscking dillout objects.
         if not path:
             path = os.path.join( 
-                        self.paramsdict["working_directory"],
-                        self.name+".assembly")
-
-        dillout = open(path, "wb")
-        dill.dump(self, dillout)
-        dillout.close()
-
+                                self.paramsdict["working_directory"],
+                                self.name+".assembly")
+        done = False
+        while not done:
+            dillout = open(path, "wb")
+            try:
+                dill.dump(self, dillout)
+                dillout.close()
+                done = True
+            except KeyboardInterrupt:
+                print("  Please don't try to kill now, dumping assembly to file. Just wait.")
+                continue
 
 
     def _launch(self, inittries):
@@ -702,9 +709,15 @@ class Assembly(object):
                         initid = ipyclient.ids
                         if len(initid) > 10:
                             LOGGER.warn("waiting 3 seconds to find Engines")
-                            time.sleep(3)
+                            try:
+                                time.sleep(3)
+                            except KeyboardInterrupt:
+                                print(" Keyboard interrupt disabled during cluster init.")
                         else:
-                            time.sleep(1)                                            
+                            try:
+                                time.sleep(1)                                            
+                            except KeyboardInterrupt:
+                                print(" Keyboard interrupt disabled during cluster init.")
                         try:
                             ## make sure more engines aren't found
                             assert len(ipyclient.ids) == len(initid)
@@ -725,8 +738,13 @@ class Assembly(object):
                     LOGGER.debug('connected to %s engines', len(ipyclient.ids))
                     raise
             except (IOError, ipp.NoEnginesRegistered, AssertionError) as _:
-                time.sleep(1)
-                tries -= 1
+                try:
+                    time.sleep(1)
+                    tries -= 1
+                except KeyboardInterrupt:
+                    print(" Keyboard interrupt disabled during cluster intialization.")
+                    print(" Wait for cluster to finish init, then you can kill it cleanly.")
+
         raise ipp.NoEnginesRegistered
 
 
@@ -734,6 +752,7 @@ class Assembly(object):
     def _clientwrapper(self, stepfunc, args, nwait):
         """ wraps a call with error messages for when ipyparallel fails"""
         try:
+            ipyclient = ""
             ipyclient = self._launch(nwait)
             if ipyclient.ids:
                 ## append client to args and call stepfunc
@@ -753,24 +772,25 @@ class Assembly(object):
 
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
-            ipyclient.abort()
+            if ipyclient:
+                ipyclient.abort()
             ## shutdown the cluster to ensure everything is killed
             #ipyclient.shutdown()
             ## relaunch the cluster
             #ipyclient = self._launch(nwait)
-            logging.error("assembly interrupted by user.")
+            LOGGER.error("assembly interrupted by user.")
             ## don't reraise the keyboard interrupt, 
             ## it already stopped the Engine jobs,
             #print("Keyboard Interrupt\n")
             raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
-            logging.error("assembly interrupted by sys.exit.")
+            LOGGER.error("assembly interrupted by sys.exit.")
             raise IPyradError("SystemExit Interrupt."\
                 + "\n\n{}\n\n".format(inst))
 
         except AssertionError as inst:
-            logging.error("Assertion: %s", inst)
+            LOGGER.error("Assertion: %s", inst)
             raise IPyradError(inst)
 
         except IPyradWarningExit as inst:
@@ -797,15 +817,14 @@ class Assembly(object):
 
         ## close client when done or interrupted
         finally:
-            ## can't close client if it was never open
             try:
-                ipyclient.close()
                 ## pickle the data obj
                 self.save()                
+                ## can't close client if it was never open
+                if ipyclient:
+                    ipyclient.close()
             except UnboundLocalError:
                 pass
-
-
 
 
     def _step1func(self, force, preview, ipyclient):
