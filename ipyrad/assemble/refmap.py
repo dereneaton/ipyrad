@@ -444,7 +444,7 @@ def bedtools_merge(data, sample):
             -i <input_bam>  :   specifies the input file to bed'ize
             -d <int>        :   For PE set max distance between reads
     """
-    LOGGER.debug( "Entering bedtools_merge: %s", sample.name )
+    LOGGER.debug("Entering bedtools_merge: %s", sample.name)
 
     if 'pair' in data.paramsdict["datatype"]:
         bedtools_dflag = " -d " + str(data._hackersonly["max_inner_mate_distance"])
@@ -454,13 +454,15 @@ def bedtools_merge(data, sample):
     cmd = data.bins.bedtools+\
         " bamtobed "+\
         " -i " + sample.files.mapped_reads+\
-        " | bedtools merge "+\
+        " | " +\
+        data.bins.bedtools +\
+        " merge "+\
         bedtools_dflag
-    LOGGER.debug( "%s", cmd )
+    LOGGER.debug("%s", cmd)
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
     ## Report the number of regions we're returning
-    LOGGER.debug( "bedtools_merge: Got # regions: %s", str(len(result.strip().split("\n"))))
+    LOGGER.debug("bedtools_merge: Got # regions: %s", str(len(result.strip().split("\n"))))
     return result
 
 

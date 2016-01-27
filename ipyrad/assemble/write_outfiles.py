@@ -193,6 +193,13 @@ def filter_all_clusters(data, samples, ipyclient):
         ## and applies all filters.
         make_loci(data, inh5)
 
+        ## MAKE THE STATS OUTPUT
+
+        ## MAKE OTHER OUTPUT FILES FROM CATG/VCF
+
+        ## MAKE OTHER OUTPUT FILES FROM LOCI
+
+
 
     finally:
         ## clean up the tmp files/dirs
