@@ -124,59 +124,155 @@ def filter_all_clusters(data, samples, ipyclient):
         results = lbview.map_async(filter_stacks, submitted_args)
         results.get()
 
-        ## fill the supercat filter array with chunk filters
-        ## get all the saved tmp arrays
+        ## get all the saved tmp arrays for each slice
+        tmpedg = glob.glob(os.path.join(chunkdir, "edgf.*.npy"))
+        tmphet = glob.glob(os.path.join(chunkdir, "hetf.*.npy"))
+        tmpsnp = glob.glob(os.path.join(chunkdir, "snpf.*.npy"))
+        tmpmin = glob.glob(os.path.join(chunkdir, "minf.*.npy"))
+        ## sort array files within each group
+        arrdict = {'edg':tmpedg, 'het':tmphet, 'snp':tmpsnp, 'min':tmpmin}
+        for arrglob in arrdict.values():
+            arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
-        ## ...
-        ## load the full filter array
-        ## ...
-        ## iterate over each, fill its values into super filter
-        ## ...
-        ## delete the tmp arrays
-        ## ...
-        ##
+        ## load the full filter array who's order is
+        ## ["duplicates", "max_indels", 
+        ## "max_snps", "max_hets", "min_samps", "bad_edges"]
+        inh5 = h5py.File(data.database, 'r+')
+        superfilter = inh5["filters"]
+
+        ## iterate across filter types
+        for fidx, ftype in zip(range(2, 6), arrdict.keys()):
+            ## fill in the edgefilters
+            for ffile in arrdict[ftype]:
+                ## grab a file and get it's slice            
+                hslice = int(ffile.split(".")[-2])
+                ## load in the array
+                arr = np.load(ffile)
+                ## store slice into full array
+                superfilter[hslice:hslice+optim, fidx] = arr
+        del arr
+        ## finished filling filter array
+        LOGGER.info('superfilter[:10] : %s', superfilter[:10])        
+
+        ## store the other arrayed values (edges, snps)
+        edgarrs = glob.glob(os.path.join(chunkdir, "edgearr.*.npy"))
+        snparrs = glob.glob(os.path.join(chunkdir, "snpsarr.*.npy"))
+        ## sort array files within each group
+        arrdict = {'edges':edgarrs, 'snps':snparrs}
+        for arrglob in arrdict.values():
+            arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
+
+        ## fill the edge array 
+        superedge = inh5['edges']
+        for ffile in arrdict['edges']:
+            ## grab a file and get it's slice            
+            hslice = int(ffile.split(".")[-2])
+            ## load in the array w/ shape (hslice, 5)
+            arr = np.load(ffile)
+            ## store slice into full array
+            superedge[hslice:hslice+optim, 0:4, ] = arr
+        del arr
+        ## finished with superedge
+        LOGGER.info('superedge[:10] : %s', superedge[:10])
+
+        ## fill the snps array. shape= (nloci, maxlen, 2)
+        supersnps = inh5['snps']
+        for ffile in arrdict['snps']:
+            ## grab a file and get it's slice            
+            hslice = int(ffile.split(".")[-2])
+            ## load in the array w/ shape (hslice, maxlen, 2)
+            arr = np.load(ffile)
+            ## store slice into full array
+            supersnps[hslice:hslice+optim, :, :] = arr
+        del arr
+        ## finished with superedge
+        LOGGER.info('supersnps[:10] : %s', supersnps[:10])
+
+        ### MAKE THE LOCI FILE
+        ## h5 handle loads superseqs, superedge, supersnps, superfilter
+        ## and applies all filters.
+        make_loci(data, inh5)
 
 
     finally:
         ## clean up the tmp files/dirs
         try:
             print("finished filtering")
-            #shutil.rmtree(chunkdir)
+            shutil.rmtree(chunkdir)
         except (IOError, OSError):
             pass
 
 
-    #     ## Concatenate filtered tmp files into final vcf/loci
-    #     outvcf = os.path.join(data.dirs.outfiles, data.name+".full.vcf")
-    #     make_vcfheader(data, samples, outvcf)
 
-    #     with open(outvcf, 'wb') as out:
-    #         for fname in tmpnames:
-    #             with open(fname) as infile:
-    #                 out.write(infile.read())
+def padnames(names, longname_len):
+    """ pads names for loci output """
+    ## Padding distance between name and seq.
+    padding = 5    
+    ## 
+    pnames = [name + " " * (longname_len - len(name)+ padding) \
+              for name in names]
+    snppad = "//" + " " * (longname_len - 2 + padding)
+    return np.array(pnames), snppad
 
-    #     ## Gather tmp loci files
-    #     outloci = os.path.join(data.dirs.outfiles, data.name+".loci")
-    #     with open(outloci, 'wb') as out:
-    #         for fname in tmpnames:
-    #             with open(fname.replace("chunk", "loci")) as infile:
-    #                 out.write(infile.read())
 
-    # except Exception as inst:
-    #     LOGGER.warn(inst)
-    #     raise
 
-    # finally:
-    #     ## still delete tmpfiles if job was interrupted
-    #     ## fname - catclust.gz tmp files
-    #     ## loc_name - tmp loci chunks
-    #     for fname in tmpnames:
-    #         if os.path.exists(fname):
-    #             os.remove(fname)
-    #         loc_name = fname.replace("chunk", "loci")
-    #         if os.path.exists(loc_name):
-    #             os.remove(loc_name)
-    #     del lbview
+def make_loci(data, inh5):
+    """ makes the .loci file from h5 data base. Iterates by 1000 loci at a 
+    time and write to file. """
+
+    ## open the out handle
+    locifile = open(os.path.join(data.dirs.outfiles, data.name+".loci"), 'w')
+
+    ## iterate 1000 loci at a time
+    optim = 1000
+    nloci = inh5["seqs"].shape[0]
+
+    start = 0
+    while start < nloci:
+        hslice = [start, start+optim]
+        afilt = inh5["filters"][hslice[0]:hslice[1], ]
+        aedge = inh5["edges"][hslice[0]:hslice[1], ]
+        aseqs = inh5["seqs"][hslice[0]:hslice[1], ]
+        asnps = inh5["snps"][hslice[0]:hslice[1], ]
+        anames = inh5["seqs"].attrs["samples"]
+
+        ## get name and snp padding
+        longname_len = max(len(i) for i in anames)
+        pnames, snppad = padnames(anames, longname_len)
+
+        ## which loci passed all filters
+        keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+
+        ## store until printing
+        store = []
+        ## write loci that passed after trimming edges, then write snp string
+        for iloc in keep:
+            edg = aedge[iloc]
+            seq = aseqs[iloc, :, edg[0]:edg[1]]
+            snp = asnps[iloc, edg[0]:edg[1], ]
+            ## remove rows with all Ns
+            nsidx = np.all(seq[:, edg[0]:edg[1]] == "N", axis=1)
+            seq = seq[~nsidx, ]
+            ## select the remaining names in order
+            names = pnames[~nsidx]
+            ## save string for printing
+            store.append("\n".join(\
+                [name + s.tostring() for name, s in zip(names, seq)]))
+            ## get snp string and add to store
+            snpstring = ["-" if snp[i, 0] else \
+                         "*" if snp[i, 1] else \
+                         " " for i in range(len(snp))]
+            store.append(snppad + "".join(snpstring))
+
+        ## write to file and clear store
+        locifile.write("\n".join(store) + "\n")
+        store = []
+    
+        ## increase the counter
+        start += optim
+
+    ## close handle
+    locifile.close()
 
 
 

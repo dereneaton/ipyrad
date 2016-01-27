@@ -267,9 +267,9 @@ def build_h5_array(data, samples, nloci):
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
-    filters = ioh5.create_dataset("filters", (nloci, 4), dtype=np.bool)
-    filters.attrs["filters"] = ["duplicates", "maxindels", "maxsnps", 
-                                "maxhets", "minsamps"]
+    filters = ioh5.create_dataset("filters", (nloci, 6), dtype=np.bool)
+    filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
+                                "max_hets", "min_samps", "bad_edges"]
     filters.attrs["chunks"] = 1000        
 
     ## INIT FULL EDGE ARRAY
