@@ -4,6 +4,7 @@
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import ipcontroller_init
+from ipyrad.assemble.util import IPyradError
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -47,7 +48,7 @@ def showstats(parsedict):
 
     project_dir = parsedict['1']
     assembly_name = parsedict['0']
-    my_assembly = os.path.join(project_dir, prefix)
+    my_assembly = os.path.join(project_dir, assembly_name)
 
     try:
         data = ip.load.load_assembly(my_assembly,
@@ -68,9 +69,12 @@ def showstats(parsedict):
         else:
             print("No stats to display")
 
-    except AssertionError as inst:
-        sys.exit("Error: No Assembly file found at {}. ".format(my_assembly)\
-        +"\nCheck parameter settings for [project_dir]/[assembly_name]\n")
+    except AssertionError as _:
+        raise IPyradError("""
+    Error: No Assembly file found at {}. 
+    Check parameter settings for [project_dir]/[assembly_name]
+    """).format(my_assembly)
+
 
 
 def getassembly(args, parsedict):
@@ -188,9 +192,6 @@ def parse_command_line():
         help="Run ipyrad in preview mode. Subset the input file so it'll run"\
             + "quickly so you can verify everything is working")
 
-    #parser.add_argument("--PBS", action='store_true',
-    #    help="Connect to CPU Engines and submit jobs using PBS")
-
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -209,7 +210,8 @@ def parse_command_line():
 
 def main():
     """ main function """
-
+    ## turn off traceback for the CLI
+    ip.__interactive__ = 0
 
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
@@ -222,8 +224,8 @@ def main():
         try:
             tmpassembly = ip.core.assembly.Assembly("")
             tmpassembly.write_params("params.txt", force=args.force)
-        except Exception as e:
-            print(e)
+        except Exception as inst:
+            print(inst)
             print("\nUse --force to overwrite\n")
             sys.exit(2)
 
@@ -259,8 +261,6 @@ def main():
                 ## launch ipcluster and register for later destruction
                 if args.MPI:
                     controller = "MPI"
-                #elif args.PBS:
-                #    controller = "PBS"
                 else:
                     controller = "Local"
 
