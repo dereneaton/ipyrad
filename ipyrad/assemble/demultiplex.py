@@ -588,7 +588,8 @@ def run(data, preview, ipyclient):
                 tmpfiles += sample_fastq[0]
             if tmpfiles:
                 for tmpfile in tmpfiles:
-                    os.remove(tmpfile)
+                    if os.path.exists(tmpfile):
+                        os.remove(tmpfile)
         except AttributeError as inst:
             ## If barcodes file is fsck, then finally frags because data.dirs.fastqs
             ## doesn't exist

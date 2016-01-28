@@ -463,13 +463,13 @@ def preview_truncate_fq(data, sample_fastq):
             """)
             ## clean up preview files
             try:
-                for truncfile in truncated_fq + tmp_fq:
+                truncated_fq.append(tmp_fq.name)
+                for truncfile in truncated_fq:
                     if os.path.exists(truncfile):
                         os.remove(truncfile)
-            except Exception as _:
-                pass
-            ## re-raise the keyboardInterrupt
-            raise inst
+            except Exception as e:
+                LOGGER.debug("Error cleaning up truncated fq files: {}".format(e))
+                raise
 
     return [tuple(truncated_fq)]
 
