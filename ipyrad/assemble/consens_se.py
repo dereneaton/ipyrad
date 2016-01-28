@@ -689,7 +689,7 @@ def run(data, samples, force, ipyclient):
             skip = 1
 
     ## prepare dirs
-    data.dirs.consens = os.path.join(data.dirs.working, data.name+"_consens")
+    data.dirs.consens = os.path.join(data.dirs.project, data.name+"_consens")
     if not os.path.exists(data.dirs.consens):
         os.mkdir(data.dirs.consens)
 

@@ -418,7 +418,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     """
     ## make output folder for clusters  
     data.dirs.clusts = os.path.join(
-                os.path.realpath(data.paramsdict["working_directory"]),
+                os.path.realpath(data.paramsdict["project_dir"]),
                 data.name+"_"+"clust_"+str(data.paramsdict["clust_threshold"]))
     if not os.path.exists(data.dirs.clusts):
         os.makedirs(data.dirs.clusts)
@@ -427,7 +427,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     if not data.paramsdict["assembly_method"] == "denovo":
         ## make output directory for read mapping process
         data.dirs.refmapping = os.path.join(
-                        os.path.realpath(data.paramsdict["working_directory"]),
+                        os.path.realpath(data.paramsdict["project_dir"]),
                         data.name+"_refmapping")
         if not os.path.exists(data.dirs.refmapping):
             os.makedirs(data.dirs.refmapping)
@@ -683,7 +683,7 @@ def multi_muscle_align(data, sample, ipyclient):
 
     ## split clust.gz file into nthreads*10 bits cluster bits
     tmpnames = []
-    tmpdir = os.path.join(data.dirs.working, data.name+'-tmpalign')
+    tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
 

@@ -36,7 +36,7 @@ def parse_params(args):
     ## make into a dict
     items = [i.split("##")[0].strip() for i in plines[1:]]
     #keys = [i.split("]")[-2][-1] for i in plines[1:]]
-    keys = range(1, len(plines)-1)
+    keys = range(len(plines)-1)
     parsedict = {str(i):j for i, j in zip(keys, items)}
 
     return parsedict
@@ -45,9 +45,9 @@ def parse_params(args):
 def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
 
-    working_directory = parsedict['1']
-    prefix = os.path.split(parsedict['1'])[1]
-    my_assembly = os.path.join(working_directory, prefix)
+    project_dir = parsedict['1']
+    assembly_name = parsedict['0']
+    my_assembly = os.path.join(project_dir, prefix)
 
     try:
         data = ip.load.load_assembly(my_assembly,
@@ -69,9 +69,8 @@ def showstats(parsedict):
             print("No stats to display")
 
     except AssertionError as inst:
-        sys.exit("Error: No Assembly file found at {}. ".format(inst)\
-        +"\nCheck parameter settings for [working_dir]/[prefix_name]\n")
-
+        sys.exit("Error: No Assembly file found at {}. ".format(my_assembly)\
+        +"\nCheck parameter settings for [project_dir]/[assembly_name]\n")
 
 
 def getassembly(args, parsedict):
@@ -83,20 +82,20 @@ def getassembly(args, parsedict):
     ## but it is potentially dangerous, so here we have assembly_name
     ## and assembly_file, name is used for creating new in cwd, file is
     ## used for loading existing.
-    working_directory = ip.core.assembly.expander(parsedict['1'])
+    project_dir = ip.core.assembly.expander(parsedict['1'])
     ## rstrip to remove any pesty trailing slashes
-    assembly_name = os.path.split(working_directory.rstrip("/"))[1]
-    assembly_file = os.path.join(working_directory, assembly_name)
+    assembly_name = parsedict['0']
+    assembly_file = os.path.join(project_dir, assembly_name)
 
     ## make sure the working directory exists.
-    if not os.path.exists(working_directory):
-        os.mkdir(working_directory)
+    if not os.path.exists(project_dir):
+        os.mkdir(project_dir)
 
     ## Get cwd so we can pop back out after creating the new assembly
     ## We have to push and pop cwd so the assembly object gets created
     ## inside the working directory.
     cwd = os.path.realpath(os.path.curdir)
-    os.chdir(working_directory)
+    os.chdir(project_dir)
 
     ## if forcing or doing step 1 then do not load existing Assembly
     if args.force and '1' in args.steps:
@@ -129,7 +128,6 @@ def getassembly(args, parsedict):
                 raise
 
     return data
-
 
 
 def parse_command_line():

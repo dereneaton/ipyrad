@@ -130,7 +130,8 @@ class Assembly(object):
 
         ## the default params dict
         self.paramsdict = OrderedDict([
-                       ("working_directory", os.path.realpath(
+                       ("assembly_name", ""),
+                       ("project_dir", os.path.realpath(
                                                 os.path.curdir)),
                        ("raw_fastq_path", os.path.join(
                                             os.path.realpath(
@@ -170,7 +171,7 @@ class Assembly(object):
         ])
 
         ## Store data directories for this Assembly. Init with default working.
-        self.dirs = ObjDict({"working": self.paramsdict["working_directory"]})
+        self.dirs = ObjDict({"project": self.paramsdict["project_dir"]})
 
         ## Default hackers only parameters dictionary
         ## None of the safeguards of the paramsdict, no nice accessor
@@ -272,10 +273,10 @@ class Assembly(object):
                 +" additional files to existing Samples.")
 
         ## make sure there is a workdir and workdir/fastqdir 
-        self.dirs.fastqs = os.path.join(self.paramsdict["working_directory"],
+        self.dirs.fastqs = os.path.join(self.paramsdict["project_dir"],
                                         self.name+"_fastqs")
-        if not os.path.exists(self.paramsdict["working_directory"]):
-            os.mkdir(self.paramsdict["working_directory"])
+        if not os.path.exists(self.paramsdict["project_dir"]):
+            os.mkdir(self.paramsdict["project_dir"])
         if not os.path.exists(self.dirs.fastqs):
             os.mkdir(self.dirs.fastqs)
 
@@ -364,7 +365,7 @@ class Assembly(object):
                         self.samples[sname].files.fastqs.append(fastqtuple)
                         appendinc += 1
                     else:
-                        print("The files {} are already in Sample {}, "\
+                        print("    The files {} are already in Sample {}, "\
                               .format(fastqtuple, sname) \
                               +"cannot append duplicate files to a Sample.\n")
                 elif force:
@@ -405,13 +406,13 @@ class Assembly(object):
                 appended += appendinc
 
         ## print if data were linked
-        print("{} new Samples created in `{}`.".format(created, self.name))
+        print("    {} new Samples created in `{}`.".format(created, self.name))
         if linked:
-            print("{} fastq files linked to {} new Samples.".\
+            print("    {} fastq files linked to {} new Samples.".\
                   format(linked, len(self.samples)))
             self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
         if appended:
-            print("{} fastq files appended to {} existing Samples.".\
+            print("    {} fastq files appended to {} existing Samples.".\
                   format(appended, len(self.samples)))
 
 
@@ -430,9 +431,10 @@ class Assembly(object):
         ## in case fuzzy selected
         try: 
             barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
-        except IndexError: 
-            print("Barcodes file not found:", self.paramsdict["barcodes_path"])
-
+        except IndexError:
+            msg = "Barcodes file not found: {}".format(self.paramsdict["barcodes_path"])
+            print(msg)
+            raise IPyradError(msg)
         ## parse barcodefile
         try:
             bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
@@ -442,7 +444,9 @@ class Assembly(object):
             ## set attribute on Assembly object
             self.barcodes = dict(zip(bdf[0], bdf[1]))
         except ValueError:
-            LOGGER.warn("Barcodes file not recognized.")
+            msg = "Barcodes file not recognized."
+            LOGGER.warn(msg)
+            raise IPyradError(msg)
 
 
 
@@ -520,13 +524,13 @@ class Assembly(object):
             for index, (key, value) in enumerate(self.paramsdict.items()):
                 if isinstance(value, str):
                     value = value.replace(fullcurdir, ".")
-                sys.stdout.write("  {:<4}{:<28}{:<45}\n".format(index+1,
+                sys.stdout.write("  {:<4}{:<28}{:<45}\n".format(index,
                            key, value))
         else:
             try:
                 if int(param):
                     #sys.stdout.write(self.paramsdict.values()[int(param)-1])
-                    return self.paramsdict.values()[int(param)-1]
+                    return self.paramsdict.values()[int(param)]
             except (ValueError, TypeError, NameError, IndexError):
                 return 'key not recognized'
 
@@ -545,7 +549,7 @@ class Assembly(object):
         Parameters
         ----------
         param : int or str
-            The index (e.g., 1) or string name (e.g., "working_directory")
+            The index (e.g., 1) or string name (e.g., "project_dir")
             for the parameter that will be changed.
 
         newvalue : int, str, or tuple
@@ -560,7 +564,7 @@ class Assembly(object):
         --------
         ## param 1 takes only a str as input
         [Assembly].set_params(1, 'new_directory')
-        [Assembly].set_params('working_directory', 'new_directory')
+        [Assembly].set_params('project_dir', 'new_directory')
 
         ## param 6 must be a tuple or str, if str it is converted to a tuple
         ## with the second entry empty.
@@ -583,15 +587,15 @@ class Assembly(object):
         ## make string
         param = str(param)
 
-        ## get index if param is keyword arg (this index is not zero based!)
+        ## get index if param is keyword arg (this index is now zero based!)
         if len(param) < 3:
-            param = self.paramsdict.keys()[int(param)-1]
+            param = self.paramsdict.keys()[int(param)]
 
         ## run assertions on new param 
         try:
             self = paramschecker(self, param, newvalue)
         except Exception as inst:
-            #print("\nError:", inst, "\n")
+            print("Error setting parameters:", inst, "\n")
             raise IPyradParamsError(inst)
 
 
@@ -603,7 +607,7 @@ class Assembly(object):
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:
-            outfile = os.path.join(self.paramsdict["working_directory"],
+            outfile = os.path.join(self.paramsdict["project_dir"],
                                 self.name+"-params.txt")
 
         ## Test if params file already exists?
@@ -632,8 +636,8 @@ class Assembly(object):
                 else:
                     paramvalue = str(val)
                 padding = (" "*(30-len(paramvalue)))
-                paramindex = " ## [{}] ".format(self.paramsdict.keys().index(key) + 1)
-                description = paraminfo(self.paramsdict.keys().index(key) + 1, short=True)
+                paramindex = " ## [{}] ".format(self.paramsdict.keys().index(key))
+                description = paraminfo(self.paramsdict.keys().index(key), short=True)
                 paramsfile.write("\n" + paramvalue + padding + paramindex + description)
 
 
@@ -671,7 +675,7 @@ class Assembly(object):
         ## Trap keyboard interrupt during save to prevent fscking dillout objects.
         if not path:
             path = os.path.join( 
-                                self.paramsdict["working_directory"],
+                                self.paramsdict["project_dir"],
                                 self.name+".assembly")
         done = False
         while not done:
@@ -1506,14 +1510,25 @@ def tuplecheck(newvalue, dtype=str):
 
 
 def paramschecker(self, param, newvalue):
-    if param == 'working_directory':
+    if param == 'assembly_name':
+        ## Make sure assembly name is set and isn't a path of any kind
+        if not newvalue or len(newvalue.rsplit("/")) != 1:
+            msg = "Assembly name _must_ be set. This is the first parameter in the "\
+                + "params.txt file. It should be a short string with no special "\
+                + "characters, definitenly not a path (no \"/\" characters)."\
+                + "If you need a suggestion, name it after the organism your working on."
+            raise IPyradParamsError(msg)
+        self.paramsdict["assembly_name"] = newvalue
+        self.name = newvalue
+
+    elif param == 'project_dir':
         expandpath = expander(newvalue)
         if not expandpath.startswith("/"): 
             if os.path.exists(expandpath):
                 expandpath = "./"+expandpath
                 expandpath = expander(expandpath)
-        self.paramsdict["working_directory"] = expandpath
-        self.dirs["working"] = expandpath
+        self.paramsdict["project_dir"] = expandpath
+        self.dirs["project"] = expandpath
 
     elif param == 'raw_fastq_path':
         fullrawpath = expander(newvalue)

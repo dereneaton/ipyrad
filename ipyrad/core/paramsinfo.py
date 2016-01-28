@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 
 """ Return explanation and options for each parameter. 
-    ip.get_params_info(1) or ip.get_params_info("working_directory") 
+    ip.get_params_info(1) or ip.get_params_info("project_dir") 
     return the same result. If not argument, a summary of the available
     parameters and their numbered references is returned. 
     Parameter info is stored as a dict of tuples. Each tuple consists of a
@@ -14,17 +14,33 @@ from collections import OrderedDict
 
 
 pinfo = OrderedDict([
+("0", ("""
+    (0) assembly_name ----------------------------------------------------
+    This is the name of your assembly. It will be the prefix for all 
+    directories inside the project directory. An easy default for this
+    parameter is the name of your project directory. For example if your
+    project directory is ./white-crowns, then your assembly name could be
+    white-crowns. Assembly name is variable because you might want to
+    fork assemblies within a project to try different runs with different
+    minimum coverage values, different levels of indels allowed, etc.
+    Examples:
+    ----------------------------------------------------------------------
+    data.set_params(0) = "white-crowns"               ## full path example
+    data.set_params('assembly_name') = "white-crowns" ## verbose
+    ----------------------------------------------------------------------
+    """, "Assembly name. Used to name output directories for assembly steps")
+),
 ("1", ("""
-    (1) working_directory ------------------------------------------------
+    (1) project_dir ------------------------------------------------------
     Project name / path for working directory where all data files will be 
     saved. This parameter affects all steps of assembly (1-7). 
     Examples: 
     ----------------------------------------------------------------------
     data.set_params(1) = "/home/user/rad_analysis/"   ## full path example
     data.set_params(1) = "./"                         ## current work. dir.
-    data.set_params('working_directory') = "./"       ## verbose
+    data.set_params('project_dir') = "./"       ## verbose
     ----------------------------------------------------------------------
-    """, "Working dir (made in curdir if not present)")
+    """, "Project dir (made in curdir if not present)")
 ),
 
 ("2", ("""

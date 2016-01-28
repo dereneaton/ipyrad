@@ -445,7 +445,7 @@ def preview_truncate_fq(data, sample_fastq):
 
             ## write to a tmp file in the same place zcat_make_tmps would write
             with tempfile.NamedTemporaryFile('w+b', delete=False,
-                          dir=os.path.realpath(data.dirs.working),
+                          dir=os.path.realpath(data.dirs.project),
                           prefix=read+".preview_tmp_", suffix=".fq") as tmp_fq:
                 tmp_fq.write("".join(quarts))
             ## save file name and close input

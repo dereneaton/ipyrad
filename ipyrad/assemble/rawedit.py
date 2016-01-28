@@ -400,7 +400,7 @@ def prechecks(data):
     """ checks before starting analysis """
     ## link output directories 
     data.dirs.edits = os.path.join(os.path.realpath(
-                                   data.paramsdict["working_directory"]), 
+                                   data.paramsdict["project_dir"]), 
                                    data.name+"_edits")
     ## create output directory if doesn't exist
     if not os.path.exists(data.dirs.edits):
@@ -454,7 +454,7 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         sample_fastq = sample.files.fastqs
 
     ## break up the file into smaller tmp files for each processor
-    tmpdir = os.path.join(data.dirs.working, data.name+"-tmpchunks")
+    tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
     chunkslist = []
@@ -482,7 +482,7 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
 
     finally:
         ## if process failed at any point delete temp files
-        tmpdirs = glob.glob(os.path.join(data.dirs.working, data.name+"-tmpchunks"))
+        tmpdirs = glob.glob(os.path.join(data.dirs.project, data.name+"-tmpchunks"))
         if tmpdirs:
             for tmpdir in tmpdirs:
                 shutil.rmtree(tmpdir)
@@ -570,7 +570,7 @@ def assembly_cleanup(data):
     """ cleanup for assembly object """
 
     ## remove tmpchunks dir
-    tmpdir = os.path.join(data.dirs.working, data.name+"-tmpchunks")
+    tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
     if os.path.exists(tmpdir):
         shutil.rmtree(tmpdir)
 

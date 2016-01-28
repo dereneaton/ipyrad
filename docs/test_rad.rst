@@ -74,7 +74,7 @@ function ``set_params()`` that can be used to modify parameters.
 
 .. parsed-literal::
 
-      1   working_directory             ./test_rad                                   
+      1   project_dir                   ./test_rad                                   
       2   raw_fastq_path                ./data/sim_rad_test_R1_.fastq.gz             
       3   barcodes_path                 ./data/sim_rad_test_barcodes.txt             
       4   sorted_fastq_path                                                          
