@@ -1,5 +1,13 @@
 #!/usr/bin/env ipython2
 
+
+## define state vars
+__interactive__ = 1      ## CLI __main__ changes to 0
+__version__ = "0.1.36"
+## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"                                                                                
+__loglevel__ = "ERROR"
+
+
 ## main ip.functions
 from . import load
 from . import assemble 
@@ -12,11 +20,6 @@ from ipyrad.core.assembly import merge
 from ipyrad.core.sample import Sample
 from ipyrad.core.paramsinfo import paramsinfo
 
-## define state vars
-__version__ = "0.1.35"
-__interactive__ = 1
-## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"                                                                                
-__loglevel__ = "ERROR"
 
 ## this needs to come after __loglevel__ definition
 ## sets log config and prints warning if __loglevel__ is in hackers mode
@@ -66,5 +69,4 @@ else:
 
 
 if __name__ == "__main__":
-    __interactive__ = 0
-
+    pass

@@ -34,7 +34,9 @@ from ipyrad import assemble
 import logging
 LOGGER = logging.getLogger(__name__)
 
-#sys.tracebacklimit = 0
+## turn off traceback for the CLI
+if not ip.__interactive__:
+    sys.tracebacklimit = 0
 
 
 class Assembly(object):
@@ -127,11 +129,10 @@ class Assembly(object):
             self.bins[binn] = binx
 
         ## statsfiles is a dict where keys return a func... 
-        ## can't get this to work with a @property func.
         self.statsfiles = ObjDict({})
 
         ## samples linked 
-        self.samples = {}#ObjDict()
+        self.samples = {}
 
         ## samples linked 
         self.populations = ObjDict()
@@ -689,7 +690,7 @@ class Assembly(object):
 
         """
         print("  Saving current assembly.")
-        ## Trap keyboard interrupt during save to prevent fscking dillout objects.
+        ## Trap keyboard interrupt during save to prevent fscking dill objects.
         if not path:
             path = os.path.join( 
                                 self.paramsdict["project_dir"],
@@ -709,7 +710,7 @@ class Assembly(object):
     def _launch(self, inittries):
         """ launch ipyclient.
         launch within try statement in case engines aren't ready yet
-        and try 30 one second sleep/wait cycles before giving up on engines
+        and try 30 1 second sleep/wait cycles before giving up on engines
         """
         tries = inittries
         while tries:
@@ -1526,6 +1527,7 @@ def tuplecheck(newvalue, dtype=str):
     return newvalue
 
 
+
 def paramschecker(self, param, newvalue):
     if param == 'assembly_name':
         ## Make sure somebody doesn't try to change their assembly_name, bad things
@@ -1583,8 +1585,8 @@ def paramschecker(self, param, newvalue):
     elif param == 'assembly_method':
         methods = ["denovo", "reference_only", "hybrid", "denovo_only"]
         assert newvalue in methods, """
-    The `assembly_method` parameter must be one of the following: 
-    denovo, reference, hybrid, or denovo_only. You entered: \n{}.
+    The assembly_method parameter must be one of the following: denovo, hybrid, 
+    reference_only or denovo_only. You entered: \n{}.
     """.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
 
@@ -1595,7 +1597,8 @@ def paramschecker(self, param, newvalue):
             print("""
     "Warning: reference sequence file not found. This must be an absolute path 
     (/home/wat/ipyrad/data/reference.gz) or relative to the directory where 
-    you're running ipyrad (./data/reference.gz). You entered: \n{}
+    you're running ipyrad (./data/reference.gz). You entered: 
+    {}
     """.format(fullrawpath))
         self.paramsdict['reference_sequence'] = fullrawpath
 
@@ -1636,12 +1639,12 @@ def paramschecker(self, param, newvalue):
             "mindepth_statistical must be an integer."
         ## do not allow values below 5
         if int(newvalue) < 5:
-            print(\
-        "error: mindepth statistical cannot be set < 5. Use mindepth_majrule.")
+            raise IPyradError("""
+    mindepth statistical cannot be set < 5. Use mindepth_majrule.""")
         ## do not allow majrule to be > statistical
         elif int(newvalue) < self.paramsdict["mindepth_majrule"]:
-            print(\
-        "error: mindepth statistical cannot be less than mindepth_majrule")                
+            raise IPyradError("""
+    mindepth statistical cannot be less than mindepth_majrule""")
         else:
             self.paramsdict['mindepth_statistical'] = int(newvalue)
             ## TODO: calculate new clusters_hidepth if passed step3
