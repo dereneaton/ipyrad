@@ -17,6 +17,7 @@ import gzip
 import dill
 import copy
 import h5py
+import string
 import itertools
 import subprocess
 import pandas as pd
@@ -87,7 +88,23 @@ class Assembly(object):
 
     def __init__(self, name, quiet=False):
 
-        ## obj name
+        ## Make sure assembly name is not empty
+        if not name:
+            msg = "\n\nAssembly name _must_ be set. This is the first parameter in the\n"\
+                + "params.txt file. It should be a short string with no special\n"\
+                + "characters, definitely not a path (no \"/\" characters).\n"\
+                + "If you need a suggestion, name it after the organism you're working on.\n"
+            raise IPyradParamsError(msg)
+
+        ## Do some checking here to make sure the name doesn't have
+        ## special characters, spaces, or path delimiters. Allow _ and -.
+        invalid_chars = string.punctuation.replace("_", "").replace("-", "")+" "
+        if any(char in invalid_chars for char in name):
+            msg = "\n\nNo spaces or special characters in the assembly name.\n"\
+                + "A good practice is to replace spaces with underscores '_'.\n"\
+                + "This is a good assembly_name: white_crowned_sparrows."
+            raise IPyradParamsError(msg)
+
         self.name = name
         if not quiet:
             print("  New Assembly: {}".format(self.name))
@@ -130,7 +147,7 @@ class Assembly(object):
 
         ## the default params dict
         self.paramsdict = OrderedDict([
-                       ("assembly_name", ""),
+                       ("assembly_name", name),
                        ("project_dir", os.path.realpath(
                                                 os.path.curdir)),
                        ("raw_fastq_path", os.path.join(
@@ -1511,15 +1528,18 @@ def tuplecheck(newvalue, dtype=str):
 
 def paramschecker(self, param, newvalue):
     if param == 'assembly_name':
-        ## Make sure assembly name is set and isn't a path of any kind
-        if not newvalue or len(newvalue.rsplit("/")) != 1:
-            msg = "Assembly name _must_ be set. This is the first parameter in the "\
-                + "params.txt file. It should be a short string with no special "\
-                + "characters, definitenly not a path (no \"/\" characters)."\
-                + "If you need a suggestion, name it after the organism your working on."
-            raise IPyradParamsError(msg)
-        self.paramsdict["assembly_name"] = newvalue
-        self.name = newvalue
+        ## Make sure somebody doesn't try to change their assembly_name, bad things
+        ## would happen. Calling set_params on assembly_name only raises a (hopefully
+        ## informative error. Assembly_name is set at Assembly creation time and is
+        ## immutable.
+        msg = "\n\nAssembly name is set at Assembly creation time and is an immutable\n"\
+            + "property. You may, however, branch the assembly which will create a copy\n"\
+            + "with a new name, a sort of roundabout name change. Here's how:\n\n"\
+            + "  Command Line Interface:\n"\
+            + "    ipyrad -p params.txt --branch new_name\n\n"\
+            + "  API (Jupyter Notebook Users):\n"\
+            + "    new_assembly = my_assembly.copy(\"new_name\")"
+        raise IPyradParamsError(msg)
 
     elif param == 'project_dir':
         expandpath = expander(newvalue)

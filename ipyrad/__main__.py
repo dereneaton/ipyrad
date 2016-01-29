@@ -46,8 +46,22 @@ def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
 
     project_dir = parsedict['1']
-    assembly_name = parsedict['0']
-    my_assembly = os.path.join(project_dir, prefix)
+    ## Be nice if somebody also puts in the file extension
+    assembly_name = parsedict['0'].split(".assembly")[0]
+    my_assembly = os.path.join(project_dir, assembly_name)
+
+    ## If the project_dir doesn't exist don't even bother trying harder.
+    if not os.path.isdir(project_dir):
+        msg = "\n\nTrying to print stats for a project dir ({}) that doesn't exist.\n"\
+            + "You must run steps before you can show stats.".format(project_dir)
+        sys.exit(msg)
+
+    if not assembly_name:
+        msg = "\n\nAssembly name is not set in params.txt. This means somebody\n"\
+            + "changed it or erased it, which is bad. Please restore the\n"\
+            + "original name. You can find the name of your assembly in the\n"\
+            + "project dir: {}.".format(project_dir)
+        raise ip.assemble.util.IPyradParamsError(msg)
 
     try:
         data = ip.load.load_assembly(my_assembly,
@@ -82,10 +96,14 @@ def getassembly(args, parsedict):
     ## but it is potentially dangerous, so here we have assembly_name
     ## and assembly_file, name is used for creating new in cwd, file is
     ## used for loading existing.
+    ##
+    ## Be nice if the user includes the extension.
     project_dir = ip.core.assembly.expander(parsedict['1'])
-    ## rstrip to remove any pesty trailing slashes
-    assembly_name = parsedict['0']
+    assembly_name = parsedict['0'].split(".assembly")[0]
     assembly_file = os.path.join(project_dir, assembly_name)
+
+    ## Assembly creation will handle error checking  on
+    ## the format of the assembly_name
 
     ## make sure the working directory exists.
     if not os.path.exists(project_dir):
@@ -118,7 +136,9 @@ def getassembly(args, parsedict):
 
     ## for entering some params...
     for param in parsedict:
-        if parsedict[param]:
+        ## If the param isn't empty, and also if it isn't assembly_name
+        ## trap assignment of assembly_name since it is immutable.
+        if parsedict[param] and param != str(0):
             try:
                 data.set_params(param, parsedict[param])
             except Exception as inst:
