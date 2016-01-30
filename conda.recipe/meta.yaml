@@ -11,11 +11,24 @@ build:
 
 requirements:
   build:
+    - cython
+    - dill
+    - h5py
+    - ipyparallel
+    - ipython ==4.0.0
+    - jupyter
+    - mpi4py
+    - nbconvert
+    - numpy >=1.7
+    - pandas
+    - psutil
+    - scipy
+    - sphinx
+  run:
     - ipython ==4.0.0
     - ipyparallel
     - cython
     - scipy 
-    - numpy >=1.7
     - h5py
     - jupyter
     - sphinx
@@ -23,7 +36,6 @@ requirements:
     - pandas
     - mpi4py
     - psutil
-  run:
     - numpy >=1.7
 
 
