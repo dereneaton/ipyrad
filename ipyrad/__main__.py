@@ -242,7 +242,7 @@ def main():
         ## Create a tmp assembly and call write_params to write out
         ## default params.txt file
         try:
-            tmpassembly = ip.core.assembly.Assembly("")
+            tmpassembly = ip.core.assembly.Assembly("my_new_assembly", quiet=True)
             tmpassembly.write_params("params.txt", force=args.force)
         except Exception as inst:
             print(inst)
