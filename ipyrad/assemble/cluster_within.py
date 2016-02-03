@@ -108,6 +108,8 @@ def muscle_align(args):
     ## parse args
     data, chunk = args
 
+    LOGGER.debug("Doing chunk {}".format(chunk))
+
     ## data are already chunked, read in the whole thing
     infile = open(chunk, 'rb')
     clusts = infile.read().split("//\n//\n")
@@ -183,12 +185,16 @@ def muscle_align(args):
                             anames[i].split(";")[-1][0] == '-']
                     idxs = []
                     for rseq in revs:
-                        idxs.append(max(\
-                            [i for i, j in enumerate(rseq) if j != "-"]))
+                        try:
+                            idxs.append(max(\
+                                [i for i, j in enumerate(rseq) if j != "-"]))
+                        except Exception as e:
+                            LOGGER.info("chunk {} - name {} - rseq {}".format(chunk, anames, revs))
+                            raise
                     if idxs:
                         rightlimit = min(idxs)
                         aseqs = [i[:rightlimit] for i in aseqs]
-                        #LOGGER.info('rightlimit %s', leftlimit)                    
+                        #LOGGER.info('rightlimit %s', rightlimit)                    
 
                 somedic = OrderedDict()
                 for i in range(len(anames)):
@@ -730,11 +736,11 @@ def multi_muscle_align(data, sample, ipyclient):
 
     finally:
         ## still delete tmpfiles if job was interrupted
-        for fname in tmpnames:
-            if os.path.exists(fname):
-                os.remove(fname)
-        if os.path.exists(tmpdir):
-            shutil.rmtree(tmpdir)
+#        for fname in tmpnames:
+#            if os.path.exists(fname):
+#                os.remove(fname)
+#        if os.path.exists(tmpdir):
+#            shutil.rmtree(tmpdir)
 
         del lbview
 
