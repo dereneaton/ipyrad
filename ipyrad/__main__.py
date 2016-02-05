@@ -11,6 +11,9 @@ import argparse
 import logging
 import sys
 import os
+import socket
+import ipyparallel as ipp
+from collections import Counter
 
 # pylint: disable=W0212
 
@@ -266,8 +269,6 @@ def main():
     "\n --------------------------------------------------"
         print(header)
     
-
-
     ## create new Assembly or load existing Assembly, quit if args.results
     if args.params:
         parsedict = parse_params(args)
@@ -292,6 +293,14 @@ def main():
                                                       controller=controller)
                 ## set to print headers
                 data._headers = 1
+
+                ## print the connection info
+                # ipyclient = ipp.Client(cluster_id=data._ipclusterid)
+                # dview = ipyclient[:]
+                # ccx = Counter(dview.apply_sync(socket.gethostname))
+                # for key in ccx:
+                #     print("  Node: {}: {} cores".format(key, ccx[key]))
+                #     print("")
 
                 ## run assembly steps
                 steps = list(args.steps)

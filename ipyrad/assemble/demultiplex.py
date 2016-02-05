@@ -591,8 +591,8 @@ def run(data, preview, ipyclient):
                     if os.path.exists(tmpfile):
                         os.remove(tmpfile)
         except AttributeError as inst:
-            ## If barcodes file is fsck, then finally frags because data.dirs.fastqs
-            ## doesn't exist
+            ## If barcodes file is fsck, then finally frags because 
+            ## data.dirs.fastqs doesn't exist
             pass
 
 

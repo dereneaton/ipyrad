@@ -228,7 +228,8 @@ def make_loci(data, inh5):
     time and write to file. """
 
     ## open the out handle
-    locifile = open(os.path.join(data.dirs.outfiles, data.name+".loci"), 'w')
+    data.outfiles.loci = os.path.join(data.dirs.outfiles, data.name+".loci")
+    locifile = open(data.outfiles.loci, 'w')
 
     ## iterate 1000 loci at a time
     optim = 1000

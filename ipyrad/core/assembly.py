@@ -92,19 +92,21 @@ class Assembly(object):
 
         ## Make sure assembly name is not empty
         if not name:
-            msg = "\n\nAssembly name _must_ be set. This is the first parameter in the\n"\
-                + "params.txt file. It should be a short string with no special\n"\
-                + "characters, definitely not a path (no \"/\" characters).\n"\
-                + "If you need a suggestion, name it after the organism you're working on.\n"
+            msg = """\n
+    Assembly name _must_ be set. This is the first parameter in the params.txt 
+    file, and will be used as a prefix for output files. It should be a short 
+    string with no special characters, i.e., not a path (no \"/\" characters). 
+    If you need a suggestion, name it after the organism you're working on.\n"""
             raise IPyradParamsError(msg)
 
         ## Do some checking here to make sure the name doesn't have
         ## special characters, spaces, or path delimiters. Allow _ and -.
         invalid_chars = string.punctuation.replace("_", "").replace("-", "")+" "
         if any(char in invalid_chars for char in name):
-            msg = "\n\nNo spaces or special characters in the assembly name.\n"\
-                + "A good practice is to replace spaces with underscores '_'.\n"\
-                + "This is a good assembly_name: white_crowned_sparrows."
+            msg = """\n
+    No spaces or special characters are allowed in the assembly name. A good 
+    practice is to replace spaces with underscores '_'. An example of a good 
+    assembly_name is: white_crowned_sparrows."""
             raise IPyradParamsError(msg)
 
         self.name = name
@@ -302,7 +304,7 @@ class Assembly(object):
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
 
-        print("    Linking to demultiplexed fastq files in {}".format(path))
+        print("    Linking to demultiplexed fastq files in '{}'".format(path))
 
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
@@ -678,6 +680,7 @@ class Assembly(object):
             return newobj
 
 
+
     def save(self, path=None):
         """ 
         Save Assembly object to disk as a serialized Pickle (.assembly file).
@@ -797,13 +800,9 @@ class Assembly(object):
             if ipyclient:
                 ipyclient.abort()
             ## shutdown the cluster to ensure everything is killed
-            #ipyclient.shutdown()
-            ## relaunch the cluster
-            #ipyclient = self._launch(nwait)
+            if not self.__interactive__:
+                ipyclient.shutdown()
             LOGGER.error("assembly interrupted by user.")
-            ## don't reraise the keyboard interrupt, 
-            ## it already stopped the Engine jobs,
-            #print("Keyboard Interrupt\n")
             raise IPyradError("Keyboard Interrupt")
 
         except SystemExit as inst:
@@ -871,7 +870,7 @@ class Assembly(object):
         ## Creating new Samples
         else:
             ## first check if demultiplexed files exist in sorted path
-            spath = self.paramsdict["sorted_fastq_path"]+"*"
+            spath = self.paramsdict["sorted_fastq_path"]
             if os.path.exists(spath):
                 if self._headers:
                     print(msg2, "\n  linking files from {}".\
@@ -880,13 +879,13 @@ class Assembly(object):
                         self.link_fastqs()
                     
                     except Exception as e:
-                        ## If linking fails raise the exception. Assuming
-                        ## the user entered a path here it means they're bringing
+                        ## If linking fails raise the exception. Assuming the
+                        ## user entered a path here it means they're bringing
                         ## their own demultiplexed fastq, so DO NO attempt
                         ## to demultiplex.
                         print("  Failed to link fastq files in path {}".\
                             format(self.paramsdict["sorted_fastq_path"]))
-                        raise
+                        sys.exit()
             ## otherwise do the demultiplexing
             else:
                 if self._headers:
@@ -1116,7 +1115,7 @@ class Assembly(object):
 
     def step1(self, force=False, preview=False):
         """ docsting ... test """
-        self._clientwrapper(self._step1func, [force, preview], 10)
+        self._clientwrapper(self._step1func, [force, preview], 45)
 
 
     def step2(self, samples=None, nreplace=True, force=False, preview=False):
@@ -1155,7 +1154,7 @@ class Assembly(object):
             ...
         """
         self._clientwrapper(self._step2func, 
-                           [samples, nreplace, force, preview], 10)
+                           [samples, nreplace, force, preview], 45)
 
     def step3(self, samples=None, noreverse=False, force=False, preview=False):
         """ 
@@ -1186,12 +1185,12 @@ class Assembly(object):
             ...
         """
         self._clientwrapper(self._step3func, 
-                           [samples, noreverse, force, preview], 10)
+                           [samples, noreverse, force, preview], 45)
 
 
     def step4(self, samples=None, subsample=None, force=False):
         """ test """
-        self._clientwrapper(self._step4func, [samples, subsample, force], 10)
+        self._clientwrapper(self._step4func, [samples, subsample, force], 45)
 
 
 
@@ -1223,7 +1222,7 @@ class Assembly(object):
             overwritten unless force=True. 
         """
 
-        self._clientwrapper(self._step5func, [samples, force], 10)
+        self._clientwrapper(self._step5func, [samples, force], 45)
 
 
 
@@ -1256,7 +1255,7 @@ class Assembly(object):
             reproducible. 
         """
         self._clientwrapper(self._step6func, [samples, noreverse, force,
-                                              randomseed], 10)
+                                              randomseed], 45)
 
 
     def step7(self, samples=None, force=False):
@@ -1272,7 +1271,7 @@ class Assembly(object):
             ...
 
         """
-        self._clientwrapper(self._step7func, [samples, force], 10)
+        self._clientwrapper(self._step7func, [samples, force], 45)
 
 
 
@@ -1794,6 +1793,25 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['excludes'] = outgroup_individuals
 
     return self
+
+
+
+
+### TRYING OUT A JSON DUMP
+def save_json(self, path):
+    """ saved Assembly and Samples as JSON """
+    import json
+    json.dumps(
+        {'samples': [sample.to_JSON for sample in self.samples.values()], 
+         'assembly': self.__dict__}, 
+        sort_keys=True, indent=4)
+
+
+
+
+
+
+
 
 
 

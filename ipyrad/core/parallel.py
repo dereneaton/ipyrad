@@ -2,12 +2,14 @@
 
 ## imports for running ipcluster
 from __future__ import print_function
+
+
 import subprocess
 import psutil
 import atexit
-import time
 import sys
 import os
+
 
 #import ipyparallel.nbextension.clustermanager as clustermanager
 #from tornado import web
@@ -43,7 +45,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 ## start ipcluster
-def start(name, nproc, controller, quiet, delay):
+def start(name, nproc, controller, quiet):
     """ Start ipcluster """
     if nproc != None:
         nproc = str(psutil.cpu_count())
@@ -53,7 +55,7 @@ def start(name, nproc, controller, quiet, delay):
                 "--cluster-id="+name,
                 "--controller="+controller,
                 "-n", str(nproc)]
-
+                #"--ip=*",
     try: 
         #if not quiet:
         #    print(standard)
@@ -97,7 +99,7 @@ def ipcontroller_init(nproc=None, controller="Local", quiet=False):
     """
     ## check if this pid already has a running cluster
     ipname = "ipyrad-"+str(os.getpid())
-    start(ipname, nproc, controller, quiet, delay='1.0')
+    start(ipname, nproc, controller, quiet)
     #time.sleep(1)
     atexit.register(stop, ipname)
     return ipname

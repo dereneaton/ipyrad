@@ -3,6 +3,7 @@
 
 #import os
 import pandas as pd
+import json
 from ipyrad.assemble.util import ObjDict, IPyradError
 
 # pylint: disable=C0103
@@ -85,6 +86,10 @@ class Sample(object):
     def __str__(self):
         return "<ipyrad.Sample object {}>".format(self.name)
 
+    def to_JSON(self):
+        """ write to JSON to serialize object """
+        return json.dumps(self, default=lambda o: o.__dict__, 
+                          sort_keys=True, indent=4)
 
     #def save(self):
     #    """ pickle the data object """
