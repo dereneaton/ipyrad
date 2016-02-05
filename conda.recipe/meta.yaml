@@ -19,6 +19,7 @@ requirements:
     - jupyter
     - mpi4py
     - nbconvert
+    - numba
     - numpy >=1.7
     - pandas
     - psutil
@@ -30,6 +31,7 @@ requirements:
     - cython
     - scipy 
     - h5py
+    - numba
     - jupyter
     - sphinx
     - dill
