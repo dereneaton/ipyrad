@@ -10,9 +10,11 @@ code is as follows:
 """
 # pylint: disable=W0142
 # pylint: disable=E1101
+# pylint: disable=W0212
 
 from __future__ import print_function
 
+import pandas as pd
 import numpy as np
 import itertools
 import shutil
@@ -28,8 +30,9 @@ LOGGER = logging.getLogger(__name__)
 
 ## List of all possible output formats. This is global because it's
 ## referenced by assembly.py and also paramsinfo. Easier to have it
-## centralized.
-OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'vcf', 'usnps',
+## centralized. LOCI and VCF are default. Some others are created as 
+## dependencies of others.
+OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps',
                   'str', 'geno', 'treemix', 'migrate', 'gphocs']
 
 
@@ -37,47 +40,159 @@ def run(data, samples, force, ipyclient):
     """ Check all samples requested have been clustered (state=6), 
     make output directory, then create the requested outfiles.
     """
-
-    LOGGER.info("Checking input")
-    ## Make sure all samples are ready for writing output
-    samples = precheck(data, samples)
-
-    LOGGER.info("Applying filters")
-    ## Apply filters to supercatg and superhdf5 
-    ## and fill the filters and edge arrays
-    filter_all_clusters(data, samples, ipyclient)
-
-    LOGGER.info("Make .loci from filtered .vcf")
-    ## Make .loci and .vcf from the filtered superseq & catg arrays
-    #vcf2loci.make(data, samples)
-
-    LOGGER.info("Convert .loci to all requested output file formats")
-    ## Make all requested outfiles from the filtered .loci file
-    #make_outfiles(data, samples, force)
-
-
-
-def precheck(data, samples):
-    """ Check all samples requested have been clustered (state=6), 
-    make output directory, then create the requested outfiles.
-    """
-    ## Make a list of all the samples that are actually ready
-    subsample = []
-    for sample in samples:
-        if sample.stats.state < 6:
-            print("""
-    Excluding Sample {}; not ready for writing output. Run step6() first.
-    """.format(sample.name))
-        
-        else:
-            subsample.append(sample)
-
     ## prepare dirs
     data.dirs.outfiles = os.path.join(data.dirs.project, data.name+"_outfiles")
     if not os.path.exists(data.dirs.outfiles):
         os.mkdir(data.dirs.outfiles)
 
-    return subsample
+    ## Apply filters to supercatg and superhdf5 with selected samples
+    ## and fill the filters and edge arrays.
+    LOGGER.info("Applying filters")
+    filter_all_clusters(data, samples, ipyclient)
+
+    ## Everything needed is in the now filled h5 database. Filters were applied
+    ## with 'samples' taken into account, but still need to print only included
+    LOGGER.info("Writing .loci file")
+    samplecounts, locuscounts = make_loci(data, samples)
+
+    LOGGER.info("Writing stats output")
+    make_stats(data, samples, samplecounts, locuscounts)
+
+    LOGGER.info("Writing .vcf file")
+    #make_vcf(data)
+
+    LOGGER.info("Writing other formats")
+
+
+
+def make_stats(data, samples, samplecounts, locuscounts):
+    """ write the output stats file and save to Assembly obj."""
+    ## load the h5 database
+    inh5 = h5py.File(data.database, 'r')
+    anames = inh5["seqs"].attrs["samples"]
+    nloci = inh5["seqs"].shape[0]
+    optim = 1000
+
+    ## open the out handle. This will have three data frames saved to it. 
+    ## locus_filtering, sample_coverages, and snp_distributions
+    data.outfiles.stats = os.path.join(data.dirs.outfiles, data.name+".stats")
+    outstats = open(data.outfiles.stats, 'w')
+
+    ########################################################################
+    ## get stats for locus_filtering, use chunking.
+    filters = np.zeros(6, dtype=int)
+    passed = 0
+    start = 0
+    #snpcounts = Counter()
+    piscounts = Counter()
+    varcounts = Counter()
+    for i in range(50):
+        piscounts[i] = 0
+        varcounts[i] = 0
+    #bisnps = Counter()
+    while start < nloci:
+        hslice = [start, start+optim]
+        ## load each array
+        afilt = inh5["filters"][hslice[0]:hslice[1], ]
+        asnps = inh5["snps"][hslice[0]:hslice[1], ]
+
+        ## get subarray results from filter array
+        # "max_indels", "max_snps", "max_hets", "min_samps", "bad_edges"
+        filters += afilt.sum(axis=0)
+        passed += np.sum(afilt.sum(axis=1) == 0)
+
+        ## get snps counts
+        snplocs = asnps[:].sum(axis=1)
+        varlocs = snplocs.sum(axis=1)
+        varcounts.update(Counter(varlocs))
+        #snpcounts.update(Counter(snplocs[:, 0]))
+        piscounts.update(Counter(snplocs[:, 1]))
+        ## bisnps TODO snpcols[2]
+
+        ## increase counter to advance through h5 database
+        start += optim
+
+    ## record filtering of loci from total to final
+    filtdat = pd.Series({"total_prefiltered_loci": nloci,
+                         "filtered_by_max_indels": filters[0],
+                         "filtered_by_min_sample": filters[3],
+                         "filtered_by_max_hetero": filters[2],
+                         "filtered_by_max_snps": filters[1],
+                         "filtered_by_edge_trim": filters[4],
+                         "total_filtered_loci": passed}, 
+                         name="locus_filtering")
+    print("\n\n## The number of loci caught by each filter."+\
+          "\n## This table can be accessed as a Pandas DataFrame from the"+\
+          "\n## ipyrad API as: [assembly].statsfiles.s7_filters\n", 
+          file=outstats)
+    data.statsfiles.s7_filters = pd.DataFrame(filtdat)
+    data.statsfiles.s7_filters.to_string(buf=outstats)
+
+
+    ########################################################################
+    ## make dataframe of sample_coverages
+    ## samplecounts is len of anames from db. Save only samples in samples.
+    samples = [i.name for i in samples]
+    sidx = np.array([i in samples for i in anames])    
+    covdict = {name: val for name, val in zip(samples, samplecounts[sidx])}
+    covdict = pd.Series(covdict, name="sample_coverage")
+    #data.statsfiles.s7.sample_coverages = pd.DataFrame(covdict)
+    #print(data.statsfiles.s7.sample_coverages)
+    print("\n\n## The number of loci recovered for each Sample."+\
+          "\n## This table can be accessed as a Pandas DataFrame from the"+\
+          "\n## ipyrad API as: [assembly].statsfiles.s7_samples\n",
+          file=outstats)
+    data.statsfiles.s7_samples = pd.DataFrame(covdict)
+    data.statsfiles.s7_samples.to_string(buf=outstats)
+
+
+    ########################################################################
+    ## get stats for locus coverage
+    lrange = range(1, len(anames)+1)
+    locdat = pd.Series(locuscounts, name="locus_coverage", index=lrange)
+    start = data.paramsdict["min_samples_locus"]
+    locsums = pd.Series({i: np.sum(locdat.values[start:i]) for i in lrange}, 
+                        name="sum_coverage", index=lrange)
+    print("\n\n## The number of loci for which N taxa have data."+\
+          "\n## This table can be accessed as a Pandas DataFrame from the"+\
+          "\n## ipyrad API as: [assembly].statsfiles.s7_loci\n",
+          file=outstats)
+    data.statsfiles.s7_loci = pd.concat([locdat, locsums], axis=1)
+    data.statsfiles.s7_loci.to_string(buf=outstats)
+
+    #########################################################################
+    ## get stats for SNP_distribution    
+    srange = range(max([i for i in varcounts if varcounts[i]])+1)
+    vardat = pd.Series(varcounts, name="var", index=srange)
+    varsums = pd.Series({i: np.sum(vardat.values[0:i+1]) for i in srange}, 
+                        name="sum_var", index=srange)
+    pisdat = pd.Series(piscounts, name="pis", index=srange)
+    pissums = pd.Series({i: np.sum(pisdat.values[0:i+1]) for i in srange}, 
+                        name="sum_pis", index=srange)
+    print("\n\n## The distribution of SNPs (var and pis) across loci."+\
+          "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
+          "\n## var = all variable sites (pis + autapomorphies)"+\
+          "\n## This table can be accessed as a Pandas DataFrame from the"+\
+          "\n## ipyrad API as: [assembly].statsfiles.s7_snps\n",
+          file=outstats)
+    data.statsfiles.s7_snps = pd.concat([vardat, varsums, pisdat, pissums], 
+                                        axis=1)    
+    data.statsfiles.s7_snps.to_string(buf=outstats)
+
+    ## close it
+    outstats.close()
+
+
+
+def select_samples(dbsamples, samples):
+    """ Get the row index of samples that are included. If samples are in the 
+    'excluded' they were already filtered out of 'samples' during _get_samples.
+    """
+    ## get index from dbsamples
+    samples = [i.name for i in samples]
+    sidx = [list(dbsamples).index(i) for i in samples]
+    sidx.sort()
+    return sidx
 
 
 
@@ -104,7 +219,7 @@ def filter_all_clusters(data, samples, ipyclient):
         os.mkdir(chunkdir)
 
     ## get the indices of the samples that we are going to include
-    sidx = select_samples(data, dbsamples, [i.name for i in samples])
+    sidx = select_samples(dbsamples, samples)
 
     ## Split dataset into chunks
     try:
@@ -129,6 +244,7 @@ def filter_all_clusters(data, samples, ipyclient):
         tmphet = glob.glob(os.path.join(chunkdir, "hetf.*.npy"))
         tmpsnp = glob.glob(os.path.join(chunkdir, "snpf.*.npy"))
         tmpmin = glob.glob(os.path.join(chunkdir, "minf.*.npy"))
+        
         ## sort array files within each group
         arrdict = {'edg':tmpedg, 'het':tmphet, 'snp':tmpsnp, 'min':tmpmin}
         for arrglob in arrdict.values():
@@ -188,44 +304,36 @@ def filter_all_clusters(data, samples, ipyclient):
         ## finished with superedge
         LOGGER.info('supersnps[:10] : %s', supersnps[:10])
 
-        ### MAKE THE LOCI FILE
-        ## h5 handle loads superseqs, superedge, supersnps, superfilter
-        ## and applies all filters.
-        make_loci(data, inh5)
-
-        ## MAKE THE STATS OUTPUT
-
-        ## MAKE OTHER OUTPUT FILES FROM CATG/VCF
-
-        ## MAKE OTHER OUTPUT FILES FROM LOCI
-
-
 
     finally:
         ## clean up the tmp files/dirs
         try:
-            print("finished filtering")
+            LOGGER.info("finished filtering")
             shutil.rmtree(chunkdir)
         except (IOError, OSError):
             pass
 
 
 
-def padnames(names, longname_len):
+def padnames(anames, longname_len):
     """ pads names for loci output """
     ## Padding distance between name and seq.
     padding = 5    
     ## 
     pnames = [name + " " * (longname_len - len(name)+ padding) \
-              for name in names]
+              for name in anames]
     snppad = "//" + " " * (longname_len - 2 + padding)
     return np.array(pnames), snppad
 
 
 
-def make_loci(data, inh5):
+## incorportatig samples...
+def make_loci(data, samples):
     """ makes the .loci file from h5 data base. Iterates by 1000 loci at a 
     time and write to file. """
+
+    ## load the h5 database
+    inh5 = h5py.File(data.database, 'r')
 
     ## open the out handle
     data.outfiles.loci = os.path.join(data.dirs.outfiles, data.name+".loci")
@@ -235,6 +343,22 @@ def make_loci(data, inh5):
     optim = 1000
     nloci = inh5["seqs"].shape[0]
 
+    ## get sidx of samples
+    anames = inh5["seqs"].attrs["samples"]
+    ## get name and snp padding
+    longname_len = max(len(i) for i in anames)
+    pnames, snppad = padnames(anames, longname_len)
+    samples = [i.name for i in samples]
+    smask = np.array([i not in samples for i in anames])
+
+    ## keep track of how many loci from each sample pass all filters
+    samplecov = np.zeros(len(anames), dtype=int)
+    locuscov = Counter()
+    ## set initial value to zero for all values above min_samples_locus
+    for cov in range(data.paramsdict["min_samples_locus"], len(anames)+1):
+        locuscov[cov] = 0
+
+    ## apply all filters and write loci data
     start = 0
     while start < nloci:
         hslice = [start, start+optim]
@@ -242,30 +366,35 @@ def make_loci(data, inh5):
         aedge = inh5["edges"][hslice[0]:hslice[1], ]
         aseqs = inh5["seqs"][hslice[0]:hslice[1], ]
         asnps = inh5["snps"][hslice[0]:hslice[1], ]
-        anames = inh5["seqs"].attrs["samples"]
-
-        ## get name and snp padding
-        longname_len = max(len(i) for i in anames)
-        pnames, snppad = padnames(anames, longname_len)
 
         ## which loci passed all filters
         keep = np.where(np.sum(afilt, axis=1) == 0)[0]
 
         ## store until printing
         store = []
+
         ## write loci that passed after trimming edges, then write snp string
         for iloc in keep:
             edg = aedge[iloc]
+            ## grab all seqs between edges
             seq = aseqs[iloc, :, edg[0]:edg[1]]
+            ## snps was created using only the selected samples.
             snp = asnps[iloc, edg[0]:edg[1], ]
-            ## remove rows with all Ns
-            nsidx = np.all(seq[:, edg[0]:edg[1]] == "N", axis=1)
-            seq = seq[~nsidx, ]
+            ## remove rows with all Ns, seq has only selected samples
+            nalln = np.all(seq == "N", axis=1)
+            ## make mask of removed rows and excluded samples. Use the inverse
+            ## of this to save the coverage for samples
+            nsidx = nalln + smask
+            samplecov += np.invert(nsidx).astype(int)
+            locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
             ## select the remaining names in order
+            seq = seq[~nsidx, ]
             names = pnames[~nsidx]
-            ## save string for printing
+
+            ## save string for printing, excluding names not in samples
             store.append("\n".join(\
                 [name + s.tostring() for name, s in zip(names, seq)]))
+
             ## get snp string and add to store
             snpstring = ["-" if snp[i, 0] else \
                          "*" if snp[i, 1] else \
@@ -281,6 +410,9 @@ def make_loci(data, inh5):
 
     ## close handle
     locifile.close()
+
+    ## return sample counter
+    return samplecov, locuscov
 
 
 
@@ -380,31 +512,6 @@ def filter_stacks(args):
 
     ## Write out .tmp vcf
     #write_tmp_vcf(data, loci, fname)
-
-
-
-def select_samples(data, dbsamples, samples):
-    """ Get the row index of samples that are included, minus the samples that
-    are excluded, from their order in the database (dbsamples)
-    """
-    ## Get all the samples to exclude. The 'or' conditional is a hack to account
-    ## for the fact that paramsdict may either be an empty string or a list of
-    ## names to exclude. List and "" don't append right, so if you do this 'or'
-    ## and either of the lists is empty you'll get ["", "1B_0"]
-    excludes = (data.paramsdict["excludes"] or [""]) \
-             + (data.paramsdict["outgroups"] or [""])
-
-    ## remove excludes from the list
-    includes = list(set(samples) - set(excludes))
-    print('inc', includes)
-    excluded = set(samples).intersection(set(excludes))
-    LOGGER.info("Excluded: {}".format(excluded))
-
-    ## get index from dbsamples
-    sidx = [list(dbsamples).index(i) for i in includes]
-    sidx.sort()
-    print("sidx: ", sidx)
-    return sidx
 
 
 
