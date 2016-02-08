@@ -26,12 +26,12 @@ likely a Linux machine.
 
 .. code-block:: bash
 
-    ## install Miniconda for Linux 
+    ## EITHER download Miniconda for Linux 
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh    
 
-    ## install Miniconda for Mac
-    wget https://repo.continuum.io/miniconda/Miniconda-latest-Mac-x86_64.sh    
-
+    ## OR download Miniconda for Mac
+    wget https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh
+    
     ## Install miniconda. Follow the directions, by default it will propose installing
     ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
     ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.  
