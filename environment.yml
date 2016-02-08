@@ -3,8 +3,14 @@ channels:
 - ipyrad
 dependencies:
 - python=2.7
-- numpy=1.10
-- tornado=4.3=py27_0
-- traitlets=4.1.0=py27_0
-- ujson=1.33=py27_0
+- pip>8.0
+- dill>0.2
+- cython
+- ipython>=4.0
+- ipyparallel>=4.1
+- numpy>1.9
+- scipy>0.10
+- pandas
+- h5py
 - mpi4py
+- psutil
