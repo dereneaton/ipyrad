@@ -31,6 +31,11 @@ data_clust85). The Assembly name cannot be changed after an Assembly is created,
 but a new Assembly with a different name can be created by copying (branching)
 the Assembly (see Branching_). 
 
+.. code-block:: python
+
+data1                      ## [0] name the Assembly data1
+clust90_minsamp4           ## [0] name the Assembly based on parameter settings
+
 
 1. Project dir
 ----------------
@@ -64,6 +69,7 @@ wildcard character (*), as in the examples:
 
 3. Location of barcodes file
 -----------------------------
-...
+This is a path to the location of the barcodes_file_. 
+
 
 
