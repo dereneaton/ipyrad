@@ -20,7 +20,7 @@ Below is an explanation of each parameter setting and which steps of the
 assembly it effects. 
 
 
-0. Assembly name
+[0] Assembly name
 -----------------
 The Assembly name is used as the prefix for all output files. It should be a 
 unique identifier for the Assembly, meaning the set of parameters you are using 
@@ -34,10 +34,10 @@ the Assembly (see Branching_).
 .. code-block:: python
 
     data1                      ## [0] name the Assembly data1
-    clust90_minsamp4           ## [0] name the Assembly based on parameter settings
+    clust90_minsamp4           ## [0] name the Assembly based on some param settings
 
 
-1. Project dir
+[1] Project dir
 --------------
 The Project directory is the location where a group of Assemblies which share
 data files will be saved. This can be either a name or a path. If it is a path
@@ -52,7 +52,7 @@ generally be the name of the organism being studied (e.g., white_crowned_sparrow
     finches                            ## [1] create/use project dir called finches
 
 
-2. Location of raw fastq data
+[2] Location of raw fastq data
 ------------------------------
 This is a path to the location of raw (non-demultiplexed) fastq data files. The 
 files can be gzip compressed (i.e., have name-endings .fastq.gz). If you enter
@@ -67,14 +67,28 @@ wildcard character (*), as in the examples:
     ./data/sim_rad*.fastq.gz                  ## [2] select `sim_rad` data files
 
 
-3. Location of barcodes file
+[3] Location of barcodes file
 -----------------------------
 This is a path to the location of the barcodes_file_. 
 
+.. code-block:: python
 
-4. Location of sorted fastq data
+    /home/deren/ipyrad/tests/data/sim_barcodes.txt  ## [3] select barcode file
+    ~/tests/data/sim_barcodes.txt                   ## [3] select barcode file
+
+
+[4] Location of sorted fastq data
 --------------------------------
-This is a path to the location of the barcodes_file_. 
+This is a path to the location of the sorted fastq data. This would be...
+
+.. code-block:: python
+
+    /home/deren/ipyrad/tests/data/*.fastq.gz  ## [4] select all gzip data files
+    ~/ipyrad/tests/data/*.fastq               ## [4] select all fastq data files
+    ./data/sim_rad*.fastq.gz                  ## [4] select `sim_rad` data files
 
 
-
+[5] Assembly method
+--------------------
+There are four possible Assembly_methods_: denovo, reference, reference_add, and
+reference_sub. 
