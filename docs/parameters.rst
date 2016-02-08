@@ -5,19 +5,17 @@
 Assembly Parameters
 ====================
 
-To assemble data in ipyrad_ a series of 7 functions (steps_) are performed to
-sort, filter, cluster, and format the data into output files. Just how these 
-different steps function is controlled by a set of parameters that can be 
-modified by users. 
-
-The default settings for each parameter are fairly reasonable values for most
-assemblies, but you will always need to modify some of them (for example, to 
+ipyrad_ performs a series of 7 steps_ to assemble RAD-seq data sets by sorting
+filtering, clustering, and formatting the data into output files. During each 
+step a number of parameters are used which affect how that step is performed. 
+The defaults that we chose are fairly reasonable values for most assemblies, 
+however, you will always need to modify at least a few of them (for example, to 
 indicate the location of your data), and often times you will want to modify 
-many others as well. The ability to easily assemble your data set under a range
-of parameter settings is one of the strengths of ipyrad. 
+many of the parameters. The ability to easily assemble your data set under a range
+of parameter settings is one of the strengths of ipyrad_. 
 
-Below is an explanation of each parameter setting and which steps of the 
-assembly it effects. 
+Below is an explanation of each parameter setting, the steps of the assembly 
+that it effects, and example entries for the parameter into a params.txt file.
 
 
 [0] Assembly name
