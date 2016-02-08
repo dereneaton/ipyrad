@@ -19,7 +19,7 @@ In this documentation you can learn about the various features of ipyrad
 We provide a number of example :ref:`Tutorials <tutorials>` and analysis
 cookbook recipes to help users get started quickly.
 
-Got questions about ipyrad? Join the conversation :ref:`here _gitter`.
+Got questions about ipyrad? Join the conversation :ref:`here <gitter_>`.
 
 
 Documentation

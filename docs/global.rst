@@ -12,7 +12,4 @@
 .. _oaks: https://github.com/dereneaton/virentes  
 
 
-## shortcut links between pages
-.. _ethos: ethos.html
-.. _features: features.html
-.. _API: ipyrad_scripts.html
+
