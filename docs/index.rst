@@ -31,6 +31,7 @@ Documentation
    ethos.rst
    features.rst
    installation.rst
+   parameters.rst
    quickguide.rst
    notebooks.rst
    userguide.rst
