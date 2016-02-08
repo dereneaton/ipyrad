@@ -18,6 +18,7 @@ import dill
 import copy
 import h5py
 import string
+import cStringIO
 import itertools
 import subprocess
 import pandas as pd
@@ -101,7 +102,8 @@ class Assembly(object):
 
         ## Do some checking here to make sure the name doesn't have
         ## special characters, spaces, or path delimiters. Allow _ and -.
-        invalid_chars = string.punctuation.replace("_", "").replace("-", "")+" "
+        invalid_chars = string.punctuation.replace("_", "")\
+                                          .replace("-", "")+ " "
         if any(char in invalid_chars for char in name):
             msg = """\n
     No spaces or special characters are allowed in the assembly name. A good 
@@ -190,8 +192,13 @@ class Assembly(object):
                        ("outgroups", ""),
         ])
 
-        ## Store data directories for this Assembly. Init with default working.
-        self.dirs = ObjDict({"project": self.paramsdict["project_dir"]})
+        ## Store data directories for this Assembly. Init with default project
+        self.dirs = ObjDict({"project": self.paramsdict["project_dir"],
+                             "fastqs": "",
+                             "edits": "",
+                             "clusts": "",
+                             "consens": "", 
+                             "outfiles": ""})
 
         ## Default hackers only parameters dictionary
         ## None of the safeguards of the paramsdict, no nice accessor
@@ -636,7 +643,7 @@ class Assembly(object):
             if os.path.isfile(outfile):
                 raise IPyradError("""
     File exists: {}
-    Use force=True to overwrite.""".format(outfile))
+    Use force argument to overwrite.""".format(outfile))
 
         with open(outfile, 'w') as paramsfile:
             ## Write the header. Format to 80 columns
@@ -667,7 +674,8 @@ class Assembly(object):
         ## is there a better way to ask if it already exists?
         if (newname == self.name) or (os.path.exists(newname+".assembly")):
             print("""
-    Assembly object named {} already exists""".format(newname))
+    Assembly object named {} already exists
+    """.format(newname))
 
         else:
             ## create a copy of the Assembly obj
@@ -706,71 +714,121 @@ class Assembly(object):
                 dillout.close()
                 done = True
             except KeyboardInterrupt:
-                print("  Please don't try to kill now, dumping assembly to file. Just wait.")
+                print(".")
                 continue
 
 
-    def _launch(self, inittries):
-        """ launch ipyclient.
-        launch within try statement in case engines aren't ready yet
-        and try 30 1 second sleep/wait cycles before giving up on engines
-        """
-        tries = inittries
-        while tries:
-            try:
-                ## launches ipcluster with arguments if present in self
-                clusterargs = [self._ipclusterid, self._ipprofile]
-                argnames = ["cluster_id", "profile"]
-                args = {key:value for key, value in zip(argnames, clusterargs)}
-                ipyclient = ipp.Client(**args)
-                if tries > 1:
-                    LOGGER.info('try %s: starting controller', tries)
-                ## make sure all engines are connected
-                try:
-                    assert ipyclient.ids                    
-                    if tries != inittries:                        
-                        ## get initial number of ids
-                        ## ugly hack to find all engines while they're spinng up
-                        initid = ipyclient.ids
-                        if len(initid) > 10:
-                            LOGGER.warn("waiting 3 seconds to find Engines")
-                            try:
-                                time.sleep(3)
-                            except KeyboardInterrupt:
-                                print(" Keyboard interrupt disabled during cluster init.")
-                        else:
-                            try:
-                                time.sleep(1)                                            
-                            except KeyboardInterrupt:
-                                print(" Keyboard interrupt disabled during cluster init.")
-                        try:
-                            ## make sure more engines aren't found
-                            assert len(ipyclient.ids) == len(initid)
-                            LOGGER.warn('OK! Connected to (%s) engines', 
-                                        len(ipyclient.ids))
-                            return ipyclient
+    # def _launch(self, inittries):
+    #     """ launch ipyclient.
+    #     launch within try statement in case engines aren't ready yet
+    #     and try 30 1 second sleep/wait cycles before giving up on engines
+    #     """
+    #     tries = inittries
+    #     while tries:
+    #         try:
+    #             ## launches ipcluster with arguments if present in self
+    #             clusterargs = [self._ipclusterid, self._ipprofile]
+    #             argnames = ["cluster_id", "profile"]
+    #             args = {key:value for key, value in zip(argnames, clusterargs)}
+    #             ipyclient = ipp.Client(**args)
+    #             if tries > 1:
+    #                 LOGGER.info('try %s: starting controller', tries)
+    #             ## make sure all engines are connected
+    #             try:
+    #                 assert ipyclient.ids                    
+    #                 if tries != inittries:                        
+    #                     ## get initial number of ids
+    #                     ## ugly hack to find all engines while they're spinng up
+    #                     initid = ipyclient.ids
+    #                     if len(initid) > 10:
+    #                         LOGGER.warn("waiting 3 seconds to find Engines")
+    #                         try:
+    #                             time.sleep(3)
+    #                         except KeyboardInterrupt:
+    #                             print(" Keyboard interrupt disabled during cluster init.")
+    #                     else:
+    #                         try:
+    #                             time.sleep(1)                                            
+    #                         except KeyboardInterrupt:
+    #                             print(" Keyboard interrupt disabled during cluster init.")
+    #                     try:
+    #                         ## make sure more engines aren't found
+    #                         assert len(ipyclient.ids) == len(initid)
+    #                         LOGGER.warn('OK! Connected to (%s) engines', 
+    #                                     len(ipyclient.ids))
+    #                         return ipyclient
 
-                        except AssertionError as _: 
-                            LOGGER.warn('finding engines (%s, %s)', 
-                                         len(initid), len(ipyclient.ids))
-                            raise
-                    else:
-                        LOGGER.debug('OK! Connected to (%s) engines', 
-                                    len(ipyclient.ids))
-                        return ipyclient
+    #                     except AssertionError as _: 
+    #                         LOGGER.warn('finding engines (%s, %s)', 
+    #                                      len(initid), len(ipyclient.ids))
+    #                         raise
+    #                 else:
+    #                     LOGGER.debug('OK! Connected to (%s) engines', 
+    #                                 len(ipyclient.ids))
+    #                     return ipyclient
 
-                except AssertionError as _: 
-                    LOGGER.debug('connected to %s engines', len(ipyclient.ids))
-                    raise
-            except (IOError, ipp.NoEnginesRegistered, AssertionError) as _:
-                try:
+    #             except AssertionError as _: 
+    #                 LOGGER.debug('connected to %s engines', len(ipyclient.ids))
+    #                 raise
+    #         except (IOError, ipp.NoEnginesRegistered, AssertionError) as _:
+    #             try:
+    #                 time.sleep(1)
+    #                 tries -= 1
+    #             except KeyboardInterrupt:
+    #                 print(" Keyboard interrupt disabled during cluster intialization.")
+    #                 print(" Wait for cluster to finish init, then you can kill it cleanly.")
+
+    #     raise ipp.NoEnginesRegistered
+
+
+
+    def _launch2(self, nwait):
+        """ a faster launch for ipyparallel >5.0. Protected with try statement
+        from a KeyboardInterrupt """
+
+        try: 
+            clusterargs = [self._ipclusterid, self._ipprofile]
+            argnames = ["cluster_id", "profile"]
+            args = {key:value for key, value in zip(argnames, clusterargs)}
+            ## using this wrap to avoid ipyparallel print function to stdout
+            save_stdout = sys.stdout           ## save orig stdout
+            sys.stdout = cStringIO.StringIO()  ## file-like obj to catch stdout
+            ipyclient = ipp.Client(**args)     ## run func with stdout hidden
+            sys.stdout = save_stdout           ## resets stdout
+
+            ## wait for at least 1 engine to connect
+            for _ in range(nwait):
+                if ipyclient.ids:
+                    initid = len(ipyclient)
+                    break
+                else:
                     time.sleep(1)
-                    tries -= 1
-                except KeyboardInterrupt:
-                    print(" Keyboard interrupt disabled during cluster intialization.")
-                    print(" Wait for cluster to finish init, then you can kill it cleanly.")
 
-        raise ipp.NoEnginesRegistered
+            ## longer wait if many engines
+            wait = 1
+            if initid >= 10:
+                wait = 3
+
+            ## check that all engines have connected            
+            for _ in range(nwait):
+                time.sleep(wait)
+                if len(ipyclient) == initid:
+                    break
+                else:
+                    initid = len(ipyclient)
+        except KeyboardInterrupt:
+            try:
+                ipyclient.shutdown()
+            except AttributeError:
+                pass
+            raise KeyboardInterrupt
+
+        except IOError:
+            ## ensure stdout is reset even if Exception was raised
+            sys.stdout = save_stdout           ## resets stdout
+            raise
+
+        return ipyclient
 
 
 
@@ -778,37 +836,40 @@ class Assembly(object):
         """ wraps a call with error messages for when ipyparallel fails"""
         try:
             ipyclient = ""
-            ipyclient = self._launch(nwait)
+            ipyclient = self._launch2(nwait)
             if ipyclient.ids:
                 ## append client to args and call stepfunc
                 args.append(ipyclient)
                 stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered):
-            ## maybe different messages depending on whether it is CLI or API
-            inst = """
-    Check to ensure ipcluster is running. When using the API you must start
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError) as _:
+            ## raise by ipyparallel if no connection file is found for 30 sec.
+            msg = """
+    Check to ensure ipcluster is started. When using the API you must start
     ipcluster outside of IPython/Jupyter to launch parallel engines using
     either `ipcluster start`, or in the Clusters tab in a Jupyter notebook.
     (See Docs)
             """
+            if not ip.__interactive__:
+                msg = """
+    There was a problem connecting to parallel engines. See Docs for advice.
+            """
             ## raise right away since there is no ipyclient to close
-            raise IPyradError(inst)
+            raise IPyradError(msg)
 
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
+            ## abort and shutdown cluster to ensure everything is killed
             if ipyclient:
                 ipyclient.abort()
-            ## shutdown the cluster to ensure everything is killed
-            if not self.__interactive__:
-                ipyclient.shutdown()
+                if not ip.__interactive__:
+                    ipyclient.shutdown()
             LOGGER.error("assembly interrupted by user.")
-            raise IPyradError("Keyboard Interrupt")
+            sys.exit("  Keyboard interrupt by user")
 
         except SystemExit as inst:
             LOGGER.error("assembly interrupted by sys.exit.")
-            raise IPyradError("SystemExit Interrupt."\
-                + "\n\n{}\n\n".format(inst))
+            sys.exit("  SystemExit Interrupt: \n{}".format(inst))
 
         except AssertionError as inst:
             LOGGER.error("Assertion: %s", inst)
@@ -833,9 +894,6 @@ class Assembly(object):
                     print(ipyclient.metadata[job]['error'])
                     #raise IPyradError(ipyclient.metadata[job]['error'])
 
-        #except Exception as inst:
-        #    raise IPyradError("Uncaught Exception: {}".format(inst))
-
         ## close client when done or interrupted
         finally:
             try:
@@ -858,9 +916,8 @@ class Assembly(object):
             if not force:
                 print("""
     Skipping step1: {} Samples already found in {}. 
-    (can overwrite with force option)""".\
-    format(len(self.samples), self.name))
-
+    (can overwrite with force argument)
+    """.format(len(self.samples), self.name))
             else:
                 ## overwrite existing data
                 if self._headers:
@@ -911,7 +968,8 @@ class Assembly(object):
             if all([i.stats.state >= 2 for i in samples]):
                 print("""
     Skipping: All {} selected Samples already edited.
-    (can overwrite with force option)""".format(len(samples)))
+    (can overwrite with force argument)
+    """.format(len(samples)))
                 return
 
         ## pass samples to rawedit
@@ -949,8 +1007,8 @@ class Assembly(object):
             if all([i.stats.state >= 3 for i in samples]):
                 print("""
     Skipping: All {} selected Samples already clustered.
-    (can overwrite with force option)""".\
-    format(len(samples)))
+    (can overwrite with force argument)
+    """.format(len(samples)))
                 return
 
         ## run the step function
@@ -977,8 +1035,8 @@ class Assembly(object):
             if all([i.stats.state >= 4 for i in samples]):
                 print("""
     Skipping: All {} selected Samples already joint estimated
-    (can overwrite with force option)""".\
-    format(len(samples)))
+    (can overwrite with force argument)
+    """.format(len(samples)))
                 return
 
         ## send to function
@@ -1004,8 +1062,8 @@ class Assembly(object):
             if all([i.stats.state >= 5 for i in samples]):
                 print("""
     Skipping: All {} selected Samples already consensus called
-    (can overwrite with force option)""".\
-    format(len(samples)))
+    (can overwrite with force argument)
+    """.format(len(samples)))
                 return
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
@@ -1020,21 +1078,22 @@ class Assembly(object):
 
         ## print CLI header
         if self._headers:
-            print(\
-    "  Step6: Clustering across {} samples at {} similarity".\
+            print("""
+    Step6: Clustering across {} samples at {} similarity""".\
     format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 6, force):
-            raise IPyradError(\
-    "  No Samples ready for clustering. First run step5().")
+            raise IPyradError("""
+    No Samples ready for clustering. First run step5().""")
 
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 6 for i in samples]):
                 print("""
     Skipping: All {} selected Samples already clustered.
-    (can overwrite with force option)""".format(len(samples)))
+    (can overwrite with force argument)
+    """.format(len(samples)))
                 return 
 
         ## attach filename for all reads database
@@ -1043,8 +1102,8 @@ class Assembly(object):
         ## check for existing and force
         if not force:
             if os.path.exists(self.database):
-                print(\
-    "  Skipping step6: Clust file already exists: {}\n".format(self.database))
+                print("""
+    Skipping step6: Clust file already exists: {}\n""".format(self.database))
             else:
                 assemble.cluster_across.run(self, samples, noreverse,
                                             force, randomseed, ipyclient)
@@ -1056,11 +1115,12 @@ class Assembly(object):
     def _step7func(self, samples, force, ipyclient):
         """ Step 7: Filter and write output files """
 
-        if self._headers:
-            print("  Step7: Filter and write output files.")
-
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
+
+        if self._headers:
+            print("  Step7: Filter and write output files for [{}] Samples.".\
+                  format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
         try:
@@ -1074,23 +1134,21 @@ class Assembly(object):
     (i.e., they are not in {}): 
     Missing: {}
     Check for typos in Sample names, or try running step6 including the 
-    selected samples."""\
-    .format(self.database, ", ".join(list(diff))))
+    selected samples.
+    """.format(self.database, ", ".join(list(diff))))
 
         except (IOError, ValueError):
             raise IPyradError("""
-    Database file {} not found. First run step6""")
+    Database file {} not found. First run step6
+    """.format(self.database))
 
         if not force:
-            try:
-                if os.path.exists(self.dirs.outfiles):
-                    raise IPyradError("""
+            if os.path.exists(self.dirs.outfiles):
+                raise IPyradError("""
     Step 7: Cowardly refusing to overwrite existing output directory: 
     {} 
-    rerun with `force=True` to overwrite.""".format(self.dirs.outfiles))
-            ## If not force and directory doesn't exist then nbd.            
-            except (IOError, AttributeError):
-                pass
+    rerun with force argument to overwrite.""".format(self.dirs.outfiles))
+
         ## Run step7
         assemble.write_outfiles.run(self, samples, force, ipyclient)
 
@@ -1300,13 +1358,23 @@ class Assembly(object):
             self.step7(force=force)
 
 
+
 def _get_samples(self, samples):
     """ Internal function. Prelude for each step() to read in perhaps
     non empty list of samples to process. Input is a list of sample names,
     output is a list of sample objects."""
     ## if samples not entered use all samples
     if not samples:
-        samples = self.samples.keys()        
+        samples = self.samples.keys()
+
+    ## remove samples in excluded_samples
+    if self.paramsdict["excludes"]:
+        for drop in self.paramsdict["excludes"]:
+            if drop in samples:
+                samples.remove(drop)
+            else:
+                print("  The name [{}] does not match".format(drop) +\
+                      " any Sample names and so cannot be excluded.")
 
     ## Be nice and allow user to pass in only one sample as a string, 
     ## rather than a one element list. When you make the string into a list
