@@ -58,12 +58,6 @@ working around conda_, to instead learn more about it (instructions_),
 since it is a powerful tool for creating multiple environments with different 
 software packages that do not conflict. 
 
-If you're working on an :ref:`HPC <HPC_installation>` system you can install 
-conda_ into a locally owned directory (e.g., /home/user) without need for 
-administrative privileges. This is useful because it then allows you to install 
-and access ipyrad_ and all its dependencies (other Python modules and 
-executables) locally, without needing to load them from the system-wide 
-software. 
 
 Once conda_ is installed, ipyrad_ can be installed easily by entering the 
 following into a terminal:
@@ -83,7 +77,18 @@ commands:
     conda update -c ipyrad ipyrad            ## update to the latest
 
 
-Dependencies
+HPC installation
+-----------------
+
+If you're working on an :ref:`HPC <HPC_installation>` system you can install 
+conda_ into a locally owned directory (e.g., /home/user) without need for 
+administrative privileges. This is useful because it then allows you to install 
+and access ipyrad_ and all its dependencies (other Python modules and 
+executables) locally, without needing to load them from the system-wide 
+software. 
+
+
+Included Dependencies
 ------------
 The conda_ installation will install the following required dependencies:
 
@@ -111,48 +116,4 @@ The conda_ installation will install the following required dependencies:
 * bedtools -- used for reference mapping
 * hdf5 -- used for large array storage/access
 * mpirun, mpiexec -- used for parallelization
-
-
-.. _HPC_installation:
-
-HPC installation
-----------------
-One of the benefits of using conda_ for installation is that it 
-creates a Python package directory where you install it. So if you install into
-your home directory it creates `~/anaconda/` (or `~/miniconda/`). 
-
-
-Because these Python packages and executables are not stored in a system-wide 
-directory you will not need administrator privileges to install them, nor will
-you have to load these modules from the system before using them. You should find
-that you can simply type the name of the software and load it, even on jobs 
-submitted using `qsub` or `sbatch`. 
-
-As an example, you can play around with ipyrad within an IPython terminal:  
-
-.. code-block:: bash  
-
-    ## open an ipython shell in the terminal
-    ipython
-
-In the IPython session load ipyrad. See API_ usage for more details:  
-
-.. code-block:: python  
-
-    ## import ipyrad under its common shortname
-    import ipyrad as ip
-
-    ## create a test Assembly object
-    data = ip.Assembly("test")
-
-    ## print the default parameters
-    data.get_params()
-
-
-It is important to note that if you let conda append the conda directory to your 
-$PATH, which you should let it do, that this will become the default location
-for these executables. If you want to hide anaconda so that your system defaults
-to the system software then you will have to remove the anaconda directory from
-your PATH variable in the file `~/.bashrc`, which is in your home directory.
-
 
