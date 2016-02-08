@@ -11,9 +11,9 @@ import argparse
 import logging
 import sys
 import os
-import socket
-import ipyparallel as ipp
-from collections import Counter
+# import socket
+# import ipyparallel as ipp
+# from collections import Counter
 
 # pylint: disable=W0212
 
@@ -56,15 +56,18 @@ def showstats(parsedict):
 
     ## If the project_dir doesn't exist don't even bother trying harder.
     if not os.path.isdir(project_dir):
-        msg = "\n\nTrying to print stats for a project dir ({}) that doesn't exist.\n"\
-            + "You must run steps before you can show stats.".format(project_dir)
+        msg = """
+    Trying to print stats for a project dir ({}) that doesn't exist. You must 
+    run steps before you can show stats.
+    """.format(project_dir)
         sys.exit(msg)
 
     if not assembly_name:
-        msg = "\n\nAssembly name is not set in params.txt. This means somebody\n"\
-            + "changed it or erased it, which is bad. Please restore the\n"\
-            + "original name. You can find the name of your assembly in the\n"\
-            + "project dir: {}.".format(project_dir)
+        msg = """
+    Assembly name is not set in params.txt, meaning it was either changed or
+    erased since the Assembly was started. Please restore the original name. 
+    You can find the name of your Assembly in the "project dir": {}.
+    """.format(project_dir)
         raise ip.assemble.util.IPyradParamsError(msg)
 
     try:
@@ -83,6 +86,7 @@ def showstats(parsedict):
                 val = data.statsfiles[key]
                 val = val.replace(fullcurdir, ".")                
                 print(key+":", val)
+                print("\n----")
         else:
             print("No stats to display")
 
@@ -171,8 +175,8 @@ def parse_command_line():
     ipyrad -p params.txt -s 4567    ## run steps 4, 5, 6 and 7 of assembly.
     ipyrad -p params.txt -s 3 -f    ## run step 3, overwrite existing data.
 
-  * HPC parallelization options
-    ipyrad -p params.txt -s 3 -c 64 --MPI   ## Access 64 cores using MPI.
+  * HPC parallelization
+    ipyrad -p params.txt -s 3 --MPI   ## access cores across multiple nodes
 
   * Results summary quick view
     ipyrad -p params.txt -r         ## print summary stats to screen for params.
@@ -202,11 +206,11 @@ def parse_command_line():
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
-        help="subset of assembly steps to perform. Default=1234567")
+        help="subset of assembly steps to perform (Default=1234567)")
 
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=4,
-        help="number of CPU cores to use")
+        help="number of CPU cores to use (Default=all)")
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes using MPI")
@@ -249,7 +253,7 @@ def main():
             tmpassembly.write_params("params.txt", force=args.force)
         except Exception as inst:
             print(inst)
-            print("\nUse --force to overwrite\n")
+            print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
         print("New file `params.txt` created in {}".\
