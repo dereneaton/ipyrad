@@ -15,7 +15,7 @@
 
 import os
 import sys
-import shlex
+import re
 
 
 # Provide stubs for external dependencies, so we can generate our reference
@@ -39,6 +39,7 @@ class module_proxy(object):
             return proxy_type
         else:
             return module_proxy()
+
 
 MODULES = ["numpy", "scipy", "pandas", "dill", "h5py", "mpi4py"]
 for module_name in MODULES:
