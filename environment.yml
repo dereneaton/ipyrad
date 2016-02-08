@@ -168,7 +168,6 @@ dependencies:
 - toolz=0.7.4=py27_0
 - tornado=4.3=py27_0
 - traitlets=4.1.0=py27_0
-- trimmomatic=0.32=1
 - ujson=1.33=py27_0
 - unicodecsv=0.14.1=py27_0
 - util-linux=2.21=0
