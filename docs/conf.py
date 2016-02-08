@@ -50,6 +50,36 @@ for module_name in MODULES:
 #sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath(".."))
 
+
+### PRINT SOME INFO
+print "python exec:", sys.executable
+print "sys.path:", sys.path
+try:
+    import numpy
+    print "numpy: %s, %s" % (numpy.__version__, numpy.__file__)
+except ImportError:
+    print "no numpy"
+try:
+    import scipy
+    print "scipy: %s, %s" % (scipy.__version__, scipy.__file__)
+except ImportError:
+    print "no scipy"
+try:
+    import pandas
+    print "pandas: %s, %s" % (pandas.__version__, pandas.__file__)
+except ImportError:
+    print "no pandas"
+try:
+    import matplotlib
+    print "matplotlib: %s, %s" % (matplotlib.__version__, matplotlib.__file__)
+except ImportError:
+    print "no matplotlib"
+try:
+    import IPython
+    print "ipython: %s, %s" % (IPython.__version__, IPython.__file__)
+except ImportError:
+    print "no ipython"
+
     
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
