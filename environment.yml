@@ -7,3 +7,4 @@ dependencies:
 - tornado=4.3=py27_0
 - traitlets=4.1.0=py27_0
 - ujson=1.33=py27_0
+- mpi4py
