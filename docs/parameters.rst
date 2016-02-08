@@ -31,6 +31,8 @@ data_clust85). The Assembly name cannot be changed after an Assembly is created,
 but a new Assembly with a different name can be created by copying (branching)
 the Assembly (see Branching_). 
 
+Affected steps: 1-7, and required for loading Assemblies.
+Example entries into params.txt:  
 .. code-block:: python
 
     data1                      ## [0] name the Assembly data1
@@ -46,6 +48,8 @@ exist. If it is a name then a new directory with that name will be created in th
 current directory if it does not already exist. A good name for Project_dir will
 generally be the name of the organism being studied (e.g., white_crowned_sparrow). 
 
+Affected steps: 1-7, and required for loading Assemblies.
+Example entries into params.txt:  
 .. code-block:: python
 
     /home/deren/ipyrad/tests/finches   ## [1] create/use project dir called finches
@@ -58,8 +62,10 @@ This is a path to the location of raw (non-demultiplexed) fastq data files. The
 files can be gzip compressed (i.e., have name-endings .fastq.gz). If you enter
 a path for raw data files then you should also have a path to a barcodes file
 for parameter 3. To select multiple files, or all files in a directory, use a
-wildcard character (*), as in the examples:
+wildcard character (*).
 
+Affected steps: 1
+Example entries into params.txt:  
 .. code-block:: python
 
     /home/deren/ipyrad/tests/data/*.fastq.gz  ## [2] select all gzip data files
