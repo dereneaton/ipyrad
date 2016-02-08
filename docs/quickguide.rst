@@ -6,13 +6,18 @@ Quick Guide
 ===========
 The most quick and dirty way to get started with ipyrad is to use the CLI
 as described in the :ref:`CLI Quick Guide <quickguide_CLI>`. To get started
-with writing scripts using the ipyrad API see the 
-:ref:`API Quick Guide <quickguide_API>`.
+with writing scripts for assembly and/or analyses using the ipyrad API see the 
+:ref:`API Quick Guide <quickguide_API>`. Work in progress 
+(:ref:`ipyrad_scripts.rst <ipyrad_scripts.rst`)
 
+
+Guides
+=============
 
 .. toctree::
-  :maxdepth: 2
+   :maxdepth: 2
 
-  quickguide_CLI.rst
-  quickguide_API.rst
+   quickguide_CLI.rst
+   quickguide_API.rst
+   ipyrad_scripts.rst
 
