@@ -33,8 +33,8 @@ the Assembly (see Branching_).
 
 .. code-block:: python
 
-data1                      ## [0] name the Assembly data1
-clust90_minsamp4           ## [0] name the Assembly based on parameter settings
+    data1                      ## [0] name the Assembly data1
+    clust90_minsamp4           ## [0] name the Assembly based on parameter settings
 
 
 1. Project dir
@@ -48,8 +48,8 @@ generally be the name of the organism being studied (e.g., white_crowned_sparrow
 
 .. code-block:: python
 
-/home/deren/ipyrad/tests/finches   ## [1] create/use project dir called finches
-finches                            ## [1] create/use project dir called finches
+    /home/deren/ipyrad/tests/finches   ## [1] create/use project dir called finches
+    finches                            ## [1] create/use project dir called finches
 
 
 2. Location of non-demultiplexed data
@@ -62,9 +62,9 @@ wildcard character (*), as in the examples:
 
 .. code-block:: python
 
-/home/deren/ipyrad/tests/data/*.fastq.gz  ## [2] select all gzip data files
-~/ipyrad/tests/data/*.fastq.gz            ## [2] select all gzip data files
-./data/sim_rad*.fastq.gz                  ## [2] select `sim_rad` data files
+    /home/deren/ipyrad/tests/data/*.fastq.gz  ## [2] select all gzip data files
+    ~/ipyrad/tests/data/*.fastq.gz            ## [2] select all gzip data files
+    ./data/sim_rad*.fastq.gz                  ## [2] select `sim_rad` data files
 
 
 3. Location of barcodes file
