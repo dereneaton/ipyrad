@@ -270,7 +270,7 @@ def build_h5_array(data, samples, nloci):
     filters = ioh5.create_dataset("filters", (nloci, 6), dtype=np.bool)
     filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
                                 "max_hets", "min_samps", "bad_edges"]
-    filters.attrs["chunks"] = 1000        
+    filters.attrs["chunks"] = 1000
 
     ## INIT FULL EDGE ARRAY
     ## array for edgetrimming 
