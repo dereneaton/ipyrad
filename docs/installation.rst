@@ -112,9 +112,9 @@ The conda_ installation will install the following required dependencies:
 
 HPC installation
 ----------------
-One of the benefits of using *conda* for installation is that it 
+One of the benefits of using conda_ for installation is that it 
 creates a Python package directory where you install it. So if you install into
-your home directory it creates ``~/anaconda/`` (or ``~/miniconda/``). 
+your home directory it creates `~/anaconda/` (or `~/miniconda/`). 
 
 
 Because these Python packages and executables are not stored in a system-wide 
@@ -123,13 +123,15 @@ you have to load these modules from the system before using them. You should fin
 that you can simply type the name of the software and load it, even on jobs 
 submitted using `qsub` or `sbatch`. 
 
-As an example, you can play around with ipyrad within an IPython terminal:
+As an example, you can play around with ipyrad within an IPython terminal:  
+
 .. code-block:: bash  
 
 	## open an ipython shell in the terminal
     ipython
 
-In the IPython session load ipyrad:
+In the IPython session load ipyrad:  
+
 .. code-block:: python  
 
 	## import ipyrad
