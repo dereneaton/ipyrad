@@ -80,23 +80,23 @@ your home directory it creates ``~/anaconda/`` (or ``~/miniconda/``). It will
 
 .. code:: bash
 ::
-    ## download miniconda
+    ## download miniconda  
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
 
     ## Install miniconda. Follow the directions, by default it will propose installing
     ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
-    ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.
+    ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.  
     bash Miniconda-latest-Linux-x86_64.sh
 
     ## You could now quit and reconnect, or just run the following command 
     ## which reloads .bashrc so that miniconda will now be in your path. This
-    ## way the conda program can be found and run by calling conda.
+    ## way the conda program can be found and run by calling conda.  
     source ~/.bashrc
 
-    ## upgrade conda
+    ## upgrade conda  
     conda upgrade conda
 
-    ## install ipyrad
+    ## install ipyrad  
     conda install -c ipyrad ipyrad
 
 
