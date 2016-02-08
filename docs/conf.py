@@ -136,7 +136,7 @@ author = u'Deren Eaton'
 # The short X.Y version.
 #import ipyrad
 
-initfile = "ipyrad/__init__.py"
+initfile = "../ipyrad/__init__.py"
 
 cur_version = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
                         open(initfile, "r").read(),
