@@ -75,11 +75,10 @@ class Sample(object):
                                      "nhetero",
                                      "heterozygosity",
                                      ]),
-              "s6": pd.Series(index=["null"]),
-              "s7": pd.Series(index=["null"]),              
-          })      
+              })
 
-        ## store cluster depth information (biggest memory cost)
+        ## store cluster depth information (biggest memory cost), 
+        ## should save this as a Counter dict, currently its a list
         self.depths = []
 
 
