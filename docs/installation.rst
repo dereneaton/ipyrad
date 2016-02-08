@@ -78,7 +78,8 @@ One of the benefits of using *conda* for installation is that it
 creates a Python package directory where you install it. So if you install into
 your home directory it creates ``~/anaconda/`` (or ``~/miniconda/``). It will
 
-.. code:: bash  
+.. code-block:: bash
+
     ## download miniconda  
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
 
