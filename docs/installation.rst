@@ -11,21 +11,54 @@ Conda install
 
 The easiest way to install ipyrad_ and all of its dependencies is with conda_,
 a command line program for installing Python packages. If you do not have 
-conda_ installed, follow these instructions_ to install either *Anaconda* or 
-*Miniconda* for Python2.7. 
+conda_ installed, you can find detailed installation instructions_, or simply
+follow the code outlined below. You will need to install either *Anaconda* or 
+*Miniconda* for Python2.7. The only difference between the two is that 
+Anaconda installs a large suite of commonly used Python packages along with the 
+base installer, whereas *Miniconda* is a bare bones version that includes only 
+the framework for installing new packages. 
 
-The only difference between *Anaconda* and *Miniconda* is that *Anaconda* 
-installs a large suite of commonly used Python packages along with the base
-installer, whereas *Miniconda* is a bare bones version that includes only 
-the framework for installing new packages. Unless you're hard up for disk space
-I recommend installing *Anaconda*. 
+
+First we need to download the installer, I'll show miniconda for my example. 
+There are separate installers for Linux and Mac, so choose only the one that
+is correct for your system. If you are working on an HPC cluster it is most \
+likely a Linux machine. 
+
+.. code-block:: bash
+
+    ## install Miniconda for Linux 
+    wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh    
+
+    ## install Miniconda for Mac
+    wget https://repo.continuum.io/miniconda/Miniconda-latest-Mac-x86_64.sh    
+
+    ## Install miniconda. Follow the directions, by default it will propose installing
+    ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
+    ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.  
+    bash Miniconda-latest-Linux-x86_64.sh
+
+    ## You could now quit and reopen the terminal, or just run the following command 
+    ## which reloads ~/.bashrc so that miniconda will now be in your path. This
+    ## way the conda program can be found from the terminal by simply typing conda.  
+    source ~/.bashrc
+
+During installation conda_ will ask if it can append the newly created 
+`miniconda/` (or `anaconda/`) directory to your `$PATH`, say yes. What this does
+is add a line to your `~/.bashrc` file so that the anaconda directory becomes 
+the default location to search for Python and Python modules, and also so that 
+it can find executables in this directory. If you find that setting this path 
+interferes with any of your other software you can always comment out the 
+line from `~/.bashrc`. But, if conflicts arise my advice would be rather than 
+working around conda_, to instead learn more about it (instructions_), 
+since it is a powerful tool for creating multiple environments with different 
+software packages that do not conflict. 
 
 If you're working on an :ref:`HPC <HPC_installation>` system you can install 
 conda_ into a locally owned directory (e.g., /home/user) without need for 
 administrative privileges. This is useful because it then allows you to install 
 and access ipyrad_ and all its dependencies (other Python modules and 
 executables) locally, without needing to load them from the system-wide 
-software. More detailed HPC directions are here: HPC_installation_.
+software. 
 
 Once conda_ is installed, ipyrad_ can be installed easily by entering the 
 following into a terminal:
@@ -88,15 +121,6 @@ your home directory it creates ``~/anaconda/`` (or ``~/miniconda/``). It will
     ## download miniconda  
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
 
-    ## Install miniconda. Follow the directions, by default it will propose installing
-    ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
-    ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.  
-    bash Miniconda-latest-Linux-x86_64.sh
-
-    ## You could now quit and reconnect, or just run the following command 
-    ## which reloads .bashrc so that miniconda will now be in your path. This
-    ## way the conda program can be found and run by calling conda.  
-    source ~/.bashrc
 
     ## upgrade conda  
     conda upgrade conda
