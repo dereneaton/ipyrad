@@ -50,20 +50,30 @@ def start(name, nproc, controller, quiet):
     if nproc != None:
         nproc = str(psutil.cpu_count())
 
+    iparg = ""
+    if "MPI" in controller:
+        iparg = "ip='*' "
+        nodes = "..."
+
     standard = ["ipcluster", "start", 
                 "--daemon", 
                 "--cluster-id="+name,
-                "--controller="+controller,
+                "--engines="+controller,
+                iparg,
                 "-n", str(nproc)]
-                #"--ip=*",
     try: 
-        #if not quiet:
-        #    print(standard)
         LOGGER.info(" ".join(standard))
-        subprocess.check_call(" ".join(standard), shell=True)
+        with open(os.devnull, 'w') as fnull:
+            subprocess.Popen(standard, stderr=subprocess.STDOUT, 
+                                       stdout=fnull).communicate()
+
         LOGGER.info("%s connection to %s engines [%s]", controller, nproc, name)
-        print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(controller, nproc))
+        if "MPI" in controller:
+            print("  ipyparallel setup: {} connection {} Engines {} Nodes\n"\
+              .format(controller, nproc, nodes))
+        else:
+            print("  ipyparallel setup: {} connection to {} Engines\n"\
+                  .format(controller, nproc))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
