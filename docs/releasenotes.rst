@@ -6,8 +6,7 @@ Release Notes
 =============
 
 
-0.1.39
-======
+**0.1.39**
 - Still in development
 
 
@@ -19,7 +18,7 @@ Release Notes
 
 
 0.1.37
-======
+------
 - conda installation mostly working from ipyrad channel
 
 
