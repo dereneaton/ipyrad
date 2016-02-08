@@ -12,7 +12,7 @@ from copy import deepcopy
 from ipyrad.core.parallel import ipcontroller_init
 from ipyrad.core.assembly import Assembly
 
-
+# pylint: disable=W0212
 
 def load_assembly(name, controller="Local", quiet=False, launch=False):
     """ loads an ipython dill pickled Assembly object """
@@ -59,7 +59,8 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
     try:
         return data
     except UnboundLocalError:
-        raise AssertionError("Attempting to load assembly. File not found: {}".format(name))
+        raise AssertionError("Attempting to load assembly. File not found: {}"\
+                             .format(name))
 
 
 def test_assembly(data):
@@ -86,7 +87,7 @@ def test_assembly(data):
     hackerdict_diff = new_hackerdict.difference(my_hackerdict)
 
     if hackerdict_diff:
-        result =  True
+        result = True
 
     return result
 
@@ -116,9 +117,9 @@ def update_assembly(data):
     for i in removed_params:
         print("Removing parameter: {} = {}".format(i, data.paramsdict[i]))
         
-    ## Find all the params that are in the new paramsdict and not in the old one.
+    ## Find all params that are in the new paramsdict and not in the old one.
     ## If the set isn't emtpy then we create a new dictionary based on the new
-    ## assembly parameters and populated with the currently loaded assembly values.
+    ## assembly parameters and populated with currently loaded assembly values.
     ## Conditioning on not including any removed params. Magic.
     added_params = new_params.difference(my_params)
     for i in added_params:
@@ -138,18 +139,4 @@ def update_assembly(data):
 
     data.save()
     return data
-
-def save_dataobj():
-	""" TODO: """
-	pass
-
-
-
-
-
-    ## iterate over Assembly objects
-
-
-
-
 
