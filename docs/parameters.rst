@@ -38,7 +38,7 @@ the Assembly (see Branching_).
 
 
 1. Project dir
-----------------
+--------------
 The Project directory is the location where a group of Assemblies which share
 data files will be saved. This can be either a name or a path. If it is a path
 then the a new directory will be created at the given path if it does not already
@@ -52,8 +52,8 @@ generally be the name of the organism being studied (e.g., white_crowned_sparrow
     finches                            ## [1] create/use project dir called finches
 
 
-2. Location of non-demultiplexed data
---------------------------------------
+2. Location of raw fastq data
+------------------------------
 This is a path to the location of raw (non-demultiplexed) fastq data files. The 
 files can be gzip compressed (i.e., have name-endings .fastq.gz). If you enter
 a path for raw data files then you should also have a path to a barcodes file
@@ -69,6 +69,11 @@ wildcard character (*), as in the examples:
 
 3. Location of barcodes file
 -----------------------------
+This is a path to the location of the barcodes_file_. 
+
+
+4. Location of sorted fastq data
+--------------------------------
 This is a path to the location of the barcodes_file_. 
 
 
