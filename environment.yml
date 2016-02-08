@@ -1,4 +1,6 @@
 name: ipyrad
+channels:
+- ipyrad
 dependencies:
 - python=2.7
 - numpy=1.10

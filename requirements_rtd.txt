@@ -1,0 +1,15 @@
+# The requirements for a ReadTheDocs build only. This file includes
+# the subset of the ``requirements.txt`` packages which are required
+# for documentation generation.
+#
+# This requirement subset works around the following problems:
+#
+# * ReadTheDocs build fails on cython, h5py, and mpi4py, since the
+#   ReadTheDocs environment cannot build C extensions.
+#
+
+ipython
+ipyparallel
+ipykernel
+jupyter
+jupyter-client

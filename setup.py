@@ -4,24 +4,21 @@ from setuptools import setup, find_packages
 import glob
 import re
 
-requirements = [
-    'pip>7.0',
-    'dill>0.2',
-    'sphinx',
-    'cython',
-    'ipython>=4.0.0',
-    'ipyparallel>=4.1',
-    'ipykernel>=4.1',
-    'jupyter',
-    'jupyter-client>=4.1',
-    'nbconvert',
-    'scipy>0.10',
-    'numpy>=1.9',
-    'pandas',
-    'h5py',
-    'psutil',
-    'mpi4py'
-    ]
+
+
+def requires():
+    """ gets packages from requirements.txt """
+    with open('requirements.txt') as infile:
+        return infile.read().splitlines()
+
+
+def dependency_links():
+    """
+    return: the package specifications
+    """
+    with open('constraints.txt') as infile:
+        return infile.read().splitlines()
+
 
 ## Auto-update ipyrad version from git repo tag
 
@@ -47,11 +44,8 @@ setup(
     long_description=open('README.rst').read(),
 
     packages=find_packages(),
-    
-    install_requires=[requirements],
-    extras_require = {
-        'plotting': ['toyplot>0.0.9'],
-    },
+    install_requires=requires(),
+    dependencies=dependencies(),
 
     entry_points={
             'console_scripts': [
