@@ -52,7 +52,6 @@ dependencies:
 - h5py=2.5.0=np110py27_4
 - hdf5=1.8.15.1=2
 - idna=2.0=py27_0
-- illumiprocessor=2.0.7=py27_1
 - ipaddress=1.0.14=py27_0
 - ipykernel=4.2.2=py27_0
 - ipyparallel=4.1.0=py27_0
