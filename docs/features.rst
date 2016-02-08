@@ -1,33 +1,28 @@
 
+.. include:: global.rst  
+
 .. _features:
 
 
 Features
 ========
 
-
 What does ipyrad do?
 --------------------
-:ref:`ipyrad <ipyrad>` is a toolbox for assembly and analysis of RAD-seq type 
-genomic data sets. Notably, it can assemble data in four different ways: 
-:ref:`de novo <denovo>`, :ref:`reference mapping <reference>`, 
-:ref:`reference addition <reference_add>`, and :ref:`reference subtraction 
-<reference_sub>`. Assembled data sets can be output in variety of 
-:ref:`formats <formats>`, facilitating downstream genomic analyses for both 
-population genetic and phylogenetic studies. It also includes methods for 
-visualizing and analyzing data and results, inferring population genetic 
-statistics, and inferring genomic introgression.
-
+ipyrad_ is a toolbox for assembly and analysis of RAD-seq type genomic data sets. 
+Notably, it has four assembly_methods_ by which to assemble data: denovo, reference, 
+reference addition, and reference subtraction. Assembled data sets are created
+in variety of output_formats_, facilitating downstream genomic analyses for both 
+population genetic and phylogenetic studies. ipyrad_ also includes methods for 
+visualizing_ and analyzing_ data and results. 
 
 How is it different from pyrad?
 -------------------------------
-:ref:`ipyrad <ipyrad>` is a complete re-write of :ref:`pyrad <pyrad>` with 
-an expanded focus on speed and flexibility. While we continue in the minimalist 
-:ref:`ethos <ethos>` of :ref:`pyrad <pyrad>` which emphasizes a simple 
-installation procedure and ease-of-use, :ref:`ipyrad <ipyrad>` offers many new 
-features, especially through its Python API. However, we also continue to 
-support the command line interface (:ref:`CLI <CLI>`) that will be familiar 
-to :ref:`pyrad <pyrad>` users.
+ipyrad_ is a complete re-write of pyrad_ with an expanded focus on speed and 
+flexibility. While we continue in the minimalist ethos_ of pyrad_, which emphasized
+a simple installation procedure and ease-of-use, ipyrad_ offers many new 
+features, particularly through its Python API_. However, we also continue to 
+support the command line interface CLI_ that will be familiar pyrad_ users.
 
 
 Major New Features in ipyrad
