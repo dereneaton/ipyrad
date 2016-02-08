@@ -11,31 +11,35 @@ The easiest way to install ipyrad_ and all of its dependencies is with conda_,
 a command line program for installing Python packages. If you do not have 
 conda_ installed, follow these instructions_ to install either *Anaconda* or 
 *Miniconda* for Python2.7. 
+
 The only difference between *Anaconda* and *Miniconda* is that *Anaconda* 
 installs a large suite of commonly used Python packages along with the base
 installer, whereas *Miniconda* is a bare bones version that includes only 
-the framework for installing new packages. Unless you're really hard
-up for disk space I recommend installing *Anaconda*. 
+the framework for installing new packages. Unless you're hard up for disk space
+I recommend installing *Anaconda*. 
 
 If you're working on an :ref:`HPC <HPC_installation>` system you can install 
-*conda* into your local directory (e.g., /home/user), for which you will not 
-need administrative privileges. This way you can install and access ipyrad_ and 
-all its dependencies locally. Specific HPC directions are here 
-(HPC_installation_).
+conda_ into a locally owned directory (e.g., /home/user) without need for 
+administrative privileges. This is useful because it then allows you to install 
+and access ipyrad_ and all its dependencies (other Python modules and 
+executables) locally, without needing to load them from the system-wide 
+software. More detailed HPC directions are here: HPC_installation_.
 
-To install ipyrad_ using *conda* simply type the following into a terminal
+Once conda_ is installed, ipyrad_ can be installed easily by entering the 
+following into a terminal:
 
 .. code-block:: bash  
 
     conda update conda                 ## updates conda 
     conda install -c ipyrad ipyrad     ## installs the latest release
 
-If you wish to install a specific version of ipyrad, or to upgrade to the 
-latest release from an older version, you could use one of the following commands::
+If you wish to install a specific version of ipyrad_, or to upgrade to the 
+latest release from an older version, you could use one of the following 
+commands::
 
 .. code-block:: bash  
 
-    conda install -c ipyrad ipyrad=0.1.40    ## install ipyrad v.0.1.40
+    conda install -c ipyrad ipyrad=0.1.40    ## install specific version
     conda update -c ipyrad ipyrad            ## update to the latest
 
 
