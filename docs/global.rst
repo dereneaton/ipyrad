@@ -1,3 +1,5 @@
+
+## external links
 .. _conda: http://docs.continuum.io/conda/
 .. _ipyrad: https://ipyrad.readthedocs.org/
 .. _pyrad: https://github.com/dereneaton/pyrad  
@@ -10,6 +12,7 @@
 .. _oaks: https://github.com/dereneaton/virentes  
 
 
-.. _ethos: ethos.rst
-.. _features: features.rst
-.. _API: quickguide.rst
+## shortcut links between pages
+.. _ethos: ethos.html
+.. _features: features.html
+.. _API: ipyrad_scripts.html
