@@ -1,10 +1,9 @@
 
 ## Don't build any extra formats
-formats:
-    - none
 
 conda:
     file: environment.yml
 
 python:
     version: 2.7
+    setup_py_install: true

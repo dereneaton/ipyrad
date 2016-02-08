@@ -1,6 +1,7 @@
-name: root
+name: ipyrad
 dependencies:
-- _license=1.1=py27_0
+- python=2.7
+- numpy=1.10
 - tornado=4.3=py27_0
 - traitlets=4.1.0=py27_0
 - ujson=1.33=py27_0
