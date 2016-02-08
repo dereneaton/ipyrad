@@ -3,9 +3,11 @@
 
 .. _installation:
 
-
 Installation
 ============
+
+Conda install
+-------------
 
 The easiest way to install ipyrad_ and all of its dependencies is with conda_,
 a command line program for installing Python packages. If you do not have 
@@ -45,10 +47,9 @@ commands::
 
 Dependencies
 ------------
-conda will install all of the following required dependencies during the
-installation of ipyrad. 
+The conda_ installation will install the following required dependencies:
 
-Python Packages:  
+**Python Packages**:  
 
 * Numpy -- Scientific processing  
 * Scipy -- Scientific processing  
@@ -63,14 +64,15 @@ Python Packages:
 * Toyplot -- [optional]  
 
 
-Executables:  
+**Executables**:  
 
-* vsearch  
-* muscle  
-* smalt  
-* samtools  
-* hdf5  
-* mpirun, mpiexec  
+* vsearch -- used for de novo clustering
+* muscle -- used for sequence alignment
+* smalt -- used for reference mapping
+* samtools -- used for reference mapping
+* bedtools -- used for reference mapping
+* hdf5 -- used for large array storage/access
+* mpirun, mpiexec -- used for parallelization
 
 
 .. _HPC_installation:
