@@ -55,7 +55,6 @@ dependencies:
 - ipaddress=1.0.14=py27_0
 - ipykernel=4.2.2=py27_0
 - ipyparallel=4.1.0=py27_0
-- ipyrad=0.1.37=6
 - ipython=4.0.0=py27_0
 - ipython-notebook=4.0.4=py27_0
 - ipython-qtconsole=4.0.1=py27_0
