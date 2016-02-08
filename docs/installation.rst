@@ -26,18 +26,16 @@ up for disk space I recommend installing *Anaconda*.
 
 To install ipyrad_ using *conda* simply type the following into a terminal
 
-```
+.. code:: bash
     $ conda update conda                 ## updates conda 
     $ conda install -c ipyrad ipyrad     ## installs the latest release
-```
 
 If you wish to install a specific version of ipyrad, or to upgrade to the 
 latest release from an older version, you could use one of the following commands::
 
-```
-    $ conda install -c ipyrad ipyrad=0.1.40    ## install ipyrad v.0.7.0
+.. code:: bash
+    $ conda install -c ipyrad ipyrad=0.1.40    ## install ipyrad v.0.1.40
     $ conda update -c ipyrad ipyrad            ## update to the latest
-```
 
 
 Dependencies
