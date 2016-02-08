@@ -96,8 +96,9 @@ except ImportError:
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = ["sphinx.ext.autodoc",
-              "sphinxcontrib.napoleon"]
-#              "sphinx.ext.napoleon"]
+              "sphinx.ext.napoleon"]
+#              "sphinxcontrib.napoleon"]
+
 
 # Napoleon settings
 # napoleon_numpy_docstring = True

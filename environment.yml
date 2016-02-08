@@ -14,3 +14,4 @@ dependencies:
 - h5py
 - mpi4py
 - psutil
+- sphinx>1.2
