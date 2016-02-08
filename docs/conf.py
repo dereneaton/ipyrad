@@ -71,11 +71,6 @@ try:
 except ImportError:
     print "no pandas"
 try:
-    import matplotlib
-    print "matplotlib: %s, %s" % (matplotlib.__version__, matplotlib.__file__)
-except ImportError:
-    print "no matplotlib"
-try:
     import IPython
     print "ipython: %s, %s" % (IPython.__version__, IPython.__file__)
 except ImportError:
