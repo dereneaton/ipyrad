@@ -27,6 +27,7 @@ up for disk space I recommend installing *Anaconda*.
 To install ipyrad_ using *conda* simply type the following into a terminal
 
 .. code:: bash
+::
     $ conda update conda                 ## updates conda 
     $ conda install -c ipyrad ipyrad     ## installs the latest release
 
@@ -34,6 +35,7 @@ If you wish to install a specific version of ipyrad, or to upgrade to the
 latest release from an older version, you could use one of the following commands::
 
 .. code:: bash
+::
     $ conda install -c ipyrad ipyrad=0.1.40    ## install ipyrad v.0.1.40
     $ conda update -c ipyrad ipyrad            ## update to the latest
 
@@ -76,6 +78,7 @@ One of the benefits of using *conda* for installation is that it
 creates a Python package directory where you install it. So if you install into
 your home directory it creates ``~/anaconda/`` (or ``~/miniconda/``). It will
 
+.. code:: bash
 ::
     ## download miniconda
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
