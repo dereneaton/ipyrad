@@ -61,7 +61,7 @@ The conda_ installation will install the following required dependencies:
 * Cython -- C bindings for Python  
 * H5py -- Database and HDF5 headers  
 * Dill -- Store pickle objects of complex Classes   
-* Toyplot -- [optional]  
+* Toyplot -- Plotting 
 
 
 **Executables**:  
