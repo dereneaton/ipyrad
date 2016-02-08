@@ -37,9 +37,10 @@ following into a terminal:
 
 If you wish to install a specific version of ipyrad_, or to upgrade to the 
 latest release from an older version, you could use one of the following 
-commands::
+commands:
 
 .. code-block:: bash  
+
     conda install -c ipyrad ipyrad=0.1.40    ## install specific version
     conda update -c ipyrad ipyrad            ## update to the latest
 
