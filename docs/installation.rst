@@ -31,7 +31,7 @@ likely a Linux machine.
 
     ## OR download Miniconda for Mac
     wget https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh
-    
+
     ## Install miniconda. Follow the directions, by default it will propose installing
     ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
     ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.  
@@ -124,12 +124,14 @@ that you can simply type the name of the software and load it, even on jobs
 submitted using `qsub` or `sbatch`. 
 
 As an example, you can play around with ipyrad within an IPython terminal:
-.. code-block:: bash
+.. code-block:: bash  
+
 	## open an ipython shell in the terminal
     ipython
 
 In the IPython session load ipyrad:
-.. code-block:: python
+.. code-block:: python  
+
 	## import ipyrad
     import ipyrad as ip
 
