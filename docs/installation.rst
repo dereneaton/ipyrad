@@ -22,7 +22,7 @@ the framework for installing new packages.
 First, we need to download the conda installer, I'll use `miniconda` for my example. 
 There are separate installers for Linux and Mac, so choose only the one that
 is correct for your system. If you are working on an HPC cluster it is most \
-likely a Linux machine. 
+likely a Linux machine. Skip this section if you already have conda installed.
 
 .. code-block:: bash
 
@@ -45,7 +45,7 @@ likely a Linux machine.
 
     ## test that conda is installed by printing info about conda
     conda info
-    
+
 
 During installation conda_ will ask if it can append the newly created 
 `miniconda/` (or `anaconda/`) directory to your `$PATH`, say yes. What this does
