@@ -48,12 +48,12 @@ likely a Linux machine. Skip this section if you already have conda installed.
 
 
 During installation conda_ will ask if it can append the newly created 
-`miniconda/` (or `anaconda/`) directory to your `$PATH`, say yes. What this does
-is add a line to your `~/.bashrc` file so that the anaconda directory becomes 
+miniconda/ (or anaconda/) directory to your $PATH, say yes. What this does
+is add a line to your **~/.bashrc** file so that the anaconda directory becomes 
 the default location to search for Python and Python modules, and also so that 
 it can find executables in this directory. If you find that setting this path 
 interferes with any of your other software you can always comment out the 
-line from `~/.bashrc`. But, if conflicts arise my advice would be rather than 
+line from **~/.bashrc**. But, if conflicts arise my advice would be rather than 
 working around conda_, to instead learn more about it (instructions_), 
 since it is a powerful tool for creating multiple environments with different 
 software packages that do not conflict. 
