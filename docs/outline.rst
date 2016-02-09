@@ -90,7 +90,7 @@ sequentially under a single set of parameters defined in the params file.
     data1.set_params("raw_fastq_path", "data/*.fastq")
     data1.set_params("barcodes_path", "barcodes.txt")   
 
-    ## run steps 1-7
+    ## run steps 1-7, no args to run means run all steps.
     data1.run()
 
 
@@ -98,12 +98,15 @@ sequentially under a single set of parameters defined in the params file.
 
 Branching workflow
 ^^^^^^^^^^^^^^^^^^
-The most efficient and effective way to use ipyrad_ is to create branching
+A more efficient and effective way to use ipyrad_ is to create branching
 assemblies in which multiple final data sets are assembled from the same
 shared data by applying different parameter settings to them during different
-steps of the assembly. Below are some simple examples. You can find more in the 
-tutorial_ and cookbook_ sections. 
-
+steps of the assembly. The schematic and code example below shows how to branch
+an assembly called 'data1' to create a new assembly 'data2' which inherits the 
+files and statistics from data1, but then applies a different clustering 
+threshold going forward for steps 3-7. You can envision many data sets generated
+this way by havins successive branching events along each branch. 
+You can find more branching examples in the tutorial_ and cookbook_ sections. 
 
 .. image:: images/steps_branching.png
 
