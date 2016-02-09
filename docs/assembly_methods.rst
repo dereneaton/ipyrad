@@ -86,26 +86,27 @@ Example Python API combining assembly methods
     ## import ipyrad 
     import ipyrad as ip
 
-	## create an Assembly and modify some parameter settings
-	data1 = ip.Assembly("coding")
-	data1.set_params("project_dir", "example")
-	data1.set_params("sorted_fastq_path", "data/*.fastq")
-	data1.set_params("reference_sequence_path", "transcriptome.fa")		
-	data1.set_params("assembly_method", "reference")
+    ## create an Assembly and modify some parameter settings
+    data1 = ip.Assembly("coding")
+    data1.set_params("project_dir", "example")
+    data1.set_params("sorted_fastq_path", "data/*.fastq")
+    data1.set_params("reference_sequence_path", "transcriptome.fa")     
+    data1.set_params("assembly_method", "reference")
 
-	## run steps 1-2
-	data1.run("12")
+    ## run steps 1-2
+    data1.run("12")
 
-	## create branch named 'noncoding' and set the assembly method to 
-	## reference_sub so that it removes the reference matched reads
-	data2 = data1.copy("noncoding")
-	data2.set_params("assembly_method", "reference_sub")
+    ## create branch named 'noncoding' which inherits params from 'coding'
+    ## and set the assembly method to reference_sub so that it removes the 
+    ## reference matched reads.
+    data2 = data1.copy("noncoding")
+    data2.set_params("assembly_method", "reference_sub")
 
-	## finish both assemblies
-	data1.run("34567")
-	data2.run("34567")
+    ## finish both assemblies
+    data1.run("34567")
+    data2.run("34567")
 
-	## See ipyrad analysis tools for comparing the results.
+    ## See ipyrad analysis tools for comparing the results.
 
 
 
