@@ -5,12 +5,52 @@
 Assembly Outline
 ================
 
-Below is a schematic of the typical workflow to move from fastq formatted 
-sequence data to assembled comparative data sets in a number of output formats.
-The ipyrad workflow is broken down into 7 steps. This allows for a modular 
-workflow where jobs can easily be restarted from any step, and in which a data
-set can be assembled in multiple ways with different combinations of parameter
-settings. 
+The typical workflow to move from fastq formatted sequence data to assembled 
+comparative data sets in ipyrad_ involves 7 sequential steps. Separating the
+assembly into steps allows for a modular workflow where jobs can easily be 
+restarted from any step, and in which multiple final assembled data sets can 
+be created by applying different parameter settings to it at different stages
+of the assembly. 
+
+
+Seven Steps
+===========
+
+1. Demultiplexing / Loading fastq files
+----------------------------------------
+Step 1 involves loading sequence data into a named "Assembly" and sorting the 
+sequences among a number of "Samples" (individuals). If the data are not yet 
+demultiplexed then step 1 uses information from a barcodes_file_ to assign 
+sequences to Samples. If the data are already demultiplexed then step 1 simply
+reads the data in to count how many reads are assigned to each Sample. 
+
+2. Filtering / Editing reads
+----------------------------
+...
+
+3. Clustering / Mapping reads within Samples and alignment
+----------------------------------------------------------
+...
+
+4. Joint estimation of heterozygosity and error rate
+----------------------------------------------------
+...
+
+5. Consensus base calling and filtering
+---------------------------------------
+...
+
+6. Clustering / Mapping reads among Samples and alignment
+---------------------------------------------------------
+...
+
+7. Filtering and formatting output files
+-----------------------------------------
+...
+
+
+Schematic Example
+==================
 
 
 Basic workflow
