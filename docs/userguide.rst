@@ -16,13 +16,13 @@ Tutorial - CLI
 ---------------------------------------
 The ipyrad_ command line interface (CLI_) is designed to be easy to use and will
 be familiar to users of its predecessor program pyrad_. First things first, once
-ipyrad_ is installed open a terminal and type `ipyrad -h` to 
-a terminal 
+ipyrad_ is installed open a terminal and type:
 
 .. code-block:: bash
 
     ipyrad -h
 
+The output will show:
 
 .. code-block:: none
 
@@ -43,8 +43,8 @@ a terminal
                      run quickly so you can verify everything is working
 
       * Example command-line usage: 
-        ipyrad -n test                     ## create new file test-params.txt
-        ipyrad -p test-params.txt          ## run ipyrad with settings in params
+        ipyrad -n test                     ## create new file test-params.txt.
+        ipyrad -p test-params.txt          ## run ipyrad with settings in params.
         ipyrad -p test-params.txt -s 123   ## run only steps 1, 2 and 3 of assembly.
         ipyrad -p test-params.txt -s 4567  ## run steps 4, 5, 6 and 7 of assembly.
         ipyrad -p test-params.txt -s 3 -f  ## run step 3, overwrite existing data.
