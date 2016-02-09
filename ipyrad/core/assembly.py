@@ -1858,7 +1858,7 @@ def paramschecker(self, param, newvalue):
         ## they run step1?
         ## TODO: Maybe do this, maybe not.
 
-        self.paramsdict['excludes'] = outgroup_individuals
+        self.paramsdict['outgroups'] = outgroup_individuals
 
     return self
 
