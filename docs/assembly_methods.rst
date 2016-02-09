@@ -24,12 +24,14 @@ reference
 Sequences are mapped to a reference genome using the program smalt_ based on 
 sequence similarity. 
 
+.. _reference_add:
 reference_add
 -------------
 Sequences are mapped to a reference genome using the program smalt_ based on 
 sequence similarity, and reads that do not match to the reference are assembled
 using the denovo method. 
 
+.. _reference_sub:
 reference_sub
 --------------
 Sequences which map to a reference genome are excluded, and all remaining reads
@@ -50,7 +52,7 @@ when we assemble all of the data that do not match to the transcriptome
 (putatively non-coding). 
 
 
-**Example CLI branching assembly methods
+**Example CLI combining assembly methods**
 
 .. code-block:: bash
 
@@ -73,7 +75,7 @@ when we assemble all of the data that do not match to the transcriptome
     ipyrad -p noncoding-params.txt -s 34567
 
 
-**Example API basic workflow**
+**Example Python API combining assembly methods**
 
 .. code-block:: python
 

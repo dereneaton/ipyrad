@@ -5,7 +5,8 @@
 Assembly Parameters
 ====================
 
-ipyrad_ performs a series of 7 steps_ to assemble RAD-seq data sets by sorting
+ipyrad_ performs a series of 7_steps_ :ref:`7_steps <7_steps>` 
+to assemble RAD-seq data sets by sorting
 filtering, clustering, and formatting the data into output files. During each 
 step a number of parameters are used which affect how that step is performed. 
 The defaults that we chose are fairly reasonable values for most assemblies, 
