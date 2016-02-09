@@ -60,16 +60,16 @@ since it is a powerful tool for creating multiple environments with different
 software packages that do not conflict. 
 
 
-Once conda_ is installed, ipyrad_ can be installed easily by entering the 
-following into a terminal:
+Once conda_ is installed, ipyrad_ can be installed by typing the following 
+command into a terminal:
 
 .. code-block:: bash  
 
     conda update conda                 ## updates conda 
     conda install -c ipyrad ipyrad     ## installs the latest release
 
-If you wish to install a specific version of ipyrad_, or to upgrade to the 
-latest release from an older version, you could use one of the following 
+If you wish to install a specific version of ipyrad_, or to upgrade from an 
+older version to the most recent release, you could use one of the following 
 commands:
 
 .. code-block:: bash  
@@ -77,6 +77,8 @@ commands:
     conda install -c ipyrad ipyrad=0.1.40    ## install specific version
     conda update -c ipyrad ipyrad            ## update to the latest
 
+
+.. _HPC_installation: 
 
 HPC installation
 -----------------
@@ -100,7 +102,7 @@ The conda_ installation will install the following required dependencies:
 * Pandas -- Used for manipulating data frames  
 * Sphinx -- Used for building documentation  
 * IPython2 -- Interactive version of Python 2.7  
-* ipyparallel -- Parallel, threading, MPI support  
+* ipyparallel_ -- Parallel, threading, MPI support  
 * jupyter -- Creating reproducible notebooks  
 * Cython -- C bindings for Python  
 * H5py -- Database and HDF5 headers  
@@ -111,7 +113,7 @@ The conda_ installation will install the following required dependencies:
 **Executables**:  
 
 * vsearch -- used for de novo clustering
-* muscle -- used for sequence alignment
+* muscle_ -- used for sequence alignment
 * smalt -- used for reference mapping
 * samtools -- used for reference mapping
 * bedtools -- used for reference mapping
