@@ -15,26 +15,26 @@ reference_sub to filter/remove matching reads from a data set.
 
 .. _denovo:  
 denovo
-^^^^^^
+------
 Sequences are assembled without any reference resources. Homology is inferred during
 alignment clustering by sequence similarity using the program vsearch_. 
 
 .. _reference:  
 reference
-^^^^^^^^^
+---------
 Sequences are mapped to a reference genome using the program smalt_ based on 
 sequence similarity. 
 
 .. _reference_add:
 reference_add
-^^^^^^^^^^^^^
+-------------
 Sequences are mapped to a reference genome using the program smalt_ based on 
 sequence similarity, and reads that do not match to the reference are assembled
 using the denovo method. 
 
 .. _reference_sub:
 reference_sub
-^^^^^^^^^^^^^
+-------------
 Sequences which map to a reference genome are excluded, and all remaining reads
 are assembled using the denovo method. This method can be used to filter out 
 data which match to a chloroplast genome in plants, or to a host genome in a 
@@ -43,7 +43,7 @@ study of a parasite.
 
 .. _comparing:
 Comparing Assembly methods
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------
 You could imagine that if you had a reference sequence file you might want to 
 examine your data set under a number of different Assembly scenarios. For example,
 let's imagine we are interested in inferring phylogeny for a clade of 10 plant
@@ -54,7 +54,8 @@ when we assemble all of the data that do not match to the transcriptome
 (putatively non-coding). 
 
 
-**Example CLI combining assembly methods**
+Example CLI combining assembly methods
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -77,7 +78,8 @@ when we assemble all of the data that do not match to the transcriptome
     ipyrad -p noncoding-params.txt -s 34567
 
 
-**Example Python API combining assembly methods**
+Example Python API combining assembly methods
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
