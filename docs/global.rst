@@ -5,6 +5,7 @@
 .. _muscle: http://www.drive5.com/muscle/
 .. _anaconda: http://docs.continuum.io/anaconda/install.html
 .. _miniconda: http://repo.continuum.io/miniconda/
-.. _gitter: https://gitter.im/dereneaton/ipyrad
+.. _gitterrr: https://gitter.im/dereneaton/ipyrad
 .. _instructions_here: http://conda.pydata.org/docs/installation.html
 .. _oaks: https://github.com/dereneaton/virentes  
+.. _gitterr: `<installation>`
