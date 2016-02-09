@@ -11,7 +11,8 @@ Conda install
 
 The easiest way to install ipyrad_ and all of its dependencies is with conda_,
 a command line program for installing Python packages. If you do not have 
-conda_ installed, you can find detailed installation instructions_here_, or simply
+conda_ installed, you can find detailed installation 
+:ref:`here <...>`, or simply
 follow the directions outlined below. You will need to install either `anaconda` or 
 `miniconda` for Python2.7. The only difference between the two is that 
 `anaconda` installs a large suite of commonly used Python packages along with the 

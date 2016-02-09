@@ -88,7 +88,7 @@ Basic workflow
     data1.run()
 
 
-### INSERT IMAGE HERE
+.. image:: images/ball1.gif
 
 
 .. _branching_workflow:
