@@ -19,9 +19,11 @@ Seven Steps
 
 1. Demultiplexing / Loading fastq files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Step 1 involves loading sequence data into a named **Assembly** and sorting the 
-sequences among a number of Samples_ (individuals). If the data are not yet 
-demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_file>`
+Step 1 involves loading sequence data into a named 
+:ref:`Assembly<Assembly>` and sorting the sequences among a number of 
+:ref:`Samples<Samples>` (individuals). If the data are not yet 
+demultiplexed then step 1 uses information from a 
+:ref:`barcodes file<barcodes_file>`
 to assign sequences to Samples. If the data are already demultiplexed then 
 step 1 simply reads the data in to count how many reads are assigned to each 
 Sample. 

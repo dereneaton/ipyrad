@@ -10,7 +10,8 @@ Features
 What does ipyrad do?
 --------------------
 ipyrad_ is a toolbox for assembly and analysis of RAD-seq type genomic data sets. 
-Notably, it has four assembly_methods_ by which to assemble data: denovo, reference, 
+Notably, it has four :ref:`assembly methods<assembly_methods>` 
+by which to assemble data: denovo, reference, 
 reference addition, and reference subtraction. Assembled data sets are created
 in variety of output_formats_, facilitating downstream genomic analyses for both 
 population genetic and phylogenetic studies. ipyrad_ also includes methods for 
