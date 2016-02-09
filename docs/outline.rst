@@ -155,10 +155,6 @@ tutorial_ and cookbook_ sections.
 
 
 
-### INSERT IMAGE HERE
-
-
-
 Branching Architecture
 ----------------------
 To better understand how branching works it helps to understand the underlying 
