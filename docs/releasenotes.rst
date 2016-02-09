@@ -6,15 +6,20 @@ Release Notes
 =============
 
 
+0.1.39
+------
+- Still in development
 
-Goals for ipyrad 0.1.0 
------------------------
 
-* Full assembly working for all three methods.
-* Documentation on readthedocs.
-* Notebook examples building in docs with simulated data sets.
-* Continuous integration testing with travis-ci.
-* Full conda installation.
+0.1.38
+------
+- Still in development. 
+- Step7 stats are now building. Extra output files are not. 
+- New better launcher for Clients in ipyparallel 5
 
+
+0.1.37
+------
+- conda installation mostly working from ipyrad channel
 
 

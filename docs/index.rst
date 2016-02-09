@@ -13,13 +13,13 @@ Welcome to ipyrad, an interactive toolkit for assembly and analysis of
 restriction-site associated genomic data sets (e.g., RAD, ddRAD, GBS) for 
 population genetic and phylogenetic studies.
 
-In this documentation you can learn more about what ipyrad does 
-(:ref:`Features <features>`), and the broader goals behind its design 
-(:ref:`Ethos <ethos>`). We provide a detailed :ref:`User Guide<userguide>`
-to explain how ipyrad works, as well as numerous example 
-:ref:`Tutorials <tutorials>` to make it easy to get started quickly.
+In this documentation you can learn about the various features of ipyrad 
+(:ref:`Features <features>`), the broader motivation behind its design 
+(:ref:`Ethos <ethos>`), and access a detailed :ref:`User Guide<userguide>`.
+We provide a number of example :ref:`Tutorials <tutorials>` and analysis
+cookbook recipes to help users get started quickly.
 
-Got questions about ipyrad? Join the conversation :ref:`here <gitter>`.
+Got questions about ipyrad? Join the conversation gitter_.
 
 
 Documentation
@@ -31,14 +31,22 @@ Documentation
    ethos.rst
    features.rst
    installation.rst
-   quickguide.rst
-   notebooks.rst
+
+   outline.rst
+   parameters.rst
+   methods.rst
+
    userguide.rst
+   notebooks.rst
    tutorials.rst
+
+   analysis.rst
+
    citing.rst
    releasenotes.rst
    support.rst
    license.rst
+
 
 Indices and tables
 ==================

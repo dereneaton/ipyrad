@@ -1,0 +1,16 @@
+pip
+dill
+sphinx
+cython
+ipython
+ipyparallel
+ipykernel
+jupyter
+jupyter-client
+nbconvert
+scipy>0.10
+numpy>=1.9
+pandas
+h5py
+psutil
+mpi4py

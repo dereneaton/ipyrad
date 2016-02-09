@@ -11,11 +11,11 @@ The ipyrad documentation:
 
 Source code and issue tracking at the github repository:
 
-    http://github.com/dereneaton/ipyrad
+* http://github.com/dereneaton/ipyrad
 
 For ipyrad questions, comments, or suggestions, get in touch with us at:
 
-    https://gitter.im/dereneaton/ipyrad
+* https://gitter.im/dereneaton/ipyrad
 
 
 
