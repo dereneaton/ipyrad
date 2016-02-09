@@ -15,16 +15,21 @@ with writing scripts for assembly and/or analyses using the ipyrad API see the
 Tutorial - CLI
 ---------------------------------------
 The ipyrad_ command line interface (CLI_) is designed to be easy to use and will
-be familiar to users of its predecessor program pyrad_. 
+be familiar to users of its predecessor program pyrad_. First things first, once
+ipyrad_ is installed open a terminal and type `ipyrad -h` to 
+a terminal 
 
-.. code-block:: python
+.. code-block:: bash
 
     ipyrad -h
+
+
+.. code-block:: bash
 
     usage: ipyrad [-h] [-v] [-r] [-n] [-f] [-p params] [-s steps] [-c cores]
                   [--MPI] [--preview]
 
-    noptional arguments:
+    optional arguments:
       -h, --help     show this help message and exit
       -v, --version  show program's version number and exit
       -r, --results  show summary of results for Assembly in params.txt and exit
