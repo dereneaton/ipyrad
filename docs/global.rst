@@ -8,4 +8,4 @@
 .. _gitterrr: https://gitter.im/dereneaton/ipyrad
 .. _instructions_here: http://conda.pydata.org/docs/installation.html
 .. _oaks: https://github.com/dereneaton/virentes  
-.. _gitterr: `<installation>`
+.. _gitter: :ref:`install<installation>`
