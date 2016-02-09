@@ -58,6 +58,9 @@ Schematic Example
 
 Basic workflow
 ^^^^^^^^^^^^^^^
+The basic workflow involves assembling a data set through the seven 7_steps_ 
+sequentially under a single set of parameters defined in the params file. 
+
 
 .. image:: images/steps.png
 
@@ -65,11 +68,12 @@ Basic workflow
 
 .. code-block:: bash
 
-    ## create a params.txt file and rename it data1, and then use a text editor
-    ## to edit the parameter settings in data1-params.txt
+    ## Create a new params file using -n and name the assembly 'data1'.
+    ## This creates file called data1-params.txt
     ipyrad -n data1
 
-    ## run steps 1-7 using the settings in data1-params.txt
+    ## Use a text editor to change setting in data1-params.txt
+    ## and then run steps 1-7 using these settings.
     ipyrad -p data1-params.txt
 
 
