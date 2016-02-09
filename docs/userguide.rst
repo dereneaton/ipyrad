@@ -24,7 +24,7 @@ a terminal
     ipyrad -h
 
 
-.. code-block:: bash
+.. code-block:: none
 
     usage: ipyrad [-h] [-v] [-r] [-n] [-f] [-p params] [-s steps] [-c cores]
                   [--MPI] [--preview]
@@ -33,18 +33,18 @@ a terminal
       -h, --help     show this help message and exit
       -v, --version  show program's version number and exit
       -r, --results  show summary of results for Assembly in params.txt and exit
-      -n, --new      create new default params.txt file in current directory
       -f, --force    force overwrite of existing data
-      -p params      path to params.txt file
+      -n new         create new params file with name 'new' in current directory
+      -p params      path to params file (e.g., new-params.txt)
       -s steps       subset of assembly steps to perform (Default=1234567)
       -c cores       number of CPU cores to use (Default=all)
-      --MPI          connect to parallel CPUs across multiple nodes using MPI
-      --preview      Run ipyrad in preview mode. Subset the input file so it'll
-                     runquickly so you can verify everything is working
+      --MPI          use MPI to connect to parallel CPUs across multiple nodes
+      --preview      run ipyrad in preview mode. Subset the input file so it'll
+                     run quickly so you can verify everything is working
 
       * Example command-line usage: 
         ipyrad -n test                     ## create new file test-params.txt
-        ipyrad -p test-params.txt          ## run ipyrad with settings in params.txt.
+        ipyrad -p test-params.txt          ## run ipyrad with settings in params
         ipyrad -p test-params.txt -s 123   ## run only steps 1, 2 and 3 of assembly.
         ipyrad -p test-params.txt -s 4567  ## run steps 4, 5, 6 and 7 of assembly.
         ipyrad -p test-params.txt -s 3 -f  ## run step 3, overwrite existing data.
