@@ -88,13 +88,18 @@ Basic workflow
 ### INSERT IMAGE HERE
 
 
-
+.. _branching_workflow:
 
 Branching workflow
 -------------------
+The most efficient and effective way to use ipyrad_ is to create branching
+assemblies in which multiple final data sets are assembled from the same
+shared data by applying different parameter settings to them during different
+steps of the assembly. Below are some simple examples. You can find more in the 
+tutorial_ and cookbook_ sections. 
 
 
-**Example CLI workflow**
+**Example CLI branching workflow**
 
 
 .. code-block:: bash
@@ -117,7 +122,7 @@ Branching workflow
     ipyrad -p data2-params.txt -s 34567
 
 
-**Example API workflow**
+**Example Python API branching workflow**
 
 
 .. code-block:: python

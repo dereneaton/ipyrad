@@ -5,7 +5,7 @@
 Assembly Parameters
 ====================
 
-ipyrad_ performs a series of 7_steps_ :ref:`7_steps <7_steps>` 
+ipyrad_ performs a series of :ref:`7 steps <7_steps>` 
 to assemble RAD-seq data sets by sorting
 filtering, clustering, and formatting the data into output files. During each 
 step a number of parameters are used which affect how that step is performed. 
@@ -28,7 +28,7 @@ combinations I usually either name them consecutively (e.g., data1, data2), or
 with names indicating their parameters combinations (e.g., data_clust90, 
 data_clust85). The Assembly name cannot be changed after an Assembly is created, 
 but a new Assembly with a different name can be created by copying (branching)
-the Assembly (see Branching_). 
+the Assembly (see :ref:`branching workflow<branching_workflow>`).
 
 Affected steps: 1-7  
 Example entries into params.txt:  
@@ -110,7 +110,8 @@ Example entries into params.txt:
 
 5. Assembly method
 --------------------
-There are four possible Assembly_methods_: denovo, reference, reference_add, and
+There are four :ref:`Assembly_methods<Assembly_methods>` options in ipyrad_: 
+denovo, reference, reference_add, and
 reference_sub. The latter three all require a reference sequence file (param 6).
 
 Affected steps: 3,6
