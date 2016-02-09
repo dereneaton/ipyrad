@@ -48,6 +48,7 @@ current directory if it does not already exist. A good name for Project_dir will
 generally be the name of the organism being studied (e.g., white_crowned_sparrow). 
 
 Affected steps: 1-7  
+
 Example entries into params.txt:  
 
 .. code-block:: python
@@ -56,8 +57,8 @@ Example entries into params.txt:
     finches                            ## [1] create/use project dir called finches
 
 
-2. Location of raw fastq data
-------------------------------
+2. Raw fastq path
+-----------------
 This is a path to the location of raw (non-demultiplexed) fastq data files. The 
 files can be gzip compressed (i.e., have name-endings .fastq.gz). If you enter
 a path for raw data files then you should also have a path to a barcodes file
@@ -65,6 +66,7 @@ for parameter 3. To select multiple files, or all files in a directory, use a
 wildcard character (*).
 
 Affected steps: 1  
+
 Example entries into params.txt:  
 
 .. code-block:: python
@@ -74,11 +76,12 @@ Example entries into params.txt:
     ./data/sim_rad*.fastq.gz                  ## [2] select `sim_rad` data files
 
 
-3. Location of barcodes file
------------------------------
+3. Barcodes path
+----------------
 This is a path to the location of the barcodes_file_. 
 
-Affected steps: 1  
+Affected steps: 1   
+
 Example entries into params.txt:  
 
 .. code-block:: python
@@ -87,11 +90,14 @@ Example entries into params.txt:
     ~/tests/data/sim_barcodes.txt                   ## [3] select barcode file
 
 
-4. Location of sorted fastq data
---------------------------------
-This is a path to the location of the sorted fastq data. This would be...
+4. Sorted fastq path
+--------------------
+This is a path to the location of sorted fastq data. If your data are already
+demultiplexed then this is the location that will be used in step 1 to load 
+the data into ipyrad. 
 
 Affected steps: 1  
+
 Example entries into params.txt:  
 
 .. code-block:: python
@@ -118,3 +124,5 @@ Example entries into params.txt:
 
 
 6. Reference sequence
+---------------------
+...

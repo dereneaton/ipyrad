@@ -20,7 +20,7 @@ Basic workflow
 
 .. code-block:: bash
 
-	## create a params.txt file and rename it data1, and then use a text editor
+    ## create a params.txt file and rename it data1, and then use a text editor
 	## to edit the parameter settings in data1-params.txt
     ipyrad -n data1
 
@@ -95,12 +95,11 @@ Branching workflow
 	data1.run("12")
 
 	## create a new branch of this Assembly named data2
+	## and change some parameter settings 
 	data2 = data1.copy("data2")
-
-	## set some different parameter settings for data2
 	data2.set_params("clust_threshold", 0.90)
 
-	## run steps 3-7 for both Assemblies
+	## run steps 3-7 for the two Assemblies
 	data1.run("34567")
 	data2.run("34567")
 
