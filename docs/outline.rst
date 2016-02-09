@@ -13,7 +13,7 @@ be created by applying different parameter settings to it at different stages
 of the assembly. 
 
 
-.. _7_steps:
+
 Seven Steps
 ------------
 
@@ -58,7 +58,7 @@ Schematic Example
 
 Basic workflow
 ^^^^^^^^^^^^^^^
-The basic workflow involves assembling a data set through the seven 7_steps_ 
+The basic workflow involves assembling a data set through the `seven steps`_ 
 sequentially under a single set of parameters defined in the params file. 
 
 
