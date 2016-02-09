@@ -19,7 +19,7 @@ Seven Steps
 
 1. Demultiplexing / Loading fastq files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Step 1 involves loading sequence data into a named "Assembly" and sorting the 
+Step 1 involves loading sequence data into a named __Assembly__ and sorting the 
 sequences among a number of "Samples" (individuals). If the data are not yet 
 demultiplexed then step 1 uses information from a barcodes_file_ to assign 
 sequences to Samples. If the data are already demultiplexed then step 1 simply
