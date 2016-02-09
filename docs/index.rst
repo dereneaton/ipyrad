@@ -38,6 +38,7 @@ Documentation
    outline.rst
    assembly_methods.rst
    quickguide.rst
+   analysis.rst
    citing.rst
    releasenotes.rst
    support.rst
