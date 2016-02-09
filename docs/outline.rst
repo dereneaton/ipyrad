@@ -74,14 +74,14 @@ Basic workflow
     ## import ipyrad 
     import ipyrad as ip
 
-	## create an Assembly and modify some parameter settings
-	data1 = ip.Assembly("data1")
-	data1.set_params("project_dir", "example")
-	data1.set_params("raw_fastq_path", "data/*.fastq")
-	data1.set_params("barcodes_path", "barcodes.txt")	
+    ## create an Assembly and modify some parameter settings
+    data1 = ip.Assembly("data1")
+    data1.set_params("project_dir", "example")
+    data1.set_params("raw_fastq_path", "data/*.fastq")
+    data1.set_params("barcodes_path", "barcodes.txt")   
 
-	## run steps 1-7
-	data1.run()
+    ## run steps 1-7
+    data1.run()
 
 
 ### INSERT IMAGE HERE
@@ -121,26 +121,26 @@ Branching workflow
 
 .. code-block:: python
 
-	## import ipyrad 
-	import ipyrad as ip
+    ## import ipyrad 
+    import ipyrad as ip
 
-	## create an Assembly and modify some parameter settings
-	data1 = ip.Assembly("data1")
-	data1.set_params("project_dir", "example")
-	data1.set_params("raw_fastq_path", "data/*.fastq")
-	data1.set_params("barcodes_path", "barcodes.txt")	
+    ## create an Assembly and modify some parameter settings
+    data1 = ip.Assembly("data1")
+    data1.set_params("project_dir", "example")
+    data1.set_params("raw_fastq_path", "data/*.fastq")
+    data1.set_params("barcodes_path", "barcodes.txt")   
 
-	## run steps 1-2
-	data1.run("12")
+    ## run steps 1-2
+    data1.run("12")
 
-	## create a new branch of this Assembly named data2
-	## and change some parameter settings 
-	data2 = data1.copy("data2")
-	data2.set_params("clust_threshold", 0.90)
+    ## create a new branch of this Assembly named data2
+    ## and change some parameter settings 
+    data2 = data1.copy("data2")
+    data2.set_params("clust_threshold", 0.90)
 
-	## run steps 3-7 for the two Assemblies
-	data1.run("34567")
-	data2.run("34567")
+    ## run steps 3-7 for the two Assemblies
+    data1.run("34567")
+    data2.run("34567")
 
 
 
