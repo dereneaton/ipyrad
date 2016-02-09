@@ -1,5 +1,3 @@
-
-## external links
 .. _conda: http://docs.continuum.io/conda/
 .. _ipyrad: https://ipyrad.readthedocs.org/
 .. _pyrad: https://github.com/dereneaton/pyrad  
@@ -10,6 +8,3 @@
 .. _gitter: https://gitter.im/dereneaton/ipyrad
 .. _instructions_here: http://conda.pydata.org/docs/installation.html
 .. _oaks: https://github.com/dereneaton/virentes  
-
-
-
