@@ -20,20 +20,21 @@ visualizing_ and analyzing_ data and results.
 How is it different from pyrad?
 -------------------------------
 ipyrad_ is a complete re-write of pyrad_ with an expanded focus on speed and 
-flexibility. While we continue in the minimalist ethos_ of pyrad_, which emphasized
-a simple installation procedure and ease-of-use, ipyrad_ offers many new 
-features, particularly through its Python API_. We also continue to 
-support the command line interface CLI_ that will be familiar pyrad_ users.
+flexibility. While we continue in the minimalist :ref:`ethos<ethos>` of pyrad_, 
+which emphasized a simple installation procedure and ease-of-use, ipyrad_ offers
+many new features, particularly through its Python :ref:`API<API>`. 
+We also continue to support the command line interface :ref:`CLI<CLI>` 
+that will be familiar pyrad_ users.
 
 
 Major New Features in ipyrad
 ----------------------
-* New assembly_methods_: de novo, reference mapping, reference addition, reference subtraction.
-* Parallel implementation with the new ipyparallel_ module to utilize multiple nodes across HPC clusters.
-* Better checkpointing. Interrupted jobs can be easily restarted to continue from where they left off.
+* New assembly_methods_: *de novo* and reference assembly methods.
+* Parallel implementation that can utilize multiple nodes across HPC clusters.
+* Improved checkpointing. Interrupted jobs can be easily restarted.
 * Faster code (speed comparisons forthcoming with publication).
-* Write highly reproducible documented code with Jupyter Notebooks (see :ref:`Notebooks <notebooks>`).
-* No external installations: all other dependencies are installed with conda (see :ref:`installation <installation>`).
+* Write reproducible/documented code with Jupyter Notebooks (see :ref:`Notebooks <notebooks>`).
+* No external dependencies: all dependencies are included during :ref:`installation<installation>`.
 
 
 Coming Soon
