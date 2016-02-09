@@ -56,11 +56,10 @@ Sample.
 Schematic Example
 ------------------
 
-.. image:: images/steps.png
-
-
 Basic workflow
 ^^^^^^^^^^^^^^^
+
+.. image:: images/steps.png
 
 **Example CLI basic workflow**
 
