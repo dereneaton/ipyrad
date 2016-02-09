@@ -1,8 +1,8 @@
 
 
-.. _quickguide:
+.. _userguide:
 
-Quick Guides
+User Guide
 ============
 The most quick and dirty way to get started with ipyrad is to use the CLI
 as described in the :ref:`CLI Quick Guide <quickguide_CLI>`. To get started
