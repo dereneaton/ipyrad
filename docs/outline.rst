@@ -6,12 +6,13 @@ Assembly Outline
 ================
 
 The typical workflow to move from fastq formatted sequence data to assembled 
-comparative data sets in ipyrad_ involves 7 sequential steps. Separating the
-assembly into steps allows for a modular workflow where jobs can easily be 
-restarted from any step, and in which multiple final assembled data sets can 
-be created by applying different parameter settings to it at different stages
-of the assembly. 
-
+comparative data sets in ipyrad_ involves 
+:ref:`seven sequential steps <seven_steps>`. 
+The reason the it is separated into distinct steps is to create a modular 
+workflow that can be easily restarted if it is interrupted, and can be easily
+branched at different points so that one can test the effect of different
+:ref:`parameter settings <Assembly_parameters>` during different stages of 
+assembly on the final results.
 
 
 Seven Steps

@@ -31,14 +31,17 @@ Documentation
    ethos.rst
    features.rst
    installation.rst
-   parameters.rst
-   notebooks.rst
-   userguide.rst
-   tutorials.rst
+
    outline.rst
-   assembly_methods.rst
-   quickguide.rst
+   parameters.rst
+   methods.rst
+
+   userguide.rst
+   notebooks.rst
+   tutorials.rst
+
    analysis.rst
+
    citing.rst
    releasenotes.rst
    support.rst
