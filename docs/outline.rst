@@ -61,7 +61,7 @@ Basic workflow
 .. code-block:: bash
 
     ## create a params.txt file and rename it data1, and then use a text editor
-	## to edit the parameter settings in data1-params.txt
+    ## to edit the parameter settings in data1-params.txt
     ipyrad -n data1
 
     ## run steps 1-7 using the settings in data1-params.txt
@@ -72,8 +72,8 @@ Basic workflow
 
 .. code-block:: python
 
-	## import ipyrad 
-	import ipyrad as ip
+    ## import ipyrad 
+    import ipyrad as ip
 
 	## create an Assembly and modify some parameter settings
 	data1 = ip.Assembly("data1")
@@ -99,8 +99,8 @@ Branching workflow
 
 .. code-block:: bash
 
-	## create a params.txt file and rename it data1, and then use a text editor
-	## to edit the parameter settings in data1-params.txt
+    ## create a params.txt file and rename it data1, and then use a text editor
+    ## to edit the parameter settings in data1-params.txt
     ipyrad -n data1
 
     ## run steps 1-2 using the default settings
