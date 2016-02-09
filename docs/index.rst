@@ -32,12 +32,12 @@ Documentation
    features.rst
    installation.rst
    parameters.rst
-   quickguide.rst
    notebooks.rst
    userguide.rst
    tutorials.rst
    outline.rst
    assembly_methods.rst
+   quickguide.rst
    citing.rst
    releasenotes.rst
    support.rst
