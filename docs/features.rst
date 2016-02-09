@@ -24,14 +24,14 @@ flexibility. While we continue in the minimalist :ref:`ethos<ethos>` of pyrad_,
 which emphasized a simple installation procedure and ease-of-use, ipyrad_ offers
 many new features, particularly through its Python :ref:`API<API>`. 
 We also continue to support the command line interface :ref:`CLI<CLI>` 
-that will be familiar pyrad_ users.
+that will be familiar to pyrad_ users.
 
 
 Major New Features in ipyrad
 ----------------------
-* New assembly_methods_: *de novo* and reference assembly methods.
-* Parallel implementation that can utilize multiple nodes across HPC clusters.
-* Improved checkpointing. Interrupted jobs can be easily restarted.
+* New :ref:`assembly methods<assembly_methods>`: *de novo* and reference-based methods.
+* Parallel implementation that can utilize multiple nodes across :ref:`HPC<HPC>` clusters.
+* Improved :ref:`checkpointing<checkpointing>`. Interrupted jobs can be easily restarted.
 * Faster code (speed comparisons forthcoming with publication).
 * Write reproducible/documented code with Jupyter Notebooks (see :ref:`Notebooks <notebooks>`).
 * No external dependencies: all dependencies are included during :ref:`installation<installation>`.
