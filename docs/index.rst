@@ -36,6 +36,8 @@ Documentation
    notebooks.rst
    userguide.rst
    tutorials.rst
+   outline.rst
+   assembly_methods.rst
    citing.rst
    releasenotes.rst
    support.rst
