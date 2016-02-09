@@ -56,6 +56,9 @@ Sample.
 Schematic Example
 ------------------
 
+.. image:: images/steps.png
+
+
 Basic workflow
 ^^^^^^^^^^^^^^^
 
@@ -88,18 +91,18 @@ Basic workflow
     data1.run()
 
 
-.. image:: images/ball1.gif
-
-
 .. _branching_workflow:
 
 Branching workflow
--------------------
+^^^^^^^^^^^^^^^^^^
 The most efficient and effective way to use ipyrad_ is to create branching
 assemblies in which multiple final data sets are assembled from the same
 shared data by applying different parameter settings to them during different
 steps of the assembly. Below are some simple examples. You can find more in the 
 tutorial_ and cookbook_ sections. 
+
+
+.. image:: images/steps_branching.png
 
 
 **Example CLI branching workflow**
