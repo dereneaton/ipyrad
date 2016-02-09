@@ -19,11 +19,12 @@ Seven Steps
 
 1. Demultiplexing / Loading fastq files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Step 1 involves loading sequence data into a named __Assembly__ and sorting the 
-sequences among a number of "Samples" (individuals). If the data are not yet 
-demultiplexed then step 1 uses information from a barcodes_file_ to assign 
-sequences to Samples. If the data are already demultiplexed then step 1 simply
-reads the data in to count how many reads are assigned to each Sample. 
+Step 1 involves loading sequence data into a named **Assembly** and sorting the 
+sequences among a number of Samples_ (individuals). If the data are not yet 
+demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_file>`
+to assign sequences to Samples. If the data are already demultiplexed then 
+step 1 simply reads the data in to count how many reads are assigned to each 
+Sample. 
 
 2. Filtering / Editing reads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -153,3 +154,26 @@ tutorial_ and cookbook_ sections.
 ### INSERT IMAGE HERE
 
 
+
+Branching Architecture
+----------------------
+To better understand how branching works it helps to understand the underlying 
+architecture of the API and how the data are store and reused between different
+Assemblies. First it is important to define the objects we refer to as an 
+Assembly_ and as Samples_. 
+
+
+.. _Samples:  
+
+Samples
+^^^^^^^
+Samples are created during step 1 and each Sample represent a unique barcoded
+individual from the sequence data. Sample objects store information about where
+that Sample's data is stored on the disk and the statistics before and after 
+each step (nreads, nfiltered_reads, nclusters, etc.). 
+
+
+.. _Assembly:  
+
+Assembly
+^^^^^^^^
