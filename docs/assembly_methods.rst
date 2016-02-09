@@ -39,7 +39,7 @@ study of a parasite.
 
 
 Combining assembly methods
-==========================
+--------------------------
 You could imagine that if you had a reference sequence file you might want to 
 examine your data set under a number of different Assembly scenarios. For example,
 let's imagine we are interested in inferring phylogeny for a clade of 10 plant
