@@ -5,7 +5,18 @@
 
 Plotting
 ========
-...
+The ipyrad_ plotting library has a number of basic function written with the 
+Python module Toyplot_. For each of these I will demonstrate a simple usage 
+of the available function, as well as how to access the raw data in case you
+want to create your own plotting functions using Python or R. An important
+note about using the ipyrad_ plotting functions is that they have to be loaded
+from a separate module, like below. 
+
+.. code-block:: python  
+
+    ## import ipyrad and the ipyrad plotting library
+    import ipyrad as ip
+    import ipyrad.plotting as ipp
 
 
 Depth plots
@@ -16,10 +27,12 @@ as well. Any Samples that have completed step 3 of an ipyrad assembly will have
 depth information available which we can access through the API to analyze and 
 visualize. 
 
-.. code-block:: python
+.. meth:: depthplot
 
-    ## import ipyrad
-    import ipyrad as ip
+    describe the positional arguments to depthplot here...
+    
+
+.. code-block:: python
 
     ## load the assembly that is passed step 3
     data1 = ip.load.load_assembly("tests/data1")
@@ -34,12 +47,8 @@ visualize.
     ## different operations you can perform to analyze it. 
     data1.samples["1A_0"].depths.mean()
 
-    ## using these data you can create plot on your own using 
-    ## various plotting libraries. We provide some basic plotting
-    ## functions in the ipyrad.plotting library
-    import ipyrad.plotting as ipp
-
-    ## create a plot, see cookbook for further options to depthplot
+    ## using these data you can a create plots using any plotting library.
+    ## We provide a simple create a plot, see cookbook for further options to depthplot
     canvas = ipp.depthplot(data1, ...)
 
     ## save the plot as a pdf
