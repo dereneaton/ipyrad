@@ -1,4 +1,5 @@
 
+.. include:: global.rst  
 
 .. _userguide:
 
@@ -13,12 +14,44 @@ with writing scripts for assembly and/or analyses using the ipyrad API see the
 
 Tutorial - CLI
 ---------------------------------------
-The ipyrad_ CLI_ (command line interface) is the easiest way to use ipyrad_, and 
-will be familiar to users of its predecessor program pyrad_. 
+The ipyrad_ command line interface (CLI_) is designed to be easy to use and will
+be familiar to users of its predecessor program pyrad_. 
 
 .. code-block:: python
 
     ipyrad -h
+
+    usage: ipyrad [-h] [-v] [-r] [-n] [-f] [-p params] [-s steps] [-c cores]
+                  [--MPI] [--preview]
+
+    noptional arguments:
+      -h, --help     show this help message and exit
+      -v, --version  show program's version number and exit
+      -r, --results  show summary of results for Assembly in params.txt and exit
+      -n, --new      create new default params.txt file in current directory
+      -f, --force    force overwrite of existing data
+      -p params      path to params.txt file
+      -s steps       subset of assembly steps to perform (Default=1234567)
+      -c cores       number of CPU cores to use (Default=all)
+      --MPI          connect to parallel CPUs across multiple nodes using MPI
+      --preview      Run ipyrad in preview mode. Subset the input file so it'll
+                     runquickly so you can verify everything is working
+
+      * Example command-line usage: 
+        ipyrad -n test                     ## create new file test-params.txt
+        ipyrad -p test-params.txt          ## run ipyrad with settings in params.txt.
+        ipyrad -p test-params.txt -s 123   ## run only steps 1, 2 and 3 of assembly.
+        ipyrad -p test-params.txt -s 4567  ## run steps 4, 5, 6 and 7 of assembly.
+        ipyrad -p test-params.txt -s 3 -f  ## run step 3, overwrite existing data.
+
+      * HPC parallelization
+        ipyrad -p test-params.txt -s 3 --MPI   ## access cores across multiple nodes
+
+      * Results summary quick view
+        ipyrad -p test-params.txt -r         ## print summary stats to screen for params.
+
+      * Documentation: http://ipyrad.readthedocs.org/en/latest/
+
 
 
 
@@ -41,8 +74,17 @@ each common data type, and explains some vagaries unique to each data type.
 
 Tutorial - API (Python)
 -------------------------------------------
-The ipyrad_ API_ (application program interface) is a way of directly accessing 
-the Python_ functions that power ipyrad_. For users who are comfortable using 
+The API_ (application program interface) for ipyrad_ is a way of directly 
+accessing the nuts and bolts of ipyrad_ using Python_. 
+This has a number of advantages over the CLI_ in that there is a lot more 
+flexibility for creating highly complex branching assemblies, or for applying
+ipyrad_ in a non-standard way. It's best feature, though, is that you can 
+perform entire analyses within Jupyter :ref:`notebooks<notebooks>` to create 
+documented reproducible code for your analyses. 
+
+There may be a slight learning curve, however, for users who have no prior
+experience with Python scripting. 
+
 Python it provides a much more flexible framework for writing code to perform
 complex branching assemblies than the CLI can provide. Because it is interactive
 you can more easily access the results and statistics from each step. There are
