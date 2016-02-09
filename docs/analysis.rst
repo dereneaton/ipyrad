@@ -3,7 +3,7 @@
 .. _analysis:
 
 
-Analysis_tools
+Analysis tools
 ==============
 
 ipyrad_ includes a suite of analysis tools for comparing and visualizing
@@ -18,25 +18,34 @@ run more easily. However, we provide a suite of examples in the form of
 
 
 
-Loading data into the API
-^^^^^^^^^^^^^^^^^^^^^^^^^
-If your data set was assembled in ipyrad_ then the entire assembly including
-all information for every Sample across every step of the assembly can be loaded
-using the load_assembly function. Alternatively, if you want to analyze a data
-set that was not created in ipyrad_, but in some other software, it can be 
-loaded in from either a .loci or .vcf formatted file. The analysis options are 
-much more limited for that case. 
+Loading an Assembly into the API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If your data set was assembled using the ipyrad_ CLI then all the information 
+for the entire assembly can be loaded from the `.assembly` file which will be
+located in the `project dir`. In the example below we load an assembly named
+`my_assembly` from a project dir called `testdir`. 
 
 
 .. code-block:: python
 
-	## import ipyrad 
+    ## import ipyrad 
     import ipyrad as ip
 
     ## load in the complete assembly
     data1 = ip.load.load_assembly("testdir/my_assembly.json")
 
-    ## or, if your data set was assembled in an old version of pyrad
+
+Loading other data into the API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Alternatively, if you want to analyze a data set that was not created in 
+ipyrad_, but using some other software, it can be loaded in from either a 
+.loci or .vcf formatted file. The analysis options are much more limited in 
+this case (e.g., a lot of information needed for plotting is missing).
+
+
+.. code-block:: python
+
+    ## If your data set was assembled in an old version of pyrad
     ## the data can be loaded from a .loci file
     data1 = ip.load.load_loci("testdir/old_assembly.loci")
 
