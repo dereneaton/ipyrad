@@ -222,6 +222,8 @@ class Assembly(object):
         """ Returns a data frame with Sample data and state. """
         nameordered = self.samples.keys()
         nameordered.sort()
+        ## Set pandas to display all samples instead of truncating
+        pd.options.display.max_rows = len(self.samples)
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
