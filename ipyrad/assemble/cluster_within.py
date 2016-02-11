@@ -190,7 +190,7 @@ def muscle_align(args):
                                 [i for i, j in enumerate(rseq) if j != "-"]))
                         except ValueError as e:
                             LOGGER.debug("Found chunk that contains a locus that's all "\
-                                + "indels. Throw it out and count it as filtered."
+                                + "indels. Throw it out and count it as filtered.")
                             ## Remove the seq name from the names list, and continue with
                             ## the next iteration of the for loop, effectively drops the rseq
                             anames.pop(i)
