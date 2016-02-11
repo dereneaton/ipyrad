@@ -5,20 +5,18 @@
 from __future__ import print_function
 
 import os
-import sys
 import dill
 import time
 from copy import deepcopy
-from ipyrad.core.parallel import ipcontroller_init
 from ipyrad.core.assembly import Assembly
 
 # pylint: disable=W0212
 
-def load_assembly(name, controller="Local", quiet=False, launch=False):
+def load_assembly(assemblyname, quiet=False):
     """ loads an ipython dill pickled Assembly object """
     ## flexible name entry
-    locations = [name]
-    locations.append(name+".assembly")
+    locations = [assemblyname]
+    locations.append(assemblyname+".assembly")
 
     ## does Assembly saved obj exist?
     for name in locations:
@@ -31,8 +29,7 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
             fullcurdir = os.path.realpath(os.path.curdir)
             name = name.replace(fullcurdir, ".")
             if not quiet:
-                print("  loading Assembly: {} [{}]".\
-                      format(data.name, name))
+                print("  loading Assembly: {} [{}]".format(data.name, name))
 
             ## Test if our assembly is currently up to date
             ## How to deal with assembly objects falling out of synch with the 
@@ -45,14 +42,6 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
                 print("  Attempting to update assembly to newest version.")
                 data = update_assembly(data)
 
-            ## relaunch ipcluster
-            if launch:
-                data._ipclusterid = ipcontroller_init(nproc="",
-                                                      controller=controller,
-                                                      quiet=quiet)
-            else:
-                data._ipclusterid = ""
-
         except (IOError, AttributeError):
             pass
 
@@ -60,7 +49,8 @@ def load_assembly(name, controller="Local", quiet=False, launch=False):
         return data
     except UnboundLocalError:
         raise AssertionError("Attempting to load assembly. File not found: {}"\
-                             .format(name))
+                             .format(assemblyname))
+
 
 
 def test_assembly(data):

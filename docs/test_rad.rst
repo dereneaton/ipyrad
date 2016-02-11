@@ -207,8 +207,8 @@ clust directories (clust\_0.85 and clust\_0.9).
 
 .. code:: python
 
-    ## create a copy of our Assembly object
-    data2 = data1.copy(newname="data2")
+    ## create a branch of our Assembly object
+    data2 = data1.branch(newname="data2")
     
     ## set clustering threshold to 0.90
     data2.set_params(11, 0.90)

@@ -35,10 +35,10 @@ class IPyradError(Exception):
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, **kwargs)
 
-class IPyradWarningExit(Exception):
+class IPyradWarningExit(SystemExit):
     """ Exception handler indicating error in during assembly """
     def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
+        SystemExit.__init__(self, *args, **kwargs)
 
 
 class ObjDict(dict):

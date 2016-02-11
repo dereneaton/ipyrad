@@ -188,9 +188,13 @@ def muscle_align(args):
                         try:
                             idxs.append(max(\
                                 [i for i, j in enumerate(rseq) if j != "-"]))
-                        except Exception as e:
-                            LOGGER.info("chunk {} - name {} - rseq {}".format(chunk, anames, revs))
-                            raise
+                        except ValueError as e:
+                            LOGGER.debug("Found chunk that contains a locus that's all "\
+                                + "indels. Throw it out and count it as filtered."
+                            ## Remove the seq name from the names list, and continue with
+                            ## the next iteration of the for loop, effectively drops the rseq
+                            anames.pop(i)
+                            continue
                     if idxs:
                         rightlimit = min(idxs)
                         aseqs = [i[:rightlimit] for i in aseqs]
@@ -736,11 +740,11 @@ def multi_muscle_align(data, sample, ipyclient):
 
     finally:
         ## still delete tmpfiles if job was interrupted
-#        for fname in tmpnames:
-#            if os.path.exists(fname):
-#                os.remove(fname)
-#        if os.path.exists(tmpdir):
-#            shutil.rmtree(tmpdir)
+        for fname in tmpnames:
+            if os.path.exists(fname):
+                os.remove(fname)
+        if os.path.exists(tmpdir):
+            shutil.rmtree(tmpdir)
 
         del lbview
 
