@@ -981,7 +981,9 @@ class Assembly(object):
         ## If no samples in this assembly then it means you skipped step1,
         ## so attempt to link existing demultiplexed fastq files
         if not self.samples.keys():
-            self.link_fastqs()
+            raise IPyradWarningExit("""
+    Error: No Samples found. First run step 1 to load raw or demultiplexed
+    fastq data files from either the raw_fastq_path or sorted_fastq_path. """)
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
