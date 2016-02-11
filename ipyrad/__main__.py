@@ -139,15 +139,15 @@ def getassembly(args, parsedict):
     cwd = os.path.realpath(os.path.curdir)
     os.chdir(project_dir)
 
-    ## if forcing or doing step 1 then do not load existing Assembly
-    if args.force or '1' in args.steps:
+    ## if forcing and doing step 1 then do not load existing Assembly
+    if args.force and '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
     else:
         ## try loading an existing one
         try:
             #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_name)
+            data = ip.load.load_assembly(assembly_file)
 
         ## if not found then create a new one
         except AssertionError:
