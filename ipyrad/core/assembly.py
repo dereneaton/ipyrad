@@ -811,6 +811,7 @@ class Assembly(object):
                     #sys.stdout = cStringIO.StringIO()  
                     ## run func with stdout hidden
                     ipyclient = ipp.Client(**args)
+                    break
                     ## resets stdout
                     #sys.stdout = save_stdout
 
@@ -822,6 +823,7 @@ class Assembly(object):
                 time.sleep(0.1)
                 if len(ipyclient) == self._ipcluster["cores"]:
                     break
+
 
         except KeyboardInterrupt:
             try:
@@ -1103,9 +1105,8 @@ class Assembly(object):
 
         ## print CLI header
         if self._headers:
-            print("""
-    Step6: Clustering across {} samples at {} similarity""".\
-    format(len(samples), self.paramsdict["clust_threshold"]))
+            print("  Step6: Clustering across {} samples at {} similarity".\
+                  format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 6, force):
