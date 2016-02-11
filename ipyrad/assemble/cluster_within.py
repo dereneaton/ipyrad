@@ -704,7 +704,9 @@ def multi_muscle_align(data, sample, ipyclient):
         optim = 100
         if sample.stats.clusters_total > 2000:
             optim = int(sample.stats.clusters_total/len(ipyclient))/2
-            print("optim: ", optim)
+            
+        #print("clusttotal:{} ; optim: {} "\
+        #      .format(sample.stats.clusters_total, optim))
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
         grabchunk = list(itertools.islice(inclusts, optim))
