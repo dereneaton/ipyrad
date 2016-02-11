@@ -39,6 +39,7 @@ def parse_params(args):
 
     ## make into a dict
     items = [i.split("##")[0].strip() for i in plines[1:]]
+
     #keys = [i.split("]")[-2][-1] for i in plines[1:]]
     keys = range(len(plines)-1)
     parsedict = {str(i):j for i, j in zip(keys, items)}
@@ -71,9 +72,8 @@ def showstats(parsedict):
         raise ip.assemble.util.IPyradParamsError(msg)
 
     try:
-        data = ip.load.load_assembly(my_assembly,
-                                    quiet=True, 
-                                    launch=False)
+        data = ip.load.load_assembly(my_assembly, quiet=True)
+
 
         print("Summary stats of Assembly {}".format(data.name) \
              +"\n------------------------------------------------")
@@ -127,14 +127,14 @@ def getassembly(args, parsedict):
     os.chdir(project_dir)
 
     ## if forcing or doing step 1 then do not load existing Assembly
-    if args.force and '1' in args.steps:
+    if args.force or '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
     else:
         ## try loading an existing one
         try:
             #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_name, launch=False)
+            data = ip.load.load_assembly(assembly_name)
 
         ## if not found then create a new one
         except AssertionError:
@@ -147,18 +147,18 @@ def getassembly(args, parsedict):
 
     ## for entering some params...
     for param in parsedict:
-        ## If the param isn't empty, and also if it isn't assembly_name
         ## trap assignment of assembly_name since it is immutable.
-        if parsedict[param] and param != str(0):
-            try:
+        if param == str(0):
+            ## only pass to set_params if user tried to change assembly_name
+            ## it will raise an Exit error
+            if parsedict[param] != data.name:
                 data.set_params(param, parsedict[param])
-            except Exception as inst:
-                print(inst)
-                print("Bad parameter in the params file - param {} value {}".\
-                      format(param, parsedict[param]))
-                raise
+        else:
+            ## all other params should be handled by set_params
+            data.set_params(param, parsedict[param])
 
     return data
+
 
 
 def parse_command_line():
@@ -283,28 +283,23 @@ def main():
         else:
             ## run Assembly steps
             if args.steps:
-                ## launch ipcluster and register for later destruction
-                if args.MPI:
-                    controller = "MPI"
-                else:
-                    controller = "Local"
 
                 ## launch or load assembly with custom profile/pid
                 data = getassembly(args, parsedict)
 
-                ## might want to use custom profiles instead of ...
-                data._ipclusterid = ipcontroller_init(nproc=args.cores,
-                                                      controller=controller)
+                ## store ipcluster info
+                data._ipcluster["cores"] = args.cores
+
+                if args.MPI:
+                    data._ipcluster["engines"] = "MPI"
+                else:
+                    data._ipcluster["engines"] = "Local"
+
+                ## launch ipcluster and register for later destruction
+                data = ipcontroller_init(data)
+
                 ## set to print headers
                 data._headers = 1
-
-                ## print the connection info
-                # ipyclient = ipp.Client(cluster_id=data._ipclusterid)
-                # dview = ipyclient[:]
-                # ccx = Counter(dview.apply_sync(socket.gethostname))
-                # for key in ccx:
-                #     print("  Node: {}: {} cores".format(key, ccx[key]))
-                #     print("")
 
                 ## run assembly steps
                 steps = list(args.steps)
