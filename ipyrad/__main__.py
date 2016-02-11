@@ -214,22 +214,23 @@ def parse_command_line():
     parser.add_argument('-r', "--results", action='store_true',
         help="show summary of results for Assembly in params.txt and exit")
 
-    parser.add_argument('-n', "--new", action='store_true',
-        help="create new default params.txt file in current directory")
-
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
 
     #parser.add_argument('-q', "--quiet", action='store_true',
     #    help="do not print to stderror and stdout.")
 
+    parser.add_argument('-n', metavar='new', dest="new", type=str, 
+        default=None, 
+        help="create params file as 'name-params.txt' in current directory")
+
     parser.add_argument('-p', metavar='params', dest="params",
         type=str, default=None,
         help="path to params.txt file")
 
-    parser.add_argument('-b', "--branch",  metavar='branch', dest="branch",
+    parser.add_argument('-b', "--branch", metavar='branch', dest="branch",
         type=str, default=None,
-        help="Name for the branched assembly")
+        help="create a new branch of the assembly designated by the -p flag")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
@@ -237,13 +238,13 @@ def parse_command_line():
 
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=4,
-        help="number of CPU cores to use (Default=all)")
+        help="number of CPU cores to use (Default=4)")
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes using MPI")
 
     parser.add_argument("--preview", action='store_true',
-        help="Run ipyrad in preview mode. Subset the input file so it'll run"\
+        help="run ipyrad in preview mode. Subset the input file so it'll run"\
             + "quickly so you can verify everything is working")
 
 
@@ -276,15 +277,15 @@ def main():
         ## Create a tmp assembly and call write_params to write out
         ## default params.txt file
         try:
-            tmpassembly = ip.core.assembly.Assembly("my_new_assembly", quiet=True)
-            tmpassembly.write_params("params.txt", force=args.force)
+            tmpassembly = ip.core.assembly.Assembly(args.new, quiet=True)
+            tmpassembly.write_params(args.new+"-params.txt", force=args.force)
         except Exception as inst:
             print(inst)
             print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
-        print("New file `params.txt` created in {}".\
-               format(os.path.realpath(os.path.curdir)))
+        print("New file `{}-params.txt` created in {}".\
+               format(args.new, os.path.realpath(os.path.curdir)))
 
         sys.exit(2)
 
