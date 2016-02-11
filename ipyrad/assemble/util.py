@@ -413,7 +413,7 @@ def zcat_make_temps(args):
 
 
 
-def preview_truncate_fq(data, sample_fastq):
+def preview_truncate_fq(data, sample):
     """ 
     If we are running in preview mode, truncate the input fq.gz file so it'll 
     run quicker, just so we can see if it works. Input is tuple of the file
@@ -429,7 +429,7 @@ def preview_truncate_fq(data, sample_fastq):
     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
     ## do not need to worry about multiple appended fastq files b/c preview
     ## mode will only want to sample from one file pair.
-    for read in sample_fastq[0]:
+    for read in sample.files.fastqs[0]:
 
         ## If the R2 is empty then exit the loop
         if not read:
@@ -448,18 +448,19 @@ def preview_truncate_fq(data, sample_fastq):
             ## write to a tmp file in the same place zcat_make_tmps would write
             with tempfile.NamedTemporaryFile('w+b', delete=False,
                           dir=os.path.realpath(data.dirs.project),
-                          prefix=read+".preview_tmp_", suffix=".fq") as tmp_fq:
+                          prefix=sample.name+".preview_tmp_", 
+                          suffix=".fq") as tmp_fq:
                 tmp_fq.write("".join(quarts))
             ## save file name and close input
             truncated_fq.append(tmp_fq.name)
             infile.close()
 
-        except AttributeError as inst:
+        except AttributeError as _:
             ## R2 during SE is passed out as 0 
             #truncated_fq.append( 0 )
             raise
 
-        except KeyboardInterrupt as inst:
+        except KeyboardInterrupt as _:
             LOGGER.info("""
     Caught keyboard interrupt during preview mode. Cleaning up preview files.
             """)
@@ -469,8 +470,9 @@ def preview_truncate_fq(data, sample_fastq):
                 for truncfile in truncated_fq:
                     if os.path.exists(truncfile):
                         os.remove(truncfile)
-            except Exception as e:
-                LOGGER.debug("Error cleaning up truncated fq files: {}".format(e))
+            except Exception as inst:
+                LOGGER.debug("Error cleaning up truncated fq files: {}"\
+                             .format(inst))
                 raise
 
     return [tuple(truncated_fq)]

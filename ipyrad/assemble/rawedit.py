@@ -449,7 +449,7 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         LOGGER.warn("""
     Running preview mode. Selecting subset ({}) reads for editing - {}\n"""\
     .format(data._hackersonly["preview_truncate_length"], sample.files.fastqs))
-        sample_fastq = preview_truncate_fq(data, sample.files.fastqs)
+        sample_fastq = preview_truncate_fq(data, sample)
     else:
         sample_fastq = sample.files.fastqs
 
