@@ -710,7 +710,7 @@ class Assembly(object):
             path to save Assembly. Default is [workingdir]/[name].assembly
 
         """
-        print("  Saving current assembly.")
+        print("    Saving current assembly.")
         ## Trap keyboard interrupt during save to prevent fscking dill objects.
         if not path:
             path = os.path.join( 
@@ -878,6 +878,9 @@ class Assembly(object):
             LOGGER.error("assembly interrupted by user.")
             sys.exit("  Keyboard interrupt by user")
 
+        except IPyradWarningExit as inst:
+            raise IPyradWarningExit(inst)
+
         except SystemExit as inst:
             LOGGER.error("assembly interrupted by sys.exit.")
             sys.exit("  SystemExit Interrupt: \n{}".format(inst))
@@ -885,9 +888,6 @@ class Assembly(object):
         except AssertionError as inst:
             LOGGER.error("Assertion: %s", inst)
             raise IPyradError(inst)
-
-        except IPyradWarningExit as inst:
-            print(inst)
 
         ## An Engine Crashed. Raise a readable traceback message.
         except ipp.error.CompositeError as inst:
@@ -926,12 +926,12 @@ class Assembly(object):
 
         ## do not allow both a sorted_fastq_path and a raw_fastq
         if sfiles and rfiles:
-            raise IPyradError("""
+            raise IPyradWarningExit("""
     Error: Must enter a raw_fastq_path or sorted_fastq_path, but not both.""")
 
         ## but also require that at least one exists
         if not (sfiles or rfiles):
-            raise IPyradError("""
+            raise IPyradWarningExit("""
     Error: Step 1 requires that you enter either:
         (1) a sorted_fastq_path or (2) a raw_fastq_path and barcodes_path
     """)
@@ -1855,24 +1855,22 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['max_Indels_locus'] = newvalue
  
     elif param == 'edit_cutsites':
-        ## Check if edit_cutsites is int or string values.
-        ## Try int, if it fails the fall back to str
-        try:
-            newvalue = tuplecheck(newvalue, int)
-        except ValueError as inst:
-            print("edit_cutsites value error - {}".format(inst))
-            newvalue = tuplecheck(newvalue)
-            assert isinstance(newvalue, tuple), \
-                "edit_cutsites should be a tuple e.g., (0, 5), you entered {}"\
-                .format(newvalue)
-
-        ## If edit_cutsites params are ints, then cast the tuple values
-        ## to ints. If they aren't ints then just leave them as strings.
-        #try:
-        #    newvalue = (int(newvalue[0]), int(newvalue[1]))
-        #except ValueError as e:
-        #    LOGGER.info("edit_cutsites values are strings - {} {}".format(\
-        #                newvalue[0], newvalue[1]))
+        ## Force into a string tuple
+        newvalue = tuplecheck(newvalue)
+        ## try converting each tup element to ints
+        newvalue = list(newvalue)
+        for i in range(2):
+            try:
+                newvalue[i] = int(newvalue[i])
+            except ValueError:
+                pass
+        newvalue = tuple(newvalue)                
+        ## make sure we have a nice tuple
+        if not isinstance(newvalue, tuple):
+            raise IPyradWarningExit("""
+    Error: edit_cutsites should be a tuple e.g., (0, 5) or ('TGCAG', 6),
+    you entered {}
+    """.format(newvalue))
 
         self.paramsdict['edit_cutsites'] = newvalue
 
