@@ -143,7 +143,11 @@ def getassembly(args, parsedict):
     if args.force and '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
+
     else:
+        ## go back to cwd since existing will be loaded from its full path
+        os.chdir(cwd)
+
         ## try loading an existing one
         try:
             #print("Loading - {}".format(assembly_name))
@@ -151,11 +155,10 @@ def getassembly(args, parsedict):
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current assembly found, create new - {}".\
-                        format(assembly_file))
-            data = ip.Assembly(assembly_name)
+            LOGGER.info("No current not assembly found.")
+            print("  No assembly found at: {}".format(assembly_file))
 
-    ## pop directory
+    ## ensure we are back where we belong in original cur dir
     os.chdir(cwd)
 
     ## for entering some params...
