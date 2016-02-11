@@ -105,10 +105,10 @@ def branch_assembly(args, parsedict):
     data = getassembly(args, parsedict)
     new_data = data.branch(args.branch)
 
-    print("Creating a branch of assembly {} called {}".\
+    print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
-
-    new_data.write_params    
+    print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
+    new_data.write_params()
 
 
 def getassembly(args, parsedict):
