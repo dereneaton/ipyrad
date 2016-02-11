@@ -659,7 +659,7 @@ class Assembly(object):
                 paramsfile.write("\n" + paramvalue + padding + paramindex + description)
 
 
-    def copy(self, newname):
+    def branch(self, newname):
         """ Returns a copy of the Assembly object. Does not allow Assembly 
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
@@ -1236,7 +1236,7 @@ class Assembly(object):
         samples : list or str
             By default all Samples linked to an Assembly object are clustered. 
             If a subset of Samples is entered as a list then only those samples
-            will be clustered. It is recommended to create .copy() Assembly 
+            will be clustered. It is recommended to create .branch() Assembly 
             objects if step6 is performed on different subsets of Samples. 
 
         noreverse : bool
@@ -1454,7 +1454,7 @@ def merge(name, assemblies):
     assemblies = list(assemblies)
 
     ## create new Assembly
-    merged = assemblies[0].copy(name)
+    merged = assemblies[0].branch(name)
 
     ## get all sample names from all Assemblies
     allsamples = set(merged.samples.keys())
@@ -1540,7 +1540,7 @@ def paramschecker(self, param, newvalue):
             + "  Command Line Interface:\n"\
             + "    ipyrad -p params.txt --branch new_name\n\n"\
             + "  API (Jupyter Notebook Users):\n"\
-            + "    new_assembly = my_assembly.copy(\"new_name\")"
+            + "    new_assembly = my_assembly.branch(\"new_name\")"
         raise IPyradParamsError(msg)
 
     elif param == 'project_dir':
