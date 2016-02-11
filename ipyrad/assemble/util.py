@@ -228,7 +228,7 @@ def merge_pairs(data, sample): #, unmerged_files):
     with open(sample.files.merged, 'r') as tmpf:
         sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
-    LOGGER.debug("Merged pairs - %d", sample.stats.reads_merged)
+    LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
 
     ## Combine the unmerged pairs and append to the merge file
     with open(sample.files.merged, 'ab') as combout:
@@ -253,10 +253,12 @@ def merge_pairs(data, sample): #, unmerged_files):
             writing.append("\n".join([
                             read1s[0].strip(),
                             read1s[1].strip()+\
-                                "nnnn"+comp(read2s[1].strip())[::-1],
+                                "nnnn"+read2s[1].strip(),
+                                #comp(read2s[1].strip())[::-1],
                             read1s[2].strip(),
                             read1s[3].strip()+\
-                                "nnnn"+read2s[3].strip()[::-1]]
+                                "nnnn"+read2s[3].strip()]
+                                #read2s[3].strip()[::-1]]
                             ))
             counts += 1
             if not counts % 1000:
