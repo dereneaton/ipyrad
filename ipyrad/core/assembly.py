@@ -811,6 +811,7 @@ class Assembly(object):
                     #sys.stdout = cStringIO.StringIO()  
                     ## run func with stdout hidden
                     ipyclient = ipp.Client(**args)
+                    break
                     ## resets stdout
                     #sys.stdout = save_stdout
 
@@ -822,6 +823,7 @@ class Assembly(object):
                 time.sleep(0.1)
                 if len(ipyclient) == self._ipcluster["cores"]:
                     break
+
 
         except KeyboardInterrupt:
             try:
@@ -984,7 +986,9 @@ class Assembly(object):
         ## If no samples in this assembly then it means you skipped step1,
         ## so attempt to link existing demultiplexed fastq files
         if not self.samples.keys():
-            self.link_fastqs()
+            raise IPyradWarningExit("""
+    Error: No Samples found. First run step 1 to load raw or demultiplexed
+    fastq data files from either the raw_fastq_path or sorted_fastq_path. """)
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1104,9 +1108,8 @@ class Assembly(object):
 
         ## print CLI header
         if self._headers:
-            print("""
-    Step6: Clustering across {} samples at {} similarity""".\
-    format(len(samples), self.paramsdict["clust_threshold"]))
+            print("  Step6: Clustering across {} samples at {} similarity".\
+                  format(len(samples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 6, force):
