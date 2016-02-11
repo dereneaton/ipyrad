@@ -14,6 +14,7 @@ from ipyrad.core.assembly import Assembly
 
 def load_assembly(assemblyname, quiet=False):
     """ loads an ipython dill pickled Assembly object """
+
     ## flexible name entry
     locations = [assemblyname]
     locations.append(assemblyname+".assembly")
@@ -26,8 +27,11 @@ def load_assembly(assemblyname, quiet=False):
                 data = dill.load(pickin)
 
             ## will raise Attribute error if not loaded
-            fullcurdir = os.path.realpath(os.path.curdir)
-            name = name.replace(fullcurdir, ".")
+
+            ## create shorter print name if in user path
+            name = name.replace(os.path.expanduser("~"), "~")
+            
+            ## print msg
             if not quiet:
                 print("  loading Assembly: {} [{}]".format(data.name, name))
 
