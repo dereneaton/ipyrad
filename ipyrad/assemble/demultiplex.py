@@ -313,9 +313,10 @@ def prechecks(data, ipyclient, preview):
     """ todo before starting analysis """
 
     ## check for data, do glob for fuzzy matching
-    assert glob.glob(data.paramsdict["raw_fastq_path"]), \
-        "No data found in {}. Fix path to data files".\
-        format(data.paramsdict["raw_fastq_path"])
+    if not glob.glob(data.paramsdict["raw_fastq_path"]):
+        raise IPyradError("""
+    No data found in {}. Fix path to data files""".
+    format(data.paramsdict["raw_fastq_path"]))
 
     ## find longest barcode
     try:
@@ -325,7 +326,8 @@ def prechecks(data, ipyclient, preview):
         else:
             longbar = (max(barlens), 'diff')
     except ValueError:
-        raise IPyradError("Barcodes file not found")
+        raise IPyradError("    Barcodes file not found")
+
 
     ## make sure there is a [workdir] and a [workdir/name_fastqs]
     data.dirs.fastqs = os.path.join(data.paramsdict["project_dir"],
@@ -516,7 +518,6 @@ def make_stats(data, raws):
 def run(data, preview, ipyclient):
     """ demultiplexes raw fastq files given a barcodes file"""
 
-
     ## nested structure to prevent abandoned temp files
     try: 
         ## checks on data before starting
@@ -571,14 +572,13 @@ def run(data, preview, ipyclient):
 
         ## make stats
         make_stats(data, raws)
-    except Exception as inst:
-        print("Error in demultiplexing - {}".format(inst))
-        raise
+
     finally:
         try:
             ## cleans up chunk files and stats pickles
             tmpdirs = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*"))
-            tmpdirs += glob.glob(os.path.join(data.dirs.project, data.name+"-tmpchunks"))
+            tmpdirs += glob.glob(os.path.join(data.dirs.project, 
+                                              data.name+"-tmpchunks"))
             if tmpdirs:
                 for tmpdir in tmpdirs:
                     shutil.rmtree(tmpdir)
@@ -590,6 +590,7 @@ def run(data, preview, ipyclient):
                 for tmpfile in tmpfiles:
                     if os.path.exists(tmpfile):
                         os.remove(tmpfile)
+
         except AttributeError as inst:
             ## If barcodes file is fsck, then finally frags because 
             ## data.dirs.fastqs doesn't exist

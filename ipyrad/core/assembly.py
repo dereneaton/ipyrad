@@ -120,8 +120,9 @@ class Assembly(object):
         self._traceback = 0
 
         ## stores ipcluster launch info
-        self._ipclusterid = ""
-        self._ipprofile = ""
+        self._ipcluster = {}
+        for ipkey in ["id", "profile", "engines", "cores"]:
+            self._ipcluster[ipkey] = None
 
         ## print headers
         self._headers = 0
@@ -155,14 +156,8 @@ class Assembly(object):
                        ("assembly_name", name),
                        ("project_dir", os.path.realpath(
                                                 os.path.curdir)),
-                       ("raw_fastq_path", os.path.join(
-                                            os.path.realpath(
-                                                 os.path.curdir),
-                                                 "*.fastq")),
-                       ("barcodes_path", os.path.join(
-                                            os.path.realpath(
-                                                os.path.curdir),
-                                                "*.barcodes.txt")),
+                       ("raw_fastq_path", ""),
+                       ("barcodes_path", ""),
                        ("sorted_fastq_path", ""),
                        ("assembly_method", "denovo"),
                        ("reference_sequence", ""), 
@@ -222,6 +217,8 @@ class Assembly(object):
         """ Returns a data frame with Sample data and state. """
         nameordered = self.samples.keys()
         nameordered.sort()
+        ## Set pandas to display all samples instead of truncating
+        pd.options.display.max_rows = len(self.samples)
         return pd.DataFrame([self.samples[i].stats for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
                       #dtype=[int, int, int, int, int, float, float, int])
@@ -354,7 +351,7 @@ class Assembly(object):
         Warning: '_R2_' was detected in a file name, which suggests the data
         may be paired-end. If so, you should set the Assembly parameter
         `datatype` to a paired type (e.g., pairddrad or pairgbs) and run
-        link_fastqs(force=True) to re-link fastq data.
+        with the force argument to re-link fastq data.
         """)
             fastqs = [(i, ) for i in fastqs]
 
@@ -435,9 +432,14 @@ class Assembly(object):
         ## print if data were linked
         print("    {} new Samples created in `{}`.".format(created, self.name))
         if linked:
+            ## double for paired data
+            if 'pair' in self.paramsdict["datatype"]:
+                linked = linked*2
             print("    {} fastq files linked to {} new Samples.".\
                   format(linked, len(self.samples)))
+            ## save the location where these files are located
             self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
+
         if appended:
             print("    {} fastq files appended to {} existing Samples.".\
                   format(appended, len(self.samples)))
@@ -459,9 +461,10 @@ class Assembly(object):
         try: 
             barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
         except IndexError:
-            msg = "Barcodes file not found: {}".format(self.paramsdict["barcodes_path"])
-            print(msg)
-            raise IPyradError(msg)
+            raise IPyradWarningExit("""
+    Error: Barcodes file not found: {}
+    """.format(self.paramsdict["barcodes_path"]))
+
         ## parse barcodefile
         try:
             bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
@@ -593,13 +596,13 @@ class Assembly(object):
         [Assembly].set_params(1, 'new_directory')
         [Assembly].set_params('project_dir', 'new_directory')
 
-        ## param 6 must be a tuple or str, if str it is converted to a tuple
+        ## param 8 must be a tuple or str, if str it is converted to a tuple
         ## with the second entry empty.
-        [Assembly].set_params(6, 'TGCAG')
+        [Assembly].set_params(8, 'TGCAG')
         [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')                            
 
-        ## param 13 can be an int or a float:
-        [Assembly].set_params(13, 4)
+        ## param 24 can be an int or a float:
+        [Assembly].set_params(24, 4)
         [Assembly].set_params('max_shared_H_locus', 0.25)
             
         """
@@ -621,9 +624,12 @@ class Assembly(object):
         ## run assertions on new param 
         try:
             self = paramschecker(self, param, newvalue)
+
         except Exception as inst:
-            print("Error setting parameters:", inst, "\n")
-            raise IPyradParamsError(inst)
+            raise IPyradWarningExit("""
+    Error setting parameter {}: {}. 
+    You entered: {}""".format(param, inst, newvalue))
+
 
 
     def write_params(self, outfile=None, force=False):
@@ -663,19 +669,23 @@ class Assembly(object):
                 else:
                     paramvalue = str(val)
                 padding = (" "*(30-len(paramvalue)))
-                paramindex = " ## [{}] ".format(self.paramsdict.keys().index(key))
-                description = paraminfo(self.paramsdict.keys().index(key), short=True)
-                paramsfile.write("\n" + paramvalue + padding + paramindex + description)
+                paramindex = " ## [{}] "\
+                             .format(self.paramsdict.keys().index(key))
+                description = paraminfo(self.paramsdict.keys().index(key), 
+                                        short=True)
+                paramsfile.write("\n" + paramvalue + padding + \
+                                        paramindex + description)
 
 
-    def copy(self, newname):
+
+    def branch(self, newname):
         """ Returns a copy of the Assembly object. Does not allow Assembly 
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
-        if (newname == self.name) or (os.path.exists(newname+".assembly")):
-            print("""
-    Assembly object named {} already exists
-    """.format(newname))
+        if (newname == self.name or os.path.exists(
+                                    os.path.join(self.paramsdict["project_dir"], 
+                                    newname+".assembly"))):
+            print("    Assembly object named {} already exists".format(newname))
 
         else:
             ## create a copy of the Assembly obj
@@ -787,35 +797,32 @@ class Assembly(object):
         from a KeyboardInterrupt """
 
         try: 
-            clusterargs = [self._ipclusterid, self._ipprofile]
+            clusterargs = [self._ipcluster['id'], self._ipcluster["profile"]]
             argnames = ["cluster_id", "profile"]
             args = {key:value for key, value in zip(argnames, clusterargs)}
-            ## using this wrap to avoid ipyparallel print function to stdout
-            save_stdout = sys.stdout           ## save orig stdout
-            sys.stdout = cStringIO.StringIO()  ## file-like obj to catch stdout
-            ipyclient = ipp.Client(**args)     ## run func with stdout hidden
-            sys.stdout = save_stdout           ## resets stdout
 
             ## wait for at least 1 engine to connect
             for _ in range(nwait):
-                if ipyclient.ids:
-                    initid = len(ipyclient)
-                    break
-                else:
+                try:
+                    ## using this wrap to avoid ipyparallel print to stdout
+                    ## save orig stdout
+                    #save_stdout = sys.stdout           
+                    ## file-like obj to catch stdout
+                    #sys.stdout = cStringIO.StringIO()  
+                    ## run func with stdout hidden
+                    ipyclient = ipp.Client(**args)
+                    ## resets stdout
+                    #sys.stdout = save_stdout
+
+                except IOError as inst:
                     time.sleep(1)
 
-            ## longer wait if many engines
-            wait = 1
-            if initid >= 10:
-                wait = 3
-
             ## check that all engines have connected            
-            for _ in range(nwait):
-                time.sleep(wait)
-                if len(ipyclient) == initid:
+            for _ in range(300):
+                time.sleep(0.1)
+                if len(ipyclient) == self._ipcluster["cores"]:
                     break
-                else:
-                    initid = len(ipyclient)
+
         except KeyboardInterrupt:
             try:
                 ipyclient.shutdown()
@@ -823,10 +830,11 @@ class Assembly(object):
                 pass
             raise KeyboardInterrupt
 
-        except IOError:
+        except IOError as inst:
             ## ensure stdout is reset even if Exception was raised
-            sys.stdout = save_stdout           ## resets stdout
-            raise
+            #sys.stdout = save_stdout           ## resets stdout
+            print(inst)
+            raise inst
 
         return ipyclient
 
@@ -863,6 +871,7 @@ class Assembly(object):
             if ipyclient:
                 ipyclient.abort()
                 if not ip.__interactive__:
+                    print("shutting down clients")
                     ipyclient.shutdown()
             LOGGER.error("assembly interrupted by user.")
             sys.exit("  Keyboard interrupt by user")
@@ -907,9 +916,30 @@ class Assembly(object):
 
 
     def _step1func(self, force, preview, ipyclient):
-        """ testing"""
-        msg1 = "  Step1: Demultiplexing raw reads."
-        msg2 = "  Step1: Linking demultiplexed fastq data to Samples."
+        """ hidden wrapped function to start step 1 """
+
+        ## check input data files
+        sfiles = self.paramsdict["sorted_fastq_path"]
+        rfiles = self.paramsdict["raw_fastq_path"]
+
+        ## do not allow both a sorted_fastq_path and a raw_fastq
+        if sfiles and rfiles:
+            raise IPyradError("""
+    Error: Must enter a raw_fastq_path or sorted_fastq_path, but not both.""")
+
+        ## but also require that at least one exists
+        if not (sfiles or rfiles):
+            raise IPyradError("""
+    Error: Step 1 requires that you enter either:
+        (1) a sorted_fastq_path or (2) a raw_fastq_path and barcodes_path
+    """)
+
+        ## print headers
+        if self._headers:
+            if sfiles:
+                print("  Step1: Linking sorted fastq data to Samples.")
+            else:
+                print("  Step1: Demultiplexing fastq data to Samples.")                
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
@@ -920,38 +950,31 @@ class Assembly(object):
     """.format(len(self.samples), self.name))
             else:
                 ## overwrite existing data
-                if self._headers:
-                    print(msg1)
-                assemble.demultiplex.run(self, preview, ipyclient)
+                if glob.glob(sfiles):
+                    if self._headers:
+                        self.link_fastqs()
+
+                ## otherwise do the demultiplexing
+                else:
+                    assemble.demultiplex.run(self, preview, ipyclient)
 
         ## Creating new Samples
         else:
             ## first check if demultiplexed files exist in sorted path
-            spath = self.paramsdict["sorted_fastq_path"]
-            if os.path.exists(spath):
+            if glob.glob(sfiles):
                 if self._headers:
-                    print(msg2, "\n  linking files from {}".\
-                          format(self.paramsdict["sorted_fastq_path"]))
-                    try:
-                        self.link_fastqs()
-                    
-                    except Exception as e:
-                        ## If linking fails raise the exception. Assuming the
-                        ## user entered a path here it means they're bringing
-                        ## their own demultiplexed fastq, so DO NO attempt
-                        ## to demultiplex.
-                        print("  Failed to link fastq files in path {}".\
-                            format(self.paramsdict["sorted_fastq_path"]))
-                        sys.exit()
+                    self.link_fastqs()
+
             ## otherwise do the demultiplexing
             else:
-                if self._headers:
-                    print(msg1)                        
                 assemble.demultiplex.run(self, preview, ipyclient)
 
 
 
     def _step2func(self, samples, nreplace, force, preview, ipyclient):
+        """ hidden wrapped function to start step 2"""
+
+        ## print header
         if self._headers:
             print("  Step2: Filtering reads ")
 
@@ -1293,7 +1316,7 @@ class Assembly(object):
         samples : list or str
             By default all Samples linked to an Assembly object are clustered. 
             If a subset of Samples is entered as a list then only those samples
-            will be clustered. It is recommended to create .copy() Assembly 
+            will be clustered. It is recommended to create .branch() Assembly 
             objects if step6 is performed on different subsets of Samples. 
 
         noreverse : bool
@@ -1521,7 +1544,7 @@ def merge(name, assemblies):
     assemblies = list(assemblies)
 
     ## create new Assembly
-    merged = assemblies[0].copy(name)
+    merged = assemblies[0].branch(name)
 
     ## get all sample names from all Assemblies
     allsamples = set(merged.samples.keys())
@@ -1596,20 +1619,25 @@ def tuplecheck(newvalue, dtype=str):
 
 
 def paramschecker(self, param, newvalue):
-    if param == 'assembly_name':
-        ## Make sure somebody doesn't try to change their assembly_name, bad things
-        ## would happen. Calling set_params on assembly_name only raises a (hopefully
-        ## informative error. Assembly_name is set at Assembly creation time and is
-        ## immutable.
-        msg = "\n\nAssembly name is set at Assembly creation time and is an immutable\n"\
-            + "property. You may, however, branch the assembly which will create a copy\n"\
-            + "with a new name, a sort of roundabout name change. Here's how:\n\n"\
-            + "  Command Line Interface:\n"\
-            + "    ipyrad -p params.txt --branch new_name\n\n"\
-            + "  API (Jupyter Notebook Users):\n"\
-            + "    new_assembly = my_assembly.copy(\"new_name\")"
-        raise IPyradParamsError(msg)
+    """ Raises exceptions when params are set to values they should not be"""
 
+    if param == 'assembly_name':
+        ## Make sure somebody doesn't try to change their assembly_name, bad 
+        ## things would happen. Calling set_params on assembly_name only raises 
+        ## an informative error. Assembly_name is set at Assembly creation time 
+        ## and is immutable.
+        raise IPyradWarningExit("""
+    Warning: Assembly name is set at Assembly creation time and is an immutable 
+    property: You may, however, branch the assembly which will create a copy 
+    with a new name, a sort of roundabout name change. Here's how:
+
+    Command Line Interface:
+        ipyrad -p old_name-params.txt --branch new_name
+          
+    API (Jupyter Notebook Users):
+        new_assembly = my_assembly.copy("new_name")
+    """)
+        
     elif param == 'project_dir':
         expandpath = expander(newvalue)
         if not expandpath.startswith("/"): 
@@ -1619,35 +1647,75 @@ def paramschecker(self, param, newvalue):
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath
 
+
     elif param == 'raw_fastq_path':
-        fullrawpath = expander(newvalue)
-        if os.path.isdir(fullrawpath):
-            fullrawpath = os.path.join(fullrawpath, "*.gz")
-        self.paramsdict['raw_fastq_path'] = fullrawpath
+        if newvalue:
+            fullrawpath = expander(newvalue)
+            if os.path.isdir(fullrawpath):
+                raise IPyradWarningExit("""
+    Error: You entered the path to a directory for raw_fastq_path. To 
+    ensure the correct files in the directory are selected, please use a 
+    wildcard selector to designate the desired files. 
+    Example: /home/user/data/*.fastq  ## selects all files ending in '.fastq'
+    You entered: {}
+    """.format(fullrawpath))
+            ## if something is found in path
+            elif glob.glob(fullrawpath):
+                self.paramsdict['raw_fastq_path'] = fullrawpath
+            ## else allow empty, tho it can still raise an error in step1
+            else:
+                self.paramsdict['raw_fastq_path'] = ""
+
 
     elif param == 'barcodes_path':
-        #assert type(newvalue) is StringType, "arg must be a string"
-        fullbarpath = expander(newvalue)
-        if glob.glob(fullbarpath):
-            self.paramsdict['barcodes_path'] = fullbarpath
-            self.link_barcodes()
-        elif not fullbarpath:
-            self.paramsdict['barcodes_path'] = fullbarpath                
-        else:
-            print("""
-    Warning: barcodes file not found. This must be an absolute path 
+        ## if a value was entered check that it exists
+        if newvalue:
+            fullbarpath = expander(newvalue)
+        
+            if not os.path.exists(fullbarpath):
+                raise IPyradWarningExit("""
+    Error: barcodes file not found. This must be an absolute path 
     (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory 
     where you're running ipyrad (./data/data_barcodes.txt). You entered: 
     {}
     """.format(fullbarpath))
+            else:
+                self.paramsdict['barcodes_path'] = fullbarpath
+                self.link_barcodes()
+
+        ## if no path was entered then set barcodes path to empty. 
+        ## this is checked again during step 1 and will raise an error 
+        ## if you try demultiplexing without a barcodes file
+        else:
+            self.paramsdict['barcodes_path'] = ""
+
 
     elif param == 'sorted_fastq_path':
-        assert isinstance(newvalue, str), \
-        "sorted_fastq_path must be a string, e.g., /home/data/fastqs/*"
-        newvalue = expander(newvalue)
-        if os.path.isdir(newvalue):
-            newvalue = os.path.join(newvalue, "*.gz")
-        self.paramsdict['sorted_fastq_path'] = newvalue
+        if newvalue:
+            fullsortedpath = expander(newvalue)
+
+            if os.path.isdir(fullsortedpath):
+                raise IPyradWarningExit("""
+    Error: You entered the path to a directory for sorted_fastq_path. To 
+    ensure the correct files in the directory are selected, please use a 
+    wildcard selector to designate the desired files. 
+    Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
+    You entered: {}
+    """.format(fullsortedpath))
+            elif glob.glob(fullsortedpath):
+                self.paramsdict['sorted_fastq_path'] = fullsortedpath
+
+            else:
+                raise IPyradWarningExit("""
+    Error: fastq sequence files in sorted_fastq_path could not be found. Please
+    check that the location is set correctly. You entered:
+    {}
+    """.format(fullsortedpath))
+        ## if no value was entered then set to "". 
+        else:
+            self.paramsdict['sorted_fastq_path'] = ""
+
+
 
     elif param == 'assembly_method':
         methods = ["denovo", "reference_only", "hybrid", "denovo_only"]
@@ -1657,17 +1725,24 @@ def paramschecker(self, param, newvalue):
     """.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
 
+
     elif param == 'reference_sequence':
-        fullrawpath = expander(newvalue)
-        if not os.path.isfile(fullrawpath):
-            LOGGER.info("reference sequence file not found.")
-            print("""
+        if newvalue:
+            fullrawpath = expander(newvalue)
+            if not os.path.isfile(fullrawpath):
+                LOGGER.info("reference sequence file not found.")
+                raise IPyradWarningExit("""
     "Warning: reference sequence file not found. This must be an absolute path 
     (/home/wat/ipyrad/data/reference.gz) or relative to the directory where 
     you're running ipyrad (./data/reference.gz). You entered: 
     {}
     """.format(fullrawpath))
-        self.paramsdict['reference_sequence'] = fullrawpath
+            self.paramsdict['reference_sequence'] = fullrawpath
+        ## if no value was entered the set to "". Will be checked again 
+        ## at step3 if user tries to do refseq and raise error
+        else:
+            self.paramsdict['reference_sequence'] = ""
+
 
     elif param == 'datatype':
         ## list of allowed datatypes
@@ -1804,6 +1879,7 @@ def paramschecker(self, param, newvalue):
         "trim_overhang should be a tuple e.g., (1, 2, 2, 1)"
         self.paramsdict['trim_overhang'] = newvalue
 
+
     elif param == 'output_formats':
         ## Get all allowed file types from assembly.write_outfiles
         output_formats = assemble.write_outfiles.OUTPUT_FORMATS
@@ -1819,46 +1895,73 @@ def paramschecker(self, param, newvalue):
             ## Only test here if no wildcard present
             for form in requested_formats:
                 if form not in output_formats:
-                    sys.exit("""
-    error: File format [ {} ] not recognized, must be one of: {}.
+                    raise IPyradWarningExit(""")
+    File format [ {} ] not recognized, must be one of: {}.
     """.format(form, output_formats))
+        ## set the param
         self.paramsdict['output_formats'] = requested_formats
 
 
     elif param == 'pop_assign_file':
         fullpoppath = expander(newvalue)
 
-        if not os.path.isfile(fullpoppath):
-            LOGGER.warn("Population assignment file not found.")
-            sys.exit("""
+        ## if a path is entered, raise exception if not found
+        if newvalue:
+            if not os.path.isfile(fullpoppath):
+                LOGGER.warn("Population assignment file not found.")
+                raise IPyradWarningExit("""
     Warning: Population assignment file not found. This must be an
     absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to 
     the directory where you're running ipyrad (./data/my_popfile.txt)
     You entered: {}\n""".format(fullpoppath))
-        self.paramsdict['pop_assign_file'] = fullpoppath
-        self.link_populations()
+        ## should we add a check here that all pop samples are in samples?
+
+            self.paramsdict['pop_assign_file'] = fullpoppath
+            self.link_populations()
+        else:
+            self.paramsdict['pop_assign_file'] = ""
+
 
     elif param == 'excludes':
-        excluded_individuals = newvalue.replace(" ", "").split(',')
+        if newvalue.strip():
+            excluded_individuals = newvalue.replace(" ", "").split(',')
 
-        ## Test if the individuals requested for exclusion actually
-        ## exist in sample list? I hate implicit failure, but it could
-        ## be tricky to handle the case where people set excludes before
-        ## they run step1?
-        ## TODO: Maybe do this, maybe not.
+            ## check whether excludes exist in samples
+            exc = set(excluded_individuals)
+            inc = set(self.samples.keys())
 
-        self.paramsdict['excludes'] = excluded_individuals
+            nomatch = exc.difference(inc)
+            if list(nomatch):
+                raise IPyradWarningExit("""
+    Warning: The following Sample cannot be excluded because it was not found 
+    in the list of existing Samples. Check for typos in Sample names.
+    Bad Sample name(s): {}""".format(list(nomatch)))
+            self.paramsdict['excludes'] = excluded_individuals
+
+        ## else set it as empty
+        else:
+            self.paramsdict['excludes'] = []
+
 
     elif param == 'outgroups':
-        outgroup_individuals = newvalue.replace(" ", "").split(',')
+        if newvalue.strip():
+            outgroup_inds = newvalue.replace(" ", "").split(',')
 
-        ## Test if the outgroup individuals actually
-        ## exist in sample list? I hate implicit failure, but it could
-        ## be tricky to handle the case where people set excludes before
-        ## they run step1?
-        ## TODO: Maybe do this, maybe not.
+            ## check whether excludes exist in samples
+            exc = set(outgroup_inds)
+            inc = set(self.samples.keys())
 
-        self.paramsdict['outgroups'] = outgroup_individuals
+            nomatch = exc.difference(inc)
+            if list(nomatch):
+                raise IPyradWarningExit("""
+    Warning: The following Sample cannot be set as an outgroup because it was 
+    not found in the list of existing Samples. Check for typos in Sample names.
+    Bad Sample name(s): {}""".format(list(nomatch)))
+            self.paramsdict['outgroups'] = outgroup_inds
+
+        ## else set it as empty
+        else:
+            self.paramsdict['outgroups'] = []
 
     return self
 

@@ -39,6 +39,7 @@ def parse_params(args):
 
     ## make into a dict
     items = [i.split("##")[0].strip() for i in plines[1:]]
+
     #keys = [i.split("]")[-2][-1] for i in plines[1:]]
     keys = range(len(plines)-1)
     parsedict = {str(i):j for i, j in zip(keys, items)}
@@ -71,9 +72,8 @@ def showstats(parsedict):
         raise ip.assemble.util.IPyradParamsError(msg)
 
     try:
-        data = ip.load.load_assembly(my_assembly,
-                                    quiet=True, 
-                                    launch=False)
+        data = ip.load.load_assembly(my_assembly, quiet=True)
+
 
         print("Summary stats of Assembly {}".format(data.name) \
              +"\n------------------------------------------------")
@@ -96,6 +96,19 @@ def showstats(parsedict):
     Check parameter settings for [project_dir]/[assembly_name]
     """).format(my_assembly)
 
+
+def branch_assembly(args, parsedict):
+    """ Load the passed in assembly and create a branch. Copy it
+        to a new assembly, and also write out the appropriate params.txt
+    """
+    ## Get the current assembly
+    data = getassembly(args, parsedict)
+    new_data = data.branch(args.branch)
+
+    print("Creating a branch of assembly {} called {}".\
+        format(data.name, new_data.name))
+
+    new_data.write_params    
 
 
 def getassembly(args, parsedict):
@@ -127,14 +140,14 @@ def getassembly(args, parsedict):
     os.chdir(project_dir)
 
     ## if forcing or doing step 1 then do not load existing Assembly
-    if args.force and '1' in args.steps:
+    if args.force or '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
     else:
         ## try loading an existing one
         try:
             #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_name, launch=False)
+            data = ip.load.load_assembly(assembly_name)
 
         ## if not found then create a new one
         except AssertionError:
@@ -147,18 +160,18 @@ def getassembly(args, parsedict):
 
     ## for entering some params...
     for param in parsedict:
-        ## If the param isn't empty, and also if it isn't assembly_name
         ## trap assignment of assembly_name since it is immutable.
-        if parsedict[param] and param != str(0):
-            try:
+        if param == str(0):
+            ## only pass to set_params if user tried to change assembly_name
+            ## it will raise an Exit error
+            if parsedict[param] != data.name:
                 data.set_params(param, parsedict[param])
-            except Exception as inst:
-                print(inst)
-                print("Bad parameter in the params file - param {} value {}".\
-                      format(param, parsedict[param]))
-                raise
+        else:
+            ## all other params should be handled by set_params
+            data.set_params(param, parsedict[param])
 
     return data
+
 
 
 def parse_command_line():
@@ -169,17 +182,27 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n                       ## create new params.txt file.
-    ipyrad -p params.txt            ## run ipyrad with settings in params.txt.
-    ipyrad -p params.txt -s 123     ## run only steps 1, 2 and 3 of assembly.
-    ipyrad -p params.txt -s 4567    ## run steps 4, 5, 6 and 7 of assembly.
-    ipyrad -p params.txt -s 3 -f    ## run step 3, overwrite existing data.
+    ipyrad -n                            ## create new params.txt file.
+    ipyrad -p params.txt                 ## run ipyrad with settings in params.txt.
+    ipyrad -p params.txt -s 123          ## run only steps 1, 2 and 3 of assembly.
+    ipyrad -p params.txt -s 4567         ## run steps 4, 5, 6 and 7 of assembly.
+    ipyrad -p params.txt -s 3 -f         ## run step 3, overwrite existing data.
+
+  * Preview mode:
+    ipyrad -p params.txt -s --preview    ## Run quickly in preview mode to test
 
   * HPC parallelization
-    ipyrad -p params.txt -s 3 --MPI   ## access cores across multiple nodes
+    ipyrad -p params.txt -s 3 --MPI      ## access cores across multiple nodes
 
   * Results summary quick view
-    ipyrad -p params.txt -r         ## print summary stats to screen for params.
+    ipyrad -p params.txt -r              ## print summary stats to screen for params
+
+  * Run quietly
+    ipyrad -p params.txt -q              ## Run quietly, do not write output to std out
+
+  * Branch assembly
+    ipyrad -p params.txt -b new-params   ## Branch assembly for testing different
+                                         ## parameter values w/o having to redo steps
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
@@ -203,6 +226,10 @@ def parse_command_line():
     parser.add_argument('-p', metavar='params', dest="params",
         type=str, default=None,
         help="path to params.txt file")
+
+    parser.add_argument('-b', "--branch",  metavar='branch', dest="branch",
+        type=str, default=None,
+        help="Name for the branched assembly")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
@@ -261,8 +288,8 @@ def main():
 
         sys.exit(2)
 
-    ## if showing results, do not do any steps and do not print header
-    if args.results:
+    ## if showing results or branching, do not do any steps and do not print header
+    if args.results or args.branch:
         args.steps = ""
         print("")
     else:
@@ -280,21 +307,27 @@ def main():
         if args.results:
             showstats(parsedict)
 
+        elif args.branch:
+            branch_assembly(args, parsedict)
+
         else:
             ## run Assembly steps
             if args.steps:
-                ## launch ipcluster and register for later destruction
-                if args.MPI:
-                    controller = "MPI"
-                else:
-                    controller = "Local"
 
                 ## launch or load assembly with custom profile/pid
                 data = getassembly(args, parsedict)
 
-                ## might want to use custom profiles instead of ...
-                data._ipclusterid = ipcontroller_init(nproc=args.cores,
-                                                      controller=controller)
+                ## store ipcluster info
+                data._ipcluster["cores"] = args.cores
+
+                if args.MPI:
+                    data._ipcluster["engines"] = "MPI"
+                else:
+                    data._ipcluster["engines"] = "Local"
+
+                ## launch ipcluster and register for later destruction
+                data = ipcontroller_init(data)
+
                 ## set to print headers
                 data._headers = 1
 
@@ -309,7 +342,6 @@ def main():
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force, preview=args.preview)
-
 
 
 if __name__ == "__main__": 
