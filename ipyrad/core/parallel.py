@@ -2,70 +2,57 @@
 
 ## imports for running ipcluster
 from __future__ import print_function
+
 import subprocess
 import psutil
 import atexit
-import time
 import sys
 import os
 
-#import ipyparallel.nbextension.clustermanager as clustermanager
-#from tornado import web
+# pylint: disable=W0212
+
 
 import logging
 LOGGER = logging.getLogger(__name__)
 
-# ## start and stop ipcluster
-# CM = clustermanager.ClusterManager()
-
-# ## check that u'default' profile exists
-# PROFILES = [i['profile'] for i in CM.list_profiles()]
-# assert u'default' in PROFILES, "ipyparallel is not properly configured."
-
-# ## check if u'default ipcluster is already running
-# RUNNING = CM.profile_info(u'default')['status']
-
-# ## if it's stopped then start a new ipcluster
-# if RUNNING == 'stopped':
-#     print("in here")
-#     print(CM.profile_info(u'default')['status'])    
-#     CM.start_cluster(u'default')
-#     atexit.register(LOGGER.debug('%s'), u'default')
-#     print(CM.profile_info(u'default')['status'])
-# else:
-#     print("out here")
-
-# ## launch ipcluster with profile=u'default'.
-# try:
-#     CM.check_profile(u'default')
-# except web.HTTPError():
-#     LOGGER.critical(u'jupyter profile not found')
-
 
 ## start ipcluster
-def start(name, nproc, controller, quiet, delay):
+def start(data, quiet):
     """ Start ipcluster """
-    if nproc != None:
+
+    ## select all cores if no entry for args.cores
+    nproc = data._ipcluster["cores"]
+    if not data._ipcluster["cores"]:
         nproc = str(psutil.cpu_count())
 
+    ## open all ip views for MPI
+    iparg = ""
+    if "MPI" in data._ipcluster["engines"]:
+        iparg = "ip='*' "
+
+    ## make ipcluster arg call
     standard = ["ipcluster", "start", 
                 "--daemon", 
-                "--cluster-id="+name,
-                "--controller="+controller,
-                "-n", str(nproc)]
+                "--cluster-id="+data._ipcluster["id"],
+                "--engines="+data._ipcluster["engines"],
+                "--n="+str(nproc), 
+                iparg]
 
+
+    ## wrap ipcluster start
     try: 
-        #if not quiet:
-        #    print(standard)
         LOGGER.info(" ".join(standard))
-        subprocess.check_call(" ".join(standard), shell=True)
-        LOGGER.info("%s connection to %s engines [%s]", controller, nproc, name)
+        with open(os.devnull, 'w') as fnull:
+            subprocess.Popen(standard, stderr=subprocess.STDOUT, 
+                                       stdout=fnull).communicate()
+
         print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(controller, nproc))
+              .format(data._ipcluster["engines"], nproc))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
         raise
+
     except Exception as inst:
         sys.exit("Error launching ipcluster for parallelization:\n({})\n".\
                  format(inst))
@@ -89,18 +76,20 @@ def stop(cluster_id):
 
 
 
-def ipcontroller_init(nproc=None, controller="Local", quiet=False):
+def ipcontroller_init(data, quiet=False):
     """
     The name is a unique id that keeps this __init__ of ipyrad distinct
     from interfering with other ipcontrollers. The controller option is 
     used to toggle between Local, MPI, PBS.
     """
     ## check if this pid already has a running cluster
-    ipname = "ipyrad-"+str(os.getpid())
-    start(ipname, nproc, controller, quiet, delay='1.0')
-    #time.sleep(1)
-    atexit.register(stop, ipname)
-    return ipname
+    data._ipcluster["id"] = "ipyrad-"+str(os.getpid())
+
+    start(data, quiet)
+    atexit.register(stop, data._ipcluster["id"])
+
+    return data
+
 
 
 #global IPNAME

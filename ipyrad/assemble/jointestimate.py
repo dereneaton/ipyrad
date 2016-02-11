@@ -15,11 +15,11 @@ import gzip
 from collections import Counter
 from util import *
 
-try: 
-    from numba import jit
-    NUMBA = 1
-except ImportError:
-    NUMBA = 0
+# try: 
+#     from numba import jit
+#     NUMBA = 1
+# except ImportError:
+#     NUMBA = 0
 
 
 def frequencies(stacked):
@@ -30,15 +30,15 @@ def frequencies(stacked):
     return freqs
 
 
-@jit(['float32[:,:](float32, float32, int16[:,:])'])
-def jlikelihood1(errors, bfreqs, ustacks):
-    """Probability homozygous. All numpy and no loop so there was 
-    no numba improvement to speed when tested. """
-    ## make sure base_frequencies are in the right order
-    #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
-    totals = np.array([ustacks.sum(axis=1)]*4).T
-    prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
-    return np.sum(bfreqs*prob, axis=1)
+# @jit(['float32[:,:](float32, float32, int16[:,:])'])
+# def jlikelihood1(errors, bfreqs, ustacks):
+#     """Probability homozygous. All numpy and no loop so there was 
+#     no numba improvement to speed when tested. """
+#     ## make sure base_frequencies are in the right order
+#     #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
+#     totals = np.array([ustacks.sum(axis=1)]*4).T
+#     prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
+#     return np.sum(bfreqs*prob, axis=1)
 
 def likelihood1(errors, bfreqs, ustacks):
     """Probability homozygous. All numpy and no loop so there was 
@@ -50,22 +50,22 @@ def likelihood1(errors, bfreqs, ustacks):
     return np.sum(bfreqs*prob, axis=1)
 
 
-@jit(['float32[:](float32, float32[:], int16[:,:])'])
-def jlikelihood2(errors, bfreqs, ustacks):
-    """probability of heterozygous. Very minimal speedup w/ numba."""
-    returns = np.zeros(len(ustacks), dtype=np.float32)
-    for idx, ustack in enumerate(ustacks):
-        spair = np.array(list(itertools.combinations(ustack, 2)))
-        bpair = np.array(list(itertools.combinations(bfreqs, 2)))
-        one = 2.*bpair.prod(axis=1)
-        tot = ustack.sum()
-        atwo = tot - spair[:, 0] - spair[:, 1]
-        two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
-        three = scipy.stats.binom.pmf(\
-                    spair[:, 0], spair.sum(axis=1), 0.5)
-        four = 1.-np.sum(bfreqs**2)
-        returns[idx] = np.sum(one*two*(three/four))
-    return np.array(returns)
+# @jit(['float32[:](float32, float32[:], int16[:,:])'])
+# def jlikelihood2(errors, bfreqs, ustacks):
+#     """probability of heterozygous. Very minimal speedup w/ numba."""
+#     returns = np.zeros(len(ustacks), dtype=np.float32)
+#     for idx, ustack in enumerate(ustacks):
+#         spair = np.array(list(itertools.combinations(ustack, 2)))
+#         bpair = np.array(list(itertools.combinations(bfreqs, 2)))
+#         one = 2.*bpair.prod(axis=1)
+#         tot = ustack.sum()
+#         atwo = tot - spair[:, 0] - spair[:, 1]
+#         two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
+#         three = scipy.stats.binom.pmf(\
+#                     spair[:, 0], spair.sum(axis=1), 0.5)
+#         four = 1.-np.sum(bfreqs**2)
+#         returns[idx] = np.sum(one*two*(three/four))
+#     return np.array(returns)
 
 
 def likelihood2(errors, bfreqs, ustacks):
@@ -101,21 +101,21 @@ def get_diploid_lik(pstart, bfreqs, ustacks, counts):
     return score
 
 
-@jit
-def j_diploid_lik(pstart, bfreqs, ustacks, counts):
-    """ Log likelihood score given values [H,E]. """
-    hetero, errors = pstart
-    ## tell it to score terribly if scores are negative
-    if (hetero <= 0.) or (errors <= 0.):
-        score = np.exp(100)
-    else:
-        ## get likelihood for all sites
-        lik1 = (1.-hetero)*jlikelihood1(errors, bfreqs, ustacks)
-        lik2 = (hetero)*jlikelihood2(errors, bfreqs, ustacks)
-        liks = lik1+lik2
-        logliks = np.log(liks[liks > 0])*counts[liks > 0]
-        score = -logliks.sum()
-    return score
+# @jit
+# def j_diploid_lik(pstart, bfreqs, ustacks, counts):
+#     """ Log likelihood score given values [H,E]. """
+#     hetero, errors = pstart
+#     ## tell it to score terribly if scores are negative
+#     if (hetero <= 0.) or (errors <= 0.):
+#         score = np.exp(100)
+#     else:
+#         ## get likelihood for all sites
+#         lik1 = (1.-hetero)*jlikelihood1(errors, bfreqs, ustacks)
+#         lik2 = (hetero)*jlikelihood2(errors, bfreqs, ustacks)
+#         liks = lik1+lik2
+#         logliks = np.log(liks[liks > 0])*counts[liks > 0]
+#         score = -logliks.sum()
+#     return score
 
 
 def get_haploid_lik(errors, bfreqs, ustacks, counts):
@@ -221,7 +221,8 @@ def optim(args):
     bfreqs = frequencies(stacked)
     LOGGER.debug(bfreqs)
     if np.isnan(bfreqs).any():
-        raise IPyradError("Caught sample with bad stack - {} {}".format(sample.name, bfreqs))
+        raise IPyradError("Caught sample with bad stack - {} {}".\
+                          format(sample.name, bfreqs))
 
     ## reshape to concatenate all site rows
     rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
@@ -286,7 +287,7 @@ def run(data, samples, subsample, force, ipyclient):
                 submitted_args.append([data, sample, subsample])
         else:
             if sample.stats.state < 3:
-                print("    "+sample.name+" not clustered yet. Run step3() first.")
+                print("    "+sample.name+" not clustered. Run step3() first.")
             elif sample.stats.clusters_hidepth < 2:
                 print("    skipping {}. Too few high depth reads ({}). "\
                       .format(sample.name, sample.stats.clusters_hidepth))
@@ -305,16 +306,18 @@ def run(data, samples, subsample, force, ipyclient):
             results = results.get()
         ## if exception such as keyboard interrupt, save finished jobs
         except Exception as inst:
-            ## hold the exception for now, do cleanup
-            # for job in ipyclient.metadata:
-            #     print("error checking", job)
-            #     if ipyclient.metadata[job]['completed']:
-            #         result = ipyclient.metadata[job]['outputs']
-            #         samplename, hest, eest = result
-            #         sample = data.samples[samplename]
-            #         cleanup(data, sample, hest, eest)
-            ## now raise the exception
-            #print(data.stats)
+            # stop any unfinished jobs
+            ipyclient.abort()
+
+            # clean up finished jobs
+            for job in ipyclient.metadata:
+                print("error checking", job)
+                if ipyclient.metadata[job]['completed']:
+                    result = ipyclient.metadata[job]['outputs']
+                    samplename, hest, eest = result
+                    sample = data.samples[samplename]
+                    cleanup(data, sample, hest, eest)
+            ## now re-raise the exception
             LOGGER.debug("Error in jointestimate - {}".format(inst))
             raise inst
         else:

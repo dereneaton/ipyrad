@@ -3,6 +3,7 @@
 
 #import os
 import pandas as pd
+import json
 from ipyrad.assemble.util import ObjDict, IPyradError
 
 # pylint: disable=C0103
@@ -74,17 +75,20 @@ class Sample(object):
                                      "nhetero",
                                      "heterozygosity",
                                      ]),
-              "s6": pd.Series(index=["null"]),
-              "s7": pd.Series(index=["null"]),              
-          })      
+              })
 
-        ## store cluster depth information (biggest memory cost)
+        ## store cluster depth information (biggest memory cost), 
+        ## should save this as a Counter dict, currently its a list
         self.depths = []
 
 
     def __str__(self):
         return "<ipyrad.Sample object {}>".format(self.name)
 
+    def to_JSON(self):
+        """ write to JSON to serialize object """
+        return json.dumps(self, default=lambda o: o.__dict__, 
+                          sort_keys=True, indent=4)
 
     #def save(self):
     #    """ pickle the data object """
