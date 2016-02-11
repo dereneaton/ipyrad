@@ -11,6 +11,9 @@ import argparse
 import logging
 import sys
 import os
+# import socket
+# import ipyparallel as ipp
+# from collections import Counter
 
 # pylint: disable=W0212
 
@@ -53,15 +56,18 @@ def showstats(parsedict):
 
     ## If the project_dir doesn't exist don't even bother trying harder.
     if not os.path.isdir(project_dir):
-        msg = "\n\nTrying to print stats for a project dir ({}) that doesn't exist.\n"\
-            + "You must run steps before you can show stats.".format(project_dir)
+        msg = """
+    Trying to print stats for a project dir ({}) that doesn't exist. You must 
+    run steps before you can show stats.
+    """.format(project_dir)
         sys.exit(msg)
 
     if not assembly_name:
-        msg = "\n\nAssembly name is not set in params.txt. This means somebody\n"\
-            + "changed it or erased it, which is bad. Please restore the\n"\
-            + "original name. You can find the name of your assembly in the\n"\
-            + "project dir: {}.".format(project_dir)
+        msg = """
+    Assembly name is not set in params.txt, meaning it was either changed or
+    erased since the Assembly was started. Please restore the original name. 
+    You can find the name of your Assembly in the "project dir": {}.
+    """.format(project_dir)
         raise ip.assemble.util.IPyradParamsError(msg)
 
     try:
@@ -80,6 +86,7 @@ def showstats(parsedict):
                 val = data.statsfiles[key]
                 val = val.replace(fullcurdir, ".")                
                 print(key+":", val)
+                print("\n----")
         else:
             print("No stats to display")
 
@@ -89,6 +96,19 @@ def showstats(parsedict):
     Check parameter settings for [project_dir]/[assembly_name]
     """).format(my_assembly)
 
+
+def branch_assembly(args, parsedict):
+    """ Load the passed in assembly and create a branch. Copy it
+        to a new assembly, and also write out the appropriate params.txt
+    """
+    ## Get the current assembly
+    data = getassembly(args, parsedict)
+    new_data = data.branch(args.branch)
+
+    print("Creating a branch of assembly {} called {}".\
+        format(data.name, new_data.name))
+
+    new_data.write_params    
 
 
 def getassembly(args, parsedict):
@@ -162,17 +182,28 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n                       ## create new params.txt file.
-    ipyrad -p params.txt            ## run ipyrad with settings in params.txt.
-    ipyrad -p params.txt -s 123     ## run only steps 1, 2 and 3 of assembly.
-    ipyrad -p params.txt -s 4567    ## run steps 4, 5, 6 and 7 of assembly.
-    ipyrad -p params.txt -s 3 -f    ## run step 3, overwrite existing data.
+    ipyrad -n                            ## create new params.txt file.
+    ipyrad -p params.txt                 ## run ipyrad with settings in params.txt.
+    ipyrad -p params.txt -s 123          ## run only steps 1, 2 and 3 of assembly.
+    ipyrad -p params.txt -s 4567         ## run steps 4, 5, 6 and 7 of assembly.
+    ipyrad -p params.txt -s 3 -f         ## run step 3, overwrite existing data.
 
-  * HPC parallelization options
-    ipyrad -p params.txt -s 3 -c 64 --MPI   ## Access 64 cores using MPI.
+  * Preview mode:
+    ipyrad -p params.txt -s --preview    ## Run quickly in preview mode to test
+                                         ## whether all settings are working
+
+  * HPC parallelization
+    ipyrad -p params.txt -s 3 --MPI      ## access cores across multiple nodes
 
   * Results summary quick view
-    ipyrad -p params.txt -r         ## print summary stats to screen for params.
+    ipyrad -p params.txt -r              ## print summary stats to screen for params
+
+  * Run quietly
+    ipyrad -p params.txt -q              ## Run quietly, do not write output to std out
+
+  * Branch assembly
+    ipyrad -p params.txt -b new-params   ## Branch assembly for testing different
+                                         ## parameter values w/o having to redo steps
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
@@ -197,13 +228,17 @@ def parse_command_line():
         type=str, default=None,
         help="path to params.txt file")
 
+    parser.add_argument('-b', "--branch",  metavar='branch', dest="branch",
+        type=str, default=None,
+        help="Name for the branched assembly")
+
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
-        help="subset of assembly steps to perform. Default=1234567")
+        help="subset of assembly steps to perform (Default=1234567)")
 
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=4,
-        help="number of CPU cores to use")
+        help="number of CPU cores to use (Default=all)")
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes using MPI")
@@ -246,7 +281,7 @@ def main():
             tmpassembly.write_params("params.txt", force=args.force)
         except Exception as inst:
             print(inst)
-            print("\nUse --force to overwrite\n")
+            print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
         print("New file `params.txt` created in {}".\
@@ -254,8 +289,8 @@ def main():
 
         sys.exit(2)
 
-    ## if showing results, do not do any steps and do not print header
-    if args.results:
+    ## if showing results or branching, do not do any steps and do not print header
+    if args.results or args.branch:
         args.steps = ""
         print("")
     else:
@@ -266,14 +301,15 @@ def main():
     "\n --------------------------------------------------"
         print(header)
     
-
-
     ## create new Assembly or load existing Assembly, quit if args.results
     if args.params:
         parsedict = parse_params(args)
 
         if args.results:
             showstats(parsedict)
+
+        elif args.branch:
+            branch_assembly(args, parsedict)
 
         else:
             ## run Assembly steps
@@ -293,10 +329,17 @@ def main():
                 ## set to print headers
                 data._headers = 1
 
+                ## print the connection info
+                # ipyclient = ipp.Client(cluster_id=data._ipclusterid)
+                # dview = ipyclient[:]
+                # ccx = Counter(dview.apply_sync(socket.gethostname))
+                # for key in ccx:
+                #     print("  Node: {}: {} cores".format(key, ccx[key]))
+                #     print("")
+
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force, preview=args.preview)
-
 
 
 if __name__ == "__main__": 
