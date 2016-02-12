@@ -108,7 +108,7 @@ def branch_assembly(args, parsedict):
     print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
     print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
-    new_data.write_params()
+    new_data.write_params(new_data.name+"-params.txt")
 
 
 def getassembly(args, parsedict):
@@ -140,7 +140,8 @@ def getassembly(args, parsedict):
     os.chdir(project_dir)
 
     ## if forcing and doing step 1 then do not load existing Assembly
-    if args.force and '1' in args.steps:
+#    if args.force and '1' in args.steps:
+    if '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
 
@@ -155,7 +156,7 @@ def getassembly(args, parsedict):
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current not assembly found.")
+            LOGGER.info("No current assembly found.")
             print("  No assembly found at: {}".format(assembly_file))
 
     ## ensure we are back where we belong in original cur dir
