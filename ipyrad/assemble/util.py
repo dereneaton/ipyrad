@@ -202,7 +202,7 @@ def merge_pairs(data, sample): #, unmerged_files):
     ## vsearch merging
     cmd = data.bins.vsearch \
       +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.revcomp \
+      +" --reverse "+sample.files.edits[0][1] \
       +" --fastqout "+sample.files.merged \
       +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
       +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
@@ -211,7 +211,9 @@ def merge_pairs(data, sample): #, unmerged_files):
       +" --fastq_minmergelen "+minlen \
       +" --fastq_maxns "+str(maxn) \
       +" --fastq_minovlen 20 " \
-      +" --fastq_maxdiffs 4 "
+      +" --fastq_maxdiffs 4 " \
+      +" --label_suffix _m1" \
+      +" --threads 0"
 
     LOGGER.warning(cmd)
     try:
