@@ -746,10 +746,15 @@ def multi_muscle_align(data, sample, ipyclient):
             if os.path.exists(fname):
                 os.remove(fname)
         if os.path.exists(tmpdir):
-            shutil.rmtree(tmpdir)
-
+            try:
+                shutil.rmtree(tmpdir)
+            except OSError as inst:
+                ## In some instances nfs creates hidden dot files in directories
+                ## that claim to be "busy" when you try to remove them. Don't
+                ## kill the run if you can't remove this directory.
+                LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
+                pass
         del lbview
-
 
 
 def clustall(args):
