@@ -53,11 +53,16 @@ def sample_cleanup(data, sample):
             break
         if itera != "//\n":
             try:
-                thisdepth += int(itera.split(";")[-2][5:])
+                tdepth = int(itera.split(";")[-2][5:])
+                ## double depth for merged reads
+                if "_m1;s" in itera:
+                    tdepth *= 2 
+                thisdepth += tdepth
+
             except IndexError:
                 ## TODO: if no clusts pass align filter this will raise
                 LOGGER.debug("Here %s, %s", sample.name, itera)
-                raise IPyradError("bad cluster file: %s", sample.name)
+                raise IPyradError("ERROR 63: bad cluster file: %s", sample.name)
         else:
             ## append and reset
             depth.append(thisdepth)
@@ -147,7 +152,6 @@ def muscle_align(args):
                 aseqs1 = [i[leftlimit:] for i in aseqs1]
                 ## preserve order in ordereddict
                 aseqs = zip(aseqs1, aseqs2) 
-                somedic = OrderedDict()
 
                 ## append to somedic if not bad align
                 for i in range(len(anames)):
@@ -172,35 +176,58 @@ def muscle_align(args):
                 ## Get left and right limits, no hits can go outside of this. 
                 ## This can save gbs overlap data significantly. 
                 if 'gbs' in data.paramsdict['datatype']:
-                    ## left side filter is the left limit of the seed
+                    ## left side filter is the left limit of the seed, unless 
+                    ## there is a mixture of merged and non-merged reads. If 
+                    ## any reads are merged then the left limit is the left
+                    ## limit of a merged read.
+
+                    # ## if merged
+                    # if any(["_m1;s" in nam for nam in anames]):
+                    #     LOGGER.info("""
+                    #                 THIS IS A MERGE/NON_MERGE MATCH: 
+                    #                 %s""", aseqs)
+                    #     idxs = []
+                    #     for nam, seq in zip(anames, aseqs):
+                    #         if "_m1;s" in nam:
+                    #             idxs.append(\
+                    #           min([i for i, j in enumerate(seq) if j != "-"]))
+
+                    ## much simpler if no merged reads
+                    ## else:
                     idxs = [i for i, j in enumerate(aseqs[0]) if j != "-"]
+
+                    ## apply left side filter
                     if idxs:
                         leftlimit = max(0, min(idxs))
                         aseqs = [i[leftlimit:] for i in aseqs]
-                        #LOGGER.info('leftlimit %s', leftlimit)
+                        LOGGER.info('leftlimit %s', leftlimit)
 
                     ## right side filter is the reverse seq that goes the least
-                    ## far to the right.
-                    revs = [aseqs[i] for i in range(len(aseqs)) if \
+                    ## far to the right. 
+                    ## Get reverse seqs and their index (index, rseq)
+                    revs = [(i, aseqs[i]) for i in range(len(aseqs)) if \
                             anames[i].split(";")[-1][0] == '-']
+                    ## get right side filter and remove if there's a bad match.
                     idxs = []
-                    for rseq in revs:
+                    for ridx, rseq in revs:
                         try:
                             idxs.append(max(\
                                 [i for i, j in enumerate(rseq) if j != "-"]))
-                        except ValueError as e:
-                            LOGGER.debug("Found chunk that contains a locus that's all "\
-                                + "indels. Throw it out and count it as filtered.")
-                            ## Remove the seq name from the names list, and continue with
-                            ## the next iteration of the for loop, effectively drops the rseq
-                            anames.pop(i)
+                        except ValueError as _:
+                            LOGGER.debug("\
+                            Found chunk that contains a locus that's all "\
+                          +"indels. Throw it out and count it as filtered.")
+                            ## Remove the seq name from the names list, and 
+                            ## continue with the next iteration of the for loop,
+                            ## effectively drops the rseq
+                            anames.pop(ridx)
+                            aseqs.pop(ridx)
                             continue
                     if idxs:
                         rightlimit = min(idxs)
                         aseqs = [i[:rightlimit] for i in aseqs]
                         #LOGGER.info('rightlimit %s', rightlimit)                    
 
-                somedic = OrderedDict()
                 for i in range(len(anames)):
                     ## filter for max internal indels 
                     intind = aseqs[i].rstrip('-').lstrip('-')
@@ -635,20 +662,31 @@ def cluster(data, sample, noreverse, nthreads):
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## datatype specific optimization
+    ## minsl: the percentage of the seed that must be matched
+    ##    smaller values for RAD/ddRAD where we might want to combine, say 50bp 
+    ##    reads and 100bp reads in the same analysis. 
+    ## query_cov: the percentage of the query sequence that must match seed
+    ##    smaller values are needed for gbs where only the tips might overlap
+    ##    larger values for pairgbs where they should overlap near completely
+    ##    small minsl and high query cov allows trimmed reads to match to untrim
+    ##    seed for rad/ddrad/pairddrad. 
     if data.paramsdict["datatype"] == "gbs":
         reverse = " -strand both "
-        cov = " -query_cov .30 " 
+        cov = " -query_cov .33 " 
+        minsl = " 0.33"
     elif data.paramsdict["datatype"] == 'pairgbs':
         reverse = "  -strand both "
-        cov = " -query_cov .90 " 
+        cov = " -query_cov .75 " 
+        minsl = " 0.75"  
     else:  ## rad, ddrad
         reverse = " -leftjust "
         cov = " -query_cov .90 "
+        minsl = " 0.5"
 
     ## override query cov
     if data._hackersonly["query_cov"]:
         cov = " -query_cov "+str(data._hackersonly["query_cov"])
-        assert data._hackersonly["query_cov"] < 1, "query_cov must be < 1.0"
+        assert data._hackersonly["query_cov"] <= 1, "query_cov must be <= 1.0"
 
     ## override reverse clustering option
     if noreverse:
@@ -665,7 +703,7 @@ def cluster(data, sample, noreverse, nthreads):
         " -userfields query+target+id+gaps+qstrand+qcov"+\
         " -maxaccepts 1"+\
         " -maxrejects 0"+\
-        " -minsl 0.5"+\
+        " -minsl "+str(minsl)+\
         " -fulldp"+\
         " -threads "+str(nthreads)+\
         " -usersort "+\
@@ -844,6 +882,7 @@ def run(data, samples, noreverse, force, preview, ipyclient):
             ## get pids in case you need to kill them later            
             #pids = ipyclient[:].apply_async(os.getpid).get()
             ## submit jobs
+        LOGGER.debug("splitting among processors")
         split_among_processors(*args)
 
         #except Exception as inst:
