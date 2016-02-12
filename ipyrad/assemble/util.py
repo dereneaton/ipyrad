@@ -415,23 +415,28 @@ def zcat_make_temps(args):
 
 
 
-def preview_truncate_fq(data, sample):
+def preview_truncate_fq(data, sample_fastq, nlines=None):
     """ 
     If we are running in preview mode, truncate the input fq.gz file so it'll 
     run quicker, just so we can see if it works. Input is tuple of the file
-    names of the sample fq. Function returns a list of one tuple of 1 or 2 
-    elements depending on whether you're doing paired or single end. 
-    The elements are paths to a temp files of the sample fq truncated to some
-    much smaller size.
+    names of the sample fq, and the # of lines to truncate to. Function 
+    returns a list of one tuple of 1 or 2 elements depending on whether 
+    you're doing paired or single end. The elements are paths to a temp files 
+    of the sample fq truncated to some much smaller size.
     """
 
     ## Return a list of filenames
     truncated_fq = []
 
+    ## If nlines is not set do something sensible, just truncate to 10%
+    ## of the input read file size
+    if not nlines:
+       nlines = os.path.getsize(sample_fastq[0][0])/10 
+
     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
     ## do not need to worry about multiple appended fastq files b/c preview
     ## mode will only want to sample from one file pair.
-    for read in sample.files.fastqs[0]:
+    for read in sample_fastq[0]:
 
         ## If the R2 is empty then exit the loop
         if not read:
@@ -444,13 +449,13 @@ def preview_truncate_fq(data, sample):
 
             ## slice from data some multiple of 4 lines, no need to worry
             ## about truncate length being longer than the file this way.
-            optim = data._hackersonly["preview_truncate_length"]*4
+            optim = nlines*4
             quarts = itertools.islice(infile, optim)
 
             ## write to a tmp file in the same place zcat_make_tmps would write
             with tempfile.NamedTemporaryFile('w+b', delete=False,
                           dir=os.path.realpath(data.dirs.project),
-                          prefix=sample.name+".preview_tmp_", 
+                          prefix=read+".preview_tmp_", 
                           suffix=".fq") as tmp_fq:
                 tmp_fq.write("".join(quarts))
             ## save file name and close input
@@ -476,6 +481,8 @@ def preview_truncate_fq(data, sample):
                 LOGGER.debug("Error cleaning up truncated fq files: {}"\
                              .format(inst))
                 raise
+        except Exception as inst:
+            LOGGER.debug("Some other stupid error - {}".format(inst))
 
     return [tuple(truncated_fq)]
 

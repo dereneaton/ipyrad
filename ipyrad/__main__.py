@@ -102,10 +102,12 @@ def branch_assembly(args, parsedict):
     data = getassembly(args, parsedict)
     new_data = data.branch(args.branch)
 
-    print("Creating a branch of assembly {} called {}".\
+    print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
 
-    new_data.write_params()    
+    print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
+    new_data.write_params(new_data.name+"-params.txt")
+
 
 
 def getassembly(args, parsedict):
@@ -152,7 +154,7 @@ def getassembly(args, parsedict):
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current not assembly found.")
+            LOGGER.info("No current assembly found.")
             print("  No assembly found at: {}".format(assembly_file))
 
     ## ensure we are back where we belong in original cur dir

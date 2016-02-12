@@ -904,7 +904,10 @@ class Assembly(object):
                 if ipyclient.metadata[job]['error']:
                     print(ipyclient.metadata[job]['error'])
                     #raise IPyradError(ipyclient.metadata[job]['error'])
-
+        except Exception as inst:
+            ## Caught unhandled exception, print and reraise
+            print("Caught unknown exception - {}".format(inst))
+            raise
         ## close client when done or interrupted
         finally:
             try:
