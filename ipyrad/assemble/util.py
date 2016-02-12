@@ -202,7 +202,7 @@ def merge_pairs(data, sample): #, unmerged_files):
     ## vsearch merging
     cmd = data.bins.vsearch \
       +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.revcomp \
+      +" --reverse "+sample.files.edits[0][1] \
       +" --fastqout "+sample.files.merged \
       +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
       +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
@@ -211,7 +211,9 @@ def merge_pairs(data, sample): #, unmerged_files):
       +" --fastq_minmergelen "+minlen \
       +" --fastq_maxns "+str(maxn) \
       +" --fastq_minovlen 20 " \
-      +" --fastq_maxdiffs 4 "
+      +" --fastq_maxdiffs 4 " \
+      +" --label_suffix _m1" \
+      +" --threads 0"
 
     LOGGER.warning(cmd)
     try:
@@ -228,7 +230,7 @@ def merge_pairs(data, sample): #, unmerged_files):
     with open(sample.files.merged, 'r') as tmpf:
         sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
-    LOGGER.debug("Merged pairs - %d", sample.stats.reads_merged)
+    LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
 
     ## Combine the unmerged pairs and append to the merge file
     with open(sample.files.merged, 'ab') as combout:
@@ -253,10 +255,12 @@ def merge_pairs(data, sample): #, unmerged_files):
             writing.append("\n".join([
                             read1s[0].strip(),
                             read1s[1].strip()+\
-                                "nnnn"+comp(read2s[1].strip())[::-1],
+                                "nnnn"+read2s[1].strip(),
+                                #comp(read2s[1].strip())[::-1],
                             read1s[2].strip(),
                             read1s[3].strip()+\
-                                "nnnn"+read2s[3].strip()[::-1]]
+                                "nnnn"+read2s[3].strip()]
+                                #read2s[3].strip()[::-1]]
                             ))
             counts += 1
             if not counts % 1000:
@@ -411,18 +415,23 @@ def zcat_make_temps(args):
 
 
 
-def preview_truncate_fq(data, sample_fastq):
+def preview_truncate_fq(data, sample_fastq, nlines=None):
     """ 
     If we are running in preview mode, truncate the input fq.gz file so it'll 
     run quicker, just so we can see if it works. Input is tuple of the file
-    names of the sample fq. Function returns a list of one tuple of 1 or 2 
-    elements depending on whether you're doing paired or single end. 
-    The elements are paths to a temp files of the sample fq truncated to some
-    much smaller size.
+    names of the sample fq, and the # of lines to truncate to. Function 
+    returns a list of one tuple of 1 or 2 elements depending on whether 
+    you're doing paired or single end. The elements are paths to a temp files 
+    of the sample fq truncated to some much smaller size.
     """
 
     ## Return a list of filenames
     truncated_fq = []
+
+    ## If nlines is not set do something sensible, just truncate to 10%
+    ## of the input read file size
+    if not nlines:
+       nlines = os.path.getsize(sample_fastq[0][0])/10 
 
     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
     ## do not need to worry about multiple appended fastq files b/c preview
@@ -440,24 +449,25 @@ def preview_truncate_fq(data, sample_fastq):
 
             ## slice from data some multiple of 4 lines, no need to worry
             ## about truncate length being longer than the file this way.
-            optim = data._hackersonly["preview_truncate_length"]*4
+            optim = nlines*4
             quarts = itertools.islice(infile, optim)
 
             ## write to a tmp file in the same place zcat_make_tmps would write
             with tempfile.NamedTemporaryFile('w+b', delete=False,
                           dir=os.path.realpath(data.dirs.project),
-                          prefix=read+".preview_tmp_", suffix=".fq") as tmp_fq:
+                          prefix=read+".preview_tmp_", 
+                          suffix=".fq") as tmp_fq:
                 tmp_fq.write("".join(quarts))
             ## save file name and close input
             truncated_fq.append(tmp_fq.name)
             infile.close()
 
-        except AttributeError as inst:
+        except AttributeError as _:
             ## R2 during SE is passed out as 0 
             #truncated_fq.append( 0 )
             raise
 
-        except KeyboardInterrupt as inst:
+        except KeyboardInterrupt as _:
             LOGGER.info("""
     Caught keyboard interrupt during preview mode. Cleaning up preview files.
             """)
@@ -467,9 +477,12 @@ def preview_truncate_fq(data, sample_fastq):
                 for truncfile in truncated_fq:
                     if os.path.exists(truncfile):
                         os.remove(truncfile)
-            except Exception as e:
-                LOGGER.debug("Error cleaning up truncated fq files: {}".format(e))
+            except Exception as inst:
+                LOGGER.debug("Error cleaning up truncated fq files: {}"\
+                             .format(inst))
                 raise
+        except Exception as inst:
+            LOGGER.debug("Some other stupid error - {}".format(inst))
 
     return [tuple(truncated_fq)]
 

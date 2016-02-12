@@ -37,8 +37,9 @@ OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps',
 
 
 def run(data, samples, force, ipyclient):
-    """ Check all samples requested have been clustered (state=6), 
-    make output directory, then create the requested outfiles.
+    """ Check all samples requested have been clustered (state=6), make output 
+    directory, then create the requested outfiles. Excluded samples are already
+    removed from samples.
     """
     ## prepare dirs
     data.dirs.outfiles = os.path.join(data.dirs.project, data.name+"_outfiles")
@@ -62,6 +63,9 @@ def run(data, samples, force, ipyclient):
     #make_vcf(data)
 
     LOGGER.info("Writing other formats")
+    #make_outfiles(data, samples)
+
+    print("    Outfiles written to: {}\n".format(data.dirs.outfiles))
 
 
 
@@ -731,18 +735,13 @@ def filter_maxhet(data, superseqs, edges):
 
 
 
-def make_outfiles(data, samples, force):
+def make_outfiles(data, samples):
     """ Get desired formats from paramsdict and write files to outfiles 
     directory 
     """
     ## Read in the input .loci file that gets transformed into other formats
     ## locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
-
-    ## filter out samples listed as excludes in params.txt
-    excludes = (data.paramsdict["excludes"] or [""]) \
-             + (data.paramsdict["outgroups"] or [""])
-    LOGGER.warn("Excluding these individuals - {}".format(excludes))
-    samples = [i for i in samples if i.name not in excludes]
+    #samples = [i.name for i in samples]
 
     ## select the output formats. Should we allow some kind of fuzzy matching?
     output_formats = data.paramsdict["output_formats"]

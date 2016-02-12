@@ -8,16 +8,13 @@ from ipyrad.assemble.util import IPyradError
 import pkg_resources
 import ipyrad as ip
 import argparse
-import logging
+import logging as _logging
 import sys
 import os
-# import socket
-# import ipyparallel as ipp
-# from collections import Counter
 
 # pylint: disable=W0212
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = _logging.getLogger(__name__)
 
 
 def parse_params(args):
@@ -105,10 +102,12 @@ def branch_assembly(args, parsedict):
     data = getassembly(args, parsedict)
     new_data = data.branch(args.branch)
 
-    print("Creating a branch of assembly {} called {}".\
+    print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
 
-    new_data.write_params    
+    print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
+    new_data.write_params(new_data.name+"-params.txt")
+
 
 
 def getassembly(args, parsedict):
@@ -139,23 +138,26 @@ def getassembly(args, parsedict):
     cwd = os.path.realpath(os.path.curdir)
     os.chdir(project_dir)
 
-    ## if forcing or doing step 1 then do not load existing Assembly
-    if args.force or '1' in args.steps:
+    ## if forcing and doing step 1 then do not load existing Assembly
+    if '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
+
     else:
+        ## go back to cwd since existing will be loaded from its full path
+        os.chdir(cwd)
+
         ## try loading an existing one
         try:
             #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_name)
+            data = ip.load.load_assembly(assembly_file)
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current assembly found, create new - {}".\
-                        format(assembly_file))
-            data = ip.Assembly(assembly_name)
+            LOGGER.info("No current assembly found.")
+            print("  No assembly found at: {}".format(assembly_file))
 
-    ## pop directory
+    ## ensure we are back where we belong in original cur dir
     os.chdir(cwd)
 
     ## for entering some params...
@@ -214,22 +216,23 @@ def parse_command_line():
     parser.add_argument('-r', "--results", action='store_true',
         help="show summary of results for Assembly in params.txt and exit")
 
-    parser.add_argument('-n', "--new", action='store_true',
-        help="create new default params.txt file in current directory")
-
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
 
     #parser.add_argument('-q', "--quiet", action='store_true',
     #    help="do not print to stderror and stdout.")
 
+    parser.add_argument('-n', metavar='new', dest="new", type=str, 
+        default=None, 
+        help="create params file as 'new-params.txt' in current directory")
+
     parser.add_argument('-p', metavar='params', dest="params",
         type=str, default=None,
         help="path to params.txt file")
 
-    parser.add_argument('-b', "--branch",  metavar='branch', dest="branch",
+    parser.add_argument('-b', metavar='branch', dest="branch",
         type=str, default=None,
-        help="Name for the branched assembly")
+        help="create new branch of assembly designated by the -p flag")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
@@ -237,13 +240,13 @@ def parse_command_line():
 
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=4,
-        help="number of CPU cores to use (Default=all)")
+        help="number of CPU cores to use (Default=4)")
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes using MPI")
 
     parser.add_argument("--preview", action='store_true',
-        help="Run ipyrad in preview mode. Subset the input file so it'll run"\
+        help="run ipyrad in preview mode. Subset the input file so it'll run"\
             + "quickly so you can verify everything is working")
 
 
@@ -276,19 +279,19 @@ def main():
         ## Create a tmp assembly and call write_params to write out
         ## default params.txt file
         try:
-            tmpassembly = ip.core.assembly.Assembly("my_new_assembly", quiet=True)
-            tmpassembly.write_params("params.txt", force=args.force)
+            tmpassembly = ip.core.assembly.Assembly(args.new, quiet=True)
+            tmpassembly.write_params(args.new+"-params.txt", force=args.force)
         except Exception as inst:
             print(inst)
             print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
-        print("New file `params.txt` created in {}".\
-               format(os.path.realpath(os.path.curdir)))
+        print("New file `{}-params.txt` created in {}".\
+               format(args.new, os.path.realpath(os.path.curdir)))
 
         sys.exit(2)
 
-    ## if showing results or branching, do not do any steps and do not print header
+    ## if showing results or branching, do not do steps and do not print header
     if args.results or args.branch:
         args.steps = ""
         print("")
@@ -331,17 +334,10 @@ def main():
                 ## set to print headers
                 data._headers = 1
 
-                ## print the connection info
-                # ipyclient = ipp.Client(cluster_id=data._ipclusterid)
-                # dview = ipyclient[:]
-                # ccx = Counter(dview.apply_sync(socket.gethostname))
-                # for key in ccx:
-                #     print("  Node: {}: {} cores".format(key, ccx[key]))
-                #     print("")
-
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force, preview=args.preview)
+
 
 
 if __name__ == "__main__": 
