@@ -3,10 +3,10 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.41"
+__version__ = "0.1.42"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "DEBUG"
+__loglevel__ = "ERROR"
 __debugfile__ = "/tmp/ipyrad_debug.txt"
 
 ## main ip.functions
@@ -37,7 +37,7 @@ try:
 ## in case system doesn't let you use /tmp            
 except IOError:
     __debugfile__ = os.devnull
-    __loglevel__ = "ERROR"
+__loglevel__ = "ERROR"
 
 # set up logging to file 
 _logging.basicConfig(level=__loglevel__,
