@@ -257,14 +257,14 @@ def build_h5_array(data, samples, nloci):
                                     dtype=np.uint32)
                                     #chunks=(nloci/10, len(samples), maxlen, 4),
                                     #compression="gzip")
-    supercatg.attrs["samples"] = [i.name for i in samples]
+    supercatg.attrs["samples"] = [i.name.encode('ascii') for i in samples]
     supercatg.attrs["chunksize"] = 1000
 
     ## INIT FULL SEQS ARRAY
     ## array for clusters of consens seqs
     superseqs = ioh5.create_dataset("seqs", (nloci, len(samples), maxlen),
                                      dtype="|S1")
-    superseqs.attrs["samples"] = [i.name for i in samples]
+    superseqs.attrs["samples"] = [i.name.encode('ascii') for i in samples]
     superseqs.attrs["chunksize"] = 1000    
 
     ## INIT FULL SNPS ARRAY
