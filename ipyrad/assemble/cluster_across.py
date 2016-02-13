@@ -257,14 +257,14 @@ def build_h5_array(data, samples, nloci):
                                     dtype=np.uint32)
                                     #chunks=(nloci/10, len(samples), maxlen, 4),
                                     #compression="gzip")
-    supercatg.attrs["samples"] = [i.name.encode('ascii') for i in samples]
+    supercatg.attrs["samples"] = [i.name for i in samples]
     supercatg.attrs["chunksize"] = 1000
 
     ## INIT FULL SEQS ARRAY
     ## array for clusters of consens seqs
     superseqs = ioh5.create_dataset("seqs", (nloci, len(samples), maxlen),
                                      dtype="|S1")
-    superseqs.attrs["samples"] = [i.name.encode('ascii') for i in samples]
+    superseqs.attrs["samples"] = [i.name for i in samples]
     superseqs.attrs["chunksize"] = 1000    
 
     ## INIT FULL SNPS ARRAY
@@ -462,9 +462,13 @@ def fill_superseqs(data, samples, superseqs):
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq
-                indices.remove(sidx)
+                try:
+                    indices.remove(sidx)
+                except ValueError as _:
+                    ## duplicate in cluster, index already removed.
+                    pass
 
-            ## fill in the misses
+            ## fill in the remaining indices with N 
             for idx in indices:
                 fill[idx] = np.array(["N"]*maxlen)
 
@@ -502,8 +506,8 @@ def build_reads_file(data):
 
     ## a chunker for writing every N
     optim = 100
-    #if len(groups) > 2000:
-    #    optim = len(groups) // 10
+    if len(groups) > 2000:
+        optim = len(groups) // 10
 
     ## get seqs back from consdic
     clustbits = []
@@ -569,6 +573,7 @@ def build_input_file(data, samples, outgroups, randomseed):
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
 
+    LOGGER.info("concatenating sequences into all haplos file")
     ## combine cons files and write as pandas readable format to all file
     ## this is the file that will be read in later to build clusters
     printstr = "{:<%s}    {}" % 100   ## max len allowable name
@@ -580,6 +585,7 @@ def build_input_file(data, samples, outgroups, randomseed):
                 seqs = iter(data[1::2])
                 consout.write("".join(printstr.format(i.strip(), j) \
                               for i, j in zip(names, seqs)))
+
 
     ## created version with haplos that is also shuffled within seqlen classes
     random.seed(randomseed)
