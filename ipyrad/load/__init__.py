@@ -15,4 +15,5 @@ ip.load.load_phylip()
 
 from .load import load_assembly
 from .load import test_assembly
-
+from .load import save_json
+from .load import load_json

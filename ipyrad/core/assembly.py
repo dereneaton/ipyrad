@@ -65,9 +65,6 @@ class Assembly(object):
         Returns a dictionary with Sample names as keys and barcodes as values.
         The barcodes information is fetched from parameter 3
         `[Assembly].paramsdict['barcodes_path']`.
-    bins : dict
-        Keys: values for the path to vsearch, muscle, smalt, samtools
-        executables. 
     dirs : dict
         Returns a dictionary with the location of directories that contain 
         linked Sample object files and stats results.
@@ -127,12 +124,6 @@ class Assembly(object):
         ## print headers
         self._headers = 0
 
-        ## get binaries of dependencies
-        self.bins = ObjDict()
-        binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools"]
-        for binn, binx in zip(binnames, getbins()):
-            self.bins[binn] = binx
-
         ## statsfiles is a dict where keys return a func... 
         self.statsfiles = ObjDict({})
 
@@ -140,7 +131,7 @@ class Assembly(object):
         self.samples = {}
 
         ## samples linked 
-        self.populations = ObjDict()
+        self.populations = OrderedDict()
 
         ## multiplex files linked
         self.barcodes = ObjDict()
@@ -154,8 +145,7 @@ class Assembly(object):
         ## the default params dict
         self.paramsdict = OrderedDict([
                        ("assembly_name", name),
-                       ("project_dir", os.path.realpath(
-                                                os.path.curdir)),
+                       ("project_dir", "./"),#os.path.realpath(os.path.curdir)),
                        ("raw_fastq_path", ""),
                        ("barcodes_path", ""),
                        ("sorted_fastq_path", ""),
@@ -649,7 +639,8 @@ class Assembly(object):
             if os.path.isfile(outfile):
                 raise IPyradError("""
     File exists: {}
-    Use force argument to overwrite.""".format(outfile))
+    Use force argument to overwrite.
+    """.format(outfile))
 
         with open(outfile, 'w') as paramsfile:
             ## Write the header. Format to 80 columns
@@ -699,33 +690,16 @@ class Assembly(object):
 
 
 
-    def save(self, path=None):
+    def save(self):
         """ 
-        Save Assembly object to disk as a serialized Pickle (.assembly file).
-        Used for checkpointing, ipyrad autosaves after every assembly step.
-
-        Parameters
-        ----------
-        path : str
-            path to save Assembly. Default is [workingdir]/[name].assembly
+        Save Assembly object to disk as a JSON file. Used for checkpointing, 
+        ipyrad auto-saves after every assembly step. File is saved to:
+        [project_dir]/[assembly_name].json
 
         """
-        print("    Saving current assembly.")
-        ## Trap keyboard interrupt during save to prevent fscking dill objects.
-        if not path:
-            path = os.path.join( 
-                                self.paramsdict["project_dir"],
-                                self.name+".assembly")
-        done = False
-        while not done:
-            dillout = open(path, "wb")
-            try:
-                dill.dump(self, dillout)
-                dillout.close()
-                done = True
-            except KeyboardInterrupt:
-                print(".")
-                continue
+        print("    Saving Assembly.")
+        ip.save_json(self)
+
 
 
     # def _launch(self, inittries):
@@ -1132,7 +1106,10 @@ class Assembly(object):
         if not force:
             if os.path.exists(self.database):
                 print("""
-    Skipping step6: Clust file already exists: {}\n""".format(self.database))
+    Skipping step6: Clust file already exists: {}
+    Use the force argument to overwrite.
+    """.format(self.database))
+
             else:
                 assemble.cluster_across.run(self, samples, noreverse,
                                             force, randomseed, ipyclient)
@@ -1148,7 +1125,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         if self._headers:
-            print("  Step7: Filter and write output files for [{}] Samples.".\
+            print("  Step7: Filter and write output files for {} Samples.".\
                   format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
@@ -1466,78 +1443,6 @@ def expander(namepath):
 
 
 
-def cmd_exists(cmd):
-    """ check if dependency program is there """
-    return subprocess.call("type " + cmd,
-                           shell=True, 
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE) == 0
-
-
-
-def getbins():
-    """ gets the right version of vsearch, muscle, and smalt
-    depending on linux vs osx """
-
-    # Return error if system is 32-bit arch.
-    # This is straight from the python docs:
-    # https://docs.python.org/2/library/platform.html#cross-platform
-    if not sys.maxsize > 2**32:
-        sys.exit("iPyrad requires 64bit architecture") 
-
-    ## get platform mac or linux
-    _platform = sys.platform
-
-    ## get current location
-    path = os.path.abspath(os.path.dirname(__file__))
-
-    ## find bin directory
-    ipyrad_path = os.path.dirname(os.path.dirname(path))
-    bin_path = os.path.join(ipyrad_path, "bin")
-
-    ## get the correct binaries 
-    if 'linux' in _platform:
-        vsearch = os.path.join(
-                       os.path.abspath(bin_path),
-                       "vsearch-linux-x86_64")
-        muscle = os.path.join(
-                       os.path.abspath(bin_path),
-                       "muscle-linux-x86_64")
-        smalt = os.path.join(
-                       os.path.abspath(bin_path),
-                       "smalt-linux-x86_64")
-        samtools = os.path.join(
-                       os.path.abspath(bin_path),
-                       "samtools-linux-x86_64")
-        bedtools = os.path.join(
-                       os.path.abspath(bin_path),
-                       "bedtools-linux-x86_64")
-    else:
-        vsearch = os.path.join(
-                       os.path.abspath(bin_path),
-                       "vsearch-osx-x86_64")
-        muscle = os.path.join(
-                       os.path.abspath(bin_path),
-                       "muscle-osx-x86_64")
-        smalt = os.path.join(
-                       os.path.abspath(bin_path),
-                       "smalt-osx-x86_64")
-        samtools = os.path.join(
-                       os.path.abspath(bin_path),
-                       "samtools-osx-x86_64")
-        bedtools = os.path.join(
-                       os.path.abspath(bin_path),
-                       "bedtools-osx-x86_64")
-
-    # Test for existence of binaries
-    assert cmd_exists(muscle), "muscle not found here: "+muscle
-    assert cmd_exists(vsearch), "vsearch not found here: "+vsearch
-    assert cmd_exists(smalt), "smalt not found here: "+smalt
-    assert cmd_exists(samtools), "samtools not found here: "+samtools
-    assert cmd_exists(bedtools), "bedtools not found here: "+bedtools
-    return vsearch, muscle, smalt, samtools, bedtools
-
-
 
 def merge(name, assemblies):
     """ Creates and returns a new Assembly object in which 
@@ -1599,6 +1504,10 @@ def bufcountlines(filename, gzipped):
 def tuplecheck(newvalue, dtype=str):
     """ Takes a string argument and returns value as a tuple. 
     Needed for paramfile conversion from CLI to set_params args """
+
+    if isinstance(newvalue, list):
+        newvalue = tuple(newvalue)
+
     if isinstance(newvalue, str):
         newvalue = newvalue.rstrip(")").strip("(")
         try:
@@ -1713,9 +1622,10 @@ def paramschecker(self, param, newvalue):
 
             else:
                 raise IPyradWarningExit("""
-    Error: fastq sequence files in sorted_fastq_path could not be found. Please
-    check that the location is set correctly. You entered:
-    {}
+    Error: fastq sequence files in sorted_fastq_path could not be found.
+    Please check that the location was entered correctly and that a wild
+    card selector (*) was used to select all or a subset of files. 
+    You entered: {}
     """.format(fullsortedpath))
         ## if no value was entered then set to "". 
         else:
@@ -1888,19 +1798,24 @@ def paramschecker(self, param, newvalue):
         ## Get all allowed file types from assembly.write_outfiles
         output_formats = assemble.write_outfiles.OUTPUT_FORMATS
 
+        if isinstance(newvalue, list):
+            newvalue = ",".join(newvalue)
+
         ## If wildcard, then just do them all
         if "*" in newvalue:
             requested_formats = output_formats
+            #"".join([i[0] for i in output_formats])
         else:
-            ## output_formats should be comma separated, with optional spaces
-            requested_formats = newvalue.replace(" ", "").split(',')
-
+            #newvalue = newvalue.replace(",", "")
+            #requested_formats = "".join([i[0] for i in newvalue.split()])
+            requested_formats = [i[0] for i in \
+                                 newvalue.replace(" ", "").split(",")]
+        
             ## Exit if requested formats are bad
-            ## Only test here if no wildcard present
             for form in requested_formats:
-                if form not in output_formats:
-                    raise IPyradWarningExit(""")
-    File format [ {} ] not recognized, must be one of: {}.
+                if form not in [i[0] for i in output_formats]:
+                    raise IPyradWarningExit("""
+    File format [{}] not recognized, must be one of: {}.
     """.format(form, output_formats))
         ## set the param
         self.paramsdict['output_formats'] = requested_formats
@@ -1927,6 +1842,9 @@ def paramschecker(self, param, newvalue):
 
 
     elif param == 'excludes':
+        if isinstance(newvalue, list):
+            newvalue = ",".join(newvalue)
+
         if newvalue.strip():
             excluded_individuals = newvalue.replace(" ", "").split(',')
 
@@ -1948,6 +1866,9 @@ def paramschecker(self, param, newvalue):
 
 
     elif param == 'outgroups':
+        if isinstance(newvalue, list):
+            newvalue = ",".join(newvalue)
+
         if newvalue.strip():
             outgroup_inds = newvalue.replace(" ", "").split(',')
 
@@ -1972,14 +1893,45 @@ def paramschecker(self, param, newvalue):
 
 
 
-### TRYING OUT A JSON DUMP
-def save_json(self, path):
-    """ saved Assembly and Samples as JSON """
-    import json
-    json.dumps(
-        {'samples': [sample.to_JSON for sample in self.samples.values()], 
-         'assembly': self.__dict__}, 
-        sort_keys=True, indent=4)
+# ### TRYING OUT A JSON DUMP
+# def save_json(self, path):
+#     """ saved Assembly and Samples as JSON """
+#     import json
+
+#     ## excluded elements from dump b/c they are only relevant to the 
+#     ## current loaded object
+#     ##   1. _ipcluster
+#     ##   2. _headers
+#     ##   3. 
+
+#     datadump = json.dumps({
+#         "_version": self.__dict__["version"],
+#         "name": self.__dict__["name"], 
+#         "dirs": self.__dict__["dirs"],
+#         "barcodes": self.__dict__["barcodes"], 
+#         "database": self.__dict__["database"], 
+#         "outfiles": self.__dict__["outfiles"], 
+#         "paramsdict": self.__dict__["paramsdict"], 
+#         "populations": self.__dict__["populations"], 
+#         "samples": self.__dict__["samples"].keys(), 
+#         "stats": self.__dict__["stats"].to_dict(),
+        
+#         }, 
+#         sort_keys=False, indent=4, separators=(",", ":"))
+
+#     ## this is a little trickier, data in the stats pandas data frames is 
+#     ## sometimes stored as numpy data types (float64) that can't be saved
+#     ## so we need to store as strings and get the type back correctly @ load.
+#     sampledump = json_dumps({
+#         ""
+
+
+#         })
+
+#     json.dumps(
+#         {'samples': [sample.to_JSON for sample in self.samples.values()], 
+#          'assembly': self.__dict__}, 
+#          sort_keys=True, indent=4)
 
 
 
