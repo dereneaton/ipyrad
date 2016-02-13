@@ -167,12 +167,13 @@ def save_json(data):
     for key, sample in data.samples.iteritems():
         sampledict[key] = sample._to_fulldict()
 
-    ## json format it
-    fulldump = json.dumps({
+    ## json format it using cumstom Encoder class
+    fulldumps = json.dumps({
         "assembly": datadict,
         "samples": sampledict
         },
-        sort_keys=False, indent=4, separators=(",", ":")
+        cls=Encoder,
+        sort_keys=False, indent=4, separators=(",", ":"),
         )
 
     ## save to file
@@ -183,7 +184,7 @@ def save_json(data):
     while not done:
         try:
             with open(assemblypath, 'w') as jout:
-                jout.write(fulldump)
+                jout.write(fulldumps)
             done = 1
         except (KeyboardInterrupt, SystemExit): 
             print('.')
@@ -200,8 +201,8 @@ def load_json(path, quiet=False):
     for inpath in checkfor:
         try:
             with open(inpath, 'r') as infile:
-                fullj = json.loads(infile.read(),
-                        object_pairs_hook=OrderedDict)
+                ## uses _tup_and_byte to ensure ascii and tuples are correct
+                fullj = json.loads(infile.read(), object_hook=_tup_and_byte)
         except IOError:
             pass
 
@@ -228,11 +229,21 @@ def load_json(path, quiet=False):
     null.samples = {name: "" for name in samplekeys}
 
     ## Next get paramsdict and use set_params to convert values back to 
-    ## the correct dtypes
+    ## the correct dtypes. Allow set_params to fail because the object will 
+    ## be subsequently updated by the params from the params file, which may
+    ## correct any errors/incompatibilities in the old params file
     oldparams = fullj["assembly"].pop("paramsdict")
     for param, val in oldparams.iteritems():
         if param != "assembly_name":
-            null.set_params(param, val)
+            try:
+                null.set_params(param, val)
+            except IPyradWarningExit as inst:
+                #null.set_params(param, "")
+                LOGGER.warning(""" 
+    Load assembly error setting params. Not critical b/c new params file may
+    correct the problem. Recorded here for debugging:
+    {}
+    """.format(inst))
 
     ## Check remaining attributes of Assembly and Raise warning if attributes
     ## do not match up between old and new objects
@@ -244,8 +255,8 @@ def load_json(path, quiet=False):
 
     ## raise warning if there are lost/deprecated keys
     if lostkeys:
-        LOGGER.error("""
-    :: load_json found {a} keys that are unique to the older Assembly.
+        LOGGER.warning("""
+    load_json found {a} keys that are unique to the older Assembly.
         - assembly [{b}] v.[{c}] has: {d}
         - current assembly is v.[{e}]
         """.format(a=len(lostkeys), 
@@ -284,8 +295,8 @@ def load_json(path, quiet=False):
     ## Raise warning if any oldstats were lost or deprecated
     alldiffs = diffattr.union(diffstats).union(diffindstats)
     if any(alldiffs):
-        LOGGER.error("""
-    :: load_json found {a} keys that are unique to the older Samples.
+        LOGGER.warning("""
+    load_json found {a} keys that are unique to the older Samples.
         - assembly [{b}] v.[{c}] has: {d}
         - current assembly is v.[{e}]
         """.format(a=len(alldiffs), 
@@ -344,3 +355,54 @@ def load_json(path, quiet=False):
     return null
 
 
+
+
+class Encoder(json.JSONEncoder):
+    """ Save JSON sting with tuples embedded as described in stackoverflow
+    thread. Modified here to include dictionary values as tuples.
+    link: http://stackoverflow.com/questions/15721363/
+
+    This Encoder Class is used as the 'cls' argument to json.dumps()
+    """
+    def encode(self, obj):
+        """ function to encode json string"""
+        def hint_tuples(item):
+            """ embeds __tuple__ hinter in json strings """
+            if isinstance(item, tuple):
+                return {'__tuple__': True, 'items': item}
+            if isinstance(item, list):
+                return [hint_tuples(e) for e in item]
+            if isinstance(item, dict):
+                return {
+                    key: hint_tuples(val) for key, val in item.iteritems()
+                    }
+            else:
+                return item
+
+        return super(Encoder, self).encode(hint_tuples(obj))
+
+
+
+def _tup_and_byte(obj):
+    """ wat """
+    # if this is a unicode string, return its string representation
+    if isinstance(obj, unicode):
+        return obj.encode('utf-8')
+
+    # if this is a list of values, return list of byteified values
+    if isinstance(obj, list):
+        return [_tup_and_byte(item) for item in obj]
+
+    # if this is a dictionary, return dictionary of byteified keys and values
+    # but only if we haven't already byteified it
+    if isinstance(obj, dict):
+        if "__tuple__" in obj:
+            return tuple(_tup_and_byte(item) for item in obj["items"])
+        else:
+            return {
+                _tup_and_byte(key): _tup_and_byte(val) for \
+                key, val in obj.iteritems()
+        }
+
+    # if it's anything else, return it in its original form
+    return obj
