@@ -138,7 +138,7 @@ def getassembly(args, parsedict):
 
     ## Here either force is on or the current assembly file doesn't exist,
     ## in which case create a new.
-    if args.force and '1' in args.steps:
+    if '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
     else:
@@ -181,7 +181,7 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n data                       ## create new file called data-params.txt 
+    ipyrad -n data                       ## create new file called params-data.txt 
     ipyrad -p params-data.txt            ## run ipyrad with settings in params file
     ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
     ipyrad -p params-data.txt -s 4567    ## run steps 4-7 of assembly.
@@ -279,12 +279,13 @@ def main():
         ## default params.txt file
         try:
             tmpassembly = ip.Assembly(args.new, quiet=True)
-            tmpassembly.write_params(args.new+"-params.txt", force=args.force)
+            tmpassembly.write_params("params-{}.txt".format(args.new), 
+                                     force=args.force)
         except Exception as inst:
             print(inst)
             sys.exit(2)
 
-        print("\n    New file `{}-params.txt` created in {}\n".\
+        print("\n    New file `params-{}.txt` created in {}\n".\
                format(args.new, os.path.realpath(os.path.curdir)))
         sys.exit(2)
 

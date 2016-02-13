@@ -213,10 +213,11 @@ def load_json(path, quiet=False):
         oldpath = os.path.join(olddir, os.path.splitext(oldname)[0]+".json")
         null = ip.Assembly(oldname, quiet=True)
 
-    except AttributeError as inst:
+    except (UnboundLocalError, AttributeError) as inst:
         raise IPyradWarningExit("""
-    Could not find saved Assembly file (.json) in path: {}
-    Expected location is: [project_dir]/[assembly_name]
+    Could not find saved Assembly file (.json) in expected location.
+    Checks in: [project_dir]/[assembly_name].json
+    Checked: {}
     """.format(inpath))
 
     ## print msg with shortpath
