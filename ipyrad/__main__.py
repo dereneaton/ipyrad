@@ -193,7 +193,7 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n                            ## create new params.txt file.
+    ipyrad -n my_species                 ## create new params-my_species.txt file.
     ipyrad -p params.txt                 ## run ipyrad with settings in params.txt.
     ipyrad -p params.txt -s 123          ## run only steps 1, 2 and 3 of assembly.
     ipyrad -p params.txt -s 4567         ## run steps 4, 5, 6 and 7 of assembly.
@@ -289,13 +289,13 @@ def main():
         ## default params.txt file
         try:
             tmpassembly = ip.core.assembly.Assembly(args.new, quiet=True)
-            tmpassembly.write_params(args.new+"-params.txt", force=args.force)
+            tmpassembly.write_params("params-"+args.new+".txt", force=args.force)
         except Exception as inst:
             print(inst)
             print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
-        print("New file `{}-params.txt` created in {}".\
+        print("New file `params-{}.txt` created in {}".\
                format(args.new, os.path.realpath(os.path.curdir)))
 
         sys.exit(2)
