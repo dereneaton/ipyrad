@@ -298,9 +298,10 @@ def load_json(path, quiet=False):
     for sample in null.samples:
         ## create a null Sample
         null.samples[sample] = ip.Sample()
+
         ## set ObjDicts
         null.samples[sample].statsfiles = ObjDict()
-        null.samples[sample].files = ObjDict()        
+        null.samples[sample].files = ObjDict()
 
         ## save stats
         sdat = fullj["samples"][sample]['stats']
@@ -311,6 +312,12 @@ def load_json(path, quiet=False):
             null.samples[sample].statsfiles[statskey] = \
                 pd.Series(fullj["samples"][sample]["statsfiles"][statskey])
 
+        ## save files
+        for filehandle in fullj["samples"][sample]["files"].keys():
+            null.samples[sample].files[filehandle] = \
+                fullj["samples"][sample]["files"][filehandle]
+
+
     ## save to assembly object
     for statskey in statsfiles_keys:
         indstat = null.build_stat(statskey)
@@ -320,6 +327,7 @@ def load_json(path, quiet=False):
     ## add remaning attributes to null Samples
     shared_keys = set(sample_keys).intersection(newkeys)
     shared_keys.discard("stats")
+    shared_keys.discard("files")    
     shared_keys.discard("statsfiles")
 
     for sample in null.samples:
