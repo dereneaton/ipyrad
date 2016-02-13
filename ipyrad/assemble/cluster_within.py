@@ -20,6 +20,8 @@ import tempfile
 import itertools
 import subprocess
 import numpy as np
+import ipyrad
+
 from collections import OrderedDict, defaultdict
 from refmap import *
 from util import * 
@@ -275,7 +277,7 @@ def muscle_call(data, names, seqs):
     overload the PIPE buffer.
      """
     inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
-    return subprocess.Popen(data.bins.muscle, 
+    return subprocess.Popen(ipyrad.bins.muscle, 
                             stdin=subprocess.PIPE, 
                             stdout=subprocess.PIPE)\
                             .communicate(inputstring)[0]
@@ -631,7 +633,7 @@ def derep_and_sort(data, sample, nthreads):
     LOGGER.debug("derep FILE %s", sample.files.edits[0][0])
 
     ## do dereplication with vsearch
-    cmd = data.bins.vsearch+\
+    cmd = ipyrad.bins.vsearch+\
           " -derep_fulllength "+sample.files.edits[0][0]\
          +reverse \
          +" -output "+os.path.join(data.dirs.edits, sample.name+"_derep.fastq")\
@@ -694,7 +696,7 @@ def cluster(data, sample, noreverse, nthreads):
         LOGGER.warn(noreverse, "not performing reverse complement clustering")
 
     ## get call string
-    cmd = data.bins.vsearch+\
+    cmd = ipyrad.bins.vsearch+\
         " -cluster_smallmem "+derephandle+\
         reverse+\
         cov+\

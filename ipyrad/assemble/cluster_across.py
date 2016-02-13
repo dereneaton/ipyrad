@@ -18,6 +18,7 @@ import itertools
 import subprocess
 import numpy as np
 import pandas as pd
+import ipyrad as ip
 from util import *
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
@@ -202,7 +203,7 @@ def cluster(data, noreverse):
 
     ## get call string. Thread=0 means all. 
     ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
-    cmd = data.bins.vsearch+\
+    cmd = ip.bins.vsearch+\
         " -cluster_smallmem "+cathaplos \
        +reverse \
        +cov \
