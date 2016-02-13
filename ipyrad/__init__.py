@@ -41,8 +41,7 @@ try:
 ## in case system doesn't let you use /tmp            
 except (OSError, IOError):
     __debugfile__ = _os.devnull
-__loglevel__ = "ERROR"
-    print("  no log file")
+    _, __loglevel__ = "null", "ERROR"  ## hack for versioner
 
 
 # set up logging to file 
