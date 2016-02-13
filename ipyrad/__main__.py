@@ -8,16 +8,13 @@ from ipyrad.assemble.util import IPyradError
 import pkg_resources
 import ipyrad as ip
 import argparse
-import logging
+import logging as _logging
 import sys
 import os
-# import socket
-# import ipyparallel as ipp
-# from collections import Counter
 
 # pylint: disable=W0212
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = _logging.getLogger(__name__)
 
 
 def parse_params(args):
@@ -107,8 +104,10 @@ def branch_assembly(args, parsedict):
 
     print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
+
     print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
     new_data.write_params(new_data.name+"-params.txt")
+
 
 
 def getassembly(args, parsedict):
@@ -234,15 +233,15 @@ def parse_command_line():
 
     parser.add_argument('-n', metavar='new', dest="new", type=str, 
         default=None, 
-        help="create params file as 'name-params.txt' in current directory")
+        help="create params file as 'new-params.txt' in current directory")
 
     parser.add_argument('-p', metavar='params', dest="params",
         type=str, default=None,
         help="path to params.txt file")
 
-    parser.add_argument('-b', "--branch", metavar='branch', dest="branch",
+    parser.add_argument('-b', metavar='branch', dest="branch",
         type=str, default=None,
-        help="create a new branch of the assembly designated by the -p flag")
+        help="create new branch of assembly designated by the -p flag")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
@@ -301,7 +300,7 @@ def main():
 
         sys.exit(2)
 
-    ## if showing results or branching, do not do any steps and do not print header
+    ## if showing results or branching, do not do steps and do not print header
     if args.results or args.branch:
         args.steps = ""
         print("")
@@ -344,17 +343,10 @@ def main():
                 ## set to print headers
                 data._headers = 1
 
-                ## print the connection info
-                # ipyclient = ipp.Client(cluster_id=data._ipclusterid)
-                # dview = ipyclient[:]
-                # ccx = Counter(dview.apply_sync(socket.gethostname))
-                # for key in ccx:
-                #     print("  Node: {}: {} cores".format(key, ccx[key]))
-                #     print("")
-
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force, preview=args.preview)
+
 
 
 if __name__ == "__main__": 

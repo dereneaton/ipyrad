@@ -186,6 +186,11 @@ def stackarray(data, sample):
             seqs = piece[1::2]
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
+            ## double reps if the read was fully merged.
+            merged = ["_m1;s" in sname for sname in names]
+            if any(merged):
+                reps = [i*2 if j else i for i, j in zip(reps, merged)]
+
             sseqs = [list(seq) for seq in seqs]
             arrayed = np.concatenate(
                       [[seq]*rep for seq, rep in zip(sseqs, reps)])
