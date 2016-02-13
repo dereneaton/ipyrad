@@ -144,8 +144,16 @@ def getassembly(args, parsedict):
     cwd = os.path.realpath(os.path.curdir)
     os.chdir(project_dir)
 
-    ## if forcing and doing step 1 then do not load existing Assembly
-    if '1' in args.steps:
+    ## If the assembly already exists, and the user asks for step 1 make them
+    ## use the force flag.
+    if os.path.isfile(assembly_file) and not args.force and '1' in args.steps:
+        msg = "  Assembly file {} already exists. Use --force to overwrite.".\
+            format(assembly_file)
+        sys.exit(msg)
+
+    ## Here either force is on or the current assembly file doesn't exist,
+    ## in which case create a new.
+    elif '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
 
@@ -166,8 +174,9 @@ def getassembly(args, parsedict):
 
         ## if not found then create a new one
         except AssertionError:
-            LOGGER.info("No current assembly found.")
-            print("  No assembly found at: {}".format(assembly_file))
+            msg = "  No assembly found at: {}".format(assembly_file)
+            LOGGER.info(msg)
+            sys.exit(msg)
 
     ## ensure we are back where we belong in original cur dir
     os.chdir(cwd)
@@ -196,7 +205,7 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n                            ## create new params.txt file.
+    ipyrad -n my_species                 ## create new params-my_species.txt file.
     ipyrad -p params.txt                 ## run ipyrad with settings in params.txt.
     ipyrad -p params.txt -s 123          ## run only steps 1, 2 and 3 of assembly.
     ipyrad -p params.txt -s 4567         ## run steps 4, 5, 6 and 7 of assembly.
@@ -300,7 +309,6 @@ def main():
 
         print("\n  New file `params-{}.txt` created in: {}\n"\
               .format(args.new, os.path.realpath(os.path.curdir)))
-
         sys.exit(2)
 
     ## if showing results or branching, do not do steps and do not print header
