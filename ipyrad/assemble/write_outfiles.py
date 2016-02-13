@@ -65,7 +65,8 @@ def run(data, samples, force, ipyclient):
     LOGGER.info("Writing other formats")
     #make_outfiles(data, samples)
 
-    print("    Outfiles written to: {}\n".format(data.dirs.outfiles))
+    shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
+    print("    Outfiles written to: {}".format(shortpath))
 
 
 
