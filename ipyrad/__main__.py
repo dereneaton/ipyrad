@@ -44,12 +44,13 @@ def parse_params(args):
     return parsedict
 
 
+
 def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
 
     project_dir = parsedict['1']
     ## Be nice if somebody also puts in the file extension
-    assembly_name = parsedict['0'].split(".assembly")[0]
+    assembly_name = parsedict['0']  ##.split(".assembly")[0]
     my_assembly = os.path.join(project_dir, assembly_name)
 
     ## If the project_dir doesn't exist don't even bother trying harder.
@@ -69,8 +70,11 @@ def showstats(parsedict):
         raise ip.assemble.util.IPyradParamsError(msg)
 
     try:
-        data = ip.load.load_assembly(my_assembly, quiet=True)
-
+        print(my_assembly)
+        if os.path.exists(my_assembly+".assembly"):
+            data = ip.load.load_assembly(my_assembly, quiet=True)
+        else:
+            data = ip.load_json(my_assembly, quiet=True)
 
         print("Summary stats of Assembly {}".format(data.name) \
              +"\n------------------------------------------------")
@@ -94,6 +98,7 @@ def showstats(parsedict):
     """).format(my_assembly)
 
 
+
 def branch_assembly(args, parsedict):
     """ Load the passed in assembly and create a branch. Copy it
         to a new assembly, and also write out the appropriate params.txt
@@ -105,8 +110,9 @@ def branch_assembly(args, parsedict):
     print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
 
-    print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
-    new_data.write_params(new_data.name+"-params.txt")
+    print("  Writing new params file to {}"\
+          .format("params-"+new_data.name+".txt"))
+    new_data.write_params("params-"+new_data.name+".txt")
 
 
 
@@ -122,7 +128,7 @@ def getassembly(args, parsedict):
     ##
     ## Be nice if the user includes the extension.
     project_dir = ip.core.assembly.expander(parsedict['1'])
-    assembly_name = parsedict['0'].split(".assembly")[0]
+    assembly_name = parsedict['0'] #.split(".assembly")[0]
     assembly_file = os.path.join(project_dir, assembly_name)
 
     ## Assembly creation will handle error checking  on
@@ -149,8 +155,14 @@ def getassembly(args, parsedict):
 
         ## try loading an existing one
         try:
-            #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_file)
+            if os.path.exists(assembly_file+".assembly"):
+                ## json file takes precedence if both exist
+                if os.path.exists(assembly_file+".json"):
+                    data = ip.load_json(assembly_file)
+                else:
+                    data = ip.load.load_assembly(assembly_file)                    
+            else:
+                data = ip.load_json(assembly_file)
 
         ## if not found then create a new one
         except AssertionError:
@@ -280,14 +292,14 @@ def main():
         ## default params.txt file
         try:
             tmpassembly = ip.core.assembly.Assembly(args.new, quiet=True)
-            tmpassembly.write_params(args.new+"-params.txt", force=args.force)
+            tmpassembly.write_params("params-{}.txt".format(args.new),
+                                     force=args.force)
         except Exception as inst:
             print(inst)
-            print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
-        print("New file `{}-params.txt` created in {}".\
-               format(args.new, os.path.realpath(os.path.curdir)))
+        print("\n  New file `params-{}.txt` created in: {}\n"\
+              .format(args.new, os.path.realpath(os.path.curdir)))
 
         sys.exit(2)
 
