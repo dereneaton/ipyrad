@@ -835,7 +835,7 @@ class Assembly(object):
                 args.append(ipyclient)
                 stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError) as _:
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError, UnboundLocalError) as inst:
             ## raise by ipyparallel if no connection file is found for 30 sec.
             msg = """
     Check to ensure ipcluster is started. When using the API you must start
@@ -848,6 +848,7 @@ class Assembly(object):
     There was a problem connecting to parallel engines. See Docs for advice.
             """
             ## raise right away since there is no ipyclient to close
+            msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg 
             raise IPyradError(msg)
 
         ## except user or system interrupt

@@ -221,9 +221,10 @@ def muscle_align(args):
                           +"indels. Throw it out and count it as filtered.")
                             ## Remove the seq name from the names list, and 
                             ## continue with the next iteration of the for loop,
-                            ## effectively drops the rseq
-                            anames.pop(ridx)
-                            aseqs.pop(ridx)
+                            ## effectively drops the rseq. Use list comprehension
+                            ## to drop the idx'th element and then convert back to tuple
+                            anames = tuple([x for i,x in enumerate(anames) if i!=ridx])
+                            aseqs = tuple([x for i,x in enumerate(aseqs) if i!=ridx])
                             continue
                     if idxs:
                         rightlimit = min(idxs)
@@ -504,33 +505,40 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         ## FILL LIST ARGS for funcs mapreads and clustall
         submitted_args = []
         for sample in samples:
-            #if not align_only:
-            submitted_args.append([data, sample, noreverse, tpproc])
-    
-        ## MAP READS if reference sequence is specified
-        if not data.paramsdict["assembly_method"] == "denovo":
-            results = threaded_view.map(mapreads, submitted_args)
-            results.get()
-    
-        ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
-        ## for samples in the order in which they were submitted
-        results = threaded_view.map(clustall, submitted_args)
-        results = results.get()
-    
-        ## record that sample is clustered but not yet aligned
-        for success, sample in zip(results, samples):
-            if success:
-                sample.stats.state = 2.5
-    
-        ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
-    
-        ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
-        ## bam files and write them to the clust.gz files to fold them back into 
-        ## the pipeline.
-        if "denovo" not in data.paramsdict["assembly_method"]: 
-            for sample in samples:
-                finalize_aligned_reads(data, sample, ipyclient)
-    
+            ## Only cluster/map reads if it hasn't already been done.
+            ## If force is true always cluster every sample
+            if not sample.stats.state == 2.5 or force:
+                #if not align_only:
+                submitted_args.append([data, sample, noreverse, tpproc])
+
+	## If all samples are in step 2.5 then submitted_args will be empty
+        if submitted_args:
+
+            ## MAP READS if reference sequence is specified
+            if not data.paramsdict["assembly_method"] == "denovo":
+                results = threaded_view.map(mapreads, submitted_args)
+                results.get()
+ 
+            ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
+            ## for samples in the order in which they were submitted
+            results = threaded_view.map(clustall, submitted_args)
+            results = results.get()
+ 
+            ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
+
+            ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
+            ## bam files and write them to the clust.gz files to fold them back into 
+            ## the pipeline.
+            if "denovo" not in data.paramsdict["assembly_method"]: 
+                for sample in samples:
+                    finalize_aligned_reads(data, sample, ipyclient)
+
+            ## record that sample is clustered but not yet aligned
+            for success, sample in zip(results, samples):
+                if success:
+                    sample.stats.state = 2.5
+
+        ## Samples at step 2.5 pick up again here.
         ## call ipp for muscle aligning only if the Sample passed clust/mapping
         for sample in samples:
             if sample.stats.state == 2.5:
