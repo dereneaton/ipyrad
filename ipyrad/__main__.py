@@ -139,7 +139,16 @@ def getassembly(args, parsedict):
     ## Here either force is on or the current assembly file doesn't exist,
     ## in which case create a new.
     if '1' in args.steps:
+        ## If assembly exists and step 1 insist on the force flag
+        if os.path.exists(assembly_file+".json") and not args.force:
+            sys.exit("  Assembly already exists, use the force flag to overwrite.")
+
         ## create a new assembly object
+        data = ip.Assembly(assembly_name)
+
+    ## If the user asks for step2 and the assembly file doesn't exist
+    ## then create a new (they want to skip step 1)
+    elif '2' in args.steps and not os.path.exists(assembly_file+".json"):
         data = ip.Assembly(assembly_name)
     else:
         ## go back to cwd since existing will be loaded from its full path
