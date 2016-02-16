@@ -15,6 +15,7 @@ import gzip
 import tempfile
 import itertools
 import subprocess
+import ipyrad 
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -185,7 +186,7 @@ def merge_pairs(data, sample): #, unmerged_files):
            "No paired read file (_R2_ file) found." 
 
     ## make revcomp file
-    cmd = data.bins.vsearch \
+    cmd = ipyrad.bins.vsearch \
       + " --fastx_revcomp "+sample.files.edits[0][1] \
       + " --fastqout "+sample.files.revcomp
     LOGGER.warning(cmd)
@@ -200,7 +201,7 @@ def merge_pairs(data, sample): #, unmerged_files):
         raise SystemExit("Error in revcomping: \n ({})".format(inst))
 
     ## vsearch merging
-    cmd = data.bins.vsearch \
+    cmd = ipyrad.bins.vsearch \
       +" --fastq_mergepairs "+sample.files.edits[0][0] \
       +" --reverse "+sample.files.edits[0][1] \
       +" --fastqout "+sample.files.merged \
@@ -454,7 +455,7 @@ def preview_truncate_fq(data, sample_fastq, nlines=None):
 
             ## write to a tmp file in the same place zcat_make_tmps would write
             with tempfile.NamedTemporaryFile('w+b', delete=False,
-                          dir=os.path.realpath(data.dirs.project),
+                          dir=os.path.realpath(data.dirs.fastqs),
                           prefix=read+".preview_tmp_", 
                           suffix=".fq") as tmp_fq:
                 tmp_fq.write("".join(quarts))

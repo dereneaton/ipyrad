@@ -18,6 +18,7 @@ import tempfile
 import itertools
 import subprocess
 import numpy as np
+import ipyrad
 from .util import *
 from ipyrad.assemble.rawedit import comp
 
@@ -58,7 +59,7 @@ def index_reference_sequence(data, force=False):
     if data._headers:
         print(msg)
 
-    cmd = data.bins.smalt\
+    cmd = ipyrad.bins.smalt\
         + " index "\
         + " -k "+ str(data._hackersonly["smalt_index_wordlen"])\
         + " " + refseq_file + " " + refseq_file
@@ -157,7 +158,7 @@ def mapreads(args):
         else:
             pairtype = " "
     
-        cmd = data.bins.smalt+\
+        cmd = ipyrad.bins.smalt+\
             " map -f sam -n " + str(nthreads) +\
             pairtype+\
             " -x -c " + str(data.paramsdict['clust_threshold'])+\
@@ -195,7 +196,7 @@ def mapreads(args):
             ## Additionally for PE only output read pairs that both align
             sam_filter_flag += " -f 0x2 "
     
-        cmd = data.bins.samtools+\
+        cmd = ipyrad.bins.samtools+\
             " view -b"+\
                 sam_filter_flag+\
                 " -U " + unmapped_bamhandle+\
@@ -211,7 +212,7 @@ def mapreads(args):
         ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
         ##   -O = Output file format, in this case bam
         ##   -o = Output file name
-        cmd = data.bins.samtools+\
+        cmd = ipyrad.bins.samtools+\
             " sort -T "+samhandle+".tmp" +\
             " -O bam "+mapped_bamhandle+\
             " -o "+sorted_mapped_bamhandle
@@ -224,7 +225,7 @@ def mapreads(args):
         ## Samtools pileup needs the bam to be indexed
         ## No arguments, a very simple function. It writes the index to 
         ## a default location
-        cmd = data.bins.samtools+\
+        cmd = ipyrad.bins.samtools+\
             " index " + mapped_bamhandle
         LOGGER.debug( "%s", cmd )
         subprocess.call(cmd, shell=True,
@@ -245,7 +246,7 @@ def mapreads(args):
         else:
             outflags = " -0 " + outfiles[0]
     
-        cmd = data.bins.samtools+\
+        cmd = ipyrad.bins.samtools+\
             " bam2fq " + outflags+\
                 " " + unmapped_bamhandle
     
@@ -451,11 +452,11 @@ def bedtools_merge(data, sample):
     else:
         bedtools_dflag = " "
 
-    cmd = data.bins.bedtools+\
+    cmd = ipyrad.bins.bedtools+\
         " bamtobed "+\
         " -i " + sample.files.mapped_reads+\
         " | " +\
-        data.bins.bedtools +\
+        ipyrad.bins.bedtools +\
         " merge "+\
         bedtools_dflag
     LOGGER.debug("%s", cmd)
@@ -489,7 +490,7 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
 
     try:
         ## Make the samtools view command to output bam in the region of interest
-        view_cmd = data.bins.samtools+\
+        view_cmd = ipyrad.bins.samtools+\
             " view "+\
             " -b "+\
             sample.files.mapped_reads+\
@@ -504,7 +505,7 @@ def bam_region_to_fasta( data, sample, chrom, region_start, region_end):
         else:
             outflags = " -0 " + outfiles[0]
 
-        bam2fq_cmd = data.bins.samtools+\
+        bam2fq_cmd = ipyrad.bins.samtools+\
             " bam2fq " + outflags + " - "
 
         cmd = " | ".join( (view_cmd, bam2fq_cmd) )
@@ -547,7 +548,7 @@ def bam_region_to_fasta2(data, sample, chrom, region_start, region_end):
     LOGGER.debug("Entering bam_region_to_fasta: %s %s %s %s", \
                  sample.name, chrom, region_start, region_end)
 
-    cmd = data.bins.samtools+\
+    cmd = ipyrad.bins.samtools+\
         " view "+\
         sample.files.mapped_reads+\
         " " + chrom + ":" + region_start + "-" + region_end
@@ -600,7 +601,7 @@ def bam_to_pileup(data, sample, chrom, region_start, region_end):
 
     pileup_file = pileup_dir+"/"+sample.name+"-"+region_start+".pileup"
 
-    cmd = data.bins.samtools+\
+    cmd = ipyrad.bins.samtools+\
         " view "+\
         sample.files.mapped_reads+\
         " " + chrom + ":" + region_start + "-" + region_end
@@ -621,7 +622,7 @@ def bam_to_pileup(data, sample, chrom, region_start, region_end):
     #if len(read_labels) < data.paramsdict["mindepth_majrule"]:
     #    return( "", [] )
 
-    cmd = data.bins.samtools+\
+    cmd = ipyrad.bins.samtools+\
         " mpileup "+\
         " -f " + data.paramsdict['reference_sequence']+\
         " -r " + chrom+":"+region_start+"-"+region_end+\
@@ -797,8 +798,7 @@ def derep_and_sort(data, sample, aligned_fasta_file):
     #data.set_params(18, 10)
 
     # This is how it's done in cluster_within
-    if sample.merged:
-    # if data.paramsdict["datatype"] in ['pairgbs', 'gbs', 'merged']:
+    if "gbs" in data.paramsdict["datatype"]:                                                                                                         
         reverse = " -strand both "
     else:
         reverse = " "
@@ -814,7 +814,7 @@ def derep_and_sort(data, sample, aligned_fasta_file):
     # help performance
     nthreads = 1
     ## do dereplication with vsearch
-    cmd = data.bins.vsearch+\
+    cmd = ipyrad.bins.vsearch+\
           " -derep_fulllength "+ aligned_fasta_file+\
           reverse+\
           " -output "+outfile.name+\
@@ -897,13 +897,13 @@ def refmap_init(data, sample):
 def refmap_stats(data, sample):
     """ Get the number of mapped and unmapped reads for a sample
     and update sample.stats """
-    cmd = data.bins.samtools+\
+    cmd = ipyrad.bins.samtools+\
     " flagstat "+sample.files.unmapped_reads
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)
     sample.stats["refseq_unmapped_reads"] = int(result.split()[0])
 
-    cmd = data.bins.samtools+\
+    cmd = ipyrad.bins.samtools+\
     " flagstat "+sample.files.mapped_reads
     result = subprocess.check_output(cmd, shell=True,
                                           stderr=subprocess.STDOUT)

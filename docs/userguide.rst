@@ -22,7 +22,7 @@ ipyrad_ is installed open a terminal and type:
 
     ipyrad -h
 
-The output will show:
+and the following help screen will appear:
 
 .. code-block:: none
 

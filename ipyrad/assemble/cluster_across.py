@@ -18,6 +18,7 @@ import itertools
 import subprocess
 import numpy as np
 import pandas as pd
+import ipyrad as ip
 from util import *
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
@@ -202,7 +203,7 @@ def cluster(data, noreverse):
 
     ## get call string. Thread=0 means all. 
     ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
-    cmd = data.bins.vsearch+\
+    cmd = ip.bins.vsearch+\
         " -cluster_smallmem "+cathaplos \
        +reverse \
        +cov \
@@ -461,9 +462,13 @@ def fill_superseqs(data, samples, superseqs):
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq
-                indices.remove(sidx)
+                try:
+                    indices.remove(sidx)
+                except ValueError as _:
+                    ## duplicate in cluster, index already removed.
+                    pass
 
-            ## fill in the misses
+            ## fill in the remaining indices with N 
             for idx in indices:
                 fill[idx] = np.array(["N"]*maxlen)
 
@@ -501,8 +506,8 @@ def build_reads_file(data):
 
     ## a chunker for writing every N
     optim = 100
-    #if len(groups) > 2000:
-    #    optim = len(groups) // 10
+    if len(groups) > 2000:
+        optim = len(groups) // 10
 
     ## get seqs back from consdic
     clustbits = []
@@ -568,6 +573,7 @@ def build_input_file(data, samples, outgroups, randomseed):
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
 
+    LOGGER.info("concatenating sequences into _catcons.tmp file")
     ## combine cons files and write as pandas readable format to all file
     ## this is the file that will be read in later to build clusters
     printstr = "{:<%s}    {}" % 100   ## max len allowable name
@@ -580,6 +586,7 @@ def build_input_file(data, samples, outgroups, randomseed):
                 consout.write("".join(printstr.format(i.strip(), j) \
                               for i, j in zip(names, seqs)))
 
+    LOGGER.info("sorting sequences into len classes")
     ## created version with haplos that is also shuffled within seqlen classes
     random.seed(randomseed)
     ## read back in cons as a data frame
@@ -588,6 +595,8 @@ def build_input_file(data, samples, outgroups, randomseed):
     consdat[2] = pd.Series([len(i) for i in consdat[1]], index=consdat.index)
     lengroups = consdat.groupby(by=2)
     lenclasses = sorted(set(consdat[2]), reverse=True)
+
+    LOGGER.info("shuffling sequences within len classes")
     ## write all cons in pandas readable format
     for lenc in lenclasses:
         group = lengroups.get_group(lenc)

@@ -8,13 +8,13 @@ from ipyrad.assemble.util import IPyradError
 import pkg_resources
 import ipyrad as ip
 import argparse
-import logging as _logging
+import logging
 import sys
 import os
 
 # pylint: disable=W0212
 
-LOGGER = _logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def parse_params(args):
@@ -49,7 +49,7 @@ def showstats(parsedict):
 
     project_dir = parsedict['1']
     ## Be nice if somebody also puts in the file extension
-    assembly_name = parsedict['0'].split(".assembly")[0]
+    assembly_name = parsedict['0']
     my_assembly = os.path.join(project_dir, assembly_name)
 
     ## If the project_dir doesn't exist don't even bother trying harder.
@@ -66,32 +66,29 @@ def showstats(parsedict):
     erased since the Assembly was started. Please restore the original name. 
     You can find the name of your Assembly in the "project dir": {}.
     """.format(project_dir)
-        raise ip.assemble.util.IPyradParamsError(msg)
+        raise IPyradError(msg)
 
-    try:
+
+    if os.path.exists(my_assembly+".assembly"):
         data = ip.load.load_assembly(my_assembly, quiet=True)
+    else:
+        data = ip.load_json(my_assembly, quiet=True)
 
+    print("Summary stats of Assembly {}".format(data.name) \
+         +"\n------------------------------------------------")
+    if not data.stats.empty:
+        print(data.stats)
+        print("\nFull stats files\n---------------------")
 
-        print("Summary stats of Assembly {}".format(data.name) \
-             +"\n------------------------------------------------")
-        if not data.stats.empty:
-            print(data.stats)
-            print("\nFull stats files\n---------------------")
+        fullcurdir = os.path.realpath(os.path.curdir)
+        for key in sorted(data.statsfiles):
+            val = data.statsfiles[key]
+            val = val.replace(fullcurdir, ".")                
+            print(key+":", val)
+            print("\n----")
+    else:
+        print("No stats to display")
 
-            fullcurdir = os.path.realpath(os.path.curdir)
-            for key in sorted(data.statsfiles):
-                val = data.statsfiles[key]
-                val = val.replace(fullcurdir, ".")                
-                print(key+":", val)
-                print("\n----")
-        else:
-            print("No stats to display")
-
-    except AssertionError as _:
-        raise IPyradError("""
-    Error: No Assembly file found at {}. 
-    Check parameter settings for [project_dir]/[assembly_name]
-    """).format(my_assembly)
 
 
 def branch_assembly(args, parsedict):
@@ -105,8 +102,9 @@ def branch_assembly(args, parsedict):
     print("  Creating a branch of assembly {} called {}".\
         format(data.name, new_data.name))
 
-    print("  Writing new params file to {}".format(new_data.name+"-params.txt"))
-    new_data.write_params(new_data.name+"-params.txt")
+    print("  Writing new params file to {}"\
+          .format("params-"+new_data.name+".txt"))
+    new_data.write_params("params-"+new_data.name+".txt")
 
 
 
@@ -122,7 +120,7 @@ def getassembly(args, parsedict):
     ##
     ## Be nice if the user includes the extension.
     project_dir = ip.core.assembly.expander(parsedict['1'])
-    assembly_name = parsedict['0'].split(".assembly")[0]
+    assembly_name = parsedict['0']
     assembly_file = os.path.join(project_dir, assembly_name)
 
     ## Assembly creation will handle error checking  on
@@ -138,26 +136,25 @@ def getassembly(args, parsedict):
     cwd = os.path.realpath(os.path.curdir)
     os.chdir(project_dir)
 
-    ## if forcing and doing step 1 then do not load existing Assembly
+    ## Here either force is on or the current assembly file doesn't exist,
+    ## in which case create a new.
     if '1' in args.steps:
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
-
     else:
         ## go back to cwd since existing will be loaded from its full path
         os.chdir(cwd)
 
-        ## try loading an existing one
-        try:
-            #print("Loading - {}".format(assembly_name))
-            data = ip.load.load_assembly(assembly_file)
+        if os.path.exists(assembly_file+".assembly"):
+            ## json file takes precedence if both exist
+            if os.path.exists(assembly_file+".json"):
+                data = ip.load_json(assembly_file)
+            else:
+                data = ip.load.load_assembly(assembly_file)                    
+        else:
+            data = ip.load_json(assembly_file)
 
-        ## if not found then create a new one
-        except AssertionError:
-            LOGGER.info("No current assembly found.")
-            print("  No assembly found at: {}".format(assembly_file))
-
-    ## ensure we are back where we belong in original cur dir
+    ## ensure pop directory
     os.chdir(cwd)
 
     ## for entering some params...
@@ -184,27 +181,29 @@ def parse_command_line():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\n
   * Example command-line usage: 
-    ipyrad -n                            ## create new params.txt file.
-    ipyrad -p params.txt                 ## run ipyrad with settings in params.txt.
-    ipyrad -p params.txt -s 123          ## run only steps 1, 2 and 3 of assembly.
-    ipyrad -p params.txt -s 4567         ## run steps 4, 5, 6 and 7 of assembly.
-    ipyrad -p params.txt -s 3 -f         ## run step 3, overwrite existing data.
+    ipyrad -n data                       ## create new file called params-data.txt 
+    ipyrad -p params-data.txt            ## run ipyrad with settings in params file
+    ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
+    ipyrad -p params-data.txt -s 4567    ## run steps 4-7 of assembly.
+    ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
   * Preview mode:
-    ipyrad -p params.txt -s --preview    ## Run quickly in preview mode to test
+    ipyrad -p params-data.txt -s --preview    ## Run fast preview mode for testing
 
   * HPC parallelization
-    ipyrad -p params.txt -s 3 --MPI      ## access cores across multiple nodes
+    ipyrad -p params-data.txt -s 3 --MPI      ## access cores across multiple nodes
 
   * Results summary quick view
-    ipyrad -p params.txt -r              ## print summary stats to screen for params
+    ipyrad -p params-data.txt -r         ## print summary stats to screen for 'data'
 
   * Run quietly
     ipyrad -p params.txt -q              ## Run quietly, do not write output to std out
 
   * Branch assembly
-    ipyrad -p params.txt -b new-params   ## Branch assembly for testing different
-                                         ## parameter values w/o having to redo steps
+    ipyrad -p params-data.txt -b newdata  ## Create new branch of Assembly 'data' 
+                                          ## called 'newdata', which inherits 
+                                          ## stats/files from 'data'. Edit params.
+    ipyrad -p params-newdata.txt -p 7     ## Run newdata using new params settings
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
@@ -214,25 +213,25 @@ def parse_command_line():
         version=str(pkg_resources.get_distribution('ipyrad')))
 
     parser.add_argument('-r', "--results", action='store_true',
-        help="show summary of results for Assembly in params.txt and exit")
+        help="show results summary for Assembly in params.txt and exit")
 
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
 
-    #parser.add_argument('-q', "--quiet", action='store_true',
-    #    help="do not print to stderror and stdout.")
+    parser.add_argument('-q', "--quiet", action='store_true',
+        help="do not print to stderror or stdout.")
 
     parser.add_argument('-n', metavar='new', dest="new", type=str, 
         default=None, 
-        help="create params file as 'new-params.txt' in current directory")
+        help="create new file 'params-{new}.txt' in current directory")
 
     parser.add_argument('-p', metavar='params', dest="params",
         type=str, default=None,
-        help="path to params.txt file")
+        help="path to params file for Assembly: params-{assembly_name}.txt")
 
     parser.add_argument('-b', metavar='branch', dest="branch",
         type=str, default=None,
-        help="create new branch of assembly designated by the -p flag")
+        help="create a new branch of the Assembly as params-{branch}.txt")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default="1234567",
@@ -243,7 +242,7 @@ def parse_command_line():
         help="number of CPU cores to use (Default=4)")
 
     parser.add_argument("--MPI", action='store_true',
-        help="connect to parallel CPUs across multiple nodes using MPI")
+        help="connect to parallel CPUs across multiple nodes")
 
     parser.add_argument("--preview", action='store_true',
         help="run ipyrad in preview mode. Subset the input file so it'll run"\
@@ -279,19 +278,18 @@ def main():
         ## Create a tmp assembly and call write_params to write out
         ## default params.txt file
         try:
-            tmpassembly = ip.core.assembly.Assembly(args.new, quiet=True)
-            tmpassembly.write_params(args.new+"-params.txt", force=args.force)
+            tmpassembly = ip.Assembly(args.new, quiet=True)
+            tmpassembly.write_params("params-{}.txt".format(args.new), 
+                                     force=args.force)
         except Exception as inst:
             print(inst)
-            print("\nUse force argument to overwrite\n")
             sys.exit(2)
 
-        print("New file `{}-params.txt` created in {}".\
+        print("\n    New file `params-{}.txt` created in {}\n".\
                format(args.new, os.path.realpath(os.path.curdir)))
-
         sys.exit(2)
 
-    ## if showing results or branching, do not do steps and do not print header
+    ## if showing results or branching, do not do any steps and do not print header
     if args.results or args.branch:
         args.steps = ""
         print("")
@@ -337,7 +335,6 @@ def main():
                 ## run assembly steps
                 steps = list(args.steps)
                 data.run(steps=steps, force=args.force, preview=args.preview)
-
 
 
 if __name__ == "__main__": 
