@@ -1160,8 +1160,8 @@ class Assembly(object):
 
         if not force:
             if os.path.exists(self.dirs.outfiles):
-                raise IPyradError("""
-    Step 7: Cowardly refusing to overwrite existing output directory: 
+                sys.exit("""
+  Step 7: Cowardly refusing to overwrite existing output directory: 
     {} 
     rerun with force argument to overwrite.""".format(self.dirs.outfiles))
 
