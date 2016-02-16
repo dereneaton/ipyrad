@@ -207,8 +207,11 @@ def parse_command_line():
   * Branch assembly
     ipyrad -p params-data.txt -b newdata  ## Create new branch of Assembly 'data' 
                                           ## called 'newdata', which inherits 
-                                          ## stats/files from 'data'. Edit params.
-    ipyrad -p params-newdata.txt -p 7     ## Run newdata using new params settings
+                                          ## stats/files from 'data'.
+
+  * Get parameter info
+    ipyrad -i                             ## Get a list of parameter names
+    ipyrad -i 7                           ## Get detailed info about a specific parameter
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
@@ -225,6 +228,10 @@ def parse_command_line():
 
     parser.add_argument('-q', "--quiet", action='store_true',
         help="do not print to stderror or stdout.")
+
+    parser.add_argument('-i', metavar="info", dest="info",
+        type=str, nargs="?", default=False,
+        help="get info about parameters")
 
     parser.add_argument('-n', metavar='new', dest="new", type=str, 
         default=None, 
@@ -262,7 +269,9 @@ def parse_command_line():
     ## parse args
     args = parser.parse_args()
 
-    if not any([args.params, args.results, args.new]):
+    if not any(x in ["params", "new", "info"] for x in vars(args).keys()):
+        print("Bad arguments: ipyrad command must include at least one of"\
+                +"`-p`, `-n` or `-i`\n")
         parser.print_help()
         sys.exit(1)
 
@@ -295,7 +304,7 @@ def main():
         sys.exit(2)
 
     ## if showing results or branching, do not do any steps and do not print header
-    if args.results or args.branch:
+    if any( [args.results, args.branch, args.info] ):
         args.steps = ""
         print("")
     else:
@@ -306,8 +315,15 @@ def main():
     "\n --------------------------------------------------"
         print(header)
     
+    if not args.info == False:
+        if args.info:
+            ip.paramsinfo(int(args.info))
+        else:
+            ip.paramsinfo()
+        sys.exit(1)
+
     ## create new Assembly or load existing Assembly, quit if args.results
-    if args.params:
+    elif args.params:
         parsedict = parse_params(args)
 
         if args.results:
