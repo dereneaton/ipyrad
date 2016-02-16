@@ -146,10 +146,6 @@ def getassembly(args, parsedict):
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
 
-    ## If the user asks for step2 and the assembly file doesn't exist
-    ## then create a new (they want to skip step 1)
-    elif '2' in args.steps and not os.path.exists(assembly_file+".json"):
-        data = ip.Assembly(assembly_name)
     else:
         ## go back to cwd since existing will be loaded from its full path
         os.chdir(cwd)
