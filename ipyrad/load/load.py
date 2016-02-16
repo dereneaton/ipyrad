@@ -274,8 +274,13 @@ def load_json(path, quiet=False):
     sample_names = fullj["samples"].keys()
     if not sample_names:
         raise IPyradWarningExit("""
-    No samples found in saved assembly. Try removing the assembly file.
+    No samples found in saved assembly. If you are just starting a new
+    assembly the file probably got saved erroneously, so it's safe to try 
+    removing the assembly file and rerunning.
       `rm {}`
+
+    If you fully completed step 1 and you see this message you should probably
+    contact the developers.
     """.format(inpath))
         
     sample_keys = fullj["samples"][sample_names[0]].keys()
