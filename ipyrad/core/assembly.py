@@ -794,9 +794,18 @@ class Assembly(object):
 
             ## check that all engines have connected            
             for _ in range(300):
+                initid = len(ipyclient)
                 time.sleep(0.1)
-                if len(ipyclient) == self._ipcluster["cores"]:
-                    break
+                if not ip.__interactive__:
+                    if len(ipyclient) == self._ipcluster["cores"]:
+                        break
+                else:
+                    ## don't know how many to expect for interactive, but the
+                    ## connection stays open, so just wait til no new engines
+                    ## have been added for three seconds
+                    time.sleep(3)
+                    if len(ipyclient) == initid:
+                        break
 
 
         except KeyboardInterrupt:

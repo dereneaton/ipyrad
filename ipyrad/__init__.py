@@ -7,7 +7,7 @@ __interactive__ = 1      ## CLI __main__ changes to 0
 __version__ = "0.1.46"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "ERROR"
+__loglevel__ = "DEBUG"
 __debugfile__ = "/tmp/ipyrad_debug.txt"
 
 ## main ip.functions
@@ -37,12 +37,12 @@ import os as _os
 try:
     if _os.path.getsize(__debugfile__) > 5000000:
         with open(__debugfile__, 'w') as clear:
-            clear.write("")
+            clear.write("file reset")
+
 ## in case system doesn't let you use /tmp            
 except (OSError, IOError):
-    __debugfile__ = _os.devnull
+    __debugfile__ = "./ipyrad_debug.txt"  ##_os.devnull
     _, __loglevel__ = "null", "ERROR"  ## hack for versioner
-
 
 # set up logging to file 
 _logging.basicConfig(level=__loglevel__,
@@ -53,7 +53,7 @@ _logging.basicConfig(level=__loglevel__,
                             +"%(message)s",
                      datefmt='%m-%d %H:%M',
                      filename='/tmp/ipyrad_debug.txt',
-                     filemode='w')
+                     filemode='a')
 
 # Define the logger and test
 _LOGGER = _logging.getLogger(__name__)

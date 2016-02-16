@@ -573,7 +573,7 @@ def build_input_file(data, samples, outgroups, randomseed):
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
 
-    LOGGER.info("concatenating sequences into all haplos file")
+    LOGGER.info("concatenating sequences into _catcons.tmp file")
     ## combine cons files and write as pandas readable format to all file
     ## this is the file that will be read in later to build clusters
     printstr = "{:<%s}    {}" % 100   ## max len allowable name
@@ -586,7 +586,7 @@ def build_input_file(data, samples, outgroups, randomseed):
                 consout.write("".join(printstr.format(i.strip(), j) \
                               for i, j in zip(names, seqs)))
 
-
+    LOGGER.info("sorting sequences into len classes")
     ## created version with haplos that is also shuffled within seqlen classes
     random.seed(randomseed)
     ## read back in cons as a data frame
@@ -595,6 +595,8 @@ def build_input_file(data, samples, outgroups, randomseed):
     consdat[2] = pd.Series([len(i) for i in consdat[1]], index=consdat.index)
     lengroups = consdat.groupby(by=2)
     lenclasses = sorted(set(consdat[2]), reverse=True)
+
+    LOGGER.info("shuffling sequences within len classes")
     ## write all cons in pandas readable format
     for lenc in lenclasses:
         group = lengroups.get_group(lenc)
