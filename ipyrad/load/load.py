@@ -272,6 +272,12 @@ def load_json(path, quiet=False):
 
     ## Now, load in the Sample objects json dicts
     sample_names = fullj["samples"].keys()
+    if not sample_names:
+        raise IPyradWarningExit("""
+    No samples found in saved assembly. Try removing the assembly file.
+      `rm {}`
+    """.format(inpath))
+        
     sample_keys = fullj["samples"][sample_names[0]].keys()
     stats_keys = fullj["samples"][sample_names[0]]["stats"].keys()
     statsfiles_keys = fullj["samples"][sample_names[0]]["statsfiles"].keys()
