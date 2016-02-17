@@ -4,7 +4,7 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.47"
+__version__ = "0.1.48"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
@@ -52,8 +52,8 @@ _logging.basicConfig(level=__loglevel__,
                             +"%(levelname)s \t"\
                             +"%(message)s",
                      datefmt='%m-%d %H:%M',
-                     filename='/tmp/ipyrad_debug.txt',
-                     filemode='a')
+                     filename=__debugfile__,
+                     filemode='a+')
 
 # Define the logger and test
 _LOGGER = _logging.getLogger(__name__)
@@ -63,6 +63,7 @@ if __loglevel__ == "DEBUG":
     _LOGGER.debug("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
 else:
     _LOGGER.info("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
+
 
 ####################################################################
 
