@@ -60,9 +60,10 @@ more informative, like the name of your organism.
 
     ipyrad -n ipyrad-test
 
-This will create a file in the current directory called `params-ipyrad-test.txt`.
+This will create a file in the current directory called ``params-ipyrad-test.txt``.
 The params file lists on each line one parameter followed by a ## mark, 
-and then a short description of the parameter. Lets take a look at it.
+then the name of the parameter, and  then a short description of its 
+purpose. Lets take a look at it.
 
 .. code-block:: bash
 
@@ -106,7 +107,7 @@ In general the defaults are sensible, and we won't mess with them for now, but t
 are a few parameters we *must* change. We need to set the path to the raw data we 
 want to analyse, and we need to set the path to the barcodes file.
 
-In your favorite text editor open params-ipyrad-test.txt and change these two lines
+In your favorite text editor open ``params-ipyrad-test.txt`` and change these two lines
 to look like this, and then save it:
 
 .. parsed-literal::
@@ -117,8 +118,8 @@ Input data format
 ~~~~~~~~~~~~~~~~~
 Before we get started let's take a look at what the raw data look like.
 
-Your input data will be in fastQ format, usually ending in .fq, .fastq, or
-.fq.gz, .fastq.gz. Your data could be split among multiple files, or all 
+Your input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
+``.fq.gz``, or ``.fastq.gz``. Your data could be split among multiple files, or all 
 within a single file (de-multiplexing goes much faster if they happen to 
 be split into multiple files). The file/s may be compressed with gzip so 
 that they have a .gz ending, but they do not need to be. The location of 
@@ -170,7 +171,7 @@ Step 1: Demultiplex the raw data files
 Step 1 reads in the barcodes file and the raw data. It scans through
 the raw data and sorts each read based on the mapping of samples to 
 barcodes. At the end of this step we'll have a new directory in our project_dir
-called `ipyrad-test_fastqs`. Inside this directory will be individual
+called ``ipyrad-test_fastqs``. Inside this directory will be individual
 fastq.gz files for each sample.
 
 **NB:** You'll notice the name of this output directory bears a strong
@@ -183,8 +184,8 @@ directory with data that belongs to it. One result of this is that
 you can have multiple assemblies of the same raw data with different
 parameter settings and you don't have to manage all the files
 yourself! (See :ref:`Branching assemblies <advanced_CLI>` for more
-info). Another result is that *you should not rename or move any
-of the directories inside your project directory*, unless you know
+info). Another result is that **you should not rename or move any
+of the directories inside your project directory**, unless you know
 what you're doing or you don't mind if your assembly breaks. 
 
 Lets take a look at the barcodes file for the simulated data. You'll 
@@ -209,7 +210,7 @@ separate line with a tab between them.
     3K_0    TGAGGG
     3L_0    ATATTA
 
-Now lets run step 1!
+Now lets run step 1! For the simulated data this will take < 1 minute.
 
 .. code-block:: bash
 
@@ -229,16 +230,16 @@ Now lets run step 1!
     Saving Assembly.
 
 There are 4 main parts to this step:
-- Create a new assembly. Since this is our first time running
+    - Create a new assembly. Since this is our first time running
 any steps we need to initialize our assembly.
-- Start the parallel cluster. ipyrad uses a parallelization 
+    - Start the parallel cluster. ipyrad uses a parallelization 
 library called ipyparallel. Every time we start a step we 
 fire up the parallel clients. This makes your assemblies go
 **smokin'** fast.
-- Actually do the demuliplexing.
-- Save the state of the assembly.
+    - Actually do the demuliplexing.
+    - Save the state of the assembly.
 
-Have a look at the results of this step in the `ipyrad-test_fastqs`
+Have a look at the results of this step in the ``ipyrad-test_fastqs``
 output directory:
 
 .. code-block:: bash
