@@ -10,8 +10,8 @@ single-end RAD-Seq as the example data, but the core concepts will apply
 to assembly of other data types (GBS and paired-end). 
 
 If you are new to RADseq analyses, this tutorial will provide a simple overview 
-of how to execute ipyrad, what the data files look like, and how to check that 
-your analysis is working, and the expected output formats.
+of how to execute ipyrad, what the data files look like, how to check that 
+your analysis is working, and what the final output formats will be.
 
 Each cell in this tutorial beginning with the header (%%bash) indicates that the 
 code should be executed in a command line shell, for example by copying and 
@@ -116,7 +116,7 @@ to look like this, and then save it:
 
 Input data format
 ~~~~~~~~~~~~~~~~~
-Before we get started let's take a look at what the raw data look like.
+Before we get started let's take a look at what the raw data looks like.
 
 Your input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
 ``.fq.gz``, or ``.fastq.gz``. Your data could be split among multiple files, or all 
@@ -383,6 +383,7 @@ time (but see :ref:`Reference sequence mapping <advanced_CLI>` if
 you're impatient).
 
 Now lets run step 3:
+
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -s 3
@@ -434,13 +435,13 @@ by examining a portion of one of the files.
 
     ## Same as above, gunzip -c means print to the screen and 
     ## `head -n 28` means just show me the first 28 lines. If 
-    ## you're interested in what more of the locie look like
+    ## you're interested in what more of the loci look like
     ## you can increase the number of lines you ask head for,
     ## e.g. ... | head -n 100
     gunzip -c ipyrad-test_clust_0.85/1A_0.clustS.gz | head -n 28
 
 Reads that are sufficiently similar (based on the above sequence similarity 
-thresholed) are grouped together in clusters separated by "//". For the first
+threshold) are grouped together in clusters separated by "//". For the first
 cluster below there is clearly one allele (homozygote) and one read with a 
 (simulated) sequencing error. For the second cluster it seems there are two alleles 
 (heterozygote), and a couple reads with sequencing errors. For the third 
@@ -482,367 +483,199 @@ Thankfully, untangling this mess is what step 4 is all about.
 
 Step 4: Joint estimation of heterozygosity and error rate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
+Jointly estimate sequencing error rate and heterozygosity to help us figure
+out which reads are "real" and which are sequencing error. We need to know
+which reads are "real" because in diploid organisms there are a maximum of 2
+alleles at any given locus. If we look at the raw data and there are 5 or 
+ten different "alleles", and 2 of them are very high frequency, and the rest 
+are singletons then this gives us evidence that the 2 high frequency alleles 
+are good reads and the rest are probably junk. This step is pretty straightforward, 
+and pretty fast. Run it thusly:
 
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -s 4
 
+.. parsed-literal::
+ --------------------------------------------------                                                                                                  
+  ipyrad [v.0.1.47]                                                                                                                                  
+  Interactive assembly and analysis of RADseq data                                                                                                   
+ --------------------------------------------------                                                                                                  
+  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]                                                                          
+  ipyparallel setup: Local connection to 4 Engines                                                                                                   
+                                                                                                                                                     
+  Step4: Joint estimation of error rate and heterozygosity                                                                                           
+    Saving Assembly.
+
+In terms of results, there isn't as much to look at as in previous steps, though
+you can invoke the ``-r`` flag to see the estimated heterozygosity and error
+rate per sample.
+
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -r
 
 .. parsed-literal::
-    ## stuff
+    Summary stats of Assembly ipyrad-test
+    ------------------------------------------------
+          clusters_hidepth  clusters_total  error_est  hetero_est  reads_filtered
+    1A_0              1000            1000   0.000757    0.002212           20099
+    1B_0              1000            1000   0.000774    0.001883           19977
+    1C_0              1000            1000   0.000745    0.002223           20114
+    1D_0              1000            1000   0.000734    0.001894           19895
+    2E_0              1000            1000   0.000778    0.001800           19928
+    2F_0              1000            1000   0.000728    0.002082           19934
+    2G_0              1000            1000   0.000707    0.001825           20026
+    2H_0              1000            1000   0.000756    0.002190           19936
+    3I_0              1000            1000   0.000778    0.001848           20084
+    3J_0              1000            1000   0.000739    0.001705           20011 
+    3K_0              1000            1000   0.000768    0.001857           20117
+    3L_0              1000            1000   0.000756    0.001979           19901 
+
 
 Step 5: Consensus base calls
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 5 uses the inferred error rate and heterozygosity to call the consensus
+of sequences within each cluster. Here we are identifying what we believe
+to be the real haplotypes at each locus within each sample.
 
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -s 5
 
+.. parsed-literal::                                                                                                                                  
+ --------------------------------------------------                                                                                                  
+  ipyrad [v.0.1.47]                                                                                                                                  
+  Interactive assembly and analysis of RADseq data                                                                                                   
+ --------------------------------------------------                                                                                                  
+  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]                                                                          
+  ipyparallel setup: Local connection to 4 Engines                                                                                                   
+                                                                                                                                                     
+  Step5: Consensus base calling                                                                                                                      
+    Diploid base calls and paralog filter (max haplos = 2)                                                                                           
+    error rate (mean, std):  0.00075, 0.00002                                                                                                        
+    heterozyg. (mean, std):  0.00196, 0.00018                                                                                                        
+    Saving Assembly. 
+
+Again we can ask for the results:
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -r
 
+And here the important information is the number of ``reads_consens``. This is 
+The number of "good" reads within each sample that we'll send on to the next step.
+
 .. parsed-literal::
-    ## stuff
+          clusters_hidepth  clusters_total  error_est  hetero_est  reads_consens
+    1A_0              1000            1000   0.000757    0.002212           1000
+    1B_0              1000            1000   0.000774    0.001883           1000
+    1C_0              1000            1000   0.000745    0.002223           1000
+    1D_0              1000            1000   0.000734    0.001894           1000
+    2E_0              1000            1000   0.000778    0.001800           1000
+    2F_0              1000            1000   0.000728    0.002082           1000
+    2G_0              1000            1000   0.000707    0.001825           1000
+    2H_0              1000            1000   0.000756    0.002190           1000
+    3I_0              1000            1000   0.000778    0.001848           1000
+    3J_0              1000            1000   0.000739    0.001705           1000
+    3K_0              1000            1000   0.000768    0.001857           1000
+    3L_0              1000            1000   0.000756    0.001979           1000
 
 Step 6: Cluster across samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 6 clusters consensus sequences across samples. Now that we have good 
+estimates for haplotypes within samples we can try to identify similar sequences
+at each locus between samples. We use the same clustering threshold as step 3
+to identify sequences between samples that are probably sampled from the same locus,
+based on sequence similarity.
 
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -s 6
 
+.. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.1.47]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]
+  ipyparallel setup: Local connection to 4 Engines
+
+  Step6: Clustering across 12 samples at 0.85 similarity
+    Saving Assembly.
+
+Since in general the stats for results of each step are sample based, the 
+output of  ``-r`` at this point is less useful. You can still try it though.
+
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -r
 
+It might be more enlightening to examine the output of step 6 by examining
+the file that contains the reads clustered across samples:
+
+.. code-block:: bash
+
+    gunzip -c ipyrad-test_consens/ipyrad-test_catclust.gz | head -n 30 | less
+
+The final output of step 6 is a file in ``ipyrad-test_consens`` called 
+``ipyrad-test_catclust.gz``. This file contains all aligned reads across
+all samples. Executing the above command you'll see the output below which 
+shows all the reads that align at one particular locus. You'll see the 
+sample name of each read followed by the sequence of the read at that locus
+for that sample. If you wish to examine more loci you can increase the number
+of lines you want to view by increasing the value you pass to ``head`` in
+the above command (e.g. ``... | head -n 300 | less``
+
 .. parsed-literal::
-    ## stuff
+    1C_0_691
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGAGTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    3L_0_597
+    TGCAGGGTGGGTKGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTGTAATCGAGTATTAGCGCGGAAGC
+    2E_0_339
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    2F_0_994
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    3K_0_941
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    1B_0_543
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    3J_0_357
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    2H_0_106
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    3I_0_202
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTACTAGCGCGGAAGC
+    2G_0_575
+    TGCAGSGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGKTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    1D_0_744
+    TGCAGGGTGGGTGGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    1A_0_502
+    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
+    //
+    //
 
 Step 7: Filter and write output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The final step is to filter the data and write output files in many 
+convenient file formats. First we apply filters for maximum number of 
+indels per locus, max heterozygosity per locus, max number of snps 
+per locus, and minimum number of samples per locus. All these filters
+are configurable in the params file and you are encouraged to explore 
+different settings, but the defaults are quite good and quite conservative.
+
+After running step 7 like so:
 
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -s 7
 
-
-Assembly and Sample objects
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-Assembly and Sample objects are used by *ipyrad* to access data stored
-on disk and to manipulate it. Each biological sample in a data set is
-represented in a Sample object, and a set of Samples is stored inside an
-Assembly object. The Assembly object has functions to assemble the data,
-and stores a log of all steps performed and the resulting statistics of
-those steps. Assembly objects can be copied or merged to allow branching
-events where different parameters can subsequently be applied to
-different Assemblies going forward. Examples of this are shown below.
-
-To create an Assembly object call ``ip.Assembly()`` and pass a name for
-the data set. An Assembly object does not initially contain Samples,
-they will be created either by linking fastq files to the Assembly
-object if data are already demultiplexed, or by running ``step1()`` to
-demultiplex raw data files, as shown below.
-
-.. code:: python
-
-    ## create an Assembly object called data1. 
-    data1 = ip.Assembly("data1")
-    
-    ## The object will be saved to disk using its assigned name
-    print "Assembly object named", data1.name
-
-
-.. parsed-literal::
-
-    Assembly object named data1
-
-
-Modifying assembly parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-All of the parameter settings are linked to an Assembly object, which
-has a set of default parameters when it is created. These can be viewed
-using the ``get_params()`` function. To get more detailed information
-about all parameters use ``ip.get_params_info()`` or to select a single
-parameter use ``ip.get_params_info(3)``. Assembly objects have a
-function ``set_params()`` that can be used to modify parameters.
-
-.. code:: python
-
-    ## modify parameters for this Assembly object
-    data1.set_params(1, "./test_rad")
-    data1.set_params(2, "./data/sim_rad_test_R1_.fastq.gz")
-    data1.set_params(3, "./data/sim_rad_test_barcodes.txt")
-    #data1.set_params(2, "~/Dropbox/UO_C353_1.fastq.part-aa.gz")
-    #data1.set_params(3, "/home/deren/Dropbox/Viburnum_revised.barcodes")
-    data1.set_params(7, 3)
-    data1.set_params(10, 'rad')
-    
-    ## print the new parameters to screen
-    data1.get_params()
-
-
-.. parsed-literal::
-
-      1   project_dir                   ./test_rad                                   
-      2   raw_fastq_path                ./data/sim_rad_test_R1_.fastq.gz             
-      3   barcodes_path                 ./data/sim_rad_test_barcodes.txt             
-      4   sorted_fastq_path                                                          
-      5   restriction_overhang          ('TGCAG', '')                                
-      6   max_low_qual_bases            5                                            
-      7   N_processors                  3                                            
-      8   mindepth_statistical          6                                            
-      9   mindepth_majrule              6                                            
-      10  datatype                      rad                                          
-      11  clust_threshold               0.85                                         
-      12  minsamp                       4                                            
-      13  max_shared_heterozygosity     0.25                                         
-      14  prefix_outname                data1                                        
-      15  phred_Qscore_offset           33                                           
-      16  max_barcode_mismatch          1                                            
-      17  filter_adapters               0                                            
-      18  filter_min_trim_len           35                                           
-      19  ploidy                        2                                            
-      20  max_stack_size                1000                                         
-      21  max_Ns_consens                5                                            
-      22  max_Hs_consens                8                                            
-      23  max_SNPs_locus                (100, 100)                                   
-      24  max_Indels_locus              (5, 99)                                      
-      25  trim_overhang                 (1, 2, 2, 1)                                 
-      26  hierarchical_clustering       0                                            
-
-
-Step 1: Demultiplex the raw data files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This uses the barcodes information to demultiplex reads in data files
-found in the 'raw\_fastq\_path'. It will create a Sample object for each
-sample that will be stored in the Assembly object.
-
-.. code:: python
-
-    ## run step 1 to demultiplex the data
-    data1.step1()
-    
-    ## print the results for each Sample in data1
-    print data1.stats.head()
-
-
-.. parsed-literal::
-
-          state  reads_raw  reads_filtered  clusters_total  clusters_kept  
-    1A_0      1      20099             NaN             NaN            NaN   
-    1B_0      1      19977             NaN             NaN            NaN   
-    1C_0      1      20114             NaN             NaN            NaN   
-    1D_0      1      19895             NaN             NaN            NaN   
-    2E_0      1      19928             NaN             NaN            NaN   
-    
-          hetero_est  error_est  reads_consens  
-    1A_0         NaN        NaN            NaN  
-    1B_0         NaN        NaN            NaN  
-    1C_0         NaN        NaN            NaN  
-    1D_0         NaN        NaN            NaN  
-    2E_0         NaN        NaN            NaN  
-
-
-Step 2: Filter reads
-~~~~~~~~~~~~~~~~~~~~
-
-If for some reason we wanted to execute on just a subsample of our data,
-we could do this by selecting only certain samples to call the ``step2``
-function on. Because ``step2`` is a function of ``data``, it will always
-execute with the parameters that are linked to ``data``.
-
-.. code:: python
-
-    %%time
-    ## example of ways to run step 2 to filter and trim reads
-    #data1.step2("1B_0")                 ## run on a single sample
-    #data1.step2(["1B_0", "1C_0"])       ## run on one or more samples
-    data1.step2(force=True)              ## run on all samples, skipping finished ones
-    
-    ## print the results
-    print data1.stats.head()
-
-Step 3: clustering within-samples
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Let's imagine at this point that we are interested in clustering our
-data at two different clustering thresholds. We will try 0.90 and 0.85.
-First we need to make a copy the Assembly object. This will inherit the
-locations of the data linked in the first object, but diverge in any
-future applications to the object. Thus, they can share the same working
-directory, and will inherit shared files, but create divergently linked
-files within this directory. You can view the directories linked to an
-Assembly object with the ``.dirs`` argument, shown below. The
-prefix\_outname (param 14) of the new object is automatically set to the
-Assembly object name.
-
-.. code:: python
-
-    ## run step 3 to cluster reads within samples using vsearch
-    #data1.step3(['2E_0'], force=True, preview=True)  # ["2H_0", "2G_0"])
-    data1.step3(force=True)
-    ## print the results
-    print data1.stats.head()
-
-Branching Assembly objects
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-And you can see below that the two Assembly objects are now working with
-several shared directories (working, fastq, edits) but with different
-clust directories (clust\_0.85 and clust\_0.9).
-
-.. code:: python
-
-    ## create a branch of our Assembly object
-    data2 = data1.branch(newname="data2")
-    
-    ## set clustering threshold to 0.90
-    data2.set_params(11, 0.90)
-    
-    ## look at inherited parameters
-    data2.get_params()
-
-.. code:: python
-
-    ## run step 3 to cluster reads within samples using vsearch
-    data2.step3(force=True)  # ["2H_0", "2G_0"])
-    
-    ## print the results
-    print data2.stats
-
-.. code:: python
-
-    print "data1 directories:"
-    for (i,j) in data1.dirs.items():
-        print "{}\t{}".format(i, j)
-        
-    print "\ndata2 directories:"
-    for (i,j) in data2.dirs.items():
-        print "{}\t{}".format(i, j)
-
-.. code:: python
-
-    ## TODO, just make a [name]_stats directory in [work] for each data obj
-    data1.statsfiles
-
-
-Saving stats outputs
-~~~~~~~~~~~~~~~~~~~~
-
-.. code:: python
-
-    data1.stats.to_csv("data1_results.csv", sep="\t")
-    data1.stats.to_latex("data1_results.tex")
-
-Example of plotting with *ipyrad*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-There are a a few simple plotting functions in *ipyrad* useful for
-visualizing results. These are in the module ``ipyrad.plotting``. Below
-is an interactive plot for visualizing the distributions of coverages
-across the 12 samples in the test data set.
-
-.. code:: python
-
-    import ipyrad.plotting as iplot
-    
-    ## plot for one or more selected samples
-    iplot.depthplot(data1, ["1A_0", "1B_0"])
-    
-    ## plot for all samples in data1
-    #iplot.depthplot(data1)
-    
-    ## save plot as pdf and html
-    iplot.depthplot(data1, outprefix="testfig")
-
-Step 4: Joint estimation of heterozygosity and error rate
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: python
-
-    import ipyrad as ip
-    data1 = ip.load_assembly("test_rad/data1")
-
-.. code:: python
-
-    ## run step 4
-    data1.step4("1A_0", force=True)
-    
-    ## print the results
-    print data1.stats
-
-Step 5: Consensus base calls
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: python
-
-    #import ipyrad as ip
-    
-    ## reload autosaved data. In case you quit and came back 
-    #data1 = ip.load_dataobj("test_rad/data1.assembly")
-
-.. code:: python
-
-    ## run step 5
-    data1.step5()
-    
-    ## print the results
-    print data1.stats
-
-.. code:: python
-
-    data1.samples["1A_0"].stats
-
-Quick parameter explanations are always on-hand
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: python
-
-    ip.get_params_info(10)
-
-Log history
-~~~~~~~~~~~
-
-A common problem after struggling through an analysis is that you find
-you've completely forgotten what parameters you used at what point, and
-when you changed them. The log history time stamps all calls to
-``set_params()``, as well as calls to ``step`` methods. It also records
-copies/branching of data objects.
-
-.. code:: python
-
-    for i in data1.log:
-        print i
-
-Saving Assembly objects
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Assembly objects can be saved and loaded so that interactive analyses
-can be started, stopped, and returned to quite easily. The format of
-these saved files is a serialized 'dill' object used by Python.
-Individual Sample objects are saved within Assembly objects. These
-objects to not contain the actual sequence data, but only link to it,
-and so are not very large. The information contained includes parameters
-and the log of Assembly objects, and the statistics and state of Sample
-objects. Assembly objects are autosaved each time an assembly ``step``
-function is called, but you can also create your own checkpoints with
-the ``save`` command.
-
-.. code:: python
-
-    ## save assembly object
-    #ip.save_assembly("data1.p")
-    
-    ## load assembly object
-    #data = ip.load_assembly("data1.p")
-    #print data.name
+A new directory is created called ``ipyrad-test_outfiles``. This directory contains
+all the output files requested specified in the params file. The default is to 
+create all supported output files which include .phy, .nex, .geno, .treemix, .str, as
+well as many others.
+
+Congratulations! You've completed your first toy assembly. Now you can try applying
+what you've learned to assemble your own real data. Please consult the docs for many
+of the more powerful features of ipyrad including reference sequence mapping, 
+assembly branching, and post-processing analysis including svdquartets and 
+many population genetic summary statistics.
