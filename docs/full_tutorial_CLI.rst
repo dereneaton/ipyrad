@@ -31,6 +31,7 @@ you could complete the whole tutorial in an afternoon.
 First make a new directory and fetch & extract the test data.
 
 .. code-block:: bash
+
     mkdir ipyrad-test
     cd ipyrad-test
     curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
