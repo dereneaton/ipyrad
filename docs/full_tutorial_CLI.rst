@@ -564,7 +564,7 @@ Again we can ask for the results:
     ipyrad -p params-ipyrad-test.txt -r
 
 And here the important information is the number of ``reads_consens``. This is 
-The number of "good" reads within each sample that we'll send on to the next step.
+the number of "good" reads within each sample that we'll send on to the next step.
 
 .. parsed-literal::
           clusters_hidepth  clusters_total  error_est  hetero_est  reads_consens
@@ -611,7 +611,7 @@ output of  ``-r`` at this point is less useful. You can still try it though.
 
     ipyrad -p params-ipyrad-test.txt -r
 
-It might be more enlightening to examine the output of step 6 by examining
+It might be more enlightening to consider the output of step 6 by examining
 the file that contains the reads clustered across samples:
 
 .. code-block:: bash
