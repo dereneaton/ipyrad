@@ -29,6 +29,7 @@ Full datasets can take days and days to run, whereas with the simulated data
 you could complete the whole tutorial in an afternoon. 
 
 First make a new directory and fetch & extract the test data.
+
 .. code-block:: bash
     mkdir ipyrad-test
     cd ipyrad-test
@@ -53,14 +54,14 @@ requires you to pass in a name for your assembly. In the example we use
 analysing your own data you might call your parameters file something 
 more informative, like the name of your organism.
 
-.. code:: bash
+.. code-block:: bash
     ipyrad -n ipyrad-test
 
 This will create a file in the current directory called `params-ipyrad-test.txt`.
 The params file lists on each line one parameter followed by a ## mark, 
 and then a short description of the parameter. Lets take a look at it.
 
-.. code:: bash
+.. code-block:: bash
     cat params-ipyrad-test.txt
 
 .. parsed-literal::
@@ -120,7 +121,7 @@ that they have a .gz ending, but they do not need to be. The location of
 these files should be entered on line 2 of the params file. Below are 
 the first three reads in the example file.
 
-.. code:: bash
+.. code-block:: bash
     ## For your personal edification here is what this is doing:
     ##  gzip -c: Tells gzip to unzip the file and write the contents to the screen
     ##  head -n 12: Grabs the first 12 lines of the fastq file. Fastq files
@@ -184,7 +185,8 @@ what you're doing or you don't mind if your assembly breaks.
 Lets take a look at the barcodes file for the simulated data. You'll 
 see sample names (left) and their barcodes (right) each on a 
 separate line with a tab between them.
-.. code:: bash
+
+.. code-block:: bash
     cat ./data/sim_rad_test_barcodes.txt
 
 .. parsed-literal::
@@ -203,7 +205,7 @@ separate line with a tab between them.
 
 Now lets run step 1!
 
-.. code:: bash
+.. code-block:: bash
     ## -p indicates the params file we wish to use
     ## -s indicates the step to run
     ipyrad -p params-ipyrad-test.txt -s 1
@@ -231,7 +233,8 @@ fire up the parallel clients. This makes your assemblies go
 
 Have a look at the results of this step in the `ipyrad-test_fastqs`
 output directory:
-.. code:: bash
+
+.. code-block:: bash
    ls ipyrad-test_fastqs 
 
 .. parsed-literal::
@@ -245,7 +248,7 @@ ipyrad tracks the state of all your steps in your current
 assembly, so at any time you can ask for results by 
 invoking the `-r` flag.
 
-.. code:: bash
+.. code-block:: bash
     ## -r fetches informative results from currently 
     ##      executed steps
     ipyrad -p params-ipyrad-test.txt -r
@@ -271,7 +274,7 @@ If you want to get even **more** info ipyrad tracks all kinds of
 wacky stats and saves them to a file inside the directories it
 creates for each step. For instance to see full stats for step 1:
 
-.. code:: bash                                                                                                                                       
+.. code-block:: bash
     cat ./ipyrad-test_fastqs/s1_demultiplex_stats.txt
 
 And you'll see a ton of fun stuff I won't copy here in the interest
@@ -286,7 +289,7 @@ default value of 0, meaning it filters only based on quality scores of
 base calls. The filtered files are written to a new directory called 
 `ipyrad-test_edits`.
 
-.. code:: bash
+.. code-block:: bash
     ipyrad -p params-ipyrad-test.txt -s 2
 
 .. parsed-literal::
@@ -302,7 +305,8 @@ base calls. The filtered files are written to a new directory called
 
 Again, you can look at the results output by this step and also some 
 handy stats tracked for this assembly.
-.. code:: bash
+
+.. code-block:: bash
     ## View the output of step 2
     ls ipyrad-test_edits
 
@@ -310,7 +314,7 @@ handy stats tracked for this assembly.
     1A_0_R1_.fastq       1C_0_R1_.fastq       2E_0_R1_.fastq       2G_0_R1_.fastq       3I_0_R1_.fastq       3K_0_R1_.fastq       s2_rawedit_stats.txt
     1B_0_R1_.fastq       1D_0_R1_.fastq       2F_0_R1_.fastq       2H_0_R1_.fastq       3J_0_R1_.fastq       3L_0_R1_.fastq
 
-.. code:: bash
+.. code-block:: bash
     ## Get current stats including # raw reads and # reads
     ## after filtering.
     ipyrad -p params-ipyrad-test.txt -r
