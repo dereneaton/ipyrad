@@ -558,6 +558,7 @@ to be the real haplotypes at each locus within each sample.
     Saving Assembly. 
 
 Again we can ask for the results:
+
 .. code-block:: bash
 
     ipyrad -p params-ipyrad-test.txt -r
@@ -670,7 +671,7 @@ After running step 7 like so:
     ipyrad -p params-ipyrad-test.txt -s 7
 
 A new directory is created called ``ipyrad-test_outfiles``. This directory contains
-all the output files requested specified in the params file. The default is to 
+all the output files specified in the params file. The default is to 
 create all supported output files which include .phy, .nex, .geno, .treemix, .str, as
 well as many others.
 
