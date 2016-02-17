@@ -1,5 +1,5 @@
 
-*ipyrad* command line tutorial
+ipyrad command line tutorial
 =========================
 
 This is the full tutorial for the command line interface for ipyrad. In this
@@ -13,7 +13,7 @@ If you are new to RADseq analyses, this tutorial will provide a simple overview
 of how to execute ipyrad, what the data files look like, and how to check that 
 your analysis is working, and the expected output formats.
 
-Each cell in this tutorial begins with the header (%%bash) indicating that the 
+Each cell in this tutorial beginning with the header (%%bash) indicates that the 
 code should be executed in a command line shell, for example by copying and 
 pasting the text into your terminal (but excluding the %%bash header). All 
 lines in code cells beginning with ## are comments and should not be copied
@@ -29,7 +29,7 @@ Full datasets can take days and days to run, whereas with the simulated data
 you could complete the whole tutorial in an afternoon. 
 
 First make a new directory and fetch & extract the test data.
-.. code:: bash
+.. code-block:: bash
     mkdir ipyrad-test
     cd ipyrad-test
     curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
