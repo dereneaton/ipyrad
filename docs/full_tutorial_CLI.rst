@@ -355,13 +355,19 @@ You might also take a gander at the filtered reads:
 Step 3: clustering within-samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Step 3 de-replicates and then clusters reads within each sample 
-by the set clustering threshold and writes the clusters to new 
-files in a directory called ``ipyrad-test_clust_0.85``.
+by the set clustering threshold and then writes the clusters to new 
+files in a directory called ``ipyrad-test_clust_0.85``. Intuitively
+we are trying to identify all the reads that map to the same locus
+within each sample. The clustering threshold specifies the minimum 
+percentage of sequence similarity below which we will consider two 
+reads to have come from different loci.
 
 The true name of this output directory will be dictated by the value
 you set for the ``clust_threshold`` parameter in the params file. 
+
 .. parsed-literal::
     0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+
 You can see the default value is 0.85, so our default directory is 
 named accordingly. This value dictates the percentage of sequence
 similarity that reads must have in order to be considered reads
@@ -370,6 +376,11 @@ with this value, but 0.85 is a reliable default, balancing
 over-splitting of loci vs over-lumping. Don't mess with this
 until you feel comfortable with the overall workflow, and also
 until you've learned about :ref:`Branching assemblies <advanced_CLI>`.
+
+Later you will learn how to incorporate information from a reference 
+genome to improve clustering at this this step. For now, bide your
+time (but see :ref:`Reference sequence mapping <advanced_CLI>` if 
+you're impatient).
 
 Now lets run step 3:
 .. code-block:: bash
@@ -387,7 +398,7 @@ Now lets run step 3:
   Step3: Clustering/Mapping reads
     Saving Assembly.
 
-And we can examine the output:
+Again we can examine the output:
 
 .. code-block:: bash
 
