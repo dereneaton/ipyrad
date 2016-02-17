@@ -15,7 +15,9 @@ your analysis is working, and the expected output formats.
 
 Each cell in this tutorial begins with the header (%%bash) indicating that the 
 code should be executed in a command line shell, for example by copying and 
-pasting the text into your terminal (but excluding the %%bash header).
+pasting the text into your terminal (but excluding the %%bash header). All 
+lines in code cells beginning with ## are comments and should not be copied
+and executed.
 
 Getting Started
 ~~~~~~~~~~~~~~~
@@ -61,7 +63,7 @@ and then a short description of the parameter. Lets take a look at it.
 .. code:: bash
     cat params-ipyrad-test.txt
 
-::
+.. parsed-literal::
     ------ ipyrad params file (v.0.1.47)--------------------------------------------
     ipyrad-test                    ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
     ./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
@@ -102,7 +104,7 @@ want to analyse, and we need to set the path to the barcodes file.
 In your favorite text editor open params-ipyrad-test.txt and change these two lines
 to look like this, and then save it:
 
-::
+.. parsed-literal::
     ./data/sim_rad_test_R1_.fastq.gz         ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
     ./data/sim_rad_test_barcodes.txt         ## [3] [barcodes_path]: Location of barcodes file
 
@@ -131,7 +133,7 @@ the first three reads in the example file.
 
 And here's the output:
 
-::
+.. parsed-literal::
     @lane1_fakedata0_R1_0 1:N:0:
     TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
     +
@@ -157,8 +159,8 @@ six bases form the barcode and the next five bases (TGCAG) the
 restriction site overhang. All following bases make up the sequence 
 data.
 
-Step 1: Demultiplexing
-~~~~~~~~~~~~~~~~~~~~~~
+Step 1: Demultiplex the raw data files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Step 1 reads in the barcodes file and the raw data. It scans through
 the raw data and sorts each read based on the mapping of samples to 
 barcodes. At the end of this step we'll have a new directory in our project_dir
@@ -185,7 +187,7 @@ separate line with a tab between them.
 .. code:: bash
     cat ./data/sim_rad_test_barcodes.txt
 
-::
+.. parsed-literal::
     1A_0    CATCAT
     1B_0    AGTGAT
     1C_0    ATGGTA
@@ -202,8 +204,201 @@ separate line with a tab between them.
 Now lets run step 1!
 
 .. code:: bash
+    ## -p indicates the params file we wish to use
+    ## -s indicates the step to run
     ipyrad -p params-ipyrad-test.txt -s 1
 
+.. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.1.47]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  New Assembly: ipyrad-test
+  ipyparallel setup: Local connection to 4 Engines
+
+  Step1: Demultiplexing fastq data to Samples.
+    Saving Assembly.
+
+There are 4 main parts to this step:
+- Create a new assembly. Since this is our first time running
+any steps we need to initialize our assembly.
+- Start the parallel cluster. ipyrad uses a parallelization 
+library called ipyparallel. Every time we start a step we 
+fire up the parallel clients. This makes your assemblies go
+**smokin'** fast.
+- Actually do the demuliplexing.
+- Save the state of the assembly.
+
+Have a look at the results of this step in the `ipyrad-test_fastqs`
+output directory:
+.. code:: bash
+   ls ipyrad-test_fastqs 
+
+.. parsed-literal::
+    1A_0_R1_.fastq.gz        1D_0_R1_.fastq.gz        2G_0_R1_.fastq.gz        3J_0_R1_.fastq.gz        s1_demultiplex_stats.txt
+    1B_0_R1_.fastq.gz        2E_0_R1_.fastq.gz        2H_0_R1_.fastq.gz        3K_0_R1_.fastq.gz
+    1C_0_R1_.fastq.gz        2F_0_R1_.fastq.gz        3I_0_R1_.fastq.gz        3L_0_R1_.fastq.gz
+
+A more informative metric of success might be the number
+of raw reads demultiplexed for each sample. Fortunately 
+ipyrad tracks the state of all your steps in your current 
+assembly, so at any time you can ask for results by 
+invoking the `-r` flag.
+
+.. code:: bash
+    ## -r fetches informative results from currently 
+    ##      executed steps
+    ipyrad -p params-ipyrad-test.txt -r
+
+.. parsed-literal::
+    Summary stats of Assembly ipyrad-test
+    ------------------------------------------------
+          reads_raw  state
+    1A_0      20099      1
+    1B_0      19977      1
+    1C_0      20114      1
+    1D_0      19895      1
+    2E_0      19928      1
+    2F_0      19934      1
+    2G_0      20026      1
+    2H_0      19936      1
+    3I_0      20084      1
+    3J_0      20011      1
+    3K_0      20117      1
+    3L_0      19901      1
+
+If you want to get even **more** info ipyrad tracks all kinds of
+wacky stats and saves them to a file inside the directories it
+creates for each step. For instance to see full stats for step 1:
+
+.. code:: bash                                                                                                                                       
+    cat ./ipyrad-test_fastqs/s1_demultiplex_stats.txt
+
+And you'll see a ton of fun stuff I won't copy here in the interest
+of conserving space. Please go look for yourself if you're interested.
+
+Step 2: Filter reads
+~~~~~~~~~~~~~~~~~~~~
+This step filters reads based on quality scores, and can be used to 
+detect Illumina adapters in your reads, which is sometimes a problem 
+with homebrew type library preparations. Here the filter is set to the 
+default value of 0, meaning it filters only based on quality scores of 
+base calls. The filtered files are written to a new directory called 
+`ipyrad-test_edits`.
+
+.. code:: bash
+    ipyrad -p params-ipyrad-test.txt -s 2
+
+.. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.1.47]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]
+  ipyparallel setup: Local connection to 4 Engines
+
+  Step2: Filtering reads 
+    Saving Assembly.
+
+Again, you can look at the results output by this step and also some 
+handy stats tracked for this assembly.
+.. code:: bash
+    ## View the output of step 2
+    ls ipyrad-test_edits
+
+.. parsed-literal::                                                                                                                                  
+    1A_0_R1_.fastq       1C_0_R1_.fastq       2E_0_R1_.fastq       2G_0_R1_.fastq       3I_0_R1_.fastq       3K_0_R1_.fastq       s2_rawedit_stats.txt
+    1B_0_R1_.fastq       1D_0_R1_.fastq       2F_0_R1_.fastq       2H_0_R1_.fastq       3J_0_R1_.fastq       3L_0_R1_.fastq
+
+.. code:: bash
+    ## Get current stats including # raw reads and # reads
+    ## after filtering.
+    ipyrad -p params-ipyrad-test.txt -r
+
+.. parsed-literal::
+    Summary stats of Assembly ipyrad-test
+    ------------------------------------------------
+          reads_filtered  reads_raw  state
+    1A_0           20099      20099      2
+    1B_0           19977      19977      2
+    1C_0           20114      20114      2
+    1D_0           19895      19895      2
+    2E_0           19928      19928      2
+    2F_0           19934      19934      2
+    2G_0           20026      20026      2
+    2H_0           19936      19936      2
+    3I_0           20084      20084      2
+    3J_0           20011      20011      2
+    3K_0           20117      20117      2
+    3L_0           19901      19901      2
+
+You might also take a gander at the filtered reads:
+.. code:: bash
+    head -n 12 ./ipyrad-test_fastqs/1A_0_R1_.fastq
+
+
+Step 3: clustering within-samples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 3 de-replicates and then clusters reads within each sample 
+by the set clustering threshold and writes the clusters to new 
+files in a directory called `ipyrad-test_clust_0.85`.
+
+The true name of this output directory will be dictated by the value
+you set for the `clust_threshold` parameter in the params file. 
+.. parsed-literal::
+    0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+You can see the default value is 0.85, so our default directory is 
+named accordingly. This value dictates the percentage of sequence
+similarity that reads must have in order to be considered reads
+at the same locus. You'll more than likely want to experiment
+with this value, but 0.85 is a reliable default, balancing
+over-splitting of loci vs over-lumping. Don't mess with this
+until you feel comfortable with the overall workflow, and also
+until you've learned about :ref:`Branching assemblies <advanced_CLI>`.
+
+Now lets run step 3:
+.. code:: bash
+    ipyrad -p params-ipyrad-test.txt -s 3
+
+.. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.1.47]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]
+  ipyparallel setup: Local connection to 4 Engines
+
+  Step3: Clustering/Mapping reads
+    Saving Assembly.
+
+And we can examine the output:
+
+.. code:: bash
+    ipyrad -p params-ipyrad-test.txt -r
+
+.. parsed-literal::                                                                                                                                  
+    Summary stats of Assembly ipyrad-test
+    ------------------------------------------------
+          clusters_hidepth  clusters_total  reads_filtered  reads_raw  state
+    1A_0              1000            1000           20099      20099      3
+    1B_0              1000            1000           19977      19977      3
+    1C_0              1000            1000           20114      20114      3
+    1D_0              1000            1000           19895      19895      3
+    2E_0              1000            1000           19928      19928      3
+    2F_0              1000            1000           19934      19934      3
+    2G_0              1000            1000           20026      20026      3
+    2H_0              1000            1000           19936      19936      3
+    3I_0              1000            1000           20084      20084      3
+    3J_0              1000            1000           20011      20011      3
+    3K_0              1000            1000           20117      20117      3
+    3L_0              1000            1000           19901      19901      3
+
+
+Step 4: Joint estimation of heterozygosity and error rate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Step 5: Consensus base calls
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Assembly and Sample objects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -290,28 +485,6 @@ function ``set_params()`` that can be used to modify parameters.
       24  max_Indels_locus              (5, 99)                                      
       25  trim_overhang                 (1, 2, 2, 1)                                 
       26  hierarchical_clustering       0                                            
-
-
-Starting data
-~~~~~~~~~~~~~
-
-If the data are already demultiplexed then fastq files can be linked
-directly to the Data object, which in turn will create Sample objects
-for each fastq file (or pair of fastq files for paired data). The files
-may be gzip compressed. If the data are not demultiplexed then you will
-have to run the step1 function below to demultiplex the raw data.
-
-.. code:: python
-
-    ## This would link fastq files from the 'sorted_fastq_path' if present
-    ## Here it does nothing b/c there are no files in the sorted_fastq_path
-    data1.link_fastqs()
-
-
-.. parsed-literal::
-
-    0 new Samples created in data1.
-    0 fastq files linked to Samples.
 
 
 Step 1: Demultiplex the raw data files
