@@ -230,12 +230,8 @@ Now lets run step 1! For the simulated data this will take < 1 minute.
     Saving Assembly.
 
 There are 4 main parts to this step:
-    - Create a new assembly. Since this is our first time running
-any steps we need to initialize our assembly.
-    - Start the parallel cluster. ipyrad uses a parallelization 
-library called ipyparallel. Every time we start a step we 
-fire up the parallel clients. This makes your assemblies go
-**smokin'** fast.
+    - Create a new assembly. Since this is our first time running any steps we need to initialize our assembly.
+    - Start the parallel cluster. ipyrad uses a parallelization library called ipyparallel. Every time we start a step we fire up the parallel clients. This makes your assemblies go **smokin'** fast.
     - Actually do the demuliplexing.
     - Save the state of the assembly.
 
@@ -255,7 +251,7 @@ A more informative metric of success might be the number
 of raw reads demultiplexed for each sample. Fortunately 
 ipyrad tracks the state of all your steps in your current 
 assembly, so at any time you can ask for results by 
-invoking the `-r` flag.
+invoking the ``-r`` flag.
 
 .. code-block:: bash
 
@@ -296,9 +292,9 @@ Step 2: Filter reads
 This step filters reads based on quality scores, and can be used to 
 detect Illumina adapters in your reads, which is sometimes a problem 
 with homebrew type library preparations. Here the filter is set to the 
-default value of 0, meaning it filters only based on quality scores of 
+default value of 0 (zero), meaning it filters only based on quality scores of 
 base calls. The filtered files are written to a new directory called 
-`ipyrad-test_edits`.
+``ipyrad-test_edits``.
 
 .. code-block:: bash
 
@@ -351,7 +347,8 @@ handy stats tracked for this assembly.
     3L_0           19901      19901      2
 
 You might also take a gander at the filtered reads:
-.. code:: bash
+.. code-block:: bash
+
     head -n 12 ./ipyrad-test_fastqs/1A_0_R1_.fastq
 
 
@@ -359,10 +356,10 @@ Step 3: clustering within-samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Step 3 de-replicates and then clusters reads within each sample 
 by the set clustering threshold and writes the clusters to new 
-files in a directory called `ipyrad-test_clust_0.85`.
+files in a directory called ``ipyrad-test_clust_0.85``.
 
 The true name of this output directory will be dictated by the value
-you set for the `clust_threshold` parameter in the params file. 
+you set for the ``clust_threshold`` parameter in the params file. 
 .. parsed-literal::
     0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
 You can see the default value is 0.85, so our default directory is 
@@ -375,7 +372,8 @@ until you feel comfortable with the overall workflow, and also
 until you've learned about :ref:`Branching assemblies <advanced_CLI>`.
 
 Now lets run step 3:
-.. code:: bash
+.. code-block:: bash
+
     ipyrad -p params-ipyrad-test.txt -s 3
 
 .. parsed-literal::
@@ -391,7 +389,8 @@ Now lets run step 3:
 
 And we can examine the output:
 
-.. code:: bash
+.. code-block:: bash
+
     ipyrad -p params-ipyrad-test.txt -r
 
 .. parsed-literal::                                                                                                                                  
