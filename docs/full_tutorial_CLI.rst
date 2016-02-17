@@ -398,7 +398,7 @@ Now lets run step 3:
   Step3: Clustering/Mapping reads
     Saving Assembly.
 
-Again we can examine the output:
+Again we can examine the results:
 
 .. code-block:: bash
 
@@ -421,15 +421,113 @@ Again we can examine the output:
     3K_0              1000            1000           20117      20117      3
     3L_0              1000            1000           19901      19901      3
 
+Again, the final output of step 3 is dereplicated, clustered files for each sample 
+in ``./ipryad-test_clust_0.85/``. You can get a feel for what this looks like
+by examining a portion of one of the files.
+
+.. code-block:: bash                                                                                                                                 
+
+    ## Same as above, gunzip -c means print to the screen and 
+    ## `head -n 28` means just show me the first 28 lines. If 
+    ## you're interested in what more of the locie look like
+    ## you can increase the number of lines you ask head for,
+    ## e.g. ... | head -n 100
+    gunzip -c ipyrad-test_clust_0.85/1A_0.clustS.gz | head -n 28
+
+Reads that are sufficiently similar (based on the above sequence similarity 
+thresholed) are grouped together in clusters separated by "//". For the first
+cluster below there is clearly one allele (homozygote) and one read with a 
+(simulated) sequencing error. For the second cluster it seems there are two alleles 
+(heterozygote), and a couple reads with sequencing errors. For the third 
+cluster it's a bit harder to say. Is this a homozygote with lots of sequencing
+errors, or a heterozygote with few reads for one of the alleles?
+
+Thankfully, untangling this mess is what step 4 is all about.
+
+.. parsed-literal::
+    >1A_0_1164_r1;size=16;*0
+    TGCAGCTATTGCGACAAAAACACGACGGCTTCCGTGGGCACTAGCGTAATTCGCTGAGCCGGCGTAACAGAAGGAGTGCACTGCCACGTGCCCG
+    >1A_0_1174_r1;size=1;+1
+    TGCAGCTATTGCGACAAAAACACGACGGCTTCCGTGGGCACTAGCGTAATTCGCTGAGCCGGCGTAACAGAAGGAGTGCACTGCCACATGCCCG
+    //
+    //
+    >1A0_8280_r1;size=10;
+    TGCAGCGTATATGATCAGAACCGGGTGAGTGGGTACCGCGAACCGAAAGGCATCGAAAGTTTAGCGCAGCACTAATCTCA
+    >1A0_8290_r1;size=8;+
+    TGCAGCGTATATGATCAGAACCGGGTGAGTGGGTACCGCGAACCGAAAGGCACCGAAAGTTTAGCGCAGCACTAATCTCA
+    >1A0_8297_r1;size=1;+
+    TGCAGCGTATATGATCAGAACCGGGTGAGTGGGAACCGCGAACCGAAAGGCACCGAAAGTTTAGCGCAGCACTAATCTCA
+    >1A0_8292_r1;size=1;+
+    TGCAGCCTATATGATCAGAACCGGGTGAGTGGGTACCGCGAACCGAAAGGCACCGAAAGTTTAGCGCAGCACTAATCTCA
+    //
+    //
+    >1A_0_2982_r1;size=17;*0
+    TGCAGACGTGGAGTAACCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
+    >1A_0_2983_r1;size=1;+1
+    TGCAGACGTGGAGTATCCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
+    >1A_0_2985_r1;size=1;+2
+    TGCAGACGTGGAGTAACCGGCGGCCTTTAGTCTAAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
+    >1A_0_2988_r1;size=1;+3
+    TGCAGACGAGGAGTAACCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
+    >1A_0_3002_r1;size=1;+4
+    TGCAGACGTGGAGCAACCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
+    //
+    //
+
 
 Step 4: Joint estimation of heterozygosity and error rate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -s 4
+
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -r
+
+.. parsed-literal::
+    ## stuff
+
 Step 5: Consensus base calls
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -s 5
+
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -r
+
+.. parsed-literal::
+    ## stuff
+
+Step 6: Cluster across samples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -s 6
+
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -r
+
+.. parsed-literal::
+    ## stuff
+
+Step 7: Filter and write output files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    ipyrad -p params-ipyrad-test.txt -s 7
+
+
 Assembly and Sample objects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 Assembly and Sample objects are used by *ipyrad* to access data stored
 on disk and to manipulate it. Each biological sample in a data set is
