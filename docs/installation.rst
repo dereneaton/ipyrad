@@ -31,7 +31,9 @@ have conda installed.
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh    
 
     ## OR download Miniconda for Mac
-    wget https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh
+    ## wget is not available by default on Mac so you have to use curl. The
+    ## -O flag is a capital o not a zero
+    curl -O https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh
 
     ## Install miniconda. Follow the directions, by default it will propose installing
     ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`

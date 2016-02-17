@@ -65,12 +65,18 @@ Example Tutorials
 The following tutorials show an example run through for an entire data set of 
 each common data type, and explains some vagaries unique to each data type. 
 
+* :ref:`Full Tutorial (RAD-Seq) <full_tutorial_CLI.rst>`
+
 * :ref:`Basic RAD <ipyrad_scripts.rst>`
 * :ref:`Basic ddRAD <quickguide_CLI.rst>`
 * Basic GBS  
 * Basic paired ddRAD  
 * Basic paired GBS  
 
+.. toctree::                                                                                                                                         
+   :maxdepth: 2                                                                                                                                      
+                                                                                                                                                     
+   advanced_CLI.rst  
 
 
 
