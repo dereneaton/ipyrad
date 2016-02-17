@@ -398,7 +398,12 @@ Now lets run step 3:
   Step3: Clustering/Mapping reads
     Saving Assembly.
 
-Again we can examine the results:
+Again we can examine the results. The stats output tells you how many clusters 
+were found, and the number of clusters that pass the mindepth thresholds. 
+We'll go into more detail about mindepth settings in some of the advanced tutorials
+but for now all you need to know is that by default step 3 will filter out clusters
+that only have a handful of reads on the assumption that these are probably
+all mostly due to sequencing error.
 
 .. code-block:: bash
 
@@ -477,6 +482,8 @@ Thankfully, untangling this mess is what step 4 is all about.
 
 Step 4: Joint estimation of heterozygosity and error rate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 
 .. code-block:: bash
 
