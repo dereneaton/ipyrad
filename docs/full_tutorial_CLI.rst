@@ -32,15 +32,16 @@ First make a new directory and fetch & extract the test data.
 
 .. code-block:: bash
 
+    ## The curl command needs a capital o, not a zero
     mkdir ipyrad-test
     cd ipyrad-test
     curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
     tar -xvzf ipyrad_tutorial_data.tgz
 
-You should now see a folder in your current directory called `data`. This 
+You should now see a folder in your current directory called ``data``. This 
 directory contains two files we'll be using:
-    - sim_rad_test_R1_.fastq.gz - Illumina fastQ formatted reads (gzip compressed)
-    - sim_rad_test_barcodes.txt - Mapping of barcodes to sample IDs
+    - ``sim_rad_test_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
+    - ``sim_rad_test_barcodes.txt`` - Mapping of barcodes to sample IDs
 
 It also contains many other simulated datasets, as well as a simulated 
 reference genome, so you can experiment with other datatypes after you get
@@ -49,9 +50,9 @@ comfortable with RAD.
 Create a new parameters file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ipyrad uses a text file to hold all the parameters for a given assembly. 
-Start by creating a new parameters file with the `-n` flag. This flag
+Start by creating a new parameters file with the ``-n`` flag. This flag
 requires you to pass in a name for your assembly. In the example we use 
-`ipyrad-test` but the name can be anything at all. Once you start 
+``ipyrad-test`` but the name can be anything at all. Once you start 
 analysing your own data you might call your parameters file something 
 more informative, like the name of your organism.
 
