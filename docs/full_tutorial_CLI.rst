@@ -56,6 +56,7 @@ analysing your own data you might call your parameters file something
 more informative, like the name of your organism.
 
 .. code-block:: bash
+
     ipyrad -n ipyrad-test
 
 This will create a file in the current directory called `params-ipyrad-test.txt`.
@@ -63,6 +64,7 @@ The params file lists on each line one parameter followed by a ## mark,
 and then a short description of the parameter. Lets take a look at it.
 
 .. code-block:: bash
+
     cat params-ipyrad-test.txt
 
 .. parsed-literal::
@@ -123,6 +125,7 @@ these files should be entered on line 2 of the params file. Below are
 the first three reads in the example file.
 
 .. code-block:: bash
+
     ## For your personal edification here is what this is doing:
     ##  gzip -c: Tells gzip to unzip the file and write the contents to the screen
     ##  head -n 12: Grabs the first 12 lines of the fastq file. Fastq files
@@ -188,6 +191,7 @@ see sample names (left) and their barcodes (right) each on a
 separate line with a tab between them.
 
 .. code-block:: bash
+
     cat ./data/sim_rad_test_barcodes.txt
 
 .. parsed-literal::
@@ -207,6 +211,7 @@ separate line with a tab between them.
 Now lets run step 1!
 
 .. code-block:: bash
+
     ## -p indicates the params file we wish to use
     ## -s indicates the step to run
     ipyrad -p params-ipyrad-test.txt -s 1
@@ -236,6 +241,7 @@ Have a look at the results of this step in the `ipyrad-test_fastqs`
 output directory:
 
 .. code-block:: bash
+
    ls ipyrad-test_fastqs 
 
 .. parsed-literal::
@@ -250,6 +256,7 @@ assembly, so at any time you can ask for results by
 invoking the `-r` flag.
 
 .. code-block:: bash
+
     ## -r fetches informative results from currently 
     ##      executed steps
     ipyrad -p params-ipyrad-test.txt -r
@@ -276,6 +283,7 @@ wacky stats and saves them to a file inside the directories it
 creates for each step. For instance to see full stats for step 1:
 
 .. code-block:: bash
+
     cat ./ipyrad-test_fastqs/s1_demultiplex_stats.txt
 
 And you'll see a ton of fun stuff I won't copy here in the interest
@@ -291,6 +299,7 @@ base calls. The filtered files are written to a new directory called
 `ipyrad-test_edits`.
 
 .. code-block:: bash
+
     ipyrad -p params-ipyrad-test.txt -s 2
 
 .. parsed-literal::
@@ -308,6 +317,7 @@ Again, you can look at the results output by this step and also some
 handy stats tracked for this assembly.
 
 .. code-block:: bash
+
     ## View the output of step 2
     ls ipyrad-test_edits
 
@@ -316,6 +326,7 @@ handy stats tracked for this assembly.
     1B_0_R1_.fastq       1D_0_R1_.fastq       2F_0_R1_.fastq       2H_0_R1_.fastq       3J_0_R1_.fastq       3L_0_R1_.fastq
 
 .. code-block:: bash
+
     ## Get current stats including # raw reads and # reads
     ## after filtering.
     ipyrad -p params-ipyrad-test.txt -r
