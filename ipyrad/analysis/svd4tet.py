@@ -16,6 +16,7 @@ Theoretical Biology 374: 35-47
 # pylint: disable=E1101
 # pylint: disable=F0401
 # pylint: disable=W0212
+# pylint: disable=C0103
 
 from __future__ import print_function, division
 import os
@@ -25,7 +26,6 @@ import itertools
 import numpy as np
 from ipyrad.assemble.util import *
 from collections import Counter, OrderedDict
-
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -203,14 +203,17 @@ def worker(args):
 
     ## get data from seqarray
     results = [svd4tet(seqarray, qtet) for qtet in quartets]
+    rquartets = np.array([i[0] for i in results])
+    rweights = np.array([i[1] for i in results])
 
     ## put results into h5
-    io5["quartets"][qidx:qidx+1000] = results
+    io5["quartets"][qidx:qidx+1000] = rquartets
+    io5["weights"][qidx:qidx+1000] = rweights
     io5.close()
 
 
 
-def svd4tet(arr, samples):
+def svd4tet(arr, samples, weights=0):
     """ calc rank. From Chibatko and Kiffman (2014)
 
     Our proposal for inferring the true species-level relationship within a 
@@ -220,10 +223,9 @@ def svd4tet(arr, samples):
 
     """
     ## get the three resolution of four taxa
-    split0 = [samples[0], samples[1], samples[2], samples[3]]
-    split1 = [samples[0], samples[2], samples[1], samples[3]]
-    split2 = [samples[0], samples[3], samples[1], samples[2]]
-    splits = [split0, split1, split2]
+    splits = [[samples[0], samples[1], samples[2], samples[3]],
+              [samples[0], samples[2], samples[1], samples[3]],
+              [samples[0], samples[3], samples[1], samples[2]]]
 
     ## get the three matrices
     mats = [seq_to_matrix(arr, sidx) for sidx in splits]
@@ -232,23 +234,88 @@ def svd4tet(arr, samples):
     scores = [np.linalg.svd(m, full_matrices=1, compute_uv=0) for m in mats]
     score = [np.sqrt(sco[11:].sum()) for sco in scores]
 
+    ## get splits sorted in the order of score
+    ssplits = [x for (_, x) in sorted(zip(score, splits))]
+
+    ## calculate weights for quartets (Avni et al. 2014) 
+    ## need to calculate a tree and genetic distances
+    ## under JC model distance is just ndiffs/len(seq), right?
+    weight = 0
+    if weights:
+        weight = get_weight_svd(ssplits)
+        #weight = get_weight_snir(arr, ssplits)
+
     ## return the split with the lowest score
-    idx = score.index(min(score))
-    return splits[idx]
+    return ssplits[0], weight
+
+
+def get_weight_svd(ssplits):
+    """ 
+    Caulcate weight similar to Avni et al. but using SVD score distance from 
+    rank 10 instead of JC distance. Experimental...
+    """
+    dh, dm, dl = ssplits
+    return (dh-dl) / (np.exp(dh-dm) * dh)
 
 
 
-def dump():
-    """ prints the quartets to a file formatted for qmaxcut"""
+def get_distances(arr, splits):
+    """ 
+    Calculate JC distance from the 4-taxon shared sequence data. 
+    """
 
+    ## distances given (0,1|2,3)
+    d_ab = np.bool(arr[splits[0], :] != arr[splits[1], :]).sum() / arr.shape[1]
+    d_cd = np.bool(arr[splits[2], :] != arr[splits[3], :]).sum() / arr.shape[1]
+    dist0 = d_ab + d_cd
+
+    ## distances given (0,2|1,3)
+    d_ac = np.bool(arr[splits[0], :] != arr[splits[2], :]).sum() / arr.shape[1]
+    d_bd = np.bool(arr[splits[1], :] != arr[splits[3], :]).sum() / arr.shape[1]
+    dist1 = d_ac + d_bd
+
+    ## distances given (0,3|1,2)
+    d_ad = np.bool(arr[splits[0], :] != arr[splits[3], :]).sum() / arr.shape[1]
+    d_bc = np.bool(arr[splits[1], :] != arr[splits[2], :]).sum() / arr.shape[1]
+    dist2 = d_ad + d_bc
+
+    return dist0, dist1, dist2
+
+
+
+def get_weight_snir(arr, splits):
+    """ 
+    Calculate the quartet weight as described in Avni et al. (2014) eq.1.
+    Essentially our goal is to downweight quartets with very long edges
+    """
+
+    ## calculate JC distances
+    distances = get_distances(arr, splits)
+
+    ## sort distances
+    dl, dm, dh = sorted(distances)
+
+    ## calculate weight
+    return (dh-dl) / (np.exp(dh-dm) * dh)
+
+
+
+
+def dump(data):
+    """ 
+    prints the quartets to a file formatted for QMC
+    """
+    io5 = h5py.File(data._svd)
     outfile = open("test.svd.leaves", 'w')
 
     for i in range(0, 1000, 10):
-        chunk = [list(i) for i in io5["quartets"][i:i+10]]
-        chunk = ["{},{}|{},{}".format(*i) for i in chunk]
+        quarts = [list(i) for i in io5["quartets"][i:i+10]]
+        weight = [list(i) for i in io5["weights"][i:i+10]]
+        chunk = ["{},{}|{},{}:{}".format(*i+j) for i, j in zip(quarts, weight)]
         outfile.write(" ".join(chunk)+" ")
-    outfile.close()
 
+    outfile.close()
+    io5.close()
 
 
 
@@ -267,21 +334,24 @@ def main(data, ipyclient, path=None, checkpoint=0):
         raise IPyradWarningExit("not yet implemented")
 
     ## get the seq array into hdf5
-    print("loading array")
+    LOGGER.info("loading array")
     data = get_seqarray(data, path)
 
     ## make quartet arrays into hdf5. Allow subsetting samples eventually.
     ## and optimize chunk value given remaining quartets and ipyclient    
-    print("loading quartets")
+    LOGGER.info("loading quartets")
     samples = data.samples
     data = get_quartets(data, samples)
 
     ## load a job queue
     jobs = []
-    for qidx in xrange(data._svd.checkpoint, nquarts, 1000):
+    for qidx in xrange(data._svd.checkpoint, 
+                       data._svd.nquarts, 
+                       data._svd.chunk):
         jobs.append([data, qidx])
 
     ## make a distributor for engines
+    LOGGER.info("sending jobs to Engines")
     lbview = ipyclient.load_balanced_view()
     results = lbview.map_async(worker, jobs)
     results.get()
