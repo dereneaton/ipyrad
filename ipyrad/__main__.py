@@ -4,7 +4,7 @@
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.util import IPyradError, IPyradWarningExit
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -133,22 +133,23 @@ def getassembly(args, parsedict):
     ## Get cwd so we can pop back out after creating the new assembly
     ## We have to push and pop cwd so the assembly object gets created
     ## inside the working directory.
-    cwd = os.path.realpath(os.path.curdir)
-    os.chdir(project_dir)
+    #cwd = os.path.realpath(os.path.curdir)
+    #os.chdir(project_dir)
 
     ## Here either force is on or the current assembly file doesn't exist,
     ## in which case create a new.
     if '1' in args.steps:
         ## If assembly exists and step 1 insist on the force flag
         if os.path.exists(assembly_file+".json") and not args.force:
-            sys.exit("  Assembly already exists, use the force flag to overwrite.")
+            raise IPyradWarningExit("Assembly already exists,"+
+                                   +" use the force flag to overwrite.")
 
         ## create a new assembly object
         data = ip.Assembly(assembly_name)
 
     else:
         ## go back to cwd since existing will be loaded from its full path
-        os.chdir(cwd)
+        #os.chdir(cwd)
 
         if os.path.exists(assembly_file+".assembly"):
             ## json file takes precedence if both exist
@@ -160,7 +161,7 @@ def getassembly(args, parsedict):
             data = ip.load_json(assembly_file)
 
     ## ensure pop directory
-    os.chdir(cwd)
+    #os.chdir(cwd)
 
     ## for entering some params...
     for param in parsedict:

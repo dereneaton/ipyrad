@@ -22,42 +22,8 @@ ipyrad_ is installed open a terminal and type:
 
     ipyrad -h
 
-and the following help screen will appear:
-
-.. code-block:: none
-
-    usage: ipyrad [-h] [-v] [-r] [-n] [-f] [-p params] [-s steps] [-c cores]
-                  [--MPI] [--preview]
-
-    optional arguments:
-      -h, --help     show this help message and exit
-      -v, --version  show program's version number and exit
-      -r, --results  show summary of results for Assembly in params.txt and exit
-      -f, --force    force overwrite of existing data
-      -n new         create new params file with name 'new' in current directory
-      -p params      path to params file (e.g., new-params.txt)
-      -s steps       subset of assembly steps to perform (Default=1234567)
-      -c cores       number of CPU cores to use (Default=all)
-      --MPI          use MPI to connect to parallel CPUs across multiple nodes
-      --preview      run ipyrad in preview mode. Subset the input file so it'll
-                     run quickly so you can verify everything is working
-
-      * Example command-line usage: 
-        ipyrad -n test                     ## create new file test-params.txt.
-        ipyrad -p test-params.txt          ## run ipyrad with settings in params.
-        ipyrad -p test-params.txt -s 123   ## run only steps 1, 2 and 3 of assembly.
-        ipyrad -p test-params.txt -s 4567  ## run steps 4, 5, 6 and 7 of assembly.
-        ipyrad -p test-params.txt -s 3 -f  ## run step 3, overwrite existing data.
-
-      * HPC parallelization
-        ipyrad -p test-params.txt -s 3 --MPI   ## access cores across multiple nodes
-
-      * Results summary quick view
-        ipyrad -p test-params.txt -r         ## print summary stats to screen for params.
-
-      * Documentation: http://ipyrad.readthedocs.org/en/latest/
-
-
+and a help screen will appear with a short description of the arguments to the 
+command line. These are all explained in great detail in the tutorials below. 
 
 
 Example Tutorials
@@ -65,19 +31,13 @@ Example Tutorials
 The following tutorials show an example run through for an entire data set of 
 each common data type, and explains some vagaries unique to each data type. 
 
-* :ref:`Full Tutorial (RAD-Seq) <full_tutorial_CLI.rst>`
-
+* :ref:`Introductory Tutorial (RAD-Seq) <full_tutorial_CLI.rst>`
+* :ref:`Advanced Tutorial (RAD-Seq) <full_tutorial_CLI.rst>`
 * :ref:`Basic RAD <ipyrad_scripts.rst>`
 * :ref:`Basic ddRAD <quickguide_CLI.rst>`
 * Basic GBS  
 * Basic paired ddRAD  
 * Basic paired GBS  
-
-.. toctree::                                                                                                                                         
-   :maxdepth: 2                                                                                                                                      
-                                                                                                                                                     
-   advanced_CLI.rst  
-
 
 
 
