@@ -41,7 +41,6 @@ Documentation
    tutorials.rst
 
    analysis.rst
-   full_tutorial_CLI.rst
    citing.rst
    releasenotes.rst
    support.rst
