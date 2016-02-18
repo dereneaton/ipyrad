@@ -23,7 +23,9 @@ import os
 import h5py
 import random
 import itertools
+import subprocess
 import numpy as np
+import ipyrad
 from ipyrad.assemble.util import *
 from collections import Counter, OrderedDict
 
@@ -31,7 +33,7 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
-
+## The 16 x 16 matrix of site counts. 
 MKEYS = """
     AAAA AAAC AAAG AAAT  AACA AACC AACG AACT  AAGA AAGC AAGG AAGT  AATA AATC AATG AATT
     ACAA ACAC ACAG ACAT  ACCA ACCC ACCG ACCT  ACGA ACGC ACGG ACGT  ACTA ACTC ACTG ACTT
@@ -56,9 +58,13 @@ MKEYS = """
 
 
 
-def get_seqarray(data, path=None):
-    """ Takes a data object connected to an ipyclient and looks for a 
-    phylip file. Or should I use another format?
+def get_seqarray(data, path=None, subsample=False):
+    """ 
+    Takes an Assembly object and looks for a phylip file unless the path 
+    argument is used then it looks in path. 
+
+    TODO: Use different file format. One that works more easily to select 
+    single SNPs from loci for use with the subsample argument.
     """
 
     ## allow path override of object
@@ -96,33 +102,39 @@ def get_quartets(data, samples):
     qiter = itertools.combinations(range(len(samples)), 4)
     nquarts = sum(1 for _ in qiter)
 
-    ## load an array of the right size
-    ## first 4 are the sample indices, then the quartet, and then the weight.
+    ## create a chunk size for sampling from the array of quartets. This should
+    ## be relatively large so that we don't spend a lot of time doing I/O, but
+    ## small enough that jobs finish every few hours since that is how the 
+    ## checkpointing works.
     if nquarts < 1000:
         chunk = nquarts
     else:
         chunk = 1000
 
+    ## 'samples' stores the indices of the quartet. 
+    ## `quartets` stores the correct quartet in the order (1,2|3,4)
+    ## `weights` stores the calculated weight of the quartet in 'quartets'
     print("populating array with {} quartets".format(nquarts))
     with h5py.File(data._svd.path, 'a') as io5:
+        ## create data sets
         io5.create_dataset("samples", (nquarts, 4), 
                            dtype=np.uint16, chunks=(chunk, 4))
         io5.create_dataset("quartets", (nquarts, 4), 
                             dtype=np.uint16, chunks=(chunk, 4))        
         io5.create_dataset("weights", (nquarts, 1), 
                             dtype=np.float16, chunks=(chunk, 1))
-
         
         ## populate array with all possible quartets. This allows us to 
         ## sample from the total, and also to continue from a checkpoint
         qiter = itertools.combinations(range(len(samples)), 4)
         i = 0
+        ## fill 1000 at a time for efficiency
         while i < nquarts:
             dat = np.array(list(itertools.islice(qiter, 1000)))
             io5["samples"][i:i+dat.shape[0]] = dat
             i += 1000
 
-    ## set to data object
+    ## save attrs to data object
     data._svd.nquarts = nquarts
     data._svd.chunk = chunk
 
@@ -148,11 +160,6 @@ def seq_to_matrix(arr, sidx):
     Takes a 4-taxon alignment and generates a 16x16 count matrix. Ignores 
     ambiguous sites, sites with missing data, and sites with indels. The 
     order of the samples (sidx) is important. 
-
-    MDICT is an orderedict with the following keys that will be reshaped to 
-    be 16x16: 
-
-
     """
     ## select only the relevant rows
     arr = arr[sidx, :]
@@ -161,7 +168,7 @@ def seq_to_matrix(arr, sidx):
     for null in list("RSKYWM-"):
         arr[arr == null] = "N"
 
-    ## mask any columns with Ns
+    ## mask any columns for this 4-taxon alignment that has Ns
     arr = arr[:, ~np.any(arr == "N", axis=0)]
 
     ## get dict of observed patterns
@@ -300,20 +307,48 @@ def get_weight_snir(arr, splits):
 
 
 
+def qmc(data, useweights=True):
+    """ runs quartet max-cut """
+
+    ## use weight info
+    weights = "on"
+    if not useweights:
+        weights = "off"
+
+    ## output handle
+    data._svd.tree = os.path.join(data.dirs.svd+data.name+"_svd4tet.tre")
+
+    ## make call list
+    cmd = [ipyrad.bins.QMC,
+           " qrtt="+data._svd.leaves, 
+           " weights="+weights, 
+           " otre="+data._svd.tree]
+
+    ## run it
+    subprocess.Popen(cmd)
+
+
+
 
 def dump(data):
     """ 
-    prints the quartets to a file formatted for QMC
+    prints the quartets to a file formatted for QMC in random order.
     """
-    io5 = h5py.File(data._svd)
-    outfile = open("test.svd.leaves", 'w')
+    ## open the h5 database
+    io5 = h5py.File(data._svd, 'r')
 
+    ## create an output file for writing
+    data._svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartet.txt")
+    outfile = open(data._svd.qdump, 'w')
+
+    ## should pull quarts order in randomly
     for i in range(0, 1000, 10):
         quarts = [list(i) for i in io5["quartets"][i:i+10]]
         weight = [list(i) for i in io5["weights"][i:i+10]]
         chunk = ["{},{}|{},{}:{}".format(*i+j) for i, j in zip(quarts, weight)]
-        outfile.write(" ".join(chunk)+" ")
+        outfile.write("\n".join(chunk)+"\n")
 
+    ## close output file and h5 database
     outfile.close()
     io5.close()
 
@@ -323,14 +358,20 @@ def main(data, ipyclient, path=None, checkpoint=0):
     """ 
     main funcs
     """
+    ## make an analysis directory if it doesn't exit
+    data.dirs.svd = os.path.join(data.dirs.project, data.name+"_analysis_svd")    
+    if not os.path.exists(data.dirs.svd):
+        os.mkdir(data.dirs.svd)
+
     ## store some svd stats in data
     data._svd = ObjDict()
-    data._svd.path = os.path.join(data.dirs.outfiles, data.name+"_svd.h5")
+    data._svd.h5 = os.path.join(data.dirs.svd, data.name+".h5")
     data._svd.checkpoint = 0
 
-    ## check for checkpoint restart
+    ## checkpoint info will be retrieved from h5 if it exists
     if checkpoint:
         ## scan the hdf5 array to find where it left off writing
+        data._svd.checkpoint = 0        
         raise IPyradWarningExit("not yet implemented")
 
     ## get the seq array into hdf5
@@ -356,13 +397,11 @@ def main(data, ipyclient, path=None, checkpoint=0):
     results = lbview.map_async(worker, jobs)
     results.get()
 
+    ## Run quartet max-cut on the quartets
+    qmc(data)
+
     print("  done")
     return data
-
-
-
-## step 1 create an h5 array with all possible quartets
-
 
 
 

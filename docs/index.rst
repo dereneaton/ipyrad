@@ -41,7 +41,6 @@ Documentation
    tutorials.rst
 
    analysis.rst
-
    citing.rst
    releasenotes.rst
    support.rst

@@ -387,15 +387,15 @@ class Assembly(object):
             else:
                 ## if not forcing, shouldn't be here with existing Samples
                 if append:
-                    if fastqtuple not in self.samples[sname].files.fastqs:
-                        self.samples[sname].files.fastqs.append(fastqtuple)
-                        appendinc += 1
-                    else:
-                        print("    The files {} are already in Sample {}, "\
-                              .format(fastqtuple, sname) \
-                              +"cannot append duplicate files to a Sample.\n")
+                    #if fastqtuple not in self.samples[sname].files.fastqs:
+                    self.samples[sname].files.fastqs.append(fastqtuple)
+                    appendinc += 1
+                    #else:
+                    #    print("    The files {} are already in Sample {}, "\
+                    #          .format(fastqtuple, sname) \
+                    #          +"cannot append duplicate files to a Sample.\n")
                 elif force:
-                    ## create new Sample
+                    ## overwrite/create new Sample
                     self.samples[sname] = Sample(sname)
                     self.samples[sname].stats.state = 1
                     self.samples[sname].barcode = None 
@@ -709,72 +709,9 @@ class Assembly(object):
         [project_dir]/[assembly_name].json
 
         """
-        print("    Saving Assembly.")
+        if self._headers:
+            print("    Saving Assembly.")
         ip.save_json(self)
-
-
-
-    # def _launch(self, inittries):
-    #     """ launch ipyclient.
-    #     launch within try statement in case engines aren't ready yet
-    #     and try 30 1 second sleep/wait cycles before giving up on engines
-    #     """
-    #     tries = inittries
-    #     while tries:
-    #         try:
-    #             ## launches ipcluster with arguments if present in self
-    #             clusterargs = [self._ipclusterid, self._ipprofile]
-    #             argnames = ["cluster_id", "profile"]
-    #             args = {key:value for key, value in zip(argnames, clusterargs)}
-    #             ipyclient = ipp.Client(**args)
-    #             if tries > 1:
-    #                 LOGGER.info('try %s: starting controller', tries)
-    #             ## make sure all engines are connected
-    #             try:
-    #                 assert ipyclient.ids                    
-    #                 if tries != inittries:                        
-    #                     ## get initial number of ids
-    #                     ## ugly hack to find all engines while they're spinng up
-    #                     initid = ipyclient.ids
-    #                     if len(initid) > 10:
-    #                         LOGGER.warn("waiting 3 seconds to find Engines")
-    #                         try:
-    #                             time.sleep(3)
-    #                         except KeyboardInterrupt:
-    #                             print(" Keyboard interrupt disabled during cluster init.")
-    #                     else:
-    #                         try:
-    #                             time.sleep(1)                                            
-    #                         except KeyboardInterrupt:
-    #                             print(" Keyboard interrupt disabled during cluster init.")
-    #                     try:
-    #                         ## make sure more engines aren't found
-    #                         assert len(ipyclient.ids) == len(initid)
-    #                         LOGGER.warn('OK! Connected to (%s) engines', 
-    #                                     len(ipyclient.ids))
-    #                         return ipyclient
-
-    #                     except AssertionError as _: 
-    #                         LOGGER.warn('finding engines (%s, %s)', 
-    #                                      len(initid), len(ipyclient.ids))
-    #                         raise
-    #                 else:
-    #                     LOGGER.debug('OK! Connected to (%s) engines', 
-    #                                 len(ipyclient.ids))
-    #                     return ipyclient
-
-    #             except AssertionError as _: 
-    #                 LOGGER.debug('connected to %s engines', len(ipyclient.ids))
-    #                 raise
-    #         except (IOError, ipp.NoEnginesRegistered, AssertionError) as _:
-    #             try:
-    #                 time.sleep(1)
-    #                 tries -= 1
-    #             except KeyboardInterrupt:
-    #                 print(" Keyboard interrupt disabled during cluster intialization.")
-    #                 print(" Wait for cluster to finish init, then you can kill it cleanly.")
-
-    #     raise ipp.NoEnginesRegistered
 
 
 
@@ -818,7 +755,6 @@ class Assembly(object):
                     time.sleep(3)
                     if initid:
                         if len(ipyclient) == initid:
-                            print("connected to {} Engines".format(initid))                            
                             break
                     else:
                         print("connecting to Engines...")
@@ -1463,6 +1399,11 @@ def _name_from_file(fname, splitnames, fields):
             except IndexError:
                 pass
         base = splitnames.join(base)
+
+    if not base:
+        raise IPyradError("""
+    Found invalid/empty filename in link_fastqs. Check splitnames argument.
+    """)
 
     return base
 
