@@ -27,26 +27,30 @@ If the data are not yet demultiplexed then step 1 uses information from a
 are already demultiplexed then step 1 simply reads the data in to count how 
 many reads are assigned to each Sample. 
 
-The following :ref:`assembly parameters<Assembly_parameters>` are potentially 
-used during step1:
+The following :ref:`assembly parameters<Assembly_parameters>` are *potentially*
+used or **required** during step1:
 
-* 0. assembly_name_
-* 1. project_dir_
-* 2. raw_fastq_path_
-* 3. barcodes_path_
-* 3. sorted_fastq_path_
-* 7. datatype_
-* 8. restriction_overhang_
-* 15. max_barcode_mismatch_
+0. assembly_name_, project_dir_, raw_fastq_path_, barcodes_path_, sorted_fastq_path_, 
+datatype_, restriction_overhang_, max_barcode_mismatch_
 
 
 2. Filtering / Editing reads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 2 uses the quality score recorded in the fastQ data files to filter low 
 quality base calls. Sites with a score below a set value are changed into “N”s, 
-and reads with more than the number of allowed “N”s are discarded. 
+and reads with more than the number of allowed “N”s are discarded. A number of 
+optional filters can be applied to remove adapters/primers from data. 
 
-Files are written to the “edits/” directory with the suffix “.edit”. It also implements a number of optional filters.
+The following :ref:`assembly parameters<Assembly_parameters>` are *potentially*
+used during step2:
+
+* 0. assembly_name_
+* 1. project_dir_
+* 3. barcodes_path_
+* 7. datatype_
+* 8. restriction_overhang_
+* 15. max_barcode_mismatch_
+
 
 
 
