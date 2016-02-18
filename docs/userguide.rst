@@ -6,7 +6,7 @@
 User Guide
 ============
 The most quick and dirty way to get started with ipyrad is to use the CLI
-as described in the :ref:`CLI Quick Guide <quickguide_CLI>`. To get started
+as described in the :ref:`CLI Quick Guide<quickguide_CLI>`. To get started
 with writing scripts for assembly and/or analyses using the ipyrad API see the 
 
 
@@ -32,10 +32,11 @@ Example Tutorials
 The following tutorials show an example run through for an entire data set of 
 each common data type, and explains some vagaries unique to each data type. 
 
-* :ref:`Introductory Tutorial (RAD-Seq) <full_tutorial_CLI>`
+* :ref:`Introductory Tutorial (RAD-Seq)<full_tutorial_CLI>`
+* :ref:`Intro tutorial<tutorial_intro>`  
 * :ref:`Introductory Tutorial <tutorial_intro_cli>`
-* :ref:`Advanced Tutorial (RAD-Seq) <full_tutorial_CLI>`
-* :ref:`Advanced Tutorial <tutorial_advanced_cli>`
+* :ref:`Advanced Tutorial (RAD-Seq)<full_tutorial_CLI>`
+* :ref:`Advanced Tutorial<tutorial_advanced_cli>`
 * :ref:`Basic RAD <ipyrad_scripts>`
 * :ref:`Basic ddRAD <quickguide_CLI>`
 * Basic GBS  
