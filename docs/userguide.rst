@@ -33,7 +33,9 @@ The following tutorials show an example run through for an entire data set of
 each common data type, and explains some vagaries unique to each data type. 
 
 * :ref:`Introductory Tutorial (RAD-Seq) <full_tutorial_CLI>`
+* :ref:`Introductory Tutorial <tutorial_intro_cli>`
 * :ref:`Advanced Tutorial (RAD-Seq) <full_tutorial_CLI>`
+* :ref:`Advanced Tutorial <tutorial_advanced_cli>`
 * :ref:`Basic RAD <ipyrad_scripts>`
 * :ref:`Basic ddRAD <quickguide_CLI>`
 * Basic GBS  
