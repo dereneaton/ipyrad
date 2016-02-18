@@ -20,18 +20,35 @@ Seven Steps
 
 1. Demultiplexing / Loading fastq files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Step 1 involves loading sequence data into a named 
-:ref:`Assembly<Assembly>` and sorting the sequences among a number of 
-:ref:`Samples<Samples>` (individuals). If the data are not yet 
-demultiplexed then step 1 uses information from a 
-:ref:`barcodes file<barcodes_file>`
-to assign sequences to Samples. If the data are already demultiplexed then 
-step 1 simply reads the data in to count how many reads are assigned to each 
-Sample. 
+Step 1 involves loading sequence data into a named :ref:`Assembly<Assembly>` and
+sorting the sequences among a number of :ref:`Samples<Samples>` (individuals). 
+If the data are not yet demultiplexed then step 1 uses information from a 
+:ref:`barcodes file<barcodes_file>` to assign sequences to Samples. If the data 
+are already demultiplexed then step 1 simply reads the data in to count how 
+many reads are assigned to each Sample. 
+
+The following :ref:`assembly parameters<Assembly_parameters>` are potentially 
+used during step1:
+
+* 0. assembly_name_
+* 1. project_dir_
+* 2. raw_fastq_path_
+* 3. barcodes_path_
+* 3. sorted_fastq_path_
+* 7. datatype_
+* 8. restriction_overhang_
+* 15. max_barcode_mismatch_
+
 
 2. Filtering / Editing reads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
+Step 2 uses the quality score recorded in the fastQ data files to filter low 
+quality base calls. Sites with a score below a set value are changed into “N”s, 
+and reads with more than the number of allowed “N”s are discarded. 
+
+Files are written to the “edits/” directory with the suffix “.edit”. It also implements a number of optional filters.
+
+
 
 3. Clustering / Mapping reads within Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

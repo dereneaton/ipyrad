@@ -3,8 +3,8 @@
 .. _tutorial_intro_cli:
 
 
-introductory tutorial
-=====================
+introductory tutorial - CLI
+============================
 
 This is the full tutorial for the command line interface for ipyrad. In this
 tutorial we'll walk through the entire assembly and analysis process. This is 

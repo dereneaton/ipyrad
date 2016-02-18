@@ -17,8 +17,8 @@ several common :ref:`data types<data types>` which have a few differences each
 that users should be aware of. 
 
 
-Command line interface - CLI
------------------------------
+The CLI versus API
+------------------
 The ipyrad_ command line interface (CLI_) is designed to be easy to use and will
 be familiar to users of its predecessor program pyrad_. Once ipyrad_ is installed
 you can start using the CLI_ by simply opening a terminal and typing the 
@@ -47,7 +47,6 @@ each common data type, and explains some vagaries unique to each data type.
 
    tutorial_intro_cli.rst
    tutorial_advanced_cli.rst
-   tutorial_intro_cli.rst
 
 
 
