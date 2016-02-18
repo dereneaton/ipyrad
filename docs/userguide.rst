@@ -26,15 +26,16 @@ and a help screen will appear with a short description of the arguments to the
 command line. These are all explained in great detail in the tutorials below. 
 
 
+
 Example Tutorials
 ------------------
 The following tutorials show an example run through for an entire data set of 
 each common data type, and explains some vagaries unique to each data type. 
 
-* :ref:`Introductory Tutorial (RAD-Seq) <full_tutorial_CLI.rst>`
-* :ref:`Advanced Tutorial (RAD-Seq) <full_tutorial_CLI.rst>`
-* :ref:`Basic RAD <ipyrad_scripts.rst>`
-* :ref:`Basic ddRAD <quickguide_CLI.rst>`
+* :ref:`Introductory Tutorial (RAD-Seq) <full_tutorial_CLI>`
+* :ref:`Advanced Tutorial (RAD-Seq) <full_tutorial_CLI>`
+* :ref:`Basic RAD <ipyrad_scripts>`
+* :ref:`Basic ddRAD <quickguide_CLI>`
 * Basic GBS  
 * Basic paired ddRAD  
 * Basic paired GBS  
@@ -73,15 +74,6 @@ Cookbook recipes
 ----------------
 
 :ref:`API Quick Guide <quickguide_API>`. 
-:ref:`ipyrad_scripts.rst <ipyrad_scripts.rst>`
-:ref:`test_rad.rst <test_rad.rst>`
-
-
-.. toctree::
-   :maxdepth: 2
-
-   quickguide_CLI.rst
-   quickguide_API.rst
-   ipyrad_scripts.rst
-   test_rad.rst
+:ref:`ipyrad_scripts.rst <ipyrad_scripts>`
+:ref:`test_rad.rst <test_rad>`
 
