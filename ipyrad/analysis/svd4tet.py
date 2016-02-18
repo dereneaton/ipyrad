@@ -106,9 +106,9 @@ def get_quartets(data, samples):
     print("populating array with {} quartets".format(nquarts))
     with h5py.File(data._svd.path, 'a') as io5:
         io5.create_dataset("samples", (nquarts, 4), 
-                           dtype=np.int16, chunks=(chunk, 4))
+                           dtype=np.uint16, chunks=(chunk, 4))
         io5.create_dataset("quartets", (nquarts, 4), 
-                            dtype=np.int16, chunks=(chunk, 4))        
+                            dtype=np.uint16, chunks=(chunk, 4))        
         io5.create_dataset("weights", (nquarts, 1), 
                             dtype=np.float16, chunks=(chunk, 1))
 
@@ -237,9 +237,8 @@ def svd4tet(arr, samples, weights=0):
     ## get splits sorted in the order of score
     ssplits = [x for (_, x) in sorted(zip(score, splits))]
 
-    ## calculate weights for quartets (Avni et al. 2014) 
-    ## need to calculate a tree and genetic distances
-    ## under JC model distance is just ndiffs/len(seq), right?
+    ## calculate weights for quartets (Avni et al. 2014). Here I use svd-scores
+    ## for the weights rather than genetic distances, but could do either.
     weight = 0
     if weights:
         weight = get_weight_svd(ssplits)
@@ -261,7 +260,8 @@ def get_weight_svd(ssplits):
 
 def get_distances(arr, splits):
     """ 
-    Calculate JC distance from the 4-taxon shared sequence data. 
+    Calculate JC distance from the 4-taxon shared sequence data. This func is
+    not used. Finish writing it if you end up using gen. distances.
     """
 
     ## distances given (0,1|2,3)
