@@ -42,7 +42,7 @@ The following tutorials show an example run through for an entire data set of
 each common data type, and explains some vagaries unique to each data type. 
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    tutorial_intro_cli.rst
    tutorial_advanced_cli.rst
@@ -81,7 +81,10 @@ execute quickly. Once the
 Cookbook recipes - API 
 -----------------------
 
-:ref:`API Quick Guide <quickguide_API>`. 
-:ref:`ipyrad_scripts.rst <ipyrad_scripts>`
-:ref:`test_rad.rst <test_rad>`
+
+.. toctree::
+   :maxdepth: 1
+
+   ipyrad_scripts.rst
+   test_rad.rst
 
