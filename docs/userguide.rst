@@ -4,8 +4,8 @@
 .. _userguide:
 
 
-Outline
-=======
+Tutorials
+=========
 The most quick and dirty way to get started with ipyrad is to use the CLI
 as described in the :ref:`Quick Guide<quickguide_CLI>`. A much more detailed
 walk-through of a RAD-seq assembly with explanations for each step in available
@@ -17,43 +17,45 @@ several common :ref:`data types<data types>` which have a few differences each
 that users should be aware of. 
 
 
-.. _quickguide_CLI:
-
-Quickguide -- command line interface
------------------------------------
+Command line interface - CLI
+-----------------------------
 The ipyrad_ command line interface (CLI_) is designed to be easy to use and will
-be familiar to users of its predecessor program pyrad_. First things first, once
-ipyrad_ is installed open a terminal and type:
+be familiar to users of its predecessor program pyrad_. Once ipyrad_ is installed
+you can start using the CLI_ by simply opening a terminal and typing the 
+following:
 
 .. code-block:: bash
 
     ipyrad -h
 
-and a help screen will appear with a short description of the arguments to the 
-command line. 
-
+This prints a help screen with a short description of the main arguments to the
+CLI. There is actually a second way to use ipyrad_ separate from the CLI_ which
+is to write scripts using the Python API_, which is described further below. 
+Because the CLI_ in generally easier the primary tutorials focus on this 
+interface. 
 
 
 .. _CLI:
 
-Tutorials -- command line interace
------------------------------------
+Tutorials -- command line interface (CLI)
+-----------------------------------------
 The following tutorials show an example run through for an entire data set of 
 each common data type, and explains some vagaries unique to each data type. 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    tutorial_intro_cli.rst
    tutorial_advanced_cli.rst
+   tutorial_intro_cli.rst
 
 
 
 
 .. _API:
 
-Tutorials - API 
--------------------------------------------
+Tutorials - IPython interface (API) 
+-----------------------------------
 The API_ (application program interface) for ipyrad_ is a way of directly 
 accessing the nuts and bolts of ipyrad_ using Python_. 
 This has a number of advantages over the CLI_ in that there is a lot more 
