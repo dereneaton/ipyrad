@@ -1,4 +1,8 @@
 
+
+.. _tutorial_intro_cli:
+
+
 ipyrad command line tutorial
 =========================
 

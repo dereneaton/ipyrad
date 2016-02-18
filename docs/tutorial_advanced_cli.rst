@@ -1,4 +1,8 @@
 
+
+.. _tutorial_advanced_cli:
+
+
 *ipyrad* advanced command line interface
 ========================================
 
