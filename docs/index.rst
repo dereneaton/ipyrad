@@ -32,6 +32,7 @@ Documentation
    features.rst
    installation.rst
 
+   files.rst
    outline.rst
    parameters.rst
    methods.rst

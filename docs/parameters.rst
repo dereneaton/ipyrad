@@ -32,6 +32,7 @@ but a new Assembly with a different name can be created by copying (branching)
 the Assembly (see :ref:`branching workflow<branching_workflow>`).
 
 Affected steps: 1-7  
+
 Example entries into params.txt:  
 
 .. code-block:: python
