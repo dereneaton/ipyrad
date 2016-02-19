@@ -43,6 +43,11 @@ Getting Started
     or Is it about making it in CAPS and spaces?
 
 
+.. _index::
+    why the f are these things not showing up???!?!?!
+
+
+
 We provide a very small sample data set that we recommend using for this tutorial.
 Full datasets can take several hours to several days to complete, 
 whereas with the simulated data you can complete an assembly in just 
