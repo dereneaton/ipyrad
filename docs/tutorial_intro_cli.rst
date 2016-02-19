@@ -23,31 +23,35 @@ Getting Started
 ~~~~~~~~~~~~~~~
 
 .. _attention::
-    If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
+
+    If you haven't already installed ipyrad go here first: 
+    :ref:`Installation <installation>`
+    
 
 We provide a very small sample data set that we recommend using for this tutorial.
-Full datasets can take days and days to run, whereas with the simulated data
-you could complete the whole tutorial in an afternoon. 
+Full datasets can take several hours to several days to complete, 
+whereas with the simulated data you can complete an assembly in just 
+a few minutes. 
 
-First make a new directory and fetch & extract the test data.
+First download and extract a set of example data from the web using the command 
+below. This will create a directory called ``ipsimdata/`` in your current directory
+containing a number of test data sets. 
 
 .. code-block:: bash
 
-    ## The curl command needs a capital o, not a zero
-    mkdir ipyrad-test
-    cd ipyrad-test
-    curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
-    tar -xvzf ipyrad_tutorial_data.tgz
-    
+    ## The curl command needs a capital O, not a zero
+    curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipsimdata.tar.gz
+    tar -xvzf ipsimdata.tar.gz
 
-You should now see a folder in your current directory called ``data``. This 
-directory contains two files we'll be using:
+The two files from this directory that we will be using for the current tutorial
+are named:
     - ``sim_rad_test_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
     - ``sim_rad_test_barcodes.txt`` - Mapping of barcodes to sample IDs
 
 It also contains many other simulated datasets, as well as a simulated 
 reference genome, so you can experiment with other datatypes after you get
 comfortable with RAD.
+
 
 Create a new parameters file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
