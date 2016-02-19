@@ -28,24 +28,24 @@ say by changing the ``clust_threshold`` from 0.85 to 0.90, or changing
 
 If we were to restart our analysis from the very beginning that would be really 
 inefficient. So one way to go about this would be to change a few parameters in 
-the params file and re-run the existing assembly to achieve new results. We think
-this approach isn't really ideal, however, since the user would have to 
-rename/move the previous results files to avoid overwriting, and the same for the 
-params file to avoid losing a record of the parameter used in the first assembly.
-This is the motivation behind the new branching assembly process in ipyrad, 
-which does all of this renaming business for you, allowing efficient re-use of 
-existing data files, while also keeping good records of which parameters were 
-used in each assembly. 
+the params file to try to re-run an existing assembly by re-using some of the
+existing data files. This approach is a little tricky, since the user would need
+to know which files to rename/move, and it has the problem that previous results
+files and parameters could be overwritten so that you lose information about how
+the first data set was assembled. Simplifying this process is the motivation 
+behind the branching assembly process in ipyrad, which does all of this renaming 
+business for you, allowing efficient re-use of existing data files, while also 
+keeping separate records (params files) of which parameters were used in each assembly. 
 
 At its core, branching creates a copy of an Assembly object (the object that is
 saved as a ``.json`` file by ipyrad) such that the new Assembly inherits all of 
 the information from it's parent Assembly, including filenames, samplenames, 
 and assembly statistics. The branching process requires a 
 new :ref:`assembly_name<assembly_name>`, which is important so that all new files
-created along this branch will be saved with a unique prefix. We'll show an 
-example of a branching process below, but first we need to describe reference 
-mapping, since for our example we will be creating two branches which are 
-assembled using different ``assembly_methods``. 
+created along this branch will be saved with a unique filename prefix. 
+We'll show an example of a branching process below, but first we need to 
+describe reference mapping, since for our example we will be creating two 
+branches which are assembled using different ``assembly_methods``. 
 
 
 Reference Sequence Mapping
@@ -80,9 +80,9 @@ ipyrad_ with the --MPI flag on an HPC machine should allow users
 
 Getting started
 ~~~~~~~~~~~~~~~
-First let's download the example simulated data sets for ipyrad_. Copy and paste
-the commands below into a terminal to download the data files and unarchive. This
-will create a new directory called ``ipsimdata`` in your current directory. 
+Let's first download the example simulated data sets for ipyrad_. Copy and paste
+the code below into a terminal. This will create a new directory called 
+``ipsimdata`` in your current directory containing all of the necessary files.
 
 .. code:: bash
 
@@ -91,7 +91,7 @@ will create a new directory called ``ipsimdata`` in your current directory.
     tar -xvzf ipsimdata.tar.gz
 
 
-If you look in the ipsimdata/ directory you'll see there are a number of example
+If you look in the ``ipsimdata/`` directory you'll see there are a number of example
 data sets. For this tutorial we'll be using one called ``sim_rad_test``. Let's 
 start by creating a new Assembly, and then we'll edit the params file to 
 tell it how to find the input data files in ipsimdata/. 
@@ -101,12 +101,14 @@ tell it how to find the input data files in ipsimdata/.
     ## creates a new Assembly named data1
     ipyrad -n data1
 
+
 .. parsed-literal::
 
     New file `params-data1.txt` created in /home/deren/Documents/ipyrad
 
+
 As you can see, this created a new default params file for our Assembly. 
-Next use a text editor to make the following changes to ``params-data1.txt``.  
+Next use a text editor to make the changes below inside ``params-data1.txt``.  
 All other parameters can be left at their default values for now.
 
 .. parsed-literal::
@@ -115,13 +117,16 @@ All other parameters can be left at their default values for now.
     ## ./ipsimdata/sim_rad_test.fastq.gz      ## [2] [raw_fastq_path]
     ## ./ipsimdata/sim_rad_test_barcodes.txt  ## [3] [barcodes_path]
 
-Now that we're ready, let's run steps 1 and 2 of the assembly to demultiplex 
-and filter the data which we designated in the params file. 
-This will create new data files in the directory ``project_dir``.
+
+Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
+to demultiplex and filter the sequence data from the input data files we designated 
+in the params file. This will create a bunch of new files in the ``project_dir`` 
+directory, which we named `iptutorial`. 
 
 .. code:: bash 
 
     ipyrad -p params-data1.txt -s 12
+
 
 .. parsed-literal::
 
@@ -130,23 +135,23 @@ This will create new data files in the directory ``project_dir``.
     Step2: Filtering reads 
       Saving Assembly.
 
-If you look in your current directory you'll see that ipyrad_ created a new 
-directory called ``iptutorial``. This is our project directory. If 
-we had set a full path for ``project_dir`` in the params file (i.e., one like 
-``/home/user/myfolder/`` instead of ``./myfolder``) the new directory would be 
-created in the full path location. If the project_dir already exists that is 
-fine too. You'll see that in the project_dir ipyrad_ has created two new 
-subdirectories with names prefixes matching the assembly_name, ``data1``. 
+Look in the new directory ``iptutorial`` which will have been created inside 
+your current directory. You'll see that inside this directory ipyrad_ has 
+created two new subdirectories that have names prefixed by the 
+assembly_name, ``data1``. The other saved file is a ``.json`` file,  which you 
+can look at with a text editor if you wish. It's used by ipyrad_ to store 
+information about your Assembly. You'll notice that ipyrad_ prints "Saving Assembly"
+quite often. This allows the assembly to be restarted easily from any point 
+if it ever interrupted. In general, you should not mess with the .json file, 
+since editing it by hand could cause errors in your assembly. 
+
 
 .. code:: bash
     ls ./iptutorial
 
 .. parsed-literal::
-    data1_edits   data1_fastqs   data1.json
+    data1_edits/   data1_fastqs/   data1.json
 
-The other saved file is a json file which you can look at with a text editor if 
-you wish. It's used by ipyrad_ to store information about your Assembly. You 
-should generally not edit this file by hand. 
 
 
 Branching example
