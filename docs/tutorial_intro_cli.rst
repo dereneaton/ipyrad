@@ -24,32 +24,10 @@ follow along by copy/pasting the code-blocks into a command line terminal.
 Getting Started
 ~~~~~~~~~~~~~~~
 
-.. warning:: none of these are working and I don't know why....????!?!?!?!
+.. note:: 
 
-.. note:: If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
-
-.. note:: If you haven't already installed.
-
-.. warning:: please instaaaalllll
-
-.. _note::
-
-    If you haven't already installed ipyrad go here first
-
-
-.. _warning::
-    How do I make warnings?
-
-.. _DANGER::
-    Is it all about making it in CAPS?
-
-.. _DANGER::
-
-    or Is it about making it in CAPS and spaces?
-
-
-.. _index::
-    why the f are these things not showing up???!?!?!
+    If you haven't already installed ipyrad go here first: 
+    :ref:`Installation <installation>`
 
 
 
