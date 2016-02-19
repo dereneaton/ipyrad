@@ -39,7 +39,7 @@ Documentation
    userguide.rst
    notebooks.rst
    tutorials.rst
-
+   API.rst
    analysis.rst
    citing.rst
    releasenotes.rst
