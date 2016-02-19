@@ -28,13 +28,13 @@ are already demultiplexed then step 1 simply reads the data in to count how
 many reads are assigned to each Sample. 
 
 The following :ref:`assembly parameters<parameters>` are *potentially*
-used or **required** during step1: 
-:ref:`assembly_name<assembly_name>`, 
-:ref:`project_dir<project_dir>`, 
+used during step1: 
+*:ref:`assembly_name<assembly_name>`, 
+*:ref:`project_dir<project_dir>`, 
 :ref:`raw_fastq_path<raw_fastq_path>`,
 :ref:`barcodes_path<barcodes_path>`,
 :ref:`sorted_fastq_path<sorted_fastq_path>`, 
-:ref:`datatype<datatype>`,
+*:ref:`datatype<datatype>`,
 :ref:`restriction_overhang<restriction_overhang>`,
 :ref:`max_barcode_mismatch<max_barcode_mismatch>`
 
@@ -47,12 +47,17 @@ and reads with more than the number of allowed “N”s are discarded. An
 optional filter can be applied to remove adapters/primers, and there is an 
 optional filter to clean up the edges of poor quality reads.
 
-The following :ref:`assembly parameters<parameters>` are *potentially*
-used during step2:
-
-:ref:`assembly_name<assembly_name>`, project_dir_, barcodes_path_, 
-datatype_, restriction_overhang_, 
-max_low_qual_bases_, filter_adapters_, filter_min_trim_len_, edit_cut_sites_
+The following :ref:`parameters<parameters>` are *potentially*
+used, or required (*) during step2:
+*:ref:`assembly_name<assembly_name>`, 
+*:ref:`project_dir<project_dir>`, 
+:ref:`barcodes_path<barcodes_path>`,
+*:ref:`datatype<datatype>`,
+:ref:`restriction_overhang<restriction_overhang>`,
+:ref:`max_low_qual_bases<max_low_qual_bases>`,
+:ref:`filter_adapters<filter_adapters>`,
+:ref:`filter_min_trim_len<filter_min_trim_len>`
+:ref:`edit_cut_sites<edit_cut_sites>`
 
 
 3. Clustering / Mapping reads within Samples and alignment
@@ -64,9 +69,13 @@ depending on the selected assembly method. In either case, reads are matched
 together on the basis of sequence similarity and the resulting clusters are 
 aligned using muscle_. 
 
-:ref:`assembly_name<assembly_name>`, project_dir_, barcodes_path_, 
-datatype_, restriction_overhang_, 
-max_low_qual_bases_, filter_adapters_, filter_min_trim_len_, edit_cut_sites_
+The following :ref:`parameters<parameters>` are *potentially*
+used, or required (*) during step3:
+*:ref:`assembly_name<assembly_name>`, 
+*:ref:`project_dir<project_dir>`, 
+*:ref:`assembly_method<assembly_method>`,
+*:ref:`datatype<datatype>`,
+*:ref:`clust_threshold<clust_threshold>`,
 
 
 4. Joint estimation of heterozygosity and error rate
