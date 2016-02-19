@@ -23,13 +23,14 @@ follow along by copy/pasting the code-blocks into a command line terminal.
 
 Getting Started
 ~~~~~~~~~~~~~~~
-You're kkillin gmeeee.
 
-.. _note:: If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
+.. warning:: none of these are working and I don't know why....????!?!?!?!
 
-.. _note:: If you haven't already installed.
+.. note:: If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
 
-.. _warning:: please instaaaalllll
+.. note:: If you haven't already installed.
+
+.. warning:: please instaaaalllll
 
 .. _note::
 
