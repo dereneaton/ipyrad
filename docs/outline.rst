@@ -28,9 +28,15 @@ are already demultiplexed then step 1 simply reads the data in to count how
 many reads are assigned to each Sample. 
 
 The following :ref:`assembly parameters<parameters>` are *potentially*
-used or **required** during step1: :ref:`assembly_name`<assembly_name>`, 
-project_dir_, raw_fastq_path_, barcodes_path_, sorted_fastq_path_, 
-datatype_, restriction_overhang_, max_barcode_mismatch_
+used or **required** during step1: 
+:ref:`assembly_name<assembly_name>`, 
+:ref:`project_dir<project_dir>`, 
+:ref:`raw_fastq_path<raw_fastq_path>`,
+:ref:`barcodes_path<barcodes_path>`,
+:ref:`sorted_fastq_path<sorted_fastq_path>`, 
+:ref:`datatype<datatype>`,
+:ref:`restriction_overhang<restriction_overhang>`,
+:ref:`max_barcode_mismatch<max_barcode_mismatch>`
 
 
 2. Filtering / Editing reads
@@ -48,9 +54,20 @@ used during step2:
 datatype_, restriction_overhang_, 
 max_low_qual_bases_, filter_adapters_, filter_min_trim_len_, edit_cut_sites_
 
+
 3. Clustering / Mapping reads within Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
+Step 3 first dereplicates the sequences from step 2, recording the number of 
+times each unique read is observed. These are then either de novo clustered 
+(using vsearch_) or mapped to a reference genome (using smalt_ and bedtools_), 
+depending on the selected assembly method. In either case, reads are matched 
+together on the basis of sequence similarity and the resulting clusters are 
+aligned using muscle_. 
+
+:ref:`assembly_name<assembly_name>`, project_dir_, barcodes_path_, 
+datatype_, restriction_overhang_, 
+max_low_qual_bases_, filter_adapters_, filter_min_trim_len_, edit_cut_sites_
+
 
 4. Joint estimation of heterozygosity and error rate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
