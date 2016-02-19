@@ -29,8 +29,8 @@ many reads are assigned to each Sample.
 
 The following :ref:`assembly parameters<parameters>` are *potentially*
 used or required (\*) during step1: 
-\*:ref:`assembly_name<assembly_name>`, 
-\*:ref:`project_dir<project_dir>`, 
+:ref:`\*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
 :ref:`raw_fastq_path<raw_fastq_path>`,
 :ref:`barcodes_path<barcodes_path>`,
 :ref:`sorted_fastq_path<sorted_fastq_path>`, 
