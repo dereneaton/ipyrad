@@ -29,13 +29,15 @@ or amplicon.
 e.g., RAD-seq (citation)
 
 **ddrad**  
+
 This category is used for any datatype which select fragments that were digested
 by two different restriction enzymes on either end. During assembly is is 
 analyzed differently from the ``rad`` data type by more stringent filtering.
 
 e.g., double-digest RAD-seq (Peterson et al. xxx)
 
-**gbs**  
+**gbs**
+
 This category is used for any datatype which selects fragments that were digested
 by a single enzyme on both ends of the fragment. This data type requires 
 reverse-complement clustering because the forward vs reverse adapters can attach
