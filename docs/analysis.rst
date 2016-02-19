@@ -95,6 +95,10 @@ becomes too large, however, a random sampling scheme can be employed.
 Other features include: using weighted quartets (see 
 :ref:`Avni et al. 2014<weighted_quartets>`)
 
+
+Instead of the code below and just link to the cookbook recipe for this.
+
+
 First launch parallel engines using ipcluster as described in the 
 `running the ipyrad API in parallel` section. 
 
