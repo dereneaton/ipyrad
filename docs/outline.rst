@@ -27,10 +27,9 @@ If the data are not yet demultiplexed then step 1 uses information from a
 are already demultiplexed then step 1 simply reads the data in to count how 
 many reads are assigned to each Sample. 
 
-The following :ref:`assembly parameters<Assembly_parameters>` are *potentially*
-used or **required** during step1:
-
-0. assembly_name_, project_dir_, raw_fastq_path_, barcodes_path_, sorted_fastq_path_, 
+The following :ref:`assembly parameters<parameters>` are *potentially*
+used or **required** during step1: :ref:`assembly_name`<assembly_name>`, 
+project_dir_, raw_fastq_path_, barcodes_path_, sorted_fastq_path_, 
 datatype_, restriction_overhang_, max_barcode_mismatch_
 
 
@@ -38,21 +37,16 @@ datatype_, restriction_overhang_, max_barcode_mismatch_
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 2 uses the quality score recorded in the fastQ data files to filter low 
 quality base calls. Sites with a score below a set value are changed into “N”s, 
-and reads with more than the number of allowed “N”s are discarded. A number of 
-optional filters can be applied to remove adapters/primers from data. 
+and reads with more than the number of allowed “N”s are discarded. An  
+optional filter can be applied to remove adapters/primers, and there is an 
+optional filter to clean up the edges of poor quality reads.
 
-The following :ref:`assembly parameters<Assembly_parameters>` are *potentially*
+The following :ref:`assembly parameters<parameters>` are *potentially*
 used during step2:
 
-* 0. assembly_name_
-* 1. project_dir_
-* 3. barcodes_path_
-* 7. datatype_
-* 8. restriction_overhang_
-* 15. max_barcode_mismatch_
-
-
-
+:ref:`assembly_name<assembly_name>`, project_dir_, barcodes_path_, 
+datatype_, restriction_overhang_, 
+max_low_qual_bases_, filter_adapters_, filter_min_trim_len_, edit_cut_sites_
 
 3. Clustering / Mapping reads within Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

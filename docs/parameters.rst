@@ -18,6 +18,7 @@ of parameter settings is one of the strengths of ipyrad_.
 Below is an explanation of each parameter setting, the steps of the assembly 
 that it effects, and example entries for the parameter into a params.txt file.
 
+.. _assembly_name:
 
 0. Assembly name
 -----------------
@@ -39,6 +40,8 @@ Example entries into params.txt:
     clust90_minsamp4           ## [0] name the Assembly based on some param settings
 
 
+.. _project_dir:
+
 1. Project dir
 --------------
 The Project directory is the location where a group of Assemblies which share
@@ -57,6 +60,7 @@ Example entries into params.txt:
     /home/deren/ipyrad/tests/finches   ## [1] create/use project dir called finches
     finches                            ## [1] create/use project dir called finches
 
+.. _raw_fastq_path:
 
 2. Raw fastq path
 -----------------
