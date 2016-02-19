@@ -10,4 +10,4 @@
 .. _oaks: https://github.com/dereneaton/virentes  
 .. _smalt: http://www.sanger.ac.uk/science/tools/smalt-0
 .. _bedtools: http://bedtools.readthedocs.org/en/latest/
-
+.. _vsearch: https://github.com/torognes/vsearch

@@ -11,7 +11,7 @@ comparative data sets in ipyrad_ involves
 :ref:`seven sequential steps <seven_steps>`. 
 The reason it is separated into distinct steps is to create a modular 
 workflow that can be easily restarted if it is interrupted, and can be easily
-:ref:`branched<branching_assemblies>` at different points to create 
+:ref:`branched<branching_workflow>` at different points to create 
 assemblies under different combinations of parameter settings. 
 
 
@@ -22,6 +22,7 @@ sequentially under a single set of parameters defined in the
 :ref:`parameter settings<parameters>`. These steps are described below.
 
 .. image:: images/steps.png
+
 
 
 .. _seven_steps:
@@ -152,7 +153,7 @@ Step7 applies filters to the final alignments and saves the final data in a
 number of possible :ref:`output formats<output_formats>`. This step is most 
 often repeated at several different settings for the parameter 
 :ref:`min_samples_locus` to create different assemblies with different 
-proportions of missing data (see branching_). 
+proportions of missing data (see branching_workflow_). 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step7: 
@@ -170,12 +171,12 @@ used or required (\*) for step7:
 
 
 
-
-
 .. _branching_workflow:
 
+
 Branching workflow
-^^^^^^^^^^^^^^^^^^
+-------------------
+
 A more efficient and effective way to use ipyrad_ is to create branching
 assemblies in which multiple final data sets are assembled from the same
 shared data by applying different parameter settings to them during different
@@ -184,7 +185,9 @@ an assembly called 'data1' to create a new assembly 'data2' which inherits the
 files and statistics from data1, but then applies a different clustering 
 threshold going forward for steps 3-7. You can envision many data sets generated
 this way by havins successive branching events along each branch. 
-You can find more branching examples in the tutorial_ and cookbook_ sections. 
+You can find more branching examples in the 
+:ref:`advanced tutorial<tutorial_advanced_cli>` and 
+:ref:`cookbook<cookbook>` sections. 
 
 .. image:: images/steps_branching.png
 
