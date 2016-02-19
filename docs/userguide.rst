@@ -54,3 +54,21 @@ recommend that everyone starts by reading through the Introductory tutorial.
    tutorial_paired_gbs.rst
 
 
+
+Examples with empirical data
+-----------------------------
+The following tutorials show example assemblies with publicly available 
+empirical data sets. 
+The first analyzes a RAD-seq data set using the CLI. 
+The second analyzes a RAD-seq data set using the API. 
+The third uses preview-mode to sample just a subset a paired-GBS data set 
+for a fast analysis. 
+
+
+.. toctree::
+    :maxdepth: 1
+
+    pedicularis.rst
+    viburnum.rst
+
+

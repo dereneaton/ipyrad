@@ -65,6 +65,10 @@ can imagine how this would be useful for removing contaminants, plastome data,
 symbiont-host data, or coding/non-coding regions.  
 
 
+Preview Mode
+~~~~~~~~~~~~~
+...
+
 
 Running ipyrad CLI on a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
