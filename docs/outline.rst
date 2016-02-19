@@ -6,15 +6,25 @@
 Assembly Outline
 ================
 
-The typical workflow to move from fastq formatted sequence data to assembled 
+The typical workflow to move from fastQ formatted input data to assembled 
 comparative data sets in ipyrad_ involves 
 :ref:`seven sequential steps <seven_steps>`. 
-The reason the it is separated into distinct steps is to create a modular 
+The reason it is separated into distinct steps is to create a modular 
 workflow that can be easily restarted if it is interrupted, and can be easily
-branched at different points so that one can test the effect of different
-:ref:`parameter settings <Assembly_parameters>` during different stages of 
-assembly on the final results.
+:ref:`branched<branching_assemblies>` at different points to create 
+assemblies under different combinations of parameter settings. 
 
+
+Basic workflow
+---------------
+The basic workflow involves assembling a data set through the `seven steps`_ 
+sequentially under a single set of parameters defined in the 
+:ref:`parameter settings<parameters>`. These steps are described below.
+
+.. image:: images/steps.png
+
+
+.. _seven_steps:
 
 Seven Steps
 ------------
@@ -81,11 +91,38 @@ used, or required (*) during step3:
 
 4. Joint estimation of heterozygosity and error rate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
+Step4 jointly estimates sequencing error rate and heterozygosity based on counts
+of site patterns across clustered reads using the ML equation from Lynch (20XX).
+These estimates are used in step5 for consensus base calling.
+
+The following :ref:`parameters<parameters>` are *potentially*
+used, or required (*) during step3:
+:ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
+:ref:`*datatype<datatype>`,
+:ref:`*restriction_overhang<restriction_overhang>`, 
+
 
 5. Consensus base calling and filtering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
+Step5 estimates consensus allele sequences from clustered reads given the estimated
+parameters from step4 and a binomial model. Those which have less than the 
+minimum coverage, more than the maximum number of undetermined sites, 
+or more than the maximum number of heterozygous sites, 
+or more than the allowed number of alleles, are discarded. 
+In diploid data if two alleles are present the phase of heterozygous sites are 
+retained in the consensus sequences.
+
+The following :ref:`parameters<parameters>` are *potentially*
+used, or required (*) during step3:
+:ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
+:ref:`*datatype<datatype>`,
+:ref:`*max_alleles_consens<max_alleles_consens>`,
+:ref:`*max_Ns_consens<max_Ns_consens>`,
+
+
+
 
 6. Clustering / Mapping reads among Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -99,13 +136,6 @@ used, or required (*) during step3:
 Schematic Example
 ------------------
 
-Basic workflow
-^^^^^^^^^^^^^^^
-The basic workflow involves assembling a data set through the `seven steps`_ 
-sequentially under a single set of parameters defined in the params file. 
-
-
-.. image:: images/steps.png
 
 **Example CLI basic workflow**
 
