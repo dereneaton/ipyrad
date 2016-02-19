@@ -29,12 +29,12 @@ many reads are assigned to each Sample.
 
 The following :ref:`assembly parameters<parameters>` are *potentially*
 used during step1: 
-*:ref:`assembly_name<assembly_name>`, 
-*:ref:`project_dir<project_dir>`, 
+\*:ref:`assembly_name<assembly_name>`, 
+\*:ref:`project_dir<project_dir>`, 
 :ref:`raw_fastq_path<raw_fastq_path>`,
 :ref:`barcodes_path<barcodes_path>`,
 :ref:`sorted_fastq_path<sorted_fastq_path>`, 
-*:ref:`datatype<datatype>`,
+\*:ref:`datatype<datatype>`,
 :ref:`restriction_overhang<restriction_overhang>`,
 :ref:`max_barcode_mismatch<max_barcode_mismatch>`
 
