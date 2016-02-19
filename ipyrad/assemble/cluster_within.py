@@ -801,7 +801,7 @@ def multi_muscle_align(data, sample, ipyclient):
                 ## that claim to be "busy" when you try to remove them. Don't
                 ## kill the run if you can't remove this directory.
                 LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
-                pass
+
         del lbview
 
 

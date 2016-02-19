@@ -157,7 +157,7 @@ class Assembly(object):
                        ("phred_Qscore_offset", 33),
                        ("mindepth_statistical", 6), 
                        ("mindepth_majrule", 6), 
-                       ("maxdepth", 1000),
+                       ("maxdepth", 10000),
                        ("clust_threshold", .85),
                        ("max_barcode_mismatch", 1),
                        ("filter_adapters", 0), 
@@ -238,7 +238,8 @@ class Assembly(object):
 
 
 
-    def link_fastqs(self, path=None, merged=False, force=False, append=False):
+    def link_fastqs(self, path=None, merged=False, force=False, append=False,
+                    splitnames="_", fields=None):
         """ Create Sample objects from demultiplexed fastq files in 
         sorted_fastq_path, or append additional fastq files to 
         existing Samples.
@@ -266,6 +267,17 @@ class Assembly(object):
             they already have linked files. Use append=True to instead append 
             additional fastq files to a Sample (file names should be formatted 
             the same as usual, e.g., [name]_R1_[optional].fastq.gz).
+
+        splitnames : str
+            A string character used to file names. In combination with the 
+            fields argument can be used to subselect filename fields names.
+
+        fields : list
+            A list of indices for the fields to be included in names after 
+            filnames are split on the splitnames character. Useful for appending
+            sequence names which must match existing names. If the largest index 
+            is greater than the number of split strings in the name the index
+            if ignored. e.g., [2,3,4] ## excludes 0, 1 and >4
 
         force : bool
             Overwrites existing Sample data and statistics.
@@ -362,7 +374,7 @@ class Assembly(object):
             linkedinc = 0
             appendinc = 0
             ## remove file extension from name
-            sname = _name_from_file(fastqtuple[0])
+            sname = _name_from_file(fastqtuple[0], splitnames, fields)
 
             if sname not in self.samples:
                 ## create new Sample
@@ -375,15 +387,15 @@ class Assembly(object):
             else:
                 ## if not forcing, shouldn't be here with existing Samples
                 if append:
-                    if fastqtuple not in self.samples[sname].files.fastqs:
-                        self.samples[sname].files.fastqs.append(fastqtuple)
-                        appendinc += 1
-                    else:
-                        print("    The files {} are already in Sample {}, "\
-                              .format(fastqtuple, sname) \
-                              +"cannot append duplicate files to a Sample.\n")
+                    #if fastqtuple not in self.samples[sname].files.fastqs:
+                    self.samples[sname].files.fastqs.append(fastqtuple)
+                    appendinc += 1
+                    #else:
+                    #    print("    The files {} are already in Sample {}, "\
+                    #          .format(fastqtuple, sname) \
+                    #          +"cannot append duplicate files to a Sample.\n")
                 elif force:
-                    ## create new Sample
+                    ## overwrite/create new Sample
                     self.samples[sname] = Sample(sname)
                     self.samples[sname].stats.state = 1
                     self.samples[sname].barcode = None 
@@ -697,72 +709,9 @@ class Assembly(object):
         [project_dir]/[assembly_name].json
 
         """
-        print("    Saving Assembly.")
+        if self._headers:
+            print("    Saving Assembly.")
         ip.save_json(self)
-
-
-
-    # def _launch(self, inittries):
-    #     """ launch ipyclient.
-    #     launch within try statement in case engines aren't ready yet
-    #     and try 30 1 second sleep/wait cycles before giving up on engines
-    #     """
-    #     tries = inittries
-    #     while tries:
-    #         try:
-    #             ## launches ipcluster with arguments if present in self
-    #             clusterargs = [self._ipclusterid, self._ipprofile]
-    #             argnames = ["cluster_id", "profile"]
-    #             args = {key:value for key, value in zip(argnames, clusterargs)}
-    #             ipyclient = ipp.Client(**args)
-    #             if tries > 1:
-    #                 LOGGER.info('try %s: starting controller', tries)
-    #             ## make sure all engines are connected
-    #             try:
-    #                 assert ipyclient.ids                    
-    #                 if tries != inittries:                        
-    #                     ## get initial number of ids
-    #                     ## ugly hack to find all engines while they're spinng up
-    #                     initid = ipyclient.ids
-    #                     if len(initid) > 10:
-    #                         LOGGER.warn("waiting 3 seconds to find Engines")
-    #                         try:
-    #                             time.sleep(3)
-    #                         except KeyboardInterrupt:
-    #                             print(" Keyboard interrupt disabled during cluster init.")
-    #                     else:
-    #                         try:
-    #                             time.sleep(1)                                            
-    #                         except KeyboardInterrupt:
-    #                             print(" Keyboard interrupt disabled during cluster init.")
-    #                     try:
-    #                         ## make sure more engines aren't found
-    #                         assert len(ipyclient.ids) == len(initid)
-    #                         LOGGER.warn('OK! Connected to (%s) engines', 
-    #                                     len(ipyclient.ids))
-    #                         return ipyclient
-
-    #                     except AssertionError as _: 
-    #                         LOGGER.warn('finding engines (%s, %s)', 
-    #                                      len(initid), len(ipyclient.ids))
-    #                         raise
-    #                 else:
-    #                     LOGGER.debug('OK! Connected to (%s) engines', 
-    #                                 len(ipyclient.ids))
-    #                     return ipyclient
-
-    #             except AssertionError as _: 
-    #                 LOGGER.debug('connected to %s engines', len(ipyclient.ids))
-    #                 raise
-    #         except (IOError, ipp.NoEnginesRegistered, AssertionError) as _:
-    #             try:
-    #                 time.sleep(1)
-    #                 tries -= 1
-    #             except KeyboardInterrupt:
-    #                 print(" Keyboard interrupt disabled during cluster intialization.")
-    #                 print(" Wait for cluster to finish init, then you can kill it cleanly.")
-
-    #     raise ipp.NoEnginesRegistered
 
 
 
@@ -804,8 +753,11 @@ class Assembly(object):
                     ## connection stays open, so just wait til no new engines
                     ## have been added for three seconds
                     time.sleep(3)
-                    if len(ipyclient) == initid:
-                        break
+                    if initid:
+                        if len(ipyclient) == initid:
+                            break
+                    else:
+                        print("connecting to Engines...")
 
 
         except KeyboardInterrupt:
@@ -835,7 +787,8 @@ class Assembly(object):
                 args.append(ipyclient)
                 stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError, UnboundLocalError) as inst:
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered, 
+                IOError, UnboundLocalError) as inst:
             ## raise by ipyparallel if no connection file is found for 30 sec.
             msg = """
     Check to ensure ipcluster is started. When using the API you must start
@@ -900,7 +853,7 @@ class Assembly(object):
                 ## can't close client if it was never open
                 if ipyclient:
                     ipyclient.close()
-            except UnboundLocalError:
+            except (UnboundLocalError, IOError):
                 pass
 
 
@@ -951,8 +904,7 @@ class Assembly(object):
         else:
             ## first check if demultiplexed files exist in sorted path
             if glob.glob(sfiles):
-                if self._headers:
-                    self.link_fastqs()
+                self.link_fastqs()
 
             ## otherwise do the demultiplexing
             else:
@@ -1422,18 +1374,37 @@ def _get_samples(self, samples):
 
 
 
-def _name_from_file(fname):
+def _name_from_file(fname, splitnames, fields):
     """ internal func: get the sample name from any pyrad file """
+    ## allowed extensions
     file_extensions = [".gz", ".fastq", ".fq", ".fasta", 
                        ".clustS", ".consens"]
     base, ext = os.path.splitext(os.path.basename(fname))
+
     ## remove read number from name
     base = base.replace("_R1_.", ".")\
                .replace("_R1_", "_")\
                .replace("_R1.", ".")
+
     ## remove extensions
     while ext in file_extensions:
         base, ext = os.path.splitext(base)
+
+    if fields:
+        namebits = base.split(splitnames)
+        base = []
+        for field in fields:
+            try:
+                base.append(namebits[field])
+            except IndexError:
+                pass
+        base = splitnames.join(base)
+
+    if not base:
+        raise IPyradError("""
+    Found invalid/empty filename in link_fastqs. Check splitnames argument.
+    """)
+
     return base
 
 

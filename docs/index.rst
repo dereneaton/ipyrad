@@ -26,12 +26,13 @@ Documentation
 =============
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    ethos.rst
    features.rst
    installation.rst
 
+   files.rst
    outline.rst
    parameters.rst
    methods.rst
@@ -39,9 +40,8 @@ Documentation
    userguide.rst
    notebooks.rst
    tutorials.rst
-
+   API.rst
    analysis.rst
-
    citing.rst
    releasenotes.rst
    support.rst
