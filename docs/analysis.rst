@@ -98,21 +98,26 @@ Other features include: using weighted quartets (see
 First launch parallel engines using ipcluster as described in the 
 `running the ipyrad API in parallel` section. 
 
-```
-import ipyrad as ip
-import ipyrad.analysis as ipa
 
-## load your assembled data set
-data = ip.load_json("project_dir/my_assembly.json")
+.. code-block:: python
 
-## start sampling quartets, it will print to screen the 
-## number of possible quartets. 
-ipa.svd4tet(data, useweights=False)
-```
+    import ipyrad as ip
+    import ipyrad.analysis as ipa
 
-```
-  Running svd4tet on 20 cores. Estimating 495 quartets for 12 Samples. 
-```
+    ## load your assembled data set
+    data = ip.load_json("project_dir/my_assembly.json")
+
+    ## start sampling quartets, it will print to screen the 
+    ## number of possible quartets. 
+    ipa.svd4tet(data, useweights=False)
+
+
+
+.. parsed-literal::
+
+    Running svd4tet on 20 cores. Estimating 495 quartets for 12 Samples. 
+
+
 
 Progress will be printed to screen.... 
 
