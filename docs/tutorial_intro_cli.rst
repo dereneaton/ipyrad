@@ -1,5 +1,7 @@
 
 
+.. include:: global.rst 
+
 .. _tutorial_intro_cli:
 
 
@@ -22,10 +24,9 @@ follow along by copy/pasting the code-blocks into a command line terminal.
 Getting Started
 ~~~~~~~~~~~~~~~
 
-.. _note::
+.. _note:: If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
 
-    If you haven't already installed ipyrad go here first: 
-    :ref:`Installation <installation>`
+.. _note:: If you haven't already installed.
 
 .. _note::
 

@@ -163,24 +163,6 @@ Branching example
 
 
 
-Assembly and Sample objects
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Assembly and Sample objects are used by *ipyrad* to access data stored
-on disk and to manipulate it. Each biological sample in a data set is
-represented in a Sample object, and a set of Samples is stored inside an
-Assembly object. The Assembly object has functions to assemble the data,
-and stores a log of all steps performed and the resulting statistics of
-those steps. Assembly objects can be copied or merged to allow branching
-events where different parameters can subsequently be applied to
-different Assemblies going forward. Examples of this are shown below.
-
-To create an Assembly object call ``ip.Assembly()`` and pass a name for
-the data set. An Assembly object does not initially contain Samples,
-they will be created either by linking fastq files to the Assembly
-object if data are already demultiplexed, or by running ``step1()`` to
-demultiplex raw data files, as shown below.
-
 .. code:: python
 
     ## create an Assembly object called data1. 
