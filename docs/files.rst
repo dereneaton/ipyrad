@@ -68,12 +68,14 @@ to be demultiplexed based on their attached barcodes or index; or your data may
 already be demultiplexed, in which case each of your data files corresponds to 
 a different sample. 
 
-** multiplexed (raw) sequence files **  
+**multiplexed (raw) sequence files**  
+
 If your data are not yet sorted among individuals/samples then you will need 
 to have their barcodes information organized into a barcodes_file_. Sample names 
 will be taken from the barcodes file. 
 
-** demultiplexed (sorted) sequence files **  
+**demultiplexed (sorted) sequence files**  
+
 If your data are already sorted then you simply have to enter the path to the 
 data files in the ``sorted_fastq_path`` parameter of ipyrad. 
 Sample names come from file names. 
