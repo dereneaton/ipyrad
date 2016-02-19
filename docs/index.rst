@@ -26,7 +26,7 @@ Documentation
 =============
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    ethos.rst
    features.rst
