@@ -15,18 +15,15 @@ to assembly of other data types (GBS and paired-end).
 
 If you are new to RADseq analyses, this tutorial will provide a simple overview 
 of how to execute ipyrad, what the data files look like, how to check that 
-your analysis is working, and what the final output formats will be.
+your analysis is working, and what the final output formats will be. You can 
+follow along by copy/pasting the code-blocks into a command line terminal. 
 
-Each cell in this tutorial beginning with the header (%%bash) indicates that the 
-code should be executed in a command line shell, for example by copying and 
-pasting the text into your terminal (but excluding the %%bash header). All 
-lines in code cells beginning with ## are comments and should not be copied
-and executed.
 
 Getting Started
 ~~~~~~~~~~~~~~~
 
-If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
+.. _attention::
+    If you haven't already installed ipyrad go here first: :ref:`Installation <installation>`
 
 We provide a very small sample data set that we recommend using for this tutorial.
 Full datasets can take days and days to run, whereas with the simulated data

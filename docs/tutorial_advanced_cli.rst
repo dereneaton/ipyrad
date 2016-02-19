@@ -107,9 +107,13 @@ tell it how to find the input data files for this data set.
     New file params-data1.txt created in /home/deren/Documents/ipyrad
 
 
-As you can see, this created a new default params file for our Assembly. 
-Next use a text editor to make the changes below inside ``params-data1.txt``.  
-All other parameters can be left at their default values for now.
+As you can see, this created a new  params file for our Assembly. We need to 
+edit this file since it contains only default values. Use any text editor to 
+open the params file ``params-data1.txt`` and enter the values 
+below for parameters 1, 2, and 3. All other parameters can be left at their 
+default values for now. This tells ipyrad that we are going to use the name
+``iptutorial`` as our project_dir (where output files will be created), and 
+that the input data and barcodes file are located in ``ipsimdata/``.
 
 .. parsed-literal::
 
@@ -119,9 +123,8 @@ All other parameters can be left at their default values for now.
 
 
 Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
-to demultiplex and filter the sequence data from the input data files we designated 
-in the params file. This will create a bunch of new files in the ``project_dir`` 
-directory, which we named `iptutorial`. 
+to demultiplex and filter the sequence data. This will create a bunch of new 
+files in the ``iptutorial/`` directory. 
 
 .. code:: bash 
 
@@ -135,23 +138,21 @@ directory, which we named `iptutorial`.
     Step2: Filtering reads 
       Saving Assembly.
 
-Look in the new directory ``iptutorial`` which will have been created inside 
-your current directory. You'll see that inside this directory ipyrad_ has 
-created two new subdirectories that have names prefixed by the 
-assembly_name, ``data1``. The other saved file is a ``.json`` file,  which you 
-can look at with a text editor if you wish. It's used by ipyrad_ to store 
-information about your Assembly. You'll notice that ipyrad_ prints "Saving Assembly"
-quite often. This allows the assembly to be restarted easily from any point 
+
+Inside ``iptutorial`` you'll see that ipyrad_ has created two subdirectories 
+with names prefixed by the assembly_name ``data1``. The other saved file is a 
+``.json`` file,  which you can look at with a text editor if you wish. 
+It's used by ipyrad_ to store information about your Assembly. 
+You'll notice that ipyrad_ prints "Saving Assembly" quite often. 
+This allows the assembly to be restarted easily from any point 
 if it ever interrupted. In general, you should not mess with the .json file, 
 since editing it by hand could cause errors in your assembly. 
-
 
 .. code:: bash
     ls ./iptutorial
 
 .. parsed-literal::
     data1_edits/   data1_fastqs/   data1.json
-
 
 
 Branching example
