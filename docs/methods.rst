@@ -42,7 +42,7 @@ study of a parasite.
 
 
 .. _comparing:
-Using multiple methods
+Combining multiple methods
 --------------------------
 You could imagine that if you had a reference sequence file you might want to 
 examine your data set under a number of different Assembly scenarios. For example,

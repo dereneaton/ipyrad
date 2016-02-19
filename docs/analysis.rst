@@ -122,9 +122,10 @@ First launch parallel engines using ipcluster as described in the
     Running svd4tet on 20 cores. Estimating 495 quartets for 12 Samples. 
 
 
+Progress can be printed to screen, e.g.,
 
-Progress will be printed to screen.... 
-
-
+.. parsed-literal::
+    
+    1000/2000000 quartets finished.
 
 

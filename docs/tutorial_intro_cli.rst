@@ -41,6 +41,7 @@ First make a new directory and fetch & extract the test data.
     cd ipyrad-test
     curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
     tar -xvzf ipyrad_tutorial_data.tgz
+    
 
 You should now see a folder in your current directory called ``data``. This 
 directory contains two files we'll be using:

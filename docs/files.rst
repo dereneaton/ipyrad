@@ -41,14 +41,41 @@ This includes paired-end EZ-RAD...
 .. _input_files:
 FASTQ files -- raw or sorted data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Data can be already demultiplexed (sorted among individuals/samples) or it might
+be in the form of 'multiplexed' data, in which case you will need the barcode
+information to sort Samples out. ...
 
 
 .. _file_names:
-File names
-^^^^^^^^^^
+Input file names
+^^^^^^^^^^^^^^^^^
+blah blah ``_R1_`` and ``_R2_``. Sample names come from file names. 
+
+* Link to recipe: renaming Samples different from file names.
+* Link to recipe: combining multiple input files for individual Samples. 
 
 
 .. _barcodes_file:
 Barcodes file
 ^^^^^^^^^^^^^^
-...
+The barcodes file is a simple table linking barcodes to samples. 
+Barcodes can be of varying lengths. 
+Each line should have one name and then one barcode, separated by a tab or 
+space.
+
+
+.. parsed-literal:: 
+    sample1     ACAGG
+    sample2     ATTCA  
+    sample3     CGGCATA  
+    sample4     AAGAACA  
+
+
+.. _params_file:
+Params file
+^^^^^^^^^^^^
+The parameter input file, which will typically include ``params.txt`` in its name, 
+can be created with the ``-n`` option from the ipyrad command line. This file 
+lists all of the :ref:`paramater settings` necessary to run an assembly.
+A description of how to create and use a parmas file can be found in the 
+:ref:`introductory tutorial<tutorial_intro_cli>`. 
