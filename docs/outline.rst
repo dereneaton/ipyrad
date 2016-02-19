@@ -28,7 +28,7 @@ are already demultiplexed then step 1 simply reads the data in to count how
 many reads are assigned to each Sample. 
 
 The following :ref:`assembly parameters<parameters>` are *potentially*
-used during step1: 
+used or required (\*) during step1: 
 \*:ref:`assembly_name<assembly_name>`, 
 \*:ref:`project_dir<project_dir>`, 
 :ref:`raw_fastq_path<raw_fastq_path>`,
@@ -48,7 +48,7 @@ optional filter can be applied to remove adapters/primers, and there is an
 optional filter to clean up the edges of poor quality reads.
 
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (*) during step2:
+used, or required (\*) during step2:
 *:ref:`assembly_name<assembly_name>`, 
 *:ref:`project_dir<project_dir>`, 
 :ref:`barcodes_path<barcodes_path>`,
