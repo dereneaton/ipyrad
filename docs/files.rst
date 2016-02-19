@@ -22,20 +22,38 @@ that isn't described below and your're not sure if it can be analyzed in ipyrad
 is some confusion in the literature about the names of 
 
 
-**RAD-seq**
-RAD
+**rad**  
+This category is used for any datatype which uses a single restriction enzyme 
+or amplicon. 
 
-**dd-RAD**
-double-digest RAD-seq describes . This includes what double-digest GBS. 
+e.g., RAD-seq (citation)
 
-**GBS**
-This includes EZ-RAD, ... and others.
+**ddrad**  
+This category is used for any datatype which select fragments that were digested
+by two different restriction enzymes on either end. During assembly is is 
+analyzed differently from the ``rad`` data type by more stringent filtering.
 
-**paired-GBS**
+e.g., double-digest RAD-seq (Peterson et al. xxx)
+
+**gbs**  
+This category is used for any datatype which selects fragments that were digested
+by a single enzyme on both ends of the fragment. This data type requires 
+reverse-complement clustering because the forward vs reverse adapters can attach
+to either end of a fragment, and thus shorter fragments often overlap partially 
+or completely. 
+
+e.g., genotyping-by-sequencing (Elshire et al. xxx, ), EZ-RAD (Toonin et al. xxxx), 
+
+**pairddrad**  
+This category...
 This includes paired-end EZ-RAD...
 
-**paired-GBS**
-...
+**pairgbs**  
+This category ...
+
+**2brad**
+This category ... does soemthing a little weird.
+
 
 
 .. _input_files:
