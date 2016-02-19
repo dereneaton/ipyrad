@@ -70,7 +70,7 @@ more informative, like the name of your organism.
 
 .. code-block:: bash
 
-    ipyrad -n iptest1
+    ipyrad -n iptest
 
 This will create a file in the current directory called ``params-ipyrad-test.txt``.
 The params file lists on each line one parameter followed by a ## mark, 
@@ -79,12 +79,12 @@ purpose. Lets take a look at it.
 
 .. code-block:: bash
 
-    cat params-iptest1.txt
+    cat params-iptest.txt
 
 
 .. parsed-literal::
     ------ ipyrad params file (v.0.1.47)--------------------------------------------
-    iptest1                       ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
+    iptest                        ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
     ./                            ## [1] [project_dir]: Project dir (made in curdir if not present)
                                   ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
                                   ## [3] [barcodes_path]: Location of barcodes file
@@ -121,7 +121,7 @@ In general the defaults are sensible, and we won't mess with them for now, but t
 are a few parameters we *must* change. We need to set the path to the raw data we 
 want to analyse, and we need to set the path to the barcodes file.
 
-In your favorite text editor open ``params-iptest1.txt`` and change these two lines
+In your favorite text editor open ``params-iptest.txt`` and change these two lines
 to look like this, and then save it:
 
 .. parsed-literal::

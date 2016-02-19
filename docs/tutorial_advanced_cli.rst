@@ -73,12 +73,16 @@ Preview Mode
 Running ipyrad CLI on a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 As explained in the :ref:`installation<installation>` section, ipyrad_ is very 
-easy to use on a cluster because as long as it is installed using conda_ it does
-not require the user to load any external modules or software to run on an HPC
-cluster. Really, there is only **one** extra argument that you need to remember
+easy to use on an HPC cluster because as long as it is installed using conda_ it
+does not require the user to load any external modules or software. 
+Really, there is only **one** extra argument that you need to remember
 to use which is the ``--MPI`` argument. This ensures that processing cores which
 are split across different nodes of a cluster can all see the same data. Using 
-ipyrad_ with the --MPI flag on an HPC machine should allow users 
+ipyrad_ with the --MPI flag on an HPC machine should allow users to split jobs
+across dozens or hundreds of cores to assemble data sets very rapidly. As an 
+example, a large phylogenetic-scale RAD-seq data set analyzed on my desktop 
+computer with 10 cores took ~2 days, while on an HPC system with 64 cores it 
+took only ~16 hours. More detailed speed comparisons are in the works. 
 
 
 
@@ -160,30 +164,98 @@ since editing it by hand could cause errors in your assembly.
 
 
 Branching example
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+For this example we will branch our Assembly before running step3 so that we can
+see the results when the data are asembled with different assembly_methods. Our
+existing assembly ``iptest1`` is using the denovo method. Let's create a branch
+called ``iptest2`` which will use reference assembly. First we need to run the 
+branch command, then we'll edit the new params file to change the assembly_method
+and add the reference sequence file. 
 
 
+.. code:: bash
 
-
-
-
-.. code:: python
-
-    ## create an Assembly object called data1. 
-    data1 = ip.Assembly("data1")
+    ## create a new branch of the Assembly iptest1
+    ipyrad -p params-iptest1.txt -b iptest2
     
-    ## The object will be saved to disk using its assigned name
-    print "Assembly object named", data1.name
+.. parsed-literal::
+
+    New file params-iptest2.txt created in /home/deren/Documents/ipyrad
+
+
+And make the following edits to ``params-iptest2.txt``:
+
+.. parsed-literal::
+
+    ## reference                               ## [5] [assembly_method] ...
+    ## ./ipsimdata/sim_mt_genome.fa            ## [6] [reference_sequence] ...
+
+
+Now we can run steps 3-7 on these two assemblies each using their own params 
+file and each will create its own output files and saved results. It's worth 
+noting that we could also have finished the first assembly all the way through 
+and then gone back and made a new branch of it later. The only difference in that
+case is that the second assembly would have saved file locations for the outputs
+from steps 3-7, and so when you try to run it it will give a warning that the 
+assembly has already finished steps 3-7. You can override this warning by passing
+the ``-f`` flag, or ``--force``, which tells ipyrad that you think you know what
+you're doing and want it to go ahead. 
+
+.. code:: bash
+   
+   ## assemble the first data set denovo
+   ipyrad -p params-iptest1.txt -s 34567
+
+   ## assemble the second data set using reference mapping
+   ipyrad -p params-iptest2.txt -s 34567
 
 
 .. parsed-literal::
 
-    Assembly object named data1
+    --------------------------------------------------
+     ipyrad [v.0.1.47]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: iptest1 [/home/deren/Documents/ipyrad/iptest1.json]
+     ipyparallel setup: Local connection to 4 Engines
+
+     Step3: Clustering/Mapping reads
+       Saving Assembly.
+     Step4: Joint estimation of error rate and heterozygosity
+       Saving Assembly.   
+     Step5: Consensus base calling
+       Diploid base calls and paralog filter (max haplos = 2)
+       error rate (mean, std):  0.00075, 0.00002
+       heterozyg. (mean, std):  0.00196, 0.00018
+       Saving Assembly.
+     Step6: Clustering across 12 samples at 0.85 similarity
+       Saving Assembly.
+     Step7: Filtering and creating output files 
+       Saving Assembly.
+
+     loading Assembly: iptest2 [/home/deren/Documents/ipyrad/iptest2.json]
+
+     Step3: Clustering/Mapping reads
+       Saving Assembly.
+     Step4: Joint estimation of error rate and heterozygosity
+       Saving Assembly.   
+     Step5: Consensus base calling
+       Diploid base calls and paralog filter (max haplos = 2)
+       error rate (mean, std):  0.00075, 0.00002
+       heterozyg. (mean, std):  0.00196, 0.00018
+       Saving Assembly.
+     Step6: Clustering across 12 samples at 0.85 similarity
+       Saving Assembly.
+     Step7: Filtering and creating output files 
+       Saving Assembly.
 
 
 
 
 
+
+old api tutorial
+~~~~~~~~~~~~~~
 
 All of the parameter settings are linked to an Assembly object, which
 has a set of default parameters when it is created. These can be viewed
@@ -198,12 +270,6 @@ directly to the Data object, which in turn will create Sample objects
 for each fastq file (or pair of fastq files for paired data). The files
 may be gzip compressed. If the data are not demultiplexed then you will
 have to run the step1 function below to demultiplex the raw data.
-
-
-
-
-old api tutorial
-~~~~~~~~~~~~~~
 
 If for some reason we wanted to execute on just a subsample of our data,
 we could do this by selecting only certain samples to call the ``step2``
