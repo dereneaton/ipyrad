@@ -26,7 +26,17 @@ Getting Started
 
     If you haven't already installed ipyrad go here first: 
     :ref:`Installation <installation>`
-    
+
+.. _warning::
+    How do I make warnings?
+
+.. _DANGER::
+    Is it all about making it in CAPS?
+
+.. _DANGER::
+
+    or Is it about making it in CAPS and spaces?
+
 
 We provide a very small sample data set that we recommend using for this tutorial.
 Full datasets can take several hours to several days to complete, 
@@ -43,14 +53,13 @@ containing a number of test data sets.
     curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipsimdata.tar.gz
     tar -xvzf ipsimdata.tar.gz
 
-The two files from this directory that we will be using for the current tutorial
-are named:
+
+This directory contains many simulated datasets, as well as a simulated 
+reference genome that we will use in other tutorials. For this introductory
+tutorial we will use just the following two files from this directory:
+
     - ``sim_rad_test_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
     - ``sim_rad_test_barcodes.txt`` - Mapping of barcodes to sample IDs
-
-It also contains many other simulated datasets, as well as a simulated 
-reference genome, so you can experiment with other datatypes after you get
-comfortable with RAD.
 
 
 Create a new parameters file
