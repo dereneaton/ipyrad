@@ -48,6 +48,8 @@ recommend that everyone starts by reading through the Introductory tutorial.
 
    tutorial_intro_cli.rst
    tutorial_advanced_cli.rst
+   tutorial_preview_mode.rst
+
    tutorial_intro_gbs.rst
    tutorial_paired_gbs.rst
 

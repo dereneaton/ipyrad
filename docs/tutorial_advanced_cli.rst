@@ -1,4 +1,5 @@
 
+.. include:: global.rst 
 
 .. _tutorial_advanced_cli:
 
@@ -7,55 +8,61 @@ Advanced tutorial -- CLI
 ========================
 This is the advanced tutorial for the command line interface to ipyrad. 
 In this tutorial we will introduce two new methods that were not
-used in the introductory tutorial, but which provide a lot of exciting new 
-functionality to ipyrad. The first is ``branching``, which is used to 
+used in the introductory tutorial, but which provide some exciting new 
+functionality. The first is ``branching``, which is used to 
 efficiently assemble multiple data sets under a range of parameter settings, 
 and the second is ``reference mapping``, which is a way to leverage information
-from any kind of reference genomic data (e.g., full genome, transcriptome, 
-plastome, etc). 
-
+from reference genomic data (e.g., full genome, transcriptome, 
+plastome, etc) during assembly. 
 
 
 Branching Assemblies
 ~~~~~~~~~~~~~~~~~~~~
 If you've already been through the introductory tutorial you'll remember that 
 a typical ipyrad analysis runs through seven sequential steps to take data 
-from its raw state into finished output files with aligned data. 
+from its raw state to finished output files of aligned data. 
 After finishing one assembly, it is common that we might want to create a 
 second assembly of our data under a different set of parameters; 
 say by changing the ``clust_threshold`` from 0.85 to 0.90, or changing 
 ``min_samples_locus`` from 4 to 20. 
 
 If we were to restart our analysis from the very beginning that would be really 
-inefficient. Thus, we could just change a few parameters in the params file 
-and re-run the existing assembly to achieve new results, but that's not quite 
-ideal either as it would require the user to rename/move the results files, 
-to avoid overwriting existing files, and they would lose a record of the parameter
-setting that the first assembly was created under. This was the motivation for the 
-branching assembly method which is aimed at allowing efficient re-use of existing
-data files, while also keeping good records of which parameters were used for 
-different resulting assemblies. 
+inefficient. So one way to go about this would be to change a few parameters in 
+the params file and re-run the existing assembly to achieve new results. We think
+this approach isn't really ideal, however, since the user would have to 
+rename/move the previous results files to avoid overwriting, and the same for the 
+params file to avoid losing a record of the parameter used in the first assembly.
+This is the motivation behind the new branching assembly process in ipyrad, 
+which does all of this renaming business for you, allowing efficient re-use of 
+existing data files, while also keeping good records of which parameters were 
+used in each assembly. 
 
 At its core, branching creates a copy of an Assembly object (the object that is
-saved as a ``.json`` file by ipyrad) such that a new Assembly inherits all of 
+saved as a ``.json`` file by ipyrad) such that the new Assembly inherits all of 
 the information from it's parent Assembly, including filenames, samplenames, 
-and assembly statistics. The branching process always requires a 
-new :ref:`assembly_name<assembly_name>`, which is important in allowing the 
-new branch to re-use old files and statistics, but create new files separate from
-its parent branch going forward which are saved with a the new assembly_name prefix.
+and assembly statistics. The branching process requires a 
+new :ref:`assembly_name<assembly_name>`, which is important so that all new files
+created along this branch will be saved with a unique prefix. We'll show an 
+example of a branching process below, but first we need to describe reference 
+mapping, since for our example we will be creating two branches which are 
+assembled using different ``assembly_methods``. 
 
 
 Reference Sequence Mapping
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-ipyrad_ offers three :ref:`assembly_methods<assembly_methods>` which can utilize
-a reference sequence file. The first method, ``reference``, maps all RAD sequences
-to the reference file in order to determine homology among sequences. The second
-method, ``denovo+reference``, uses the reference first to identify homology 
-based on anything that matches to the reference, and then the remaining reads are
-all dumped into the standard ``denovo`` ipyrad pipeline and clustered together. 
-The final method, ``denovo-reference``, removes any reads which match to the 
-reference and only retains non-matching sequences to be used in a denovo analysis. 
-
+ipyrad_ offers four :ref:`assembly_methods<assembly_methods>`, three of which 
+can utilize a reference sequence file. The first method, called ``reference``, 
+maps RAD sequences to a reference file to determine homology and discards all
+sequences which do not match to it. The second method, ``denovo+reference``, 
+uses the reference first to identify homology, but then the remaining unmatched
+sequences are all dumped into the standard ``denovo`` ipyrad pipeline to be clustered.
+In essence, the reference file is simply used to assist the denovo assembly, and 
+to add additional information. The final method, ``denovo-reference``, 
+removes any reads which match to the reference and retains only non-matching 
+sequences to be used in a denovo analysis. In other words, it allows the use 
+of a reference sequence file as a filter to remove reads which match to it. You
+can imagine how this would be useful for removing contaminants, plastome data, 
+symbiont-host data, or coding/non-coding regions.  
 
 
 
@@ -73,40 +80,66 @@ ipyrad_ with the --MPI flag on an HPC machine should allow users
 
 Getting started
 ~~~~~~~~~~~~~~~
-First let's grab the :ref:`simulated data sets from here<simulated_data>` to 
-use for this analysis. We'll use the data set called ``sim_rad_test``. 
+First let's download the example simulated data sets for ipyrad_. Copy and paste
+the commands below into a terminal to download the data files and unarchive. This
+will create a new directory called ``ipsimdata`` in your current directory. 
 
 .. code:: bash
 
-    ## create a new Assembly under the name data1. This will 
-    ## create a new params file called params-data1.txt
-    ipyrad -n data1
+    ## The curl command needs a capital O, not a zero.
+    curl -LkO https://github.com/dereneaton/ipyrad/blob/master/tests/ipsimdata.tar.gz
+    tar -xvzf ipsimdata.tar.gz
 
-Then use a text editor to make the following changes to ``params-data1.txt``. 
-All other parameters can be left at their default values.
+
+If you look in the ipsimdata/ directory you'll see there are a number of example
+data sets. For this tutorial we'll be using one called ``sim_rad_test``. Let's 
+start by creating a new Assembly, and then we'll edit the params file to 
+tell it how to find the input data files in ipsimdata/. 
+
+.. code:: bash
+
+    ## creates a new Assembly named data1
+    ipyrad -n data1
 
 .. parsed-literal::
 
-    ## ./advanced_tutorial                  ## [1] [project_dir]
-    ## ./simdata/sim_rad_test.fastq.gz      ## [2] [raw_fastq_path]
-    ## ./simdata/sim_rad_test_barcodes.txt  ## [3] [barcodes_path]
+    New file `params-data1.txt` created in /home/deren/Documents/ipyrad
 
-Let's then run steps 1-2 to demultiplex the data and run it through the filtering
-step. 
+As you can see, this created a new default params file for our Assembly. 
+Next use a text editor to make the following changes to ``params-data1.txt``.  
+All other parameters can be left at their default values for now.
 
-.. code:: bash
+.. parsed-literal::
+
+    ## ./iptutorial                           ## [1] [project_dir]
+    ## ./ipsimdata/sim_rad_test.fastq.gz      ## [2] [raw_fastq_path]
+    ## ./ipsimdata/sim_rad_test_barcodes.txt  ## [3] [barcodes_path]
+
+Now that we're ready, let's run steps 1 and 2 of the assembly to demultiplex 
+and filter the data which we designated in the params file. 
+This will create new data files in the directory ``project_dir``.
+
+.. code:: bash 
+
     ipyrad -p params-data1.txt -s 12
 
-Now look in your working directory. You'll notice that ipyrad_ created a new 
-directory here called ``advanced_tutorial``. This is our project directory. If 
+.. parsed-literal::
+
+    Step1: Demultiplexing fastq data to Samples.
+      Saving Assembly.
+    Step2: Filtering reads 
+      Saving Assembly.
+
+If you look in your current directory you'll see that ipyrad_ created a new 
+directory called ``iptutorial``. This is our project directory. If 
 we had set a full path for ``project_dir`` in the params file (i.e., one like 
 ``/home/user/myfolder/`` instead of ``./myfolder``) the new directory would be 
-created in the full path location. If the project_dir already exists that is fine.
-You'll see that in the project_dir ipyrad_ has created two new directories which 
-have names prefixed by the name of our assembly, ``data1``. 
+created in the full path location. If the project_dir already exists that is 
+fine too. You'll see that in the project_dir ipyrad_ has created two new 
+subdirectories with names prefixes matching the assembly_name, ``data1``. 
 
 .. code:: bash
-    ls ./advanced_tutorial
+    ls ./iptutorial
 
 .. parsed-literal::
     data1_edits   data1_fastqs   data1.json
