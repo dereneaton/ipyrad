@@ -160,6 +160,7 @@ def save_json(data):
         ("database", data.__dict__["database"]),
         ("outfiles", data.__dict__["outfiles"]),
         ("barcodes", data.__dict__["barcodes"]),
+        ("_hackersonly", data.__dict__["_hackersonly"]),
         ])
 
     ## sample dict
@@ -245,6 +246,23 @@ def load_json(path, quiet=False):
     correct the problem. Recorded here for debugging:
     {}
     """.format(inst))
+
+    ## Import the hackersonly dict. In this case we don't have the nice
+    ## set_params so we're shooting from the hip to reset the values
+    oldhackersonly = fullj["assembly"].pop("_hackersonly")
+    for param, val in oldhackersonly.iteritems():
+        try:
+            if val == None:
+                null._hackersonly[param] = None
+            else:
+                null._hackersonly[param] = val
+        except Exception as inst:
+            LOGGER.warning("""
+    Load assembly error resetting hackersonly dict element. We will just use
+    the default value in the current assembly.
+    Here was the param that failed: {} - {}
+    The error: {}
+    """.format(param, val, inst))
 
     ## Check remaining attributes of Assembly and Raise warning if attributes
     ## do not match up between old and new objects
