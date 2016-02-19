@@ -60,6 +60,7 @@ Example entries into params.txt:
     /home/deren/ipyrad/tests/finches   ## [1] create/use project dir called finches
     finches                            ## [1] create/use project dir called finches
 
+
 .. _raw_fastq_path:
 
 2. Raw fastq path
@@ -80,6 +81,7 @@ Example entries into params.txt:
     ~/ipyrad/tests/data/*.fastq.gz            ## [2] select all gzip data files
     ./data/sim_rad*.fastq.gz                  ## [2] select `sim_rad` data files
 
+.. _barcodes_path:
 
 3. Barcodes path
 ----------------
@@ -94,6 +96,8 @@ Example entries into params.txt:
     /home/deren/ipyrad/tests/data/sim_barcodes.txt  ## [3] select barcode file
     ~/tests/data/sim_barcodes.txt                   ## [3] select barcode file
 
+
+.. _sorted_fastq_path:
 
 4. Sorted fastq path
 --------------------
@@ -111,6 +115,7 @@ Example entries into params.txt:
     ~/ipyrad/tests/data/*.fastq               ## [4] select all fastq data files
     ./data/sim_rad*.fastq.gz                  ## [4] select `sim_rad` data files
 
+.. _assembly_method:
 
 5. Assembly method
 --------------------
@@ -128,7 +133,59 @@ Example entries into params.txt:
     reference_add                     ## [5] reference addition assembly
     reference_sub                     ## [5] reference subtraction assembly
 
+.. _reference_sequence:
 
 6. Reference sequence
 ---------------------
 ...
+
+.. _datatype:
+
+7. Datatype
+------------
+...
+
+
+.. _restriction_overhang:
+
+8. Restriction_overhang
+-----------------------
+...
+
+
+.. _max_low_qual_bases:
+
+9. max_low_qual_bases
+---------------------
+...
+
+.. _phred_Qscore_offset:
+
+10. Phred_Qscore_offset
+------------------------
+...
+
+.. _mindepth_statistical:
+
+11. Mindepth_statistical
+-------------------------
+...
+
+.. _mindepth_majrule:
+
+12. Mindepth_majrule
+---------------------
+
+.. _maxdepth:
+13. Maxdepth
+-------------
+...
+
+.. _clust_threshold:
+14. Clust_threshold
+--------------------
+...
+
+
+
+

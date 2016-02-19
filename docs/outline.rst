@@ -1,3 +1,4 @@
+
 .. include:: global.rst
 
 .. _outline:
@@ -29,12 +30,12 @@ many reads are assigned to each Sample.
 
 The following :ref:`assembly parameters<parameters>` are *potentially*
 used or required (\*) during step1: 
-:ref:`\*assembly_name<assembly_name>`, 
+:ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`raw_fastq_path<raw_fastq_path>`,
 :ref:`barcodes_path<barcodes_path>`,
 :ref:`sorted_fastq_path<sorted_fastq_path>`, 
-\*:ref:`datatype<datatype>`,
+:ref:`*datatype<datatype>`,
 :ref:`restriction_overhang<restriction_overhang>`,
 :ref:`max_barcode_mismatch<max_barcode_mismatch>`
 
@@ -49,10 +50,10 @@ optional filter to clean up the edges of poor quality reads.
 
 The following :ref:`parameters<parameters>` are *potentially*
 used, or required (\*) during step2:
-*:ref:`assembly_name<assembly_name>`, 
-*:ref:`project_dir<project_dir>`, 
+:ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
 :ref:`barcodes_path<barcodes_path>`,
-*:ref:`datatype<datatype>`,
+:ref:`*datatype<datatype>`,
 :ref:`restriction_overhang<restriction_overhang>`,
 :ref:`max_low_qual_bases<max_low_qual_bases>`,
 :ref:`filter_adapters<filter_adapters>`,
@@ -71,11 +72,11 @@ aligned using muscle_.
 
 The following :ref:`parameters<parameters>` are *potentially*
 used, or required (*) during step3:
-*:ref:`assembly_name<assembly_name>`, 
-*:ref:`project_dir<project_dir>`, 
-*:ref:`assembly_method<assembly_method>`,
-*:ref:`datatype<datatype>`,
-*:ref:`clust_threshold<clust_threshold>`,
+:ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
+:ref:`*assembly_method<assembly_method>`,
+:ref:`*datatype<datatype>`,
+:ref:`*clust_threshold<clust_threshold>`,
 
 
 4. Joint estimation of heterozygosity and error rate
