@@ -46,7 +46,7 @@ recommend that everyone starts by reading through the Introductory tutorial.
 .. toctree::
    :maxdepth: 1
 
-   tutorial_intro_cli.rst ``(start here)``
+   tutorial_intro_cli.rst 
    tutorial_advanced_cli.rst
    tutorial_intro_gbs.rst
    tutorial_paired_gbs.rst

@@ -11,3 +11,5 @@
 .. _smalt: http://www.sanger.ac.uk/science/tools/smalt-0
 .. _bedtools: http://bedtools.readthedocs.org/en/latest/
 .. _vsearch: https://github.com/torognes/vsearch
+.. _weighted_quartets: https://sysbio.oxfordjournals.org/content/64/2/233.abstract
+
