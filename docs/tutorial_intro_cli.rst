@@ -3,8 +3,8 @@
 .. _tutorial_intro_cli:
 
 
-introductory tutorial
-=====================
+Introductory tutorial - CLI
+============================
 
 This is the full tutorial for the command line interface for ipyrad. In this
 tutorial we'll walk through the entire assembly and analysis process. This is 
@@ -41,6 +41,7 @@ First make a new directory and fetch & extract the test data.
     cd ipyrad-test
     curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
     tar -xvzf ipyrad_tutorial_data.tgz
+    
 
 You should now see a folder in your current directory called ``data``. This 
 directory contains two files we'll be using:

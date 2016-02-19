@@ -78,5 +78,54 @@ Population genetic analyses
    popgen.rst
 
 
+SVD4tet -- species tree inference
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Infer species trees from quartets inferred from SNP data. The ipyrad.analysis
+module includes a native implementation of an SVDquartets method similar to 
+the one currently available in Paup*, based on the algorithm described by 
+:ref:`Chiffman and Kubatko (2014)<svdquartets>`. Our implementation 
+differs from theirs in a few ways, with the goal of making it easier
+to sample quartets efficiently over both small and very large trees (>200 tips). 
+The analysis can be massively parallelized using MPI, and it allows checkpointing
+so that analyses can be stopped and restarted at a later time, which should allow
+users to sample all possible quartets within reasonable time limits, 
+even when there are hundreds of millions of possible quartets. If the number 
+becomes too large, however, a random sampling scheme can be employed. 
+
+Other features include: using weighted quartets (see 
+:ref:`Avni et al. 2014<weighted_quartets>`)
+
+
+Instead of the code below and just link to the cookbook recipe for this.
+
+
+First launch parallel engines using ipcluster as described in the 
+`running the ipyrad API in parallel` section. 
+
+
+.. code-block:: python
+
+    import ipyrad as ip
+    import ipyrad.analysis as ipa
+
+    ## load your assembled data set
+    data = ip.load_json("project_dir/my_assembly.json")
+
+    ## start sampling quartets, it will print to screen the 
+    ## number of possible quartets. 
+    ipa.svd4tet(data, useweights=False)
+
+
+
+.. parsed-literal::
+
+    Running svd4tet on 20 cores. Estimating 495 quartets for 12 Samples. 
+
+
+Progress can be printed to screen, e.g.,
+
+.. parsed-literal::
+    
+    1000/2000000 quartets finished.
 
 

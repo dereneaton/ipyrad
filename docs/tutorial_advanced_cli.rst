@@ -3,8 +3,8 @@
 .. _tutorial_advanced_cli:
 
 
-*ipyrad* advanced command line interface
-========================================
+Advanced tutorial -- CLI
+========================
 
 Branching Assemblies
 ~~~~~~~~~~~~~~~~~~~~

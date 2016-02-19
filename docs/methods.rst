@@ -25,16 +25,16 @@ reference
 Sequences are mapped to a reference genome using the program smalt_ based on 
 sequence similarity. 
 
-.. _reference_add:
-reference_add
--------------
+.. _denovo_plus:
+denovo+reference
+-----------------
 Sequences are mapped to a reference genome using the program smalt_ based on 
 sequence similarity, and reads that do not match to the reference are assembled
 using the denovo method. 
 
-.. _reference_sub:
-reference_sub
--------------
+.. _denovo_minus:
+denovo-reference
+-----------------
 Sequences which map to a reference genome are excluded, and all remaining reads
 are assembled using the denovo method. This method can be used to filter out 
 data which match to a chloroplast genome in plants, or to a host genome in a 
@@ -42,7 +42,7 @@ study of a parasite.
 
 
 .. _comparing:
-Using multiple methods
+Combining multiple methods
 --------------------------
 You could imagine that if you had a reference sequence file you might want to 
 examine your data set under a number of different Assembly scenarios. For example,
