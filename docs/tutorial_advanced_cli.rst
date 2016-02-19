@@ -50,7 +50,7 @@ branches which are assembled using different ``assembly_methods``.
 
 Reference Sequence Mapping
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-ipyrad_ offers four :ref:`assembly_methods<assembly_methods>`, three of which 
+ipyrad_ offers four :ref:`assembly methods<assembly_methods>`, three of which 
 can utilize a reference sequence file. The first method, called ``reference``, 
 maps RAD sequences to a reference file to determine homology and discards all
 sequences which do not match to it. The second method, ``denovo+reference``, 
@@ -82,7 +82,7 @@ Getting started
 ~~~~~~~~~~~~~~~
 Let's first download the example simulated data sets for ipyrad_. Copy and paste
 the code below into a terminal. This will create a new directory called 
-``ipsimdata`` in your current directory containing all of the necessary files.
+``ipsimdata/`` in your current directory containing all of the necessary files.
 
 .. code:: bash
 
@@ -94,7 +94,7 @@ the code below into a terminal. This will create a new directory called
 If you look in the ``ipsimdata/`` directory you'll see there are a number of example
 data sets. For this tutorial we'll be using one called ``sim_rad_test``. Let's 
 start by creating a new Assembly, and then we'll edit the params file to 
-tell it how to find the input data files in ipsimdata/. 
+tell it how to find the input data files for this data set.
 
 .. code:: bash
 
@@ -104,7 +104,7 @@ tell it how to find the input data files in ipsimdata/.
 
 .. parsed-literal::
 
-    New file `params-data1.txt` created in /home/deren/Documents/ipyrad
+    New file params-data1.txt created in /home/deren/Documents/ipyrad
 
 
 As you can see, this created a new default params file for our Assembly. 
