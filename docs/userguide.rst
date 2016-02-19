@@ -30,13 +30,11 @@ following:
 
 This prints a help screen with a short description of the main arguments to the
 CLI. There is actually a second way to use ipyrad_ separate from the CLI_ which
-is to write scripts using the Python API_, which is described further below. 
-Because the CLI_ in generally easier the primary tutorials focus on this 
-interface. 
+is to write scripts using the Python :ref:`API<API>`. Because the CLI_ in 
+generally easier to use we focus on this for the main tutorials. 
 
 
 .. _CLI:
-
 Introductory tutorials 
 ----------------------
 The following tutorials show an example run through for an entire data set of 
@@ -54,7 +52,7 @@ recommend that everyone starts by reading through the Introductory tutorial.
    tutorial_paired_gbs.rst
 
 
-
+.. _empirical_examples
 Examples with empirical data
 -----------------------------
 The following tutorials show example assemblies with publicly available 
