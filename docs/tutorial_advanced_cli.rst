@@ -192,14 +192,7 @@ And make the following edits to ``params-iptest2.txt``:
 
 
 Now we can run steps 3-7 on these two assemblies each using their own params 
-file and each will create its own output files and saved results. It's worth 
-noting that we could also have finished the first assembly all the way through 
-and then gone back and made a new branch of it later. The only difference in that
-case is that the second assembly would have saved file locations for the outputs
-from steps 3-7, and so when you try to run it it will give a warning that the 
-assembly has already finished steps 3-7. You can override this warning by passing
-the ``-f`` flag, or ``--force``, which tells ipyrad that you think you know what
-you're doing and want it to go ahead. 
+file and each will create its own output files and saved results. 
 
 .. code:: bash
    
@@ -250,6 +243,93 @@ you're doing and want it to go ahead.
        Saving Assembly.
 
 
+Now let's suppose we're interested in the effect of missing data on our assemblies
+and we want to assemble each data set with a different ``min_samples_locus`` 
+setting. Maybe at 4, 8, and 12 (ignore the fact that the example data set 
+has no missing data, and so this has no practical effect). It's worth 
+noting that we can branch assemblies after an analysis has finished as well. 
+The only difference is that the new assembly will think that it has already 
+finished all of the steps, and so if we ask it to run them again it will instead
+want to skip over them. You can override this by passing the ``-f`` flag, 
+or ``--force``, which tells ipyrad that you want it to run the step even though
+it's already finished it. The two assemblies we finished were both assembled at
+the default value of 4 for ``min_samples_locus``, so below I set up code to 
+branch and then run step7 on each of these assemblies with a new setting of 8 or 12. 
+
+
+.. code:: bash
+   
+   ## branch iptest1 to make min8 and min12 data sets
+   ipyrad -p params-iptest1.txt -b iptest1-min8
+   ipyrad -p params-iptest1.txt -b iptest1-min12
+
+   ## use a text editor to set min_samples_locus to the new value in each
+
+   ## branch iptest2 to make min8 and min12 data sets
+   ipyrad -p params-iptest2.txt -b iptest2-min8
+   ipyrad -p params-iptest2.txt -b iptest2-min12
+
+   ## use a text editor to set min_samples_locus to the new value in each
+
+   ## run step7 on using the new min_samples_locus settings
+   ipyrad -p params-iptest1-min8.txt -s 7
+   ipyrad -p params-iptest1-min12.txt -s 7
+   ipyrad -p params-iptest2-min8.txt -s 7
+   ipyrad -p params-iptest2-min12.txt -s 7
+
+
+Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
+and edits/ directories were created using just the first assembly ``iptest1``, 
+while the clust/ and consens/ directories were created for both ``iptest1`` and
+``iptest2`` which completed steps 3-6. 
+
+.. code:: bash
+   ## use ls -l to view inside the project directory as a list
+   ls -l iptutorial/
+
+.. parsed-literal::  
+   iptest1_clust_0.54/
+   iptest1_consens/
+   iptest1_edits/
+   iptest1_fastqs/
+   iptest1.json
+   iptest1_outfiles/
+   iptest1_min8.json
+   iptest1_min8_outfiles/
+   iptest1_min12.json
+   iptest1_min12_outfiles/
+   iptest2_clust_0.54/
+   iptest2_consens/
+   iptest2_edits/
+   iptest2_fastqs/
+   iptest2.json
+   iptest2_outfiles/
+   iptest2_min8.json
+   iptest2_min8_outfiles/
+   iptest2_min12.json
+   iptest2_min12_outfiles/
+
+
+
+
+Finally, you can see that each assembly created its own ``outfiles/`` directory
+with the results of step7. 
+
+
+
+
+
+
+
+
+Writing ipyrad scripts
+~~~~~~~~~~~~~~~~~~~~~~
+From the code above you may have noticed that the only thing stopping you from
+being able to write one long script to make a huge range of assemblies is when 
+you have to go in by hand and edit the params file. If you plan to only execute
+one ipyrad command at a time then that is no problem. But if you're really the 
+programattic type of person, you'll probably want to check out the 
+:ref:`ipyrad API<API>`, which let's you do just that. 
 
 
 
