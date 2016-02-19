@@ -69,6 +69,7 @@ used, or required (\*) during step2:
 :ref:`filter_adapters<filter_adapters>`,
 :ref:`filter_min_trim_len<filter_min_trim_len>`
 :ref:`edit_cut_sites<edit_cut_sites>`
+:ref:`excludes<excludes>`
 
 
 3. Clustering / Mapping reads within Samples and alignment
@@ -87,13 +88,17 @@ used, or required (*) during step3:
 :ref:`*assembly_method<assembly_method>`,
 :ref:`*datatype<datatype>`,
 :ref:`*clust_threshold<clust_threshold>`,
+:ref:`excludes<excludes>`
 
 
 4. Joint estimation of heterozygosity and error rate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step4 jointly estimates sequencing error rate and heterozygosity based on counts
 of site patterns across clustered reads using the ML equation from Lynch (20XX).
-These estimates are used in step5 for consensus base calling.
+These estimates are used in step5 for consensus base calling. If the 
+max_alleles_consens is set to 1 (haploid) then heterozygosity is fixed to 0 and 
+only error rate is estimated. For all other settings of max_alleles_consens 
+a diploid model is used (i.e., two alleles are expected to occur equally). 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used, or required (*) during step3:
@@ -101,6 +106,7 @@ used, or required (*) during step3:
 :ref:`*project_dir<project_dir>`, 
 :ref:`*datatype<datatype>`,
 :ref:`*restriction_overhang<restriction_overhang>`, 
+:ref:`excludes<excludes>`
 
 
 5. Consensus base calling and filtering
@@ -120,51 +126,51 @@ used, or required (*) during step3:
 :ref:`*datatype<datatype>`,
 :ref:`*max_alleles_consens<max_alleles_consens>`,
 :ref:`*max_Ns_consens<max_Ns_consens>`,
-
-
+:ref:`excludes<excludes>`
 
 
 6. Clustering / Mapping reads among Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
+Step6 clusters consensus sequences across Samples using the same assembly method 
+as in step 3. One allele is randomly sampled before clustering so that ambiguous
+characters have a lesser effect on clustering, but the resulting data retain
+information for heterozygotes. 
+
+The following :ref:`parameters<parameters>` are *potentially*
+used, or required (*) during step3:
+:ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
+:ref:`*datatype<datatype>`,
+:ref:`*max_alleles_consens<max_alleles_consens>`,
+:ref:`*max_Ns_consens<max_Ns_consens>`,
+:ref:`excludes<excludes>`
+
 
 7. Filtering and formatting output files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
+Step7 applies filters to the final alignments and saves the final data in a 
+number of possible :ref:`output formats<output_formats>`. This step is most 
+often repeated at several different settings for the parameter 
+:ref:`min_samples_locus` to create different assemblies with different 
+proportions of missing data (see branching_). 
 
 
-Schematic Example
-------------------
+The following :ref:`parameters<parameters>` are *potentially*
+used, or required (*) during step3:
+:ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, 
+:ref:`*datatype<datatype>`,
+:ref:`min_samples_locus<min_samples_locus>`,
+:ref:`max_Indels_locus<max_Indels_locus>`,
+:ref:`max_shared_Hs_locus<max_shared_Hs_locus>`,
+:ref:`trim_overhang<trim_overhang>`,
+:ref:`output_formats<output_formats>`,
+:ref:`pop_assign_file<pop_assign_file>`,
+:ref:`excludes<excludes>`,
+:ref:`outgroups<outgroups>`
 
 
-**Example CLI basic workflow**
 
-.. code-block:: bash
-
-    ## Create a new params file using -n and name the assembly 'data1'.
-    ## This creates file called data1-params.txt
-    ipyrad -n data1
-
-    ## Use a text editor to change setting in data1-params.txt
-    ## and then run steps 1-7 using these settings.
-    ipyrad -p data1-params.txt
-
-
-**Example API basic workflow**
-
-.. code-block:: python
-
-    ## import ipyrad 
-    import ipyrad as ip
-
-    ## create an Assembly and modify some parameter settings
-    data1 = ip.Assembly("data1")
-    data1.set_params("project_dir", "example")
-    data1.set_params("raw_fastq_path", "data/*.fastq")
-    data1.set_params("barcodes_path", "barcodes.txt")   
-
-    ## run steps 1-7, no args to run means run all steps.
-    data1.run()
 
 
 .. _branching_workflow:
@@ -257,3 +263,37 @@ each step (nreads, nfiltered_reads, nclusters, etc.).
 
 Assembly
 ^^^^^^^^
+
+
+
+
+
+
+**Example CLI basic workflow**
+
+.. code-block:: bash
+
+    ## Create a new params file using -n and name the assembly 'data1'.
+    ## This creates file called data1-params.txt
+    ipyrad -n data1
+
+    ## Use a text editor to change setting in data1-params.txt
+    ## and then run steps 1-7 using these settings.
+    ipyrad -p data1-params.txt
+
+
+**Example API basic workflow**
+
+.. code-block:: python
+
+    ## import ipyrad 
+    import ipyrad as ip
+
+    ## create an Assembly and modify some parameter settings
+    data1 = ip.Assembly("data1")
+    data1.set_params("project_dir", "example")
+    data1.set_params("raw_fastq_path", "data/*.fastq")
+    data1.set_params("barcodes_path", "barcodes.txt")   
+
+    ## run steps 1-7, no args to run means run all steps.
+    data1.run()
