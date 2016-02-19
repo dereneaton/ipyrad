@@ -291,22 +291,28 @@ has its own ``outfiles/`` directory with the results of step7.
    ls -l iptutorial/
 
 .. parsed-literal::  
+
+   iptest1.json
+   iptest1_fastqs/
+   iptest1_edits/
    iptest1_clust_0.85/
    iptest1_consens/
-   iptest1_edits/
-   iptest1_fastqs/
-   iptest1.json
    iptest1_outfiles/
+
    iptest1_min8.json
    iptest1_min8_outfiles/
+
    iptest1_min12.json
    iptest1_min12_outfiles/
+
+   iptest2.json
    iptest2_clust_0.85/
    iptest2_consens/
-   iptest2.json
    iptest2_outfiles/
+
    iptest2_min8.json
    iptest2_min8_outfiles/
+
    iptest2_min12.json
    iptest2_min12_outfiles/
 
