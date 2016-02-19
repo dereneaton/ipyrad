@@ -22,10 +22,15 @@ follow along by copy/pasting the code-blocks into a command line terminal.
 Getting Started
 ~~~~~~~~~~~~~~~
 
-.. _attention::
+.. _note::
 
     If you haven't already installed ipyrad go here first: 
     :ref:`Installation <installation>`
+
+.. _note::
+
+    If you haven't already installed ipyrad go here first
+
 
 .. _warning::
     How do I make warnings?
