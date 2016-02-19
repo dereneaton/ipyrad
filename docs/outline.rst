@@ -38,8 +38,8 @@ If the data are not yet demultiplexed then step 1 uses information from a
 are already demultiplexed then step 1 simply reads the data in to count how 
 many reads are assigned to each Sample. 
 
-The following :ref:`assembly parameters<parameters>` are *potentially*
-used or required (\*) during step1: 
+The following :ref:`parameters<parameters>` are *potentially*
+used or required (\*) for step1: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`raw_fastq_path<raw_fastq_path>`,
@@ -59,7 +59,7 @@ optional filter can be applied to remove adapters/primers, and there is an
 optional filter to clean up the edges of poor quality reads.
 
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (\*) during step2:
+used or required (\*) for step2: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`barcodes_path<barcodes_path>`,
@@ -82,7 +82,7 @@ together on the basis of sequence similarity and the resulting clusters are
 aligned using muscle_. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (*) during step3:
+used or required (\*) for step3: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`*assembly_method<assembly_method>`,
@@ -101,7 +101,7 @@ only error rate is estimated. For all other settings of max_alleles_consens
 a diploid model is used (i.e., two alleles are expected to occur equally). 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (*) during step3:
+used or required (\*) for step4: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`*datatype<datatype>`,
@@ -120,7 +120,7 @@ In diploid data if two alleles are present the phase of heterozygous sites are
 retained in the consensus sequences.
 
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (*) during step3:
+used or required (\*) for step5: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`*datatype<datatype>`,
@@ -137,7 +137,7 @@ characters have a lesser effect on clustering, but the resulting data retain
 information for heterozygotes. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (*) during step3:
+used or required (\*) for step6: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`*datatype<datatype>`,
@@ -154,9 +154,8 @@ often repeated at several different settings for the parameter
 :ref:`min_samples_locus` to create different assemblies with different 
 proportions of missing data (see branching_). 
 
-
 The following :ref:`parameters<parameters>` are *potentially*
-used, or required (*) during step3:
+used or required (\*) for step7: 
 :ref:`*assembly_name<assembly_name>`, 
 :ref:`*project_dir<project_dir>`, 
 :ref:`*datatype<datatype>`,
