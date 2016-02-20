@@ -843,6 +843,8 @@ class Assembly(object):
                 if ipyclient.metadata[job]['error']:
                     print(ipyclient.metadata[job]['error'])
                     #raise IPyradError(ipyclient.metadata[job]['error'])
+        except IPyradError as inst:
+            sys.exit("ipyrad error - {}".format(inst))
         except Exception as inst:
             ## Caught unhandled exception, print and reraise
             print("Caught unknown exception - {}".format(inst))
@@ -1618,10 +1620,10 @@ def paramschecker(self, param, newvalue):
 
 
     elif param == 'assembly_method':
-        methods = ["denovo", "reference_only", "hybrid", "denovo_only"]
+        methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
         assert newvalue in methods, """
-    The assembly_method parameter must be one of the following: denovo, hybrid, 
-    reference_only or denovo_only. You entered: \n{}.
+    The assembly_method parameter must be one of the following: denovo, reference, 
+    denovo+reference or denovo-reference. You entered: \n{}.
     """.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
 

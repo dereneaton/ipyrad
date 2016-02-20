@@ -76,7 +76,7 @@ purpose. Lets take a look at it.
                                    ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
                                    ## [3] [barcodes_path]: Location of barcodes file
                                    ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
-    denovo                         ## [5] [assembly_method]: Assembly method (denovo, hybrid, reference_only, denovo_only)
+    denovo                         ## [5] [assembly_method]: Assembly method (denovo, reference, denovo+reference, denovo-reference
                                    ## [6] [reference_sequence]: Location of reference sequence file
     rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
     TGCAG,                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
