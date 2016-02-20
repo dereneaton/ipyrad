@@ -346,7 +346,12 @@ def load_json(path, quiet=False):
 
         ## save stats
         sdat = fullj["samples"][sample]['stats']
-        null.samples[sample].stats = pd.Series(sdat)
+        ## Reorder the keys so they ascend by step, only include
+        ## stats that are actually in the sample. newstats is a
+        ## list of the new sample stat names, and stats_keys
+        ## are the names of the stats from the json file.
+        newstats = [ x for x in newstats if x in stats_keys]
+        null.samples[sample].stats = pd.Series(sdat).reindex(newstats)
 
         ## save statsfiles
         for statskey in statsfiles_keys:
@@ -383,9 +388,6 @@ def load_json(path, quiet=False):
     null.outfiles = ObjDict(null.outfiles)
 
     return null
-
-
-
 
 class Encoder(json.JSONEncoder):
     """ Save JSON sting with tuples embedded as described in stackoverflow
