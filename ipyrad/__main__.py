@@ -141,7 +141,7 @@ def getassembly(args, parsedict):
     if '1' in args.steps:
         ## If assembly exists and step 1 insist on the force flag
         if os.path.exists(assembly_file+".json") and not args.force:
-            raise IPyradWarningExit("Assembly already exists,"+
+            raise IPyradWarningExit("  Assembly already exists," \
                                    +" use the force flag to overwrite.")
 
         ## create a new assembly object

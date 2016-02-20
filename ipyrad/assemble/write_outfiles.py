@@ -206,6 +206,7 @@ def filter_all_clusters(data, samples, ipyclient):
     Open the HDF5 array with seqs, catg, and filter data. Fill the remaining
     filters. 
     """
+    LOGGER.debug("in filter_all_clusters")
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
 
@@ -437,12 +438,13 @@ def filter_stacks(args):
         ioh5 = h5py.File(data.database, 'r')
         ## get a chunk (hslice) of loci for the selected samples (sidx)
         superseqs = ioh5["seqs"][hslice[0]:hslice[1], sidx,]
-        print('sup', superseqs.shape)
+        LOGGER.info('logging from engine: %s', superseqs.shape)
 
         ## get first index of splits for paired reads. Only need this until 
         ## get_edges gets the edges
         splits = ioh5["edges"][hslice[0]:hslice[1], 4]
-        
+        LOGGER.info('splits preview %s', splits[:10])
+        LOGGER.info('splits preview %s', splits[-10:])        
         ## Empty arrays to be filled in used to later fill in the full 
         ## filter array. Filter dims = (nloci, 5)
         ## Filter order is: [dups, indels, maxhets, maxsnps, minsamp]
@@ -458,12 +460,11 @@ def filter_stacks(args):
         ## to the point that they are below the minlen, and so this also 
         ## constitutes a filter, though one that is uncommon. For this reason
         ## we have a filter also called edgfilter. (needs to be added to filter)
+        LOGGER.debug("getting edges")
         edgfilter, edgearr = get_edges(data, superseqs, splits)
         del splits
         LOGGER.debug("edgfilter %s", edgfilter[:5])
         ## duplicates are already filtered during step6.
-
-        ## indels are already filtered during step6 (kinda... todo: pair splits)
 
         ## minsamp coverages filtered from superseqs
         minfilter = filter_minsamp(data, superseqs)
@@ -556,18 +557,21 @@ def get_edges(data, superseqs, splits):
                 3: minsamp,
                 4: allsamp}
     edgemins = [edgedict.get(i) for i in edgetuple]
-    LOGGER.debug("edgemins %s", edgemins)
+
+    LOGGER.info("edgemins %s", edgemins)
+    LOGGER.info("splits %s", splits)
 
     ## convert all - to N to make this easier
     superseqs[superseqs == "-"] = "N"
     ## the background fill of superseqs should be N instead of "", then this 
     ## wouldn't be necessary...
-    superseqs[superseqs == ""] = "N"
+    ## superseqs[superseqs == ""] = "N"
 
     ## trim overhanging edges
     ## get the number not Ns in each site, 
     ccx = np.sum(superseqs != "N", axis=1)
-
+    LOGGER.debug("ccx %s", ccx)
+    LOGGER.debug("splits %s", splits)
     for idx, split in enumerate(splits):
         if split:
             r1s = ccx[idx, :split]
@@ -584,8 +588,8 @@ def get_edges(data, superseqs, splits):
             edge1 = np.where(r1s > edgemins[1])[0].max()
         except ValueError:
             edgefilter[idx] = True
-        #LOGGER.debug("edge0 %s", edge0)
-        #LOGGER.debug("edge1 %s", edge1)        
+        LOGGER.debug("edge0 %s", edge0)
+        LOGGER.debug("edge1 %s", edge1)        
 
         ## filter cut1
         if edgetuple[0]:
@@ -598,8 +602,8 @@ def get_edges(data, superseqs, splits):
                 edge3 = np.where(r2s > edgemins[3])[0].max()
             except ValueError:
                 edgefilter[idx] = True
-            #LOGGER.debug("edge0 %s", edge0)
-            #LOGGER.debug("edge1 %s", edge1)        
+            LOGGER.debug("edge0 %s", edge0)
+            LOGGER.debug("edge1 %s", edge1)        
             
             ## filter cut2
             if edgetuple[3]:
@@ -609,9 +613,9 @@ def get_edges(data, superseqs, splits):
         edges[idx] = np.array([edge0, edge1, edge2, edge3])
 
         ## assertions
-        assert edge0 < edge1 
-        if split:
-            assert edge2 < edge3
+        # assert edge0 < edge1 
+        # if split:
+        #     assert edge2 < edge3
 
     return edgefilter, edges
 

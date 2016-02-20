@@ -7,7 +7,7 @@ __interactive__ = 1      ## CLI __main__ changes to 0
 __version__ = "0.1.52"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "ERROR"
+__loglevel__ = "DEBUG"
 __debugfile__ = "/tmp/ipyrad_debug.txt"
 
 ## main ip.functions
@@ -35,9 +35,10 @@ import logging.config as _lconfig
 ## clear the logfile if it is too big
 import os as _os
 try:
-    if _os.path.getsize(__debugfile__) > 5000000:
-        with open(__debugfile__, 'w') as clear:
-            clear.write("file reset")
+    if _os.path.exists(__debugfile__):
+        if _os.path.getsize(__debugfile__) > 5000000:
+            with open(__debugfile__, 'w') as clear:
+                clear.write("file reset")
 
 ## in case system doesn't let you use /tmp            
 except (OSError, IOError):
@@ -117,6 +118,9 @@ def _getbins():
         bedtools = _os.path.join(
                        _os.path.abspath(bin_path),
                        "bedtools-linux-x86_64")
+        qmc = _os.path.join(
+                       _os.path.abspath(bin_path),
+                       "wQMC-linux-x86_64")
     else:
         vsearch = _os.path.join(
                        _os.path.abspath(bin_path),
@@ -133,6 +137,10 @@ def _getbins():
         bedtools = _os.path.join(
                        _os.path.abspath(bin_path),
                        "bedtools-osx-x86_64")
+        ## only one compiled version available, works for all?
+        qmc = _os.path.join(
+                       _os.path.abspath(bin_path),
+                       "wQMC-linux-x86_64")
 
     # Test for existence of binaries
     assert _cmd_exists(muscle), "muscle not found here: "+muscle
@@ -140,12 +148,13 @@ def _getbins():
     assert _cmd_exists(smalt), "smalt not found here: "+smalt
     assert _cmd_exists(samtools), "samtools not found here: "+samtools
     assert _cmd_exists(bedtools), "bedtools not found here: "+bedtools
+    assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
     return vsearch, muscle, smalt, samtools, bedtools
 
 
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
-binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools"]
+binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools", "QMC"]
 for binn, binx in zip(binnames, _getbins()):
     bins[binn] = binx
 ## clean up for the API
