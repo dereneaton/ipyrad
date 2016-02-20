@@ -849,13 +849,25 @@ def append_clusters(data, sample, derep_fasta_files):
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clust.gz")
 
+    ## Set the write mode for opening clusters file. If we are
+    ## doing "reference" assembly this means we're throwing
+    ## out the denovo reads and only keeping the reference
+    ## mapped sequences, so we set the flag to 'wb' and overwrite
+    ## otherwise use 'ab' to append.
+    if data.paramsdict["assembly_method"] == "reference":
+        LOGGER.debug("Doing \"reference\" assembly")
+        write_flag = 'wb'
+    else:
+        write_flag = 'ab'
+
     ## A little bit of monkey business here to get the expected
     ## format right. Downstream expects name lines to end with
     ## * if it's the most abundant read, and + if it's anything else
     ##
     ## TODO: refmapping is not currently checking for a max *
     ## of snps per locus. Probably should fix that.
-    with gzip.open(sample.files.clusters, 'ab') as out:
+
+    with gzip.open(sample.files.clusters, write_flag) as out:
         for fname in derep_fasta_files:
             # We need to update and accumulate all the seqs before
             # we write out to the file or the ipp threads will step

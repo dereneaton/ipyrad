@@ -98,21 +98,21 @@ pinfo = OrderedDict([
            denovo -   Denovo assembly is the classic pyrad method, and
                       it is the <default> unless otherwise specified.
                       Denovo will cluster and align all reads from scratch
-   reference_only -   Reference assembly will map and align reads to the
+        reference -   Reference assembly will map and align reads to the
                       provided reference sequence, which must be specified
                       in parameter 28 (reference_sequence). Strict refer-
                       ence assembly will throw out all unmapped reads, 
-                      which could be a significant proportion detpending
+                      which could be a significant proportion depending
                       on the distance between your reference and study
-                      species. Most times you'll want to use 'hybrid'.
-           hybrid -   Hybrid assembly will attempt to map and align reads
+                      species. Most times you'll want to use 'denovo+reference'.
+ denovo+reference -   Hybrid assembly will attempt to map and align reads
                       to the provided reference sequence which must be set
                       in parameter 28. It will also denovo assemble all
                       unmapped reads, and then merge assembled mapped and 
                       unmapped for downstream analysis. This is what you'll
                       want most of the time if you're passing in a refer-
                       ence sequence.
-      denovo_only -   In this mode reads are mapped to the reference but
+ denovo-reference -   In this mode reads are mapped to the reference but
                       only unmapped reads are retained for further
                       analysis. Since lots of downstream applications assume 
                       neutralality of markers and reads that map to 
@@ -121,10 +121,10 @@ pinfo = OrderedDict([
                       unlinked to non-neutral.
     ----------------------------------------------------------------------
     data.set_params(5) = denovo        ## set a name
-    data.set_params(5) = hybrid        ## set a name of parameters values
-    data.set_params("assembly_method") = reference_only   ## verbose
+    data.set_params(5) = reference        ## set a name of parameters values
+    data.set_params("assembly_method") = denovo+reference   ## verbose
     ---------------------------------------------------------------------- 
-    """, "Assembly method (denovo, hybrid, reference_only, denovo_only)")
+    """, "Assembly method (denovo, reference, denovo+reference, denovo-reference)")
 ),
 
 ("6", ("""

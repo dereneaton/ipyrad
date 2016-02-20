@@ -526,10 +526,13 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
  
             ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
 
-            ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
-            ## bam files and write them to the clust.gz files to fold them back into 
-            ## the pipeline.
-            if "denovo" not in data.paramsdict["assembly_method"]: 
+            ## If we are keeping the results of ref mapping then pull in alignments 
+            ## from mapped bam files and write them to the clust.gz files to fold 
+            ## them back into the pipeline.
+            ## If we are doing "denovo" then obviously don't call this, but also,
+            ## less obvious, "denovo-reference" intentionally doesn't call this
+            ## to effectively discard reference mapped reads.
+            if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
                 for sample in samples:
                     finalize_aligned_reads(data, sample, ipyclient)
 
