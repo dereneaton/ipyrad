@@ -193,7 +193,8 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 150),
                         ("max_inner_mate_distance", 60),
-                        ("preview_truncate_length", 4000000),
+                        ("preview_step1", 4000000),
+                        ("preview_step2", 250000),
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 16)
@@ -719,6 +720,7 @@ class Assembly(object):
         """ a faster launch for ipyparallel >5.0. Protected with try statement
         from a KeyboardInterrupt """
 
+        #save_stdout = sys.stdout           
         try: 
             clusterargs = [self._ipcluster['id'], self._ipcluster["profile"]]
             argnames = ["cluster_id", "profile"]
@@ -734,9 +736,9 @@ class Assembly(object):
                     #sys.stdout = cStringIO.StringIO()  
                     ## run func with stdout hidden
                     ipyclient = ipp.Client(**args)
-                    break
                     ## resets stdout
                     #sys.stdout = save_stdout
+                    break
 
                 except IOError as inst:
                     time.sleep(1)
@@ -761,6 +763,7 @@ class Assembly(object):
 
 
         except KeyboardInterrupt:
+            ## ensure stdout is reset even if Exception was raised            
             try:
                 ipyclient.shutdown()
             except AttributeError:
@@ -769,7 +772,6 @@ class Assembly(object):
 
         except IOError as inst:
             ## ensure stdout is reset even if Exception was raised
-            #sys.stdout = save_stdout           ## resets stdout
             print(inst)
             raise inst
 
@@ -854,6 +856,7 @@ class Assembly(object):
                 self.save()                
                 ## can't close client if it was never open
                 if ipyclient:
+                    ipyclient.purge_everything()
                     ipyclient.close()
             except (UnboundLocalError, IOError):
                 pass

@@ -206,6 +206,7 @@ def filter_all_clusters(data, samples, ipyclient):
     Open the HDF5 array with seqs, catg, and filter data. Fill the remaining
     filters. 
     """
+    LOGGER.debug("in filter_all_clusters")
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
 
@@ -273,7 +274,7 @@ def filter_all_clusters(data, samples, ipyclient):
                 superfilter[hslice:hslice+optim, fidx] = arr
         del arr
         ## finished filling filter array
-        LOGGER.info('superfilter[:10] : %s', superfilter[:10])        
+        #LOGGER.info('superfilter[:10] : %s', superfilter[:10])        
 
         ## store the other arrayed values (edges, snps)
         edgarrs = glob.glob(os.path.join(chunkdir, "edgearr.*.npy"))
@@ -282,6 +283,7 @@ def filter_all_clusters(data, samples, ipyclient):
         arrdict = {'edges':edgarrs, 'snps':snparrs}
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
+
 
         ## fill the edge array 
         superedge = inh5['edges']
@@ -294,7 +296,7 @@ def filter_all_clusters(data, samples, ipyclient):
             superedge[hslice:hslice+optim, 0:4, ] = arr
         del arr
         ## finished with superedge
-        LOGGER.info('superedge[:10] : %s', superedge[:10])
+        #LOGGER.info('superedge[:10] : %s', superedge[:10])
 
         ## fill the snps array. shape= (nloci, maxlen, 2)
         supersnps = inh5['snps']
@@ -307,7 +309,7 @@ def filter_all_clusters(data, samples, ipyclient):
             supersnps[hslice:hslice+optim, :, :] = arr
         del arr
         ## finished with superedge
-        LOGGER.info('supersnps[:10] : %s', supersnps[:10])
+        #LOGGER.info('supersnps[:10] : %s', supersnps[:10])
 
 
     finally:
@@ -437,12 +439,13 @@ def filter_stacks(args):
         ioh5 = h5py.File(data.database, 'r')
         ## get a chunk (hslice) of loci for the selected samples (sidx)
         superseqs = ioh5["seqs"][hslice[0]:hslice[1], sidx,]
-        print('sup', superseqs.shape)
+        LOGGER.info('logging from engine: %s', superseqs.shape)
 
         ## get first index of splits for paired reads. Only need this until 
         ## get_edges gets the edges
         splits = ioh5["edges"][hslice[0]:hslice[1], 4]
-        
+        LOGGER.info('splits preview %s', splits[:10])
+        LOGGER.info('splits preview %s', splits[-10:])        
         ## Empty arrays to be filled in used to later fill in the full 
         ## filter array. Filter dims = (nloci, 5)
         ## Filter order is: [dups, indels, maxhets, maxsnps, minsamp]
@@ -458,12 +461,11 @@ def filter_stacks(args):
         ## to the point that they are below the minlen, and so this also 
         ## constitutes a filter, though one that is uncommon. For this reason
         ## we have a filter also called edgfilter. (needs to be added to filter)
+        LOGGER.debug("getting edges")
         edgfilter, edgearr = get_edges(data, superseqs, splits)
         del splits
         LOGGER.debug("edgfilter %s", edgfilter[:5])
         ## duplicates are already filtered during step6.
-
-        ## indels are already filtered during step6 (kinda... todo: pair splits)
 
         ## minsamp coverages filtered from superseqs
         minfilter = filter_minsamp(data, superseqs)
@@ -556,62 +558,66 @@ def get_edges(data, superseqs, splits):
                 3: minsamp,
                 4: allsamp}
     edgemins = [edgedict.get(i) for i in edgetuple]
-    LOGGER.debug("edgemins %s", edgemins)
+
+    LOGGER.info("edgemins %s", edgemins)
+    LOGGER.info("splits %s", splits)
 
     ## convert all - to N to make this easier
     superseqs[superseqs == "-"] = "N"
     ## the background fill of superseqs should be N instead of "", then this 
     ## wouldn't be necessary...
-    superseqs[superseqs == ""] = "N"
+    ## superseqs[superseqs == ""] = "N"
 
     ## trim overhanging edges
     ## get the number not Ns in each site, 
     ccx = np.sum(superseqs != "N", axis=1)
-
+    LOGGER.debug("ccx %s", ccx)
+    LOGGER.debug("splits %s", splits)
     for idx, split in enumerate(splits):
         if split:
             r1s = ccx[idx, :split]
             r2s = ccx[idx, split+4:]
         else:
             r1s = ccx[idx, ]
-
         ## set default values
         edge0 = edge1 = edge2 = edge3 = 0
         
         ## if edge trim fails then locus is filtered
         try:
-            edge0 = np.where(r1s > edgemins[0])[0].min()
-            edge1 = np.where(r1s > edgemins[1])[0].max()
+            edge0 = np.where(r1s >= edgemins[0])[0].min()
+            edge1 = np.where(r1s >= edgemins[1])[0].max()
         except ValueError:
             edgefilter[idx] = True
-        #LOGGER.debug("edge0 %s", edge0)
-        #LOGGER.debug("edge1 %s", edge1)        
+            #LOGGER.debug("Xccx %s", ccx[idx])            
+            #LOGGER.debug("Xsplit %s", split)
+            #LOGGER.debug("Xr1s %s", r1s)
 
         ## filter cut1
         if edgetuple[0]:
             edge0 = edge0+len(cut1)
+        else:
+            assert edge0 < edge1             
+
+        #LOGGER.debug("edges r1 (%s, %s)", edge0, edge1)
 
         ## if split then do the second reads separate
         if split:
             try:
-                edge2 = np.where(r2s > edgemins[2])[0].min()
-                edge3 = np.where(r2s > edgemins[3])[0].max()
+                edge2 = np.where(r2s >= edgemins[2])[0].min()
+                edge3 = np.where(r2s >= edgemins[3])[0].max()
             except ValueError:
                 edgefilter[idx] = True
-            #LOGGER.debug("edge0 %s", edge0)
-            #LOGGER.debug("edge1 %s", edge1)        
             
             ## filter cut2
             if edgetuple[3]:
                 edge3 = edge3-len(cut2)
-        
+            else:
+                assert edge2 < edge3
+
+        #LOGGER.debug("edges r2 (%s, %s)", edge2, edge3)
+
         ## store edges
         edges[idx] = np.array([edge0, edge1, edge2, edge3])
-
-        ## assertions
-        assert edge0 < edge1 
-        if split:
-            assert edge2 < edge3
 
     return edgefilter, edges
 
