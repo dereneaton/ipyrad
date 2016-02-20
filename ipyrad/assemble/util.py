@@ -15,6 +15,7 @@ import gzip
 import tempfile
 import itertools
 import subprocess
+import collections
 import ipyrad 
 
 import logging
@@ -59,6 +60,67 @@ class ObjDict(dict):
             del self[name]
         else:
             raise AttributeError("No such attribute: " + name)
+
+    def __repr__(self):
+        result = ""
+        if "fastqs" in self.keys():
+            dirs_order = ["fastqs", "edits", "clusts", "consens", "outfiles"]
+            for key in dirs_order:
+                result += key + " : " + self[key] + "\n"
+        else:
+            for key in sorted(self):
+                result += key + " : " + str(self[key]) + "\n"
+        return result
+
+## This is unused right now and kind of broken. get rid of it soon.
+class OrdObjDict(object):
+    """ ordered object dictionary allows calling dictionaries in a more 
+    pretty and Python fashion for storing Assembly data """
+
+    def __init__(self, *args, **kwargs):
+        self._od = collections.OrderedDict(*args, **kwargs)
+
+    def __repr__(self):
+        return str(self._od.items())
+
+    def __getattr__(self, name):
+        return self._od[name]
+
+    def __setattr__(self, name, value):
+        if name == '_od':
+            self.__dict__['_od'] = value
+        else:
+            self._od[name] = value
+
+    def __delattr__(self, name):
+        del self._od[name]
+
+    def __getitem__(self, name):
+        if isinstance(name, int):
+            return self._od.values()[name]
+        else:
+            return self._od[name]
+
+    def __setitem__(self, name, value):
+        self._od[name] = value
+
+    def __delitm__(self, name):
+        del self._od[name]
+
+    def __reduce__(self):
+        return self._od.__reduce__()
+
+    def __iter(self):
+        return self._od._iterable
+
+    def keys(self):
+        return self._od.keys()
+
+    def values(self):
+        return self._od.values()
+
+    def items(self):
+        return self._od.items()
 
 
 AMBIGS = {"R":("G", "A"),
