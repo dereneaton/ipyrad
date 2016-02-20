@@ -105,7 +105,7 @@ class Assembly(object):
             msg = """\n
     No spaces or special characters are allowed in the assembly name. A good 
     practice is to replace spaces with underscores '_'. An example of a good 
-    assembly_name is: white_crowned_sparrows."""
+    assembly_name is: white_crowned_sparrows. Here's what you put - {}""".format(name)
             raise IPyradParamsError(msg)
 
         self.name = name
