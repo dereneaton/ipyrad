@@ -130,38 +130,23 @@ def getassembly(args, parsedict):
     if not os.path.exists(project_dir):
         os.mkdir(project_dir)
 
-    ## Get cwd so we can pop back out after creating the new assembly
-    ## We have to push and pop cwd so the assembly object gets created
-    ## inside the working directory.
-    #cwd = os.path.realpath(os.path.curdir)
-    #os.chdir(project_dir)
+    try:
 
-    ## Here either force is on or the current assembly file doesn't exist,
-    ## in which case create a new.
-    if '1' in args.steps:
-        ## If assembly exists and step 1 insist on the force flag
-        if os.path.exists(assembly_file+".json") and not args.force:
-            raise IPyradWarningExit("  Assembly already exists," \
-                                   +" use the force flag to overwrite.")
-
-        ## create a new assembly object
-        data = ip.Assembly(assembly_name)
-
-    else:
-        ## go back to cwd since existing will be loaded from its full path
-        #os.chdir(cwd)
-
-        if os.path.exists(assembly_file+".assembly"):
-            ## json file takes precedence if both exist
-            if os.path.exists(assembly_file+".json"):
-                data = ip.load_json(assembly_file)
-            else:
-                data = ip.load.load_assembly(assembly_file)                    
+        ## If 1 and force then go ahead and create a new assembly
+        if '1' in args.steps and args.force:
+            data = ip.Assembly(assembly_name)
         else:
             data = ip.load_json(assembly_file)
 
-    ## ensure pop directory
-    #os.chdir(cwd)
+    except IPyradWarningExit as inst:
+        ## if no assembly is found then go ahead and make one
+        if '1' not in args.steps:
+            raise IPyradWarningExit("""
+    Error: Steps >1 ({}) requested but no current assembly found - {}
+    """.format(args.steps, assembly_file))
+        else:
+            ## create a new assembly object
+            data = ip.Assembly(assembly_name)
 
     ## for entering some params...
     for param in parsedict:
