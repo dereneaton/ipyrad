@@ -7,7 +7,7 @@ __interactive__ = 1      ## CLI __main__ changes to 0
 __version__ = "0.1.54"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "ERROR"
+__loglevel__ = "DEBUG"
 __debugfile__ = "/tmp/ipyrad_debug.txt"
 
 ## main ip.functions
@@ -45,16 +45,38 @@ except (OSError, IOError):
     __debugfile__ = "./ipyrad_debug.txt"  ##_os.devnull
     _, __loglevel__ = "null", "ERROR"  ## hack for versioner
 
-# set up logging to file 
-_logging.basicConfig(level=__loglevel__,
-                     format="%(asctime)s \t"\
-                            +"pid=%(process)d \t"\
-                            +"[%(filename)s]\t"\
-                            +"%(levelname)s \t"\
-                            +"%(message)s",
-                     datefmt='%m-%d %H:%M',
-                     filename=__debugfile__,
-                     filemode='a+')
+
+_lconfig.dictConfig({
+    'version': 1,              
+    'disable_existing_loggers': False,  
+
+    'formatters': {
+        'standard': {
+            'format': "%(asctime)s \t"\
+                     +"pid=%(process)d \t"\
+                     +"[%(filename)s]\t"\
+                     +"%(levelname)s \t"\
+                     +"%(message)s"
+        },
+    },
+    'handlers': {
+        __name__: {
+            'level':__loglevel__,
+            'class':'logging.FileHandler',
+            'filename':'/tmp/ipyrad_debug.txt',
+            'formatter':"standard",
+            'mode':'a+'
+        }
+    },
+    'loggers':{
+        __name__: {
+            'handlers': [__name__],
+            'level': __loglevel__,
+            'propogate': True
+        }
+    }
+})
+
 
 # Define the logger and test
 _LOGGER = _logging.getLogger(__name__)
