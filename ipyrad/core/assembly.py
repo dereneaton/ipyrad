@@ -28,7 +28,7 @@ import ipyrad as ip
 from collections import OrderedDict
 from ipyrad.assemble.util import *
 from ipyrad.assemble.refmap import index_reference_sequence
-from ipyrad.core.paramsinfo import paraminfo
+from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.sample import Sample
 from ipyrad import assemble
 
@@ -661,8 +661,7 @@ class Assembly(object):
             paramsfile.write(header)
 
             ## Whip through the current paramsdict and write out the current
-            ## param value, the ordered dict index number (paramsinfo is 
-            ## 1-based, so we have to increment the index we think it is. Also 
+            ## param value, the ordered dict index number. Also,
             ## get the short description from paramsinfo. Make it look pretty, 
             ## pad nicely if at all possible.
             for key, val in self.paramsdict.iteritems():
@@ -672,12 +671,13 @@ class Assembly(object):
                 else:
                     paramvalue = str(val)
                 padding = (" "*(30-len(paramvalue)))
+                paramkey = self.paramsdict.keys().index(key)
                 paramindex = " ## [{}] "\
-                             .format(self.paramsdict.keys().index(key))
-                description = paraminfo(self.paramsdict.keys().index(key), 
-                                        short=True)
+                             .format(paramkey)
+                name = "[{}]: ".format(paramname(paramkey))
+                description = paraminfo(paramkey, short=True)
                 paramsfile.write("\n" + paramvalue + padding + \
-                                        paramindex + description)
+                                        paramindex + name + description)
 
 
 

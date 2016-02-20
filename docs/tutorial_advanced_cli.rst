@@ -1,366 +1,338 @@
 
+.. include:: global.rst 
 
 .. _tutorial_advanced_cli:
 
 
 Advanced tutorial -- CLI
 ========================
+This is the advanced tutorial for the command line interface to ipyrad. 
+In this tutorial we will introduce two new methods that were not
+used in the introductory tutorial, but which provide some exciting new 
+functionality. The first is ``branching``, which is used to 
+efficiently assemble multiple data sets under a range of parameter settings, 
+and the second is ``reference mapping``, which is a way to leverage information
+from reference genomic data (e.g., full genome, transcriptome, 
+plastome, etc) during assembly. 
+
 
 Branching Assemblies
 ~~~~~~~~~~~~~~~~~~~~
+If you've already been through the introductory tutorial you'll remember that 
+a typical ipyrad analysis runs through seven sequential steps to take data 
+from its raw state to finished output files of aligned data. 
+After finishing one assembly, it is common that we might want to create a 
+second assembly of our data under a different set of parameters; 
+say by changing the ``clust_threshold`` from 0.85 to 0.90, or changing 
+``min_samples_locus`` from 4 to 20. 
+
+If we were to restart our analysis from the very beginning that would be really 
+inefficient. So one way to go about this would be to change a few parameters in 
+the params file to try to re-run an existing assembly by re-using some of the
+existing data files. This approach is a little tricky, since the user would need
+to know which files to rename/move, and it has the problem that previous results
+files and parameters could be overwritten so that you lose information about how
+the first data set was assembled. Simplifying this process is the motivation 
+behind the branching assembly process in ipyrad, which does all of this renaming 
+business for you, allowing efficient re-use of existing data files, while also 
+keeping separate records (params files) of which parameters were used in each assembly. 
+
+At its core, branching creates a copy of an Assembly object (the object that is
+saved as a ``.json`` file by ipyrad) such that the new Assembly inherits all of 
+the information from it's parent Assembly, including filenames, samplenames, 
+and assembly statistics. The branching process requires a 
+new :ref:`assembly_name<assembly_name>`, which is important so that all new files
+created along this branch will be saved with a unique filename prefix. 
+We'll show an example of a branching process below, but first we need to 
+describe reference mapping, since for our example we will be creating two 
+branches which are assembled using different ``assembly_methods``. 
+
 
 Reference Sequence Mapping
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
+ipyrad_ offers four :ref:`assembly methods<assembly_methods>`, three of which 
+can utilize a reference sequence file. The first method, called ``reference``, 
+maps RAD sequences to a reference file to determine homology and discards all
+sequences which do not match to it. The second method, ``denovo+reference``, 
+uses the reference first to identify homology, but then the remaining unmatched
+sequences are all dumped into the standard ``denovo`` ipyrad pipeline to be clustered.
+In essence, the reference file is simply used to assist the denovo assembly, and 
+to add additional information. The final method, ``denovo-reference``, 
+removes any reads which match to the reference and retains only non-matching 
+sequences to be used in a denovo analysis. In other words, it allows the use 
+of a reference sequence file as a filter to remove reads which match to it. You
+can imagine how this would be useful for removing contaminants, plastome data, 
+symbiont-host data, or coding/non-coding regions.  
+
+
+Preview Mode
+~~~~~~~~~~~~~
+...
+
 
 Running ipyrad CLI on a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As explained in the :ref:`installation<installation>` section, ipyrad_ is very 
+easy to use on an HPC cluster because as long as it is installed using conda_ it
+does not require the user to load any external modules or software. 
+Really, there is only **one** extra argument that you need to remember
+to use which is the ``--MPI`` argument. This ensures that processing cores which
+are split across different nodes of a cluster can all see the same data. Using 
+ipyrad_ with the --MPI flag on an HPC machine should allow users to split jobs
+across dozens or hundreds of cores to assemble data sets very rapidly. As an 
+example, a large phylogenetic-scale RAD-seq data set analyzed on my desktop 
+computer with 10 cores took ~2 days, while on an HPC system with 64 cores it 
+took only ~16 hours. More detailed speed comparisons are in the works. 
+
 
 
 Getting started
 ~~~~~~~~~~~~~~~
+Let's first download the example simulated data sets for ipyrad_. Copy and paste
+the code below into a terminal. This will create a new directory called 
+``ipsimdata/`` in your current directory containing all of the necessary files.
 
-Import *ipyrad* and remove previous test files if they are already
-present
+.. code:: bash
 
-.. code:: python
-
-    ## import modules
-    import ipyrad as ip      ## for RADseq assembly
-    print ip.__version__     ## print version
+    ## The curl command needs a capital O, not a zero.
+    curl -LkO https://github.com/dereneaton/ipyrad/blob/master/tests/ipsimdata.tar.gz
+    tar -xvzf ipsimdata.tar.gz
 
 
-Assembly and Sample objects
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you look in the ``ipsimdata/`` directory you'll see there are a number of example
+data sets. For this tutorial we'll be using one called ``sim_rad_test``. Let's 
+start by creating a new Assembly, and then we'll edit the params file to 
+tell it how to find the input data files for this data set.
 
-Assembly and Sample objects are used by *ipyrad* to access data stored
-on disk and to manipulate it. Each biological sample in a data set is
-represented in a Sample object, and a set of Samples is stored inside an
-Assembly object. The Assembly object has functions to assemble the data,
-and stores a log of all steps performed and the resulting statistics of
-those steps. Assembly objects can be copied or merged to allow branching
-events where different parameters can subsequently be applied to
-different Assemblies going forward. Examples of this are shown below.
+.. code:: bash
 
-To create an Assembly object call ``ip.Assembly()`` and pass a name for
-the data set. An Assembly object does not initially contain Samples,
-they will be created either by linking fastq files to the Assembly
-object if data are already demultiplexed, or by running ``step1()`` to
-demultiplex raw data files, as shown below.
-
-.. code:: python
-
-    ## create an Assembly object called data1. 
-    data1 = ip.Assembly("data1")
-    
-    ## The object will be saved to disk using its assigned name
-    print "Assembly object named", data1.name
+    ## creates a new Assembly named data1
+    ipyrad -n data1
 
 
 .. parsed-literal::
 
-    Assembly object named data1
+    New file params-data1.txt created in /home/deren/Documents/ipyrad
 
 
-Modifying assembly parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As you can see, this created a new  params file for our Assembly. We need to 
+edit this file since it contains only default values. Use any text editor to 
+open the params file ``params-data1.txt`` and enter the values 
+below for parameters 1, 2, and 3. All other parameters can be left at their 
+default values for now. This tells ipyrad that we are going to use the name
+``iptutorial`` as our project_dir (where output files will be created), and 
+that the input data and barcodes file are located in ``ipsimdata/``.
 
-All of the parameter settings are linked to an Assembly object, which
-has a set of default parameters when it is created. These can be viewed
-using the ``get_params()`` function. To get more detailed information
-about all parameters use ``ip.get_params_info()`` or to select a single
-parameter use ``ip.get_params_info(3)``. Assembly objects have a
-function ``set_params()`` that can be used to modify parameters.
+.. parsed-literal::
 
-.. code:: python
+    ## ./iptutorial                              ## [1] [project_dir] ...
+    ## ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
+    ## ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
 
-    ## modify parameters for this Assembly object
-    data1.set_params(1, "./test_rad")
-    data1.set_params(2, "./data/sim_rad_test_R1_.fastq.gz")
-    data1.set_params(3, "./data/sim_rad_test_barcodes.txt")
-    #data1.set_params(2, "~/Dropbox/UO_C353_1.fastq.part-aa.gz")
-    #data1.set_params(3, "/home/deren/Dropbox/Viburnum_revised.barcodes")
-    data1.set_params(7, 3)
-    data1.set_params(10, 'rad')
-    
-    ## print the new parameters to screen
-    data1.get_params()
+
+Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
+to demultiplex and filter the sequence data. This will create a bunch of new 
+files in the ``iptutorial/`` directory. 
+
+.. code:: bash 
+
+    ipyrad -p params-data1.txt -s 12
 
 
 .. parsed-literal::
 
-      1   project_dir                   ./test_rad                                   
-      2   raw_fastq_path                ./data/sim_rad_test_R1_.fastq.gz             
-      3   barcodes_path                 ./data/sim_rad_test_barcodes.txt             
-      4   sorted_fastq_path                                                          
-      5   restriction_overhang          ('TGCAG', '')                                
-      6   max_low_qual_bases            5                                            
-      7   N_processors                  3                                            
-      8   mindepth_statistical          6                                            
-      9   mindepth_majrule              6                                            
-      10  datatype                      rad                                          
-      11  clust_threshold               0.85                                         
-      12  minsamp                       4                                            
-      13  max_shared_heterozygosity     0.25                                         
-      14  prefix_outname                data1                                        
-      15  phred_Qscore_offset           33                                           
-      16  max_barcode_mismatch          1                                            
-      17  filter_adapters               0                                            
-      18  filter_min_trim_len           35                                           
-      19  ploidy                        2                                            
-      20  max_stack_size                1000                                         
-      21  max_Ns_consens                5                                            
-      22  max_Hs_consens                8                                            
-      23  max_SNPs_locus                (100, 100)                                   
-      24  max_Indels_locus              (5, 99)                                      
-      25  trim_overhang                 (1, 2, 2, 1)                                 
-      26  hierarchical_clustering       0                                            
+    Step1: Demultiplexing fastq data to Samples.
+      Saving Assembly.
+    Step2: Filtering reads 
+      Saving Assembly.
 
 
-Starting data
-~~~~~~~~~~~~~
+Inside ``iptutorial`` you'll see that ipyrad_ has created two subdirectories 
+with names prefixed by the assembly_name ``data1``. The other saved file is a 
+``.json`` file,  which you can look at with a text editor if you wish. 
+It's used by ipyrad_ to store information about your Assembly. 
+You'll notice that ipyrad_ prints "Saving Assembly" quite often. 
+This allows the assembly to be restarted easily from any point 
+if it ever interrupted. In general, you should not mess with the .json file, 
+since editing it by hand could cause errors in your assembly. 
 
-If the data are already demultiplexed then fastq files can be linked
-directly to the Data object, which in turn will create Sample objects
-for each fastq file (or pair of fastq files for paired data). The files
-may be gzip compressed. If the data are not demultiplexed then you will
-have to run the step1 function below to demultiplex the raw data.
+.. code:: bash
+    ls ./iptutorial
 
-.. code:: python
+.. parsed-literal::
+    data1_edits/   data1_fastqs/   data1.json
 
-    ## This would link fastq files from the 'sorted_fastq_path' if present
-    ## Here it does nothing b/c there are no files in the sorted_fastq_path
-    data1.link_fastqs()
+
+Branching example
+~~~~~~~~~~~~~~~~~
+For this example we will branch our Assembly before running step3 so that we can
+see the results when the data are asembled with different assembly_methods. Our
+existing assembly ``iptest1`` is using the denovo method. Let's create a branch
+called ``iptest2`` which will use reference assembly. First we need to run the 
+branch command, then we'll edit the new params file to change the assembly_method
+and add the reference sequence file. 
+
+
+.. code:: bash
+
+    ## create a new branch of the Assembly iptest1
+    ipyrad -p params-iptest1.txt -b iptest2
+    
+.. parsed-literal::
+
+    New file params-iptest2.txt created in /home/deren/Documents/ipyrad
+
+
+And make the following edits to ``params-iptest2.txt``:
+
+.. parsed-literal::
+
+    ## reference                               ## [5] [assembly_method] ...
+    ## ./ipsimdata/sim_mt_genome.fa            ## [6] [reference_sequence] ...
+
+
+Now we can run steps 3-7 on these two assemblies each using their own params 
+file and each will create its own output files and saved results. 
+
+.. code:: bash
+   
+   ## assemble the first data set denovo
+   ipyrad -p params-iptest1.txt -s 34567
+
+   ## assemble the second data set using reference mapping
+   ipyrad -p params-iptest2.txt -s 34567
 
 
 .. parsed-literal::
 
-    0 new Samples created in data1.
-    0 fastq files linked to Samples.
+    --------------------------------------------------
+     ipyrad [v.0.1.47]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: iptest1 [/home/deren/Documents/ipyrad/iptest1.json]
+     ipyparallel setup: Local connection to 4 Engines
+
+     Step3: Clustering/Mapping reads
+       Saving Assembly.
+     Step4: Joint estimation of error rate and heterozygosity
+       Saving Assembly.   
+     Step5: Consensus base calling
+       Diploid base calls and paralog filter (max haplos = 2)
+       error rate (mean, std):  0.00075, 0.00002
+       heterozyg. (mean, std):  0.00196, 0.00018
+       Saving Assembly.
+     Step6: Clustering across 12 samples at 0.85 similarity
+       Saving Assembly.
+     Step7: Filtering and creating output files 
+       Saving Assembly.
+
+     loading Assembly: iptest2 [/home/deren/Documents/ipyrad/iptest2.json]
+
+     Step3: Clustering/Mapping reads
+       Saving Assembly.
+     Step4: Joint estimation of error rate and heterozygosity
+       Saving Assembly.   
+     Step5: Consensus base calling
+       Diploid base calls and paralog filter (max haplos = 2)
+       error rate (mean, std):  0.00075, 0.00002
+       heterozyg. (mean, std):  0.00196, 0.00018
+       Saving Assembly.
+     Step6: Clustering across 12 samples at 0.85 similarity
+       Saving Assembly.
+     Step7: Filtering and creating output files 
+       Saving Assembly.
 
 
-Step 1: Demultiplex the raw data files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This uses the barcodes information to demultiplex reads in data files
-found in the 'raw\_fastq\_path'. It will create a Sample object for each
-sample that will be stored in the Assembly object.
-
-.. code:: python
-
-    ## run step 1 to demultiplex the data
-    data1.step1()
-    
-    ## print the results for each Sample in data1
-    print data1.stats.head()
+Now let's suppose we're interested in the effect of missing data on our assemblies
+and we want to assemble each data set with a different ``min_samples_locus`` 
+setting. Maybe at 4, 8, and 12 (ignore the fact that the example data set 
+has no missing data, and so this has no practical effect). It's worth 
+noting that we can branch assemblies after an analysis has finished as well. 
+The only difference is that the new assembly will think that it has already 
+finished all of the steps, and so if we ask it to run them again it will instead
+want to skip over them. You can override this by passing the ``-f`` flag, 
+or ``--force``, which tells ipyrad that you want it to run the step even though
+it's already finished it. The two assemblies we finished were both assembled at
+the default value of 4 for ``min_samples_locus``, so below I set up code to 
+branch and then run step7 on each of these assemblies with a new setting of 8 or 12. 
 
 
-.. parsed-literal::
+.. code:: bash
+   
+   ## branch iptest1 to make min8 and min12 data sets
+   ipyrad -p params-iptest1.txt -b iptest1-min8
+   ipyrad -p params-iptest1.txt -b iptest1-min12
 
-          state  reads_raw  reads_filtered  clusters_total  clusters_kept  
-    1A_0      1      20099             NaN             NaN            NaN   
-    1B_0      1      19977             NaN             NaN            NaN   
-    1C_0      1      20114             NaN             NaN            NaN   
-    1D_0      1      19895             NaN             NaN            NaN   
-    2E_0      1      19928             NaN             NaN            NaN   
-    
-          hetero_est  error_est  reads_consens  
-    1A_0         NaN        NaN            NaN  
-    1B_0         NaN        NaN            NaN  
-    1C_0         NaN        NaN            NaN  
-    1D_0         NaN        NaN            NaN  
-    2E_0         NaN        NaN            NaN  
+   ## use a text editor to set min_samples_locus to the new value in each
 
+   ## branch iptest2 to make min8 and min12 data sets
+   ipyrad -p params-iptest2.txt -b iptest2-min8
+   ipyrad -p params-iptest2.txt -b iptest2-min12
 
-Step 2: Filter reads
-~~~~~~~~~~~~~~~~~~~~
+   ## use a text editor to set min_samples_locus to the new value in each
 
-If for some reason we wanted to execute on just a subsample of our data,
-we could do this by selecting only certain samples to call the ``step2``
-function on. Because ``step2`` is a function of ``data``, it will always
-execute with the parameters that are linked to ``data``.
-
-.. code:: python
-
-    %%time
-    ## example of ways to run step 2 to filter and trim reads
-    #data1.step2("1B_0")                 ## run on a single sample
-    #data1.step2(["1B_0", "1C_0"])       ## run on one or more samples
-    data1.step2(force=True)              ## run on all samples, skipping finished ones
-    
-    ## print the results
-    print data1.stats.head()
-
-Step 3: clustering within-samples
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Let's imagine at this point that we are interested in clustering our
-data at two different clustering thresholds. We will try 0.90 and 0.85.
-First we need to make a copy the Assembly object. This will inherit the
-locations of the data linked in the first object, but diverge in any
-future applications to the object. Thus, they can share the same working
-directory, and will inherit shared files, but create divergently linked
-files within this directory. You can view the directories linked to an
-Assembly object with the ``.dirs`` argument, shown below. The
-prefix\_outname (param 14) of the new object is automatically set to the
-Assembly object name.
-
-.. code:: python
-
-    ## run step 3 to cluster reads within samples using vsearch
-    #data1.step3(['2E_0'], force=True, preview=True)  # ["2H_0", "2G_0"])
-    data1.step3(force=True)
-    ## print the results
-    print data1.stats.head()
-
-Branching Assembly objects
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-And you can see below that the two Assembly objects are now working with
-several shared directories (working, fastq, edits) but with different
-clust directories (clust\_0.85 and clust\_0.9).
-
-.. code:: python
-
-    ## create a branch of our Assembly object
-    data2 = data1.branch(newname="data2")
-    
-    ## set clustering threshold to 0.90
-    data2.set_params(11, 0.90)
-    
-    ## look at inherited parameters
-    data2.get_params()
-
-.. code:: python
-
-    ## run step 3 to cluster reads within samples using vsearch
-    data2.step3(force=True)  # ["2H_0", "2G_0"])
-    
-    ## print the results
-    print data2.stats
-
-.. code:: python
-
-    print "data1 directories:"
-    for (i,j) in data1.dirs.items():
-        print "{}\t{}".format(i, j)
-        
-    print "\ndata2 directories:"
-    for (i,j) in data2.dirs.items():
-        print "{}\t{}".format(i, j)
-
-.. code:: python
-
-    ## TODO, just make a [name]_stats directory in [work] for each data obj
-    data1.statsfiles
+   ## run step7 on using the new min_samples_locus settings
+   ipyrad -p params-iptest1-min8.txt -s 7
+   ipyrad -p params-iptest1-min12.txt -s 7
+   ipyrad -p params-iptest2-min8.txt -s 7
+   ipyrad -p params-iptest2-min12.txt -s 7
 
 
-Saving stats outputs
-~~~~~~~~~~~~~~~~~~~~
+Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
+and edits/ directories were created using just the first assembly ``iptest1``, 
+while the clust/ and consens/ directories were created for both ``iptest1`` and
+``iptest2`` which completed steps 3-6. Finally, you can see that each assembly 
+has its own ``outfiles/`` directory with the results of step7. 
 
-.. code:: python
 
-    data1.stats.to_csv("data1_results.csv", sep="\t")
-    data1.stats.to_latex("data1_results.tex")
+.. code:: bash
 
-Example of plotting with *ipyrad*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   ## use ls -l to view inside the project directory as a list
+   ls -l iptutorial/
 
-There are a a few simple plotting functions in *ipyrad* useful for
-visualizing results. These are in the module ``ipyrad.plotting``. Below
-is an interactive plot for visualizing the distributions of coverages
-across the 12 samples in the test data set.
+.. parsed-literal::  
 
-.. code:: python
+   iptest1.json
+   iptest1_fastqs/
+   iptest1_edits/
+   iptest1_clust_0.85/
+   iptest1_consens/
+   iptest1_outfiles/
 
-    import ipyrad.plotting as iplot
-    
-    ## plot for one or more selected samples
-    iplot.depthplot(data1, ["1A_0", "1B_0"])
-    
-    ## plot for all samples in data1
-    #iplot.depthplot(data1)
-    
-    ## save plot as pdf and html
-    iplot.depthplot(data1, outprefix="testfig")
+   iptest1_min8.json
+   iptest1_min8_outfiles/
 
-Step 4: Joint estimation of heterozygosity and error rate
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   iptest1_min12.json
+   iptest1_min12_outfiles/
 
-.. code:: python
+   iptest2.json
+   iptest2_clust_0.85/
+   iptest2_consens/
+   iptest2_outfiles/
 
-    import ipyrad as ip
-    data1 = ip.load_assembly("test_rad/data1")
+   iptest2_min8.json
+   iptest2_min8_outfiles/
 
-.. code:: python
+   iptest2_min12.json
+   iptest2_min12_outfiles/
 
-    ## run step 4
-    data1.step4("1A_0", force=True)
-    
-    ## print the results
-    print data1.stats
 
-Step 5: Consensus base calls
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In addition you working directory should contain the four params files which 
+have the full set of parameters used in each of your assemblies. This makes for 
+a good reproducible workflow. 
 
-.. code:: python
 
-    #import ipyrad as ip
-    
-    ## reload autosaved data. In case you quit and came back 
-    #data1 = ip.load_dataobj("test_rad/data1.assembly")
 
-.. code:: python
+Writing ipyrad scripts
+~~~~~~~~~~~~~~~~~~~~~~
+From the code above you may have noticed that the only thing stopping you from
+being able to write one long script to make a huge range of assemblies is when 
+you have to go in by hand and edit the new params files by hand each time. 
+If you plan to only execute one ipyrad command at a time then that is no problem.
+But if you're a very programmatic type of person, you may be thinking about inserting
+``sed`` code-blocks into your code to edit the params files automatically. 
+If so, you'll probably want to check out the :ref:`ipyrad API<API>`, 
+which provides a much more elegant pure Python way to edit parameters in your 
+code.
 
-    ## run step 5
-    data1.step5()
-    
-    ## print the results
-    print data1.stats
 
-.. code:: python
-
-    data1.samples["1A_0"].stats
-
-Quick parameter explanations are always on-hand
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: python
-
-    ip.get_params_info(10)
-
-Log history
-~~~~~~~~~~~
-
-A common problem after struggling through an analysis is that you find
-you've completely forgotten what parameters you used at what point, and
-when you changed them. The log history time stamps all calls to
-``set_params()``, as well as calls to ``step`` methods. It also records
-copies/branching of data objects.
-
-.. code:: python
-
-    for i in data1.log:
-        print i
-
-Saving Assembly objects
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Assembly objects can be saved and loaded so that interactive analyses
-can be started, stopped, and returned to quite easily. The format of
-these saved files is a serialized 'dill' object used by Python.
-Individual Sample objects are saved within Assembly objects. These
-objects to not contain the actual sequence data, but only link to it,
-and so are not very large. The information contained includes parameters
-and the log of Assembly objects, and the statistics and state of Sample
-objects. Assembly objects are autosaved each time an assembly ``step``
-function is called, but you can also create your own checkpoints with
-the ``save`` command.
-
-.. code:: python
-
-    ## save assembly object
-    #ip.save_assembly("data1.p")
-    
-    ## load assembly object
-    #data = ip.load_assembly("data1.p")
-    #print data.name
