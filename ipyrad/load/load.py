@@ -356,7 +356,8 @@ def load_json(path, quiet=False):
         ## save statsfiles
         for statskey in statsfiles_keys:
             null.samples[sample].statsfiles[statskey] = \
-                pd.Series(fullj["samples"][sample]["statsfiles"][statskey])
+                pd.Series(fullj["samples"][sample]["statsfiles"][statskey])\
+                .reindex(nsamp.__dict__["statsfiles"][statskey].keys())
 
         ## save files
         for filehandle in fullj["samples"][sample]["files"].keys():
