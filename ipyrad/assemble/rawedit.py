@@ -554,10 +554,10 @@ def sample_cleanup(data, sample, submitted, results):
         fcounts["keep"] += counts["keep"]
 
     ## store full s2 stats
-    sample.statsfiles.s2["reads_raw"] = fcounts["orig"]
-    sample.statsfiles.s2["filtered_by_qscore"] = fcounts["quality"]
-    sample.statsfiles.s2["filtered_by_adapter"] = fcounts["adapter"]
-    sample.statsfiles.s2["reads_passed"] = fcounts["keep"]
+    sample.stats_dfs.s2["reads_raw"] = fcounts["orig"]
+    sample.stats_dfs.s2["filtered_by_qscore"] = fcounts["quality"]
+    sample.stats_dfs.s2["filtered_by_adapter"] = fcounts["adapter"]
+    sample.stats_dfs.s2["reads_passed"] = fcounts["keep"]
 
     ## store summary stats
     sample.stats.reads_filtered = fcounts["keep"]
@@ -586,12 +586,12 @@ def assembly_cleanup(data):
             LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
 
     ## build s2 results data frame
-    data.statsfiles.s2 = data.build_stat("s2")
+    data.stats_dfs.s2 = data.build_stat("s2")
+    data.stats_files.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
 
     ## write stats for all samples
-    outhandle = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
-    with open(outhandle, 'w') as outfile:
-        data.statsfiles.s2.to_string(outfile)
+    with open(data.stats_files.s2, 'w') as outfile:
+        data.stats_dfs.s2.to_string(outfile)
 
 
 

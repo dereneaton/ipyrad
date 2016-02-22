@@ -91,12 +91,12 @@ def sample_cleanup(data, sample):
                                     data.paramsdict["mindepth_statistical"]])
        
         ## sample stat assignments
-        sample.statsfiles.s3["clusters_total"] = len(depth)
-        sample.statsfiles.s3["clusters_hidepth"] = \
+        sample.stats_dfs.s3["clusters_total"] = len(depth)
+        sample.stats_dfs.s3["clusters_hidepth"] = \
                                         int(sample.stats["clusters_hidepth"])
-        sample.statsfiles.s3["avg_depth_total"] = np.mean(sample.depths)
-        sample.statsfiles.s3["avg_depth_mj"] = mmj
-        sample.statsfiles.s3["avg_depth_stat"] = mms
+        sample.stats_dfs.s3["avg_depth_total"] = np.mean(sample.depths)
+        sample.stats_dfs.s3["avg_depth_mj"] = mmj
+        sample.stats_dfs.s3["avg_depth_stat"] = mms
 
     else:
         print("no clusters found for {}".format(sample.name))
@@ -602,11 +602,11 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
 
 def data_cleanup(data, samples):
     """ cleanup / statswriting function for Assembly obj """
-    ## TODO: update statsfile with mapped and unmapped reads for refmapping
-    data.statsfiles.s3 = data.build_stat("s3")
-    outhandle = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
-    with open(outhandle, 'w') as outfile:
-        data.statsfiles.s3.to_string(outfile)
+    ## TODO: update stats_dfs with mapped and unmapped reads for refmapping
+    data.stats_dfs.s3 = data.build_stat("s3")
+    data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
+    with open(data.stats_files.s3, 'w') as outfile:
+        data.stats_dfs.s3.to_string(outfile)
 
 
 

@@ -552,7 +552,6 @@ def cleanup(data, sample, statsdicts):
             xcounters[key] += counters[key]
         for key in xfilters:
             xfilters[key] += filters[key]
-    sample.stats.reads_consens = xcounters["nconsens"]
 
     ## merge consens read files
     handle1 = os.path.join(data.dirs.consens, sample.name+".consens.gz")
@@ -563,49 +562,32 @@ def cleanup(data, sample, statsdicts):
             os.remove(fname)
     sample.files.consens = [handle1]
 
-    ## find longest name to make printing code block
-    data.statsfiles.s5 = os.path.join(data.dirs.consens, 's5_consens.txt')    
-    longestname = max([len(i) for i in data.samples.keys()])
-    printblock = "{:<%d} {:>11} {:>11} {:>11} {:>11} " % (longestname + 4) \
-                +"{:>11} {:>11} {:>11} {:>11} {:>11}\n"
-    if not os.path.exists(data.statsfiles.s5):
-        with open(data.statsfiles.s5, 'w') as outfile:
-            outfile.write(printblock.format("sample", "nclusters", 
-                "depthfilter", "maxHfilter", "haplofilter", "maxNfilter", 
-                "nconsensus", "nsites", "nhetero", "hetero"))
-
-    ## append stats to file
-    outfile = open(data.statsfiles.s5, 'a+')
+    ## set Sample stats_dfs values
     try:
         prop = xcounters["heteros"]/float(xcounters['nsites'])
     except ZeroDivisionError: 
         prop = 0
-    ## redefine printblock to allow for floats
-    printblock = "{:<%d} {:>11} {:>11} {:>11} {:>11} " % (longestname + 4) \
-                +"{:>11} {:>11} {:>11} {:>11} {:>11.5f}\n"
-    outfile.write(printblock.format(
-        sample.name, 
-        int(sample.stats.clusters_hidepth),
-        int(sample.stats.clusters_hidepth - xfilters['depth']),
-        int(sample.stats.clusters_hidepth - xfilters['depth'] - \
-            xfilters['heteros']),
-        int(sample.stats.clusters_hidepth - xfilters['depth'] - \
-            xfilters['heteros'] - xfilters['haplos']),
-        int(sample.stats.clusters_hidepth - xfilters['depth'] - \
-            xfilters['heteros'] - xfilters['haplos'] - xfilters['maxn']),
-        int(sample.stats.reads_consens),
-        xcounters["nsites"],
-        xcounters["heteros"],
-        prop)
-    )
+    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
+    sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
+    sample.stats_dfs.s5.filtered_by_maxH = xfilters['haplos']    
+    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
+    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
+    sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
+    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
+    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
+    sample.stats_dfs.s5.heterozygosity = prop
 
-    outfile.close()
+    ## set the Sample stats summary value
+    sample.stats.reads_consens = int(xcounters["nconsens"])
 
-    # ## save stats to Sample if successful
+    ## set the Assembly stats
+    data.stats_files.s5 = os.path.join(data.dirs.consens, 
+                                       's5_consens_stats.txt')
+    data.stats_dfs.s5 = data.build_stat("s5")
+
+    ## save state to Sample if successful
     if sample.stats.reads_consens:
         sample.stats.state = 5
-        ## save stats to data
-
     else:
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 

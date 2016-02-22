@@ -502,10 +502,10 @@ def make_stats(data, raws):
         else:
             sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
                                                   name+"_R1_.fastq.gz"),)]
+        ## fill in the summary stats
         sample.stats["reads_raw"] = fsamplehits[name]
-
-        ## fill the statsfiles stats
-        sample.statsfiles.s1["reads_raw"] = fsamplehits[name]
+        ## fill in the full df stats value
+        sample.stats_dfs.s1["reads_raw"] = fsamplehits[name]
 
         ## Only link Sample if it has data
         if sample.stats["reads_raw"]:
@@ -515,8 +515,8 @@ def make_stats(data, raws):
             print("Excluded sample: no data found for", name)
 
     ## initiate s1 key for data object
-    data.statsfiles.s1 = data.build_stat("s1")
-
+    data.stats_dfs.s1 = data.build_stat("s1")
+    data.stats_files.s1 = outhandle
 
 
 

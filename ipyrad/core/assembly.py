@@ -105,7 +105,8 @@ class Assembly(object):
             msg = """\n
     No spaces or special characters are allowed in the assembly name. A good 
     practice is to replace spaces with underscores '_'. An example of a good 
-    assembly_name is: white_crowned_sparrows. Here's what you put - {}""".format(name)
+    assembly_name is: white_crowned_sparrows. Here's what you put:
+    {}""".format(name)
             raise IPyradParamsError(msg)
 
         self.name = name
@@ -124,8 +125,10 @@ class Assembly(object):
         ## print headers
         self._headers = 0
 
-        ## statsfiles is a dict where keys return a func... 
-        self.statsfiles = ObjDict({})
+        ## statsfiles is a dict with file locations
+        ## stats_dfs is a dict with pandas dataframes
+        self.stats_files = ObjDict({})
+        self.stats_dfs = ObjDict({})        
 
         ## samples linked 
         self.samples = {}
@@ -224,11 +227,12 @@ class Assembly(object):
         return pd.DataFrame([self.samples[i].files for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
+
     def build_stat(self, idx):
         """ Returns a data frame with Sample stats for each step """
         nameordered = self.samples.keys()
         nameordered.sort()
-        return pd.DataFrame([self.samples[i].statsfiles[idx] \
+        return pd.DataFrame([self.samples[i].stats_dfs[idx] \
                       for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
@@ -1069,20 +1073,26 @@ class Assembly(object):
         ## attach filename for all reads database
         self.database = os.path.join(self.dirs.consens, self.name+".hdf5")
 
-        ## check for existing and force
-        if not force:
-            if os.path.exists(self.database):
-                print("""
-    Skipping step6: Clust file already exists: {}
-    Use the force argument to overwrite.
-    """.format(self.database))
+        ## run if this point is reached. We no longer check for existing 
+        ## h5 file, since checking Sample states should suffice.
+        assemble.cluster_across.run(self, samples, noreverse,
+                                    force, randomseed, ipyclient)
 
-            else:
-                assemble.cluster_across.run(self, samples, noreverse,
-                                            force, randomseed, ipyclient)
-        else:
-            assemble.cluster_across.run(self, samples, noreverse,
-                                        force, randomseed, ipyclient)
+    #     ## check for existing and force
+    #     if not force:
+    #         if os.path.exists(self.database):
+    #             print("""
+    # Skipping step6: Clust file already exists.
+    # Re-using existing file: {}
+    # Use the force argument to overwrite.
+    # """.format(self.database))
+
+    #         else:
+    #             assemble.cluster_across.run(self, samples, noreverse,
+    #                                         force, randomseed, ipyclient)
+    #     else:
+    #         assemble.cluster_across.run(self, samples, noreverse,
+    #                                     force, randomseed, ipyclient)
 
 
     def _step7func(self, samples, force, ipyclient):
@@ -1117,8 +1127,8 @@ class Assembly(object):
 
         if not force:
             if os.path.exists(self.dirs.outfiles):
-                sys.exit("""
-  Step 7: Cowardly refusing to overwrite existing output directory: 
+                raise IPyradWarningExit("""
+    Output files already created for this Assembly in the directory: 
     {} 
     rerun with force argument to overwrite.""".format(self.dirs.outfiles))
 

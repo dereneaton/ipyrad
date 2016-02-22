@@ -4,9 +4,8 @@
 #import os
 import pandas as pd
 import numpy as np
-import json
 from collections import OrderedDict
-from ipyrad.assemble.util import ObjDict, IPyradError
+from ipyrad.assemble.util import ObjDict
 
 # pylint: disable=C0103
 # pylint: disable=R0903
@@ -48,7 +47,7 @@ class Sample(object):
                    "reads_consens",]).astype(np.object)
 
         ## stats for each step
-        self.statsfiles = ObjDict({
+        self.stats_dfs = ObjDict({
               "s1": pd.Series(index=["reads_raw",
                                      ]).astype(np.object),
 
@@ -74,12 +73,12 @@ class Sample(object):
                                      "error_est",
                                      ]).astype(np.object),
 
-              "s5": pd.Series(index=["nclusters",
-                                     "depthfilter",
-                                     "maxHfilter",
-                                     "maxAllelefilter",
-                                     "maxNfilter",
-                                     "nconsens",
+              "s5": pd.Series(index=["clusters_total",
+                                     "filtered_by_depth",
+                                     "filtered_by_maxH",
+                                     "filtered_by_maxAlleles",
+                                     "filtered_by_maxN",
+                                     "reads_consens",
                                      "nsites",
                                      "nhetero",
                                      "heterozygosity",
@@ -100,34 +99,16 @@ class Sample(object):
         are combined in save() to dump JSON output """
         
         ## 
-        returnjson = json.dumps({
-            "name": self.name,
-            "barcode": self.barcode,
-            "files": self.files,
-            "statsfiles": {
-                "s1": self.statsfiles.s1.to_dict(),
-                "s2": self.statsfiles.s2.to_dict(),                
-                "s3": self.statsfiles.s3.to_dict(),
-                "s4": self.statsfiles.s4.to_dict(),
-                "s5": self.statsfiles.s5.to_dict(),
-            },
-            "stats": self.stats.to_dict()
-            },
-            default=lambda out: out.__dict__, 
-            sort_keys=True,
-            indent=4, 
-            separators=(",", ";"))
-
         returndict = OrderedDict([
             ("name", self.name),
             ("barcode", self.barcode),
             ("files", self.files),
-            ("statsfiles", {
-                "s1": self.statsfiles.s1.to_dict(),
-                "s2": self.statsfiles.s2.to_dict(),                
-                "s3": self.statsfiles.s3.to_dict(),
-                "s4": self.statsfiles.s4.to_dict(),
-                "s5": self.statsfiles.s5.to_dict(),
+            ("stats_dfs", {
+                "s1": self.stats_dfs.s1.to_dict(),
+                "s2": self.stats_dfs.s2.to_dict(),                
+                "s3": self.stats_dfs.s3.to_dict(),
+                "s4": self.stats_dfs.s4.to_dict(),
+                "s5": self.stats_dfs.s5.to_dict(),
             }),
             ("stats", self.stats.to_dict()),
             ])

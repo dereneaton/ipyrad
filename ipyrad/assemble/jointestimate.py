@@ -337,10 +337,20 @@ def run(data, samples, subsample, force, ipyclient):
 def cleanup(data, sample, hest, eest):
     """ stores results to the Assembly object, writes to stats file, 
     and cleans up temp files """
-    ## sample assignments
+    ## sample summary assignments
     sample.stats.state = 4
     sample.stats.hetero_est = hest
     sample.stats.error_est = eest
+    ## sample full assigments
+    sample.stats_dfs.hetero_est = hest
+    sample.stats_dfs.error_est = eest
+    ## Assembly assignment
+    data.stats_dfs.s4 = data.build_stat("s4")
+    data.stats_files.s4 = os.path.join(data.dirs.clusts, 
+                                       "s4_joint_estimate.txt")
+    with open(data.stats_files.s4, 'w') as outfile:
+        data.stats_dfs.s4.to_string(outfile)
+
 
 
 
