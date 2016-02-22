@@ -879,9 +879,9 @@ class Assembly(object):
         ## print headers
         if self._headers:
             if sfiles:
-                print("  Step1: Linking sorted fastq data to Samples.")
+                print("  Step1: Linking sorted fastq data to Samples")
             else:
-                print("  Step1: Demultiplexing fastq data to Samples.")                
+                print("  Step1: Demultiplexing fastq data to Samples")                
 
         ## if Samples already exist then no demultiplexing
         if self.samples:

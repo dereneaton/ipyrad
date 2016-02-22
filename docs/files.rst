@@ -25,7 +25,7 @@ is some confusion in the literature about the names of
 
 
 rad  
-^^^^^
+^^^
 This category is used for any datatype which uses a single restriction enzyme 
 or amplicon. 
 
