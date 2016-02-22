@@ -68,24 +68,21 @@ def showstats(parsedict):
     """.format(project_dir)
         raise IPyradError(msg)
 
+    data = ip.load_json(my_assembly, quiet=True)
 
-    if os.path.exists(my_assembly+".assembly"):
-        data = ip.load.load_assembly(my_assembly, quiet=True)
-    else:
-        data = ip.load_json(my_assembly, quiet=True)
-
-    print("Summary stats of Assembly {}".format(data.name) \
+    print("\nSummary stats of Assembly {}".format(data.name) \
          +"\n------------------------------------------------")
     if not data.stats.empty:
         print(data.stats)
-        print("\nFull stats files\n---------------------")
+        print("\n\nFull stats files"\
+         +"\n------------------------------------------------")
 
         fullcurdir = os.path.realpath(os.path.curdir)
-        for key in sorted(data.statsfiles):
-            val = data.statsfiles[key]
+        for i, key in enumerate(sorted(data.stats_files)):
+            val = data.stats_files[key]
             val = val.replace(fullcurdir, ".")                
-            print(key+":", val)
-            print("\n----")
+            print("step {}: {}".format(i+1, val))
+        print("\n")
     else:
         print("No stats to display")
 
