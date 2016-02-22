@@ -4,10 +4,10 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.55"
+__version__ = "0.1.56"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "DEBUG"
+__loglevel__ = "ERROR"
 __debugfile__ = "/tmp/ipyrad_debug.txt"
 
 ## main ip.functions
