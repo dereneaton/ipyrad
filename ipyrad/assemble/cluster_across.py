@@ -283,9 +283,9 @@ def build_h5_array(data, samples, nloci):
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
-    filters = io5.create_dataset("filters", (nloci, 6), dtype=np.bool,
-                                 chunks=(chunks, 6))
-    filters.attrs["chunksize"] = chunks
+    filters = io5.create_dataset("filters", (nloci, 6), dtype=np.bool)#,
+#                                 chunks=(chunks, 6))
+#    filters.attrs["chunksize"] = chunks
     filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
                                 "max_hets", "min_samps", "bad_edges"]
 
@@ -324,7 +324,7 @@ def build_h5_array(data, samples, nloci):
             icatg = singleh5[sample.name]
             supercatg[:, sidx, :, :] = icatg
 
-    ## FILL SUPERSEQS
+    ## FILL SUPERSEQS and fill edges(splits) for paired-end data
     fill_superseqs(data, samples, superseqs, edges)
 
     ## close the big boy
@@ -339,6 +339,9 @@ def build_h5_array(data, samples, nloci):
     ## set sample states
     for sample in samples:
         sample.stats.state = 6
+
+    ## write database as stats output?
+    data.stats_files.s6 = "[this step has no stats ouput]"
 
 
 
@@ -415,13 +418,13 @@ def singlecat(data, sample, nloci, indels):
         indidx = np.where(indels[iloc, :])[0]
         if np.any(indidx):
             ### apply indel filter 
-            #ind1 = len(indidx1) <= data.paramsdict["max_Indels_locus"][0]
-            #ind2 = len(indidx2) <= data.paramsdict["max_Indels_locus"][1]
-            #if ind1 and ind2:
-            #    indfilter[iloc] = True
-            #    print(iloc, ind1, ind2, icatg.shape[0])
-            if len(indidx) < sum(data.paramsdict["max_Indels_locus"]):
-                indfilter[iloc] = True
+            if "pair" in data.paramsdict["datatype"]:
+                ## get lenght of locus 
+                if len(indidx) > sum(data.paramsdict["max_Indels_locus"]):
+                    indfilter[iloc] = True
+            else:
+                if len(indidx) > data.paramsdict["max_Indels_locus"][0]:
+                    indfilter[iloc] = True
 
             ## insert indels into catg array
             newrows = icatg[iloc].shape[0] + len(indidx)
@@ -488,15 +491,6 @@ def fill_superseqs(data, samples, superseqs, edges):
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq
-            #     try:
-            #         indices.remove(sidx)
-            #     except ValueError as _:
-            #         ## duplicate in cluster, index already removed.
-            #         pass
-
-            # ## fill in the remaining indices with N 
-            # for idx in indices:
-            #     fill[idx] = np.array(["N"]*maxlen)
 
         ## PUT seqs INTO local ARRAY 
         chunkseqs[iloc] = fill
@@ -518,8 +512,10 @@ def fill_superseqs(data, samples, superseqs, edges):
     superseqs[iloc-cloc:,] = chunkseqs[:cloc]
     edges[iloc-cloc:, 4] = chunkedge[:cloc]
 
-    LOGGER.info('edges preview %s', edges[:10])
-    LOGGER.info('edges preview %s', edges[-10:])
+    ## edges is filled with splits for paired data.
+    #LOGGER.info('edges preview %s', edges[:10])
+    #LOGGER.info('edges preview %s', edges[-10:])
+
     ## close handle
     clusters.close()
 
