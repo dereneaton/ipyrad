@@ -11,11 +11,14 @@ import glob
 ## because we recycled this code from pyrad V3 and it already had
 ## a variable called data that was predominant. Change it if you want.
 
+
 def update(assembly, idict, count):
     """ updates dictionary with the next .5M reads from the super long string 
     phylip file. Makes for faster reading. """
 
-    data = iter(open(os.path.join( assembly.dirs.outfiles, assembly.name+".phy" ), 'r' )) 
+    data = iter(open(os.path.join(assembly.dirs.outfiles,
+                     assembly.name+".phy"), 'r'))
+
     ntax, nchar = data.next().strip().split()
 
     ## read in max N bp at a time                                                                            
@@ -29,7 +32,7 @@ def update(assembly, idict, count):
     
 
 
-def makephy(assembly, samples, longname):
+def makephy(data, samples, longname):
     """ builds phy output. If large files writes 50000 loci at a time to tmp
     files and rebuilds at the end"""
 
@@ -38,7 +41,7 @@ def makephy(assembly, samples, longname):
     names.sort()
     
     ## read in loci file
-    locifile = os.path.join(assembly.dirs.outfiles, assembly.name+".loci")
+    locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
     locus = iter(open(locifile, 'rb'))
 
     ## dict for saving the full matrix

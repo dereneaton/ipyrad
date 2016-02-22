@@ -91,12 +91,12 @@ def sample_cleanup(data, sample):
                                     data.paramsdict["mindepth_statistical"]])
        
         ## sample stat assignments
-        sample.statsfiles.s3["clusters_total"] = len(depth)
-        sample.statsfiles.s3["clusters_hidepth"] = \
+        sample.stats_dfs.s3["clusters_total"] = len(depth)
+        sample.stats_dfs.s3["clusters_hidepth"] = \
                                         int(sample.stats["clusters_hidepth"])
-        sample.statsfiles.s3["avg_depth_total"] = np.mean(sample.depths)
-        sample.statsfiles.s3["avg_depth_mj"] = mmj
-        sample.statsfiles.s3["avg_depth_stat"] = mms
+        sample.stats_dfs.s3["avg_depth_total"] = np.mean(sample.depths)
+        sample.stats_dfs.s3["avg_depth_mj"] = mmj
+        sample.stats_dfs.s3["avg_depth_stat"] = mms
 
     else:
         print("no clusters found for {}".format(sample.name))
@@ -115,7 +115,7 @@ def muscle_align(args):
     ## parse args
     data, chunk = args
 
-    LOGGER.debug("Doing chunk {}".format(chunk))
+    LOGGER.debug("Doing chunk %s", chunk)
 
     ## data are already chunked, read in the whole thing
     infile = open(chunk, 'rb')
@@ -483,18 +483,25 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     #tpproc = [len(i) for i in threaded][0]
 
     try:
-        if preview:
+        ## PREVIEW should just use subsampled data from step2
+        #if preview:
             ## Truncate the input files and temporarily swap out the values for
             ## sample.files.edits
-            for sample in samples:
-                sample.files["edits_preview_bak"] = sample.files.edits
-                sample.files.edits = preview_truncate_fq(data, 
-                                                sample.files.edits_preview_bak)
+        #    for sample in samples:
+        #        sample.files["edits_preview_bak"] = sample.files.edits
+        #        sample.files.edits = preview_truncate_fq(data, 
+        #                                     sample.files.edits_preview_bak)
 
         ## single node threading
-        tpp = 2
+        tpp = 1
+        if len(ipyclient) >= 4:
+            tpp = 2
+        if len(ipyclient) >= 10:
+            tpp = 3
+        if len(ipyclient) >= 20:
+            tpp = 4
         threaded_view = ipyclient.load_balanced_view(
-                                                  targets=ipyclient.ids[::tpp])
+                                            targets=ipyclient.ids[::tpp])
         tpproc = len(threaded_view)
 
         ## Initialize the mapped and unmapped file paths per sample
@@ -524,12 +531,16 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             results = threaded_view.map(clustall, submitted_args)
             results = results.get()
  
-            ## TODO: should it still look for REFSEQ reads if it had no utemp hits?
+            ## TODO: should it look for REFSEQ reads if it had no utemp hits?
 
-            ## REFSEQ reads (not denovo or denovo_only) pull in alignments from mapped 
-            ## bam files and write them to the clust.gz files to fold them back into 
-            ## the pipeline.
-            if "denovo" not in data.paramsdict["assembly_method"]: 
+            ## If we are keeping the results of ref mapping then pull in 
+            ## alignments from mapped bam files and write them to the clust.gz 
+            ## files to fold them back into the pipeline.
+            ## If we are doing "denovo" then obviously don't call this, but 
+            ## also, less obvious, "denovo-reference" intentionally doesn't 
+            ## call this to effectively discard reference mapped reads.
+            if data.paramsdict["assembly_method"] in \
+                                           ["reference", "denovo+reference"]: 
                 for sample in samples:
                     finalize_aligned_reads(data, sample, ipyclient)
 
@@ -591,11 +602,11 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
 
 def data_cleanup(data, samples):
     """ cleanup / statswriting function for Assembly obj """
-    ## TODO: update statsfile with mapped and unmapped reads for refmapping
-    data.statsfiles.s3 = data.build_stat("s3")
-    outhandle = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
-    with open(outhandle, 'w') as outfile:
-        data.statsfiles.s3.to_string(outfile)
+    ## TODO: update stats_dfs with mapped and unmapped reads for refmapping
+    data.stats_dfs.s3 = data.build_stat("s3")
+    data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
+    with open(data.stats_files.s3, 'w') as outfile:
+        data.stats_dfs.s3.to_string(outfile)
 
 
 
@@ -750,11 +761,10 @@ def multi_muscle_align(data, sample, ipyclient):
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
         optim = 100
-        if sample.stats.clusters_total > 2000:
-            optim = int(sample.stats.clusters_total/len(ipyclient))/2
-            
-        #print("clusttotal:{} ; optim: {} "\
-        #      .format(sample.stats.clusters_total, optim))
+        if sample.stats.clusters_total > 500:
+            optim = int(sample.stats.clusters_total/len(ipyclient))//2
+        LOGGER.debug("optim for align chunks: %s", optim)
+
         ## write optim clusters to each tmp file
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
         grabchunk = list(itertools.islice(inclusts, optim))

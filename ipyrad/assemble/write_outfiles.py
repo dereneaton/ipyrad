@@ -54,16 +54,17 @@ def run(data, samples, force, ipyclient):
     ## Everything needed is in the now filled h5 database. Filters were applied
     ## with 'samples' taken into account, but still need to print only included
     LOGGER.info("Writing .loci file")
-    samplecounts, locuscounts = make_loci(data, samples)
+    samplecounts, locuscounts, keep = make_loci(data, samples)
 
     LOGGER.info("Writing stats output")
     make_stats(data, samples, samplecounts, locuscounts)
 
+    ## 'keep' has the non-filtered loci idx
     LOGGER.info("Writing .vcf file")
     #make_vcf(data)
 
     LOGGER.info("Writing other formats")
-    #make_outfiles(data, samples)
+    make_outfiles(data, samples, keep)
 
     shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
     print("    Outfiles written to: {}".format(shortpath))
@@ -80,8 +81,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ## open the out handle. This will have three data frames saved to it. 
     ## locus_filtering, sample_coverages, and snp_distributions
-    data.outfiles.stats = os.path.join(data.dirs.outfiles, data.name+".stats")
-    outstats = open(data.outfiles.stats, 'w')
+    data.stats_files.s7 = os.path.join(data.dirs.outfiles, data.name+".stats")
+    outstats = open(data.stats_files.s7, 'w')
 
     ########################################################################
     ## get stats for locus_filtering, use chunking.
@@ -118,20 +119,23 @@ def make_stats(data, samples, samplecounts, locuscounts):
         start += optim
 
     ## record filtering of loci from total to final
-    filtdat = pd.Series({"total_prefiltered_loci": nloci,
-                         "filtered_by_max_indels": filters[0],
-                         "filtered_by_min_sample": filters[3],
-                         "filtered_by_max_hetero": filters[2],
-                         "filtered_by_max_snps": filters[1],
-                         "filtered_by_edge_trim": filters[4],
-                         "total_filtered_loci": passed}, 
-                         name="locus_filtering")
+    filtdat = pd.Series(np.concatenate([[nloci], filters, [passed]]),
+        name="locus_filtering", 
+        index=[
+        "total_prefiltered_loci", 
+        "filtered_by_rm_duplicates",
+        "filtered_by_max_indels", 
+        "filtered_by_max_snps",
+        "filtered_by_max_hetero",
+        "filtered_by_min_sample",
+        "filtered_by_edge_trim",
+        "total_filtered_loci"])
+
     print("\n\n## The number of loci caught by each filter."+\
-          "\n## This table can be accessed as a Pandas DataFrame from the"+\
-          "\n## ipyrad API as: [assembly].statsfiles.s7_filters\n", 
+          "\n## ipyrad API location: [assembly].statsfiles.s7_filters\n", 
           file=outstats)
-    data.statsfiles.s7_filters = pd.DataFrame(filtdat)
-    data.statsfiles.s7_filters.to_string(buf=outstats)
+    data.stats_dfs.s7_filters = pd.DataFrame(filtdat)
+    data.stats_dfs.s7_filters.to_string(buf=outstats)
 
 
     ########################################################################
@@ -141,14 +145,11 @@ def make_stats(data, samples, samplecounts, locuscounts):
     sidx = np.array([i in samples for i in anames])    
     covdict = {name: val for name, val in zip(samples, samplecounts[sidx])}
     covdict = pd.Series(covdict, name="sample_coverage")
-    #data.statsfiles.s7.sample_coverages = pd.DataFrame(covdict)
-    #print(data.statsfiles.s7.sample_coverages)
-    print("\n\n## The number of loci recovered for each Sample."+\
-          "\n## This table can be accessed as a Pandas DataFrame from the"+\
-          "\n## ipyrad API as: [assembly].statsfiles.s7_samples\n",
+    print("\n\n\n## The number of loci recovered for each Sample."+\
+          "\n## ipyrad API location: [assembly].stats_dfs.s7_samples\n",
           file=outstats)
-    data.statsfiles.s7_samples = pd.DataFrame(covdict)
-    data.statsfiles.s7_samples.to_string(buf=outstats)
+    data.stats_dfs.s7_samples = pd.DataFrame(covdict)
+    data.stats_dfs.s7_samples.to_string(buf=outstats)
 
 
     ########################################################################
@@ -158,12 +159,11 @@ def make_stats(data, samples, samplecounts, locuscounts):
     start = data.paramsdict["min_samples_locus"]
     locsums = pd.Series({i: np.sum(locdat.values[start:i]) for i in lrange}, 
                         name="sum_coverage", index=lrange)
-    print("\n\n## The number of loci for which N taxa have data."+\
-          "\n## This table can be accessed as a Pandas DataFrame from the"+\
-          "\n## ipyrad API as: [assembly].statsfiles.s7_loci\n",
+    print("\n\n\n## The number of loci for which N taxa have data."+\
+          "\n## ipyrad API location: [assembly].stats_dfs.s7_loci\n",
           file=outstats)
-    data.statsfiles.s7_loci = pd.concat([locdat, locsums], axis=1)
-    data.statsfiles.s7_loci.to_string(buf=outstats)
+    data.stats_dfs.s7_loci = pd.concat([locdat, locsums], axis=1)
+    data.stats_dfs.s7_loci.to_string(buf=outstats)
 
     #########################################################################
     ## get stats for SNP_distribution    
@@ -174,15 +174,14 @@ def make_stats(data, samples, samplecounts, locuscounts):
     pisdat = pd.Series(piscounts, name="pis", index=srange)
     pissums = pd.Series({i: np.sum(pisdat.values[0:i+1]) for i in srange}, 
                         name="sum_pis", index=srange)
-    print("\n\n## The distribution of SNPs (var and pis) across loci."+\
+    print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
           "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
           "\n## var = all variable sites (pis + autapomorphies)"+\
-          "\n## This table can be accessed as a Pandas DataFrame from the"+\
-          "\n## ipyrad API as: [assembly].statsfiles.s7_snps\n",
+          "\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
           file=outstats)
-    data.statsfiles.s7_snps = pd.concat([vardat, varsums, pisdat, pissums], 
+    data.stats_dfs.s7_snps = pd.concat([vardat, varsums, pisdat, pissums], 
                                         axis=1)    
-    data.statsfiles.s7_snps.to_string(buf=outstats)
+    data.stats_dfs.s7_snps.to_string(buf=outstats)
 
     ## close it
     outstats.close()
@@ -190,7 +189,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
 
 def select_samples(dbsamples, samples):
-    """ Get the row index of samples that are included. If samples are in the 
+    """ 
+    Get the row index of samples that are included. If samples are in the 
     'excluded' they were already filtered out of 'samples' during _get_samples.
     """
     ## get index from dbsamples
@@ -206,6 +206,7 @@ def filter_all_clusters(data, samples, ipyclient):
     Open the HDF5 array with seqs, catg, and filter data. Fill the remaining
     filters. 
     """
+    LOGGER.debug("in filter_all_clusters")
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
 
@@ -273,7 +274,7 @@ def filter_all_clusters(data, samples, ipyclient):
                 superfilter[hslice:hslice+optim, fidx] = arr
         del arr
         ## finished filling filter array
-        LOGGER.info('superfilter[:10] : %s', superfilter[:10])        
+        #LOGGER.info('superfilter[:10] : %s', superfilter[:10])        
 
         ## store the other arrayed values (edges, snps)
         edgarrs = glob.glob(os.path.join(chunkdir, "edgearr.*.npy"))
@@ -282,6 +283,7 @@ def filter_all_clusters(data, samples, ipyclient):
         arrdict = {'edges':edgarrs, 'snps':snparrs}
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
+
 
         ## fill the edge array 
         superedge = inh5['edges']
@@ -294,7 +296,7 @@ def filter_all_clusters(data, samples, ipyclient):
             superedge[hslice:hslice+optim, 0:4, ] = arr
         del arr
         ## finished with superedge
-        LOGGER.info('superedge[:10] : %s', superedge[:10])
+        #LOGGER.info('superedge[:10] : %s', superedge[:10])
 
         ## fill the snps array. shape= (nloci, maxlen, 2)
         supersnps = inh5['snps']
@@ -307,7 +309,7 @@ def filter_all_clusters(data, samples, ipyclient):
             supersnps[hslice:hslice+optim, :, :] = arr
         del arr
         ## finished with superedge
-        LOGGER.info('supersnps[:10] : %s', supersnps[:10])
+        #LOGGER.info('supersnps[:10] : %s', supersnps[:10])
 
 
     finally:
@@ -417,7 +419,7 @@ def make_loci(data, samples):
     locifile.close()
 
     ## return sample counter
-    return samplecov, locuscov
+    return samplecov, locuscov, keep
 
 
 
@@ -437,12 +439,13 @@ def filter_stacks(args):
         ioh5 = h5py.File(data.database, 'r')
         ## get a chunk (hslice) of loci for the selected samples (sidx)
         superseqs = ioh5["seqs"][hslice[0]:hslice[1], sidx,]
-        print('sup', superseqs.shape)
+        LOGGER.info('logging from engine: %s', superseqs.shape)
 
         ## get first index of splits for paired reads. Only need this until 
         ## get_edges gets the edges
         splits = ioh5["edges"][hslice[0]:hslice[1], 4]
-        
+        #LOGGER.info('splits preview %s', splits[:10])
+        #LOGGER.info('splits preview %s', splits[-10:])        
         ## Empty arrays to be filled in used to later fill in the full 
         ## filter array. Filter dims = (nloci, 5)
         ## Filter order is: [dups, indels, maxhets, maxsnps, minsamp]
@@ -458,16 +461,15 @@ def filter_stacks(args):
         ## to the point that they are below the minlen, and so this also 
         ## constitutes a filter, though one that is uncommon. For this reason
         ## we have a filter also called edgfilter. (needs to be added to filter)
+        LOGGER.debug("getting edges")
         edgfilter, edgearr = get_edges(data, superseqs, splits)
         del splits
         LOGGER.debug("edgfilter %s", edgfilter[:5])
         ## duplicates are already filtered during step6.
 
-        ## indels are already filtered during step6 (kinda... todo: pair splits)
-
         ## minsamp coverages filtered from superseqs
         minfilter = filter_minsamp(data, superseqs)
-        LOGGER.debug("minfilter %s", minfilter[:5])
+        #LOGGER.debug("minfilter %s", minfilter[:5])
 
         ## maxhets per site column from superseqs after trimming edges
         hetfilter = filter_maxhet(data, superseqs, edgearr)
@@ -478,6 +480,7 @@ def filter_stacks(args):
 
         ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
         chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
+
 
         handle = os.path.join(chunkdir, "edgf.{}.npy".format(hslice[0]))
         with open(handle, 'w') as out:
@@ -510,14 +513,6 @@ def filter_stacks(args):
 
     finally:
         pass
-
-    ## Write out .tmp loci
-    #write_tmp_loci(data, loci, fname)
-
-
-    ## Write out .tmp vcf
-    #write_tmp_vcf(data, loci, fname)
-
 
 
 
@@ -556,62 +551,66 @@ def get_edges(data, superseqs, splits):
                 3: minsamp,
                 4: allsamp}
     edgemins = [edgedict.get(i) for i in edgetuple]
-    LOGGER.debug("edgemins %s", edgemins)
+
+    #LOGGER.info("edgemins %s", edgemins)
+    #LOGGER.info("splits %s", splits)
 
     ## convert all - to N to make this easier
     superseqs[superseqs == "-"] = "N"
     ## the background fill of superseqs should be N instead of "", then this 
     ## wouldn't be necessary...
-    superseqs[superseqs == ""] = "N"
+    ## superseqs[superseqs == ""] = "N"
 
     ## trim overhanging edges
     ## get the number not Ns in each site, 
     ccx = np.sum(superseqs != "N", axis=1)
-
+    #LOGGER.debug("ccx %s", ccx)
+    #LOGGER.debug("splits %s", splits)
     for idx, split in enumerate(splits):
         if split:
             r1s = ccx[idx, :split]
             r2s = ccx[idx, split+4:]
         else:
             r1s = ccx[idx, ]
-
         ## set default values
         edge0 = edge1 = edge2 = edge3 = 0
         
         ## if edge trim fails then locus is filtered
         try:
-            edge0 = np.where(r1s > edgemins[0])[0].min()
-            edge1 = np.where(r1s > edgemins[1])[0].max()
+            edge0 = np.where(r1s >= edgemins[0])[0].min()
+            edge1 = np.where(r1s >= edgemins[1])[0].max()
         except ValueError:
             edgefilter[idx] = True
-        #LOGGER.debug("edge0 %s", edge0)
-        #LOGGER.debug("edge1 %s", edge1)        
+            #LOGGER.debug("Xccx %s", ccx[idx])            
+            #LOGGER.debug("Xsplit %s", split)
+            #LOGGER.debug("Xr1s %s", r1s)
 
         ## filter cut1
         if edgetuple[0]:
             edge0 = edge0+len(cut1)
+        else:
+            assert edge0 < edge1             
+
+        #LOGGER.debug("edges r1 (%s, %s)", edge0, edge1)
 
         ## if split then do the second reads separate
         if split:
             try:
-                edge2 = np.where(r2s > edgemins[2])[0].min()
-                edge3 = np.where(r2s > edgemins[3])[0].max()
+                edge2 = np.where(r2s >= edgemins[2])[0].min()
+                edge3 = np.where(r2s >= edgemins[3])[0].max()
             except ValueError:
                 edgefilter[idx] = True
-            #LOGGER.debug("edge0 %s", edge0)
-            #LOGGER.debug("edge1 %s", edge1)        
             
             ## filter cut2
             if edgetuple[3]:
                 edge3 = edge3-len(cut2)
-        
+            else:
+                assert edge2 < edge3
+
+        #LOGGER.debug("edges r2 (%s, %s)", edge2, edge3)
+
         ## store edges
         edges[idx] = np.array([edge0, edge1, edge2, edge3])
-
-        ## assertions
-        assert edge0 < edge1 
-        if split:
-            assert edge2 < edge3
 
     return edgefilter, edges
 
@@ -736,7 +735,7 @@ def filter_maxhet(data, superseqs, edges):
 
 
 
-def make_outfiles(data, samples):
+def make_outfiles(data, samples, keep):
     """ Get desired formats from paramsdict and write files to outfiles 
     directory 
     """
@@ -749,25 +748,179 @@ def make_outfiles(data, samples):
     if "*" in output_formats:
         output_formats = OUTPUT_FORMATS
 
-    ## run each func
-    for filetype in output_formats:
-        LOGGER.info("Doing - {}".format(filetype))
+    ## build arrays and outputs from arrays
+    make_phynex(data, samples, keep, output_formats)
 
-        # phy & nex come from loci2phynex
-        if filetype in ["phy", "nex"]:
-            filetype = "phynex"
-        # All these file types come from loci2SNP
-        elif filetype in ["snps", "usnps", "str", "geno"]:
-            filetype = "SNP"
+    # ## run each func
+    # for filetype in output_formats:
+    #     LOGGER.info("Doing - {}".format(filetype))
+
+    #     # phy & nex come from loci2phynex
+    #     if filetype in ["phy", "nex"]:
+    #         filetype = "phynex"
+
+    #     # All these file types come from loci2SNP
+    #     elif filetype in ["snps", "usnps", "str", "geno"]:
+    #         filetype = "SNP"
 
         ## Everything else has its own loci2*.py conversion file.
         ## Get the correct module for this filetype
         ## globals() here gets the module name, and then we can call
         ## the .make() function. This is a little tricky.
-        format_module = globals()["loci2"+filetype]
+        #format_module = globals()["loci2"+filetype]
 
         ## do the call to make the new file format
-        format_module.make(data, samples)
+        #format_module.make(data, samples)
+
+
+
+def make_phynex(data, samples, keep, output_formats):
+    """ make phylip and nexus formats. Also pulls out SNPs...? """
+
+    ## load the h5 database
+    inh5 = h5py.File(data.database, 'r')
+
+    ## iterate 1000 loci at a time
+    optim = inh5["seqs"].attrs["chunksize"]
+    nloci = inh5["seqs"].shape[0]
+
+    ## get name and snp padding
+    anames = inh5["seqs"].attrs["samples"]
+    longname_len = max(len(i) for i in anames)
+    pnames, _ = padnames(anames, longname_len)
+    samples = [i.name for i in samples]
+    smask = np.array([i not in samples for i in anames])
+
+    ## make empty array for filling
+    maxlen = data._hackersonly["max_fragment_length"]
+    maxsnp = inh5["snps"][:].sum()
+
+    seqarr = np.zeros((smask.shape[0], maxlen*nloci), dtype="S1")
+    snparr = np.zeros((smask.shape[0], maxsnp), dtype="S1")
+    bisarr = np.zeros((smask.shape[0], nloci), dtype="S1")        
+
+    ## apply all filters and write loci data
+    start = 0
+    seqleft = 0
+    snpleft = 0
+    while start < nloci:
+        hslice = [start, start+optim]
+        afilt = inh5["filters"][hslice[0]:hslice[1], ]
+        aedge = inh5["edges"][hslice[0]:hslice[1], ]
+        aseqs = inh5["seqs"][hslice[0]:hslice[1], ]
+        asnps = inh5["snps"][hslice[0]:hslice[1], ]
+
+        ## which loci passed all filters
+        keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+
+        ## write loci that passed after trimming edges, then write snp string
+        for iloc in keep:
+            edg = aedge[iloc]
+            ## grab all seqs between edges
+            seq = aseqs[iloc, :, edg[0]:edg[1]]
+            ## grab SNPs
+            getsnps = asnps[iloc].sum(axis=1).astype(np.bool)
+            snps = aseqs[iloc, :, getsnps].T
+
+            ## remove cols that are all N-
+            lcopy = seq
+            lcopy[lcopy == "-"] = "N"
+            bcols = np.all(lcopy == "N", axis=0)
+            seq = seq[:, ~bcols]
+
+            ## put into large array
+            seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
+            seqleft += seq.shape[1]
+
+            ## subsample all SNPs into an array
+            snparr[:, snpleft:snpleft+snps.shape[1]] = snps
+            snpleft += snps.shape[1]
+
+            ## subsample one SNP into an array
+            if snps.shape[1]:
+                samp = np.random.randint(snps.shape[1])
+                bisarr[:, iloc] = snps[:, samp]
+    
+        ## increase the counter
+        start += optim
+
+    ## trim trailing edges
+    ridx = np.all(seqarr == "", axis=0)    
+    seqarr = seqarr[:, ~ridx]
+    ridx = np.all(snparr == "", axis=0)
+    snparr = snparr[:, ~ridx]
+    ridx = np.all(bisarr == "", axis=0)
+    bisarr = bisarr[:, ~ridx]
+
+    ## write the phylip string
+    data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
+    with open(data.outfiles.phy, 'w') as out:
+        ## trim down to size
+        #ridx = np.all(seqarr == "", axis=0)
+        out.write("{} {}\n".format(seqarr.shape[0], seqarr.shape[1]))
+                                   #seqarr[:, ~ridx].shape[1]))
+        for idx, name in enumerate(pnames):
+            out.write("{}{}\n".format(name, "".join(seqarr[idx])))
+
+    ## write the snp string
+    data.outfiles.snp = os.path.join(data.dirs.outfiles, data.name+".snp")    
+    with open(data.outfiles.snp, 'w') as out:
+        #ridx = np.all(snparr == "", axis=0)
+        out.write("{} {}\n".format(snparr.shape[0], snparr.shape[1]))
+                                   #snparr[:, ~ridx].shape[1]))
+        for idx, name in enumerate(pnames):
+            out.write("{}{}\n".format(name, "".join(snparr[idx])))
+
+    ## write the bisnp string
+    data.outfiles.usnp = os.path.join(data.dirs.outfiles, data.name+".usnp")
+    with open(data.outfiles.usnp, 'w') as out:
+        out.write("{} {}\n".format(bisarr.shape[0], bisarr.shape[1]))
+                                   #bisarr.shape[1]))
+        for idx, name in enumerate(pnames):
+            out.write("{}{}\n".format(name, "".join(bisarr[idx])))
+
+    ## Write STRUCTURE format
+    if "str" in output_formats:
+        data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
+        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".ustr")        
+        out1 = open(data.outfiles.str, 'w')
+        out2 = open(data.outfiles.ustr, 'w')
+        numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
+        if data.paramsdict["max_alleles_consens"] > 1:
+            for idx, name in enumerate(pnames):
+                out1.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
+                out1.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][1]] for i in snparr[idx]])))
+                out2.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
+                out2.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][1]] for i in bisarr[idx]])))
+        else:
+            ## haploid output
+            for idx, name in enumerate(pnames):
+                out1.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
+                out2.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
+        out1.close()
+        out2.close()
+
+    ## Write GENO format
+    if "geno" in output_formats:
+        data.outfiles.geno = os.path.join(data.dirs.outfiles, 
+                                          data.name+".geno")
+        data.outfiles.ugeno = os.path.join(data.dirs.outfiles, 
+                                          data.name+".ugeno")        
+        ## need to define a reference base and record 0,1,2 or missing=9
+        #snparr
+        #bisarr
 
 
 
@@ -835,34 +988,6 @@ def count_snps(seqs):
     #seqs.append(("//", "".join(snpsite)+"|"))
 
     return nsnps, snps
-
-
-
-## File output subfunctions
-def write_tmp_loci(data, loci, fname):
-    """ Write out the filtered chunk to a tmp file which will be collated by the
-    top level run() thread"""
-
-    ## Get longest sample name for pretty printing
-    longname_len = max(len(x) for x in data.samples.keys())
-    ## Padding distance between name and seq.
-    ## This variable is used at least here and in loci2alleles. If you _ever_
-    ## have to change this, consider adding it to hackesonly.
-    name_padding = 5
-
-    with open(fname.replace("chunk", "loci"), 'w') as outfile:
-        for loc in loci:
-            for seq in loc:
-
-                ## Backwards compatibility with .loci format which doesn't have 
-                ## leading '>' on the snpsites line
-                if seq[0] == "//":
-                    name = seq[0] 
-                else:
-                    name = ">" + seq[0]
-
-                name += " " * (longname_len - len(name)+ name_padding)
-                outfile.write(name + seq[1] + "\n")
 
 
 

@@ -160,6 +160,7 @@ def save_json(data):
         ("database", data.__dict__["database"]),
         ("outfiles", data.__dict__["outfiles"]),
         ("barcodes", data.__dict__["barcodes"]),
+        ("stats_files", data.__dict__["stats_files"]),
         ("_hackersonly", data.__dict__["_hackersonly"]),
         ])
 
@@ -303,18 +304,18 @@ def load_json(path, quiet=False):
         
     sample_keys = fullj["samples"][sample_names[0]].keys()
     stats_keys = fullj["samples"][sample_names[0]]["stats"].keys()
-    statsfiles_keys = fullj["samples"][sample_names[0]]["statsfiles"].keys()
+    stats_dfs_keys = fullj["samples"][sample_names[0]]["stats_dfs"].keys()
     ind_statkeys = \
-        [fullj["samples"][sample_names[0]]["statsfiles"][i].keys() \
-        for i in statsfiles_keys]
+        [fullj["samples"][sample_names[0]]["stats_dfs"][i].keys() \
+        for i in stats_dfs_keys]
     ind_statkeys = list(itertools.chain(*ind_statkeys))
 
     ## check against a null sample
     nsamp = ip.Sample()
     newkeys = nsamp.__dict__.keys()
     newstats = nsamp.__dict__["stats"].keys()
-    newstatfiles = nsamp.__dict__["statsfiles"].keys()
-    newindstats = [nsamp.__dict__["statsfiles"][i].keys() for i in newstatfiles]
+    newstatdfs = nsamp.__dict__["stats_dfs"].keys()
+    newindstats = [nsamp.__dict__["stats_dfs"][i].keys() for i in newstatdfs]
     newindstats = list(itertools.chain(*[i.values for i in newindstats]))
 
     ## different in attributes?
@@ -340,50 +341,53 @@ def load_json(path, quiet=False):
         ## create a null Sample
         null.samples[sample] = ip.Sample()
 
-        ## set ObjDicts
-        null.samples[sample].statsfiles = ObjDict()
-        null.samples[sample].files = ObjDict()
-
         ## save stats
         sdat = fullj["samples"][sample]['stats']
-        null.samples[sample].stats = pd.Series(sdat)
+        ## Reorder the keys so they ascend by step, only include
+        ## stats that are actually in the sample. newstats is a
+        ## list of the new sample stat names, and stats_keys
+        ## are the names of the stats from the json file.
+        newstats = [x for x in newstats if x in stats_keys]
+        null.samples[sample].stats = pd.Series(sdat).reindex(newstats)
 
-        ## save statsfiles
-        for statskey in statsfiles_keys:
-            null.samples[sample].statsfiles[statskey] = \
-                pd.Series(fullj["samples"][sample]["statsfiles"][statskey])
+        ## save stats_dfs
+        for statskey in stats_dfs_keys:
+            null.samples[sample].stats_dfs[statskey] = \
+                pd.Series(fullj["samples"][sample]["stats_dfs"][statskey])\
+                .reindex(nsamp.__dict__["stats_dfs"][statskey].keys())
 
-        ## save files
+        ## save Sample files
         for filehandle in fullj["samples"][sample]["files"].keys():
             null.samples[sample].files[filehandle] = \
                 fullj["samples"][sample]["files"][filehandle]
 
 
-    ## save to assembly object
-    for statskey in statsfiles_keys:
+    ## build the Assembly object stats_dfs
+    for statskey in stats_dfs_keys:
         indstat = null.build_stat(statskey)
         if not indstat.empty:
-            null.statsfiles[statskey] = indstat
+            null.stats_dfs[statskey] = indstat
 
     ## add remaning attributes to null Samples
     shared_keys = set(sample_keys).intersection(newkeys)
     shared_keys.discard("stats")
     shared_keys.discard("files")    
-    shared_keys.discard("statsfiles")
+    shared_keys.discard("stats_files")
+    shared_keys.discard("stats_dfs")
 
     for sample in null.samples:
         ## set the others
         for key in shared_keys:
             null.samples[sample].__setattr__(key, fullj["samples"][sample][key])
 
-    ## make back into object dicts
+    ## ensure objects are object dicts
     null.dirs = ObjDict(null.dirs)
-    null.statsfiles = ObjDict(null.statsfiles)
+    null.stats_files = ObjDict(null.stats_files)
+    null.stats_dfs = ObjDict(null.stats_dfs)    
     null.populations = ObjDict(null.populations)
     null.outfiles = ObjDict(null.outfiles)
 
     return null
-
 
 
 

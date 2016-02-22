@@ -78,7 +78,7 @@ def muscle_align_across(args):
                     stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
                     ## store the indels and separator regions as indels
                     locinds = np.array(list(aseqs[i])) == "-"
-                    locinds += np.array(list(aseqs[i])) == "n"
+                    #locinds += np.array(list(aseqs[i])) == "n"
                     sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
                     indels[loc, sidx, :locinds.shape[0]] = locinds
 
@@ -132,9 +132,9 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
 
         ## INIT INDEL ARRAY
         ## build an indel array for ALL loci in cat.clust.gz
-        ioh5 = h5py.File(os.path.join(
-                            data.dirs.consens, data.name+".indels"), 'w')
-        iset = ioh5.create_dataset("indels", (nloci, len(samples), maxlen),
+        io5 = h5py.File(os.path.join(
+                           data.dirs.consens, data.name+".indels"), 'w')
+        iset = io5.create_dataset("indels", (nloci, len(samples), maxlen),
                                    dtype=np.bool)
                                    #chunks=(nloci/10, len(samples), maxlen),
                                    #compression="gzip")
@@ -143,11 +143,9 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
         for tup in indeltups:
             start = int(tup[0].rsplit("_", 1)[1])
             iset[start:start+tup[2]] = tup[1]
-        ioh5.close()
+        io5.close()
 
         ## concatenate finished reads into a tmp file 
-        ## TODO: Remove this output... no longer necessary. Tho it provides
-        ## a decent sanity check.
         outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
         with gzip.open(outhandle, 'wb') as out:
             for fname in clustbits:
@@ -174,7 +172,7 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
                 ## that claim to be "busy" when you try to remove them. Don't
                 ## kill the run if you can't remove this directory.
                 LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
-                pass
+
 
 
 def cluster(data, noreverse):
@@ -248,41 +246,57 @@ def build_h5_array(data, samples, nloci):
     if 'pair' in data.paramsdict["datatype"]:
         maxlen *= 2
 
+    ## choose chunk optim size
+    chunks = nloci
+    if nloci > 10000:
+        chunks = 1000
+
     ## open h5py handle
-    ioh5 = h5py.File(data.database, 'w')
+    io5 = h5py.File(data.database, 'w')
 
     ## INIT FULL CATG ARRAY
     ## store catgs with a .10 loci chunk size
-    supercatg = ioh5.create_dataset("catgs", (nloci, len(samples), maxlen, 4),
-                                    dtype=np.uint32)
-                                    #chunks=(nloci/10, len(samples), maxlen, 4),
+    supercatg = io5.create_dataset("catgs", (nloci, len(samples), maxlen, 4),
+                                    dtype=np.uint32,
+                                    chunks=(chunks, len(samples), maxlen, 4))
                                     #compression="gzip")
+    supercatg.attrs["chunksize"] = chunks
     supercatg.attrs["samples"] = [i.name for i in samples]
-    supercatg.attrs["chunksize"] = 1000
+
 
     ## INIT FULL SEQS ARRAY
     ## array for clusters of consens seqs
-    superseqs = ioh5.create_dataset("seqs", (nloci, len(samples), maxlen),
-                                     dtype="|S1")
+    superseqs = io5.create_dataset("seqs", (nloci, len(samples), maxlen),
+                                    dtype="|S1",
+                                    chunks=(chunks, len(samples), maxlen))
+    superseqs.attrs["chunksize"] = chunks
     superseqs.attrs["samples"] = [i.name for i in samples]
-    superseqs.attrs["chunksize"] = 1000    
+
 
     ## INIT FULL SNPS ARRAY
     ## array for snp string, 2 cols, - and *
-    snps = ioh5.create_dataset("snps", (nloci, maxlen, 2), dtype=np.bool)
+    snps = io5.create_dataset("snps", (nloci, maxlen, 2), dtype=np.bool,
+                              chunks=(chunks, maxlen, 2))
+    snps.attrs["chunksize"] = chunks
     snps.attrs["names"] = ["-", "*"]
+
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
-    filters = ioh5.create_dataset("filters", (nloci, 6), dtype=np.bool)
+    filters = io5.create_dataset("filters", (nloci, 6), dtype=np.bool)#,
+#                                 chunks=(chunks, 6))
+#    filters.attrs["chunksize"] = chunks
     filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
                                 "max_hets", "min_samps", "bad_edges"]
-    filters.attrs["chunks"] = 1000
+
 
     ## INIT FULL EDGE ARRAY
     ## array for edgetrimming 
-    edges = ioh5.create_dataset("edges", (nloci, 5), dtype=np.uint16)
+    edges = io5.create_dataset("edges", (nloci, 5), dtype=np.uint16,
+                               chunks=(chunks, 5))
+    edges.attrs["chunksize"] = chunks
     edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
+
 
     ## RUN SINGLECAT, FILL FILTERS
     ## for each sample fill its own hdf5 array with catg data & indels. 
@@ -292,12 +306,12 @@ def build_h5_array(data, samples, nloci):
     with h5py.File(ipath, 'r') as indh5:
         for sidx, sample in enumerate(samples):
             ## loads the array for one sample into memory. 
-            ## TODO: Chunk to allow efficient reading along y axis. 
             indels = indh5["indels"][:, sidx, :]
             ## return which loci were filtered b/c of duplicates.
             dupfilter, indfilter = singlecat(data, sample, nloci, indels)
             filters[:, 0] += dupfilter
             filters[:, 1] += indfilter
+
 
     ## FILL SUPERCATG -- TODO: can still parallelize singlecat.
     ## combine indvidual hdf5 arrays into supercatg
@@ -310,11 +324,11 @@ def build_h5_array(data, samples, nloci):
             icatg = singleh5[sample.name]
             supercatg[:, sidx, :, :] = icatg
 
-    ## FILL SUPERSEQS
-    fill_superseqs(data, samples, superseqs)
+    ## FILL SUPERSEQS and fill edges(splits) for paired-end data
+    fill_superseqs(data, samples, superseqs, edges)
 
     ## close the big boy
-    ioh5.close()
+    io5.close()
 
     ## clean up / remove individual catg files
     for handle in h5handles:
@@ -325,6 +339,9 @@ def build_h5_array(data, samples, nloci):
     ## set sample states
     for sample in samples:
         sample.stats.state = 6
+
+    ## write database as stats output?
+    data.stats_files.s6 = "[this step has no stats ouput]"
 
 
 
@@ -401,13 +418,13 @@ def singlecat(data, sample, nloci, indels):
         indidx = np.where(indels[iloc, :])[0]
         if np.any(indidx):
             ### apply indel filter 
-            #ind1 = len(indidx1) <= data.paramsdict["max_Indels_locus"][0]
-            #ind2 = len(indidx2) <= data.paramsdict["max_Indels_locus"][1]
-            #if ind1 and ind2:
-            #    indfilter[iloc] = True
-            #    print(iloc, ind1, ind2, icatg.shape[0])
-            if len(indidx) < sum(data.paramsdict["max_Indels_locus"]):
-                indfilter[iloc] = True
+            if "pair" in data.paramsdict["datatype"]:
+                ## get lenght of locus 
+                if len(indidx) > sum(data.paramsdict["max_Indels_locus"]):
+                    indfilter[iloc] = True
+            else:
+                if len(indidx) > data.paramsdict["max_Indels_locus"][0]:
+                    indfilter[iloc] = True
 
             ## insert indels into catg array
             newrows = icatg[iloc].shape[0] + len(indidx)
@@ -427,7 +444,7 @@ def singlecat(data, sample, nloci, indels):
 
 
 
-def fill_superseqs(data, samples, superseqs):
+def fill_superseqs(data, samples, superseqs, edges):
     """ fills the superseqs array with seq data from cat.clust """
     ## samples are already sorted
     snames = [i.name for i in samples]
@@ -442,41 +459,63 @@ def fill_superseqs(data, samples, superseqs):
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
     ## iterate over clusters
+    chunksize = superseqs.attrs["chunksize"]
     done = 0
     iloc = 0
-    while not done:
+    cloc = 0
+    chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
+    chunkedge = np.zeros((chunksize), dtype=np.uint16)
+    LOGGER.info("chunkseqs is %s", chunkseqs.shape)
+    while 1:
         try:
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
             raise IPyradError("clustfile formatting error in %s", chunk)    
+        if done:
+            break
         ## input array must be this shape
         if chunk:
             fill = np.zeros((len(samples), maxlen), dtype="|S1")
+            fill.fill("N")
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
             seqs = np.array([list(i) for i in piece[1::2]])
+            ## fill in the separator if it exists
+            separator = np.where(np.all(seqs == "n", axis=0))[0]
+            if np.any(separator):
+                chunkedge[iloc] = separator.min()
 
             ## fill in the hits
-            indices = range(len(snames))
+            #indices = range(len(snames))
             shlen = seqs.shape[1]
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq
-                try:
-                    indices.remove(sidx)
-                except ValueError as _:
-                    ## duplicate in cluster, index already removed.
-                    pass
 
-            ## fill in the remaining indices with N 
-            for idx in indices:
-                fill[idx] = np.array(["N"]*maxlen)
+        ## PUT seqs INTO local ARRAY 
+        chunkseqs[iloc] = fill
 
-            ## PUT INTO ARRAY
-            superseqs[iloc] = fill
+        ## if chunk is full put into superseqs
+        if cloc == chunksize:
+            superseqs[iloc-cloc:cloc] = chunkseqs
+            edges[iloc-cloc:cloc, 4] = chunkedge
+            ## reset chunkseqs
+            cloc = 0
+            chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
+            chunkedge = np.zeros((chunksize), dtype=np.uint16)
 
-        ## increase counter
+        ## increase counters
+        cloc += 1
         iloc += 1
+
+    ## write final leftover chunk
+    superseqs[iloc-cloc:,] = chunkseqs[:cloc]
+    edges[iloc-cloc:, 4] = chunkedge[:cloc]
+
+    ## edges is filled with splits for paired data.
+    #LOGGER.info('edges preview %s', edges[:10])
+    #LOGGER.info('edges preview %s', edges[-10:])
+
     ## close handle
     clusters.close()
 
@@ -487,15 +526,18 @@ def build_reads_file(data):
     to chunked files for aligning in muscle. Return a dictionary with 
     seed:hits info from utemp file.
     """
+    LOGGER.info("building reads file -- loading utemp file into mem")
     ## read in cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
     updf = pd.read_table(uhandle, header=None)
 
     ## load full fasta file into a Dic
+    LOGGER.info("loading full _catcons file into memory")
     conshandle = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     consdf = pd.read_table(conshandle, delim_whitespace=1, header=None)
     printstring = "{:<%s}    {}" % max([len(i) for i in set(consdf[0])])
     consdic = consdf.set_index(0)[1].to_dict()
+    del consdf
 
     ## make an tmpout directory and a printstring for writing to file
     tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
@@ -514,6 +556,7 @@ def build_reads_file(data):
     locilist = []
     loci = 0
 
+    LOGGER.info("building reads file -- loading building loci")
     ## iterate over seeds and add in hits seqs
     for seed in set(updf[1].values):
         ## get dataframe for this locus/group (gdf) 
@@ -649,8 +692,10 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ##   .attr['samples'] = [samples]
     LOGGER.info("building full database")    
     ## calls singlecat func inside
+    LOGGER.info("nloci is %s right here so what happens", nloci)
     build_h5_array(data, samples, nloci)
 
+    ## do we need to load in singleton clusters?
     ## invarcats()
     ## invarcats()
 

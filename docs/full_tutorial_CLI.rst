@@ -35,7 +35,7 @@ First make a new directory and fetch & extract the test data.
     ## The curl command needs a capital o, not a zero
     mkdir ipyrad-test
     cd ipyrad-test
-    curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipyrad_tutorial_data.tgz
+    curl -O https://github.com/dereneaton/ipyrad/blob/master/tests/ipsimdata.tar.gz
     tar -xvzf ipyrad_tutorial_data.tgz
 
 You should now see a folder in your current directory called ``data``. This 
@@ -76,7 +76,7 @@ purpose. Lets take a look at it.
                                    ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
                                    ## [3] [barcodes_path]: Location of barcodes file
                                    ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
-    denovo                         ## [5] [assembly_method]: Assembly method (denovo, hybrid, reference_only, denovo_only)
+    denovo                         ## [5] [assembly_method]: Assembly method (denovo, reference, denovo+reference, denovo-reference
                                    ## [6] [reference_sequence]: Location of reference sequence file
     rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
     TGCAG,                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
@@ -113,6 +113,21 @@ to look like this, and then save it:
 .. parsed-literal::
     ./data/sim_rad_test_R1_.fastq.gz         ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
     ./data/sim_rad_test_barcodes.txt         ## [3] [barcodes_path]: Location of barcodes file
+
+Once we start running the analysis this will create a new directory to hold
+all the output for this assembly. By default this creates a new directory
+named by the assembly_name parameter in the project_dir directory. For this
+tutorial this directory will be called:
+.. parsed-literal::
+    ./ipyrad-test
+
+.. warning:: Once you start an assembly do not attempt to move or rename
+the project directory. ipyrad **relies** on the location of this directory 
+remaining the same throught the analysis for an assembly. If you wish to 
+test different values for parameters such as minimum coverage or clustering
+threshold we provide a simple facility for branching assemblies that handles
+all the file management for you. Once you complete the intro tutorial you can
+see :ref:`Branching assemblies <advanced_CLI>` for more info.
 
 Input data format
 ~~~~~~~~~~~~~~~~~

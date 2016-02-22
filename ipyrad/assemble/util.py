@@ -15,6 +15,7 @@ import gzip
 import tempfile
 import itertools
 import subprocess
+import collections
 import ipyrad 
 
 import logging
@@ -59,6 +60,67 @@ class ObjDict(dict):
             del self[name]
         else:
             raise AttributeError("No such attribute: " + name)
+
+    def __repr__(self):
+        result = ""
+        if "fastqs" in self.keys():
+            dirs_order = ["fastqs", "edits", "clusts", "consens", "outfiles"]
+            for key in dirs_order:
+                result += key + " : " + self[key] + "\n"
+        else:
+            for key in sorted(self):
+                result += key + " : " + str(self[key]) + "\n"
+        return result
+
+## This is unused right now and kind of broken. get rid of it soon.
+class OrdObjDict(object):
+    """ ordered object dictionary allows calling dictionaries in a more 
+    pretty and Python fashion for storing Assembly data """
+
+    def __init__(self, *args, **kwargs):
+        self._od = collections.OrderedDict(*args, **kwargs)
+
+    def __repr__(self):
+        return str(self._od.items())
+
+    def __getattr__(self, name):
+        return self._od[name]
+
+    def __setattr__(self, name, value):
+        if name == '_od':
+            self.__dict__['_od'] = value
+        else:
+            self._od[name] = value
+
+    def __delattr__(self, name):
+        del self._od[name]
+
+    def __getitem__(self, name):
+        if isinstance(name, int):
+            return self._od.values()[name]
+        else:
+            return self._od[name]
+
+    def __setitem__(self, name, value):
+        self._od[name] = value
+
+    def __delitm__(self, name):
+        del self._od[name]
+
+    def __reduce__(self):
+        return self._od.__reduce__()
+
+    def __iter(self):
+        return self._od._iterable
+
+    def keys(self):
+        return self._od.keys()
+
+    def values(self):
+        return self._od.values()
+
+    def items(self):
+        return self._od.items()
 
 
 AMBIGS = {"R":("G", "A"),
@@ -157,13 +219,13 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, sample): #, unmerged_files):
+def merge_pairs(data, sample):
     """ 
     Merge PE reads. Takes in a tuple of unmerged files and returns the file 
     name of the merged/combined PE reads and the number of reads that were 
     merged (overlapping)
     """
-    #LOGGER.debug("Entering merge_pairs - %s", unmerged_files)
+    LOGGER.debug("Entering merge_pairs()")
 
     ## tempnames for merge files
     sample.files.merged = os.path.join(data.dirs.edits,
@@ -172,8 +234,8 @@ def merge_pairs(data, sample): #, unmerged_files):
                                            sample.name+"_nonmerged_R1_.fastq")
     sample.files.nonmerged2 = os.path.join(data.dirs.edits,
                                            sample.name+"_nonmerged_R2_.fastq")
-    sample.files.revcomp = os.path.join(data.dirs.edits,
-                                        sample.name+"_revcomp_R2_.fastq")
+    #sample.files.revcomp = os.path.join(data.dirs.edits,
+    #                                    sample.name+"_revcomp_R2_.fastq")
 
     try:
         maxn = sum(data.paramsdict['max_low_qual_bases'])
@@ -181,24 +243,25 @@ def merge_pairs(data, sample): #, unmerged_files):
         maxn = data.paramsdict['max_low_qual_bases']
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
-    # unmerged_files[1])
-    assert os.path.exists(sample.files.edits[0][1]), \
-           "No paired read file (_R2_ file) found." 
+    ## check for paired file
+    LOGGER.debug("heherh %s", sample.files.edits)
+    if not os.path.exists(sample.files.edits[0][1]):
+        raise IPyradWarningExit("    No paired read file (_R2_ file) found.")
 
     ## make revcomp file
-    cmd = ipyrad.bins.vsearch \
-      + " --fastx_revcomp "+sample.files.edits[0][1] \
-      + " --fastqout "+sample.files.revcomp
-    LOGGER.warning(cmd)
-    LOGGER.debug(cmd)    
-    try:
-        subprocess.check_call(cmd, shell=True, 
-                                   stderr=subprocess.STDOUT, 
-                                   stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error(subprocess.STDOUT)
-        LOGGER.error(cmd)
-        raise SystemExit("Error in revcomping: \n ({})".format(inst))
+    # cmd = ipyrad.bins.vsearch \
+    #   + " --fastx_revcomp "+sample.files.edits[0][1] \
+    #   + " --fastqout "+sample.files.revcomp
+    # LOGGER.warning(cmd)
+    # LOGGER.debug(cmd)    
+    # try:
+    #     subprocess.check_call(cmd, shell=True, 
+    #                                stderr=subprocess.STDOUT, 
+    #                                stdout=subprocess.PIPE)
+    # except subprocess.CalledProcessError as inst:
+    #     LOGGER.error(subprocess.STDOUT)
+    #     LOGGER.error(cmd)
+    #     raise SystemExit("Error in revcomping: \n ({})".format(inst))
 
     ## vsearch merging
     cmd = ipyrad.bins.vsearch \
@@ -280,7 +343,8 @@ def merge_pairs(data, sample): #, unmerged_files):
 ## This is hold-over code from pyrad V3 alignable, it's only used
 ## by loci2vcf so you could move it there if you like
 def most_common(L):
-    return max(itertools.groupby(sorted(L)), key=lambda(x, v):(len(list(v)),-L.index(x)))[0]
+    return max(itertools.groupby(sorted(L)), 
+               key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
 
 
 
@@ -429,11 +493,6 @@ def preview_truncate_fq(data, sample_fastq, nlines=None):
     ## Return a list of filenames
     truncated_fq = []
 
-    ## If nlines is not set do something sensible, just truncate to 10%
-    ## of the input read file size
-    if not nlines:
-       nlines = os.path.getsize(sample_fastq[0][0])/10 
-
     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
     ## do not need to worry about multiple appended fastq files b/c preview
     ## mode will only want to sample from one file pair.
@@ -450,25 +509,19 @@ def preview_truncate_fq(data, sample_fastq, nlines=None):
 
             ## slice from data some multiple of 4 lines, no need to worry
             ## about truncate length being longer than the file this way.
-            optim = nlines*4
-            quarts = itertools.islice(infile, optim)
+            quarts = itertools.islice(infile, nlines*4)
 
             ## write to a tmp file in the same place zcat_make_tmps would write
             with tempfile.NamedTemporaryFile('w+b', delete=False,
-                          dir=os.path.realpath(data.dirs.fastqs),
-                          prefix=read+".preview_tmp_", 
+                          dir=data.dirs.fastqs,
+                          prefix="preview_tmp_", 
                           suffix=".fq") as tmp_fq:
                 tmp_fq.write("".join(quarts))
             ## save file name and close input
             truncated_fq.append(tmp_fq.name)
             infile.close()
 
-        except AttributeError as _:
-            ## R2 during SE is passed out as 0 
-            #truncated_fq.append( 0 )
-            raise
-
-        except KeyboardInterrupt as _:
+        except KeyboardInterrupt as holdup:
             LOGGER.info("""
     Caught keyboard interrupt during preview mode. Cleaning up preview files.
             """)
@@ -478,10 +531,13 @@ def preview_truncate_fq(data, sample_fastq, nlines=None):
                 for truncfile in truncated_fq:
                     if os.path.exists(truncfile):
                         os.remove(truncfile)
-            except Exception as inst:
+            except OSError as inst:
                 LOGGER.debug("Error cleaning up truncated fq files: {}"\
                              .format(inst))
-                raise
+            finally:
+                ## re-raise the keyboard interrupt after cleaning up
+                raise holdup
+
         except Exception as inst:
             LOGGER.debug("Some other stupid error - {}".format(inst))
 
@@ -511,6 +567,7 @@ def clustdealer(pairdealer, optim):
         chunk.append("".join(oneclust))
         ccnt += 1
     return 0, chunk
+
 
 
 #### Worker class to hold threaded or non-threaded views

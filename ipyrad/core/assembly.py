@@ -105,7 +105,8 @@ class Assembly(object):
             msg = """\n
     No spaces or special characters are allowed in the assembly name. A good 
     practice is to replace spaces with underscores '_'. An example of a good 
-    assembly_name is: white_crowned_sparrows."""
+    assembly_name is: white_crowned_sparrows. Here's what you put:
+    {}""".format(name)
             raise IPyradParamsError(msg)
 
         self.name = name
@@ -124,8 +125,10 @@ class Assembly(object):
         ## print headers
         self._headers = 0
 
-        ## statsfiles is a dict where keys return a func... 
-        self.statsfiles = ObjDict({})
+        ## statsfiles is a dict with file locations
+        ## stats_dfs is a dict with pandas dataframes
+        self.stats_files = ObjDict({})
+        self.stats_dfs = ObjDict({})        
 
         ## samples linked 
         self.samples = {}
@@ -193,7 +196,8 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 150),
                         ("max_inner_mate_distance", 60),
-                        ("preview_truncate_length", 4000000),
+                        ("preview_step1", 4000000),
+                        ("preview_step2", 250000),
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 16)
@@ -223,11 +227,12 @@ class Assembly(object):
         return pd.DataFrame([self.samples[i].files for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
+
     def build_stat(self, idx):
         """ Returns a data frame with Sample stats for each step """
         nameordered = self.samples.keys()
         nameordered.sort()
-        return pd.DataFrame([self.samples[i].statsfiles[idx] \
+        return pd.DataFrame([self.samples[i].stats_dfs[idx] \
                       for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
 
@@ -719,6 +724,7 @@ class Assembly(object):
         """ a faster launch for ipyparallel >5.0. Protected with try statement
         from a KeyboardInterrupt """
 
+        #save_stdout = sys.stdout           
         try: 
             clusterargs = [self._ipcluster['id'], self._ipcluster["profile"]]
             argnames = ["cluster_id", "profile"]
@@ -734,9 +740,9 @@ class Assembly(object):
                     #sys.stdout = cStringIO.StringIO()  
                     ## run func with stdout hidden
                     ipyclient = ipp.Client(**args)
-                    break
                     ## resets stdout
                     #sys.stdout = save_stdout
+                    break
 
                 except IOError as inst:
                     time.sleep(1)
@@ -761,6 +767,7 @@ class Assembly(object):
 
 
         except KeyboardInterrupt:
+            ## ensure stdout is reset even if Exception was raised            
             try:
                 ipyclient.shutdown()
             except AttributeError:
@@ -769,7 +776,6 @@ class Assembly(object):
 
         except IOError as inst:
             ## ensure stdout is reset even if Exception was raised
-            #sys.stdout = save_stdout           ## resets stdout
             print(inst)
             raise inst
 
@@ -841,6 +847,8 @@ class Assembly(object):
                 if ipyclient.metadata[job]['error']:
                     print(ipyclient.metadata[job]['error'])
                     #raise IPyradError(ipyclient.metadata[job]['error'])
+        except IPyradError as inst:
+            sys.exit("ipyrad error - {}".format(inst))
         except Exception as inst:
             ## Caught unhandled exception, print and reraise
             print("Caught unknown exception - {}".format(inst))
@@ -852,6 +860,7 @@ class Assembly(object):
                 self.save()                
                 ## can't close client if it was never open
                 if ipyclient:
+                    ipyclient.purge_everything()
                     ipyclient.close()
             except (UnboundLocalError, IOError):
                 pass
@@ -1064,20 +1073,26 @@ class Assembly(object):
         ## attach filename for all reads database
         self.database = os.path.join(self.dirs.consens, self.name+".hdf5")
 
-        ## check for existing and force
-        if not force:
-            if os.path.exists(self.database):
-                print("""
-    Skipping step6: Clust file already exists: {}
-    Use the force argument to overwrite.
-    """.format(self.database))
+        ## run if this point is reached. We no longer check for existing 
+        ## h5 file, since checking Sample states should suffice.
+        assemble.cluster_across.run(self, samples, noreverse,
+                                    force, randomseed, ipyclient)
 
-            else:
-                assemble.cluster_across.run(self, samples, noreverse,
-                                            force, randomseed, ipyclient)
-        else:
-            assemble.cluster_across.run(self, samples, noreverse,
-                                        force, randomseed, ipyclient)
+    #     ## check for existing and force
+    #     if not force:
+    #         if os.path.exists(self.database):
+    #             print("""
+    # Skipping step6: Clust file already exists.
+    # Re-using existing file: {}
+    # Use the force argument to overwrite.
+    # """.format(self.database))
+
+    #         else:
+    #             assemble.cluster_across.run(self, samples, noreverse,
+    #                                         force, randomseed, ipyclient)
+    #     else:
+    #         assemble.cluster_across.run(self, samples, noreverse,
+    #                                     force, randomseed, ipyclient)
 
 
     def _step7func(self, samples, force, ipyclient):
@@ -1112,8 +1127,8 @@ class Assembly(object):
 
         if not force:
             if os.path.exists(self.dirs.outfiles):
-                sys.exit("""
-  Step 7: Cowardly refusing to overwrite existing output directory: 
+                raise IPyradWarningExit("""
+    Output files already created for this Assembly in the directory: 
     {} 
     rerun with force argument to overwrite.""".format(self.dirs.outfiles))
 
@@ -1615,10 +1630,10 @@ def paramschecker(self, param, newvalue):
 
 
     elif param == 'assembly_method':
-        methods = ["denovo", "reference_only", "hybrid", "denovo_only"]
+        methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
         assert newvalue in methods, """
-    The assembly_method parameter must be one of the following: denovo, hybrid, 
-    reference_only or denovo_only. You entered: \n{}.
+    The assembly_method parameter must be one of the following: denovo, reference, 
+    denovo+reference or denovo-reference. You entered: \n{}.
     """.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
 
