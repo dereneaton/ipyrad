@@ -1434,7 +1434,8 @@ def expander(namepath):
 
     elif "./" in namepath:
         _, post = namepath.split("./")
-        namepath = os.path.abspath("")+"/"+post
+        namepath = os.path.join(os.path.curdir, post)
+        #namepath = os.path.abspath("")+"/"+post
     return namepath
 
 
