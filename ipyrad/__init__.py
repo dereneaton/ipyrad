@@ -4,7 +4,7 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.56"
+__version__ = "0.1.58"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
@@ -15,6 +15,7 @@ from . import load
 from . import assemble 
 from .load import save_json
 from .load import load_json
+from .load import load_old_json
 #from . import plotting  ## do not autoimport plotting, import as ipp
 #from . import analysis  ## do not autoimport analysis, import as ipa
 

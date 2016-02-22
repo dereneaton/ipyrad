@@ -888,9 +888,9 @@ class Assembly(object):
         ## print headers
         if self._headers:
             if sfiles:
-                print("  Step1: Linking sorted fastq data to Samples.")
+                print("  Step1: Linking sorted fastq data to Samples")
             else:
-                print("  Step1: Demultiplexing fastq data to Samples.")                
+                print("  Step1: Demultiplexing fastq data to Samples")                
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
@@ -1434,7 +1434,8 @@ def expander(namepath):
 
     elif "./" in namepath:
         _, post = namepath.split("./")
-        namepath = os.path.abspath("")+"/"+post
+        namepath = os.path.join(os.path.curdir, post)
+        #namepath = os.path.abspath("")+"/"+post
     return namepath
 
 
