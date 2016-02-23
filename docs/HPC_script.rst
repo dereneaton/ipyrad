@@ -22,7 +22,8 @@ to version >5.0.
 
 
 Now you can start an ipcluster running. I recommend doing this in a separate
-screen created using the ``screen`` unix command. 
+screen created using the ``screen`` unix command. We use the engines=MPI and 
+--ip=* commands to tell ipcluster to connect to cores across multiple nodes.
 
 
 .. code-block:: bash
@@ -37,15 +38,19 @@ screen created using the ``screen`` unix command.
 
 Now open up a second screen which we will use to run the ipyrad API interactively.
 The code below could alternatively be saved as a python script and run as 
-` python myscript.py`. 
+`python myscript.py`. The ipyrad API will automatically use all available 
+Engines from ipcluster. In this case, 32. 
 
 
 .. code-block:: python
 
-    ## make object
+	## imports
+	import ipyrad as ip
+
+    ## make Assembly object
     data = ip.Assembly("test")
 
-    ## fill params. Set the locatin of your files here.
+    ## Fill params. Set the location of your files here.
     data.set_params("project_dir", "test")
     data.set_params("raw_fastq_path", "iptest/sim_rad1_R1_.fastq.gz")
     data.set_params("barcodes_path", "iptest/sim_rad1_barcodes.txt")
@@ -53,16 +58,15 @@ The code below could alternatively be saved as a python script and run as
     ## set subsampling for step 2
     data._hackersonly["preview_step2"] = 2000
 
-    ## print params
+    ## print params and hackers params
     data.get_params()
-
     print "hackers dict"
     print data._hackersonly
 
-    ## demultiplex without preview mode
+    ## demultiplex without preview mode. This will take a while.
     data.step1()
 
-    ## run step2 with preview mode
+    ## run step2 with preview mode. This should run very fast.
     data.step2(preview=True)
 
     ## save the commands from this session to a file
