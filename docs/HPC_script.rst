@@ -53,7 +53,7 @@ Engines from ipcluster. In this case, 32. You can
 
     ## First open an IPython session by typing `ipython` into a terminal.
     ## Then execute the code below inside IPython.
-    
+
     ## imports
     import ipyrad as ip
 
