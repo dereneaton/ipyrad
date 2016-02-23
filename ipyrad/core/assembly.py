@@ -1554,7 +1554,7 @@ def paramschecker(self, param, newvalue):
         expandpath = expander(newvalue)
         if not expandpath.startswith("/"): 
             if os.path.exists(expandpath):
-                expandpath = "./"+expandpath
+                #expandpath = "./"+expandpath
                 expandpath = expander(expandpath)
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath

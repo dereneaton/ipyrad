@@ -81,7 +81,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ## open the out handle. This will have three data frames saved to it. 
     ## locus_filtering, sample_coverages, and snp_distributions
-    data.stats_files.s7 = os.path.join(data.dirs.outfiles, data.name+".stats")
+    data.stats_files.s7 = os.path.join(data.dirs.outfiles, 
+                                       data.name+"_stats.txt")
     outstats = open(data.stats_files.s7, 'w')
 
     ########################################################################

@@ -390,6 +390,9 @@ def singlecat(data, sample, nloci, indels):
     indfilter = np.zeros(nloci, dtype=np.bool)
     udic = updf.groupby(by=1, sort=False)
 
+    ## create a local array to fill until writing to disk
+    local = np.zeros((10000, maxlen, 4), dtype=np.uint32)
+    start = 0
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
@@ -397,12 +400,21 @@ def singlecat(data, sample, nloci, indels):
             ## if multiple hits of a sample to a locus then it is not added
             ## to the locus, and instead the locus is masked for exclusion
             ## using the filters array.
-            icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
+            local[iloc-start] = catarr[int(ask[4]), :icatg.shape[1], :]
+            #icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
         elif ask.shape[0] > 1:
             ## store that this cluster failed b/c it had duplicate samples. 
             dupfilter[iloc] = True
 
-    ## for each locus in which Sample was the seed
+        ## write to disk after 10000 writes
+        if not iloc % 10000:
+            icatg[start:iloc] = local[:]
+            start = iloc
+    ## write the leftover 
+    icatg[start:] = local[:icatg[start:].shape[0]]
+
+    ## for each locus in which Sample was the seed. This writes quite a bit
+    ## slower than the local setting
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
     for iloc in seedmatch2:
