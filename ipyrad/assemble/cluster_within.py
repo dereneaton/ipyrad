@@ -36,7 +36,7 @@ def sample_cleanup(data, sample):
     ## set cluster file handles
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
-    if 'paired' in data.paramsdict["datatype"]:
+    if 'pair' in data.paramsdict["datatype"]:
         sample.files.merged = os.path.join(data.dirs.clusts,
                                              sample.name+"_merged_.fastq")
         ## record how many read pairs were merged
@@ -48,9 +48,14 @@ def sample_cleanup(data, sample):
     duo = itertools.izip(*[iter(infile)]*2)
     depth = []
     thisdepth = 0
+    maxlen = 0
     while 1:
         try:
-            itera = duo.next()[0]
+            itera = duo.next()
+            seqlen = len(itera[1])
+            itera = itera[0]
+            if seqlen > maxlen:
+                maxlen = seqlen
         except StopIteration:
             break
         if itera != "//\n":
@@ -70,6 +75,12 @@ def sample_cleanup(data, sample):
             depth.append(thisdepth)
             thisdepth = 0
     infile.close()
+
+    ## If our longest sequence is longer than the current max_fragment_length
+    ## then update max_fragment_length
+    ## Padding with 4 extra bases to account for pair + sequence separator.
+    if maxlen > data._hackersonly["max_fragment_length"]:
+        data._hackersonly["max_fragment_length"] = maxlen + 4
 
     if depth:
         ## make sense of stats
@@ -558,6 +569,8 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
                 ## run sample cleanup 
                 sample_cleanup(data, sample)
     
+        LOGGER.debug("Finished sample cleanup. max_fragment_length = "\
+                        + "{}".format(data._hackersonly["max_fragment_length"]))
         ## run data cleanup
         data_cleanup(data, samples)
 
