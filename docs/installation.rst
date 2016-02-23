@@ -44,7 +44,8 @@ have conda installed.
     ## You could now quit and reopen the terminal, or just run the following command 
     ## which reloads ~/.bashrc so that miniconda will now be in your path. This
     ## way the conda program can be found from the terminal by simply typing conda.  
-    source ~/.bashrc
+    ## if ~/.bashrc does not exist it is probably named ~/.bash_profile instead.
+    source ~/.bashrc 
 
     ## test that conda is installed by printing info about conda
     conda info
@@ -61,7 +62,8 @@ unique environments in which software packages are protected from conflicting
 with each other, so if you run into problems it can likely be fixed using conda_. 
 
 Once conda_ is installed, ipyrad_ can be installed by typing the following 
-command into a terminal:
+command into a terminal. This sometimes takes a few minutes to check all of the
+dependencies before the installation finishes, so be patient.
 
 .. code-block:: bash  
 
@@ -74,7 +76,7 @@ commands:
 
 .. code-block:: bash  
 
-    conda install -c ipyrad ipyrad=0.1.40    ## install specific version
+    conda install -c ipyrad ipyrad=0.1.60    ## install specific version
     conda update -c ipyrad ipyrad            ## update to the latest
 
 

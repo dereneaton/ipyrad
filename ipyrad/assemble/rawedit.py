@@ -184,7 +184,8 @@ def adapterfilter(args):
             ## write fastq format
             sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+"_c1", 
                                read1[1].tostring()[:cutter],
-                               read1[2].tostring(),
+                               "+",
+                               #read1[2].tostring(),
                                read1[3].tostring()[:cutter]])
             write1.append(sseq1)
             #LOGGER.debug("%s", read1[1].tostring())
@@ -193,7 +194,8 @@ def adapterfilter(args):
             if len(read2):
                 sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+"_c2",
                                    read2[1].tostring()[:cutter],
-                                   read2[2].tostring(),
+                                   "+",
+                                   #read2[2].tostring(),
                                    read2[3].tostring()[:cutter]])
                                    #bases1[:cutter]+"SS"+bases2[:cutter]+"\n"
                 write2.append(sseq2)
@@ -206,13 +208,15 @@ def adapterfilter(args):
     else:
         sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+"_r1", 
                            read1[1].tostring(),
-                           read1[2].tostring(),
+                           "+", 
+                           #read1[2].tostring(),
                            read1[3].tostring()])
         write1.append(sseq1)
         if len(read2):
             sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+"_r2", 
                                read2[1].tostring(),
-                               read2[2].tostring(),
+                               "+",
+                               #read2[2].tostring(),
                                read2[3].tostring()])
             write2.append(sseq2)
     return write1, write2, read1, read2, point, kept
