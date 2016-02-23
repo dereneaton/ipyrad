@@ -36,7 +36,8 @@ screen created using the ``screen`` unix command.
 
 
 Now open up a second screen which we will use to run the ipyrad API interactively.
-The code below could alternatively be saved as a python script and run 
+The code below could alternatively be saved as a python script and run as 
+` python myscript.py`. 
 
 
 .. code-block:: python
@@ -49,17 +50,24 @@ The code below could alternatively be saved as a python script and run
     data.set_params("raw_fastq_path", "iptest/sim_rad1_R1_.fastq.gz")
     data.set_params("barcodes_path", "iptest/sim_rad1_barcodes.txt")
 
-    ## set subsampling for step2
+    ## set subsampling for step 2
     data._hackersonly["preview_step2"] = 2000
 
     ## print params
     data.get_params()
 
-    ## run
-    data.run("12", preview=True)
+    print "hackers dict"
+    print data._hackersonly
+
+    ## demultiplex without preview mode
+    data.step1()
+
+    ## run step2 with preview mode
+    data.step2(preview=True)
 
     ## save the commands from this session to a file
     %save my_ipyrad_script.py 
+
 
 
  Now while the code is running you can disconnect from this session (again ctrl-a, then d)
