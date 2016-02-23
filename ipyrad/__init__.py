@@ -4,7 +4,7 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.57"
+__version__ = "0.1.60"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
@@ -15,6 +15,7 @@ from . import load
 from . import assemble 
 from .load import save_json
 from .load import load_json
+from .load import load_old_json
 #from . import plotting  ## do not autoimport plotting, import as ipp
 #from . import analysis  ## do not autoimport analysis, import as ipa
 
@@ -171,12 +172,12 @@ def _getbins():
     assert _cmd_exists(samtools), "samtools not found here: "+samtools
     assert _cmd_exists(bedtools), "bedtools not found here: "+bedtools
     assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
-    return vsearch, muscle, smalt, samtools, bedtools
+    return vsearch, muscle, smalt, samtools, bedtools, qmc
 
 
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
-binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools", "QMC"]
+binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools", "qmc"]
 for binn, binx in zip(binnames, _getbins()):
     bins[binn] = binx
 ## clean up for the API

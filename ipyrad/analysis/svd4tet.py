@@ -20,12 +20,16 @@ Theoretical Biology 374: 35-47
 
 from __future__ import print_function, division
 import os
+import sys
 import h5py
+import time
 import random
+import ipyrad
 import itertools
 import subprocess
 import numpy as np
-import ipyrad
+import ipyparallel as ipp
+
 from ipyrad.assemble.util import *
 from collections import Counter, OrderedDict
 
@@ -58,38 +62,37 @@ MKEYS = """
 
 
 
-def get_seqarray(data, path=None, subsample=False):
+def get_seqarray(data, path=None, snps=False):
     """ 
     Takes an Assembly object and looks for a phylip file unless the path 
     argument is used then it looks in path. 
-
-    TODO: Use different file format. One that works more easily to select 
-    single SNPs from loci for use with the subsample argument.
     """
 
     ## allow path override of object
     if path:
-        phylip = open(path, 'r')
+        spath = open(path, 'r')
     else:
         ## turn the phylip file into an array that can be indexed
-        phylip = open(data.outfiles.phylip, 'r')
-        line = phylip.readline().strip().split()
-        ntax = int(line[0])
-        nbp = int(line[1])
+        if snps:
+            spath = open(data.outfiles.snp, 'r')
+        else:
+            spath = open(data.outfiles.phy, 'r')            
+    line = spath.readline().strip().split()
+    ntax = int(line[0])
+    nbp = int(line[1])
 
     ## make a seq array
-    seqarray = np.zeros((ntax, nbp), dtype="S1")
+    tmpseq = np.zeros((ntax, nbp), dtype="S1")
+    with h5py.File(data._svd.h5, 'w') as io5:
+        seqarray = io5.create_dataset("seqarray", (ntax, nbp), dtype="S1")        
 
-    with h5py.File(data._svd.path, 'w') as io5:
-        io5.create_dataset("seqarray", (ntax, nbp), dtype="S1")        
-
-        for line, seq in enumerate(phylip.readlines()):
-            seqarray[line] = np.array(list(seq.split()[-1]))
+        for line, seq in enumerate(spath.readlines()):
+            tmpseq[line] = np.array(list(seq.split()[-1]))
 
         ## save array to disk for so it can be easily accessed from 
         ## many engines on arbitrary nodes 
-        io5["seqarray"][:] = seqarray
-        del seqarray
+        seqarray[:] = tmpseq
+        del tmpseq
 
     return data
 
@@ -107,22 +110,22 @@ def get_quartets(data, samples):
     ## small enough that jobs finish every few hours since that is how the 
     ## checkpointing works.
     if nquarts < 1000:
-        chunk = nquarts
+        chunk = nquarts // 20
     else:
         chunk = 1000
 
     ## 'samples' stores the indices of the quartet. 
     ## `quartets` stores the correct quartet in the order (1,2|3,4)
     ## `weights` stores the calculated weight of the quartet in 'quartets'
-    print("populating array with {} quartets".format(nquarts))
-    with h5py.File(data._svd.path, 'a') as io5:
+    print("  populating array with {} quartets".format(nquarts))
+    with h5py.File(data._svd.h5, 'a') as io5:
         ## create data sets
-        io5.create_dataset("samples", (nquarts, 4), 
+        smps = io5.create_dataset("samples", (nquarts, 4), 
                            dtype=np.uint16, chunks=(chunk, 4))
-        io5.create_dataset("quartets", (nquarts, 4), 
-                            dtype=np.uint16, chunks=(chunk, 4))        
-        io5.create_dataset("weights", (nquarts, 1), 
-                            dtype=np.float16, chunks=(chunk, 1))
+        #qrts = io5.create_dataset("quartets", (nquarts, 4), 
+        #                    dtype=np.uint16, chunks=(chunk, 4))        
+        #wgts = io5.create_dataset("weights", (nquarts,), 
+        #                    dtype=np.float16, chunks=(chunk,))
         
         ## populate array with all possible quartets. This allows us to 
         ## sample from the total, and also to continue from a checkpoint
@@ -131,7 +134,7 @@ def get_quartets(data, samples):
         ## fill 1000 at a time for efficiency
         while i < nquarts:
             dat = np.array(list(itertools.islice(qiter, 1000)))
-            io5["samples"][i:i+dat.shape[0]] = dat
+            smps[i:i+dat.shape[0]] = dat
             i += 1000
 
     ## save attrs to data object
@@ -202,21 +205,31 @@ def worker(args):
 
     ## parse args
     data, qidx = args
+    chunk = data._svd.chunk
 
     ## get 1000 quartets from qidx
-    io5 = h5py.File(data._svd.path, 'r+')
-    quartets = io5["samples"][qidx:qidx+1000]
-    seqarray = io5["seqarray"][:]
+    lpath = os.path.realpath(data._svd.h5)
+    with h5py.File(lpath, 'r') as io5in:
+        smps = io5in["samples"][qidx:qidx+chunk]
+        seqs = io5in["seqarray"][:]
 
-    ## get data from seqarray
-    results = [svd4tet(seqarray, qtet) for qtet in quartets]
-    rquartets = np.array([i[0] for i in results])
-    rweights = np.array([i[1] for i in results])
+        ## get data from seqarray
+        results = [svd4tet(seqs, qtet) for qtet in smps]
+        rquartets = np.array([i[0] for i in results])
+        rweights = np.array([i[1] for i in results])
+        #print("rquartets", rquartets, rquartets.shape)
+        #print("rweights", rweights, rweights.shape)
 
-    ## put results into h5
-    io5["quartets"][qidx:qidx+1000] = rquartets
-    io5["weights"][qidx:qidx+1000] = rweights
-    io5.close()
+    tmpchunk = os.path.join(data.dirs.svd, data.name+"_tmp_{}.h5".format(qidx))
+    with h5py.File(tmpchunk, 'w') as io5out:
+        #io5out["weights"][qidx:qidx+chunk] = np.array(rweights)
+        #io5out["quartets"][qidx:qidx+chunk] = np.array(rquartets)
+        io5out["weights"] = np.array(rweights)
+        io5out["quartets"] = np.array(rquartets)
+
+    return tmpchunk
+    #with h5py.File(lpath, 'r') as io5:
+    #    print(io5["quartets"][:])
 
 
 
@@ -242,17 +255,19 @@ def svd4tet(arr, samples, weights=0):
     score = [np.sqrt(sco[11:].sum()) for sco in scores]
 
     ## get splits sorted in the order of score
-    ssplits = [x for (_, x) in sorted(zip(score, splits))]
+    sortres = [(x, y) for (x, y) in sorted(zip(score, splits))]
+    rsplits = [i[1] for i in sortres]
+    rweight = [i[0] for i in sortres]
 
     ## calculate weights for quartets (Avni et al. 2014). Here I use svd-scores
     ## for the weights rather than genetic distances, but could do either.
     weight = 0
     if weights:
-        weight = get_weight_svd(ssplits)
-        #weight = get_weight_snir(arr, ssplits)
+        weight = get_weight_svd(rweight)
+        #weight = get_weight_snir(arr, rsplits)
 
     ## return the split with the lowest score
-    return ssplits[0], weight
+    return rsplits[0], weight
 
 
 def get_weight_svd(ssplits):
@@ -261,7 +276,11 @@ def get_weight_svd(ssplits):
     rank 10 instead of JC distance. Experimental...
     """
     dh, dm, dl = ssplits
-    return (dh-dl) / (np.exp(dh-dm) * dh)
+    print(dh, dm, dl)
+
+    calc = (dh-dl) / (np.exp(dh-dm) * dh)
+    print(calc)
+    return calc
 
 
 
@@ -307,7 +326,7 @@ def get_weight_snir(arr, splits):
 
 
 
-def qmc(data, useweights=True):
+def run_qmc(data, useweights=False):
     """ runs quartet max-cut """
 
     ## use weight info
@@ -316,16 +335,33 @@ def qmc(data, useweights=True):
         weights = "off"
 
     ## output handle
-    data._svd.tree = os.path.join(data.dirs.svd+data.name+"_svd4tet.tre")
+    data._svd.tree = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre")
 
     ## make call list
-    cmd = [ipyrad.bins.QMC,
-           " qrtt="+data._svd.leaves, 
+    cmd = [ipyrad.bins.qmc,
+           " qrtt="+data._svd.qdump, 
            " weights="+weights, 
            " otre="+data._svd.tree]
+    cmd = " ".join(cmd)
 
     ## run it
-    subprocess.Popen(cmd)
+    LOGGER.info(cmd)
+    try:
+        subprocess.check_call(cmd, shell=True,
+                                   stderr=subprocess.STDOUT,
+                                   stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as inst:
+        LOGGER.error("Error in wQMC: \n({}).".format(inst))
+        LOGGER.error(subprocess.STDOUT)
+        LOGGER.error(cmd)
+        raise inst
+
+    ## convert int names back to str names
+    
+
+
+
+
 
 
 
@@ -335,17 +371,18 @@ def dump(data):
     prints the quartets to a file formatted for QMC in random order.
     """
     ## open the h5 database
-    io5 = h5py.File(data._svd, 'r')
+    io5 = h5py.File(data._svd.results, 'r')
 
     ## create an output file for writing
-    data._svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartet.txt")
+    data._svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartets.txt")
     outfile = open(data._svd.qdump, 'w')
 
     ## should pull quarts order in randomly
-    for i in range(0, 1000, 10):
-        quarts = [list(i) for i in io5["quartets"][i:i+10]]
-        weight = [list(i) for i in io5["weights"][i:i+10]]
-        chunk = ["{},{}|{},{}:{}".format(*i+j) for i, j in zip(quarts, weight)]
+    for idx in range(0, 1000, 100):
+        quarts = [list(j) for j in io5["quartets"][idx:idx+100]]
+        weight = io5["weights"][idx:idx+100]
+        chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
+                                                     in zip(quarts, weight)]
         outfile.write("\n".join(chunk)+"\n")
 
     ## close output file and h5 database
@@ -354,18 +391,39 @@ def dump(data):
 
 
 
+def insert_to_array(data, resqrt, reswgt, path):
+    """ 
+    Takes a tmpfile output from finished worker, enters it into the 
+    full h5 array, and deletes the tmpfile
+    """
+
+    with h5py.File(path) as inh5:
+        qrts = inh5['quartets'][:]
+        wgts = inh5['weights'][:]
+
+        chunk = data._svd.chunk
+        start = int(path.split("_")[-1][:-3])
+        resqrt[start:start+chunk] = qrts
+        reswgt[start:start+chunk] = wgts
+
+    os.remove(path)
+
+
 def main(data, ipyclient, path=None, checkpoint=0):
     """ 
     main funcs
     """
     ## make an analysis directory if it doesn't exit
-    data.dirs.svd = os.path.join(data.dirs.project, data.name+"_analysis_svd")    
+    data.dirs.svd = os.path.realpath(
+                        os.path.join(
+                            data.dirs.project, data.name+"_analysis_svd"))
     if not os.path.exists(data.dirs.svd):
         os.mkdir(data.dirs.svd)
 
     ## store some svd stats in data
     data._svd = ObjDict()
-    data._svd.h5 = os.path.join(data.dirs.svd, data.name+".h5")
+    data._svd.h5 = os.path.join(data.dirs.svd, data.name+"_input.h5")
+    data._svd.results = os.path.join(data.dirs.svd, data.name+"_output.h5")    
     data._svd.checkpoint = 0
 
     ## checkpoint info will be retrieved from h5 if it exists
@@ -375,35 +433,161 @@ def main(data, ipyclient, path=None, checkpoint=0):
         raise IPyradWarningExit("not yet implemented")
 
     ## get the seq array into hdf5
-    LOGGER.info("loading array")
+    #LOGGER.info("loading array")
+    print("loading array")
     data = get_seqarray(data, path)
 
     ## make quartet arrays into hdf5. Allow subsetting samples eventually.
     ## and optimize chunk value given remaining quartets and ipyclient    
-    LOGGER.info("loading quartets")
+    #LOGGER.info("loading quartets")
+    print("loading quartets")
     samples = data.samples
     data = get_quartets(data, samples)
 
     ## load a job queue
-    jobs = []
-    for qidx in xrange(data._svd.checkpoint, 
-                       data._svd.nquarts, 
-                       data._svd.chunk):
-        jobs.append([data, qidx])
+    # jobs = []
+    # for qidx in xrange(data._svd.checkpoint, 
+    #                    data._svd.nquarts, 
+    #                    data._svd.chunk):
+    #     jobs.append([data, qidx])
+    # ## THIS ONE WORKS GREAT, but loads all into mem
+    # lbview = ipyclient.load_balanced_view()
+    # res = lbview.map_async(worker, jobs)
+    # res.wait_interactive()
+    # print('done')
+    # sys.exit()
+
+    njobs = len(xrange(data._svd.checkpoint, 
+                       data._svd.nquarts, data._svd.chunk))
+    jobiter = iter(xrange(data._svd.checkpoint, 
+                          data._svd.nquarts, data._svd.chunk))
 
     ## make a distributor for engines
     LOGGER.info("sending jobs to Engines")
     lbview = ipyclient.load_balanced_view()
-    results = lbview.map_async(worker, jobs)
-    results.get()
 
-    ## Run quartet max-cut on the quartets
-    qmc(data)
+    ## open a view to the super h5 array
+    resh5 = h5py.File(data._svd.results, 'w')
+    resqrt = resh5.create_dataset("quartets", (data._svd.nquarts, 4), 
+                                  dtype=np.uint16, chunks=(data._svd.chunk, 4))
+    reswgt = resh5.create_dataset("weights", (data._svd.nquarts,), 
+                                  dtype=np.float16, chunks=(data._svd.chunk,))
 
+    ## submit initial n jobs
+    res = {}
+    for i in range(len(ipyclient)):
+        res[i] = lbview.apply(worker, [data, jobiter.next()])
+
+    ## iterate over remaining jobs
+    keys = res.keys()
+    finished = 0
+    while res.keys():
+        time.sleep(1)
+        for key in keys:
+            try:
+                ## query for finished results
+                result = res[key].get(0)
+                ## put it into the super array
+                insert_to_array(data, resqrt, reswgt, result)
+                ## submit a new job to the queue
+                del res[key]
+                finished += 1
+                print(r"  {:.1f}% complete".format(100*(finished / njobs)))
+                try:
+                    res[key] = lbview.apply(worker, 
+                                    [data, jobiter.next()])                
+                except StopIteration:
+                    continue
+
+            except (ipp.error.TimeoutError, KeyError):
+                continue
+    resh5.close()
+
+    ## convert to txt file for wQMC
+    dump(data)    
+
+    ## run quartet joining algorithm
+    run_qmc(data)
+
+    ## 
     print("  done")
     return data
 
+    #dview = ipyclient[:]
+    #dview.block = False
+
+    ## a list of jobs to run
+    #todo = [dview.apply_async(data, jobiter.next()) for _ in range(14)]
+
+    #results = lbview.map_async(worker, jobs)
+    #res = {}
+    #for idx, job in enumerate(jobs):
+    #    res[idx] = lbview.apply_async(worker, job)
+    #results.get()
+
+    # for idx in range(len(ipyclient)):
+    #     #res[str(idx)] = lbview.apply_async(worker, [data, jobiter.next()])
+    #     res[idx] = lbview.apply(worker, [data, jobiter.next()])
+
+    # while 1:
+    #     if not res.keys():
+    #         print("breaking")
+    #         break
+    #     else:
+    #         keys = res.keys()
+    #         print('elapsed', res[keys[0]].elapsed)
+    #         for idx in keys:
+    #             try:
+    #                 print(idx)
+    #                 print("found this:", res[idx].get(0))
+
+    #             except ipp.error.TimeoutError:
+    #                 ## keep on looking
+    #                 continue
+    #             else:
+    #                 try:
+    #                     del res[idx]
+    #                     res[idx] = lbview.apply_async(worker, 
+    #                                                  [data, jobiter.next()])
+    #                 except StopIteration:
+    #                     pass
+            
+    #     time.sleep(0.25)
+
+    #results.wait_interactive()
+    #worker(jobs[0])
+
+    #results = lbview.apply_async(worker, jobs)
+    #results.wait_interactive()
+
+    #while 1:
+        ## hang out a while
+    #    time.sleep(1)
+        ## query for a finished job
 
 
 
+
+    ## Dump database results into a file
+    #dump(data)
+
+    ## Run quartet max-cut on the quartets
+    #run_qmc(data)
+
+
+
+if __name__ == "__main__":
+
+    ## imports
+    import ipyrad.analysis as ipa
+    import ipyrad as ip
+    import ipyparallel as ipp
+    import time
+
+    IPYCLIENT = ipp.Client()
+    time.sleep(2)
+
+    DATA = ip.load_json("~/Documents/ipyrad/tests/cli/cli")
+
+    ipa.svd4tet.main(DATA, IPYCLIENT)
 

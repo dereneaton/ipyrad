@@ -311,6 +311,9 @@ def run(data, samples, subsample, force, ipyclient):
             results = results.get()
         ## if exception such as keyboard interrupt, save finished jobs
         except Exception as inst:
+            ## now re-raise the exception
+            LOGGER.debug("Error in jointestimate - {}".format(inst))
+
             # stop any unfinished jobs
             ipyclient.abort()
 
@@ -322,8 +325,6 @@ def run(data, samples, subsample, force, ipyclient):
                     samplename, hest, eest = result
                     sample = data.samples[samplename]
                     cleanup(data, sample, hest, eest)
-            ## now re-raise the exception
-            LOGGER.debug("Error in jointestimate - {}".format(inst))
             raise inst
         else:
             ## do standard cleanup of finished samples

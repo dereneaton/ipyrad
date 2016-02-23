@@ -298,7 +298,8 @@ def build_h5_array(data, samples, nloci):
     edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
 
 
-    ## RUN SINGLECAT, FILL FILTERS
+    ## TODO: PARALLELIZE !!!
+    ## RUN SINGLECAT, FILL FILTERS, 
     ## for each sample fill its own hdf5 array with catg data & indels. 
     ## maybe this can be parallelized. Can't right now since we pass it 
     ## an open file object (indels). Room for speed improvements, tho.
@@ -660,11 +661,15 @@ def build_input_file(data, samples, outgroups, randomseed):
         ## convert ambiguity codes into a sampled haplotype for any sample
         ## to use for clustering, but ambiguities are still saved in allcons
         writinghaplos = []
-        for ind in shuf.index:
-            ## TODO: Is this too much in memory for super huge data sets?
-            ## may need to be chunked.
+        for idx, ind in enumerate(shuf.index):
+            ## append to list
             writinghaplos.append("\n".join([shuf[0][ind], 
                                             splitalleles(shuf[1][ind])[0]]))
+            ## write and reset
+            if not idx % 1000:
+                allhaps.write("\n".join(writinghaplos)+"\n")
+                writinghaplos = []
+        ## write final chunk
         allhaps.write("\n".join(writinghaplos)+"\n")
     allhaps.close()
 
