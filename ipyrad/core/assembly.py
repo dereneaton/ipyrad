@@ -1423,22 +1423,13 @@ def _name_from_file(fname, splitnames, fields):
     return base
 
 
-
 def expander(namepath):
     """ expand ./ ~ and ../ designators in location names """        
     if "~" in namepath:
-        namepath = namepath.replace("~", os.path.expanduser("~"))
-    if "../" in namepath:
-        namepath = os.path.abspath(
-                    glob.glob(namepath)[0])
-
-    elif "./" in namepath:
-        _, post = namepath.split("./")
-        namepath = os.path.join(os.path.curdir, post)
-        #namepath = os.path.abspath("")+"/"+post
+        namepath = os.path.expanduser(namepath)
+    else:
+        namepath = os.path.abspath(namepath)
     return namepath
-
-
 
 
 def merge(name, assemblies):
@@ -1558,7 +1549,6 @@ def paramschecker(self, param, newvalue):
                 expandpath = expander(expandpath)
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath
-
 
     elif param == 'raw_fastq_path':
         if newvalue:
