@@ -39,6 +39,9 @@ screen created using the ``screen`` unix command. We use the engines=MPI and
     ## now disconnect from this screen by typing (ctrl-a, then d)
 
 
+Running ipyrad interactively
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Now open up a second screen which we will use to run the ipyrad API interactively.
 The code below could alternatively be saved as a python script and run as 
 `python myscript.py`. The ipyrad API will automatically use all available 
@@ -46,6 +49,10 @@ Engines from ipcluster. In this case, 32.
 
 
 .. code-block:: python
+
+    ##
+    ## First open an IPython session by typing `ipython` into a terminal.
+    ##
 
 	## imports
 	import ipyrad as ip
