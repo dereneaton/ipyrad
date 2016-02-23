@@ -1,0 +1,84 @@
+
+
+
+
+.. _HPCscript:
+
+HPC script
+==========
+
+The API requires starting the parallel Engines before executing step 
+function with ipyrad. 
+
+Starting ipcluster
+^^^^^^^^^^^^^^^^^^^
+
+First update ipyparallel to the most recent version. This should upgrade it 
+to version >5.0. 
+
+.. code-block:: bash
+
+    pip install -U ipyparallel
+
+
+Now you can start an ipcluster running. I recommend doing this in a separate
+screen created using the ``screen`` unix command. 
+
+
+.. code-block:: bash
+
+    screen
+
+    ## once in new screen type the following
+    ipcluster start -n 32 --engines=MPI --ip=* 
+
+    ## now disconnect from this screen by typing (ctrl-a, then d)
+
+
+Now open up a second screen which we will use to run the ipyrad API interactively.
+The code below could alternatively be saved as a python script and run 
+
+
+.. code-block:: python
+
+    ## make object
+    data = ip.Assembly("test")
+
+    ## fill params. Set the locatin of your files here.
+    data.set_params("project_dir", "test")
+    data.set_params("raw_fastq_path", "iptest/sim_rad1_R1_.fastq.gz")
+    data.set_params("barcodes_path", "iptest/sim_rad1_barcodes.txt")
+
+    ## set subsampling for step2
+    data._hackersonly["preview_step2"] = 2000
+
+    ## print params
+    data.get_params()
+
+    ## run
+    data.run("12", preview=True)
+
+    ## save the commands from this session to a file
+    %save my_ipyrad_script.py 
+
+
+ Now while the code is running you can disconnect from this session (again ctrl-a, then d)
+ and watch the cpus working away using the unix 
+ ``top`` command. And you can peek into the 
+ output directory. Finally, when the job is done you can go back in and look at 
+ the resulting stats for your assembly by reconnecting to the interactive IPython
+ session using ``screen -r``. 
+
+ .. code-block:: python
+
+    ## print stats
+    data.stats
+
+    ## run the next step
+    data.step3()
+
+    ## etc.
+
+
+
+
