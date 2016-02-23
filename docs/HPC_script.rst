@@ -45,7 +45,7 @@ Running ipyrad interactively
 Now open up a second screen which we will use to run the ipyrad API interactively.
 The code below could alternatively be saved as a python script and run as 
 `python myscript.py`. The ipyrad API will automatically use all available 
-Engines from ipcluster. In this case, 32. 
+Engines from ipcluster. In this case, 32. You can 
 
 
 .. code-block:: python
@@ -53,9 +53,9 @@ Engines from ipcluster. In this case, 32.
 
     ## First open an IPython session by typing `ipython` into a terminal.
     ## Then execute the code below inside IPython.
-
-	## imports
-	import ipyrad as ip
+    
+    ## imports
+    import ipyrad as ip
 
     ## make Assembly object
     data = ip.Assembly("test")
@@ -100,6 +100,19 @@ IPython session using ``screen -r``.
     data.step3()
 
     ## etc.
+
+
+If you were to close the IPython session and want to restart working on the 
+same Assembly later you can re-load the Assembly using the following command:
+
+.. code-block:: python
+
+    ## load Assembly object -- use the path to your json file here.
+    data = ip.load_json("projdir/assembly.json")
+
+
+
+
 
 
 
