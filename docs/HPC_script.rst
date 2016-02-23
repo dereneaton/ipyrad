@@ -89,9 +89,10 @@ Now while the code is running you can disconnect from this session
 ``top`` command. And you can peek into the output directory. 
 Finally, when the job is done you can go back in and look at the 
 resulting stats for your assembly by reconnecting to the interactive 
-IPython session using ``screen -r``. 
+IPython session using ``screen -r``.
 
- .. code-block:: python
+
+.. code-block:: python
 
     ## print stats
     data.stats
