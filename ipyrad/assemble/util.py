@@ -72,6 +72,8 @@ class ObjDict(dict):
                 result += key + " : " + str(self[key]) + "\n"
         return result
 
+        
+
 ## This is unused right now and kind of broken. get rid of it soon.
 class OrdObjDict(object):
     """ ordered object dictionary allows calling dictionaries in a more 
