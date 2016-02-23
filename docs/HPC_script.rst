@@ -70,12 +70,12 @@ The code below could alternatively be saved as a python script and run as
 
 
 
- Now while the code is running you can disconnect from this session (again ctrl-a, then d)
- and watch the cpus working away using the unix 
- ``top`` command. And you can peek into the 
- output directory. Finally, when the job is done you can go back in and look at 
- the resulting stats for your assembly by reconnecting to the interactive IPython
- session using ``screen -r``. 
+Now while the code is running you can disconnect from this session 
+(again ctrl-a, then d) and watch the cpus working away using the unix 
+``top`` command. And you can peek into the output directory. 
+Finally, when the job is done you can go back in and look at the 
+resulting stats for your assembly by reconnecting to the interactive 
+IPython session using ``screen -r``. 
 
  .. code-block:: python
 
