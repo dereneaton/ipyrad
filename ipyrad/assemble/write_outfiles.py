@@ -799,7 +799,7 @@ def filter_maxhet(data, superseqs, edges):
     ## the filter max
     maxhet = data.paramsdict["max_shared_Hs_locus"]
     if isinstance(maxhet, float):
-        maxhet = superseqs.shape[1]/float(maxhet)
+        maxhet = superseqs.shape[1]*float(maxhet)
 
     ## an empty array to fill with failed loci
     hetfilt = np.zeros(superseqs.shape[0], dtype=np.bool)

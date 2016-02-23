@@ -1321,7 +1321,7 @@ class Assembly(object):
         """ Select steps of an analysis. If no steps are entered then all
         steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
         if not steps:
-            steps = list("123457")
+            steps = list("1234567")
         else:
             steps = list(steps)
 
