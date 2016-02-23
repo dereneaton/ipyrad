@@ -8,7 +8,10 @@ HPC script
 ==========
 
 The API requires starting the parallel Engines before executing step 
-function with ipyrad. 
+functions with ipyrad. This provides a lot of flexibility to run ipyrad 
+on with complex connection setups. Below we show a fairly common setup 
+to connect to multiple nodes on an HPC cluster. 
+
 
 Starting ipcluster
 ^^^^^^^^^^^^^^^^^^^
