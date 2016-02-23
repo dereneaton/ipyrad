@@ -95,7 +95,7 @@ the code below into a terminal. This will create a new directory called
 .. code:: bash
 
     ## The curl command needs a capital O, not a zero.
-    curl -LkO https://github.com/dereneaton/ipyrad/blob/master/tests/ipsimdata.tar.gz
+    curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
     tar -xvzf ipsimdata.tar.gz
 
 
