@@ -201,6 +201,7 @@ def load_json(path, quiet=False):
     ## load the JSON string and try with name+.json
     checkfor = [path, path+".json"]
     for inpath in checkfor:
+        inpath = inpath.replace("~", os.path.expanduser("~"))
         try:
             with open(inpath, 'r') as infile:
                 ## uses _tup_and_byte to ensure ascii and tuples are correct

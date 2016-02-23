@@ -4,7 +4,7 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.59"
+__version__ = "0.1.60"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
@@ -172,12 +172,12 @@ def _getbins():
     assert _cmd_exists(samtools), "samtools not found here: "+samtools
     assert _cmd_exists(bedtools), "bedtools not found here: "+bedtools
     assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
-    return vsearch, muscle, smalt, samtools, bedtools
+    return vsearch, muscle, smalt, samtools, bedtools, qmc
 
 
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
-binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools", "QMC"]
+binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools", "qmc"]
 for binn, binx in zip(binnames, _getbins()):
     bins[binn] = binx
 ## clean up for the API

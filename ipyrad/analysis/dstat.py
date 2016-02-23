@@ -10,12 +10,14 @@ import numpy as np
 import scipy.stats
 import sys
 import os
-
+## check for numba
 try:
     import numba
 except ImportError:
-    sys.exit('Python package `numba` not found')
-    ## IS THERE A WAY TO TURN OFF JIT IN THIS INSTANCE?
+    sys.exit("""
+        Python package `numba` is needed for ipyrad.analysis.
+        Run 'conda install numba' in a terminal to install.
+        """)
 
 pd.options.display.float_format = '{:.4f}'.format
 
