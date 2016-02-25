@@ -34,3 +34,10 @@ try:
     subprocess.call(["git", "push", "origin", version_git])
 except Exception as e:
     print("Something broke - {}".format(e))
+
+print("Push new version of conda installer")
+
+try:
+    subprocess.call(["conda", "build", "conda.recipe"])
+except Exception as e:
+    print("something broke - {}".format(e))
