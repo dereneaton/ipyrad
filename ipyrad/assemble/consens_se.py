@@ -147,8 +147,11 @@ def removerepeats(consens, arrayed):
     #pre = arrayed.copy()
 
     ## remove repeat sites from shortcon and stacked
+    ## If consens is all N's this will raise a ValueError which 
+    ## consensus() will catch and then pass over this sample.
     keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
-                         if i not in ridx])
+                        if i not in ridx])
+
     consens = "".join(list(consens))
     arrayed = arrayed[:, list(keeps)]
 
@@ -231,7 +234,11 @@ def consensus(args):
 
                 ## apply a filter to remove low coverage sites/Ns that
                 ## are likely sequence repeat errors.
-                consens, arrayed = removerepeats(consens, arrayed)
+                try:
+                    consens, arrayed = removerepeats(consens, arrayed)
+                except ValueError as inst:
+                    LOGGER.debug("Caught a bad chunk, all Ns in consensus. Skip it.")
+                    continue
 
                 ## get hetero sites
                 hidx = [i for (i, j) in enumerate(consens) \
