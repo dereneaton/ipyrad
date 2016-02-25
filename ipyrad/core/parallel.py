@@ -28,7 +28,7 @@ def start(data, quiet):
     ## open all ip views for MPI
     iparg = ""
     if "MPI" in data._ipcluster["engines"]:
-        iparg = "ip='*' "
+        iparg = "--ip='*' "
 
     ## make ipcluster arg call
     standard = ["ipcluster", "start", 

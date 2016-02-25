@@ -82,13 +82,13 @@ Cookbook recipes - API
 -----------------------
 
 
-
-
 .. toctree::
    :maxdepth: 1
 
    ipyrad_scripts.rst
    test_rad.rst
+   HPC_script.rst
+
 
 
 

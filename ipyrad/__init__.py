@@ -4,7 +4,7 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.60"
+__version__ = "0.1.63"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
@@ -42,7 +42,7 @@ try:
                 clear.write("file reset")
 
 ## in case system doesn't let you use /tmp            
-except (OSError, IOError):
+except (OSError, IOError, ValueError):
     __debugfile__ = "./ipyrad_debug.txt"  ##_os.devnull
     _, __loglevel__ = "null", "ERROR"  ## hack for versioner
 
@@ -64,7 +64,7 @@ _lconfig.dictConfig({
         __name__: {
             'level':__loglevel__,
             'class':'logging.FileHandler',
-            'filename':'/tmp/ipyrad_debug.txt',
+            'filename':__debugfile__,
             'formatter':"standard",
             'mode':'a+'
         }

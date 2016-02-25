@@ -20,7 +20,7 @@ import itertools
 import shutil
 import h5py
 import os
-from collections import Counter
+from collections import Counter, OrderedDict
 from ipyrad.file_conversion import *
 from util import *
 
@@ -81,7 +81,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ## open the out handle. This will have three data frames saved to it. 
     ## locus_filtering, sample_coverages, and snp_distributions
-    data.stats_files.s7 = os.path.join(data.dirs.outfiles, data.name+".stats")
+    data.stats_files.s7 = os.path.join(data.dirs.outfiles, 
+                                       data.name+"_stats.txt")
     outstats = open(data.stats_files.s7, 'w')
 
     ########################################################################
@@ -104,7 +105,9 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
         ## get subarray results from filter array
         # "max_indels", "max_snps", "max_hets", "min_samps", "bad_edges"
+        print('afilt - ', afilt)
         filters += afilt.sum(axis=0)
+        print('filters - ', filters)
         passed += np.sum(afilt.sum(axis=1) == 0)
 
         ## get snps counts
@@ -246,13 +249,15 @@ def filter_all_clusters(data, samples, ipyclient):
         results.get()
 
         ## get all the saved tmp arrays for each slice
-        tmpedg = glob.glob(os.path.join(chunkdir, "edgf.*.npy"))
-        tmphet = glob.glob(os.path.join(chunkdir, "hetf.*.npy"))
         tmpsnp = glob.glob(os.path.join(chunkdir, "snpf.*.npy"))
+        tmphet = glob.glob(os.path.join(chunkdir, "hetf.*.npy"))
         tmpmin = glob.glob(os.path.join(chunkdir, "minf.*.npy"))
-        
+        tmpedg = glob.glob(os.path.join(chunkdir, "edgf.*.npy"))
+
         ## sort array files within each group
-        arrdict = {'edg':tmpedg, 'het':tmphet, 'snp':tmpsnp, 'min':tmpmin}
+        arrdict = OrderedDict([
+            ('snp', tmpsnp), ('het', tmphet),
+            ('min', tmpmin), ('edg', tmpedg)])
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
@@ -280,7 +285,7 @@ def filter_all_clusters(data, samples, ipyclient):
         edgarrs = glob.glob(os.path.join(chunkdir, "edgearr.*.npy"))
         snparrs = glob.glob(os.path.join(chunkdir, "snpsarr.*.npy"))
         ## sort array files within each group
-        arrdict = {'edges':edgarrs, 'snps':snparrs}
+        arrdict = OrderedDict([('edges', edgarrs), ('snps', snparrs)])
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
@@ -383,30 +388,39 @@ def make_loci(data, samples):
         ## write loci that passed after trimming edges, then write snp string
         for iloc in keep:
             edg = aedge[iloc]
-            ## grab all seqs between edges
-            seq = aseqs[iloc, :, edg[0]:edg[1]]
-            ## snps was created using only the selected samples.
-            snp = asnps[iloc, edg[0]:edg[1], ]
-            ## remove rows with all Ns, seq has only selected samples
-            nalln = np.all(seq == "N", axis=1)
-            ## make mask of removed rows and excluded samples. Use the inverse
-            ## of this to save the coverage for samples
-            nsidx = nalln + smask
-            samplecov += np.invert(nsidx).astype(int)
-            locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
-            ## select the remaining names in order
-            seq = seq[~nsidx, ]
-            names = pnames[~nsidx]
+            args = [iloc, pnames, snppad, edg, aseqs, asnps, 
+                    smask, samplecov, locuscov]
+            if edg[4]:
+                outstr, samplecov, locuscov = enter_pairs(*args)
+                store.append(outstr)
+            else:
+                outstr, samplecov, locuscov = enter_singles(*args)
+                store.append(outstr)
 
-            ## save string for printing, excluding names not in samples
-            store.append("\n".join(\
-                [name + s.tostring() for name, s in zip(names, seq)]))
+            # ## grab all seqs between edges
+            # seq = aseqs[iloc, :, edg[0]:edg[1]]
+            # ## snps was created using only the selected samples.
+            # snp = asnps[iloc, edg[0]:edg[1], ]
+            # ## remove rows with all Ns, seq has only selected samples
+            # nalln = np.all(seq == "N", axis=1)
+            # ## make mask of removed rows and excluded samples. Use the inverse
+            # ## of this to save the coverage for samples
+            # nsidx = nalln + smask
+            # samplecov += np.invert(nsidx).astype(int)
+            # locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
+            # ## select the remaining names in order
+            # seq = seq[~nsidx, ]
+            # names = pnames[~nsidx]
 
-            ## get snp string and add to store
-            snpstring = ["-" if snp[i, 0] else \
-                         "*" if snp[i, 1] else \
-                         " " for i in range(len(snp))]
-            store.append(snppad + "".join(snpstring))
+            # ## save string for printing, excluding names not in samples
+            # store.append("\n".join(\
+            #     [name + s.tostring() for name, s in zip(names, seq)]))
+
+            # ## get snp string and add to store
+            # snpstring = ["-" if snp[i, 0] else \
+            #              "*" if snp[i, 1] else \
+            #              " " for i in range(len(snp))]
+            # store.append(snppad + "".join(snpstring))
 
         ## write to file and clear store
         locifile.write("\n".join(store) + "\n")
@@ -420,6 +434,75 @@ def make_loci(data, samples):
 
     ## return sample counter
     return samplecov, locuscov, keep
+
+
+def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, 
+                smask, samplecov, locuscov):
+    """ enters funcs for pairs """
+    seq1 = aseqs[iloc, :, edg[0]:edg[1]]
+    seq2 = aseqs[iloc, :, edg[2]+edg[4]+4:edg[3]+edg[4]]
+    ## snps was created using only the selected samples.
+    snp1 = asnps[iloc, edg[0]:edg[1], ]
+    snp2 = asnps[iloc, edg[2]+edg[4]+4:edg[3]+edg[4], ]    
+    ## remove rows with all Ns, seq has only selected samples
+    nalln = np.all(seq1 == "N", axis=1)
+    ## make mask of removed rows and excluded samples. Use the inverse
+    ## of this to save the coverage for samples
+    nsidx = nalln + smask
+    samplecov += np.invert(nsidx).astype(int)
+    locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
+    ## select the remaining names in order
+    seq1 = seq1[~nsidx, ]
+    seq2 = seq2[~nsidx, ]    
+    names = pnames[~nsidx]
+    ## save string for printing, excluding names not in samples
+    outstr = "\n".join(\
+        [name + s1.tostring()+"nnnn"+s2.tostring() for name, s1, s2 in \
+         zip(names, seq1, seq2)])
+
+    ## get snp string and add to store
+    snpstring1 = ["-" if snp1[i, 0] else \
+                 "*" if snp1[i, 1] else \
+                 " " for i in range(len(snp1))]
+    snpstring2 = ["-" if snp2[i, 0] else \
+                 "*" if snp2[i, 1] else \
+                 " " for i in range(len(snp2))]
+    outstr += "\n" + snppad + "".join(snpstring1)+\
+              "    "+"".join(snpstring2)+"|"
+
+    return outstr, samplecov, locuscov
+
+
+
+def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps, 
+                  smask, samplecov, locuscov):
+    """ enter funcs for SE or merged data """
+    ## grab all seqs between edges
+    seq = aseqs[iloc, :, edg[0]:edg[1]]
+    ## snps was created using only the selected samples.
+    snp = asnps[iloc, edg[0]:edg[1], ]
+    ## remove rows with all Ns, seq has only selected samples
+    nalln = np.all(seq == "N", axis=1)
+    ## make mask of removed rows and excluded samples. Use the inverse
+    ## of this to save the coverage for samples
+    nsidx = nalln + smask
+    samplecov += np.invert(nsidx).astype(int)
+    locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
+    ## select the remaining names in order
+    seq = seq[~nsidx, ]
+    names = pnames[~nsidx]
+
+    ## save string for printing, excluding names not in samples
+    outstr = "\n".join(\
+        [name + s.tostring() for name, s in zip(names, seq)])
+
+    ## get snp string and add to store
+    snpstring = ["-" if snp[i, 0] else \
+                 "*" if snp[i, 1] else \
+                 " " for i in range(len(snp))]
+    outstr += "\n" + snppad + "".join(snpstring) + "|"
+
+    return outstr, samplecov, locuscov
 
 
 
@@ -526,7 +609,7 @@ def get_edges(data, superseqs, splits):
     ## the filtering arg and parse it into minsamp numbers
     edgetuple = data.paramsdict["trim_overhang"]
     minsamp = data.paramsdict["min_samples_locus"]
-    allsamp = superseqs.shape[0]
+    allsamp = superseqs.shape[1]
     cut1, cut2 = data.paramsdict["restriction_overhang"]        
 
     ## a local array for storing edge trims
@@ -542,11 +625,12 @@ def get_edges(data, superseqs, splits):
     ##    -- raise warning if minsamp < 4
     ## 1s mean trim cut sites only.
     ## 0s mean no edge trimming at all, not even cut sites.
+    ## TODO: more testing on this with pairddrad.
 
     ## get edges for overhang trimming first, and trim cut sites at end
     ## use .get so that if not in 2,3,4 it returns None
-    edgedict = {0: None,
-                1: 0,
+    edgedict = {0: 1,
+                1: 1,
                 2: 4,
                 3: minsamp,
                 4: allsamp}
@@ -715,7 +799,7 @@ def filter_maxhet(data, superseqs, edges):
     ## the filter max
     maxhet = data.paramsdict["max_shared_Hs_locus"]
     if isinstance(maxhet, float):
-        maxhet = superseqs.shape[0]/float(maxhet)
+        maxhet = superseqs.shape[1]*float(maxhet)
 
     ## an empty array to fill with failed loci
     hetfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
@@ -724,7 +808,7 @@ def filter_maxhet(data, superseqs, edges):
     ## value for each locus, then get boolean array of those > maxhet.
     for idx, edg in enumerate(edges):
         share = np.array(\
-            [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=1)\
+            [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=0)\
             .max() for ambig in "RSKYWM"]).max()
         ## fill filter
         if not share <= maxhet:

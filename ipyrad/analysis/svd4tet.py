@@ -275,8 +275,8 @@ def get_weight_svd(ssplits):
     Caulcate weight similar to Avni et al. but using SVD score distance from 
     rank 10 instead of JC distance. Experimental...
     """
-    dh, dm, dl = ssplits
-    print(dh, dm, dl)
+    dl, dm, dh = ssplits
+    print(dl, dm, dh)
 
     calc = (dh-dl) / (np.exp(dh-dm) * dh)
     print(calc)
