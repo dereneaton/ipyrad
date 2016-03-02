@@ -41,7 +41,7 @@ def muscle_align_across(args):
 
     ## array to store indel information 
     maxlen = data._hackersonly["max_fragment_length"]
-    if 'pair' in data.paramsdict["datatype"]:
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
     indels = np.zeros((len(clusts), len(samples), maxlen), dtype=np.bool)
 
@@ -127,7 +127,7 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
 
         ## get dims for full indel array
         maxlen = data._hackersonly["max_fragment_length"]
-        if 'pair' in data.paramsdict["datatype"]:
+        if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
             maxlen *= 2
 
         ## INIT INDEL ARRAY
@@ -243,7 +243,7 @@ def build_h5_array(data, samples, nloci):
 
     ## initialize an hdf5 array of the super catg matrix with dims
     maxlen = data._hackersonly["max_fragment_length"]
-    if 'pair' in data.paramsdict["datatype"]:
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
     ## choose chunk optim size
@@ -364,7 +364,7 @@ def singlecat(data, sample, nloci, indels):
     ## create an h5 array for storing catg infor for this sample
     new_h5 = h5py.File(h5handle, 'w')
     maxlen = data._hackersonly["max_fragment_length"]
-    if 'pair' in data.paramsdict["datatype"]:
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
     #nloci = sample.stats.clusters_hidepth
@@ -463,7 +463,7 @@ def fill_superseqs(data, samples, superseqs, edges):
     snames = [i.name for i in samples]
     ## get maxlen again
     maxlen = data._hackersonly["max_fragment_length"]
-    if 'pair' in data.paramsdict["datatype"]:
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
     ## data has to be entered in blocks

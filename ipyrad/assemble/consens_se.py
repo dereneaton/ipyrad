@@ -188,7 +188,7 @@ def consensus(args):
     ## Assembly might be branched and the new one use a lower depth filter.
     #### dimensions: nreads_in_this_chunk, max_read_length, 4 bases
     maxlen = data._hackersonly["max_fragment_length"]
-    if 'pair' in data.paramsdict["datatype"]:
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
     catarr = numpy.zeros([optim, maxlen, 4], dtype='uint32')
 
