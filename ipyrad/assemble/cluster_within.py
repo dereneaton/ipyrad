@@ -555,11 +555,6 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
                 for sample in samples:
                     finalize_aligned_reads(data, sample, ipyclient)
 
-            ## record that sample is clustered but not yet aligned
-            for success, sample in zip(results, samples):
-                if success:
-                    sample.stats.state = 2.5
-
         ## Samples at step 2.5 pick up again here.
         ## call ipp for muscle aligning only if the Sample passed clust/mapping
         for sample in samples:
@@ -869,6 +864,8 @@ def clustall(args):
     try:
         build_clusters(data, sample)
         ## record that it passed the clustfile build
+        ## so sample is clustered but not yet aligned
+        sample.stats.state = 2.5
         return 1
     except IPyradError as inst:
         print(inst)
