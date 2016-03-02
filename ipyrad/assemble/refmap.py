@@ -151,10 +151,10 @@ def mapreads(args):
     ## This is pretty monolithic, it could get broken up into subroutines
     try:
 
-        ## TODO: `pp` is probably wrong. Have to figure out what the orientation of reads
-        ## is for gbs and ddrad.
+        ## We are assuming Illumina paired end reads for the orientation of mate pairs.
+        ## (orientation: ---> <----).
         if 'pair' in data.paramsdict["datatype"]:
-            pairtype = " -l pp "
+            pairtype = " -l pe "
         else:
             pairtype = " "
     
