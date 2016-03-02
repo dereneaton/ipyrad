@@ -6,28 +6,28 @@
 Installation
 ============
 We put significant effort into making the installation process for ipyrad 
-as easy as possible. Simply copy and paste a few lines of code below and 
-you will be ready to go.
-
+as easy as possible, whether you are working on your own desktop computer, or 
+remotely on a large computing cluster. Simply copy and paste a few lines of 
+code below and you will be ready to go.
 
 Conda install
 -------------
 
 The easiest way to install ipyrad_ and all of its dependencies is with conda_,
-a command line program for installing Python packages. If you do not have 
-conda_ installed, you can find detailed installation 
-:ref:`here <...>`, or simply
-follow the directions outlined below. You will need to install either anaconda_ 
-or miniconda_ for Python2.7. The only difference between the two is that 
-anaconda_ installs a large suite of commonly used Python packages along with the 
-base installer, whereas miniconda_ installs only a bare bones version that 
-includes just the framework for installing new packages. 
+a command line program for installing Python packages. If you already have 
+conda installed skip to the `install ipyrad`_ section below. Otherwise, follow
+these instructions to first install conda_ for Python 2.7 on your system. 
 
-First, we need to download the conda_ installer, I'll use miniconda_ for my example. 
-There are separate installers for Linux and Mac, so choose only the one that
-is correct for your system. If you are working on an :ref:`HPC<HPC_installation>`
-cluster it is most likely a Linux machine. Skip this section if you already 
-have conda installed.
+Conda comes in two flavors, anaconda_ and miniconda_. The only difference 
+between the two is that anaconda_ installs a large suite of commonly used 
+Python packages along with the base installer, whereas miniconda_ installs 
+only a bare bones version that includes just the framework for installing 
+new packages. We'll use miniconda for the example installation here. 
+
+First, let's download the conda_ installer. There are separate installers for 
+Linux and Mac, so follow the instructions below for the appropriate system.
+If you are working on an :ref:`HPC<HPC_installation>` cluster it is most likely
+a Linux machine. 
 
 
 Mac install
@@ -70,7 +70,7 @@ Linux install
     bash Miniconda-latest-Linux-x86_64.sh
 
     ## You could now quit and reopen the terminal, or just run the following command 
-    ## which reloads your ~/.bash_profile so that miniconda will now be in your path.
+    ## which reloads your ~/.bashrc so that miniconda will now be in your path.
     ## This is necessary so that the conda program can be found from the terminal by 
     ## simply typing conda. 
     source ~/.bashrc
