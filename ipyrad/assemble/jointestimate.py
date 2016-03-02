@@ -309,6 +309,7 @@ def run(data, samples, subsample, force, ipyclient):
         try:
             results = lbview.map_async(optim, submitted_args)
             results = results.get()
+        
         ## if exception such as keyboard interrupt, save finished jobs
         except Exception as inst:
             ## now re-raise the exception
@@ -319,13 +320,14 @@ def run(data, samples, subsample, force, ipyclient):
 
             # clean up finished jobs
             for job in ipyclient.metadata:
-                print("error checking", job)
+                #print("error checking", job)
                 if ipyclient.metadata[job]['completed']:
                     result = ipyclient.metadata[job]['outputs']
                     samplename, hest, eest = result
                     sample = data.samples[samplename]
                     cleanup(data, sample, hest, eest)
             raise inst
+
         else:
             ## do standard cleanup of finished samples
             for result in results:

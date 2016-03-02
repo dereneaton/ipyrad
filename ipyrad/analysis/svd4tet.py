@@ -233,7 +233,7 @@ def worker(args):
 
 
 
-def svd4tet(arr, samples, weights=0):
+def svd4tet(arr, samples, weights=1):
     """ calc rank. From Chibatko and Kiffman (2014)
 
     Our proposal for inferring the true species-level relationship within a 
@@ -331,17 +331,19 @@ def run_qmc(data, useweights=False):
 
     ## use weight info
     weights = "on"
+    nsuffix = ".wtre"
+    tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix)
+
     if not useweights:
         weights = "off"
-
-    ## output handle
-    data._svd.tree = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre")
+        nsuffix = ".tre"
+        tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix)
 
     ## make call list
     cmd = [ipyrad.bins.qmc,
            " qrtt="+data._svd.qdump, 
            " weights="+weights, 
-           " otre="+data._svd.tree]
+           " otre="+tre]
     cmd = " ".join(cmd)
 
     ## run it
@@ -357,12 +359,13 @@ def run_qmc(data, useweights=False):
         raise inst
 
     ## convert int names back to str names
-    
+    ## ...
 
-
-
-
-
+    ##
+    if not useweights:
+        data._svd.tre = tre
+    else:
+        data._svd.wtre = tre        
 
 
 
@@ -377,7 +380,7 @@ def dump(data):
     data._svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartets.txt")
     outfile = open(data._svd.qdump, 'w')
 
-    ## should pull quarts order in randomly
+    ## todo: should pull quarts order in randomly
     for idx in range(0, 1000, 100):
         quarts = [list(j) for j in io5["quartets"][idx:idx+100]]
         weight = io5["weights"][idx:idx+100]
@@ -409,7 +412,8 @@ def insert_to_array(data, resqrt, reswgt, path):
     os.remove(path)
 
 
-def main(data, ipyclient, path=None, checkpoint=0):
+
+def main(data, ipyclient, path=None, checkpoint=0, nboots=100):
     """ 
     main funcs
     """
@@ -434,13 +438,13 @@ def main(data, ipyclient, path=None, checkpoint=0):
 
     ## get the seq array into hdf5
     #LOGGER.info("loading array")
-    print("loading array")
+    print("  loading array")
     data = get_seqarray(data, path)
 
     ## make quartet arrays into hdf5. Allow subsetting samples eventually.
     ## and optimize chunk value given remaining quartets and ipyclient    
     #LOGGER.info("loading quartets")
-    print("loading quartets")
+    print("  loading quartets")
     samples = data.samples
     data = get_quartets(data, samples)
 
@@ -492,7 +496,13 @@ def main(data, ipyclient, path=None, checkpoint=0):
                 ## submit a new job to the queue
                 del res[key]
                 finished += 1
-                print(r"  {:.1f}% complete".format(100*(finished / njobs)))
+                progress = 100*(finished / njobs)
+                hashes = '#'*int(progress/5)
+                nohash = ' '*int(20-len(hashes))
+                print("\r  [{}] {}%"\
+                      .format(hashes+nohash, int(progress)), end="")
+                sys.stdout.flush()
+                #print(\r"  {:.1f}% complete".format(100*(finished / njobs)))
                 try:
                     res[key] = lbview.apply(worker, 
                                     [data, jobiter.next()])                
@@ -507,11 +517,12 @@ def main(data, ipyclient, path=None, checkpoint=0):
     dump(data)    
 
     ## run quartet joining algorithm
-    run_qmc(data)
+    run_qmc(data, useweights=False)
+    run_qmc(data, useweights=True)
 
     ## 
-    print("  done")
-    return data
+    print("  running {} bootstrap replicates".format(nboots))
+    #return data
 
     #dview = ipyclient[:]
     #dview.block = False
@@ -573,6 +584,8 @@ def main(data, ipyclient, path=None, checkpoint=0):
 
     ## Run quartet max-cut on the quartets
     #run_qmc(data)
+
+    #_clientwrapper(self, stepfunc, args, nwait):
 
 
 

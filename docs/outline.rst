@@ -37,59 +37,68 @@ sorting the sequences among a number of :ref:`Samples<Samples>` (individuals).
 If the data are not yet demultiplexed then step 1 uses information from a 
 :ref:`barcodes file<barcodes_file>` to assign sequences to Samples. If the data 
 are already demultiplexed then step 1 simply reads the data in to count how 
-many reads are assigned to each Sample. 
+many reads are assigned to each Sample. Currently we do not yet support 
+demultiplexing of combinatorial barcodes (multiple barcodes per individual). 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step1: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`raw_fastq_path<raw_fastq_path>`,
-:ref:`barcodes_path<barcodes_path>`,
-:ref:`sorted_fastq_path<sorted_fastq_path>`, 
-:ref:`*datatype<datatype>`,
-:ref:`restriction_overhang<restriction_overhang>`,
-:ref:`max_barcode_mismatch<max_barcode_mismatch>`
+used or required (\*) for step1:   
+
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`raw_fastq_path<raw_fastq_path>`  
+* :ref:`barcodes_path<barcodes_path>`  
+* :ref:`sorted_fastq_path<sorted_fastq_path>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`restriction_overhang<restriction_overhang>`  
+* :ref:`max_barcode_mismatch<max_barcode_mismatch>`  
 
 
 2. Filtering / Editing reads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 2 uses the quality score recorded in the fastQ data files to filter low 
 quality base calls. Sites with a score below a set value are changed into “N”s, 
-and reads with more than the number of allowed “N”s are discarded. An  
-optional filter can be applied to remove adapters/primers, and there is an 
-optional filter to clean up the edges of poor quality reads.
+and reads with more than the number of allowed “N”s are discarded. The threshold
+for inclusion is set with the :ref:`phred_Qscore_offset<phred_Qscore_offset>` 
+parameter. An optional filter can be applied to remove adapters/primers
+(see :ref:`filter_adapters<filter_adapters>`), and there is an 
+optional filter to clean up the edges of poor quality reads
+(see :ref:`edit_cutsites<edit_cutsites>`).
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step2: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`barcodes_path<barcodes_path>`,
-:ref:`*datatype<datatype>`,
-:ref:`restriction_overhang<restriction_overhang>`,
-:ref:`max_low_qual_bases<max_low_qual_bases>`,
-:ref:`filter_adapters<filter_adapters>`,
-:ref:`filter_min_trim_len<filter_min_trim_len>`
-:ref:`edit_cut_sites<edit_cut_sites>`
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`barcodes_path<barcodes_path>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`restriction_overhang<restriction_overhang>`  
+* :ref:`max_low_qual_bases<max_low_qual_bases>`  
+* :ref:`filter_adapters<filter_adapters>`  
+* :ref:`filter_min_trim_len<filter_min_trim_len>`  
+* :ref:`edit_cut_sites<edit_cut_sites>`  
+* :ref:`excludes<excludes>`  
 
 
 3. Clustering / Mapping reads within Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 3 first dereplicates the sequences from step 2, recording the number of 
-times each unique read is observed. These are then either de novo clustered 
-(using vsearch_) or mapped to a reference genome (using smalt_ and bedtools_), 
-depending on the selected assembly method. In either case, reads are matched 
-together on the basis of sequence similarity and the resulting clusters are 
-aligned using muscle_. 
+times each unique read is observed. If the data are paired-end, it then uses
+vsearch_ to merge paired reads which overlap. The resulting data are 
+then either de novo clustered (using vsearch_) or mapped to a reference 
+genome (using smalt_ and bedtools_), depending on the selected assembly method.
+In either case, reads are matched together on the basis of sequence similarity
+and the resulting clusters are aligned using muscle_. 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step3: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*assembly_method<assembly_method>`,
-:ref:`*datatype<datatype>`,
-:ref:`*clust_threshold<clust_threshold>`,
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*assembly_method<assembly_method>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*clust_threshold<clust_threshold>`  
+* :ref:`excludes<excludes>`  
 
 
 4. Joint estimation of heterozygosity and error rate
@@ -103,11 +112,12 @@ a diploid model is used (i.e., two alleles are expected to occur equally).
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step4: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`*restriction_overhang<restriction_overhang>`, 
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*restriction_overhang<restriction_overhang>`  
+* :ref:`excludes<excludes>`  
 
 
 5. Consensus base calling and filtering
@@ -115,19 +125,20 @@ used or required (\*) for step4:
 Step5 estimates consensus allele sequences from clustered reads given the estimated
 parameters from step4 and a binomial model. Those which have less than the 
 minimum coverage, more than the maximum number of undetermined sites, 
-or more than the maximum number of heterozygous sites, 
+more than the maximum number of heterozygous sites, 
 or more than the allowed number of alleles, are discarded. 
 In diploid data if two alleles are present the phase of heterozygous sites are 
 retained in the consensus sequences.
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step5: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`*max_alleles_consens<max_alleles_consens>`,
-:ref:`*max_Ns_consens<max_Ns_consens>`,
-:ref:`excludes<excludes>`
+used or required (\*) for step5:  
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*max_alleles_consens<max_alleles_consens>`  
+* :ref:`*max_Ns_consens<max_Ns_consens>`  
+* :ref:`excludes<excludes>`  
 
 
 6. Clustering / Mapping reads among Samples and alignment
@@ -135,16 +146,18 @@ used or required (\*) for step5:
 Step6 clusters consensus sequences across Samples using the same assembly method 
 as in step 3. One allele is randomly sampled before clustering so that ambiguous
 characters have a lesser effect on clustering, but the resulting data retain
-information for heterozygotes. 
+information for heterozygotes. The clustered sequences are then aligned using 
+muscle_.
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step6: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`*max_alleles_consens<max_alleles_consens>`,
-:ref:`*max_Ns_consens<max_Ns_consens>`,
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*max_alleles_consens<max_alleles_consens>`  
+* :ref:`*max_Ns_consens<max_Ns_consens>`  
+* :ref:`excludes<excludes>`  
 
 
 7. Filtering and formatting output files
@@ -156,23 +169,22 @@ often repeated at several different settings for the parameter
 proportions of missing data (see branching_workflow_). 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step7: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`min_samples_locus<min_samples_locus>`,
-:ref:`max_Indels_locus<max_Indels_locus>`,
-:ref:`max_shared_Hs_locus<max_shared_Hs_locus>`,
-:ref:`trim_overhang<trim_overhang>`,
-:ref:`output_formats<output_formats>`,
-:ref:`pop_assign_file<pop_assign_file>`,
-:ref:`excludes<excludes>`,
-:ref:`outgroups<outgroups>`
+used or required (\*) for step7:   
 
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`min_samples_locus<min_samples_locus>`  
+* :ref:`max_Indels_locus<max_Indels_locus>`  
+* :ref:`max_shared_Hs_locus<max_shared_Hs_locus>`  
+* :ref:`trim_overhang<trim_overhang>`  
+* :ref:`output_formats<output_formats>`  
+* :ref:`pop_assign_file<pop_assign_file>`  
+* :ref:`excludes<excludes>`  
+* :ref:`outgroups<outgroups>`
 
 
 .. _branching_workflow:
-
 
 Branching workflow
 -------------------
@@ -240,62 +252,3 @@ You can find more branching examples in the
     ## run steps 3-7 for the two Assemblies
     data1.run("34567")
     data2.run("34567")
-
-
-
-Branching Architecture
-----------------------
-To better understand how branching works it helps to understand the underlying 
-architecture of the API and how the data are store and reused between different
-Assemblies. First it is important to define the objects we refer to as an 
-Assembly_ and as Samples_. 
-
-
-.. _Samples:  
-
-Samples
-^^^^^^^
-Samples are created during step 1 and each Sample represent a unique barcoded
-individual from the sequence data. Sample objects store information about where
-that Sample's data is stored on the disk and the statistics before and after 
-each step (nreads, nfiltered_reads, nclusters, etc.). 
-
-
-.. _Assembly:  
-
-Assembly
-^^^^^^^^
-
-
-
-
-
-
-**Example CLI basic workflow**
-
-.. code-block:: bash
-
-    ## Create a new params file using -n and name the assembly 'data1'.
-    ## This creates file called data1-params.txt
-    ipyrad -n data1
-
-    ## Use a text editor to change setting in data1-params.txt
-    ## and then run steps 1-7 using these settings.
-    ipyrad -p data1-params.txt
-
-
-**Example API basic workflow**
-
-.. code-block:: python
-
-    ## import ipyrad 
-    import ipyrad as ip
-
-    ## create an Assembly and modify some parameter settings
-    data1 = ip.Assembly("data1")
-    data1.set_params("project_dir", "example")
-    data1.set_params("raw_fastq_path", "data/*.fastq")
-    data1.set_params("barcodes_path", "barcodes.txt")   
-
-    ## run steps 1-7, no args to run means run all steps.
-    data1.run()

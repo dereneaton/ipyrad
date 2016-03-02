@@ -171,7 +171,7 @@ def _getbins():
     assert _cmd_exists(smalt), "smalt not found here: "+smalt
     assert _cmd_exists(samtools), "samtools not found here: "+samtools
     assert _cmd_exists(bedtools), "bedtools not found here: "+bedtools
-    assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
+    #assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
     return vsearch, muscle, smalt, samtools, bedtools, qmc
 
 

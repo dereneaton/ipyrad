@@ -4,6 +4,8 @@
 .. _userguide:
 
 
+.. _tutorials:
+
 Tutorials
 =========
 The most quick and dirty way to get started with ipyrad is to use the CLI
