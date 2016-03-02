@@ -375,6 +375,7 @@ def singlecat(data, sample, nloci, indels):
 
     ## LOAD IN STEP5 CATG ARRAY
     ## get catg from step5 for this sample, the shape is (nloci, maxlen)
+    LOGGER.debug("encode %s", sample.files.database)
     old_h5 = h5py.File(sample.files.database, 'r')
     catarr = old_h5["catg"][:]
 
