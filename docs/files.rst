@@ -9,10 +9,12 @@ ipyrad_ can be used to assemble any kind of data that is generated using a
 restriction digest method (RAD, ddRAD) or related amplification-based 
 process (e.g., NextRAD, RApture). 
 
-The `input files`_ can be sorted among Samples (demultiplexed) before starting 
-to use ipyrad, or ipyrad can be used to demultiplex the data based on a 
-`barcodes file`_. Examples of both are available in the :ref:`tutorial<tutorials>`. 
-Finally, ipyrad aims to be very flexible in allowing assembly of reads of various
+The :ref:`input files<input_files>` can be sorted among Samples 
+(demultiplexed) before starting to use ipyrad, or ipyrad can be used 
+to demultiplex the data based on a 
+`barcodes file`_. Examples of both are available in the 
+:ref:`tutorials<tutorials>`. 
+ipyrad aims to be very flexible in allowing assembly of reads of various
 lengths so that new data can be easily combined with older data. 
 
 
