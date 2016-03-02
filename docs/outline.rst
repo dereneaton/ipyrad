@@ -40,12 +40,13 @@ are already demultiplexed then step 1 simply reads the data in to count how
 many reads are assigned to each Sample. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step1: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`raw_fastq_path<raw_fastq_path>`,
-:ref:`barcodes_path<barcodes_path>`,
-:ref:`sorted_fastq_path<sorted_fastq_path>`, 
+used or required (\*) for step1:   
+
+* :ref:`*assembly_name<assembly_name>`,   
+* :ref:`*project_dir<project_dir>`,   
+* :ref:`raw_fastq_path<raw_fastq_path>`,  
+* :ref:`barcodes_path<barcodes_path>`,  
+* :ref:`sorted_fastq_path<sorted_fastq_path>`,  
 :ref:`*datatype<datatype>`,
 :ref:`restriction_overhang<restriction_overhang>`,
 :ref:`max_barcode_mismatch<max_barcode_mismatch>`
@@ -240,62 +241,3 @@ You can find more branching examples in the
     ## run steps 3-7 for the two Assemblies
     data1.run("34567")
     data2.run("34567")
-
-
-
-Branching Architecture
-----------------------
-To better understand how branching works it helps to understand the underlying 
-architecture of the API and how the data are store and reused between different
-Assemblies. First it is important to define the objects we refer to as an 
-Assembly_ and as Samples_. 
-
-
-.. _Samples:  
-
-Samples
-^^^^^^^
-Samples are created during step 1 and each Sample represent a unique barcoded
-individual from the sequence data. Sample objects store information about where
-that Sample's data is stored on the disk and the statistics before and after 
-each step (nreads, nfiltered_reads, nclusters, etc.). 
-
-
-.. _Assembly:  
-
-Assembly
-^^^^^^^^
-
-
-
-
-
-
-**Example CLI basic workflow**
-
-.. code-block:: bash
-
-    ## Create a new params file using -n and name the assembly 'data1'.
-    ## This creates file called data1-params.txt
-    ipyrad -n data1
-
-    ## Use a text editor to change setting in data1-params.txt
-    ## and then run steps 1-7 using these settings.
-    ipyrad -p data1-params.txt
-
-
-**Example API basic workflow**
-
-.. code-block:: python
-
-    ## import ipyrad 
-    import ipyrad as ip
-
-    ## create an Assembly and modify some parameter settings
-    data1 = ip.Assembly("data1")
-    data1.set_params("project_dir", "example")
-    data1.set_params("raw_fastq_path", "data/*.fastq")
-    data1.set_params("barcodes_path", "barcodes.txt")   
-
-    ## run steps 1-7, no args to run means run all steps.
-    data1.run()

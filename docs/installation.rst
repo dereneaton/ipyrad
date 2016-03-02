@@ -30,8 +30,8 @@ If you are working on an :ref:`HPC<HPC_installation>` cluster it is most likely
 a Linux machine. 
 
 
-Mac install
-^^^^^^^^^^^^
+Mac install of conda
+^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -55,8 +55,8 @@ Mac install
     conda info
 
 
-Linux install
-^^^^^^^^^^^^^^
+Linux install of conda
+^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -95,8 +95,8 @@ ipyrad install
 Once conda_ is installed, ipyrad_ can be installed by typing the following 
 command into a terminal. This sometimes takes a few minutes to check all of the
 dependencies before the installation finishes, so be patient. Make sure you 
-do not forget the -c flag. This tells conda that the ipyrad package is located
-in a channel called ipyrad.
+do not forget the ``-c ipyrad`` flag. This tells conda that the ipyrad package 
+is located in a channel called ipyrad.
 
 .. code-block:: bash  
 
@@ -126,7 +126,7 @@ executables) locally, without needing to load them from the system-wide
 software. 
 
 
-Included Dependencies
+Included dependencies
 ------------
 The conda_ installation will install the following required dependencies:
 
