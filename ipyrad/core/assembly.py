@@ -1053,19 +1053,22 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
+        ## remove samples that aren't ready
+        csamples = self.samples_precheck(samples, 6, force)
+
         ## print CLI header
         if self._headers:
             print("  Step6: Clustering across {} samples at {} similarity".\
-                  format(len(samples), self.paramsdict["clust_threshold"]))
+                  format(len(csamples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
-        if not self.samples_precheck(samples, 6, force):
+        if not csamples:
             raise IPyradError("""
     No Samples ready for clustering. First run step5().""")
 
         elif not force:
             ## skip if all are finished
-            if all([i.stats.state >= 6 for i in samples]):
+            if all([i.stats.state >= 6 for i in csamples]):
                 print("""
     Skipping: All {} selected Samples already clustered.
     (can overwrite with force argument)
@@ -1077,7 +1080,7 @@ class Assembly(object):
 
         ## run if this point is reached. We no longer check for existing 
         ## h5 file, since checking Sample states should suffice.
-        assemble.cluster_across.run(self, samples, noreverse,
+        assemble.cluster_across.run(self, csamples, noreverse,
                                     force, randomseed, ipyclient)
 
     #     ## check for existing and force
@@ -1103,15 +1106,18 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
+        ## Get samples that are in state=6
+        csamples = self.samples_precheck(samples, 6, force)
+
         if self._headers:
             print("  Step7: Filter and write output files for {} Samples.".\
-                  format(len(samples)))
+                  format(len(csamples)))
 
         ## Check if all/none of the samples are in the self.database
         try:
             with h5py.File(self.database, 'r') as ioh5:
                 dbset = set(ioh5["seqs"].attrs['samples'])
-                iset = set([i.name for i in samples])
+                iset = set([i.name for i in csamples])
                 diff = iset.difference(dbset)
                 if diff:
                     raise IPyradError("""
@@ -1135,7 +1141,7 @@ class Assembly(object):
     rerun with force argument to overwrite.""".format(self.dirs.outfiles))
 
         ## Run step7
-        assemble.write_outfiles.run(self, samples, force, ipyclient)
+        assemble.write_outfiles.run(self, csamples, force, ipyclient)
 
 
 

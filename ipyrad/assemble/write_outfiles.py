@@ -159,7 +159,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     ## get stats for locus coverage
     lrange = range(1, len(anames)+1)
     locdat = pd.Series(locuscounts, name="locus_coverage", index=lrange)
-    start = data.paramsdict["min_samples_locus"]
+    start = data.paramsdict["min_samples_locus"]-1
     locsums = pd.Series({i: np.sum(locdat.values[start:i]) for i in lrange}, 
                         name="sum_coverage", index=lrange)
     print("\n\n\n## The number of loci for which N taxa have data."+\
@@ -564,7 +564,6 @@ def filter_stacks(args):
         ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
         chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
 
-
         handle = os.path.join(chunkdir, "edgf.{}.npy".format(hslice[0]))
         with open(handle, 'w') as out:
             np.save(out, edgfilter)
@@ -636,8 +635,8 @@ def get_edges(data, superseqs, splits):
                 4: allsamp}
     edgemins = [edgedict.get(i) for i in edgetuple]
 
-    #LOGGER.info("edgemins %s", edgemins)
-    #LOGGER.info("splits %s", splits)
+    LOGGER.info("edgemins %s", edgemins)
+    LOGGER.info("splits %s", splits)
 
     ## convert all - to N to make this easier
     superseqs[superseqs == "-"] = "N"
@@ -655,16 +654,18 @@ def get_edges(data, superseqs, splits):
             r1s = ccx[idx, :split]
             r2s = ccx[idx, split+4:]
         else:
-            r1s = ccx[idx, ]
+            r1s = ccx[idx, :]
         ## set default values
         edge0 = edge1 = edge2 = edge3 = 0
         
         ## if edge trim fails then locus is filtered
         try:
-            edge0 = np.where(r1s >= edgemins[0])[0].min()
+            edge0 = max(0, np.where(r1s >= edgemins[0])[0].min())
             edge1 = np.where(r1s >= edgemins[1])[0].max()
         except ValueError:
-            edgefilter[idx] = True
+            #edgefilter[idx] = True
+            LOGGER.debug("edge filtered")
+            edge1 = np.where(r1s >= 1)[0].max()
             #LOGGER.debug("Xccx %s", ccx[idx])            
             #LOGGER.debug("Xsplit %s", split)
             #LOGGER.debug("Xr1s %s", r1s)
@@ -675,7 +676,7 @@ def get_edges(data, superseqs, splits):
         else:
             assert edge0 < edge1             
 
-        #LOGGER.debug("edges r1 (%s, %s)", edge0, edge1)
+        LOGGER.debug("edges r1 (%s, %s)", edge0, edge1)
 
         ## if split then do the second reads separate
         if split:
@@ -683,8 +684,10 @@ def get_edges(data, superseqs, splits):
                 edge2 = np.where(r2s >= edgemins[2])[0].min()
                 edge3 = np.where(r2s >= edgemins[3])[0].max()
             except ValueError:
-                edgefilter[idx] = True
-            
+                #edgefilter[idx] = True
+                edge2 = edge1 + 4
+                edge3 = np.where(r2s >= 1)[0].max()
+
             ## filter cut2
             if edgetuple[3]:
                 edge3 = edge3-len(cut2)
@@ -807,6 +810,7 @@ def filter_maxhet(data, superseqs, edges):
     ## get the per site number of bases in ambig, and get the max per site 
     ## value for each locus, then get boolean array of those > maxhet.
     for idx, edg in enumerate(edges):
+        LOGGER.debug("testing %s, %s", idx, edg)
         share = np.array(\
             [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=0)\
             .max() for ambig in "RSKYWM"]).max()
