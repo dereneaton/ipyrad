@@ -104,6 +104,7 @@ to be demultiplexed based on their barcodes or index; or your data may
 already be demultiplexed, in which case each of your data files corresponds to 
 a different sample. 
 
+
 multiplexed (raw) sequence files  
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 If your data are not yet sorted among individuals/samples then you will need 
@@ -115,33 +116,32 @@ file. The raw data file(s) should be entered in the ``raw_fastq_path`` parameter
 demultiplexed (sorted) sequence files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 If your data are already sorted then you simply have to enter the path to the 
-data files in the ``sorted_fastq_path`` parameter of ipyrad. 
-Sample names come from file names. 
+data files in the ``sorted_fastq_path`` parameter.
+The :ref:`cookbook recipes <cookbook_recipes>` section provides more complex
+methods for combining data from multiple sequencing runs into the same 
+individual, or for using multiple barcodes file.
 
 
 .. note:: 
 
     It's worth paying careful attention to file names before starting
     an analysis since these names, and any included typos, will be perpetuated 
-    through all the resulting data files. 
+    through all the resulting data files. Do not include spaces in file names.
 
 
 .. _file_names:
 Input file names
 -----------------
 If your data are not yet demultiplexed then Sample names will come from the 
-`barcodes files`_, as shown below. Otherwise, if data files are already 
-sorted among Samples (demultiplexed) then Sample names will be extracted from 
-the file names. The file names should not have any spaces in them. 
+:ref:`barcodes files<barcodes_file>`, as shown below. 
+Otherwise, if data files are already sorted among Samples (demultiplexed) 
+then Sample names will be extracted from the file names. 
+The file names should not have any spaces in them. 
 If you are using a paired-end data type then the rules for file names are a bit 
 more strict than for single-end data. Every read1 file must contain the string 
 ``_R1_`` in it, and every R2 file must match exactly to the name of the R1 file
 except that it has ``_R2_``. See the tutorials for an example. 
 
-The :ref:`cookbook section<Cookbook recipes - API>` 
-provides examples of how to combine into a single analysis
-Samples that were sequenced in different sequencing runs, or with different 
-barcodes files. 
 
 
 .. _barcodes_file:

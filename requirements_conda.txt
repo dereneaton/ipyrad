@@ -2,7 +2,7 @@ cython
 dill
 h5py
 ipython
-ipyparallel
+ipyparallel>5.0
 ipykernel
 jupyter
 jupyter-client

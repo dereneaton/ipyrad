@@ -67,7 +67,6 @@ for a fast analysis.
 
 .. toctree::
     :maxdepth: 1
-
     pedicularis.rst
     viburnum.rst
 

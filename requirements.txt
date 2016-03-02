@@ -3,7 +3,7 @@ dill
 sphinx
 cython
 ipython
-ipyparallel
+ipyparallel>5.0
 ipykernel
 jupyter
 jupyter-client
