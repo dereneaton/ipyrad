@@ -5,8 +5,9 @@
 
 Installation
 ============
-We put significant effort into making the installation process for ipyrad as easy 
-as possible. Please let us know if any 
+We put significant effort into making the installation process for ipyrad 
+as easy as possible. Simply copy and paste a few lines of code below and 
+you will be ready to go.
 
 
 Conda install
