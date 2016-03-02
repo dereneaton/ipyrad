@@ -197,7 +197,7 @@ class Assembly(object):
                         ("max_fragment_length", 150),
                         ("max_inner_mate_distance", 60),
                         ("preview_step1", 4000000),
-                        ("preview_step2", 250000),
+                        ("preview_step2", 100000),
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 16)

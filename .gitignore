@@ -10,8 +10,9 @@ ipyrad.egg-info
 ipyrad.sublime-*
 tests/*
 env/
-params.txt
-
+params-*.txt
+ipyrad_log.txt
+	
 ## but not these files
 !tests/*.ipynb
 !tests/data/*

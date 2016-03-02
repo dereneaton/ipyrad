@@ -78,10 +78,15 @@ def showstats(parsedict):
          +"\n------------------------------------------------")
 
         fullcurdir = os.path.realpath(os.path.curdir)
-        for i, key in enumerate(sorted(data.stats_files)):
-            val = data.stats_files[key]
-            val = val.replace(fullcurdir, ".")                
-            print("step {}: {}".format(i+1, val))
+        for i in range(1,8):
+            #enumerate(sorted(data.stats_files)):
+            key = "s"+str(i)
+            try:
+                val = data.stats_files[key]
+                val = val.replace(fullcurdir, ".")                
+                print("step {}: {}".format(i, val))
+            except (KeyError, AttributeError):
+                print("step {}: None".format(i))
         print("\n")
     else:
         print("No stats to display")
