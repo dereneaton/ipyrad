@@ -7,10 +7,13 @@ Input data/files
 =================
 ipyrad_ can be used to assemble any kind of data that is generated using a 
 restriction digest method (RAD, ddRAD) or related amplification-based 
-process (e.g., NextRAD, RApture). The `input files`_ can be sorted among Samples 
-(demultiplexed) before starting to use ipyrad, or ipyrad can be used to 
-demultiplex the data based on a `barcodes file`_. Examples of both are available
-in the :ref:`tutorial<tutorials>`. 
+process (e.g., NextRAD, RApture). 
+
+The `input files`_ can be sorted among Samples (demultiplexed) before starting 
+to use ipyrad, or ipyrad can be used to demultiplex the data based on a 
+`barcodes file`_. Examples of both are available in the :ref:`tutorial<tutorials>`. 
+Finally, ipyrad aims to be very flexible in allowing assembly of reads of various
+lengths so that new data can be easily combined with older data. 
 
 
 .. _data_types:
@@ -82,19 +85,28 @@ If your data are already sorted then you simply have to enter the path to the
 data files in the ``sorted_fastq_path`` parameter of ipyrad. 
 Sample names come from file names. 
 
-.. note:: The file names matter.
+
+.. note:: It's worth paying careful attention to file names before starting
+an analysis since these names, and any included typos, will be perpetuated 
+through all the resulting data files. 
 
 
 .. _file_names:
 Input file names
 -----------------
-If you are using a paired-end data type then the rules for filenames are much 
+If your data are not yet demultiplexed then Sample names will come from the 
+`barcodes files`_, as shown below. Otherwise, if data files are already 
+sorted among Samples (demultiplexed) then Sample names will be extracted from 
+the file names. The file names should not have any spaces in them. 
+If you are using a paired-end data type then the rules for file names are a bit 
 more strict than for single-end data. Every read1 file must contain the string 
 ``_R1_`` in it, and every R2 file must match exactly to the name of the R1 file
-except that it has ``_R2_``. 
+except that it has ``_R2_``. See the tutorials for an example. 
 
-* Link to recipe: renaming Samples different from file names.
-* Link to recipe: combining multiple input files for individual Samples. 
+The :ref:`cookbook section<Cookbook recipes - API>` 
+provides examples of how to combine into a single analysis
+Samples that were sequenced in different sequencing runs, or with different 
+barcodes files. 
 
 
 .. _barcodes_file:
