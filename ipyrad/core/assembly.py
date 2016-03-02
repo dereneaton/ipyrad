@@ -315,7 +315,9 @@ class Assembly(object):
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
 
-        print("    Linking to demultiplexed fastq files in '{}'".format(path))
+        print("""
+    Linking to demultiplexed fastq files in:
+      {}""".format(path))
 
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):

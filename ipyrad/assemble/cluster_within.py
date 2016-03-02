@@ -528,8 +528,8 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             if not sample.stats.state == 2.5 or force:
                 #if not align_only:
                 submitted_args.append([data, sample, noreverse, tpproc])
-
-	## If all samples are in step 2.5 then submitted_args will be empty
+        
+        ## If all samples are in step 2.5 then submitted_args will be empty
         if submitted_args:
 
             ## MAP READS if reference sequence is specified
