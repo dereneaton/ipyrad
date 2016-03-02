@@ -44,24 +44,32 @@ e.g., double-digest RAD-seq (Peterson et al. xxx)
 gbs
 ^^^^
 
-This category is used for any datatype which selects fragments that were digested
-by a single enzyme on both ends of the fragment. This data type requires 
+This category includes any data type which selects fragments that were digested
+by a single enzyme that cuts both ends of the fragment. This data type requires 
 reverse-complement clustering because the forward vs reverse adapters can attach
-to either end of a fragment, and thus shorter fragments often overlap partially 
-or completely. 
+to either end of each fragment, and thus shorter fragments often overlap partially 
+or completely. When analyzing GBS data we strongly recommend using a stringent
+setting for ``filters_adapters``. 
 
 e.g., genotyping-by-sequencing (Elshire et al. xxx, ), EZ-RAD (Toonin et al. xxxx), 
 
 
 pairddrad
 ^^^^^^^^^^^^
-This category...
-This includes paired-end EZ-RAD...
+This category is for paired-read data from fragments that were generated 
+through restriction digestion with two different enzymes. During step3 the 
+paired-reads will be tested for :ref:`paired_read_merging<paired_read_merging>`
+if they overlap partially. 
 
 
 pairgbs
 ^^^^^^^^
-This category ...
+This category is for paired-read data from fragments that were generated 
+by digestion with a single enzyme that cuts both ends of the fragment. 
+The e
+
+ any data type which selects fragments
+This includes paired-end EZ-RAD...
 
 
 2brad

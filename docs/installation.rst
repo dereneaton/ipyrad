@@ -57,6 +57,8 @@ Mac install
 Linux install
 ^^^^^^^^^^^^^^
 
+.. code-block:: bash
+
     ## The curl command is used to download the installer from the web. Take note
     ## that the -O flag is a capital o not a zero.
     wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
