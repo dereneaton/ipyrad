@@ -8,7 +8,7 @@ __version__ = "0.1.65"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
-__debugfile__ = "/tmp/ipyrad_debug.txt"
+__debugfile__ = "./ipyrad_log.txt"
 
 ## main ip.functions
 from . import load
@@ -43,7 +43,7 @@ try:
 
 ## in case system doesn't let you use /tmp            
 except (OSError, IOError, ValueError):
-    __debugfile__ = "./ipyrad_debug.txt"  ##_os.devnull
+    __debugfile__ = "./ipyrad_log.txt"  ##_os.devnull
     _, __loglevel__ = "null", "ERROR"  ## hack for versioner
 
 
