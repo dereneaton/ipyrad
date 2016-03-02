@@ -585,7 +585,9 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         ## In the event step 3 gets cancelled make sure we save which files are
         ## in step 2.5 so we dont have to redo them.
         for success, sample in zip(results, samples):
-            if success:
+            if sample.stats.state == 3:
+                pass
+            elif success:
                 sample.stats.state = 2.5
 
 
