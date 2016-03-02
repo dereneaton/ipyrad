@@ -6,39 +6,40 @@
 Input data/files
 =================
 ipyrad_ can be used to assemble any kind of data that is generated using a 
-restriction digest method (RAD-seq) or 
+restriction digest method (RAD, ddRAD) or related amplification-based 
+process (e.g., NextRAD, RApture). 
 
 
 .. _data_types:
 Supported data types
 --------------------
 
-There are increasingly a huge range of ways to generate reduced representation 
-genomic data sets using either restriction digestion or a set of primers or baits, 
-many of which can be assembled in ipyrad. Because it is difficult to keep up with 
+There is increasingly a large variety of ways to generate reduced representation 
+genomic data sets using either restriction digestion or primer sets, 
+many of which can be assembled in ipyrad_. Because it is difficult to keep up with 
 all of the names, we use our own terminology, described below, to group together
-data types that can be analyzed using the same methods. If you have a data type
-that isn't described below and your're not sure if it can be analyzed in ipyrad
-:ref:`let us know here<gitter>`. 
-
-is some confusion in the literature about the names of 
+data types that can be analyzed using the same bioinformatic methods. 
+If you have a data type that is not described below and you're not sure if it 
+can be analyzed in ipyrad_ :ref:`let us know here<gitter>`. 
 
 
 rad  
 ^^^
-This category is used for any datatype which uses a single restriction enzyme 
-or amplicon. 
+This category includes data types which use a single cutter to generate 
+DNA fragments for sequencing based on a single cut site. 
 
 e.g., RAD-seq (citation)
 
+
 ddrad
 ^^^^^^
-
-This category is used for any datatype which select fragments that were digested
-by two different restriction enzymes on either end. During assembly is is 
-analyzed differently from the **rad** data type by more stringent filtering.
+This category includes data types which select fragments that were digested
+by two different restriction enzymes with cut the fragment on either end. 
+During assembly this type of data is analyzed differently from the **rad** data
+type by more stringent filtering of the second (usually more common) cutter.
 
 e.g., double-digest RAD-seq (Peterson et al. xxx)
+
 
 gbs
 ^^^^

@@ -5,6 +5,9 @@
 
 Installation
 ============
+We put significant effort into making the installation process for ipyrad as easy 
+as possible. Please let us know if any 
+
 
 Conda install
 -------------
@@ -25,29 +28,51 @@ is correct for your system. If you are working on an :ref:`HPC<HPC_installation>
 cluster it is most likely a Linux machine. Skip this section if you already 
 have conda installed.
 
+
+Mac install
+^^^^^^^^^^^^
+
 .. code-block:: bash
 
-    ## EITHER download Miniconda for Linux 
-    wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh    
-
-    ## OR download Miniconda for Mac
-    ## wget is not available by default on Mac so you have to use curl. The
-    ## -O flag is a capital o not a zero
+    ## The curl command is used to download the installer from the web. 
+    ## Take note that the -O flag is a capital o not a zero.
     curl -O https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh
+
+    ## Install miniconda. By default it will propose installing to your 
+    ## home directory, which should be fine, e.g., `/home/user/miniconda2`
+    ## When asked yes/no to append the miniconda directory to $PATH, say yes.
+    bash Miniconda-latest-MacOSX-x86_64.sh
+
+    ## Now either quit and reopen the terminal, or run the following command 
+    ## to reload your ~/.bash_profile so that miniconda will be in your path.
+    ## This is necessary so that the conda program can be found from the 
+    ## terminal by simply typing conda. If a ~/.bash_profile does not exist 
+    ## it might alternatively be named ~/.bashrc.
+    source ~/.bash_profile
+
+    ## test that conda is installed. This will print info about your conda install.
+    conda info
+
+
+Linux install
+^^^^^^^^^^^^^^
+
+    ## The curl command is used to download the installer from the web. Take note
+    ## that the -O flag is a capital o not a zero.
+    wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
 
     ## Install miniconda. Follow the directions, by default it will propose installing
     ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
     ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.  
-    ## The example here is for the Linux installer.
     bash Miniconda-latest-Linux-x86_64.sh
 
     ## You could now quit and reopen the terminal, or just run the following command 
-    ## which reloads ~/.bashrc so that miniconda will now be in your path. This
-    ## way the conda program can be found from the terminal by simply typing conda.  
-    ## if ~/.bashrc does not exist it is probably named ~/.bash_profile instead.
-    source ~/.bashrc 
+    ## which reloads your ~/.bash_profile so that miniconda will now be in your path.
+    ## This is necessary so that the conda program can be found from the terminal by 
+    ## simply typing conda. 
+    source ~/.bashrc
 
-    ## test that conda is installed by printing info about conda
+    ## test that conda is installed. This will print info about your conda install.
     conda info
 
 
@@ -56,14 +81,19 @@ miniconda/ (or anaconda/) directory to your $PATH, say yes. What this does
 is add a line to your **~/.bashrc** file so that the anaconda directory becomes 
 the default location to search for Python and Python modules, and also so that 
 it can find executables in this directory. If you find that setting this path 
-interferes with any of your other software you can always comment out the 
+interferes with any of your other software you can always comment out the appended
 line from **~/.bashrc**. However, the whole point of conda_ is to create 
 unique environments in which software packages are protected from conflicting
 with each other, so if you run into problems it can likely be fixed using conda_. 
 
+
+Install ipyrad
+^^^^^^^^^^^^^^^
 Once conda_ is installed, ipyrad_ can be installed by typing the following 
 command into a terminal. This sometimes takes a few minutes to check all of the
-dependencies before the installation finishes, so be patient.
+dependencies before the installation finishes, so be patient. Make sure you 
+do not forget the -c flag. This tells conda that the ipyrad package is located
+in a channel called ipyrad.
 
 .. code-block:: bash  
 
@@ -71,7 +101,7 @@ dependencies before the installation finishes, so be patient.
     conda install -c ipyrad ipyrad     ## installs the latest release
 
 If you wish to install a specific version of ipyrad_, or to upgrade from an 
-older version to the most recent release, you could use one of the following 
+older version to the most recent release, you can use one of the following 
 commands:
 
 .. code-block:: bash  
