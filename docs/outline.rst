@@ -44,13 +44,13 @@ The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step1:   
 
 
-* :ref:`*assembly_name<assembly_name>`,   
-* :ref:`*project_dir<project_dir>`,   
-* :ref:`raw_fastq_path<raw_fastq_path>`,  
-* :ref:`barcodes_path<barcodes_path>`,  
-* :ref:`sorted_fastq_path<sorted_fastq_path>`,    
-* :ref:`*datatype<datatype>`,  
-* :ref:`restriction_overhang<restriction_overhang>`,  
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`raw_fastq_path<raw_fastq_path>`  
+* :ref:`barcodes_path<barcodes_path>`  
+* :ref:`sorted_fastq_path<sorted_fastq_path>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`restriction_overhang<restriction_overhang>`  
 * :ref:`max_barcode_mismatch<max_barcode_mismatch>`  
 
 
@@ -67,35 +67,38 @@ optional filter to clean up the edges of poor quality reads
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step2: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`barcodes_path<barcodes_path>`,
-:ref:`*datatype<datatype>`,
-:ref:`restriction_overhang<restriction_overhang>`,
-:ref:`max_low_qual_bases<max_low_qual_bases>`,
-:ref:`filter_adapters<filter_adapters>`,
-:ref:`filter_min_trim_len<filter_min_trim_len>`
-:ref:`edit_cut_sites<edit_cut_sites>`
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`barcodes_path<barcodes_path>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`restriction_overhang<restriction_overhang>`  
+* :ref:`max_low_qual_bases<max_low_qual_bases>`  
+* :ref:`filter_adapters<filter_adapters>`  
+* :ref:`filter_min_trim_len<filter_min_trim_len>`  
+* :ref:`edit_cut_sites<edit_cut_sites>`  
+* :ref:`excludes<excludes>`  
 
 
 3. Clustering / Mapping reads within Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 3 first dereplicates the sequences from step 2, recording the number of 
-times each unique read is observed. These are then either de novo clustered 
-(using vsearch_) or mapped to a reference genome (using smalt_ and bedtools_), 
-depending on the selected assembly method. In either case, reads are matched 
-together on the basis of sequence similarity and the resulting clusters are 
-aligned using muscle_. 
+times each unique read is observed. If the data are paired-end, it then uses
+vsearch_ to merge paired reads which overlap. The resulting data are 
+then either de novo clustered (using vsearch_) or mapped to a reference 
+genome (using smalt_ and bedtools_), depending on the selected assembly method.
+In either case, reads are matched together on the basis of sequence similarity
+and the resulting clusters are aligned using muscle_. 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step3: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*assembly_method<assembly_method>`,
-:ref:`*datatype<datatype>`,
-:ref:`*clust_threshold<clust_threshold>`,
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*assembly_method<assembly_method>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*clust_threshold<clust_threshold>`  
+* :ref:`excludes<excludes>`  
 
 
 4. Joint estimation of heterozygosity and error rate
@@ -109,11 +112,12 @@ a diploid model is used (i.e., two alleles are expected to occur equally).
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step4: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`*restriction_overhang<restriction_overhang>`, 
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*restriction_overhang<restriction_overhang>`  
+* :ref:`excludes<excludes>`  
 
 
 5. Consensus base calling and filtering
@@ -121,19 +125,20 @@ used or required (\*) for step4:
 Step5 estimates consensus allele sequences from clustered reads given the estimated
 parameters from step4 and a binomial model. Those which have less than the 
 minimum coverage, more than the maximum number of undetermined sites, 
-or more than the maximum number of heterozygous sites, 
+more than the maximum number of heterozygous sites, 
 or more than the allowed number of alleles, are discarded. 
 In diploid data if two alleles are present the phase of heterozygous sites are 
 retained in the consensus sequences.
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step5: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`*max_alleles_consens<max_alleles_consens>`,
-:ref:`*max_Ns_consens<max_Ns_consens>`,
-:ref:`excludes<excludes>`
+used or required (\*) for step5:  
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*max_alleles_consens<max_alleles_consens>`  
+* :ref:`*max_Ns_consens<max_Ns_consens>`  
+* :ref:`excludes<excludes>`  
 
 
 6. Clustering / Mapping reads among Samples and alignment
@@ -141,16 +146,18 @@ used or required (\*) for step5:
 Step6 clusters consensus sequences across Samples using the same assembly method 
 as in step 3. One allele is randomly sampled before clustering so that ambiguous
 characters have a lesser effect on clustering, but the resulting data retain
-information for heterozygotes. 
+information for heterozygotes. The clustered sequences are then aligned using 
+muscle_.
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step6: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`*max_alleles_consens<max_alleles_consens>`,
-:ref:`*max_Ns_consens<max_Ns_consens>`,
-:ref:`excludes<excludes>`
+
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`*max_alleles_consens<max_alleles_consens>`  
+* :ref:`*max_Ns_consens<max_Ns_consens>`  
+* :ref:`excludes<excludes>`  
 
 
 7. Filtering and formatting output files
@@ -162,23 +169,22 @@ often repeated at several different settings for the parameter
 proportions of missing data (see branching_workflow_). 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step7: 
-:ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, 
-:ref:`*datatype<datatype>`,
-:ref:`min_samples_locus<min_samples_locus>`,
-:ref:`max_Indels_locus<max_Indels_locus>`,
-:ref:`max_shared_Hs_locus<max_shared_Hs_locus>`,
-:ref:`trim_overhang<trim_overhang>`,
-:ref:`output_formats<output_formats>`,
-:ref:`pop_assign_file<pop_assign_file>`,
-:ref:`excludes<excludes>`,
-:ref:`outgroups<outgroups>`
+used or required (\*) for step7:   
 
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`min_samples_locus<min_samples_locus>`  
+* :ref:`max_Indels_locus<max_Indels_locus>`  
+* :ref:`max_shared_Hs_locus<max_shared_Hs_locus>`  
+* :ref:`trim_overhang<trim_overhang>`  
+* :ref:`output_formats<output_formats>`  
+* :ref:`pop_assign_file<pop_assign_file>`  
+* :ref:`excludes<excludes>`  
+* :ref:`outgroups<outgroups>`
 
 
 .. _branching_workflow:
-
 
 Branching workflow
 -------------------

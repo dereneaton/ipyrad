@@ -7,9 +7,10 @@ Input data/files
 =================
 ipyrad_ can be used to assemble any kind of data that is generated using a 
 restriction digest method (RAD, ddRAD) or related amplification-based 
-process (e.g., NextRAD, RApture). The `input data`_ can be sorted among Samples 
-(demultiplexed) before starting, or ipyrad can be used to demultiplex the data
-based on a `barcodes file`_.
+process (e.g., NextRAD, RApture). The `input files`_ can be sorted among Samples 
+(demultiplexed) before starting to use ipyrad, or ipyrad can be used to 
+demultiplex the data based on a `barcodes file`_. Examples of both are available
+in the :ref:`tutorial<tutorials>`. 
 
 
 .. _data_types:
@@ -59,6 +60,7 @@ This includes paired-end EZ-RAD...
 
 
 .. _input_files:
+
 FASTQ input files
 ------------------
 Depending on how and where your sequence data are generated you may receive the
