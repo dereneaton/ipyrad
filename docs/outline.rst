@@ -37,28 +37,33 @@ sorting the sequences among a number of :ref:`Samples<Samples>` (individuals).
 If the data are not yet demultiplexed then step 1 uses information from a 
 :ref:`barcodes file<barcodes_file>` to assign sequences to Samples. If the data 
 are already demultiplexed then step 1 simply reads the data in to count how 
-many reads are assigned to each Sample. 
+many reads are assigned to each Sample. Currently we do not yet support 
+demultiplexing of combinatorial barcodes (multiple barcodes per individual). 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step1:   
+
 
 * :ref:`*assembly_name<assembly_name>`,   
 * :ref:`*project_dir<project_dir>`,   
 * :ref:`raw_fastq_path<raw_fastq_path>`,  
 * :ref:`barcodes_path<barcodes_path>`,  
-* :ref:`sorted_fastq_path<sorted_fastq_path>`,  
-:ref:`*datatype<datatype>`,
-:ref:`restriction_overhang<restriction_overhang>`,
-:ref:`max_barcode_mismatch<max_barcode_mismatch>`
+* :ref:`sorted_fastq_path<sorted_fastq_path>`,    
+* :ref:`*datatype<datatype>`,  
+* :ref:`restriction_overhang<restriction_overhang>`,  
+* :ref:`max_barcode_mismatch<max_barcode_mismatch>`  
 
 
 2. Filtering / Editing reads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 2 uses the quality score recorded in the fastQ data files to filter low 
 quality base calls. Sites with a score below a set value are changed into “N”s, 
-and reads with more than the number of allowed “N”s are discarded. An  
-optional filter can be applied to remove adapters/primers, and there is an 
-optional filter to clean up the edges of poor quality reads.
+and reads with more than the number of allowed “N”s are discarded. The threshold
+for inclusion is set with the :ref:`phred_Qscore_offset<phred_Qscore_offset>` 
+parameter. An optional filter can be applied to remove adapters/primers
+(see :ref:`filter_adapters<filter_adapters>`), and there is an 
+optional filter to clean up the edges of poor quality reads
+(see :ref:`edit_cutsites<edit_cutsites>`).
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step2: 
