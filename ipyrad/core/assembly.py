@@ -701,10 +701,14 @@ class Assembly(object):
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
+            newobj.paramsdict["assembly_name"] = newname
 
             ## create copies of each Sample obj
             for sample in self.samples:
                 newobj.samples[sample] = copy.deepcopy(self.samples[sample])
+
+            ## save json of new obj and return object
+            newobj.save()
             return newobj
 
 
