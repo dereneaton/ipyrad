@@ -8,15 +8,15 @@
 
 Tutorials
 =========
-The most quick and dirty way to get started with ipyrad is to use the CLI
-as described in the :ref:`Quick Guide<quickguide_CLI>`. A much more detailed
-walk-through of a RAD-seq assembly with explanations for each step in available
-in the :ref:`introductory tutorial<tutorial_intro_cli>`. And once you're 
-comfortable with that you should explore the :ref:`advanced tutorial<tutorial_advanced_cli>`
-to learn how to really take advantage of some tricks that ipyrad offers for 
-really efficiently assembling data. We also provide introductory guides for 
-several common :ref:`data types<data types>` which have a few differences each
-that users should be aware of. 
+The most quick and dirty way to get started with ipyrad is to use the 
+command line interface (CLI). A detailed walk-through of a RAD-seq assembly 
+with explanations for each step, and the resulting data files that it creates, 
+is available in the :ref:`introductory tutorial<tutorial_intro_cli>`. Once you're 
+comfortable with that you should explore the 
+:ref:`advanced tutorial<tutorial_advanced_cli>`
+to learn how to take advantage of some tricks that ipyrad offers for 
+more efficiently assembling data. In the coming weeks we plan to add more
+tutorials and cookbook recipes for advanced usage. 
 
 
 The command line interface (CLI)
@@ -39,9 +39,9 @@ generally easier to use we focus on this for the main tutorials.
 .. _CLI:
 Introductory tutorials 
 ----------------------
-The following tutorials show an example run through for an entire data set of 
-each common data type, and explains some vagaries unique to each data type. I 
-recommend that everyone starts by reading through the Introductory tutorial. 
+The following tutorials show an example run through of an entire data set 
+to demonstrate either basic or advanced principles of using ipyrad. 
+I recommend that anyone start by reading through the Introductory tutorial. 
 
 .. toctree::
    :maxdepth: 1
@@ -49,25 +49,27 @@ recommend that everyone starts by reading through the Introductory tutorial.
    tutorial_intro_cli.rst
    tutorial_advanced_cli.rst
    tutorial_preview_mode.rst
-
    tutorial_intro_gbs.rst
    tutorial_paired_gbs.rst
 
 
-.. _empirical_examples
+.. _empirical_examples:
+
 Examples with empirical data
 -----------------------------
 The following tutorials show example assemblies with publicly available 
-empirical data sets. 
-The first analyzes a RAD-seq data set using the CLI. 
-The second analyzes a RAD-seq data set using the API. 
-The third uses preview-mode to sample just a subset a paired-GBS data set 
-for a fast analysis. 
+empirical data sets. The first analyzes a small RAD-seq data set from 
+Eaton and Ree (2013) using preview-mode in the CLI. 
+The second tutorial analyzes the same data set using the API, 
+and includes downstream visualization of data sharing among 
+samples, and analysis of the results using the svd4tet species tree approach, 
+and ABBA-BABA tests for introgression.
 
 
 .. toctree::
     :maxdepth: 1
-    pedicularis.rst
+    pedicularis-cli.rst
+    pedicularis-api.rst
     viburnum.rst
 
 
