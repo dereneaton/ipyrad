@@ -701,10 +701,14 @@ class Assembly(object):
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
+            newobj.paramsdict["assembly_name"] = newname
 
             ## create copies of each Sample obj
             for sample in self.samples:
                 newobj.samples[sample] = copy.deepcopy(self.samples[sample])
+
+            ## save json of new obj and return object
+            newobj.save()
             return newobj
 
 
@@ -737,13 +741,13 @@ class Assembly(object):
                 try:
                     ## using this wrap to avoid ipyparallel print to stdout
                     ## save orig stdout
-                    #save_stdout = sys.stdout           
+                    save_stdout = sys.stdout           
                     ## file-like obj to catch stdout
-                    #sys.stdout = cStringIO.StringIO()  
+                    sys.stdout = cStringIO.StringIO()  
                     ## run func with stdout hidden
                     ipyclient = ipp.Client(**args)
                     ## resets stdout
-                    #sys.stdout = save_stdout
+                    sys.stdout = save_stdout
                     break
 
                 except IOError as inst:
@@ -769,6 +773,7 @@ class Assembly(object):
 
 
         except KeyboardInterrupt:
+            sys.stdout = save_stdout
             ## ensure stdout is reset even if Exception was raised            
             try:
                 ipyclient.shutdown()
@@ -778,6 +783,7 @@ class Assembly(object):
 
         except IOError as inst:
             ## ensure stdout is reset even if Exception was raised
+            sys.stdout = save_stdout
             print(inst)
             raise inst
 

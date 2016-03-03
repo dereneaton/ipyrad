@@ -422,7 +422,19 @@ def singlecat(data, sample, nloci, indels):
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
     for iloc in seedmatch2:
-        icatg[iloc] = catarr[iloc, :icatg.shape[1], :]
+        try:
+            icatg[iloc] = catarr[iloc, :icatg.shape[1], :]
+        except IndexError:
+            LOGGER.error("""
+                sample: %s, 
+                iloc: %s,
+                icatg.shape: %s,
+                icatg[iloc].shape: %s,
+                catarr[iloc, :icatg.shape[1], :].shape: %s,
+                samenoshape : %s,
+                """, sample.name, iloc, icatg.shape, icatg[iloc].shape, 
+                     catarr[iloc, :icatg.shape[1], :].shape,
+                     catarr[iloc, :icatg.shape[1], :])                      
 
     ## close the old hdf5 connections
     old_h5.close()

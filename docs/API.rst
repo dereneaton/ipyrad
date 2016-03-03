@@ -78,6 +78,9 @@ object if data are already demultiplexed, or by running ``step1()`` to
 demultiplex raw data files, as shown below.
 
 
+
+.. _cookbook_recipes:
+
 Cookbook recipes - API 
 -----------------------
 
@@ -86,7 +89,7 @@ Cookbook recipes - API
    :maxdepth: 1
 
    ipyrad_scripts.rst
-   test_rad.rst
+   pedicularis.rst
    HPC_script.rst
 
 
