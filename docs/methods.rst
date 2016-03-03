@@ -4,14 +4,15 @@
 
 Assembly Methods
 ================
-ipyrad_ has four methods for Assembling RAD-seq data sets. The first and simplest 
+ipyrad_ has four methods for assembling RAD-seq data sets. The first and simplest 
 is denovo_, which requires no prior information or genomic resources, while the 
-remaining three methods all require some kind of reference sequence. It is 
-important to note, however, that to use these methods does not require a 
-complete nuclear genome as the reference, but rather, they can also be useful
-when a genomic reference is available in the form of plastome or transcriptome
-data. You can even use reference data for potential contaminants with the 
-reference_sub to filter/remove matching reads from a data set. 
+remaining three methods all require some form of reference sequence. It is 
+important to note, however, that many types of genomic resources can be used as
+a reference sequence, not just complete nuclear genomes. For example, 
+plastome and transcriptome data can be used to partition reads among 
+assemblies with different types of data, and reference sequences can even 
+represent the genomes of symbiotic partners, or contaminants to be 
+filtered/removed from a data set.
 
 .. _denovo:  
 denovo
@@ -37,8 +38,8 @@ denovo-reference
 -----------------
 Sequences which map to a reference genome are excluded, and all remaining reads
 are assembled using the denovo method. This method can be used to filter out 
-data which match to a chloroplast genome in plants, or to a host genome in a 
-study of a parasite. 
+data, such as reads matching to a chloroplast genome in plants, 
+or to a host genome in a study of a parasite. 
 
 
 .. _comparing:
@@ -66,16 +67,16 @@ Example CLI combining assembly methods
     ipyrad -n coding
 
     ## run steps 1-2 using the settings in data1-params.txt
-    ipyrad -p coding-params.txt -s 12
+    ipyrad -p params-coding.txt -s 12
 
     ## create a branch called "noncoding" and edit the newly created file 
     ## noncoding-params.txt. Set the assembly_method to 'reference_sub'
     ## and leave the transcriptome.fasta file as the 'reference_sequence_path'
-    ipyrad -p coding-params.txt -b noncoding
+    ipyrad -p params-coding.txt -b noncoding
 
     ## now run steps 3-7 for both assemblies
-    ipyrad -p coding-params.txt -s 34567
-    ipyrad -p noncoding-params.txt -s 34567
+    ipyrad -p params-coding.txt -s 34567
+    ipyrad -p params-noncoding.txt -s 34567
 
 
 Example Python API combining assembly methods
@@ -99,7 +100,7 @@ Example Python API combining assembly methods
     ## create branch named 'noncoding' which inherits params from 'coding'
     ## and set the assembly method to reference_sub so that it removes the 
     ## reference matched reads.
-    data2 = data1.copy("noncoding")
+    data2 = data1.branch("noncoding")
     data2.set_params("assembly_method", "reference_sub")
 
     ## finish both assemblies

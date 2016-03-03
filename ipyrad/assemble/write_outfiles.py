@@ -105,9 +105,9 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
         ## get subarray results from filter array
         # "max_indels", "max_snps", "max_hets", "min_samps", "bad_edges"
-        print('afilt - ', afilt)
+        #print('afilt - ', afilt)
         filters += afilt.sum(axis=0)
-        print('filters - ', filters)
+        #print('filters - ', filters)
         passed += np.sum(afilt.sum(axis=1) == 0)
 
         ## get snps counts
