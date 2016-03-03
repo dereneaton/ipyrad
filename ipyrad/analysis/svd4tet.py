@@ -28,6 +28,7 @@ import ipyrad
 import itertools
 import subprocess
 import numpy as np
+import pandas as pd
 import ipyparallel as ipp
 
 from ipyrad.assemble.util import *
@@ -84,8 +85,11 @@ def get_seqarray(data, path=None, snps=False):
     ## make a seq array
     tmpseq = np.zeros((ntax, nbp), dtype="S1")
     with h5py.File(data._svd.h5, 'w') as io5:
+        ## create the array storage for both real seq and for later bootstraps
         seqarray = io5.create_dataset("seqarray", (ntax, nbp), dtype="S1")        
+        io5.create_dataset("bootarr", (ntax, nbp), dtype="S1")
 
+        ## fill the tmp array from the input phy
         for line, seq in enumerate(spath.readlines()):
             tmpseq[line] = np.array(list(seq.split()[-1]))
 
@@ -326,7 +330,7 @@ def get_weight_snir(arr, splits):
 
 
 
-def run_qmc(data, useweights=False):
+def run_qmc(data, boots=0, useweights=False):
     """ runs quartet max-cut """
 
     ## use weight info
@@ -338,6 +342,10 @@ def run_qmc(data, useweights=False):
         weights = "off"
         nsuffix = ".tre"
         tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix)
+
+    ## if boots use tmp file and append to bootstrap reps file
+    if boots:
+        tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix+".tmp")
 
     ## make call list
     cmd = [ipyrad.bins.qmc,
@@ -361,11 +369,23 @@ def run_qmc(data, useweights=False):
     ## convert int names back to str names
     ## ...
 
-    ##
-    if not useweights:
-        data._svd.tre = tre
+    ## store bootstrap trees to the assembly
+    if boots:
+        with open(tre, 'r') as tmpin:
+            data._svd.boots.append(tmpin.read())
+
+    ## store full data trees to Assembly
     else:
-        data._svd.wtre = tre        
+        if not useweights:
+            data._svd.tre = tre
+        else:
+            data._svd.wtre = tre        
+
+    ## save assembly with new tree
+    data.save()
+
+
+
 
 
 
@@ -413,10 +433,16 @@ def insert_to_array(data, resqrt, reswgt, path):
 
 
 
-def main(data, ipyclient, path=None, checkpoint=0, nboots=100):
+def main(data, ipyclient, path=None, nboots=100, force=False):
     """ 
-    main funcs
+    Run svd4tet inference on a sequence or SNP alignment for all samples 
+    the Assembly. 
+
+    By default the job starts from 0 or where it last left off, unless 
+    force=True, then it starts from 0. 
+
     """
+
     ## make an analysis directory if it doesn't exit
     data.dirs.svd = os.path.realpath(
                         os.path.join(
@@ -427,11 +453,13 @@ def main(data, ipyclient, path=None, checkpoint=0, nboots=100):
     ## store some svd stats in data
     data._svd = ObjDict()
     data._svd.h5 = os.path.join(data.dirs.svd, data.name+"_input.h5")
-    data._svd.results = os.path.join(data.dirs.svd, data.name+"_output.h5")    
+    data._svd.results = os.path.join(data.dirs.svd, data.name+"_output.h5")
+    data._svd.boots = []
     data._svd.checkpoint = 0
+    data.save()
 
     ## checkpoint info will be retrieved from h5 if it exists
-    if checkpoint:
+    if force:
         ## scan the hdf5 array to find where it left off writing
         data._svd.checkpoint = 0        
         raise IPyradWarningExit("not yet implemented")
@@ -448,6 +476,18 @@ def main(data, ipyclient, path=None, checkpoint=0, nboots=100):
     samples = data.samples
     data = get_quartets(data, samples)
 
+    ## run the inference step
+    inference(data, ipyclient)
+
+    ## run the bootstrap replicates
+    print("  running {} bootstrap replicates".format(nboots))
+    while len(data._svd.boots) < nboots:
+        ## resample seq
+        regen_boot_array(data)
+        ## 
+        inference(data, ipyclient, boots=1)
+
+
     ## load a job queue
     # jobs = []
     # for qidx in xrange(data._svd.checkpoint, 
@@ -460,6 +500,12 @@ def main(data, ipyclient, path=None, checkpoint=0, nboots=100):
     # res.wait_interactive()
     # print('done')
     # sys.exit()
+
+
+
+def inference(data, ipyclient, boots=0):
+    """ run inference and store results """
+
 
     njobs = len(xrange(data._svd.checkpoint, 
                        data._svd.nquarts, data._svd.chunk))
@@ -517,11 +563,28 @@ def main(data, ipyclient, path=None, checkpoint=0, nboots=100):
     dump(data)    
 
     ## run quartet joining algorithm
-    run_qmc(data, useweights=False)
-    run_qmc(data, useweights=True)
+    run_qmc(data, boots=boots, useweights=False)
+    run_qmc(data, boots=boots, useweights=True)
 
-    ## 
-    print("  running {} bootstrap replicates".format(nboots))
+
+
+def regen_boot_array(data):
+    """ bootstrap replicates re-using same quartet order as original """
+
+    ## create the bootstrap sampled seqarray
+    with h5py.File(data._svd.h5, 'r+') as io5:
+        print("  resampling bootstrap array")
+        ## get original seqarray as a DF
+        seqarray = pd.DataFrame(io5["seqarray"][:])
+        ## get boot array by randomly sample columns w/ replacement
+        bootarr = seqarray.sample(n=seqarray.shape[1], replace=True, axis=1)
+        io5["bootarr"][:] = bootarr
+        del bootarr
+        ## save the boot array 
+        print("  done resampling bootstrap array")
+
+
+
     #return data
 
     #dview = ipyclient[:]
