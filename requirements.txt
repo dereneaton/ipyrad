@@ -3,14 +3,14 @@ dill
 sphinx
 cython
 ipython
-ipyparallel
+ipyparallel>=5.0.1
 ipykernel
 jupyter
 jupyter-client
 nbconvert
 scipy>0.10
 numpy>=1.9
-pandas
+pandas>=0.16
 h5py
 psutil
 mpi4py
