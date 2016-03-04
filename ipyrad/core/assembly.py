@@ -1574,7 +1574,16 @@ def paramschecker(self, param, newvalue):
                 self.paramsdict['raw_fastq_path'] = fullrawpath
             ## else allow empty, tho it can still raise an error in step1
             else:
-                self.paramsdict['raw_fastq_path'] = ""
+                raise IPyradWarningExit("""
+    Error: The value entered for the path to the raw fastq file is 
+    unrecognized. Please be sure this path is correct. Double check the
+    file name and the file extension. If it is a relative path be sure
+    the path is correct with respect to the directory you're running ipyrad
+    from. 
+    You entered: {}
+    """.format(fullrawpath))
+        else:
+            self.paramsdict['raw_fastq_path'] = ""
 
 
     elif param == 'barcodes_path':
