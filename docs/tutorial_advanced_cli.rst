@@ -127,9 +127,10 @@ that the input data and barcodes file are located in ``ipsimdata/``.
 
 .. parsed-literal::
 
-    ## ./iptutorial                              ## [1] [project_dir] ...
-    ## ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
-    ## ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
+    ## enter these lines into the params-data1.txt file
+    ./iptutorial                              ## [1] [project_dir] ...
+    ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
+    ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
 
 
 Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
@@ -159,9 +160,11 @@ if it ever interrupted. In general, you should not mess with the .json file,
 since editing it by hand could cause errors in your assembly. 
 
 .. code:: bash
+
     ls ./iptutorial
 
 .. parsed-literal::
+
     data1_edits/   data1_fastqs/   data1.json
 
 
