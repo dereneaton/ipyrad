@@ -281,58 +281,77 @@ branch and then run step7 on each of these assemblies with a new setting of 8 or
 Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
 and edits/ directories were created using just the first assembly ``iptest1``, 
 while the clust/ and consens/ directories were created for both ``iptest1`` and
-``iptest2`` which completed steps 3-6. Finally, you can see that each assembly 
-has its own ``outfiles/`` directory with the results of step7. 
-
+``iptest2``, since both completed steps 3-6. Finally, you can see that each 
+assembly has its own ``outfiles/`` directory with the results of step7. 
 
 .. code:: bash
 
    ## use ls -l to view inside the project directory as a list
    ls -l iptutorial/
 
+
+I show the structure a bit more clearly below:
+
 .. parsed-literal::  
 
-   iptest1.json
-   iptest1_fastqs/
-   iptest1_edits/
-   iptest1_clust_0.85/
-   iptest1_consens/
-   iptest1_outfiles/
+   iptutorial/
+       iptest1.json
+       iptest1_fastqs/
+           [...].fastq.gz
+       iptest1_edits/
+           [...].fastq
+       iptest1_clust_0.85/
+           [...].utemp
+           [...].htemp
+           [...].clust.gz
+           [...].clustS.gz
+       iptest1_consens/
+           [...].consens.gz
+       iptest1_outfiles/
+           iptest1.loci
+           iptest1.phy
+           iptest1.[other formats]
 
-   iptest1_min8.json
-   iptest1_min8_outfiles/
+       iptest1_min8.json
+       iptest1_min8_outfiles/
+           iptest1_min8.[formats]
 
-   iptest1_min12.json
-   iptest1_min12_outfiles/
+       iptest1_min12.json 
+       iptest1_min12_outfiles/
+           iptest_min12.[formats]
 
-   iptest2.json
-   iptest2_clust_0.85/
-   iptest2_consens/
-   iptest2_outfiles/
+       iptest2.json
+       iptest2_clust_0.85/
+           [...].[clustfiles]
+       iptest2_consens/
+           [...].consens.gz
+       iptest2_outfiles/
+           iptest2.[.formats]
 
-   iptest2_min8.json
-   iptest2_min8_outfiles/
+       iptest2_min8.json
+       iptest2_min8_outfiles/
+           iptest2_min8.[.formats]
 
-   iptest2_min12.json
-   iptest2_min12_outfiles/
+       iptest2_min12.json
+       iptest2_min12_outfiles/
+           iptest2_min12.[.formats]
 
 
-In addition you working directory should contain the four params files which 
-have the full set of parameters used in each of your assemblies. This makes for 
-a good reproducible workflow. 
-
+In your working directory you will have the four params files which 
+have the full set of parameters used in each of your assemblies. 
+This makes for a good reproducible workflow, and can be referenced later
+as a reminder of the parameters used for each data set. 
 
 
 Writing ipyrad scripts
 ~~~~~~~~~~~~~~~~~~~~~~
 From the code above you may have noticed that the only thing stopping you from
-being able to write one long script to make a huge range of assemblies is when 
-you have to go in by hand and edit the new params files by hand each time. 
-If you plan to only execute one ipyrad command at a time then that is no problem.
-But if you're a very programmatic type of person, you may be thinking about inserting
-``sed`` code-blocks into your code to edit the params files automatically. 
-If so, you'll probably want to check out the :ref:`ipyrad API<API>`, 
-which provides a much more elegant pure Python way to edit parameters in your 
-code.
+being able to write one long script that creates a whole range of assemblies is 
+when you have to edit the new params files by hand.
+If you plan to only execute one ipyrad command at a time then this is no problem.
+But if you're a very programmatic type of person you'll probably prefer
+making parameter changes in the code directly. If so, you'll want to check 
+out the :ref:`ipyrad API<API>`, which provides a more elegant pure Python 
+way to edit parameters in your code while assembling data. 
 
 
