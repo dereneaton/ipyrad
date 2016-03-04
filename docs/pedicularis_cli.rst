@@ -390,20 +390,20 @@ reads can be examined.
 
     Summary stats of Assembly base
     ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total  \
-    29154_superba               5     696994           92448           45531   
-    30556_thamno                5    1452316           93666           45745   
-    30686_cyathophylla          5    1253109           89122           50306   
-    32082_przewalskii           5     964244           92016           44242   
-    33413_thamno                5     636625           89428           52053   
-    33588_przewalskii           5    1002923           92418           46674   
-    35236_rex                   5    1803858           92807           57801   
-    35855_rex                   5    1409843           92883           45139   
-    38362_rex                   5    1391175           93363           41580   
-    39618_rex                   5     822263           92096           47295   
-    40578_rex                   5    1707942           93386           45295   
-    41478_cyathophylloides      5    2199740           93846           41965   
-    41954_cyathophylloides      5    2199613           91756           47735   
+                            state  reads_raw  reads_filtered  clusters_total
+    29154_superba               5     696994           92448           45531 
+    30556_thamno                5    1452316           93666           45745 
+    30686_cyathophylla          5    1253109           89122           50306 
+    32082_przewalskii           5     964244           92016           44242 
+    33413_thamno                5     636625           89428           52053 
+    33588_przewalskii           5    1002923           92418           46674 
+    35236_rex                   5    1803858           92807           57801 
+    35855_rex                   5    1409843           92883           45139 
+    38362_rex                   5    1391175           93363           41580 
+    39618_rex                   5     822263           92096           47295 
+    40578_rex                   5    1707942           93386           45295 
+    41478_cyathophylloides      5    2199740           93846           41965 
+    41954_cyathophylloides      5    2199613           91756           47735 
 
                             clusters_hidepth  hetero_est  error_est  reads_consens  
     29154_superba                        978    0.038530   0.006630            821  
@@ -419,8 +419,8 @@ reads can be examined.
     40578_rex                            832    0.045177   0.002789            689  
     41478_cyathophylloides               992    0.041085   0.004468            872  
     41954_cyathophylloides              1307    0.032387   0.013090            983  
-    
-    
+
+
     Full stats files
     ------------------------------------------------
     step 1: None
@@ -440,9 +440,8 @@ Step 6 (clustering and aligning across samples)
 This step clusters consensus loci across Samples using the same
 threshold for sequence similarity as used in step3.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ipyrad -p params-base.txt -s 6
 
 
@@ -459,6 +458,7 @@ threshold for sequence similarity as used in step3.
        Saving Assembly.
 
 
+
 Branch the assembly
 -------------------
 
@@ -468,10 +468,8 @@ the ``min_samples_locus``, which is the minimum number of samples that
 must have data at a locus for the locus to be retained in the data set.
 We create a ``min4``, ``min8``, and ``min12`` data sets.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
-    
     ipyrad -p params-base.txt -b min4
     ipyrad -p params-base.txt -b min8
     ipyrad -p params-base.txt -b min12
@@ -479,7 +477,6 @@ We create a ``min4``, ``min8``, and ``min12`` data sets.
 
 
 .. parsed-literal::
-
     
       loading Assembly: base [~/Downloads/pedicularis/base.json]
       Creating a branch of assembly base called min4
@@ -497,7 +494,7 @@ We create a ``min4``, ``min8``, and ``min12`` data sets.
 Change the parameter settings in params.txt for each assembly
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python
+.. code:: bash
 
     ## Enter the changes below into the params files using a text editor
     
@@ -511,15 +508,15 @@ Change the parameter settings in params.txt for each assembly
     12      ## [21] [min_samples_locus] ...
 
 
+
 Step 7 (final filtering and create output files)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Filter and create output files for the three assemblies with different
 values for the parameter ``min_samples_locus``.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ## assemble the three data sets
     ## take note: The force argument is required
     ## if the base assembly already created output files 
@@ -573,8 +570,7 @@ values for the parameter ``min_samples_locus``.
 
 .. parsed-literal::
 
-    
-    
+
     ## The number of loci caught by each filter.
     ## ipyrad API location: [assembly].statsfiles.s7_filters
     
@@ -655,10 +651,13 @@ values for the parameter ``min_samples_locus``.
 
 Take a peek at the .loci (easily human-readable) output
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This is one fo the first places I usually look when an assembly finishes. It 
+provides a clean view of the data with variable sites (-) and parsimony informative
+SNPs (*) highlighted. Use the unix commands **less** or **head** to look at this
+file briefly.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ## head -n 50 prints just the first 50 lines of the file to stdout
     head -n 50 pedicularis/min4_outfiles/min4.loci
 
@@ -719,10 +718,12 @@ Take a peek at the .loci (easily human-readable) output
 
 peek at the .phy files
 ~~~~~~~~~~~~~~~~~~~~~~
+This is the concatenated sequence file of all loci in the data set. It is typically
+used in phylogenetic analyses, like in the program *raxml*. 
 
-.. code:: python
 
-    %%bash
+.. code:: bash
+
     ## cut -c 1-80 prints only the first 80 characters of the file
     cut -c 1-80 pedicularis/min4_outfiles/min4.phy
 
@@ -747,10 +748,13 @@ peek at the .phy files
 
 peek at the .snp file
 ~~~~~~~~~~~~~~~~~~~~~
+This is similar to the phylip file format, but only variable site columns are 
+included. All SNPs are the file, in contrast to the .usnps file, which selects
+only a single SNP per locus. 
 
-.. code:: python
 
-    %%bash
+.. code:: bash
+
     ## cut -c 1-80 prints only the first 80 characters of the file
     cut -c 1-80 pedicularis/min4_outfiles/min4.snp
 
@@ -775,10 +779,10 @@ peek at the .snp file
 
 peek at the .snp file for the min12 assembly
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Similar to above but you can see that there is much less missing data (Ns). 
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ## cut -c 1-80 prints only the first 80 characters of the file
     cut -c 1-80 pedicularis/min12_outfiles/min12.snp
 
@@ -801,7 +805,6 @@ peek at the .snp file for the min12 assembly
     41954_cyathophylloides     GTTGACGCGGTTCTCACCCGCGCAATGCAGTCCGCCAAGAAATT
 
 
-
-downstream...
-~~~~~~~~~~~~~
-
+downstream analyses
+~~~~~~~~~~~~~~~~~~~
+...
