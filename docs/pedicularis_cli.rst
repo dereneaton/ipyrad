@@ -494,17 +494,17 @@ We create a ``min4``, ``min8``, and ``min12`` data sets.
 Change the parameter settings in params.txt for each assembly
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: bash
+.. parsed-literal::
 
     ## Enter the changes below into the params files using a text editor
     
-    ## params-min4.txt
+    ## in the file params-min4.txt
     4       ## [21] [min_samples_locus] ...
     
-    ## params-min8.txt
+    ## in the file params-min8.txt
     8       ## [21] [min_samples_locus] ...
     
-    ## params-min12.txt
+    ## in the file params-min12.txt
     12      ## [21] [min_samples_locus] ...
 
 
@@ -513,17 +513,13 @@ Step 7 (final filtering and create output files)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Filter and create output files for the three assemblies with different
-values for the parameter ``min_samples_locus``.
+values for the parameter ``min_samples_locus``. 
 
 .. code:: bash
 
-    ## assemble the three data sets
-    ## take note: The force argument is required
-    ## if the base assembly already created output files 
-    ## for step 7. 
-    ipyrad -p params-min4.txt -s 7 -f
-    ipyrad -p params-min8.txt -s 7 -f
-    ipyrad -p params-min12.txt -s 7 -f
+    ipyrad -p params-min4.txt -s 7 
+    ipyrad -p params-min8.txt -s 7 
+    ipyrad -p params-min12.txt -s 7 
 
 
 .. parsed-literal::
