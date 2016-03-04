@@ -89,6 +89,15 @@ Run step1 to load in the fastq data files
 
     --------------------------------------------------
      ipyrad [v.0.1.70]
+     Interactive assembly
+    ---------------------------------------------------
+
+
+
+.. parsed-literal::
+
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
      Interactive assembly and analysis of RADseq data
     --------------------------------------------------
      New Assembly: base
@@ -101,6 +110,7 @@ Run step1 to load in the fastq data files
        13 new Samples created in `base`.
        13 fastq files linked to 13 new Samples.
        Saving Assembly.
+
 
 
 We can use the -r flag to see the results
