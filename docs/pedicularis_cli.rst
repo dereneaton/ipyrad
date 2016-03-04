@@ -4,26 +4,30 @@
 .. _pedicularis_cli:
 
 
-Empirical example (*Pedicularis*)
-=================================
+Empirical example (*Pedicularis*) - CLI
+========================================
 
-This is a IPython/Jupyter notebook. Each cell executes IPython code by
+This is an `IPython/Jupyter`_ notebook, a useful tool for combining documentation
+and code for doing and sharing reproducible science. 
+Each cell of the notebook executes Python code by
 default, but can also execute other languages if given a header
-designation. Here we will be executing mostly ``bash`` code, which means
+designation. Here we will be executing mostly **bash** code, which means
 each cell acts like a standard terminal. To do this we pass the
-**%%bash** header to each cell.
+``%%bash`` header to each cell. To see an example of ipyrad run with pure
+Python code check out the :ref:`API tutorial<pedicularis_api>`.
+
 
 Get the example data set
 ~~~~~~~~~~~~~~~~~~~~~~~~
-
-For this tutorial we will assemble a single-end RAD-seq data set that
-includes 13 sampled individuals from the *Cyathophora* clade of the
-angiosperm genus *Pedicularis*, originally published by **Eaton and Ree
-(2013)** (`link to open access
-article <http://sysbio.oxfordjournals.org/content/62/5/689.full>`__).
-The code below will download and decompress fastq files into a directory
-called ``example_empirical_data/`` located in your current directory.
-The total size is approximately 1.1GB.
+For this tutorial we will assemble a single-end RAD-seq data set of
+13 individuals from the *Cyathophora* clade of the angiosperm genus 
+*Pedicularis*, originally published by **Eaton and Ree (2013)** 
+(:ref:`link to open access article 
+<http://sysbio.oxfordjournals.org/content/62/5/689.full>`).
+Copy and paste the code block below into a terminal (or run it inside 
+a jupyter notebook of your own) to download and decompress the fastq files 
+into a directory called ``example_empirical_data/``.
+The total size of these files will be approximately 1.1GB.
 
 .. code:: python
 
