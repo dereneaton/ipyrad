@@ -76,9 +76,8 @@ directory. All other parameters are left at their default values for now.
 Run step1 to load in the fastq data files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ## Now run step 1 of the assembly 
     ## the -p flag tells ipyrad which assembly to use (params-base.txt)
     ## the -s flag tells ipyrad which step to run (1)
@@ -88,37 +87,33 @@ Run step1 to load in the fastq data files
 
 .. parsed-literal::
 
-    
-     --------------------------------------------------
-      ipyrad [v.0.1.70]
-      Interactive assembly and analysis of RADseq data
-     --------------------------------------------------
-      New Assembly: base
-      ipyparallel setup: Local connection to 4 Engines
-    
-      Step1: Linking sorted fastq data to Samples
-    
-        Linking to demultiplexed fastq files in:
-          /home/deren/Downloads/example_empirical_rad/*.gz
-        13 new Samples created in `base`.
-        13 fastq files linked to 13 new Samples.
-        Saving Assembly.
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     New Assembly: base
+     ipyparallel setup: Local connection to 4 Engines
+
+     Step1: Linking sorted fastq data to Samples
+
+       Linking to demultiplexed fastq files in:
+         /home/deren/Downloads/example_empirical_rad/*.gz
+       13 new Samples created in `base`.
+       13 fastq files linked to 13 new Samples.
+       Saving Assembly.
 
 
 We can use the -r flag to see the results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ipyrad -p params-base.txt -r
 
 
 
 .. parsed-literal::
 
-    
-    
     Summary stats of Assembly base
     ------------------------------------------------
                             state  reads_raw
@@ -161,31 +156,29 @@ sample. As you can see above, this is only about 5-10% of the total
 reads. This time I add the results call into the same cell so that it
 runs step 2 and then prints the results.
 
-.. code:: python
 
-    %%bash
+.. code:: bash
+
     ipyrad -p params-base.txt -s 2 --preview
     ipyrad -p params-base.txt -r
 
 
 .. parsed-literal::
 
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: base [~/Downloads/pedicularis/base.json]
+     ipyparallel setup: Local connection to 4 Engines
     
-     --------------------------------------------------
-      ipyrad [v.0.1.70]
-      Interactive assembly and analysis of RADseq data
-     --------------------------------------------------
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      ipyparallel setup: Local connection to 4 Engines
-    
-      Step2: Filtering reads 
-        Running preview mode: subselecting maximum of 100000 reads per sample    
-        Saving Assembly.
+     Step2: Filtering reads 
+       Running preview mode: subselecting maximum of 100000 reads per sample    
+       Saving Assembly.
 
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ipyrad -p params-base.txt -r
 
 
@@ -236,26 +229,24 @@ many fewer (~2%) that were recovered at high depth (clusters\_hidepth).
 The coverage would of course be much better if we did not subsample the
 data set in step2 using --preview mode.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ipyrad -p params-base.txt -s 3
     ipyrad -p params-base.txt -r
 
 
 .. parsed-literal::
 
-    
-     --------------------------------------------------
-      ipyrad [v.0.1.70]
-      Interactive assembly and analysis of RADseq data
-     --------------------------------------------------
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      ipyparallel setup: Local connection to 4 Engines
-    
-      Step3: Clustering/Mapping reads
-        Saving Assembly.
-    
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: base [~/Downloads/pedicularis/base.json]
+     ipyparallel setup: Local connection to 4 Engines
+   
+     Step3: Clustering/Mapping reads
+       Saving Assembly.
+
     
     Summary stats of Assembly base
     ------------------------------------------------
@@ -311,25 +302,23 @@ can see in the results the error rate is about 10X the heterozygosity
 estimate. The latter does not vary significantly across samples. With
 data of greater depth the estimates will be more accurate.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ipyrad -p params-base.txt -s 4 
     ipyrad -p params-base.txt -r
 
 
 .. parsed-literal::
 
-    
-     --------------------------------------------------
-      ipyrad [v.0.1.70]
-      Interactive assembly and analysis of RADseq data
-     --------------------------------------------------
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      ipyparallel setup: Local connection to 4 Engines
-    
-      Step4: Joint estimation of error rate and heterozygosity
-        Saving Assembly.
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: base [~/Downloads/pedicularis/base.json]
+     ipyparallel setup: Local connection to 4 Engines
+  
+     Step4: Joint estimation of error rate and heterozygosity
+       Saving Assembly.
     
     
     Summary stats of Assembly base
@@ -387,31 +376,28 @@ out at this step (especially due to low depth) their information is
 retained for the VCF output later so that the coverage/depth of excluded
 reads can be examined.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
     ipyrad -p params-base.txt -s 5
     ipyrad -p params-base.txt -r
 
 
-
 .. parsed-literal::
 
-    
-     --------------------------------------------------
-      ipyrad [v.0.1.70]
-      Interactive assembly and analysis of RADseq data
-     --------------------------------------------------
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      ipyparallel setup: Local connection to 4 Engines
-    
-      Step5: Consensus base calling 
-        Diploid base calls and paralog filter (max haplos = 2)
-        error rate (mean, std):  0.00703, 0.00331
-        heterozyg. (mean, std):  0.04071, 0.00396
-        Saving Assembly.
-    
-    
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: base [~/Downloads/pedicularis/base.json]
+     ipyparallel setup: Local connection to 4 Engines
+   
+     Step5: Consensus base calling 
+       Diploid base calls and paralog filter (max haplos = 2)
+       error rate (mean, std):  0.00703, 0.00331
+       heterozyg. (mean, std):  0.04071, 0.00396
+       Saving Assembly.
+   
+
     Summary stats of Assembly base
     ------------------------------------------------
                             state  reads_raw  reads_filtered  clusters_total  \
@@ -472,15 +458,15 @@ threshold for sequence similarity as used in step3.
 
 .. parsed-literal::
 
-     --------------------------------------------------
-      ipyrad [v.0.1.70]
-      Interactive assembly and analysis of RADseq data
-     --------------------------------------------------
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      ipyparallel setup: Local connection to 4 Engines
-    
-      Step6: Clustering across 13 samples at 0.85 similarity
-        Saving Assembly.
+    --------------------------------------------------
+     ipyrad [v.0.1.70]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: base [~/Downloads/pedicularis/base.json]
+     ipyparallel setup: Local connection to 4 Engines
+   
+     Step6: Clustering across 13 samples at 0.85 similarity
+       Saving Assembly.
 
 
 Branch the assembly
