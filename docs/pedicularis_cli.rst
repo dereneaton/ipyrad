@@ -240,21 +240,21 @@ data set in step2 using --preview mode.
     
     Summary stats of Assembly base
     ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total  \
-    29154_superba               3     696994           92448           45531   
-    30556_thamno                3    1452316           93666           45745   
-    30686_cyathophylla          3    1253109           89122           50306   
-    32082_przewalskii           3     964244           92016           44242   
-    33413_thamno                3     636625           89428           52053   
-    33588_przewalskii           3    1002923           92418           46674   
-    35236_rex                   3    1803858           92807           57801   
-    35855_rex                   3    1409843           92883           45139   
-    38362_rex                   3    1391175           93363           41580   
-    39618_rex                   3     822263           92096           47295   
-    40578_rex                   3    1707942           93386           45295   
-    41478_cyathophylloides      3    2199740           93846           41965   
-    41954_cyathophylloides      3    2199613           91756           47735   
-    
+                            state  reads_raw  reads_filtered  clusters_total  
+    29154_superba               3     696994           92448           45531  
+    30556_thamno                3    1452316           93666           45745  
+    30686_cyathophylla          3    1253109           89122           50306  
+    32082_przewalskii           3     964244           92016           44242  
+    33413_thamno                3     636625           89428           52053  
+    33588_przewalskii           3    1002923           92418           46674  
+    35236_rex                   3    1803858           92807           57801  
+    35855_rex                   3    1409843           92883           45139  
+    38362_rex                   3    1391175           93363           41580  
+    39618_rex                   3     822263           92096           47295  
+    40578_rex                   3    1707942           93386           45295  
+    41478_cyathophylloides      3    2199740           93846           41965  
+    41954_cyathophylloides      3    2199613           91756           47735  
+
                             clusters_hidepth  
     29154_superba                        978  
     30556_thamno                         987  
@@ -313,20 +313,20 @@ data of greater depth the estimates will be more accurate.
     
     Summary stats of Assembly base
     ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total  \
-    29154_superba               4     696994           92448           45531   
-    30556_thamno                4    1452316           93666           45745   
-    30686_cyathophylla          4    1253109           89122           50306   
-    32082_przewalskii           4     964244           92016           44242   
-    33413_thamno                4     636625           89428           52053   
-    33588_przewalskii           4    1002923           92418           46674   
-    35236_rex                   4    1803858           92807           57801   
-    35855_rex                   4    1409843           92883           45139   
-    38362_rex                   4    1391175           93363           41580   
-    39618_rex                   4     822263           92096           47295   
-    40578_rex                   4    1707942           93386           45295   
-    41478_cyathophylloides      4    2199740           93846           41965   
-    41954_cyathophylloides      4    2199613           91756           47735   
+                            state  reads_raw  reads_filtered  clusters_total
+    29154_superba               4     696994           92448           45531
+    30556_thamno                4    1452316           93666           45745
+    30686_cyathophylla          4    1253109           89122           50306
+    32082_przewalskii           4     964244           92016           44242
+    33413_thamno                4     636625           89428           52053
+    33588_przewalskii           4    1002923           92418           46674
+    35236_rex                   4    1803858           92807           57801
+    35855_rex                   4    1409843           92883           45139
+    38362_rex                   4    1391175           93363           41580
+    39618_rex                   4     822263           92096           47295
+    40578_rex                   4    1707942           93386           45295
+    41478_cyathophylloides      4    2199740           93846           41965
+    41954_cyathophylloides      4    2199613           91756           47735
     
                             clusters_hidepth  hetero_est  error_est  
     29154_superba                        978    0.038530   0.006630  
@@ -374,7 +374,7 @@ reads can be examined.
 
 .. parsed-literal::
 
-   --------------------------------------------------
+    --------------------------------------------------
      ipyrad [v.0.1.70]
      Interactive assembly and analysis of RADseq data
     --------------------------------------------------
@@ -386,7 +386,7 @@ reads can be examined.
        error rate (mean, std):  0.00703, 0.00331
        heterozyg. (mean, std):  0.04071, 0.00396
        Saving Assembly.
-   
+
 
     Summary stats of Assembly base
     ------------------------------------------------
