@@ -26,16 +26,17 @@ second assembly of our data under a different set of parameters;
 say by changing the ``clust_threshold`` from 0.85 to 0.90, or changing 
 ``min_samples_locus`` from 4 to 20. 
 
-If we were to restart our analysis from the very beginning that would be really 
-inefficient. So one way to go about this would be to change a few parameters in 
-the params file to try to re-run an existing assembly by re-using some of the
-existing data files. This approach is a little tricky, since the user would need
-to know which files to rename/move, and it has the problem that previous results
-files and parameters could be overwritten so that you lose information about how
-the first data set was assembled. Simplifying this process is the motivation 
-behind the branching assembly process in ipyrad, which does all of this renaming 
-business for you, allowing efficient re-use of existing data files, while also 
-keeping separate records (params files) of which parameters were used in each assembly. 
+It would be wholy inefficient to restart from the beginning for each assembly 
+that uses different parameter settings. A better way would be to re-use existing
+data files and only rerun steps downstream from where parameter changes have
+an effect. This approach is a little tricky, since the user would need
+to know which files to rename/move to avoid existing results files and parameter
+information from being overwritten and lost. 
+
+The motivation behind the branching assembly process in ipyrad is to simplify 
+this process. ipyrad does all of this renaming business for you, and creates
+new named files in a way the retains records of the existing assemblies and 
+effectively re-uses existing data files. 
 
 At its core, branching creates a copy of an Assembly object (the object that is
 saved as a ``.json`` file by ipyrad) such that the new Assembly inherits all of 
@@ -45,7 +46,8 @@ new :ref:`assembly_name<assembly_name>`, which is important so that all new file
 created along this branch will be saved with a unique filename prefix. 
 We'll show an example of a branching process below, but first we need to 
 describe reference mapping, since for our example we will be creating two 
-branches which are assembled using different ``assembly_methods``. 
+branches which are assembled using different 
+:ref:`assembly methods<assembly_methods>`. 
 
 
 Reference Sequence Mapping
