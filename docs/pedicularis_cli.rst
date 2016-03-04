@@ -97,29 +97,10 @@ Run step1 to load in the fastq data files
      Step1: Linking sorted fastq data to Samples
 
        Linking to demultiplexed fastq files in:
-         /home/deren/...
+         /home/deren/Downloads/example_empirical_rad/*.gz
        13 new samples created in 'base'
        13 fastq files linked to 13 new Samples.
        Saving Assembly
-
-
-.. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly 
-    --------------------------------------------------
-     New Assembly: base
-     ipyparallel setup: Local connection to 4 Engines
-
-     Step1: Linking sorted fastq data to Samples
-
-       Linking to demultiplexed fastq files in:
-         /home/deren/Downloads/example_empirical_rad/*.gz
-       13 new Samples created in base.
-       13 fastq files linked to 13 new Samples.
-       Saving Assembly.
-
 
 
 We can use the -r flag to see the results
@@ -128,7 +109,6 @@ We can use the -r flag to see the results
 .. code:: bash
 
     ipyrad -p params-base.txt -r
-
 
 
 .. parsed-literal::
@@ -196,15 +176,6 @@ runs step 2 and then prints the results.
        Saving Assembly.
 
 
-.. code:: bash
-
-    ipyrad -p params-base.txt -r
-
-
-.. parsed-literal::
-
-    
-    
     Summary stats of Assembly base
     ------------------------------------------------
                             state  reads_raw  reads_filtered
@@ -388,12 +359,12 @@ data of greater depth the estimates will be more accurate.
 
 Run step 5 (consensus base calls)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 This is another step that can be computationally intensive. Here it
 takes about 15 minutes on 4 cores. Although many clusters are filtered
 out at this step (especially due to low depth) their information is
 retained for the VCF output later so that the coverage/depth of excluded
 reads can be examined.
+
 
 .. code:: bash
 
@@ -403,7 +374,7 @@ reads can be examined.
 
 .. parsed-literal::
 
-    --------------------------------------------------
+   --------------------------------------------------
      ipyrad [v.0.1.70]
      Interactive assembly and analysis of RADseq data
     --------------------------------------------------
@@ -433,7 +404,7 @@ reads can be examined.
     40578_rex                   5    1707942           93386           45295   
     41478_cyathophylloides      5    2199740           93846           41965   
     41954_cyathophylloides      5    2199613           91756           47735   
-    
+
                             clusters_hidepth  hetero_est  error_est  reads_consens  
     29154_superba                        978    0.038530   0.006630            821  
     30556_thamno                         987    0.038266   0.006009            810  
