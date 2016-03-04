@@ -563,6 +563,15 @@ values for the parameter ``min_samples_locus``.
         Saving Assembly.
 
 
+Take a look at the stats summary 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Each assembly that finishes step 7 will create a stats.txt output summary
+in the 'assembly_name'_outfiles/ directory. This includes information about 
+which filters removed data from the assembly, how many loci were recovered
+per sample, how many samples had data for each locus, and how many variable
+sites are in the assembled data. 
+
+
 .. code:: python
 
     cat ./pedicularis/min4_outfiles/min4_stats.txt
