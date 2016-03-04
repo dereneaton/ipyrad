@@ -68,8 +68,8 @@ and ABBA-BABA tests for introgression.
 
 .. toctree::
     :maxdepth: 1
-    pedicularis-cli.rst
-    pedicularis-api.rst
+    pedicularis_cli.rst
+    pedicularis_api.rst
     viburnum.rst
 
 
