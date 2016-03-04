@@ -49,23 +49,26 @@ create new branches.
 
 .. parsed-literal::
 
-    New file `params-base.txt` created in /home/deren/Downloads
+    New file 'params-base.txt' created in /home/deren/Downloads
 
 
 
 Edit the params file
 ~~~~~~~~~~~~~~~~~~~~
 
-For this data set the data are already demultiplexed so we are going to
-set the **sorted\_fastq\_path** to tell it the location of the fastQ
-data files. I also change the **project\_dir** to "pedicularis". All
-other parameters are left at their default values for now.
+The data are already demultiplexed so we are going to
+set the **sorted\_fastq\_path** to tell it the location of the fastq
+data files. I also change the **project\_dir** to "pedicularis". In 
+this tutorial we will create several differnt assemblies of this 
+data set under several different parameter settings. Each will have a 
+different assembly_name, and all of them will end up in the pedicularis/
+directory. All other parameters are left at their default values for now.
 
-.. code:: python
+.. code:: bash
 
-    ## use your text editor to change the following params 
-    ## use a wildcard character to select all 13 gzipped files.
-    
+    ## use your text editor to set the following params:
+    ## for #4, use a wildcard (*) to select all 13 gzipped files.
+
     pedicularis                    ## [1] [project_dir] ...
     example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
 
@@ -469,7 +472,6 @@ threshold for sequence similarity as used in step3.
 
 .. parsed-literal::
 
-    
      --------------------------------------------------
       ipyrad [v.0.1.70]
       Interactive assembly and analysis of RADseq data
