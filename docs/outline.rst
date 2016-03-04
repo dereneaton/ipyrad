@@ -196,7 +196,7 @@ steps of the assembly. The schematic and code example below shows how to branch
 an assembly called 'data1' to create a new assembly 'data2' which inherits the 
 files and statistics from data1, but then applies a different clustering 
 threshold going forward for steps 3-7. You can envision many data sets generated
-this way by havins successive branching events along each branch. 
+this way by having successive branching events along each branch. 
 You can find more branching examples in the 
 :ref:`advanced tutorial<tutorial_advanced_cli>` and 
 :ref:`cookbook<cookbook>` sections. 
@@ -214,17 +214,17 @@ You can find more branching examples in the
     ipyrad -n data1
 
     ## run steps 1-2 using the default settings
-    ipyrad -p data1-params.txt -s 12
+    ipyrad -p params-data1.txt -s 12
 
     ## branch to create a 'copy' of this assembly named data2
-    ipyrad -p data1-params.txt -b data2
+    ipyrad -p params-data1.txt -b data2
 
     ## edit data2-params.txt to a different parameter settings in a text editor,
     ## for example, change the clustering threshold from 0.85 to 0.90
 
     ## now run the remaining steps (3-7) on each data set
-    ipyrad -p data1-params.txt -s 34567
-    ipyrad -p data2-params.txt -s 34567
+    ipyrad -p params-data1.txt -s 34567
+    ipyrad -p params-data2.txt -s 34567
 
 
 **Example Python API branching workflow**
@@ -246,7 +246,7 @@ You can find more branching examples in the
 
     ## create a new branch of this Assembly named data2
     ## and change some parameter settings 
-    data2 = data1.copy("data2")
+    data2 = data1.branch("data2")
     data2.set_params("clust_threshold", 0.90)
 
     ## run steps 3-7 for the two Assemblies

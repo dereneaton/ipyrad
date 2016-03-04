@@ -26,16 +26,17 @@ second assembly of our data under a different set of parameters;
 say by changing the ``clust_threshold`` from 0.85 to 0.90, or changing 
 ``min_samples_locus`` from 4 to 20. 
 
-If we were to restart our analysis from the very beginning that would be really 
-inefficient. So one way to go about this would be to change a few parameters in 
-the params file to try to re-run an existing assembly by re-using some of the
-existing data files. This approach is a little tricky, since the user would need
-to know which files to rename/move, and it has the problem that previous results
-files and parameters could be overwritten so that you lose information about how
-the first data set was assembled. Simplifying this process is the motivation 
-behind the branching assembly process in ipyrad, which does all of this renaming 
-business for you, allowing efficient re-use of existing data files, while also 
-keeping separate records (params files) of which parameters were used in each assembly. 
+It would be wholy inefficient to restart from the beginning for each assembly 
+that uses different parameter settings. A better way would be to re-use existing
+data files and only rerun steps downstream from where parameter changes have
+an effect. This approach is a little tricky, since the user would need
+to know which files to rename/move to avoid existing results files and parameter
+information from being overwritten and lost. 
+
+The motivation behind the branching assembly process in ipyrad is to simplify 
+this process. ipyrad does all of this renaming business for you, and creates
+new named files in a way the retains records of the existing assemblies and 
+effectively re-uses existing data files. 
 
 At its core, branching creates a copy of an Assembly object (the object that is
 saved as a ``.json`` file by ipyrad) such that the new Assembly inherits all of 
@@ -45,7 +46,8 @@ new :ref:`assembly_name<assembly_name>`, which is important so that all new file
 created along this branch will be saved with a unique filename prefix. 
 We'll show an example of a branching process below, but first we need to 
 describe reference mapping, since for our example we will be creating two 
-branches which are assembled using different ``assembly_methods``. 
+branches which are assembled using different 
+:ref:`assembly methods<assembly_methods>`. 
 
 
 Reference Sequence Mapping
@@ -125,9 +127,10 @@ that the input data and barcodes file are located in ``ipsimdata/``.
 
 .. parsed-literal::
 
-    ## ./iptutorial                              ## [1] [project_dir] ...
-    ## ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
-    ## ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
+    ## enter these lines into the params-data1.txt file
+    ./iptutorial                              ## [1] [project_dir] ...
+    ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
+    ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
 
 
 Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
@@ -157,9 +160,11 @@ if it ever interrupted. In general, you should not mess with the .json file,
 since editing it by hand could cause errors in your assembly. 
 
 .. code:: bash
+
     ls ./iptutorial
 
 .. parsed-literal::
+
     data1_edits/   data1_fastqs/   data1.json
 
 
@@ -281,58 +286,77 @@ branch and then run step7 on each of these assemblies with a new setting of 8 or
 Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
 and edits/ directories were created using just the first assembly ``iptest1``, 
 while the clust/ and consens/ directories were created for both ``iptest1`` and
-``iptest2`` which completed steps 3-6. Finally, you can see that each assembly 
-has its own ``outfiles/`` directory with the results of step7. 
-
+``iptest2``, since both completed steps 3-6. Finally, you can see that each 
+assembly has its own ``outfiles/`` directory with the results of step7. 
 
 .. code:: bash
 
    ## use ls -l to view inside the project directory as a list
    ls -l iptutorial/
 
+
+I show the structure a bit more clearly below:
+
 .. parsed-literal::  
 
-   iptest1.json
-   iptest1_fastqs/
-   iptest1_edits/
-   iptest1_clust_0.85/
-   iptest1_consens/
-   iptest1_outfiles/
+   iptutorial/
+       iptest1.json
+       iptest1_fastqs/
+           [...].fastq.gz
+       iptest1_edits/
+           [...].fastq
+       iptest1_clust_0.85/
+           [...].utemp
+           [...].htemp
+           [...].clust.gz
+           [...].clustS.gz
+       iptest1_consens/
+           [...].consens.gz
+       iptest1_outfiles/
+           iptest1.loci
+           iptest1.phy
+           iptest1.[other formats]
 
-   iptest1_min8.json
-   iptest1_min8_outfiles/
+       iptest1_min8.json
+       iptest1_min8_outfiles/
+           iptest1_min8.[formats]
 
-   iptest1_min12.json
-   iptest1_min12_outfiles/
+       iptest1_min12.json 
+       iptest1_min12_outfiles/
+           iptest_min12.[formats]
 
-   iptest2.json
-   iptest2_clust_0.85/
-   iptest2_consens/
-   iptest2_outfiles/
+       iptest2.json
+       iptest2_clust_0.85/
+           [...].[clustfiles]
+       iptest2_consens/
+           [...].consens.gz
+       iptest2_outfiles/
+           iptest2.[.formats]
 
-   iptest2_min8.json
-   iptest2_min8_outfiles/
+       iptest2_min8.json
+       iptest2_min8_outfiles/
+           iptest2_min8.[.formats]
 
-   iptest2_min12.json
-   iptest2_min12_outfiles/
+       iptest2_min12.json
+       iptest2_min12_outfiles/
+           iptest2_min12.[.formats]
 
 
-In addition you working directory should contain the four params files which 
-have the full set of parameters used in each of your assemblies. This makes for 
-a good reproducible workflow. 
-
+In your working directory you will have the four params files which 
+have the full set of parameters used in each of your assemblies. 
+This makes for a good reproducible workflow, and can be referenced later
+as a reminder of the parameters used for each data set. 
 
 
 Writing ipyrad scripts
 ~~~~~~~~~~~~~~~~~~~~~~
 From the code above you may have noticed that the only thing stopping you from
-being able to write one long script to make a huge range of assemblies is when 
-you have to go in by hand and edit the new params files by hand each time. 
-If you plan to only execute one ipyrad command at a time then that is no problem.
-But if you're a very programmatic type of person, you may be thinking about inserting
-``sed`` code-blocks into your code to edit the params files automatically. 
-If so, you'll probably want to check out the :ref:`ipyrad API<API>`, 
-which provides a much more elegant pure Python way to edit parameters in your 
-code.
+being able to write one long script that creates a whole range of assemblies is 
+when you have to edit the new params files by hand.
+If you plan to only execute one ipyrad command at a time then this is no problem.
+But if you're a very programmatic type of person you'll probably prefer
+making parameter changes in the code directly. If so, you'll want to check 
+out the :ref:`ipyrad API<API>`, which provides a more elegant pure Python 
+way to edit parameters in your code while assembling data. 
 
 

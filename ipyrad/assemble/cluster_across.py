@@ -351,7 +351,7 @@ def singlecat(data, sample, nloci, indels):
     Orders catg data for each sample into the final locus order. This allows
     all of the individual catgs to simply be combined later. They are also in 
     the same order as the indels array, so indels are inserted from the indel
-    array that in passed in. 
+    array that is passed in. 
     """
     LOGGER.debug("singlecat: %s", sample.name)
 
@@ -398,6 +398,12 @@ def singlecat(data, sample, nloci, indels):
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
+
+        ## write to disk after 10000 writes
+        if not iloc % 10000:
+            icatg[start:iloc] = local[:]
+            start = iloc
+
         if ask.shape[0] == 1: 
             ## if multiple hits of a sample to a locus then it is not added
             ## to the locus, and instead the locus is masked for exclusion
@@ -408,10 +414,6 @@ def singlecat(data, sample, nloci, indels):
             ## store that this cluster failed b/c it had duplicate samples. 
             dupfilter[iloc] = True
 
-        ## write to disk after 10000 writes
-        if not iloc % 10000:
-            icatg[start:iloc] = local[:]
-            start = iloc
     ## write the leftover 
     icatg[start:] = local[:icatg[start:].shape[0]]
 
@@ -419,9 +421,18 @@ def singlecat(data, sample, nloci, indels):
     ## slower than the local setting
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
+    LOGGER.debug("starting seedmatching")
     for iloc in seedmatch2:
-        icatg[iloc] = catarr[iloc, :icatg.shape[1], :]
-
+        try:
+            icatg[iloc] = catarr[iloc, :icatg[iloc].shape[1], :]
+        except IndexError:
+            LOGGER.error("""
+                sample: %s, 
+                iloc: %s,
+                icatg.shape: %s,
+                icatg[iloc].shape: %s,
+                """, sample.name, iloc, icatg.shape, icatg[iloc].shape)
+    LOGGER.debug("done seedmatching")
     ## close the old hdf5 connections
     old_h5.close()
 
