@@ -10,7 +10,7 @@ For this tutorial we will assemble a single-end RAD-seq data set of
 13 individuals from the *Cyathophora* clade of the angiosperm genus 
 *Pedicularis*, originally published by **Eaton and Ree (2013)** 
 (:ref:`link to open access article 
-<http://sysbio.oxfordjournals.org/content/62/5/689.full>`). All of the code 
+<eaton_and_ree>`). All of the code 
 on this page uses the CLI, and thus should be executed in a terminal. 
 
 
