@@ -35,24 +35,21 @@ The total size is approximately 1.1GB.
 
 Starting an ipyrad analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-We start by running ipyrad with the ``-n`` argument followed by the name
-we want to use for our assembly. This creates a parameter input file
-(params-name.txt) for our assembly which includes the Assembly name.
-I'll use the name ``base`` to indicate that this is the base assembly
-from which we will later create new branches.
+Start by using the ``-n`` argument to ipyrad followed by a name
+for your assembly. This creates a parameter input file (params-name.txt) 
+which includes the Assembly name. I'll use the name ``base`` to start, 
+to indicate that this is the base assembly from which we will later 
+create new branches.
 
 .. code:: bash
 
-    %%bash
     ipyrad -n "base"
 
 
 .. parsed-literal::
 
-    
-        New file `params-base.txt` created in /home/deren/Downloads
-    
+    New file `params-base.txt` created in /home/deren/Downloads
+
 
 
 Edit the params file
