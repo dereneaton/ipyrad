@@ -89,16 +89,25 @@ Run step1 to load in the fastq data files
 
     --------------------------------------------------
      ipyrad [v.0.1.70]
-     Interactive assembly
+     Interactive assembly and analysis of RADseq data
     ---------------------------------------------------
+     New Assembly: base
+     ipyparallel setup: Local connection to 4 Engines
 
+     Step1: Linking sorted fastq data to Samples
+
+       Linking to demultiplexed fastq files in:
+         /home/deren/...
+       13 new samples created in 'base'
+       13 fastq files linked to 13 new Samples.
+       Saving Assembly
 
 
 .. parsed-literal::
 
     --------------------------------------------------
      ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
+     Interactive assembly 
     --------------------------------------------------
      New Assembly: base
      ipyparallel setup: Local connection to 4 Engines
@@ -107,7 +116,7 @@ Run step1 to load in the fastq data files
 
        Linking to demultiplexed fastq files in:
          /home/deren/Downloads/example_empirical_rad/*.gz
-       13 new Samples created in `base`.
+       13 new Samples created in base.
        13 fastq files linked to 13 new Samples.
        Saving Assembly.
 
