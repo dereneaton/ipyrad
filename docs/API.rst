@@ -18,15 +18,20 @@ perform entire analyses within Jupyter :ref:`notebooks<notebooks>` to create
 documented reproducible code for your analyses. 
 
 
-
 Why use the API? 
 ----------------
-The API provides a much more flexible framework for writing code to perform
-complex branching assemblies than the CLI can provide. Because it is interactive
-you can more easily access the results and statistics from each step. There are
-two main functions of the API: 
+The API provides a more flexible framework for writing code to perform
+complex branching assemblies than the CLI, and it also provides a more 
+method of running remote code over very large computing clusters. 
+Because it is interactive you can easily access the results and statistics 
+from each step and use these in downstream analyses to visualize, analyze, 
+and compare assemblies. 
 
-* Assembly -- write scripts to perform the assembly 
+
+Two main functions of the API
+------------------------------
+
+* Assembly -- perform all the assembly steps available in the CLI.
 * Analysis -- analyze and compare the size and distribution of data sets, 
 create plots, calculate population genetic statistics, and perform phylogenetic
 analyses. 
@@ -36,13 +41,6 @@ API provides functionality that is necessary for advanced usage. For example,
 the API can be used to merge two Assemblies so that Samples from different 
 Assemblies can be clustered together. This can be useful when combining data 
 from a previous study with newly collected data. 
-
-
-Before we jump into describing the API usage 
-
-If you are already a pro with using Python then skip the next few sections
-to get to the meat of using the :ref:`ipyrad API<ipyrad_API>`. 
-
 
 
 Getting started with IPython/Jupyter notebooks
