@@ -17,10 +17,11 @@ on this page uses the CLI, and thus should be executed in a terminal.
 Download the fastq files
 ~~~~~~~~~~~~~~~~~~~~~~~~
 The data are hosted online at the NCBI sequence read archive (SRA) under 
-accession id SRP021469. For convenience, I also have the data hosted at a 
-publicly available dropbox link, which we will use to download the data here.
-Run the code below to download and decompress the fastq files 
-into a directory called ``example_empirical_data/``.
+accession id SRP021469. For convenience, I've also hosted the data at a 
+publicly available dropbox link which we will use to download the data here, 
+since it's a bit easier. Run the code below to download and decompress 
+the fastq files. They will be saved in a directory called 
+``example_empirical_data/`` in your current directory. 
 The total size is approximately 1.1GB.
 
 .. code:: bash
