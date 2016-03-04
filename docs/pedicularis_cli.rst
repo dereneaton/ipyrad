@@ -6,39 +6,32 @@
 
 Empirical example (*Pedicularis*) - CLI
 ========================================
-
-This is an `IPython/Jupyter`_ notebook, a useful tool for combining documentation
-and code for doing and sharing reproducible science. 
-Each cell of the notebook executes Python code by
-default, but can also execute other languages if given a header
-designation. Here we will be executing mostly **bash** code, which means
-each cell acts like a standard terminal. To do this we pass the
-``%%bash`` header to each cell. To see an example of ipyrad run with pure
-Python code check out the :ref:`API tutorial<pedicularis_api>`.
-
-
-Get the example data set
-~~~~~~~~~~~~~~~~~~~~~~~~
 For this tutorial we will assemble a single-end RAD-seq data set of
 13 individuals from the *Cyathophora* clade of the angiosperm genus 
 *Pedicularis*, originally published by **Eaton and Ree (2013)** 
 (:ref:`link to open access article 
-<http://sysbio.oxfordjournals.org/content/62/5/689.full>`).
-Copy and paste the code block below into a terminal (or run it inside 
-a jupyter notebook of your own) to download and decompress the fastq files 
+<http://sysbio.oxfordjournals.org/content/62/5/689.full>`). All of the code 
+on this page uses the CLI, and thus should be executed in a terminal. 
+
+
+Download the fastq files
+~~~~~~~~~~~~~~~~~~~~~~~~
+The data are hosted online at the NCBI sequence read archive (SRA) under 
+accession id SRP021469. For convenience, I also have the data hosted at a 
+publicly available dropbox link, which we will use to download the data here.
+Run the code below to download and decompress the fastq files 
 into a directory called ``example_empirical_data/``.
-The total size of these files will be approximately 1.1GB.
+The total size is approximately 1.1GB.
 
-.. code:: python
+.. code:: bash
 
-    %%bash
-    
     ## curl grabs the data from a public dropbox url
     ## the curl command uses an upper-case o argument, not a zero.
     curl -LskO https://dl.dropboxusercontent.com/u/2538935/example_empirical_rad.tar.gz
     
     ## the tar command decompresses the data directory
     tar -xvf example_empirical_rad.tar.gz
+
 
 Starting an ipyrad analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -49,7 +42,7 @@ we want to use for our assembly. This creates a parameter input file
 I'll use the name ``base`` to indicate that this is the base assembly
 from which we will later create new branches.
 
-.. code:: python
+.. code:: bash
 
     %%bash
     ipyrad -n "base"
