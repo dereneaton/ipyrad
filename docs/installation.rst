@@ -113,6 +113,9 @@ commands:
     conda update -c ipyrad ipyrad            ## update to the latest
 
 
+
+
+
 .. _HPC_installation: 
 
 HPC installation

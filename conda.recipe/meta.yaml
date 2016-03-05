@@ -14,14 +14,14 @@ requirements:
     - cython
     - dill
     - h5py
-    - ipyparallel
+    - ipyparallel >=5.0.1
     - ipython ==4.0.0
     - jupyter
     - mpi4py
     - nbconvert
     - numba
     - numpy >=1.7
-    - pandas
+    - pandas >=0.16
     - psutil
     - scipy
     - sphinx
