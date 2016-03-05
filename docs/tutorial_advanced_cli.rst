@@ -67,11 +67,6 @@ can imagine how this would be useful for removing contaminants, plastome data,
 symbiont-host data, or coding/non-coding regions.  
 
 
-Preview Mode
-~~~~~~~~~~~~~
-...
-
-
 Running ipyrad CLI on a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 As explained in the :ref:`installation<installation>` section, ipyrad_ is very 
@@ -83,8 +78,10 @@ are split across different nodes of a cluster can all see the same data. Using
 ipyrad_ with the --MPI flag on an HPC machine should allow users to split jobs
 across dozens or hundreds of cores to assemble data sets very rapidly. As an 
 example, a large phylogenetic-scale RAD-seq data set analyzed on my desktop 
-computer with 10 cores took ~2 days, while on an HPC system with 64 cores it 
-took only ~16 hours. More detailed speed comparisons are in the works. 
+computer with 12 cores took ~2 days, while on an HPC system with access to
+48 cores it took only ~12 hours. More detailed speed comparisons are in the 
+works. For most steps of ipyrad the speed improvement is linear with 
+the number of cores. 
 
 
 
@@ -172,8 +169,8 @@ Branching example
 ~~~~~~~~~~~~~~~~~
 For this example we will branch our Assembly before running step3 so that we can
 see the results when the data are asembled with different assembly_methods. Our
-existing assembly ``iptest1`` is using the denovo method. Let's create a branch
-called ``iptest2`` which will use reference assembly. First we need to run the 
+existing assembly ``data1`` is using the denovo method. Let's create a branch
+called ``data2`` which will use reference assembly. First we need to run the 
 branch command, then we'll edit the new params file to change the assembly_method
 and add the reference sequence file. 
 
@@ -181,14 +178,14 @@ and add the reference sequence file.
 .. code:: bash
 
     ## create a new branch of the Assembly iptest1
-    ipyrad -p params-iptest1.txt -b iptest2
+    ipyrad -p params-data1.txt -b data2
     
 .. parsed-literal::
 
-    New file params-iptest2.txt created in /home/deren/Documents/ipyrad
+    New file params-data2.txt created in /home/deren/Documents/ipyrad
 
 
-And make the following edits to ``params-iptest2.txt``:
+And make the following edits to ``params-data2.txt``:
 
 .. parsed-literal::
 
