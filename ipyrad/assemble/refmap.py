@@ -880,7 +880,7 @@ def append_clusters(data, sample, derep_fasta_files):
                     else:
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
-            out.write(str("".join(seqs))+"//\n//\n")
+            out.write("//\n//\n"+str("".join(seqs)))
             
 
 def refmap_init(data, sample):
