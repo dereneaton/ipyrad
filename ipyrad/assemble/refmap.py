@@ -356,6 +356,7 @@ def get_aligned_reads( args ):
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
     aligned_seq_files = []
+    reads_merged = 0
 
     # Wrap this in a try so we can clean up if it fails.
 
@@ -397,13 +398,14 @@ def get_aligned_reads( args ):
                 ## pairs into one merged file. merge_pairs takes the unmerged
                 ## files list as an argument because we're reusing this code 
                 ## in the refmap pipeline, trying to generalize.
-                LOGGER.debug( "Merging pairs - %s", sample.files )
-                mergefile, nmerged = merge_pairs( data, sample, aligned_seqs )
+                LOGGER.debug("Merging pairs - %s", sample.files)
+                mergefile, nmerged = refmap_merge_pair(data, sample, aligned_seqs)
                 #sample.files.edits = [(mergefile, )]
                 #sample.files.pairs = mergefile
                 
                 ## Update the total number of merged pairs
-                sample.stats.reads_merged += nmerged
+                reads_merged += nmerged
+                #sample.stats.reads_merged += nmerged
                 sample.merged = 1
                 aligned_fasta = mergefile
             else:
@@ -424,6 +426,8 @@ def get_aligned_reads( args ):
                 "aligned_seq_files {}".format(derep_fasta_files, aligned_seq_files))
         raise
     finally:
+        LOGGER.debug("Total merged reads for {} - {}".format(sample.name, reads_merged))
+        sample.stats.reads_merged = reads_merged
         # Clean up all the tmp files
         # Be a little careful. Don't remove files if they're already gone :-/
         for i in derep_fasta_files:
@@ -436,6 +440,18 @@ def get_aligned_reads( args ):
                 if os.path.isfile(j[1]):
                     os.remove(j[1])
 
+
+def refmap_merge_pair(data, sample, aligned_seqs):
+    """This formats the data for the call to util/merge_pairs().
+    merge_pairs() arguments and expectations changed enough to where
+    it would be painful to perform these gymanstics in get_aligned_reads.
+    This util function is a workaround."""
+    sample.files.edits = [(aligned_seqs[0], aligned_seqs[1])]
+
+    sample = merge_pairs(data, sample)
+
+    return sample.files.merged, sample.stats.reads_merged
+    
 
 def bedtools_merge(data, sample):
     """ Get all contiguous genomic regions with one or more overlapping

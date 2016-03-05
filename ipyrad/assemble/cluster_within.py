@@ -36,8 +36,9 @@ def sample_cleanup(data, sample):
     ## set cluster file handles
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
+
     if 'pair' in data.paramsdict["datatype"]:
-        sample.files.merged = os.path.join(data.dirs.clusts,
+        sample.files.merged = os.path.join(data.dirs.edits,
                                              sample.name+"_merged_.fastq")
         ## record how many read pairs were merged
         with open(sample.files.merged, 'r') as tmpf:
@@ -102,6 +103,7 @@ def sample_cleanup(data, sample):
                                     data.paramsdict["mindepth_statistical"]])
        
         ## sample stat assignments
+        sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
         sample.stats_dfs.s3["clusters_total"] = len(depth)
         sample.stats_dfs.s3["clusters_hidepth"] = \
                                         int(sample.stats["clusters_hidepth"])
