@@ -424,7 +424,11 @@ def singlecat(data, sample, nloci, indels):
     LOGGER.debug("starting seedmatching")
     for iloc in seedmatch2:
         try:
-            icatg[iloc] = catarr[iloc, :icatg[iloc].shape[1], :]
+            #LOGGER.info("icatg[iloc].shape %s", icatg[iloc].shape)
+            #LOGGER.info("catarr[iloc, :, :] %s", catarr[iloc, :, :])
+            #LOGGER.info('shape %s', catarr[iloc, :, :].shape)
+            icatg[iloc] = catarr[iloc, :, :]
+            #icatg[iloc] = catarr[iloc, :icatg[iloc].shape[1], :]
         except IndexError:
             LOGGER.error("""
                 sample: %s, 
