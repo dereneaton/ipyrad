@@ -280,9 +280,9 @@ def consensus(args):
     ## write to tmp cons to file to be combined later
     consenshandle = os.path.join(data.dirs.consens, 
                                  sample.name+"_tmpcons."+str(tmpnum))
-    LOGGER.info('writing %s', consenshandle)
-    LOGGER.info('passed in this chunk: %s', len(storeseq))
-    LOGGER.info('caught in this chunk: %s', filters)
+    #LOGGER.info('writing %s', consenshandle)
+    #LOGGER.info('passed in this chunk: %s', len(storeseq))
+    #LOGGER.info('caught in this chunk: %s', filters)
     if storeseq:
         with open(consenshandle, 'wb') as outfile:
             outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
