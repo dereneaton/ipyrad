@@ -540,7 +540,11 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
             ## for samples in the order in which they were submitted
             results = threaded_view.map(clustall, submitted_args)
-            results = results.get()
+            for i, success in enumerate(results):
+                if success:
+                    LOGGER.debug("Finished clustering {}".format(samples[i]))
+                    samples[i].stats.state = 2.5
+            #results = results.get()
  
             ## TODO: should it look for REFSEQ reads if it had no utemp hits?
 
@@ -556,9 +560,9 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
                     finalize_aligned_reads(data, sample, ipyclient)
 
             ## record that sample is clustered but not yet aligned
-            for success, sample in zip(results, samples):
-                if success:
-                    sample.stats.state = 2.5
+            #for success, sample in zip(results, samples):
+            #    if success:
+            #        sample.stats.state = 2.5
 
         ## Samples at step 2.5 pick up again here.
         ## call ipp for muscle aligning only if the Sample passed clust/mapping
@@ -582,20 +586,11 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         ## For preview/refmap restore original sample.files.edits paths and 
         ## clean up the tmp files.
 
-        ## In the event step 3 gets cancelled make sure we save which files are
-        ## in step 2.5 so we dont have to redo them.
-        for success, sample in zip(results, samples):
-            if sample.stats.state == 3:
-                pass
-            elif success:
-                sample.stats.state = 2.5
-
-
         ## If we did refmapping return the samples.files.edits to their original
         ## condition. Have to do this before restoring preview files because
         ## the refmap edits backup will be a backup of the preview truncated 
         ## files. The order of these two functions matters.
-        if "denovo" not in data.paramsdict["assembly_method"]: 
+        if not "denovo" == data.paramsdict["assembly_method"]: 
             for sample in samples:
                 refmap_cleanup(data, sample)
 
