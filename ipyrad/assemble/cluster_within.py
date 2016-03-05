@@ -37,8 +37,8 @@ def sample_cleanup(data, sample):
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
     if 'pair' in data.paramsdict["datatype"]:
-        sample.files.merged = os.path.join(data.dirs.clusts,
-                                             sample.name+"_merged_.fastq")
+        sample.files.merged = os.path.join(data.dirs.edits,
+                                           sample.name+"_merged_.fastq")
         ## record how many read pairs were merged
         with open(sample.files.merged, 'r') as tmpf:
             sample.stats.reads_merged = len(tmpf.readlines()) // 4
