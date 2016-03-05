@@ -574,7 +574,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
                 sample_cleanup(data, sample)
     
         LOGGER.debug("Finished sample cleanup. max_fragment_length = "\
-                        + "{}".format(data._hackersonly["max_fragment_length"]))
+                    + "{}".format(data._hackersonly["max_fragment_length"]))
         ## run data cleanup
         data_cleanup(data, samples)
 
@@ -832,6 +832,7 @@ def multi_muscle_align(data, sample, ipyclient):
         del lbview
 
 
+
 def clustall(args):
     """ Running on remote Engine. Refmaps, then merges, then dereplicates, 
     then denovo clusters reads. """
@@ -877,6 +878,7 @@ def clustall(args):
     except IPyradError as inst:
         print(inst)
         return 0
+
 
 
 

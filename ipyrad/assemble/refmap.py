@@ -25,6 +25,7 @@ from ipyrad.assemble.rawedit import comp
 import logging
 LOGGER = logging.getLogger(__name__)
 
+# pylint: disable=W0142
 
 
 def index_reference_sequence(data, force=False):
@@ -71,6 +72,7 @@ def index_reference_sequence(data, force=False):
         print("    Done indexing reference sequence")
 
 
+
 def mapreads(args):
     """ Attempt to map reads to reference sequence. This reads in the 
     samples.files.edits .fasta files, and attempts to map each read to the 
@@ -85,7 +87,7 @@ def mapreads(args):
 
     ## get args
     data, sample, noreverse, nthreads = args
-    LOGGER.debug("Entering mapreads(): %s %s %s %s", \
+    LOGGER.debug("Entering mapreads(): %s %s %s", \
                                     sample.name, noreverse, nthreads)
 
     ## Test edits actually exist
@@ -124,8 +126,10 @@ def mapreads(args):
     ##    writes out unmapped reads to the 'edits' directory as .fq
     ##    which is what downstream analysis expects
     samhandle = os.path.join(data.dirs.refmapping, sample.name+".sam")
-    sample.files.unmapped_reads = unmapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
-    sample.files.mapped_reads = mapped_bamhandle = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
+    sample.files.unmapped_reads = unmapped_bamhandle = \
+                os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    sample.files.mapped_reads = mapped_bamhandle = \
+                os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     
     sorted_mapped_bamhandle = sample.files["mapped_reads"]
 
@@ -202,21 +206,21 @@ def mapreads(args):
                 " -U " + unmapped_bamhandle+\
                 " " + samhandle+\
                 " > " + mapped_bamhandle
-        LOGGER.debug( "%s", cmd )
+        LOGGER.debug("%s", cmd)
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
     
         ## Step 2 sort mapped bam
-        ##   -T = Temporary file name, this is required by samtools, you can ignore it
-        ##        Here we just hack it to be samhandle.tmp cuz samtools will clean it up
+        ##   -T = Temporary file name, this is required by samtools, ignore it
+        ##        Here we hack it to be samhandle.tmp cuz samtools cleans it up
         ##   -O = Output file format, in this case bam
         ##   -o = Output file name
         cmd = ipyrad.bins.samtools+\
             " sort -T "+samhandle+".tmp" +\
             " -O bam "+mapped_bamhandle+\
             " -o "+sorted_mapped_bamhandle
-        LOGGER.debug( "%s", cmd )
+        LOGGER.debug("%s", cmd)
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
@@ -227,7 +231,7 @@ def mapreads(args):
         ## a default location
         cmd = ipyrad.bins.samtools+\
             " index " + mapped_bamhandle
-        LOGGER.debug( "%s", cmd )
+        LOGGER.debug("%s", cmd)
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
@@ -238,11 +242,11 @@ def mapreads(args):
         ## sample.edits fq path.
         ##############################################
     
-        outfiles = [ unmapped_fastq_handle ]
+        outfiles = [unmapped_fastq_handle]
         if 'pair' in data.paramsdict["datatype"]:
-            outfiles.append( unmapped_fastq_handle_R2 )
-            outflags =  " -1 " + outfiles[0]+\
-                        " -2 " + outfiles[1]
+            outfiles.append(unmapped_fastq_handle_R2)
+            outflags = " -1 " + outfiles[0]+\
+                       " -2 " + outfiles[1]
         else:
             outflags = " -0 " + outfiles[0]
     
@@ -250,7 +254,7 @@ def mapreads(args):
             " bam2fq " + outflags+\
                 " " + unmapped_bamhandle
     
-        LOGGER.debug( "%s", cmd )
+        LOGGER.debug("%s", cmd)
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
@@ -260,7 +264,7 @@ def mapreads(args):
         ## during cluster_within.cleanup()
 
     except subprocess.CalledProcessError:
-            LOGGER.error( "Error in reference mapping. Try copy/pasting and running this "+\
+            LOGGER.error("Error in reference mapping. Try copy/pasting and running this "+\
                             "command by hand:\n\t%s", cmd)
             ## TODO: Maybe make this not bail out hard?
             sys.exit("Error in reference mapping \n{}\n{}\n{}."\
@@ -274,6 +278,8 @@ def mapreads(args):
             raise
     finally:
         pass
+
+
 
 
 def finalize_aligned_reads( data, sample, ipyclient ):
@@ -311,6 +317,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
 
             submitted_args = []
             for chunk in tmp_chunks:
+                LOGGER.info("Whats this: %s", [data, sample, chunk])
                 submitted_args.append([data, sample, chunk])
 
             ## run get_aligned_reads on all region chunks            
@@ -327,6 +334,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
         pass
 
 
+
 def get_aligned_reads( args ):
     """Pull aligned reads out of sorted mapped bam files and
     append them to the clustS.gz file so the fall into downstream analysis
@@ -335,14 +343,15 @@ def get_aligned_reads( args ):
     1) Coming into this function we have sample.files.mapped_reads 
         as a sorted bam file, and a passed in list of regions to evaluate.
     2) Get all reads overlapping with each individual region.
-    3) Write the aligned sequences out to a fasta file (vsearch doesn't handle piping data)
+    3) Write the aligned sequences out to a fasta file (vsearch doesn't 
+       handle piping data) (IT WILL VERY SOON, actually).
     4) Call vsearch to derep reads
     5) Append to the clustS.gz file.
 
     ## The old way was a bit more laborious, and also didn't work great. Plus
-    ## it had the disadvantage of not including bases that don't align to the reference
-    ## (they would get hard masked by the pileup command). Get rid of all this when
-    ## you get sick of looking at it...
+    ## it had the disadvantage of not including bases that don't align to 
+    ## the reference (they would get hard masked by the pileup command). 
+    ## Get rid of all this when you get sick of looking at it...
     2) Samtools pileup in each region individually. This will build stacks
        of reads within each contiguous region.
     3) Decompile the mpileup format into fasta to get the raw sequences within
@@ -352,7 +361,7 @@ def get_aligned_reads( args ):
     #reload(ipyrad.assemble.refmap)
     #import ipyrad.assemble.refmap
     data, sample, regions = args
-    ## Keep track of all the derep'd fasta files per stack, we'll concatenate them
+    ## Keep track of all the derep'd fasta files per stack, we concatenate them
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
     aligned_seq_files = []
@@ -362,34 +371,44 @@ def get_aligned_reads( args ):
     try:
         ## For each identified region, build the pileup and write out the fasta
         for line in regions:
+            LOGGER.info("line %s in region %s", line, regions)
 
-            # Blank lines returned from bedtools make the rest of the pipeline angry. Filter them.
+            # Blank lines returned from bedtools make the rest of the 
+            # pipeline angry. Filter them.
             if line == "":
                 continue
 
             chrom, region_start, region_end = line.strip().split()[0:3]
 
             # Here aligned seqs is a list of files 1 for SE or 2 for PE
-            aligned_seqs = bam_region_to_fasta( data, sample, chrom, region_start, region_end )
+            args = [data, sample, chrom, region_start, region_end]
+            aligned_seqs = bam_region_to_fasta(*args)
 
-            ## If bam_region_to_fasta fails for some reason it'll return [], in which case
-            ## skip the rest of this. Normally happens if reads map successfully, but too far apart.
+            ## If bam_region_to_fasta fails for some reason it'll return [], 
+            ## in which case skip the rest of this. Normally happens if reads
+            ## map successfully, but too far apart.
             if not aligned_seqs:
                 continue
 
-            # This whole block is getting routed around at this point. I'm not deleting it cuz
-            # i'm precious about it, and cuz if we ever decide to use pileup to call snps it could
-            # be useful. The next two functions generate pileups per region and then backtransform
+            # This whole block is getting routed around at this point. I'm not 
+            # deleting it cuz i'm precious about it, and cuz if we ever decide 
+            # to use pileup to call snps it could be useful. The next two 
+            # functions generate pileups per region and then backtransform
             # pileup to aligned fasta.
-            #pileup_file, read_labels = bam_to_pileup( data, sample, chrom, region_start, region_end )
-            ## Test the return from bam_to_pileup. If mindepth isn't satisfied this function will return
-            ## an empty string and empty list. In this case just bail out on this pileup, bad data.
+            # pileup_file, read_labels = bam_to_pileup( data, sample, chrom, 
+            # region_start, region_end )
+            ## Test the return from bam_to_pileup. If mindepth isn't satisfied 
+            # this function will return
+            ## an empty string and empty list. In this case just bail out on 
+            # this pileup, bad data.
             #if pileup_file == "":
-            #    LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, region_start, region_end )
+            #    LOGGER.debug( "not enough depth at - %s, %s, %s", chrom, 
+                #region_start, region_end )
             #    continue
             #aligned_seqs = mpileup_to_fasta( data, sample, pileup_file )
 
-            #aligned_fasta_file = write_aligned_seqs_to_file( data, sample, aligned_seqs, read_labels )
+            #aligned_fasta_file = write_aligned_seqs_to_file( data, 
+                #sample, aligned_seqs, read_labels )
 
             ## merge fastq pairs
             if 'pair' in data.paramsdict['datatype']:
@@ -397,8 +416,9 @@ def get_aligned_reads( args ):
                 ## pairs into one merged file. merge_pairs takes the unmerged
                 ## files list as an argument because we're reusing this code 
                 ## in the refmap pipeline, trying to generalize.
-                LOGGER.debug( "Merging pairs - %s", sample.files )
-                mergefile, nmerged = merge_pairs( data, sample, aligned_seqs )
+                LOGGER.debug("Merging pairs - %s", sample.files)
+                ## you probably have to save 'aligned_seqs' to the sample here
+                mergefile, nmerged = merge_pairs(data, sample)#, aligned_seqs)
                 #sample.files.edits = [(mergefile, )]
                 #sample.files.pairs = mergefile
                 
@@ -407,10 +427,11 @@ def get_aligned_reads( args ):
                 sample.merged = 1
                 aligned_fasta = mergefile
             else:
-                ## If SE we don't need to merge, and the aligned fasta are just the first
-                ## element of the list returned above
+                ## If SE we don't need to merge, and the aligned fasta are 
+                ## just the first element of the list returned above
                 aligned_fasta = aligned_seqs[0]
 
+            ## new dereping?
             derep_fasta = derep_and_sort(data, sample, aligned_fasta)
 
             ## Derep_fasta_files are merged for PE
@@ -421,20 +442,22 @@ def get_aligned_reads( args ):
     except Exception as inst:
         LOGGER.warn("Caught exception inside get_aligned_reads - {}".format(inst))
         LOGGER.debug("Current contents of:\nderep_fasta_files {}\n"\
-                "aligned_seq_files {}".format(derep_fasta_files, aligned_seq_files))
+           "aligned_seq_files {}".format(derep_fasta_files, aligned_seq_files))
         raise
     finally:
+        pass
         # Clean up all the tmp files
         # Be a little careful. Don't remove files if they're already gone :-/
-        for i in derep_fasta_files:
-            if os.path.isfile(i):
-                os.remove(i)
-        for j in aligned_seq_files:
-            if os.path.isfile(j[0]):
-                os.remove(j[0])
-            if 'pair' in data.paramsdict['datatype']:
-                if os.path.isfile(j[1]):
-                    os.remove(j[1])
+        # for i in derep_fasta_files:
+        #     if os.path.isfile(i):
+        #         os.remove(i)
+        # for j in aligned_seq_files:
+        #     if os.path.isfile(j[0]):
+        #         os.remove(j[0])
+        #     if 'pair' in data.paramsdict['datatype']:
+        #         if os.path.isfile(j[1]):
+        #             os.remove(j[1])
+
 
 
 def bedtools_merge(data, sample):
@@ -635,6 +658,8 @@ def bam_to_pileup(data, sample, chrom, region_start, region_end):
     return pileup_file, read_labels
 
 
+
+
 def mpileup_to_fasta(data, sample, pileup_file):
     """ Takes a pileup file and decompiles it to fasta. It is currently 
     "working" but there are some bugs. If you want to actually use this it'll 
@@ -730,7 +755,8 @@ def mpileup_to_fasta(data, sample, pileup_file):
                     # Comma matches reference sequence on the reverse strand
                     ret = refbase
                 elif base in "ACGTacgt":
-                    # Capital letter indicates difference at base on the forward strand
+                    # Capital letter indicates difference at base on the 
+                    # forward strand.
                     # Lower case indicates difference on reverse strand
                     ret = base
                 elif base == "-":
@@ -741,7 +767,7 @@ def mpileup_to_fasta(data, sample, pileup_file):
                     # Get the number of deletions here
                     ndeletions = int(next(b))
                     # consume the deleted bases
-                    for i in range(ndeletions):
+                    for _ in range(ndeletions):
                         _ = next(b)
                     ret = ""
                 elif base == "*":
@@ -753,9 +779,9 @@ def mpileup_to_fasta(data, sample, pileup_file):
                     # followed by the bases.
                     ninsertions = int(next(b))
                     # gather the inserted bases
-                    ret=""
-                    for i in range(ninsertions):
-                        ret+=next(b).upper()
+                    ret = ""
+                    for _ in range(ninsertions):
+                        ret += next(b).upper()
                 elif base == "$":
                     # Return the N's to pad the remaining sequence
                     # TODO: Handle padding of sequences in a better way.
@@ -764,16 +790,17 @@ def mpileup_to_fasta(data, sample, pileup_file):
                     #print(len(seqs[pos]))
                     #print(ret)
                     # Update the count of dollar signs per line
-                    n_dollarsigns +=1
-                    completed_reads = np.append( completed_reads, pos-n_dollarsigns)
+                    n_dollarsigns += 1
+                    completed_reads = np.append(completed_reads, pos-n_dollarsigns)
                 else:
                     # TODO Handle '<' & '>'
                     ret = "wat"
                 if pos < len(incomplete_reads):
                     seqs[incomplete_reads[pos]] = seqs[incomplete_reads[pos]]+ret
-            incomplete_reads = np.delete( incomplete_reads, completed_reads )
+            incomplete_reads = np.delete(incomplete_reads, completed_reads)
         ## Done processing one line of the pileup
-    return( seqs )
+    return seqs
+
 
 
 def write_aligned_seqs_to_file(data, sample, aligned_seqs, read_labels):
@@ -789,6 +816,7 @@ def write_aligned_seqs_to_file(data, sample, aligned_seqs, read_labels):
             out.write(">"+read_labels[i]+"\n")
             out.write(line+"\n")
     return out.name
+
 
 
 def derep_and_sort(data, sample, aligned_fasta_file):
@@ -838,6 +866,7 @@ def derep_and_sort(data, sample, aligned_fasta_file):
     return outfile.name
 
 
+
 def append_clusters(data, sample, derep_fasta_files):
     """ Append derep'd mapped fasta stacks to the clust.gz file.
     This goes back into the pipeline _before_ the call to muscle
@@ -860,15 +889,16 @@ def append_clusters(data, sample, derep_fasta_files):
     else:
         write_flag = 'ab'
 
+
     ## A little bit of monkey business here to get the expected
     ## format right. Downstream expects name lines to end with
     ## * if it's the most abundant read, and + if it's anything else
     ##
     ## TODO: refmapping is not currently checking for a max *
     ## of snps per locus. Probably should fix that.
-
     with gzip.open(sample.files.clusters, write_flag) as out:
         for fname in derep_fasta_files:
+            LOGGER.info("derep_fasta_files %s", fname)
             # We need to update and accumulate all the seqs before
             # we write out to the file or the ipp threads will step
             # all over each other
@@ -880,8 +910,11 @@ def append_clusters(data, sample, derep_fasta_files):
                     else:
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
-            out.write("//\n//\n"+str("".join(seqs)))
-            
+                    LOGGER.info("".join(seqs))
+            out.write("".join(seqs))
+            out.write("//\n//\n")
+
+
 
 def refmap_init(data, sample):
     """Set the mapped and unmapped reads files for this sample
@@ -904,6 +937,7 @@ def refmap_init(data, sample):
     ## This gets cleaned up at the end of cluster_within
     sample.files.edits = [tuple(refmap_unmapped_edits)]
     return sample
+
 
 
 def refmap_stats(data, sample):
