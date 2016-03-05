@@ -76,6 +76,14 @@ object if data are already demultiplexed, or by running ``step1()`` to
 demultiplex raw data files, as shown below.
 
 
+Advanced remote computing with ipyparallel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The ipyrad CLI automatically launches parallel connections to computing engines
+requiring little or no prior computing knowledge on the part of the user. The
+ipyrad API is for more advanced users, and ...
+
+using the Python module ipyparallel_. 
+
 
 .. _cookbook_recipes:
 

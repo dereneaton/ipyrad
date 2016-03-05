@@ -321,12 +321,14 @@ def merge_pairs(data, sample):
             writing.append("\n".join([
                             read1s[0].strip(),
                             read1s[1].strip()+\
-                                "nnnn"+read2s[1].strip(),
-                                #comp(read2s[1].strip())[::-1],
+                                "nnnn"+\
+                                #read2s[1].strip(),
+                                comp(read2s[1].strip())[::-1],
                             read1s[2].strip(),
                             read1s[3].strip()+\
-                                "nnnn"+read2s[3].strip()]
-                                #read2s[3].strip()[::-1]]
+                                "nnnn"+\
+                                #read2s[3].strip()]
+                                read2s[3].strip()[::-1]]
                             ))
             counts += 1
             if not counts % 1000:

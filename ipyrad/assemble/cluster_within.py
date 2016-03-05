@@ -39,7 +39,7 @@ def sample_cleanup(data, sample):
 
     if 'pair' in data.paramsdict["datatype"]:
         sample.files.merged = os.path.join(data.dirs.edits,
-                                             sample.name+"_merged_.fastq")
+                                           sample.name+"_merged_.fastq")
         ## record how many read pairs were merged
         with open(sample.files.merged, 'r') as tmpf:
             sample.stats.reads_merged = len(tmpf.readlines()) // 4
@@ -576,7 +576,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
                 sample_cleanup(data, sample)
     
         LOGGER.debug("Finished sample cleanup. max_fragment_length = "\
-                        + "{}".format(data._hackersonly["max_fragment_length"]))
+                    + "{}".format(data._hackersonly["max_fragment_length"]))
         ## run data cleanup
         data_cleanup(data, samples)
 
@@ -834,6 +834,7 @@ def multi_muscle_align(data, sample, ipyclient):
         del lbview
 
 
+
 def clustall(args):
     """ Running on remote Engine. Refmaps, then merges, then dereplicates, 
     then denovo clusters reads. """
@@ -879,6 +880,7 @@ def clustall(args):
     except IPyradError as inst:
         print(inst)
         return 0
+
 
 
 

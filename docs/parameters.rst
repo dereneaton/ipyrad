@@ -18,6 +18,7 @@ of parameter settings is one of the main features of ipyrad_.
 Below is an explanation of each parameter setting, the steps of the assembly 
 that it effects, and example entries for the parameter into a params.txt file.
 
+
 .. _assembly_name:
 
 0. Assembly name
@@ -27,9 +28,10 @@ unique identifier for the assembly, meaning the set of parameters you are using
 for the current data set. When I assemble multiple data with different parameter
 combinations I usually either name them consecutively (e.g., data1, data2), or 
 with names indicating their parameter combinations (e.g., data_clust90, 
-data_clust85). The Assembly name cannot be changed after an Assembly is created, 
-but a new Assembly with a different name can be created by copying (branching)
-the Assembly (see :ref:`branching workflow<branching_workflow>`).
+data_clust85). The Assembly name cannot be changed after an Assembly is created
+with the ``-n`` flag, but a new Assembly with a different name can be created 
+by copying (branching) the Assembly 
+(see :ref:`branching workflow<branching_workflow>`).
 
 Affected steps: 1-7  
 
@@ -38,7 +40,7 @@ Example entries into params.txt:
 .. code-block:: python
 
     data1                      ## [0] name the Assembly data1
-    clust90_minsamp4           ## [0] name the Assembly based on some param settings
+    clust90_minsamp4           ## [0] name based on some param settings
 
 
 .. _project_dir:
@@ -243,9 +245,9 @@ Affected steps = 1,2. Example entries to params.txt file:
 
 .. code-block:: bash
 
-    TGCAG                     ## single cutter (e.g., rad, gbs)
-    TGCAG, AATT               ## double digest (e.g., ddrad, pairddrad) 
-    CWGC                      ## single cutter w/ degenerate base
+    TGCAG                     ## [8] single cutter (e.g., rad, gbs)
+    TGCAG, AATT               ## [8] double digest (e.g., ddrad, pairddrad) 
+    CWGC                      ## [8] single cutter w/ degenerate base
 
 
 
@@ -265,8 +267,8 @@ Affected steps = 2. Example entries to params.txt:
 
 .. code-block:: bash
     
-    0                      ## allow zero low quality bases in a read
-    4                      ## allow up to four low quality bases in a read
+    0                      ## [9] allow zero low quality bases in a read
+    4                      ## [9] allow up to four low quality bases in a read
 
 
 .. _phred_Qscore_offset:
@@ -279,36 +281,140 @@ default offset is 33, which is equivalent to a minimum qscore of 20. Some
 older data use a qscore offset of 64. You can toggle the offset number 
 to change the threshold for low qual bases.
 
-Affected steps = 2. Example entries to param.txt:
+Affected steps = 2. Example entries to params.txt:
 
-.. code-block:: bash
+.. parsed-literal::
 
-    33                 ## default offset of 33, converts to min score=20
-    23                 ## offset reduced by 10, converts to min score=30
-    64                 ## offset used by older data, converts to min score=20.
+    33                 ## [10] default offset of 33, converts to min score=20
+    23                 ## [10] offset reduced by 10, converts to min score=30
+    64                 ## [10] offset used by older data, converts to min score=20.
 
 
 .. _mindepth_statistical:
 
-11. Mindepth_statistical
+11. mindepth_statistical
 -------------------------
+This is the minimum depth at which statistical base calls will be made during
+step 5 consensus base calling. By default this is set to 6, which for most 
+reasonable error rates estimates is approximately the minimum depth at which a 
+heterozygous base call can be distinguished from a sequencing error. 
 
+Affected steps = 4, 5. Example entries to params.txt
+
+.. parsed-literal::
+
+    6                 ## [11] set mindepth statistical to 6
+    10                ## [11] set to 10
 
 
 .. _mindepth_majrule:
 
-12. Mindepth_majrule
+12. mindepth_majrule
 ---------------------
+This is the minimum depth at which majority rule base calls are made during
+step 5 consensus base calling. By default this is set to the same value as 
+mindepth_statistical, such that only statistical base calls are made. This
+value must be <= mindepth_statistical. If lower, then sites with coverage 
+>= mindepth_majrule and < mindepth_statistical will make majority rule calls. 
+If your data set is very low coverage such that many clusters are excluded due
+to low sequencing depth then lowering mindepth_majrule can be an effective way
+to increase the amount of usable information in your data set. However, you 
+should be aware the majority rule consensus base calls will underestimate
+heterozygosity.
+
+Affected steps = 4, 5. Example entries to params.txt:
+
+.. parsed-literal::
+
+    6                 ## [12] set to relatively high value similar to mindepth_stat
+    2                 ## [12] set below the statistical limit for base calls.
+
 
 .. _maxdepth:
-13. Maxdepth
+13. maxdepth
 -------------
-...
+Sequencing coverage is often highly uneven among due to differences in the 
+rate at which fragments are amplified during library preparation, the extent
+to which varies across different library prep methods. Moreover, repetitive 
+regions of the genome may appear highly similar and thus cluster as high depth
+clusters. Setting a maxdepth helps to remove the latter problem, but at the 
+expense of potentially removing good clusters that simply were sequenced
+to high depth. The default maxdepth is set quite high (10,000), but you may 
+change it as you see fit. 
+
+Affected steps = 4, 5. Example entries to params.txt:
+
+.. parsed-literal::
+
+    10000             ## [13] maxdepth above which clusters are excluded.
+
+
 
 .. _clust_threshold:
-14. Clust_threshold
+
+14. clust_threshold
 --------------------
-...
+This the level of sequene similarity at which two sequences are identified
+as being homologous, and thus cluster together. The value should be entered
+as a decimal (e.g., 0.90). We do not recommend using values higher than 0.95, 
+as homologous sequences may not cluster together at such high threshold due
+to the presence of Ns, indels, sequencing errors, or polymorphisms. 
+
+Affected steps = 3, 6. Example entries to params.txt:
+
+.. parsed-literal::
+
+    0.90              ## [14] clust threshold set to 90%
+    0.85              ## [14] clust threshold set to 85%
+
+
+.. _max_barcodes_mismatch:
+
+15. max_barcodes_mismatch
+---------------
+The maximum number of allowed mismatches between the barcodes in the barcodes
+file and those found in the sequenced reads. Default is 1. Barcodes usually differ
+by a minimum of 2 bases, so I would not generally recommend using a value >2. 
+
+Affected steps = 1. Example entries to params.txt:
+
+.. parsed-literal::
+
+    0              ## [15] allow no mismatches
+    1              ## [15] allow 1 mismatched base
+
+
+.. _filter_adapters:
+
+16. filter_adapters
+--------------------
+Depending on the fidelity of the size selection procedure implemented during 
+library preparation there are usually at least some proportion of sequences
+in which the read length is longer than the actual DNA fragment, such that the 
+primer/adapter sequence ends up in the read. This can be a problem and should
+be filtered out. It occurs more commonly in double-digest data sets that use 
+a common cutter, and can be espeically problematic for gbs data sets, in 
+which short fragments are sequenced from either end.
+If filter_adapters is set to 0 then no check is performed for sequence adapters.
+If it is set to 1 then step 2 performs a fuzzy check for the reverse 
+complement match of the cut site followed by the beginning of the adapter 
+sequence. If it is set to 2 is performs an even fuzzier match to catch 
+adapters even if there are sequencing errors or Ns in them, but has a higher
+rate of false positive matches. 
+
+Affected steps = 2. Example entries to params.txt:
+
+.. parsed-literal::
+
+    0                ## [16] No adapter filtering
+    1                ## [16] filter for adapters
+    2                ## [16] strict filter for adapters
+
+
+.. _filter_min_trim_len:
+
+17. filter_min_trim_len
+------------------------
 
 
 
