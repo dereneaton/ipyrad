@@ -236,6 +236,7 @@ def mapreads(args):
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
     
+
         ##############################################
         ## Do unmapped
         ## Output the unmapped reads to the original
@@ -301,6 +302,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
     lbview = ipyclient.load_balanced_view()
 
     try:
+
         ## Regions is a giant list of 5-tuples, of which we're only really 
         ## interested in the first three: chrom, start, and end position.
         regions = bedtools_merge(data, sample)
@@ -317,7 +319,7 @@ def finalize_aligned_reads( data, sample, ipyclient ):
 
             submitted_args = []
             for chunk in tmp_chunks:
-                LOGGER.info("Whats this: %s", [data, sample, chunk])
+                # LOGGER.info("Whats this: %s", [data, sample, chunk])
                 submitted_args.append([data, sample, chunk])
 
             ## run get_aligned_reads on all region chunks            
@@ -365,6 +367,7 @@ def get_aligned_reads( args ):
     ## all to the end of the clustS.gz file at the very end of the process
     derep_fasta_files = []
     aligned_seq_files = []
+    reads_merged = 0
 
     # Wrap this in a try so we can clean up if it fails.
 
@@ -417,13 +420,11 @@ def get_aligned_reads( args ):
                 ## files list as an argument because we're reusing this code 
                 ## in the refmap pipeline, trying to generalize.
                 LOGGER.debug("Merging pairs - %s", sample.files)
-                ## you probably have to save 'aligned_seqs' to the sample here
-                mergefile, nmerged = merge_pairs(data, sample)#, aligned_seqs)
-                #sample.files.edits = [(mergefile, )]
-                #sample.files.pairs = mergefile
+                mergefile, nmerged = refmap_merge_pair(data, sample, aligned_seqs)
                 
                 ## Update the total number of merged pairs
-                sample.stats.reads_merged += nmerged
+                reads_merged += nmerged
+                #sample.stats.reads_merged += nmerged
                 sample.merged = 1
                 aligned_fasta = mergefile
             else:
@@ -431,7 +432,8 @@ def get_aligned_reads( args ):
                 ## just the first element of the list returned above
                 aligned_fasta = aligned_seqs[0]
 
-            ## new dereping?
+            ## Post refmap derep brings mapped reads into alignment with the
+            ## format expected downstream (clust.gz)
             derep_fasta = derep_and_sort(data, sample, aligned_fasta)
 
             ## Derep_fasta_files are merged for PE
@@ -445,20 +447,32 @@ def get_aligned_reads( args ):
            "aligned_seq_files {}".format(derep_fasta_files, aligned_seq_files))
         raise
     finally:
-        pass
+        LOGGER.debug("Total merged reads for {} - {}".format(sample.name, reads_merged))
+        sample.stats.reads_merged = reads_merged
         # Clean up all the tmp files
         # Be a little careful. Don't remove files if they're already gone :-/
-        # for i in derep_fasta_files:
-        #     if os.path.isfile(i):
-        #         os.remove(i)
-        # for j in aligned_seq_files:
-        #     if os.path.isfile(j[0]):
-        #         os.remove(j[0])
-        #     if 'pair' in data.paramsdict['datatype']:
-        #         if os.path.isfile(j[1]):
-        #             os.remove(j[1])
+        for i in derep_fasta_files:
+            if os.path.isfile(i):
+                os.remove(i)
+        for j in aligned_seq_files:
+            if os.path.isfile(j[0]):
+                os.remove(j[0])
+            if 'pair' in data.paramsdict['datatype']:
+                if os.path.isfile(j[1]):
+                    os.remove(j[1])
 
 
+def refmap_merge_pair(data, sample, aligned_seqs):
+    """This formats the data for the call to util/merge_pairs().
+    merge_pairs() arguments and expectations changed enough to where
+    it would be painful to perform these gymanstics in get_aligned_reads.
+    This util function is a workaround."""
+    sample.files.edits = [(aligned_seqs[0], aligned_seqs[1])]
+
+    sample = merge_pairs(data, sample)
+
+    return sample.files.merged, sample.stats.reads_merged
+    
 
 def bedtools_merge(data, sample):
     """ Get all contiguous genomic regions with one or more overlapping
@@ -470,6 +484,40 @@ def bedtools_merge(data, sample):
     """
     LOGGER.debug("Entering bedtools_merge: %s", sample.name)
 
+    ## check mean insert size for this sample
+    ## and update hackersonly.max_inner_mate_distance
+    ## if need be. This value controls how far apart 
+    ## mate pairs can be to still be considered for 
+    ## bedtools merging downstream
+    cmd = ipyrad.bins.samtools+\
+        " stats " + sample.files.mapped_reads + " | grep SN"
+    LOGGER.debug("%s", cmd)
+    ret = subprocess.check_output(cmd, shell=True,
+                         stderr=subprocess.STDOUT)
+
+    avg_insert = 0
+    stdv_insert = 0
+    avg_len = 0
+    for line in ret.split("\n"):
+        if "insert size average" in line:
+            avg_insert = float(line.split(":")[-1].strip())
+        elif "insert size standard deviation" in line:
+            stdv_insert = float(line.split(":")[-1].strip())
+        elif "average length" in line:
+            avg_len = float(line.split(":")[-1].strip())
+
+    LOGGER.debug("avg {} stdv {} avg_len {}".format(avg_insert, stdv_insert, avg_len))
+
+    ## If all values return successfully set the max inner mate distance to 
+    if all([avg_insert, stdv_insert, avg_len]):
+        data._hackersonly["max_inner_mate_distance"] = avg_insert + (3 * stdv_insert) - (2 * avg_len)
+    else:
+        ## If something fsck then set a relatively conservative distance
+        data._hackersonly["max_inner_mate_distance"] = 200
+    LOGGER.debug("inner mate distance for {} - {}".format(sample.name,\
+                data._hackersonly["max_inner_mate_distance"]))
+
+    ## Set the -d flag to tell bedtools how far apart to allow mate pairs.
     if 'pair' in data.paramsdict["datatype"]:
         bedtools_dflag = " -d " + str(data._hackersonly["max_inner_mate_distance"])
     else:
@@ -913,9 +961,9 @@ def append_clusters(data, sample, derep_fasta_files):
                     else:
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
-                    LOGGER.info("".join(seqs))
-            out.write("".join(seqs))
+#                    LOGGER.info("".join(seqs))
             out.write("//\n//\n")
+            out.write("".join(seqs))
 
 
 
