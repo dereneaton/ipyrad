@@ -484,38 +484,39 @@ def bedtools_merge(data, sample):
     """
     LOGGER.debug("Entering bedtools_merge: %s", sample.name)
 
-    ## check mean insert size for this sample
-    ## and update hackersonly.max_inner_mate_distance
-    ## if need be. This value controls how far apart 
-    ## mate pairs can be to still be considered for 
-    ## bedtools merging downstream
-    cmd = ipyrad.bins.samtools+\
-        " stats " + sample.files.mapped_reads + " | grep SN"
-    LOGGER.debug("%s", cmd)
-    ret = subprocess.check_output(cmd, shell=True,
-                         stderr=subprocess.STDOUT)
+    if 'pair' in data.paramsdict["datatype"]:
+        ## check mean insert size for this sample
+        ## and update hackersonly.max_inner_mate_distance
+        ## if need be. This value controls how far apart 
+        ## mate pairs can be to still be considered for 
+        ## bedtools merging downstream
+        cmd = ipyrad.bins.samtools+\
+            " stats " + sample.files.mapped_reads + " | grep SN"
+        LOGGER.debug("%s", cmd)
+        ret = subprocess.check_output(cmd, shell=True,
+                             stderr=subprocess.STDOUT)
 
-    avg_insert = 0
-    stdv_insert = 0
-    avg_len = 0
-    for line in ret.split("\n"):
-        if "insert size average" in line:
-            avg_insert = float(line.split(":")[-1].strip())
-        elif "insert size standard deviation" in line:
-            stdv_insert = float(line.split(":")[-1].strip())
-        elif "average length" in line:
-            avg_len = float(line.split(":")[-1].strip())
+        avg_insert = 0
+        stdv_insert = 0
+        avg_len = 0
+        for line in ret.split("\n"):
+            if "insert size average" in line:
+                avg_insert = float(line.split(":")[-1].strip())
+            elif "insert size standard deviation" in line:
+                stdv_insert = float(line.split(":")[-1].strip())
+            elif "average length" in line:
+                avg_len = float(line.split(":")[-1].strip())
 
-    LOGGER.debug("avg {} stdv {} avg_len {}".format(avg_insert, stdv_insert, avg_len))
+        LOGGER.debug("avg {} stdv {} avg_len {}".format(avg_insert, stdv_insert, avg_len))
 
-    ## If all values return successfully set the max inner mate distance to 
-    if all([avg_insert, stdv_insert, avg_len]):
-        data._hackersonly["max_inner_mate_distance"] = avg_insert + (3 * stdv_insert) - (2 * avg_len)
-    else:
-        ## If something fsck then set a relatively conservative distance
-        data._hackersonly["max_inner_mate_distance"] = 200
-    LOGGER.debug("inner mate distance for {} - {}".format(sample.name,\
-                data._hackersonly["max_inner_mate_distance"]))
+        ## If all values return successfully set the max inner mate distance to 
+        if all([avg_insert, stdv_insert, avg_len]):
+            data._hackersonly["max_inner_mate_distance"] = avg_insert + (3 * stdv_insert) - (2 * avg_len)
+        else:
+            ## If something fsck then set a relatively conservative distance
+            data._hackersonly["max_inner_mate_distance"] = 200
+        LOGGER.debug("inner mate distance for {} - {}".format(sample.name,\
+                    data._hackersonly["max_inner_mate_distance"]))
 
     ## Set the -d flag to tell bedtools how far apart to allow mate pairs.
     if 'pair' in data.paramsdict["datatype"]:
@@ -962,8 +963,9 @@ def append_clusters(data, sample, derep_fasta_files):
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
                     #LOGGER.info("".join(seqs))
-            out.write("//\n//\n")
+            #out.write("//\n//\n")
             out.write("".join(seqs))
+            out.write("//\n//\n")
 
 
 
