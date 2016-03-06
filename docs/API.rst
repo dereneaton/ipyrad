@@ -46,15 +46,31 @@ from a previous study with newly collected data.
 Getting started with IPython/Jupyter notebooks
 -----------------------------------------------
 Our goal with using the ipyrad API is not only to get people writing Python 
-scripts, but also to encourage the use of the a really exciting new tool called
-Jupyter notebooks...
-There may be a slight learning curve, however, for users who have no prior
-experience with Python scripting. 
+scripts, but also to encourage the use of an exciting new tool called
+Jupyter notebooks, which are a great tool for reproducible science. 
 
 The envisioned usage of the ipyrad Python API is to run test assemblies within
 a Jupyter notebook on a local computer using the **preview mode** method to 
-execute quickly. Once the 
+execute quickly. Once you've tested that your assembly looks good, and that 
+your selected parameters seems appropriate you can then take your script and 
+submit a long running job to a larger computing cluster. 
 
+When using the API there are some really fancy methods you can use to connect
+to large computing clusters in complex ways which you can read about in the 
+:ref:`advanced ipyparallel connections<advanced ipyparallel connections>`
+section. The easiest way to get started though is using the clusters tab 
+within Jupyter notebooks. Run the code below in a terminal to enable the 
+jupyter clusters tab. 
+
+.. parsed-literal:
+
+    ipcluster nbextension enable
+
+After you run this you should be able to connect to computing engines on 
+your local machine by entering a number in the default engines cell and hitting
+start. See the image below. 
+
+[insert image here].
 
 
 Assembly and Sample objects

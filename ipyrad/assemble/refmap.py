@@ -725,20 +725,23 @@ def mpileup_to_fasta(data, sample, pileup_file):
         for line in pfile:
             dat = np.array(line.strip().split())
 
-            # Handle the case where the number of aligned reads is 0, in which case there
-            # is no 4th field for the sequence info. If this line has 0 reads, just skip it.
+            # Handle the case where the number of aligned reads is 0, in which 
+            # case there is no 4th field for the sequence info. If this line 
+            # has 0 reads, just skip it.
             if len(dat) == 4:
                 continue
             refbase, count, seqs = dat[[2,3,4]]
             pileup.append([refbase, count, seqs])
     
-        # TODO: Fix this, max len may not be the len of the max depth in the pileup
+        # TODO: Fix this, max len may not be the len of the max depth 
+        # in the pileup
         nreads = max([int(x[1]) for x in pileup])
         
-        # Remove the ^ and the mapping qual score indicating the start of a new read segment
-        # because it's not useful for us. We will track the construction of the alignments
-        # in a structured np array.
-        # Fill in all missing values with N, it'll make things less messy down the road
+        # Remove the ^ and the mapping qual score indicating the start of a 
+        # new read segment because it's not useful for us. We will track the
+        # construction of the alignments in a structured np array.
+        # Fill in all missing values with N, it'll make things less messy 
+        # down the road
         for line in pileup:
             line[2] = re.sub(r"\^.", "", line[2])
             line[2] = line[2] + ((nreads - len(line[2])) * "N")

@@ -10,6 +10,7 @@ import time
 import json
 import pandas as pd
 import ipyrad as ip
+import numpy as np
 from copy import deepcopy
 from ipyrad.assemble.util import *
 from collections import OrderedDict
@@ -600,12 +601,14 @@ def load_old_json(path, quiet=False):
         ## list of the new sample stat names, and stats_keys
         ## are the names of the stats from the json file.
         newstats = [x for x in newstats if x in stats_keys]
-        null.samples[sample].stats = pd.Series(sdat).reindex(newstats)
+        null.samples[sample].stats = pd.Series(sdat).astype(np.object)\
+                                     .reindex(newstats)
 
         ## save stats_dfs
         for statskey in stats_dfs_keys:
             null.samples[sample].stats_dfs[statskey] = \
                 pd.Series(fullj["samples"][sample]["statsfiles"][statskey])\
+                .astype(np.object)\
                 .reindex(nsamp.__dict__["stats_dfs"][statskey].keys())
 
         ## save Sample files

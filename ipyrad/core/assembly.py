@@ -1903,56 +1903,6 @@ def paramschecker(self, param, newvalue):
 
 
 
-# ### TRYING OUT A JSON DUMP
-# def save_json(self, path):
-#     """ saved Assembly and Samples as JSON """
-#     import json
-
-#     ## excluded elements from dump b/c they are only relevant to the 
-#     ## current loaded object
-#     ##   1. _ipcluster
-#     ##   2. _headers
-#     ##   3. 
-
-#     datadump = json.dumps({
-#         "_version": self.__dict__["version"],
-#         "name": self.__dict__["name"], 
-#         "dirs": self.__dict__["dirs"],
-#         "barcodes": self.__dict__["barcodes"], 
-#         "database": self.__dict__["database"], 
-#         "outfiles": self.__dict__["outfiles"], 
-#         "paramsdict": self.__dict__["paramsdict"], 
-#         "populations": self.__dict__["populations"], 
-#         "samples": self.__dict__["samples"].keys(), 
-#         "stats": self.__dict__["stats"].to_dict(),
-        
-#         }, 
-#         sort_keys=False, indent=4, separators=(",", ":"))
-
-#     ## this is a little trickier, data in the stats pandas data frames is 
-#     ## sometimes stored as numpy data types (float64) that can't be saved
-#     ## so we need to store as strings and get the type back correctly @ load.
-#     sampledump = json_dumps({
-#         ""
-
-
-#         })
-
-#     json.dumps(
-#         {'samples': [sample.to_JSON for sample in self.samples.values()], 
-#          'assembly': self.__dict__}, 
-#          sort_keys=True, indent=4)
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
     ## test...
     DATA = Assembly("test")
