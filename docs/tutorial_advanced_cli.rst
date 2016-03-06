@@ -295,46 +295,24 @@ I show the file tree structure a bit more clearly below:
 .. parsed-literal::  
 
    iptutorial/
-       iptest1.json
-       iptest1_fastqs/
-           [...].fastq.gz
-       iptest1_edits/
-           [...].fastq
-       iptest1_clust_0.85/
-           [...].utemp
-           [...].htemp
-           [...].clust.gz
-           [...].clustS.gz
-       iptest1_consens/
-           [...].consens.gz
-       iptest1_outfiles/
-           iptest1.loci
-           iptest1.phy
-           iptest1.[other formats]
-
-       iptest1_min8.json
-       iptest1_min8_outfiles/
-           iptest1_min8.[formats]
-
-       iptest1_min12.json 
-       iptest1_min12_outfiles/
-           iptest_min12.[formats]
-
-       iptest2.json
-       iptest2_clust_0.85/
-           [...].[clustfiles]
-       iptest2_consens/
-           [...].consens.gz
-       iptest2_outfiles/
-           iptest2.[.formats]
-
-       iptest2_min8.json
-       iptest2_min8_outfiles/
-           iptest2_min8.[.formats]
-
-       iptest2_min12.json
-       iptest2_min12_outfiles/
-           iptest2_min12.[.formats]
+       data1.json
+       data1_fastqs/
+       data1_edits/
+       data1_clust_0.85/
+       data1_consens/
+       data1_outfiles/
+       data1_min8.json
+       data1_min8_outfiles/
+       data1_min12.json 
+       data1_min12_outfiles/
+       data2.json
+       data2_clust_0.85/
+       data2_consens/
+       data2_outfiles/
+       data2_min8.json
+       data2_min8_outfiles/
+       data2.json
+       data2_min12_outfiles/
 
 
 In your working directory you will have the four params files which 
@@ -343,15 +321,26 @@ This makes for a good reproducible workflow, and can be referenced later
 as a reminder of the parameters used for each data set. 
 
 
+What's next
+~~~~~~~~~~~
+Check out the :ref:`example empirical data sets<pedicularis_cli>`
+to see how this process looks
+when you run it on a relatively quick set of real data. 
+
+
 Writing ipyrad scripts
 ~~~~~~~~~~~~~~~~~~~~~~
 From the code above you may have noticed that the only thing stopping you from
 being able to write one long script that creates a whole range of assemblies is 
-when you have to edit the new params files by hand.
-If you plan to only execute one ipyrad command at a time then this is no problem.
-But if you're a very programmatic type of person you'll probably prefer
-making parameter changes in the code directly. If so, you'll want to check 
-out the :ref:`ipyrad API<API>`, which provides a more elegant pure Python 
-way to edit parameters in your code while assembling data. 
+when you have to edit the new params files by hand. We've purposefully avoided 
+creating an ipyrad command to change parameters on the fly, since this would 
+make it so that the params file are not a good record of the parameter set used
+throughout an entire assembly. 
+
+However, if you're a very programmatic type of person who would prefer that 
+all of your branching and parameter changing could take place within a single
+script you'll want to check out the :ref:`ipyrad API<API>`, which provides a 
+more elegant pure Python way to edit parameters in your code while 
+assembling data. 
 
 

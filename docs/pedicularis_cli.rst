@@ -31,7 +31,7 @@ The total size is approximately 1.1GB.
     curl -LskO https://dl.dropboxusercontent.com/u/2538935/example_empirical_rad.tar.gz
     
     ## the tar command decompresses the data directory
-    tar -xvf example_empirical_rad.tar.gz
+    tar -xvzf example_empirical_rad.tar.gz
 
 
 Starting an ipyrad analysis
@@ -141,7 +141,6 @@ We can use the -r flag to see the results
     step 6: None
     step 7: None
     
-    
 
 
 Next we run step2 to filter the data
@@ -152,8 +151,7 @@ many processors are available. Using four cores it can finish about 1.5
 hours if we subsample the data set using the --preview method in ipyrad.
 If run during step2 this function subsamples 100K reads from each
 sample. As you can see above, this is only about 5-10% of the total
-reads. This time I add the results call into the same cell so that it
-runs step 2 and then prints the results.
+reads. Run the assembly step and then use the -r flag to see the results.
 
 
 .. code:: bash
@@ -653,6 +651,7 @@ sites are in the assembled data.
     16    2     1200     0     1206
     17    4     1204     0     1206
     18    2     1206     0     1206
+
 
 Take a peek at the .loci (easily human-readable) output
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
