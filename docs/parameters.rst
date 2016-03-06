@@ -415,7 +415,233 @@ Affected steps = 2. Example entries to params.txt:
 
 17. filter_min_trim_len
 ------------------------
+If filter_adapters is set > 0 then reads containing adapters will be trimmed 
+to a shorter length. By default ipyrad will keep trimmed reads down to a minimum
+length of 32bp. If you want to set a higher limit you can set it here. 
+
+Affected steps = 2. Example entries to params.txt
+
+.. parsed-literal::
+
+    50                ## [17] minimum trimmed seqlen of 50
+    75                ## [17] minimum trimmed seqlen of 75
 
 
+.. _max_alleles_consens:
+
+18. max_alleles_consens:
+-------------------------
+This is the maximum number of unique alleles allowed in consens reads after 
+accounting for sequencing errors. Default=2, which is fitting for diploids. 
+At this setting any cluster which has more than 2 alleles detected will be 
+excluded/filtered out. If set to max_alleles_consens = 1 (haploid) 
+then error-rate and heterozygosity are estimated with H fixed to 0.0 in step 4, 
+and base calls are made with the estimated error rate, and any consensus reads
+with more than 1 allele present are excluded. 
+If max_alleles_consens is set > 2 then more alleles are allowed, however, 
+heterozygous base calls are still made under the assumption of diploidy 
+i.e., hetero allele frequency=50%. 
+
+Affected steps = 4, 5. Example entries to params.txt
+
+.. parsed-literal::
+
+    2                ## [18] diploid base calls, exclude if >2 alleles
+    1                ## [18] haploid base calls, exclude if >1 allele
+    4                ## [18] diploid-base calls, exclude if >4 alleles
+
+.. _max_Ns_consens:
+
+
+19. max_Ns_consens:
+--------------------
+The maximum number of uncalled bases allowed in consens seqs. If a 
+base call cannot be made confidently (statistically) then it is called 
+as ambiguous (N). You do not want to allow too many Ns in consensus reads
+or it will affect their ability to cluster with consensus reads from other 
+Samples, and it may represent a poor alignment. 
+
+Affected steps = 5. Example entries to params.txt
+
+.. parsed-literal::
+
+    3                ## [19] allow max of 3 Ns in a consensus seq
+    5                ## [19] allow max of 5 Ns in a consensus seq
+
+
+.. _max_Hs_consens:
+
+20. max_Hs_consens:
+--------------------
+The maximum number of heterozygous bases allowed in consens seqs. 
+This filter helps to remove poor alignments which will tend to have an 
+excess of Hs. 
+
+Affected steps = 5. Example entries to params.txt
+
+.. parsed-literal::
+
+    2                ## [20] allow max of 2 Hs in a consensus seq
+    8                ## [20] allow max of 8 Hs in a consensus seq    
+
+
+.. _min_samples_locus:
+
+21. min_samples_locus
+----------------------
+The minimum number of Samples that must have data at a given locus for it to 
+be retained in the final data set. If you enter a number equal to the full 
+number of samples in your data set then it will return only loci that have 
+data across all samples. 
+If you enter a lower value, like 4, it will return a more sparse matrix, 
+including any loci for which at least four samples contain data. 
+
+Affected steps = 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    4                ## [21] create a min4 assembly
+    12               ## [21] create a min12 assembly
+
+.. _max_SNPs_locus:
+
+22. max_SNPs_locus
+-------------------
+Maximum number of SNPs allowed in a final locus. 
+This can remove potential effects of poor alignments in repetitive regions 
+in a final data set by excluding loci with more than N snps. 
+The default is very high (100). Setting lower values is likely only helpful
+for extra filtering of very messy data sets. For single end data only the first
+value is used, for paired data the first value affects R1s and the second 
+value affects R2s. 
+
+
+Affected steps = 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    20, 100             ## [22] allow max of 20 SNPs at a single-end locus.
+    20, 30              ## [22] allow max of 20 and 30 SNPs in paired locus.
+
+.. _max_Indels_locus:
+
+23. max_Indels_locus
+---------------------
+The maximum number of Indels allowed in a final locus. This helps to filter 
+out poor final alignments, particularly for paired-end data. 
+For single end data only the first value is used, 
+for paired data the first value affects R1s and the second value affects R2s. 
+
+Affected steps = 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    5, 5             ## [23] allow max of 5 indels at a single-end locus.
+    5, 10            ## [23] allow max of 5 and 10 indels in paired locus.
+
+.. _max_shared_Hs_locus:
+
+24. max_shared_Hs_locus
+------------------------
+Maximum number (or proportion) of shared polymorphic sites in a locus. 
+This option is used to detect potential paralogs, as a shared heterozygous
+site across many samples likely represents clustering of paralogs with a 
+fixed difference rather than a true heterozygous site.
+
+Affected steps = 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    0.25             ## [24] allow hetero site to occur across max of 25% of Samples
+    10               ## [24] allow hetero site to occur across max of 10 Samples
+
+
+.. _edit_cut_sites:
+
+25. edit_cut_sites
+--------------------
+Sometimes you can look at your demultiplexed data and see that there was a problem 
+with the sequencing such that the cut site which should occur at the beginning of 
+your reads is either offset by one or more bases, or contains many errors. 
+If it is offset you can choose to trim off the extra bases by entering a number
+for how many bases to trim off. If you want to correct the sequences so that they
+do not contain errors, since they should all be the same sequence you can enter
+the sequence here. 
+
+Affected steps = 2. Example entries to params.txt
+
+.. parsed-literal::
+
+    0, 0             ## [25] does nothing
+    6, 0             ## [25] trims the first 6 bases from R1s
+    6, 6             ## [25] trims the first 6 bases from R1s and R2s
+    TGCAG, 0         ## [25] replaces first 5 bases of R1s with TGCAG
+
+
+.. _trim_overhang:
+
+26. trim_overhang
+------------------
+long description coming soon...
+
+Affected steps = 2. Example entries to params.txt
+
+.. parsed-literal::
+
+    1, 2, 2, 1           ## [26] example...
+
+
+
+.. _output_formats:
+
+27. output_formats
+-------------------
+Disk space is cheap, these are quick to make, so by default we make all 
+formats for now. More are coming. See output_formats_ section for 
+descriptions of the available formats. 
+
+Affected steps = 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    *                     ## [27] example...
+
+
+
+.. _pop_assign_file:
+
+28. pop_assign_file
+--------------------
+Population assignment file for creating population output files for 
+the programs migrate-n and treemix, and for downstream analyses. If using 
+the API this can be passed as a Python dictionary:
+e..g, {pop1: [ind1, ind2], pop2: [ind3, ind4]}. 
+
+Affected step: 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    /home/user/ipyrad/popfile.txt        ## [28] example...
+
+
+.. _excludes:
+
+29. excludes
+-------------
+Names of samples to exclude from the executed step. These will be left in 
+their current state. 
+
+Affected step: 7. Example entries to params.txt
+
+.. parsed-literal::
+
+    sample1, sample2, sample3            ## [29] excluded samples
+
+
+.. _outgroups:
+
+30. outgroups
+-------------
+Not currently implemented.
 
 

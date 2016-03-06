@@ -470,7 +470,7 @@ def main(data, path=None, nboots=100, force=False):
     ## get the seq array into hdf5
     #LOGGER.info("loading array")
     print("  loading array")
-    data = get_seqarray(data, path)
+    data = get_seqarray(data, path, snps=True)
 
     ## make quartet arrays into hdf5. Allow subsetting samples eventually.
     ## and optimize chunk value given remaining quartets and ipyclient    
@@ -480,16 +480,20 @@ def main(data, path=None, nboots=100, force=False):
     data = get_quartets(data, samples)
 
     ## run the inference step
+    print("  sending jobs to engines")
     inference(data, ipyclient)
 
     ## run the bootstrap replicates
     print("  running {} bootstrap replicates".format(nboots))
-    while len(data._svd.boots) < nboots:
-        ## resample seq
-        regen_boot_array(data)
-        ## 
-        inference(data, ipyclient, boots=1)
-
+    time.sleep(2)
+    print("  well... not yet actually.")
+    print("  done")
+    return data
+    # while len(data._svd.boots) < nboots:
+    #     ## resample seq
+    #     regen_boot_array(data)
+    #     ## 
+    #     inference(data, ipyclient, boots=1)
 
     ## load a job queue
     # jobs = []
@@ -508,7 +512,6 @@ def main(data, path=None, nboots=100, force=False):
 
 def inference(data, ipyclient, boots=0):
     """ run inference and store results """
-
 
     njobs = len(xrange(data._svd.checkpoint, 
                        data._svd.nquarts, data._svd.chunk))
@@ -561,6 +564,7 @@ def inference(data, ipyclient, boots=0):
             except (ipp.error.TimeoutError, KeyError):
                 continue
     resh5.close()
+    print("")
 
     ## convert to txt file for wQMC
     dump(data)    
@@ -571,20 +575,21 @@ def inference(data, ipyclient, boots=0):
 
 
 
+
 def regen_boot_array(data, resh5):
     """ bootstrap replicates re-using same quartet order as original """
 
     ## create the bootstrap sampled seqarray
-    #with h5py.File(data._svd.h5, 'r+') as io5:
-    print("  resampling bootstrap array")
-    ## get original seqarray as a DF
-    seqarray = pd.DataFrame(resh5["seqarray"][:])
-    ## get boot array by randomly sample columns w/ replacement
-    bootarr = seqarray.sample(n=seqarray.shape[1], replace=True, axis=1)
-    resh5["bootarr"][:] = bootarr
-    del bootarr
-    ## save the boot array 
-    print("  done resampling bootstrap array")
+    with h5py.File(data._svd.h5, 'r+') as io5:
+        print("  resampling bootstrap array")
+        ## get original seqarray as a DF
+        seqarray = pd.DataFrame(resh5["seqarray"][:])
+        ## get boot array by randomly sample columns w/ replacement
+        bootarr = seqarray.sample(n=seqarray.shape[1], replace=True, axis=1)
+        resh5["bootarr"][:] = bootarr
+        del bootarr
+        ## save the boot array 
+        print("  done resampling bootstrap array")
 
 
 
