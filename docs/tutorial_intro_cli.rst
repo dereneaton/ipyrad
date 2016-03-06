@@ -287,7 +287,7 @@ invoking the ``-r`` flag.
 
     Summary stats of Assembly cli
     ------------------------------------------------
-      state  reads_raw
+          state  reads_raw
     1A_0      1      20099
     1B_0      1      19977
     1C_0      1      20114
@@ -399,7 +399,7 @@ handy stats tracked for this assembly.
 
 You might also take a gander at the filtered reads:
 
-.. code-block:: bash
+.. parsed-literal::
 
     head -n 12 ./iptest_edits/1A_0_R1_.fastq
 
@@ -419,7 +419,7 @@ you set for the ``clust_threshold`` parameter in the params file.
 
 .. parsed-literal::
 
-    0.85              ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+    0.85             ## [14] [clust_threshold]: proportion identical for clustering
 
 You can see the default value is 0.85, so our default directory is 
 named accordingly. This value dictates the percentage of sequence
@@ -493,6 +493,7 @@ all mostly due to sequencing error.
     step 6: None
     step 7: None
 
+
 The aligned clusters (stacks) found during this step are now located in 
 ``./iptest_clust_0.85/``. You can get a feel for what this looks like
 by examining a portion of one of the files using the command below.
@@ -510,7 +511,7 @@ Reads that are sufficiently similar (based on the above sequence similarity
 threshold) are grouped together in clusters separated by "//". For the first
 cluster below there is clearly one allele (homozygote) and one read with a 
 (simulated) sequencing error. For the second cluster it seems there are two alleles 
-(heterozygote), and a couple reads with sequencing errors. For the third 
+(heterozygote), and a read with a sequencing error. For the third 
 cluster it's a bit harder to say. Is this a homozygote with lots of sequencing
 errors, or a heterozygote with few reads for one of the alleles?
 
@@ -524,29 +525,24 @@ Thankfully, untangling this mess is what step 4 is all about.
     TGCAGCTATTGCGACAAAAACACGACGGCTTCCGTGGGCACTAGCGTAATTCGCTGAGCCGGCGTAACAGAAGGAGTGCACTGCCACATGCCCG
     //
     //
-    >1A0_8280_r1;size=10;
-    TGCAGCGTATATGATCAGAACCGGGTGAGTGGGTACCGCGAACCGAAAGGCATCGAAAGTTTAGCGCAGCACTAATCTCA
-    >1A0_8290_r1;size=8;+
-    TGCAGCGTATATGATCAGAACCGGGTGAGTGGGTACCGCGAACCGAAAGGCACCGAAAGTTTAGCGCAGCACTAATCTCA
-    >1A0_8297_r1;size=1;+
-    TGCAGCGTATATGATCAGAACCGGGTGAGTGGGAACCGCGAACCGAAAGGCACCGAAAGTTTAGCGCAGCACTAATCTCA
-    >1A0_8292_r1;size=1;+
-    TGCAGCCTATATGATCAGAACCGGGTGAGTGGGTACCGCGAACCGAAAGGCACCGAAAGTTTAGCGCAGCACTAATCTCA
+    >1A_0_4137_r1;size=10;*0
+    TGCAGGGTCGCCGGCAACTCAGCATTTTAACTCCGCGGGTTACACGTGCGGAGGCCTACTGGCTATCATTTTTAGGGTGCATTTGGTCGGCTGG
+    >1A_0_4130_r1;size=6;+1
+    TGCAGGGTCGCCGGCAACTCAGCATTTTAACTCCGCGGGTTACACGTGTGGAGGCCTACTGGCTATCATTTTTAGGGTGCATTTGGTCGGCTGG
+    >1A_0_4131_r1;size=1;+2
+    TGCAGGGTCGCCGGCAACTCAGCATTTTAACTCCGCGGGTTACACGTGTCGAGGCCTACTGGCTATCATTTTTAGGGTGCATTTGGTCGGCTGG
     //
     //
-    >1A_0_2982_r1;size=17;*0
-    TGCAGACGTGGAGTAACCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
-    >1A_0_2983_r1;size=1;+1
-    TGCAGACGTGGAGTATCCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
-    >1A_0_2985_r1;size=1;+2
-    TGCAGACGTGGAGTAACCGGCGGCCTTTAGTCTAAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
-    >1A_0_2988_r1;size=1;+3
-    TGCAGACGAGGAGTAACCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
-    >1A_0_3002_r1;size=1;+4
-    TGCAGACGTGGAGCAACCGGCGGCCTTTAGTCTTAGTAGTGTCCGGGGTACCCGTTGGTTTGTCGTAGTGAGTTCGGTAGGCAAACTTCTGGCC
+    >1A_0_6246_r1;size=15;*0
+    TGCAGATACAAAAGCTTGCCCACTAAGTTGTGTGATCACTGTCTTATTACGGTGGCCTCCTTCAAGCTTCGAACGAGTTGTGGATCGGTAGGCT
+    >1A_0_6259_r1;size=1;+1
+    TGCAGATACAAAAGCTTGCCCACTAAGTTGTGTGATCACTGTCTTATTACGGTGGCCTCCTTCAAGCTTCGAACGAGTTGTGGATCGGGAGGCT
+    >1A_0_6264_r1;size=1;+2
+    TGCAGATACAAAAGCTTGCCCACTAAGTTGTGTGATCACTGTCTTATTACGGTGGCCTCCTACAAGCTTCGAACGAGTTGTGGATCGGTAGGCT
+    >1A_0_6268_r1;size=1;+3
+    TGCAGATTCAAAAGCTTGCCCACTAAGTTGTGTGATCACTGTCTTATTACGGTGGCCTCCTTCAAGCTTCGAACGAGTTGTGGATCGGTAGGCT
     //
     //
-
 
 Step 4: Joint estimation of heterozygosity and error rate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -556,23 +552,25 @@ which reads are "real" because in diploid organisms there are a maximum of 2
 alleles at any given locus. If we look at the raw data and there are 5 or 
 ten different "alleles", and 2 of them are very high frequency, and the rest 
 are singletons then this gives us evidence that the 2 high frequency alleles 
-are good reads and the rest are probably junk. This step is pretty straightforward, 
-and pretty fast. Run it thusly:
+are good reads and the rest are probably not. 
+This step is pretty straightforward, and pretty fast. Run it thusly:
 
 .. code-block:: bash
 
-    ipyrad -p params-ipyrad-test.txt -s 4
+    ipyrad -p params-iptest.txt -s 4
 
 .. parsed-literal::
- --------------------------------------------------                                                                                                  
-  ipyrad [v.0.1.47]                                                                                                                                  
-  Interactive assembly and analysis of RADseq data                                                                                                   
- --------------------------------------------------                                                                                                  
-  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]                                                                          
-  ipyparallel setup: Local connection to 4 Engines                                                                                                   
-                                                                                                                                                     
-  Step4: Joint estimation of error rate and heterozygosity                                                                                           
-    Saving Assembly.
+
+    --------------------------------------------------
+     ipyrad [v.0.1.73]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
+     ipyparallel setup: Local connection to 4 Engines
+    --------------------------------------------------
+
+     Step4: Joint estimation of error rate and heterozygosity
+       Saving Assembly.
 
 In terms of results, there isn't as much to look at as in previous steps, though
 you can invoke the ``-r`` flag to see the estimated heterozygosity and error
@@ -580,24 +578,50 @@ rate per sample.
 
 .. code-block:: bash
 
-    ipyrad -p params-ipyrad-test.txt -r
+    ipyrad -p params-iptest.txt -r
 
 .. parsed-literal::
-    Summary stats of Assembly ipyrad-test
+
+    Summary stats of Assembly iptest
     ------------------------------------------------
-          clusters_hidepth  clusters_total  error_est  hetero_est  reads_filtered
-    1A_0              1000            1000   0.000757    0.002212           20099
-    1B_0              1000            1000   0.000774    0.001883           19977
-    1C_0              1000            1000   0.000745    0.002223           20114
-    1D_0              1000            1000   0.000734    0.001894           19895
-    2E_0              1000            1000   0.000778    0.001800           19928
-    2F_0              1000            1000   0.000728    0.002082           19934
-    2G_0              1000            1000   0.000707    0.001825           20026
-    2H_0              1000            1000   0.000756    0.002190           19936
-    3I_0              1000            1000   0.000778    0.001848           20084
-    3J_0              1000            1000   0.000739    0.001705           20011 
-    3K_0              1000            1000   0.000768    0.001857           20117
-    3L_0              1000            1000   0.000756    0.001979           19901 
+          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth  \
+    1A_0      4      20099           20099            1000              1000   
+    1B_0      4      19977           19977            1000              1000   
+    1C_0      4      20114           20114            1000              1000   
+    1D_0      4      19895           19895            1000              1000   
+    2E_0      4      19928           19928            1000              1000   
+    2F_0      4      19934           19934            1000              1000   
+    2G_0      4      20026           20026            1000              1000   
+    2H_0      4      19936           19936            1000              1000   
+    3I_0      4      20084           20084            1000              1000   
+    3J_0      4      20011           20011            1000              1000   
+    3K_0      4      20117           20117            1000              1000   
+    3L_0      4      19901           19901            1000              1000   
+
+          hetero_est  error_est  
+    1A_0    0.002223   0.000756  
+    1B_0    0.001910   0.000775  
+    1C_0    0.002260   0.000751  
+    1D_0    0.001876   0.000731  
+    2E_0    0.001809   0.000770  
+    2F_0    0.002103   0.000725  
+    2G_0    0.001910   0.000707  
+    2H_0    0.002215   0.000755  
+    3I_0    0.001877   0.000784  
+    3J_0    0.001698   0.000741  
+    3K_0    0.001821   0.000767  
+    3L_0    0.002003   0.000755  
+
+
+    Full stats files
+    ------------------------------------------------
+    step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
+    step 2: ./iptest_edits/s2_rawedit_stats.txt
+    step 3: ./iptest_clust_0.85/s3_cluster_stats.txt
+    step 4: ./iptest_clust_0.85/s4_joint_estimate.txt
+    step 5: None
+    step 6: None
+    step 7: None
 
 
 Step 5: Consensus base calls
@@ -608,86 +632,122 @@ to be the real haplotypes at each locus within each sample.
 
 .. code-block:: bash
 
-    ipyrad -p params-ipyrad-test.txt -s 5
+    ipyrad -p params-iptest.txt -s 5
 
-.. parsed-literal::                                                                                                                                  
- --------------------------------------------------                                                                                                  
-  ipyrad [v.0.1.47]                                                                                                                                  
-  Interactive assembly and analysis of RADseq data                                                                                                   
- --------------------------------------------------                                                                                                  
-  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]                                                                          
-  ipyparallel setup: Local connection to 4 Engines                                                                                                   
-                                                                                                                                                     
-  Step5: Consensus base calling                                                                                                                      
-    Diploid base calls and paralog filter (max haplos = 2)                                                                                           
-    error rate (mean, std):  0.00075, 0.00002                                                                                                        
-    heterozyg. (mean, std):  0.00196, 0.00018                                                                                                        
-    Saving Assembly. 
+.. parsed-literal::
+
+    --------------------------------------------------
+     ipyrad [v.0.1.73]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
+     ipyparallel setup: Local connection to 4 Engines
+
+     Step5: Consensus base calling 
+       Diploid base calls and paralog filter (max haplos = 2)
+       error rate (mean, std):  0.00075, 0.00002
+       heterozyg. (mean, std):  0.00198, 0.00018
+       Saving Assembly.
 
 Again we can ask for the results:
 
 .. code-block:: bash
 
-    ipyrad -p params-ipyrad-test.txt -r
+    ipyrad -p params-iptest.txt -r
 
 And here the important information is the number of ``reads_consens``. This is 
 the number of "good" reads within each sample that we'll send on to the next step.
+As you'll see in examples with empirical data, this is often a step where many
+reads are filtered out of the data set. If not data were filtered, then the 
+number of reads_consens should be equal to the number of clusters_hidepth.
+
 
 .. parsed-literal::
-          clusters_hidepth  clusters_total  error_est  hetero_est  reads_consens
-    1A_0              1000            1000   0.000757    0.002212           1000
-    1B_0              1000            1000   0.000774    0.001883           1000
-    1C_0              1000            1000   0.000745    0.002223           1000
-    1D_0              1000            1000   0.000734    0.001894           1000
-    2E_0              1000            1000   0.000778    0.001800           1000
-    2F_0              1000            1000   0.000728    0.002082           1000
-    2G_0              1000            1000   0.000707    0.001825           1000
-    2H_0              1000            1000   0.000756    0.002190           1000
-    3I_0              1000            1000   0.000778    0.001848           1000
-    3J_0              1000            1000   0.000739    0.001705           1000
-    3K_0              1000            1000   0.000768    0.001857           1000
-    3L_0              1000            1000   0.000756    0.001979           1000
+
+    Summary stats of Assembly iptest
+    ------------------------------------------------
+          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth  \
+    1A_0      5      20099           20099            1000              1000   
+    1B_0      5      19977           19977            1000              1000   
+    1C_0      5      20114           20114            1000              1000   
+    1D_0      5      19895           19895            1000              1000   
+    2E_0      5      19928           19928            1000              1000   
+    2F_0      5      19934           19934            1000              1000   
+    2G_0      5      20026           20026            1000              1000   
+    2H_0      5      19936           19936            1000              1000   
+    3I_0      5      20084           20084            1000              1000   
+    3J_0      5      20011           20011            1000              1000   
+    3K_0      5      20117           20117            1000              1000   
+    3L_0      5      19901           19901            1000              1000   
+
+          hetero_est  error_est  reads_consens  
+    1A_0    0.002223   0.000756           1000  
+    1B_0    0.001910   0.000775           1000  
+    1C_0    0.002260   0.000751           1000  
+    1D_0    0.001876   0.000731           1000  
+    2E_0    0.001809   0.000770           1000  
+    2F_0    0.002103   0.000725           1000  
+    2G_0    0.001910   0.000707           1000  
+    2H_0    0.002215   0.000755           1000  
+    3I_0    0.001877   0.000784           1000  
+    3J_0    0.001698   0.000741           1000  
+    3K_0    0.001821   0.000767           1000  
+    3L_0    0.002003   0.000755           1000  
+
+
+    Full stats files
+    ------------------------------------------------
+    step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
+    step 2: ./iptest_edits/s2_rawedit_stats.txt
+    step 3: ./iptest_clust_0.85/s3_cluster_stats.txt
+    step 4: ./iptest_clust_0.85/s4_joint_estimate.txt
+    step 5: ./iptest_consens/s5_consens_stats.txt
+    step 6: None
+    step 7: None
+
 
 Step 6: Cluster across samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Step 6 clusters consensus sequences across samples. Now that we have good 
 estimates for haplotypes within samples we can try to identify similar sequences
 at each locus between samples. We use the same clustering threshold as step 3
-to identify sequences between samples that are probably sampled from the same locus,
-based on sequence similarity.
+to identify sequences between samples that are probably sampled from the 
+same locus, based on sequence similarity.
 
 .. code-block:: bash
 
-    ipyrad -p params-ipyrad-test.txt -s 6
+    ipyrad -p params-iptest.txt -s 6
 
 .. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.1.47]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  loading Assembly: ipyrad-test [/private/tmp/ipyrad-test/ipyrad-test.json]
-  ipyparallel setup: Local connection to 4 Engines
 
-  Step6: Clustering across 12 samples at 0.85 similarity
-    Saving Assembly.
+    --------------------------------------------------
+     ipyrad [v.0.1.73]
+     Interactive assembly and analysis of RADseq data
+    --------------------------------------------------
+     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
+     ipyparallel setup: Local connection to 4 Engines
 
-Since in general the stats for results of each step are sample based, the 
-output of  ``-r`` at this point is less useful. You can still try it though.
+     Step6: Clustering across 12 samples at 0.85 similarity
 
-.. code-block:: bash
-
-    ipyrad -p params-ipyrad-test.txt -r
-
-It might be more enlightening to consider the output of step 6 by examining
-the file that contains the reads clustered across samples:
+This step differs from previous steps in that we are no longer applying the
+steps to each Sample individually, but instead we are applying a function
+to all of the Samples collectively. Our end result is that we now have a 
+map telling us which loci cluster together from which Samples. This step 
+does not produce a stats output. It might be more enlightening to consider 
+the output of step 6 by examining the file that contains the aligned 
+reads clustered across samples:
 
 .. code-block:: bash
 
-    gunzip -c ipyrad-test_consens/ipyrad-test_catclust.gz | head -n 30 | less
+    gunzip -c iptest_consens/iptest_catclust.gz | head -n 30 | less
 
-The final output of step 6 is a file in ``ipyrad-test_consens`` called 
-``ipyrad-test_catclust.gz``. This file contains all aligned reads across
-all samples. Executing the above command you'll see the output below which 
+The final output of step 6 is a file in ``iptest_consens/`` called 
+``iptest_catclust.gz``. There is actually also a database file called
+``iptest_test.hdf5`` which records not only the clustered sequences but also
+information about read depths at each site, but that file is not 
+human-readable. The file ``iptest_catclust.gz`` on the other hand provides 
+a good sanity check for examining the aligned reads across all samples. 
+Executing the above command you'll see the output below which 
 shows all the reads that align at one particular locus. You'll see the 
 sample name of each read followed by the sequence of the read at that locus
 for that sample. If you wish to examine more loci you can increase the number
@@ -695,6 +755,7 @@ of lines you want to view by increasing the value you pass to ``head`` in
 the above command (e.g. ``... | head -n 300 | less``
 
 .. parsed-literal::
+
     1C_0_691
     TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGAGTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
     3L_0_597
@@ -735,12 +796,13 @@ After running step 7 like so:
 
 .. code-block:: bash
 
-    ipyrad -p params-ipyrad-test.txt -s 7
+    ipyrad -p params-iptest.txt -s 7
 
-A new directory is created called ``ipyrad-test_outfiles``. This directory contains
+A new directory is created called ``iptest_outfiles``. This directory contains
 all the output files specified in the params file. The default is to 
-create all supported output files which include .phy, .nex, .geno, .treemix, .str, as
-well as many others.
+create all supported output files which include 
+.phy, .nex, .geno, .str, as well as many others (forthcoming). Explore each of
+these files as you wish.
 
 Congratulations! You've completed your first toy assembly. Now you can try applying
 what you've learned to assemble your own real data. Please consult the docs for many
