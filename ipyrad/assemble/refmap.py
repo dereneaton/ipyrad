@@ -961,7 +961,7 @@ def append_clusters(data, sample, derep_fasta_files):
                     else:
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
-#                    LOGGER.info("".join(seqs))
+                    #LOGGER.info("".join(seqs))
             out.write("//\n//\n")
             out.write("".join(seqs))
 
@@ -1023,7 +1023,7 @@ def refmap_cleanup(data, sample):
     ## Remove the unmapped fastq files
     for f in sample.files.edits[0]:
         if(os.path.exists(f)):
-            os.remove( f )
+            os.remove(f)
 
     ## Restore original paths to full fastq files
     sample.files.edits = sample.files.edits_refmap_clean
