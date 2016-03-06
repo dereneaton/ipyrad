@@ -199,19 +199,19 @@ file and each will create its own output files and saved results.
 .. code:: bash
    
    ## assemble the first data set denovo
-   ipyrad -p params-iptest1.txt -s 34567
+   ipyrad -p params-data1.txt -s 34567
 
    ## assemble the second data set using reference mapping
-   ipyrad -p params-iptest2.txt -s 34567
+   ipyrad -p params-data2.txt -s 34567
 
 
 .. parsed-literal::
 
     --------------------------------------------------
-     ipyrad [v.0.1.47]
+     ipyrad [v.0.1.73]
      Interactive assembly and analysis of RADseq data
     --------------------------------------------------
-     loading Assembly: iptest1 [/home/deren/Documents/ipyrad/iptest1.json]
+     loading Assembly: data1 [/home/deren/Documents/ipyrad/data1.json]
      ipyparallel setup: Local connection to 4 Engines
 
      Step3: Clustering/Mapping reads
@@ -228,7 +228,7 @@ file and each will create its own output files and saved results.
      Step7: Filtering and creating output files 
        Saving Assembly.
 
-     loading Assembly: iptest2 [/home/deren/Documents/ipyrad/iptest2.json]
+     loading Assembly: data2 [/home/deren/Documents/ipyrad/data2.json]
 
      Step3: Clustering/Mapping reads
        Saving Assembly.
@@ -252,38 +252,37 @@ has no missing data, and so this has no practical effect). It's worth
 noting that we can branch assemblies after an analysis has finished as well. 
 The only difference is that the new assembly will think that it has already 
 finished all of the steps, and so if we ask it to run them again it will instead
-want to skip over them. You can override this by passing the ``-f`` flag, 
+want to skip over them. You can override this behavior by passing the ``-f`` flag, 
 or ``--force``, which tells ipyrad that you want it to run the step even though
 it's already finished it. The two assemblies we finished were both assembled at
 the default value of 4 for ``min_samples_locus``, so below I set up code to 
 branch and then run step7 on each of these assemblies with a new setting of 8 or 12. 
 
-
 .. code:: bash
    
-   ## branch iptest1 to make min8 and min12 data sets
-   ipyrad -p params-iptest1.txt -b iptest1-min8
-   ipyrad -p params-iptest1.txt -b iptest1-min12
+   ## branch data1 to make min8 and min12 data sets
+   ipyrad -p params-data1.txt -b data1-min8
+   ipyrad -p params-data1.txt -b data1-min12
 
-   ## use a text editor to set min_samples_locus to the new value in each
+   ## use a text editor to set min_samples_locus to the new value (4 or 8) in each
 
-   ## branch iptest2 to make min8 and min12 data sets
-   ipyrad -p params-iptest2.txt -b iptest2-min8
-   ipyrad -p params-iptest2.txt -b iptest2-min12
+   ## branch data2 to make min8 and min12 data sets
+   ipyrad -p params-data2.txt -b data2-min8
+   ipyrad -p params-data2.txt -b data2-min12
 
    ## use a text editor to set min_samples_locus to the new value in each
 
    ## run step7 on using the new min_samples_locus settings
-   ipyrad -p params-iptest1-min8.txt -s 7
-   ipyrad -p params-iptest1-min12.txt -s 7
-   ipyrad -p params-iptest2-min8.txt -s 7
-   ipyrad -p params-iptest2-min12.txt -s 7
+   ipyrad -p params-data1-min8.txt -s 7
+   ipyrad -p params-data1-min12.txt -s 7
+   ipyrad -p params-data2-min8.txt -s 7
+   ipyrad -p params-data2-min12.txt -s 7
 
 
 Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
-and edits/ directories were created using just the first assembly ``iptest1``, 
-while the clust/ and consens/ directories were created for both ``iptest1`` and
-``iptest2``, since both completed steps 3-6. Finally, you can see that each 
+and edits/ directories were created using just the first assembly ``data1``, 
+while the clust/ and consens/ directories were created for both ``data1`` and
+``data2``, since both completed steps 3-6. Finally, you can see that each 
 assembly has its own ``outfiles/`` directory with the results of step7. 
 
 .. code:: bash
@@ -291,8 +290,7 @@ assembly has its own ``outfiles/`` directory with the results of step7.
    ## use ls -l to view inside the project directory as a list
    ls -l iptutorial/
 
-
-I show the structure a bit more clearly below:
+I show the file tree structure a bit more clearly below:
 
 .. parsed-literal::  
 
