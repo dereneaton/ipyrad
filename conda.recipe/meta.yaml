@@ -28,7 +28,7 @@ requirements:
     - python {{PY_VER}}*,>=2.7
   run:
     - ipython ==4.0.0
-    - ipyparallel
+    - ipyparallel >=5.0.1
     - cython
     - scipy 
     - h5py

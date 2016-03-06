@@ -7,7 +7,7 @@ dependencies:
 - dill>0.2
 - cython
 - ipython>=4.0
-- ipyparallel>=4.1
+- ipyparallel>=5.0.1
 - numpy>1.9
 - scipy>0.10
 - pandas
