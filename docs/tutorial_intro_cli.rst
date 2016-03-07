@@ -42,7 +42,7 @@ containing a number of test data sets.
 .. code-block:: bash
 
     ## The curl command needs a capital O, not a zero
-    curl -O https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
+    curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
     tar -xvzf ipsimdata.tar.gz
 
 

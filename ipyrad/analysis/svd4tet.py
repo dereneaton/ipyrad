@@ -63,40 +63,65 @@ MKEYS = """
 
 
 
-def get_seqarray(data, path=None, snps=False):
+
+
+# def regen_boot_array(data, resh5):
+#     """ bootstrap replicates re-using same quartet order as original """
+
+#     ## create the bootstrap sampled seqarray
+#     with h5py.File(data.svd.h5, 'r+') as io5:
+#         print("  resampling bootstrap array")
+#         ## get original seqarray as a DF
+#         seqarray = pd.DataFrame(resh5["seqarray"][:])
+#         ## get boot array by randomly sample columns w/ replacement
+#         bootarr = seqarray.sample(n=seqarray.shape[1], replace=True, axis=1)
+#         resh5["bootarr"][:] = bootarr
+#         del bootarr
+#         ## save the boot array 
+#         print("  done resampling bootstrap array")
+
+
+
+def get_seqarray(data, dtype="snp", boot=False):
     """ 
     Takes an Assembly object and looks for a phylip file unless the path 
     argument is used then it looks in path. 
     """
 
-    ## allow path override of object
-    if path:
-        spath = open(path, 'r')
-    else:
-        ## turn the phylip file into an array that can be indexed
-        if snps:
-            spath = open(data.outfiles.snp, 'r')
-        else:
-            spath = open(data.outfiles.phy, 'r')            
+    ## check that input file is correct
+    assert dtype in ['snp', 'usnp', 'phy'], \
+        "only snp, usnp or phy data types allowed"
+    ## read in the file
+    spath = open(data.outfiles[dtype], 'r')
     line = spath.readline().strip().split()
     ntax = int(line[0])
     nbp = int(line[1])
 
     ## make a seq array
     tmpseq = np.zeros((ntax, nbp), dtype="S1")
-    with h5py.File(data._svd.h5, 'w') as io5:
-        ## create the array storage for both real seq and for later bootstraps
-        seqarray = io5.create_dataset("seqarray", (ntax, nbp), dtype="S1")        
-        io5.create_dataset("bootarr", (ntax, nbp), dtype="S1")
 
-        ## fill the tmp array from the input phy
-        for line, seq in enumerate(spath.readlines()):
-            tmpseq[line] = np.array(list(seq.split()[-1]))
-
-        ## save array to disk for so it can be easily accessed from 
-        ## many engines on arbitrary nodes 
-        seqarray[:] = tmpseq
-        del tmpseq
+    ## get initial array
+    if not boot:
+        ## use 'w' to make initial array
+        with h5py.File(data.svd.h5in, 'w') as io5:
+            ## create array storage for both real seq and for later bootstraps
+            seqarr = io5.create_dataset("seqarr", (ntax, nbp), dtype="S1")
+            io5.create_dataset("bootarr", (ntax, nbp), dtype="S1")
+            ## fill the tmp array from the input phy
+            for line, seq in enumerate(spath.readlines()):
+                tmpseq[line] = np.array(list(seq.split()[-1]))
+            ## save array to disk so it can be easily accessed from 
+            ## many engines on arbitrary nodes 
+            seqarr[:] = tmpseq
+            del tmpseq
+    else:
+        ## use 'r+' to read and write to existing array
+        with h5py.File(data.svd.h5in, 'r+') as io5:        
+            ## load in the seqarr
+            seqarr = pd.DataFrame(io5["seqarr"][:])
+            ## fill the boot array with a re-sampled phy w/ replacement
+            io5["bootarr"][:] = seqarr.sample(n=seqarr.shape[1], 
+                                                replace=True, axis=1)
 
     return data
 
@@ -122,14 +147,14 @@ def get_quartets(data, samples):
     ## `quartets` stores the correct quartet in the order (1,2|3,4)
     ## `weights` stores the calculated weight of the quartet in 'quartets'
     print("  populating array with {} quartets".format(nquarts))
-    with h5py.File(data._svd.h5, 'a') as io5:
+    with h5py.File(data.svd.h5in, 'a') as io5:
         ## create data sets
         smps = io5.create_dataset("samples", (nquarts, 4), 
                            dtype=np.uint16, chunks=(chunk, 4))
-        #qrts = io5.create_dataset("quartets", (nquarts, 4), 
-        #                    dtype=np.uint16, chunks=(chunk, 4))        
-        #wgts = io5.create_dataset("weights", (nquarts,), 
-        #                    dtype=np.float16, chunks=(chunk,))
+        io5.create_dataset("quartets", (nquarts, 4), 
+                            dtype=np.uint16, chunks=(chunk, 4))        
+        io5.create_dataset("weights", (nquarts,), 
+                            dtype=np.float16, chunks=(chunk,))
         
         ## populate array with all possible quartets. This allows us to 
         ## sample from the total, and also to continue from a checkpoint
@@ -142,8 +167,8 @@ def get_quartets(data, samples):
             i += 1000
 
     ## save attrs to data object
-    data._svd.nquarts = nquarts
-    data._svd.chunk = chunk
+    data.svd.nquarts = nquarts
+    data.svd.chunk = chunk
 
     return data
 
@@ -209,10 +234,10 @@ def worker(args):
 
     ## parse args
     data, qidx = args
-    chunk = data._svd.chunk
+    chunk = data.svd.chunk
 
     ## get 1000 quartets from qidx
-    lpath = os.path.realpath(data._svd.h5)
+    lpath = os.path.realpath(data.svd.h5)
     with h5py.File(lpath, 'r') as io5in:
         smps = io5in["samples"][qidx:qidx+chunk]
         seqs = io5in["seqarray"][:]
@@ -330,61 +355,57 @@ def get_weight_snir(arr, splits):
 
 
 
-def run_qmc(data, boots=0, useweights=False):
+def run_qmc(data, boots=0):
     """ runs quartet max-cut """
 
-    ## use weight info
-    weights = "on"
-    nsuffix = ".wtre"
-    tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix)
+    ## make call lists
+    cmd1 = " ".join(
+            [ipyrad.bins.qmc,
+            " qrtt="+data._svd.qdump, 
+            " weights=off"+
+            " otre=.tmptre"])
 
-    if not useweights:
-        weights = "off"
-        nsuffix = ".tre"
-        tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix)
+    cmd2 = " ".join(
+            [ipyrad.bins.qmc,
+            " qrtt="+data._svd.qdump, 
+            " weights=on"+
+            " otre=.tmpwtre"])
 
-    ## if boots use tmp file and append to bootstrap reps file
-    if boots:
-        tre = os.path.join(data.dirs.svd, data.name+"_svd4tet"+nsuffix+".tmp")
+    ## run them
+    for cmd in [cmd1, cmd2]:
+        LOGGER.info(cmd)
+        try:
+            subprocess.check_call(cmd, shell=True,
+                                       stderr=subprocess.STDOUT,
+                                       stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as inst:
+            LOGGER.error("Error in wQMC: \n({}).".format(inst))
+            LOGGER.error(subprocess.STDOUT)
+            raise inst
 
-    ## make call list
-    cmd = [ipyrad.bins.qmc,
-           " qrtt="+data._svd.qdump, 
-           " weights="+weights, 
-           " otre="+tre]
-    cmd = " ".join(cmd)
-
-    ## run it
-    LOGGER.info(cmd)
-    try:
-        subprocess.check_call(cmd, shell=True,
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error("Error in wQMC: \n({}).".format(inst))
-        LOGGER.error(subprocess.STDOUT)
-        LOGGER.error(cmd)
-        raise inst
+    ## read in the tmp files since qmc does not pipe
+    tmptre = open(".tmptre").read().strip()
+    tmpwtre = open(".tmpwtre").read().strip()    
 
     ## convert int names back to str names
-    ## ...
+    ## ... dendropy or ete2 code
 
-    ## store bootstrap trees to the assembly
+    ## save the tree
     if boots:
-        with open(tre, 'r') as tmpin:
-            data._svd.boots.append(tmpin.read())
+        with open(data.svd.tboots, 'a') as outboot:
+            outboot.write(tmptre)
+        with open(data.svd.wboots, 'a') as outboot:
+            outboot.write(tmpwtre)
 
     ## store full data trees to Assembly
     else:
-        if not useweights:
-            data._svd.tre = tre
-        else:
-            data._svd.wtre = tre        
+        with open(data.svd.tre, 'w') as outtree:
+            outtree.write(tmptre)
+        with open(data.svd.wtre, 'w') as outtree:
+            outtree.write(tmpwtre)
 
     ## save assembly with new tree
     data.save()
-
-
 
 
 
@@ -433,18 +454,52 @@ def insert_to_array(data, resqrt, reswgt, path):
 
 
 
-def main(data, path=None, nboots=100, force=False):
+def svd_obj_init(data):
+    """ creates svd attribute to Assembly object """
+    ## create ObjDict for storage
+    data.svd = ObjDict()
+
+    ## add array path
+    data.svd.h5in = os.path.join(data.dirs.svd, data.name+"_input.h5")
+    data.svd.h5out = os.path.join(data.dirs.svd, data.name+"_output.h5")
+
+    ## original tree paths
+    data.svd.tre = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre")
+    data.svd.wtre = os.path.join(data.dirs.svd, data.name+"_svd4tet.wtre")
+
+    ## bootstrap tree paths
+    data.svd.tboots = os.path.join(data.dirs.svd, 
+                                   data.name+"_svd4tet.tre.boots")
+    data.svd.wboots = os.path.join(data.dirs.svd, 
+                                   data.name+"_svd4tet.tre.boots")
+
+    ## bootstrap labeled o.g. trees paths
+    data.svd.btre = os.path.join(data.dirs.svd, 
+                                 data.name+"_svd4tet.tre.boots.support")
+    data.svd.btre = os.path.join(data.dirs.svd, 
+                                 data.name+"_svd4tet.wtre.boots.support")
+    return data
+
+
+
+
+
+
+def main(data, samples=None, dtype='snp', nboots=100, force=False):
     """ 
     Run svd4tet inference on a sequence or SNP alignment for all samples 
     the Assembly. 
 
     By default the job starts from 0 or where it last left off, unless 
     force=True, then it starts from 0. 
-
     """
-    ## launch ipclient
-    ipyclient = ipp.Client()
-    time.sleep(3)
+
+    ## subset the samples
+    if samples:
+        samples = ipyrad.core.assembly._get_samples(data, samples)
+
+    ## launch ipclient, assumes ipyparallel is running
+    ipyclient = ipp.Client(timeout=3)
 
     ## make an analysis directory if it doesn't exit
     data.dirs.svd = os.path.realpath(
@@ -453,81 +508,80 @@ def main(data, path=None, nboots=100, force=False):
     if not os.path.exists(data.dirs.svd):
         os.mkdir(data.dirs.svd)
 
-    ## store some svd stats in data
-    data._svd = ObjDict()
-    data._svd.h5 = os.path.join(data.dirs.svd, data.name+"_input.h5")
-    data._svd.results = os.path.join(data.dirs.svd, data.name+"_output.h5")
-    data._svd.boots = []
-    data._svd.checkpoint = 0
-    data.save()
+    ## check whether svd results exist
+    fresh = 0
+    try:
+        with open("data.svd.tboots", 'r') as inboots:
+            data.svd.checkpoint_boot = len(inboots.strip().readlines())
+        print("  Checkpoint found. Starting from bootstrap [{}]"\
+               .format(data.svd.checkpoint_boot))
+    except (AttributeError, IOError):
+        fresh = 1
 
-    ## checkpoint info will be retrieved from h5 if it exists
-    if force:
-        ## scan the hdf5 array to find where it left off writing
-        data._svd.checkpoint = 0        
-        raise IPyradWarningExit("not yet implemented")
+    ## if svd results do not exist or force then restart
+    if force or fresh:
+        data = svd_obj_init(data)
+    else:
+        ## check whether Assembly already started 
+        ## check whether Assembly w/ svd has started boots
+        data.svd.h5in = os.path.join(data.dirs.svd, data.name+"_input.h5")
+        data.svd.h5out = os.path.join(data.dirs.svd, data.name+"_output.h5")
+        data.svd.checkpoint_boot = 0
+        data.svd.checkpoint_arr = 0
+        ## save the new assembly object attributes
+        data.save()
 
-    ## get the seq array into hdf5
-    #LOGGER.info("loading array")
+    ## get the real seq array into hdf5 h5in
     print("  loading array")
-    data = get_seqarray(data, path, snps=True)
+    data = get_seqarray(data, dtype=dtype, boot=False)
 
     ## make quartet arrays into hdf5. Allow subsetting samples eventually.
     ## and optimize chunk value given remaining quartets and ipyclient    
-    #LOGGER.info("loading quartets")
     print("  loading quartets")
     samples = data.samples
     data = get_quartets(data, samples)
 
-    ## run the inference step
+    ## run the full inference 
     print("  sending jobs to engines")
     inference(data, ipyclient)
 
     ## run the bootstrap replicates
     print("  running {} bootstrap replicates".format(nboots))
-    time.sleep(2)
-    print("  well... not yet actually.")
-    print("  done")
-    return data
-    # while len(data._svd.boots) < nboots:
-    #     ## resample seq
-    #     regen_boot_array(data)
-    #     ## 
-    #     inference(data, ipyclient, boots=1)
 
-    ## load a job queue
-    # jobs = []
-    # for qidx in xrange(data._svd.checkpoint, 
-    #                    data._svd.nquarts, 
-    #                    data._svd.chunk):
-    #     jobs.append([data, qidx])
-    # ## THIS ONE WORKS GREAT, but loads all into mem
-    # lbview = ipyclient.load_balanced_view()
-    # res = lbview.map_async(worker, jobs)
-    # res.wait_interactive()
-    # print('done')
-    # sys.exit()
+    ## create tree with support values on edges
+    ## ...
+
+    ## print finished
+    print("  Finished. Final tree files: \n{}\n{}\n{}\n{}\n{}\n{}".format(
+          data.svd.tre, 
+          data.svd.tboot,
+          data.svd.tboot,
+          data.svd.wtre, 
+          data.svd.wboot,
+          data.svd.wboot,
+          ))
+
+    return data
 
 
 
 def inference(data, ipyclient, boots=0):
     """ run inference and store results """
 
-    njobs = len(xrange(data._svd.checkpoint, 
-                       data._svd.nquarts, data._svd.chunk))
-    jobiter = iter(xrange(data._svd.checkpoint, 
-                          data._svd.nquarts, data._svd.chunk))
+    ## a distributor of chunks
+    jobiter = iter(xrange(data.svd.checkpoint_arr, 
+                          data.svd.nquarts, data.svd.chunk))
 
     ## make a distributor for engines
     LOGGER.info("sending jobs to Engines")
     lbview = ipyclient.load_balanced_view()
 
     ## open a view to the super h5 array
-    resh5 = h5py.File(data._svd.results, 'w')
-    resqrt = resh5.create_dataset("quartets", (data._svd.nquarts, 4), 
-                                  dtype=np.uint16, chunks=(data._svd.chunk, 4))
-    reswgt = resh5.create_dataset("weights", (data._svd.nquarts,), 
-                                  dtype=np.float16, chunks=(data._svd.chunk,))
+    ioh5 = h5py.File(data.svd.h5in, 'r+')
+    # resqrt = resh5.create_dataset("quartets", (data.svd.nquarts, 4), 
+    #                               dtype=np.uint16, chunks=(data.svd.chunk, 4))
+    # reswgt = resh5.create_dataset("weights", (data.svd.nquarts,), 
+    #                               dtype=np.float16, chunks=(data.svd.chunk,))
 
     ## submit initial n jobs
     res = {}
@@ -576,102 +630,15 @@ def inference(data, ipyclient, boots=0):
 
 
 
-def regen_boot_array(data, resh5):
-    """ bootstrap replicates re-using same quartet order as original """
-
-    ## create the bootstrap sampled seqarray
-    with h5py.File(data._svd.h5, 'r+') as io5:
-        print("  resampling bootstrap array")
-        ## get original seqarray as a DF
-        seqarray = pd.DataFrame(resh5["seqarray"][:])
-        ## get boot array by randomly sample columns w/ replacement
-        bootarr = seqarray.sample(n=seqarray.shape[1], replace=True, axis=1)
-        resh5["bootarr"][:] = bootarr
-        del bootarr
-        ## save the boot array 
-        print("  done resampling bootstrap array")
-
-
-
-    #return data
-
-    #dview = ipyclient[:]
-    #dview.block = False
-
-    ## a list of jobs to run
-    #todo = [dview.apply_async(data, jobiter.next()) for _ in range(14)]
-
-    #results = lbview.map_async(worker, jobs)
-    #res = {}
-    #for idx, job in enumerate(jobs):
-    #    res[idx] = lbview.apply_async(worker, job)
-    #results.get()
-
-    # for idx in range(len(ipyclient)):
-    #     #res[str(idx)] = lbview.apply_async(worker, [data, jobiter.next()])
-    #     res[idx] = lbview.apply(worker, [data, jobiter.next()])
-
-    # while 1:
-    #     if not res.keys():
-    #         print("breaking")
-    #         break
-    #     else:
-    #         keys = res.keys()
-    #         print('elapsed', res[keys[0]].elapsed)
-    #         for idx in keys:
-    #             try:
-    #                 print(idx)
-    #                 print("found this:", res[idx].get(0))
-
-    #             except ipp.error.TimeoutError:
-    #                 ## keep on looking
-    #                 continue
-    #             else:
-    #                 try:
-    #                     del res[idx]
-    #                     res[idx] = lbview.apply_async(worker, 
-    #                                                  [data, jobiter.next()])
-    #                 except StopIteration:
-    #                     pass
-            
-    #     time.sleep(0.25)
-
-    #results.wait_interactive()
-    #worker(jobs[0])
-
-    #results = lbview.apply_async(worker, jobs)
-    #results.wait_interactive()
-
-    #while 1:
-        ## hang out a while
-    #    time.sleep(1)
-        ## query for a finished job
-
-
-
-
-    ## Dump database results into a file
-    #dump(data)
-
-    ## Run quartet max-cut on the quartets
-    #run_qmc(data)
-
-    #_clientwrapper(self, stepfunc, args, nwait):
-
-
 
 if __name__ == "__main__":
 
     ## imports
     import ipyrad.analysis as ipa
-    import ipyrad as ip
-    import ipyparallel as ipp
-    import time
+    #import ipyrad as ip
+    #import ipyparallel as ipp
 
-    IPYCLIENT = ipp.Client()
-    time.sleep(2)
-
-    DATA = ip.load_json("~/Documents/ipyrad/tests/cli/cli")
-
-    ipa.svd4tet.main(DATA, IPYCLIENT)
+    DATA = ipyrad.load_json("~/Documents/ipyrad/tests/api/test.json")
+    ## run
+    ipa.svd4tet.main(DATA)
 
