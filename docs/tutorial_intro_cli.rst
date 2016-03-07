@@ -236,7 +236,7 @@ Now lets run step 1! For the simulated data this will take < 1 minute.
 
     ## -p indicates the params file we wish to use
     ## -s indicates the step to run (in this case 1)
-    ipyrad -p params-ipyrad-test.txt -s 1
+    ipyrad -p params-iptest.txt -s 1
 
 .. parsed-literal::
  --------------------------------------------------
