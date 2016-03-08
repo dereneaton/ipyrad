@@ -661,12 +661,11 @@ As you'll see in examples with empirical data, this is often a step where many
 reads are filtered out of the data set. If not data were filtered, then the 
 number of reads_consens should be equal to the number of clusters_hidepth.
 
-
 .. parsed-literal::
 
     Summary stats of Assembly iptest
-    ------------------------------------------------
-          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
+        ------------------------------------------------
+              state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
     1A_0      5      20099           20099            1000              1000
     1B_0      5      19977           19977            1000              1000
     1C_0      5      20114           20114            1000              1000
