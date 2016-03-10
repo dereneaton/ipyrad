@@ -104,7 +104,7 @@ def muscle_align_across(args):
 
 
 
-def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
+def multi_muscle_align(data, samples, clustbits, ipyclient):
     """ Splits the muscle alignment across nthreads processors, each runs on 
     clustbit clusters at a time. This is a kludge until I find how to write a 
     better wrapper for muscle. 
@@ -133,11 +133,12 @@ def multi_muscle_align(data, samples, nloci, clustbits, ipyclient):
         ## INIT INDEL ARRAY
         ## build an indel array for ALL loci in cat.clust.gz
         io5 = h5py.File(os.path.join(
-                           data.dirs.consens, data.name+".indels"), 'w')
+                        data.dirs.consens, data.name+".indels"), 'r+')
+        nloci = io5.attrs["nloci"]
         iset = io5.create_dataset("indels", (nloci, len(samples), maxlen),
-                                   dtype=np.bool)
-                                   #chunks=(nloci/10, len(samples), maxlen),
-                                   #compression="gzip")
+                                  dtype=np.bool)
+                                  #chunks=(nloci/10, len(samples), maxlen),
+                                  #compression="gzip")
 
         ## enter all tmpindel arrays into full indel array
         for tup in indeltups:
@@ -228,7 +229,7 @@ def cluster(data, noreverse):
 
 
 
-def build_h5_array(data, samples, nloci):
+def build_h5_array(data, samples):
     """ build full catgs file """
     ## catg array of prefiltered loci (4-dimensional) aye-aye!
     ## this can be multiprocessed!! just sum arrays at the end
@@ -246,13 +247,15 @@ def build_h5_array(data, samples, nloci):
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
+    ## open h5 handle
+    with h5py.File(data.database, 'r') as io5:
+        nloci = io5.attrs["nloci"]
+    io5 = h5py.File(data.database, 'w')
+
     ## choose chunk optim size
     chunks = nloci
     if nloci > 10000:
         chunks = 1000
-
-    ## open h5py handle
-    io5 = h5py.File(data.database, 'w')
 
     ## INIT FULL CATG ARRAY
     ## store catgs with a .10 loci chunk size
@@ -353,7 +356,7 @@ def singlecat(data, sample, nloci, indels):
     the same order as the indels array, so indels are inserted from the indel
     array that is passed in. 
     """
-    LOGGER.debug("singlecat: %s", sample.name)
+    #LOGGER.debug("singlecat: %s", sample.name)
 
     ## if an hdf5 file already exists delete it.
     h5handle = os.path.join(data.dirs.consens, sample.name+".hdf5")
@@ -375,7 +378,7 @@ def singlecat(data, sample, nloci, indels):
 
     ## LOAD IN STEP5 CATG ARRAY
     ## get catg from step5 for this sample, the shape is (nloci, maxlen)
-    LOGGER.debug("encode %s", sample.files.database)
+    #LOGGER.debug("encode %s", sample.files.database)
     old_h5 = h5py.File(sample.files.database, 'r')
     catarr = old_h5["catg"][:]
 
@@ -430,14 +433,15 @@ def singlecat(data, sample, nloci, indels):
             icatg[iloc] = catarr[iloc, :, :]
             #icatg[iloc] = catarr[iloc, :icatg[iloc].shape[1], :]
         except IndexError:
-            LOGGER.error("""
-                sample: %s, 
-                iloc: %s,
-                icatg.shape: %s,
-                icatg[iloc].shape: %s,
-                """, sample.name, iloc, icatg.shape, icatg[iloc].shape)
-    LOGGER.debug("done seedmatching")
-    ## close the old hdf5 connections
+            print(sample, iloc, "error")
+    #         #LOGGER.error("""
+    #             sample: %s, 
+    #             iloc: %s,
+    #             icatg.shape: %s,
+    #             icatg[iloc].shape: %s,
+    #             """, sample.name, iloc, icatg.shape, icatg[iloc].shape)
+    # LOGGER.debug("done seedmatching")
+    # ## close the old hdf5 connections
     old_h5.close()
 
     ## insert indels into new_h5 (icatg array) which now has loci in the same
@@ -494,7 +498,7 @@ def fill_superseqs(data, samples, superseqs, edges):
     cloc = 0
     chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
     chunkedge = np.zeros((chunksize), dtype=np.uint16)
-    LOGGER.info("chunkseqs is %s", chunkseqs.shape)
+    #LOGGER.info("chunkseqs is %s", chunkseqs.shape)
     while 1:
         try:
             done, chunk = clustdealer(pairdealer, 1)
@@ -521,17 +525,17 @@ def fill_superseqs(data, samples, superseqs, edges):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq
 
-        ## PUT seqs INTO local ARRAY 
-        chunkseqs[iloc] = fill
-
         ## if chunk is full put into superseqs
         if cloc == chunksize:
-            superseqs[iloc-cloc:cloc] = chunkseqs
-            edges[iloc-cloc:cloc, 4] = chunkedge
+            superseqs[iloc-cloc:iloc] = chunkseqs
+            edges[iloc-cloc:iloc, 4] = chunkedge
             ## reset chunkseqs
             cloc = 0
             chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
             chunkedge = np.zeros((chunksize), dtype=np.uint16)
+
+        ## PUT seqs INTO local ARRAY 
+        chunkseqs[cloc] = fill
 
         ## increase counters
         cloc += 1
@@ -624,8 +628,12 @@ def build_reads_file(data):
             tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
             clustbits.append(handle)
 
+    ## store nloci as an attribute to data base
+    with h5py.File(data.database, 'a') as io5:
+        io5.attrs["nloci"] = loci
+
     ## return stuff
-    return clustbits, loci
+    return clustbits
 
 
 
@@ -710,11 +718,11 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## build consens clusters and returns chunk handles to be aligned
     LOGGER.info("building consens clusters")        
-    clustbits, nloci = build_reads_file(data)
+    clustbits = build_reads_file(data)
 
     ## muscle align the consens reads and creates hdf5 indel array
     LOGGER.info("muscle alignment & building indel database")
-    multi_muscle_align(data, samples, nloci, clustbits, ipyclient)
+    multi_muscle_align(data, samples, clustbits, ipyclient)
 
     ## builds the final HDF5 array which includes three main keys
     ## /catg -- contains all indiv catgs and has indels inserted
@@ -725,8 +733,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ##   .attr['samples'] = [samples]
     LOGGER.info("building full database")    
     ## calls singlecat func inside
-    LOGGER.info("nloci is %s right here so what happens", nloci)
-    build_h5_array(data, samples, nloci)
+    build_h5_array(data, samples)
 
     ## do we need to load in singleton clusters?
     ## invarcats()
@@ -747,10 +754,10 @@ if __name__ == "__main__":
        )
 
     ## run test on pairgbs data1
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "Ron", "Ron"))
-    TEST.step6(force=True)
-    print(TEST.stats)
+    # TEST = ip.load.load_assembly(os.path.join(\
+    #                      ROOT, "tests", "Ron", "Ron"))
+    # TEST.step6(force=True)
+    # print(TEST.stats)
 
     ## run test on pairgbs data1
     # TEST = ip.load.load_assembly(os.path.join(\
@@ -759,14 +766,16 @@ if __name__ == "__main__":
     # print(TEST.stats)
 
     ## run test on rad data1
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_rad", "data1"))
-    TEST.step6(force=True)
-    print(TEST.stats)
+    #TEST = ip.load.load_assembly(os.path.join(\
+    #                     ROOT, "tests", "test_rad", "data1"))
+    #TEST.step6(force=True)
+    #print(TEST.stats)
 
     ## load test data (pairgbs)
-    # DATA = ip.load.load_assembly(\
-    #     "/home/deren/Documents/ipyrad/tests/test_pairgbs/test_pairgbs.assembly")
+    DATA = ip.load_json(
+         "/home/deren/Documents/RADmissing/rad1/half_min4.json")
+    SAMPLES = DATA.samples.values()
+    build_h5_array(DATA, SAMPLES)
     # ## run step 6
     # DATA.step6(force=True)
 
