@@ -801,8 +801,7 @@ class Assembly(object):
                 args.append(ipyclient)
                 stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered, 
-                IOError, UnboundLocalError) as inst:
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError) as inst:
             ## raise by ipyparallel if no connection file is found for 30 sec.
             msg = """
     Check to ensure ipcluster is started. When using the API you must start
@@ -868,6 +867,7 @@ class Assembly(object):
                 self.save()                
                 ## can't close client if it was never open
                 if ipyclient:
+                    ipyclient.abort()
                     ipyclient.purge_everything()
                     ipyclient.close()
             except (UnboundLocalError, IOError):
@@ -1337,6 +1337,8 @@ class Assembly(object):
         if not steps:
             steps = list("1234567")
         else:
+            if isinstance(steps, int):
+                steps = str(steps)
             steps = list(steps)
 
         if '1' in steps:
