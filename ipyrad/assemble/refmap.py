@@ -146,11 +146,12 @@ def mapreads(args):
     ##  -l [pe,mp,pp]: If paired end select the orientation of each read
     ##  -n #         : Number of threads to use
     ##  -x           : Perform a more exhaustive search
-    ##  -c #         : fraction of the query read length that must be covered
+    ##  -y #         : Fraction of bases that must match reference (sequence similarity)
     ##  -o           : output file
     ##               : Reference sequence
     ##               : Input file(s), in a list. One for forward and one for reverse reads.
 
+    ##  -c #         : fraction of the query read length that must be covered
     ## Wrap the whole thing in a try so we can clean up if something fails or user cancelse
     ## This is pretty monolithic, it could get broken up into subroutines
     try:
@@ -165,7 +166,7 @@ def mapreads(args):
         cmd = ipyrad.bins.smalt+\
             " map -f sam -n " + str(nthreads) +\
             pairtype+\
-            " -x -c " + str(data.paramsdict['clust_threshold'])+\
+            " -x -y " + str(data.paramsdict['clust_threshold'])+\
             " -o " + samhandle +\
             " " + data.paramsdict['reference_sequence'] +\
             " " + " ".join( sample_fastq )
@@ -963,9 +964,9 @@ def append_clusters(data, sample, derep_fasta_files):
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
                     #LOGGER.info("".join(seqs))
-            #out.write("//\n//\n")
-            out.write("".join(seqs))
             out.write("//\n//\n")
+            out.write("".join(seqs))
+        out.write("//\n//\n")
 
 
 
