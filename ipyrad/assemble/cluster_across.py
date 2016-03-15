@@ -278,6 +278,7 @@ def cluster(data, noreverse):
        +" -fulldp " \
        +" -usersort " \
        +" -quiet"
+    ## TODO: Should -threads be len(ipyclient) ?
 
     try:
         LOGGER.debug(cmd)
@@ -836,7 +837,7 @@ def build_input_file(data, samples, outgroups, randomseed):
     lengroups = consdat.groupby(by=2)
     lenclasses = sorted(set(consdat[2]), reverse=True)
 
-    LOGGER.info("shuffling sequences within len classes")
+    LOGGER.info("shuffling sequences within len classes & sampling alleles")
     ## write all cons in pandas readable format
     for lenc in lenclasses:
         group = lengroups.get_group(lenc)
@@ -856,7 +857,7 @@ def build_input_file(data, samples, outgroups, randomseed):
         ## write final chunk
         allhaps.write("\n".join(writinghaplos)+"\n")
     allhaps.close()
-    LOGGER.info("sort and shuf took %s seconds", int(time.time()-start))
+    LOGGER.info("sort/shuf/samp took %s seconds", int(time.time()-start))
 
 
 

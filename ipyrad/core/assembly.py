@@ -860,6 +860,7 @@ class Assembly(object):
             ## Caught unhandled exception, print and reraise
             print("Caught unknown exception - {}".format(inst))
             raise
+
         ## close client when done or interrupted
         finally:
             try:

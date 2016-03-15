@@ -144,10 +144,14 @@ def make_stats(data, samples, samplecounts, locuscounts):
     ########################################################################
     ## make dataframe of sample_coverages
     ## samplecounts is len of anames from db. Save only samples in samples.
-    samples = [i.name for i in samples]
-    sidx = np.array([i in samples for i in anames])    
-    covdict = {name: val for name, val in zip(samples, samplecounts[sidx])}
-    covdict = pd.Series(covdict, name="sample_coverage")
+    #print(samplecounts)
+    #samples = [i.name for i in samples]
+    ## get sample names in the order of anames
+    #sids = [list(anames).index(i) for i in samples]
+    #covdict = {name: val for name, val in zip(np.array(samples)[sidx], samplecounts)}
+    #covdict = {name: val for name, val in zip(samples, samplecounts[sidx])}
+    covdict = pd.Series(samplecounts, name="sample_coverage", index=anames)
+    covdict = covdict[covdict != 0]
     print("\n\n\n## The number of loci recovered for each Sample."+\
           "\n## ipyrad API location: [assembly].stats_dfs.s7_samples\n",
           file=outstats)
@@ -171,11 +175,16 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #########################################################################
     ## get stats for SNP_distribution    
     srange = range(max([i for i in varcounts if varcounts[i]])+1)
-    vardat = pd.Series(varcounts, name="var", index=srange)
-    varsums = pd.Series({i: np.sum(vardat.values[0:i+1]) for i in srange}, 
+    vardat = pd.Series(varcounts, name="var", index=srange).fillna(0)
+    sumd = {0: 0}
+    varsums = pd.Series(sumd.update(
+                        {i: np.sum(vardat.values[1:i]) for i in srange[1:]}), 
                         name="sum_var", index=srange)
-    pisdat = pd.Series(piscounts, name="pis", index=srange)
-    pissums = pd.Series({i: np.sum(pisdat.values[0:i+1]) for i in srange}, 
+
+    pisdat = pd.Series(piscounts, name="pis", index=srange).fillna(0)
+    sumd = {0: 0}    
+    pissums = pd.Series(sumd.update(
+                        {i: np.sum(pisdat.values[1:i]) for i in srange[1:]}), 
                         name="sum_pis", index=srange)
     print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
           "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
@@ -891,6 +900,7 @@ def make_phynex(data, samples, keep, output_formats):
     start = 0
     seqleft = 0
     snpleft = 0
+    LOGGER.info("starting to build phy")
     while start < nloci:
         hslice = [start, start+optim]
         afilt = inh5["filters"][hslice[0]:hslice[1], ]
@@ -932,6 +942,7 @@ def make_phynex(data, samples, keep, output_formats):
         ## increase the counter
         start += optim
 
+    LOGGER.info("done building phy... ")
     ## trim trailing edges
     ridx = np.all(seqarr == "", axis=0)    
     seqarr = seqarr[:, ~ridx]
@@ -939,6 +950,7 @@ def make_phynex(data, samples, keep, output_formats):
     snparr = snparr[:, ~ridx]
     ridx = np.all(bisarr == "", axis=0)
     bisarr = bisarr[:, ~ridx]
+    LOGGER.info("done trimming phy... ")
 
     ## write the phylip string
     data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
@@ -1009,7 +1021,7 @@ def make_phynex(data, samples, keep, output_formats):
         ## need to define a reference base and record 0,1,2 or missing=9
         #snparr
         #bisarr
-
+    LOGGER.info("done writing outputs... ")
 
 
 ## Utility subfunctions
