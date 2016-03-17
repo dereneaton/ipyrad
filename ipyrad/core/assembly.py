@@ -854,8 +854,10 @@ class Assembly(object):
                 if ipyclient.metadata[job]['error']:
                     print(ipyclient.metadata[job]['error'])
                     #raise IPyradError(ipyclient.metadata[job]['error'])
+
         except IPyradError as inst:
-            sys.exit("ipyrad error - {}".format(inst))
+            IPyradWarningExit("ipyrad error - {}".format(inst))
+
         except Exception as inst:
             ## Caught unhandled exception, print and reraise
             print("Caught unknown exception - {}".format(inst))
@@ -868,11 +870,14 @@ class Assembly(object):
                 self.save()                
                 ## can't close client if it was never open
                 if ipyclient:
-                    ipyclient.abort()
-                    ipyclient.purge_everything()
+                    if not ip.__interactive__:
+                        ipyclient.shutdown()
+                    else:
+                        ipyclient.purge_everything()
+                        ipyclient.abort()
                     ipyclient.close()
-            except (UnboundLocalError, IOError):
-                pass
+            except Exception as inst:
+                LOGGER.error("shutdown warning: %s", inst)
 
 
     def _step1func(self, force, preview, ipyclient):

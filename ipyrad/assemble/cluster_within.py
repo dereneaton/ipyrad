@@ -375,8 +375,8 @@ def build_clusters(data, sample):
                     LOGGER.debug("exc indbld: %s %s", inserts, fwdseq)
             ## flip to the right orientation 
             else:
+                revseq = comp(hits[values[i][0]][1][::-1])
                 if inserts < 6:
-                    revseq = comp(hits[values[i][0]][1][::-1])
                     seq.append(values[i][0].strip()+"-\n"+revseq)
                 else:
                     LOGGER.debug("exc indbld: %s %s", inserts, revseq)
