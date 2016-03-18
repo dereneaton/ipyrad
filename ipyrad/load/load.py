@@ -163,6 +163,7 @@ def save_json(data):
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),
         ("_hackersonly", data.__dict__["_hackersonly"]),
+        ("svd", data.__dict__["svd"])
         ])
 
     ## sample dict
@@ -227,7 +228,9 @@ def load_json(path, quiet=False):
     ## print msg with shortpath
     if not quiet:
         oldpath = oldpath.replace(os.path.expanduser("~"), "~")
-        print("  loading Assembly: {} [{}]".format(oldname, oldpath))
+        #print("  loading Assembly: {} [{}]".format(oldname, oldpath))
+        print("  loading Assembly: {}".format(oldname))
+        print("  saved location: {}".format(oldpath))
 
     ## First get the samples. Create empty sample dict of correct length 
     samplekeys = fullj["assembly"].pop("samples")
@@ -291,6 +294,14 @@ def load_json(path, quiet=False):
     ## load in remaining shared Assembly attributes to null
     for key in sharedkeys:
         null.__setattr__(key, fullj["assembly"][key])
+
+    ## load in svd results if they exist
+    try:
+        if fullj["assembly"]["svd"]:
+            null.__setattr__("svd", fullj["assembly"]["svd"])
+            null.svd = ObjDict(null.svd)
+    except Exception:
+        LOGGER.warn("skipping: no svd results present in old assembly")
 
     ## Now, load in the Sample objects json dicts
     sample_names = fullj["samples"].keys()
@@ -477,7 +488,8 @@ def load_old_json(path, quiet=False):
     ## print msg with shortpath
     if not quiet:
         oldpath = oldpath.replace(os.path.expanduser("~"), "~")
-        print("  loading Assembly: {} [{}]".format(oldname, oldpath))
+        print("  loading Assembly: {}".format(oldname))
+        print("  location: {}".format(oldpath))
 
     ## First get the samples. Create empty sample dict of correct length 
     samplekeys = fullj["assembly"].pop("samples")

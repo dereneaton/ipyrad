@@ -20,7 +20,7 @@ Theoretical Biology 374: 35-47
 
 from __future__ import print_function, division
 import os
-import sys
+import glob
 import h5py
 import time
 import random
@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 import ipyparallel as ipp
 
-from ipyrad.assemble.util import ObjDict, IPyradWarningExit
+from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 from collections import Counter, OrderedDict
 
 import logging
@@ -96,6 +96,7 @@ def get_seqarray(data, dtype="snp", boot=False):
     line = spath.readline().strip().split()
     ntax = int(line[0])
     nbp = int(line[1])
+    LOGGER.info("array shape: (%s,%s)", ntax, nbp)
 
     ## make a seq array
     tmpseq = np.zeros((ntax, nbp), dtype="S1")
@@ -141,7 +142,7 @@ def get_quartets(data, samples):
     if nquarts < 1000:
         chunk = nquarts // 20
     else:
-        chunk = 1000
+        chunk = 50
 
     ## 'samples' stores the indices of the quartet. 
     ## `quartets` stores the correct quartet in the order (1,2|3,4)
@@ -213,6 +214,7 @@ def seq_to_matrix(arr, sidx):
 
     ## shape into 16x16 array
     matrix = np.array(mdict.values()).reshape(16, 16)
+    LOGGER.info("matrix: %s", matrix)
     return matrix
 
 
@@ -233,17 +235,23 @@ def worker(args):
     """ gets data from seq array and puts results into results array """
 
     ## parse args
+    LOGGER.info("I'm inside a worker")
     data, qidx = args
     chunk = data.svd.chunk
 
-    ## get 1000 quartets from qidx
-    lpath = os.path.realpath(data.svd.h5)
+    ## get n chunk quartets from qidx
+    lpath = os.path.realpath(data.svd.h5in)
     with h5py.File(lpath, 'r') as io5in:
+        start = time.time()
         smps = io5in["samples"][qidx:qidx+chunk]
-        seqs = io5in["seqarray"][:]
+        seqs = io5in["seqarr"][:]
+        LOGGER.info("takes %s secs to read smps & seqs", (time.time() - start))
 
         ## get data from seqarray
+        start = time.time()        
         results = [svd4tet(seqs, qtet) for qtet in smps]
+        LOGGER.info("And %s secs to run svd4tet", (time.time() - start))
+        LOGGER.info("results line 252: %s", results)
         rquartets = np.array([i[0] for i in results])
         rweights = np.array([i[1] for i in results])
         #print("rquartets", rquartets, rquartets.shape)
@@ -263,7 +271,7 @@ def worker(args):
 
 
 def svd4tet(arr, samples, weights=1):
-    """ calc rank. From Chibatko and Kiffman (2014)
+    """ calc rank. From Kubatko and Chiffman (2014)
 
     Our proposal for inferring the true species-level relationship within a 
     sample of four taxa is thus the following. For each of the three possible 
@@ -361,13 +369,13 @@ def run_qmc(data, boots=0):
     ## make call lists
     cmd1 = " ".join(
             [ipyrad.bins.qmc,
-            " qrtt="+data._svd.qdump, 
+            " qrtt="+data.svd.qdump, 
             " weights=off"+
             " otre=.tmptre"])
 
     cmd2 = " ".join(
             [ipyrad.bins.qmc,
-            " qrtt="+data._svd.qdump, 
+            " qrtt="+data.svd.qdump, 
             " weights=on"+
             " otre=.tmpwtre"])
 
@@ -415,11 +423,11 @@ def dump(data):
     prints the quartets to a file formatted for QMC in random order.
     """
     ## open the h5 database
-    io5 = h5py.File(data._svd.results, 'r')
+    io5 = h5py.File(data.svd.h5out, 'r')
 
     ## create an output file for writing
-    data._svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartets.txt")
-    outfile = open(data._svd.qdump, 'w')
+    data.svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartets.txt")
+    outfile = open(data.svd.qdump, 'w')
 
     ## todo: should pull quarts order in randomly
     for idx in range(0, 1000, 100):
@@ -435,22 +443,26 @@ def dump(data):
 
 
 
-def insert_to_array(data, resqrt, reswgt, path):
+def insert_to_array(data, result):
     """ 
     Takes a tmpfile output from finished worker, enters it into the 
     full h5 array, and deletes the tmpfile
     """
 
-    with h5py.File(path) as inh5:
+    out5 = h5py.File(data.svd.h5out, 'r+')
+
+    with h5py.File(result) as inh5:
         qrts = inh5['quartets'][:]
         wgts = inh5['weights'][:]
 
-        chunk = data._svd.chunk
-        start = int(path.split("_")[-1][:-3])
-        resqrt[start:start+chunk] = qrts
-        reswgt[start:start+chunk] = wgts
+        chunk = data.svd.chunk
+        start = int(result.split("_")[-1][:-3])
+        out5['quartets'][start:start+chunk] = qrts
+        out5['weights'][start:start+chunk] = wgts
+    out5.close()
 
-    os.remove(path)
+    ## remove tmp h5path
+    os.remove(result)
 
 
 
@@ -471,21 +483,62 @@ def svd_obj_init(data):
     data.svd.tboots = os.path.join(data.dirs.svd, 
                                    data.name+"_svd4tet.tre.boots")
     data.svd.wboots = os.path.join(data.dirs.svd, 
-                                   data.name+"_svd4tet.tre.boots")
+                                   data.name+"_svd4tet.wtre.boots")
 
     ## bootstrap labeled o.g. trees paths
     data.svd.btre = os.path.join(data.dirs.svd, 
                                  data.name+"_svd4tet.tre.boots.support")
-    data.svd.btre = os.path.join(data.dirs.svd, 
+    data.svd.bwtre = os.path.join(data.dirs.svd, 
                                  data.name+"_svd4tet.wtre.boots.support")
+    ## checkpoints
+    data.svd.checkpoint_boot = 0
+    data.svd.checkpoint_arr = 0
+
+    ## save to object and return
+    data.save()
     return data
 
 
 
 
+def wrapper(data, samples=None, dtype='snp', nboots=100, force=False):
+    """ wraps main in try/except statement """
+
+    ## launch ipclient, assumes ipyparallel is running
+    ipyclient = ipp.Client(timeout=10)
+
+    ## protects it from KBD
+    try:
+        main(data, samples, ipyclient, dtype, nboots, force)
+
+    except (KeyboardInterrupt, SystemExit):
+
+        ## remove any abandoned tmp arrays 
+        abandon = glob.glob(os.path.join(data.dirs.svd, "*_tmp_*.h5"))
+        for afile in abandon:
+            os.remove(afile)
+
+        ## protect from KBD while saving
+        try:
+            ## cancel submitted jobs
+            ipyclient.abort()
+            ## kill running jobs
+            ipyclient.close()
+
+        except KeyboardInterrupt:
+            pass
+
+    finally:
+        ## checkpoint the state and save
+        LOGGER.info("\n  saving checkpoints to [Assembly].svd")
+        LOGGER.info("  array checkpoint: %s", data.svd.checkpoint_arr)
+        LOGGER.info("  boot checkpoint: %s", data.svd.checkpoint_boot)
+        data.save()        
 
 
-def main(data, samples=None, dtype='snp', nboots=100, force=False):
+
+
+def main(data, samples, ipyclient, dtype, nboots, force):
     """ 
     Run svd4tet inference on a sequence or SNP alignment for all samples 
     the Assembly. 
@@ -498,48 +551,39 @@ def main(data, samples=None, dtype='snp', nboots=100, force=False):
     if samples:
         samples = ipyrad.core.assembly._get_samples(data, samples)
 
-    ## launch ipclient, assumes ipyparallel is running
-    ipyclient = ipp.Client(timeout=3)
-
-    ## make an analysis directory if it doesn't exit
-    data.dirs.svd = os.path.realpath(
-                        os.path.join(
-                            data.dirs.project, data.name+"_analysis_svd"))
-    if not os.path.exists(data.dirs.svd):
-        os.mkdir(data.dirs.svd)
-
-    ## check whether svd results exist
+    ## load svd attributes if they exist
     fresh = 0
     try:
-        with open("data.svd.tboots", 'r') as inboots:
-            data.svd.checkpoint_boot = len(inboots.strip().readlines())
-        print("  Checkpoint found. Starting from bootstrap [{}]"\
-               .format(data.svd.checkpoint_boot))
+        if data.svd.checkpoint_boot or data.svd.checkpoint_arr:
+            print("  loading from svd checkpoint")
+            print("  array checkpoint {}".format(data.svd.checkpoint_arr))
+            print("  boots checkpoint {}".format(data.svd.checkpoint_boot))
+        else:
+            fresh = 1
     except (AttributeError, IOError):
+        print("  starting new svd analysis")
         fresh = 1
 
     ## if svd results do not exist or force then restart
     if force or fresh:
+        ## make an analysis directory if it doesn't exit
+        data.dirs.svd = os.path.realpath(
+                            os.path.join(
+                                data.dirs.project, data.name+"_analysis_svd"))
+        if not os.path.exists(data.dirs.svd):
+            os.mkdir(data.dirs.svd)
+        ## init new svd
         data = svd_obj_init(data)
-    else:
-        ## check whether Assembly already started 
-        ## check whether Assembly w/ svd has started boots
-        data.svd.h5in = os.path.join(data.dirs.svd, data.name+"_input.h5")
-        data.svd.h5out = os.path.join(data.dirs.svd, data.name+"_output.h5")
-        data.svd.checkpoint_boot = 0
-        data.svd.checkpoint_arr = 0
-        ## save the new assembly object attributes
-        data.save()
 
-    ## get the real seq array into hdf5 h5in
-    print("  loading array")
-    data = get_seqarray(data, dtype=dtype, boot=False)
+        ## get the real seq array into hdf5 h5in
+        print("  loading array")
+        data = get_seqarray(data, dtype=dtype, boot=False)
 
-    ## make quartet arrays into hdf5. Allow subsetting samples eventually.
-    ## and optimize chunk value given remaining quartets and ipyclient    
-    print("  loading quartets")
-    samples = data.samples
-    data = get_quartets(data, samples)
+        ## make quartet arrays into hdf5. Allow subsetting samples eventually.
+        ## and optimize chunk value given remaining quartets and ipyclient    
+        print("  loading quartets")
+        samples = data.samples
+        data = get_quartets(data, samples)
 
     ## run the full inference 
     print("  sending jobs to engines")
@@ -554,11 +598,11 @@ def main(data, samples=None, dtype='snp', nboots=100, force=False):
     ## print finished
     print("  Finished. Final tree files: \n{}\n{}\n{}\n{}\n{}\n{}".format(
           data.svd.tre, 
-          data.svd.tboot,
-          data.svd.tboot,
+          data.svd.tboots,
           data.svd.wtre, 
-          data.svd.wboot,
-          data.svd.wboot,
+          data.svd.wboots,
+          data.svd.btre,
+          data.svd.bwtre,
           ))
 
     return data
@@ -569,19 +613,23 @@ def inference(data, ipyclient, boots=0):
     """ run inference and store results """
 
     ## a distributor of chunks
+    njobs = sum(1 for _ in iter(xrange(data.svd.checkpoint_arr, 
+                                       data.svd.nquarts, data.svd.chunk)))
     jobiter = iter(xrange(data.svd.checkpoint_arr, 
                           data.svd.nquarts, data.svd.chunk))
+    LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
+            data.svd.chunk, data.svd.checkpoint_arr, data.svd.nquarts, njobs)
 
     ## make a distributor for engines
-    LOGGER.info("sending jobs to Engines")
     lbview = ipyclient.load_balanced_view()
+    LOGGER.info("sending jobs to %s Engines", len(ipyclient))
 
     ## open a view to the super h5 array
-    ioh5 = h5py.File(data.svd.h5in, 'r+')
-    # resqrt = resh5.create_dataset("quartets", (data.svd.nquarts, 4), 
-    #                               dtype=np.uint16, chunks=(data.svd.chunk, 4))
-    # reswgt = resh5.create_dataset("weights", (data.svd.nquarts,), 
-    #                               dtype=np.float16, chunks=(data.svd.chunk,))
+    with h5py.File(data.svd.h5out, 'w') as out5:
+        out5.create_dataset("quartets", (data.svd.nquarts, 4), 
+                            dtype=np.uint16, chunks=(data.svd.chunk, 4))
+        out5.create_dataset("weights", (data.svd.nquarts,), 
+                            dtype=np.float16, chunks=(data.svd.chunk,))
 
     ## submit initial n jobs
     res = {}
@@ -591,43 +639,38 @@ def inference(data, ipyclient, boots=0):
     ## iterate over remaining jobs
     keys = res.keys()
     finished = 0
+
     while res.keys():
-        time.sleep(1)
+        time.sleep(5)
+        progressbar(njobs, finished)
         for key in keys:
             try:
                 ## query for finished results
                 result = res[key].get(0)
                 ## put it into the super array
-                insert_to_array(data, resqrt, reswgt, result)
-                ## submit a new job to the queue
+                insert_to_array(data, result)
+                ## delete result, update checkpoint
                 del res[key]
                 finished += 1
-                progress = 100*(finished / njobs)
-                hashes = '#'*int(progress/5)
-                nohash = ' '*int(20-len(hashes))
-                print("\r  [{}] {}%"\
-                      .format(hashes+nohash, int(progress)), end="")
-                sys.stdout.flush()
+                data.svd.checkpoint_arr = max(data.svd.checkpoint_arr, 
+                                              data.svd.chunk*finished)
                 #print(\r"  {:.1f}% complete".format(100*(finished / njobs)))
                 try:
                     res[key] = lbview.apply(worker, 
-                                    [data, jobiter.next()])                
+                                    [data, jobiter.next()])
+                    LOGGER.info("new job added to Engine %s", key)
                 except StopIteration:
                     continue
 
             except (ipp.error.TimeoutError, KeyError):
                 continue
-    resh5.close()
     print("")
 
     ## convert to txt file for wQMC
     dump(data)    
 
     ## run quartet joining algorithm
-    run_qmc(data, boots=boots, useweights=False)
-    run_qmc(data, boots=boots, useweights=True)
-
-
+    run_qmc(data, boots=boots)#, useweights=False)
 
 
 
@@ -638,7 +681,8 @@ if __name__ == "__main__":
     #import ipyrad as ip
     #import ipyparallel as ipp
 
-    DATA = ipyrad.load_json("~/Documents/ipyrad/tests/api/test.json")
+    #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/cli/cli.json")
+    DATA = ipyrad.load_json("~/Documents/RADmissing/rad1/half_min20.json")
     ## run
-    ipa.svd4tet.main(DATA)
+    ipa.svd4tet.wrapper(DATA)
 

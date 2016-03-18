@@ -177,15 +177,13 @@ def make_stats(data, samples, samplecounts, locuscounts):
     srange = range(max([i for i in varcounts if varcounts[i]])+1)
     vardat = pd.Series(varcounts, name="var", index=srange).fillna(0)
     sumd = {0: 0}
-    varsums = pd.Series(sumd.update(
-                        {i: np.sum(vardat.values[1:i]) for i in srange[1:]}), 
-                        name="sum_var", index=srange)
+    sumd.update({i: np.sum(vardat.values[1:i]) for i in srange[1:]})
+    varsums = pd.Series(sumd, name="sum_var", index=srange)
 
     pisdat = pd.Series(piscounts, name="pis", index=srange).fillna(0)
     sumd = {0: 0}    
-    pissums = pd.Series(sumd.update(
-                        {i: np.sum(pisdat.values[1:i]) for i in srange[1:]}), 
-                        name="sum_pis", index=srange)
+    sumd.update({i: np.sum(pisdat.values[1:i]) for i in srange[1:]})
+    pissums = pd.Series(name="sum_pis", index=srange)
     print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
           "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
           "\n## var = all variable sites (pis + autapomorphies)"+\

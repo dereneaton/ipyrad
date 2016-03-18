@@ -574,6 +574,18 @@ def clustdealer(pairdealer, optim):
 
 
 
+
+def progressbar(njobs, finished):
+    """ prints a progress bar """
+    progress = 100*(finished / float(njobs))
+    hashes = '#'*int(progress/5.)
+    nohash = ' '*int(20-len(hashes))
+    print("\r  [{}] {:>3}% "\
+          .format(hashes+nohash, int(progress)), end="")
+    sys.stdout.flush()
+
+
+
 #### Worker class to hold threaded or non-threaded views
 class Worker():
     """ independent threaded CPUs"""
@@ -628,3 +640,5 @@ class Worker():
             ## check for jobs finished, stops self.running
             self.synchronize()
             time.sleep(self.delay)
+
+
