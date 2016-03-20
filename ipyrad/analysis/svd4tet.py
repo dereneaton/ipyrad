@@ -82,7 +82,7 @@ MKEYS = """
 
 
 
-def get_seqarray(data, dtype="snp", boot=False):
+def get_seqarray(data, dtype, boot):
     """ 
     Takes an Assembly object and looks for a phylip file unless the path 
     argument is used then it looks in path. 
@@ -119,11 +119,11 @@ def get_seqarray(data, dtype="snp", boot=False):
         ## use 'r+' to read and write to existing array
         with h5py.File(data.svd.h5in, 'r+') as io5:        
             ## load in the seqarr
-            seqarr = pd.DataFrame(io5["seqarr"][:])
+            tmpseq = pd.DataFrame(io5["seqarr"][:])
             ## fill the boot array with a re-sampled phy w/ replacement
-            io5["bootarr"][:] = seqarr.sample(n=seqarr.shape[1], 
-                                                replace=True, axis=1)
-
+            io5["bootarr"][:] = np.array(tmpseq.sample(n=tmpseq.shape[1], 
+                                         replace=True, axis=1), dtype="S1")
+            del tmpseq
     return data
 
 
@@ -151,11 +151,9 @@ def get_quartets(data, samples):
     with h5py.File(data.svd.h5in, 'a') as io5:
         ## create data sets
         smps = io5.create_dataset("samples", (nquarts, 4), 
-                           dtype=np.uint16, chunks=(chunk, 4))
+                            dtype=np.uint16, chunks=(chunk, 4))
         io5.create_dataset("quartets", (nquarts, 4), 
                             dtype=np.uint16, chunks=(chunk, 4))        
-        io5.create_dataset("weights", (nquarts,), 
-                            dtype=np.float16, chunks=(chunk,))
         
         ## populate array with all possible quartets. This allows us to 
         ## sample from the total, and also to continue from a checkpoint
@@ -222,7 +220,7 @@ def seq_to_matrix(arr, sidx):
 def tablestack(arr):
     """ makes a count dict of each unique array element """
     ## goes by 10% at a time to minimize memory overhead. Is possible it skips
-    ## the last chunk, but this shouldn't matter.
+    ## the last chunk, but this shouldn't matter. Check tho. 
     table = Counter()
     for i in xrange(0, arr.shape[1], arr.shape[1]//10):
         tmp = Counter([j.tostring() for j in arr[:, i:i+arr.shape[1]//10].T])
@@ -242,16 +240,20 @@ def worker(args):
     ## get n chunk quartets from qidx
     lpath = os.path.realpath(data.svd.h5in)
     with h5py.File(lpath, 'r') as io5in:
-        start = time.time()
+        #start = time.time()
         smps = io5in["samples"][qidx:qidx+chunk]
-        seqs = io5in["seqarr"][:]
-        LOGGER.info("takes %s secs to read smps & seqs", (time.time() - start))
+
+        if not data.svd.checkpoint_boot:
+            seqs = io5in["seqarr"][:]
+        else:
+            seqs = io5in["bootarr"][:]            
+        #LOGGER.info("takes %s secs to read smps & seqs", (time.time() - start))
 
         ## get data from seqarray
-        start = time.time()        
+        #start = time.time()        
         results = [svd4tet(seqs, qtet) for qtet in smps]
-        LOGGER.info("And %s secs to run svd4tet", (time.time() - start))
-        LOGGER.info("results line 252: %s", results)
+        #LOGGER.info("And %s secs to run svd4tet", (time.time() - start))
+        #LOGGER.info("results line 252: %s", results)
         rquartets = np.array([i[0] for i in results])
         rweights = np.array([i[1] for i in results])
         #print("rquartets", rquartets, rquartets.shape)
@@ -363,7 +365,7 @@ def get_weight_snir(arr, splits):
 
 
 
-def run_qmc(data, boots=0):
+def run_qmc(data, boot):
     """ runs quartet max-cut """
 
     ## make call lists
@@ -399,11 +401,11 @@ def run_qmc(data, boots=0):
     ## ... dendropy or ete2 code
 
     ## save the tree
-    if boots:
+    if boot:
         with open(data.svd.tboots, 'a') as outboot:
-            outboot.write(tmptre)
+            outboot.write(tmptre+"\n")
         with open(data.svd.wboots, 'a') as outboot:
-            outboot.write(tmpwtre)
+            outboot.write(tmpwtre+"\n")
 
     ## store full data trees to Assembly
     else:
@@ -513,17 +515,17 @@ def wrapper(data, samples=None, dtype='snp', nboots=100, force=False):
 
     except (KeyboardInterrupt, SystemExit):
 
-        ## remove any abandoned tmp arrays 
-        abandon = glob.glob(os.path.join(data.dirs.svd, "*_tmp_*.h5"))
-        for afile in abandon:
-            os.remove(afile)
-
         ## protect from KBD while saving
         try:
             ## cancel submitted jobs
-            ipyclient.abort()
+            #ipyclient.abort()
             ## kill running jobs
-            ipyclient.close()
+            #ipyclient.close()
+
+            ## remove any abandoned tmp arrays 
+            abandon = glob.glob(os.path.join(data.dirs.svd, "*_tmp_*.h5"))
+            for afile in abandon:
+                os.remove(afile)
 
         except KeyboardInterrupt:
             pass
@@ -553,16 +555,17 @@ def main(data, samples, ipyclient, dtype, nboots, force):
 
     ## load svd attributes if they exist
     fresh = 0
-    try:
-        if data.svd.checkpoint_boot or data.svd.checkpoint_arr:
-            print("  loading from svd checkpoint")
-            print("  array checkpoint {}".format(data.svd.checkpoint_arr))
-            print("  boots checkpoint {}".format(data.svd.checkpoint_boot))
-        else:
+    if not force:
+        try:
+            if data.svd.checkpoint_boot or data.svd.checkpoint_arr:
+                print("  loading from svd checkpoint")
+                print("  array checkpoint {}".format(data.svd.checkpoint_arr))
+                print("  boots checkpoint {}".format(data.svd.checkpoint_boot))
+            else:
+                fresh = 1
+        except (AttributeError, IOError):
+            print("  starting new svd analysis")
             fresh = 1
-    except (AttributeError, IOError):
-        print("  starting new svd analysis")
-        fresh = 1
 
     ## if svd results do not exist or force then restart
     if force or fresh:
@@ -571,7 +574,16 @@ def main(data, samples, ipyclient, dtype, nboots, force):
                             os.path.join(
                                 data.dirs.project, data.name+"_analysis_svd"))
         if not os.path.exists(data.dirs.svd):
-            os.mkdir(data.dirs.svd)
+            try:
+                os.mkdir(data.dirs.svd)
+            except OSError:
+                ## if path doesn't exist (i.e., changed computers for analysis)
+                ## then create new svd directory
+                data.dirs.svd = os.path.join(
+                                    os.path.curdir, data.name+"_analysis_svd")
+                os.mkdir(data.dirs.svd)
+                print("  new dir/ created: {}".format(data.dirs.svd))
+
         ## init new svd
         data = svd_obj_init(data)
 
@@ -586,11 +598,22 @@ def main(data, samples, ipyclient, dtype, nboots, force):
         data = get_quartets(data, samples)
 
     ## run the full inference 
-    print("  sending jobs to engines")
-    inference(data, ipyclient)
+    if not data.svd.checkpoint_boot:
+        print("  inferring quartets for the full data")
+        inference(data, ipyclient, bidx=0)
 
     ## run the bootstrap replicates
     print("  running {} bootstrap replicates".format(nboots))
+    ## get current boot
+    for bidx in range(data.svd.checkpoint_boot, nboots):
+        ## get a new bootarray if starting a new boot
+        LOGGER.info("  boot = {}".format(bidx))
+        if data.svd.checkpoint_arr == 0:
+            data = get_seqarray(data, dtype=dtype, boot=True)
+            LOGGER.info("  new boot array sampled")
+            data.svd.checkpoint_boot = bidx
+        ## start boot inference
+        inference(data, ipyclient, bidx=True)
 
     ## create tree with support values on edges
     ## ...
@@ -609,7 +632,7 @@ def main(data, samples, ipyclient, dtype, nboots, force):
 
 
 
-def inference(data, ipyclient, boots=0):
+def inference(data, ipyclient, bidx):
     """ run inference and store results """
 
     ## a distributor of chunks
@@ -632,9 +655,13 @@ def inference(data, ipyclient, boots=0):
                             dtype=np.float16, chunks=(data.svd.chunk,))
 
     ## submit initial n jobs
+    assert len(ipyclient) > 0, "No ipyparallel Engines found"
     res = {}
     for i in range(len(ipyclient)):
-        res[i] = lbview.apply(worker, [data, jobiter.next()])
+        try:
+            res[i] = lbview.apply(worker, [data, jobiter.next()])
+        except StopIteration:
+            continue
 
     ## iterate over remaining jobs
     keys = res.keys()
@@ -652,9 +679,16 @@ def inference(data, ipyclient, boots=0):
                 ## delete result, update checkpoint
                 del res[key]
                 finished += 1
-                data.svd.checkpoint_arr = max(data.svd.checkpoint_arr, 
-                                              data.svd.chunk*finished)
-                #print(\r"  {:.1f}% complete".format(100*(finished / njobs)))
+                ## update the minimum quartets finished/filled.
+                with h5py.File(data.svd.h5out, 'r') as tmp5:
+                    ww = tmp5["weights"][:]
+                    try:
+                        data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
+                        LOGGER.info("arr saved at %s", data.svd.checkpoint_arr)
+                    except (ValueError, AttributeError):
+                        ## array is full (no zeros)
+                        pass
+                ## submit new jobs
                 try:
                     res[key] = lbview.apply(worker, 
                                     [data, jobiter.next()])
@@ -664,14 +698,20 @@ def inference(data, ipyclient, boots=0):
 
             except (ipp.error.TimeoutError, KeyError):
                 continue
+    progressbar(njobs, finished)                
     print("")
 
     ## convert to txt file for wQMC
     dump(data)    
 
     ## run quartet joining algorithm
-    run_qmc(data, boots=boots)#, useweights=False)
+    if not bidx:
+        run_qmc(data, boot=0)
+    else:
+        run_qmc(data, boot=1)
 
+    ## reset the checkpoint_arr
+    data.svd.checkpoint_arr = 0
 
 
 if __name__ == "__main__":
