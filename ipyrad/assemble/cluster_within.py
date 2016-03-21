@@ -451,7 +451,7 @@ def get_threaded_view(ipyclient, split=True):
     ## make sure split numbering is correct
     threaded = hostdict.values()                
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
-    print("threaded_view:", dict(hostdict))
+    LOGGER.info("threaded_view: %s", dict(hostdict))
     return threaded
 
 
@@ -490,7 +490,7 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
     ## which engines are being used for each job
 
     ## multi-node threading
-    #threaded = get_threaded_view(ipyclient)
+    _ = get_threaded_view(ipyclient)
     #threaded_view = ipyclient.load_balanced_view(
     #                    targets=[i[0] for i in threaded])
     #tpproc = [len(i) for i in threaded][0]
