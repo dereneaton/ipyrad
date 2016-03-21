@@ -115,7 +115,10 @@ class Assembly(object):
 
         ## Store assembly version #
         self._version = ip.__version__ 
-        self._traceback = 0
+
+        ## store analysis dicts
+        self.svd = ObjDict({})
+        self.dstat = ObjDict({})
 
         ## stores ipcluster launch info
         self._ipcluster = {}
@@ -727,8 +730,11 @@ class Assembly(object):
 
 
     def _launch2(self, nwait):
-        """ a faster launch for ipyparallel >5.0. Protected with try statement
-        from a KeyboardInterrupt """
+        """ 
+        Creates a client for a given profile to connect to the running 
+        clusters. If CLI, the cluster should have been started by __main__, 
+        if API, you need to start the cluster on your own. 
+        """
 
         #save_stdout = sys.stdout           
         try: 
@@ -772,14 +778,10 @@ class Assembly(object):
                         print("connecting to Engines...")
 
 
-        except KeyboardInterrupt:
-            sys.stdout = save_stdout
+        except KeyboardInterrupt as inst:
             ## ensure stdout is reset even if Exception was raised            
-            try:
-                ipyclient.shutdown()
-            except AttributeError:
-                pass
-            raise KeyboardInterrupt
+            sys.stdout = save_stdout
+            raise inst
 
         except IOError as inst:
             ## ensure stdout is reset even if Exception was raised
@@ -793,6 +795,10 @@ class Assembly(object):
 
     def _clientwrapper(self, stepfunc, args, nwait):
         """ wraps a call with error messages for when ipyparallel fails"""
+        ## emtpy error string
+        inst = ""
+
+        ## wrapper to ensure closure of ipyparallel
         try:
             ipyclient = ""
             ipyclient = self._launch2(nwait)
@@ -819,49 +825,42 @@ class Assembly(object):
 
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
-            ## abort and shutdown cluster to ensure everything is killed
-            if ipyclient:
-                ipyclient.abort()
-                if not ip.__interactive__:
-                    print("shutting down clients")
-                    ipyclient.shutdown()
+            ## abort and allow wrapper to save and close
             LOGGER.error("assembly interrupted by user.")
-            sys.exit("  Keyboard interrupt by user")
+            print("  Keyboard Interrupt by user")
 
         except IPyradWarningExit as inst:
-            raise IPyradWarningExit(inst)
+            ## save inst for raise error after finally statement
+            LOGGER.error("IPyradWarningExit: %s", inst)
+            print("  IPyradWarningExit: {}".format(inst))
 
         except SystemExit as inst:
             LOGGER.error("assembly interrupted by sys.exit.")
-            sys.exit("  SystemExit Interrupt: \n{}".format(inst))
+            print("  SystemExit Interrupt: {}".format(inst))
 
         except AssertionError as inst:
             LOGGER.error("Assertion: %s", inst)
-            raise IPyradError(inst)
 
         ## An Engine Crashed. Raise a readable traceback message.
         except ipp.error.CompositeError as inst:
             ## print the trace if it's turned on, tho
-            #if self._traceback:
             print(inst.print_traceback())
 
-            ## gonna want to hide this ugly trace from the CLI
-            #if not ip.__interactive__:
-            #    sys.tracebacklimit = 0
-
-            ## find and re-raise the error
+            ## find and print engine error for debugging
             for job in ipyclient.metadata:
                 if ipyclient.metadata[job]['error']:
                     print(ipyclient.metadata[job]['error'])
-                    #raise IPyradError(ipyclient.metadata[job]['error'])
 
         except IPyradError as inst:
-            IPyradWarningExit("ipyrad error - {}".format(inst))
+            LOGGER.error(inst)
+            print("  IPyradError: {}".format(inst))            
+
 
         except Exception as inst:
             ## Caught unhandled exception, print and reraise
-            print("Caught unknown exception - {}".format(inst))
-            raise
+            LOGGER.error(inst)
+            print("  Caught unknown exception - {}".format(inst))
+
 
         ## close client when done or interrupted
         finally:
@@ -870,14 +869,20 @@ class Assembly(object):
                 self.save()                
                 ## can't close client if it was never open
                 if ipyclient:
+                    ## if CLI, stop jobs and shutdown
                     if not ip.__interactive__:
-                        ipyclient.shutdown()
+                        ipyclient.abort()                        
+                    ## if API, stop jobs and clean queue
                     else:
-                        ipyclient.purge_everything()
                         ipyclient.abort()
+                        ipyclient.purge_everything()
                     ipyclient.close()
-            except Exception as inst:
-                LOGGER.error("shutdown warning: %s", inst)
+            ## if exception is close and save, print and ignore
+            except Exception as inst2:
+                LOGGER.error("shutdown warning: %s", inst2)
+
+            if inst:
+                IPyradWarningExit(inst)
 
 
     def _step1func(self, force, preview, ipyclient):

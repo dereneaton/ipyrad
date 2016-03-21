@@ -714,17 +714,18 @@ def run(data, samples, force, ipyclient):
 
     if not skip:
         ## Samples on queue
-        for sample in samples:
+        for sidx, sample in enumerate(samples):
             ## not force need checks
+            progressbar(len(samples), sidx)
             try:
                 if not force:
                     if sample.stats.state >= 5:
                         print("Skipping Sample {}; ".format(sample.name)
                      +"Already has consens reads. Use force=True to overwrite.")
-                    elif sample.stats.clusters_hidepth < 100:
+                    elif not sample.stats.clusters_hidepth:
                         print("Skipping Sample {}; ".format(sample.name)
-                     +"Too few clusters ({}). Use force=True to run anyway.".\
-                           format(int(sample.stats.clusters_hidepth)))
+                     +"No clusters in ({}).".\
+                       format(int(sample.stats.clusters_hidepth)))
                     elif sample.stats.state < 4:
                         print("skipping {}; ".format(sample.name)\
                      + "not yet estimated error rate/heterozygosity. "\
@@ -744,8 +745,10 @@ def run(data, samples, force, ipyclient):
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)
+                progressbar(len(samples), sidx)
             finally:
                 ## if process failed at any point delete tmp files
+                progressbar(len(samples), len(samples))                                
                 tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
                 tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
                 for tmpchunk in tmpcons+tmpcats:

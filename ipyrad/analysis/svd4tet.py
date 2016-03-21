@@ -151,12 +151,15 @@ def get_quartets(data, samples):
     with h5py.File(data.svd.h5in, 'a') as io5:
         ## create data sets
         smps = io5.create_dataset("samples", (nquarts, 4), 
-                           dtype=np.uint16, chunks=(chunk, 4))
+                           dtype=np.uint16, chunks=(chunk, 4),
+                           compression='gzip')
         io5.create_dataset("quartets", (nquarts, 4), 
-                            dtype=np.uint16, chunks=(chunk, 4))        
+                            dtype=np.uint16, chunks=(chunk, 4),
+                            compression='gzip')
         io5.create_dataset("weights", (nquarts,), 
-                            dtype=np.float16, chunks=(chunk,))
-        
+                            dtype=np.float16, chunks=(chunk,),
+                            compression='gzip')        
+
         ## populate array with all possible quartets. This allows us to 
         ## sample from the total, and also to continue from a checkpoint
         qiter = itertools.combinations(range(len(samples)), 4)
@@ -430,11 +433,11 @@ def dump(data):
     outfile = open(data.svd.qdump, 'w')
 
     ## todo: should pull quarts order in randomly
-    for idx in range(0, 1000, 100):
-        quarts = [list(j) for j in io5["quartets"][idx:idx+100]]
-        weight = io5["weights"][idx:idx+100]
+    for idx in range(0, data.svd.nquarts, data.svd.chunk):
+        quarts = [list(j) for j in io5["quartets"][idx:idx+data.svd.chunk]]
+        weight = io5["weights"][idx:idx+data.svd.chunk]
         chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
-                                                     in zip(quarts, weight)]
+                                                in zip(quarts, weight)]
         outfile.write("\n".join(chunk)+"\n")
 
     ## close output file and h5 database

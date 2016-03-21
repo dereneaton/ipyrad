@@ -613,7 +613,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     Skipping Sample {}; Already filtered. Use force=True to overwrite.""".\
     format(sample.name))
 
-            elif sample.stats.reads_raw < 100:
+            elif not sample.stats.reads_raw:
                 print("""
     Skipping Sample {}; Too few reads ({}). Use force=True to run anyways.""".\
     format(sample.name, sample.stats.reads_raw))
@@ -641,9 +641,12 @@ def run(data, samples, nreplace, force, preview, ipyclient):
 
     ## RUN THE SAMPLES
     try:
-        for sample in subsamples:
+        for njob, sample in enumerate(subsamples):
             sub, res = run_sample(data, sample, nreplace, preview, ipyclient)
             sample_cleanup(data, sample, sub, res)
+            progressbar(len(subsamples), njob)
+        progressbar(len(subsamples), len(subsamples))
+        print("")
     ## ensure the assembly is cleaned up even if stopped
     finally:
         assembly_cleanup(data)
