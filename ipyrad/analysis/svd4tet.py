@@ -30,6 +30,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 import ipyparallel as ipp
+from numba import jit
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 from collections import Counter, OrderedDict
@@ -61,7 +62,7 @@ MKEYS = """
     TTAA TTAC TTAG TTAT  TTCA TTCC TTCG TTCT  TTGA TTGC TTGG TTGT  TTTA TTTC TTTG TTTT
 """
 
-
+MAT = np.zeros((16, 16), dtype=np.int32)
 
 
 
@@ -132,7 +133,7 @@ def get_quartets(data, samples):
     """ load all quartets into an array """
 
     ## calculate how many quartets to generate
-    qiter = itertools.combinations(range(len(samples)), 4)
+    qiter = itertools.combinations(range(1, len(samples)+1), 4)
     nquarts = sum(1 for _ in qiter)
 
     ## create a chunk size for sampling from the array of quartets. This should
@@ -142,7 +143,7 @@ def get_quartets(data, samples):
     if nquarts < 1000:
         chunk = nquarts // 20
     else:
-        chunk = 50
+        chunk = 500
 
     ## 'samples' stores the indices of the quartet. 
     ## `quartets` stores the correct quartet in the order (1,2|3,4)
@@ -187,45 +188,80 @@ def random_combination(iterable, nquarts):
 
 
 def seq_to_matrix(arr, sidx):
+    """ wrapper for numba func """
+    narr = arr[sidx, :].view(np.int8)
+    mat = np.zeros((16, 16), dtype=np.int32)
+    mat = jseq_to_matrix(narr, mat)
+    return mat
+
+
+
+@jit('i4[:,:](i1[:,:],i4[:,:])', nopython=True)
+def jseq_to_matrix(narr, mat):
     """ 
-    Takes a 4-taxon alignment and generates a 16x16 count matrix. Ignores 
-    ambiguous sites, sites with missing data, and sites with indels. The 
-    order of the samples (sidx) is important. 
+    numba compiled code to get matrix fast.
+    arr is a 4 x N seq matrix converted to np.int8
+    I convert the numbers for ATGC into their respective index for the MAT
+    matrix, and leave all others as high numbers, i.e., -==45, N==78. 
     """
-    ## select only the relevant rows
-    arr = arr[sidx, :]
+
+    for x in xrange(narr.shape[1]):
+        i = narr.T[x]
+        ## convert to index values
+        i[i == 65] = 0
+        i[i == 67] = 1
+        i[i == 71] = 2
+        i[i == 84] = 3
+
+        if np.sum(i) < 16:
+            mat[i[0]*4:(i[0]+4)*4]\
+               [i[1]]\
+               [i[2]*4:(i[2]+4)*4]\
+               [i[3]] += 1
+
+    return mat
+
+
+# def seq_to_matrix(arr, sidx):
+#     """ 
+#     Takes a 4-taxon alignment and generates a 16x16 count matrix. Ignores 
+#     ambiguous sites, sites with missing data, and sites with indels. The 
+#     order of the samples (sidx) is important. 
+#     """
+#     ## select only the relevant rows
+#     arr = arr[sidx, :]
     
-    ## convert all nulls to Ns
-    for null in list("RSKYWM-"):
-        arr[arr == null] = "N"
+#     ## convert all nulls to Ns
+#     for null in list("RSKYWM-"):
+#         arr[arr == null] = "N"
 
-    ## mask any columns for this 4-taxon alignment that has Ns
-    arr = arr[:, ~np.any(arr == "N", axis=0)]
+#     ## mask any columns for this 4-taxon alignment that has Ns
+#     arr = arr[:, ~np.any(arr == "N", axis=0)]
 
-    ## get dict of observed patterns
-    counts = tablestack(arr)
+#     ## get dict of observed patterns
+#     counts = tablestack(arr)
 
-    ## fill mdict with ordered patterns
-    mdict = OrderedDict([(i, 0) for i in MKEYS.split()])
-    for patt in counts:
-        mdict[patt] = counts[patt]
+#     ## fill mdict with ordered patterns
+#     mdict = OrderedDict([(i, 0) for i in MKEYS.split()])
+#     for patt in counts:
+#         mdict[patt] = counts[patt]
 
-    ## shape into 16x16 array
-    matrix = np.array(mdict.values()).reshape(16, 16)
-    LOGGER.info("matrix: %s", matrix)
-    return matrix
+#     ## shape into 16x16 array
+#     matrix = np.array(mdict.values()).reshape(16, 16)
+#     LOGGER.info("matrix: %s", matrix)
+#     return matrix
 
 
 
-def tablestack(arr):
-    """ makes a count dict of each unique array element """
-    ## goes by 10% at a time to minimize memory overhead. Is possible it skips
-    ## the last chunk, but this shouldn't matter. Check tho. 
-    table = Counter()
-    for i in xrange(0, arr.shape[1], arr.shape[1]//10):
-        tmp = Counter([j.tostring() for j in arr[:, i:i+arr.shape[1]//10].T])
-        table.update(tmp)
-    return table
+# def tablestack(arr):
+#     """ makes a count dict of each unique array element """
+#     ## goes by 10% at a time to minimize memory overhead. Is possible it skips
+#     ## the last chunk, but this shouldn't matter. Check tho. 
+#     table = Counter()
+#     for i in xrange(0, arr.shape[1], arr.shape[1]//10):
+#         tmp = Counter([j.tostring() for j in arr[:, i:i+arr.shape[1]//10].T])
+#         table.update(tmp)
+#     return table
 
 
 
@@ -252,12 +288,8 @@ def worker(args):
         ## get data from seqarray
         #start = time.time()        
         results = [svd4tet(seqs, qtet) for qtet in smps]
-        #LOGGER.info("And %s secs to run svd4tet", (time.time() - start))
-        #LOGGER.info("results line 252: %s", results)
         rquartets = np.array([i[0] for i in results])
         rweights = np.array([i[1] for i in results])
-        #print("rquartets", rquartets, rquartets.shape)
-        #print("rweights", rweights, rweights.shape)
 
     tmpchunk = os.path.join(data.dirs.svd, data.name+"_tmp_{}.h5".format(qidx))
     with h5py.File(tmpchunk, 'w') as io5out:
@@ -267,12 +299,10 @@ def worker(args):
         io5out["quartets"] = np.array(rquartets)
 
     return tmpchunk
-    #with h5py.File(lpath, 'r') as io5:
-    #    print(io5["quartets"][:])
 
 
 
-def svd4tet(arr, samples, weights=1):
+def svd4tet(arr, samples):
     """ calc rank. From Kubatko and Chiffman (2014)
 
     Our proposal for inferring the true species-level relationship within a 
@@ -287,6 +317,7 @@ def svd4tet(arr, samples, weights=1):
               [samples[0], samples[3], samples[1], samples[2]]]
 
     ## get the three matrices
+    #mats = [seq_to_matrix(arr, sidx) for sidx in splits]
     mats = [seq_to_matrix(arr, sidx) for sidx in splits]
 
     ## calculate which is closest to a rank 10 matrix
@@ -300,10 +331,8 @@ def svd4tet(arr, samples, weights=1):
 
     ## calculate weights for quartets (Avni et al. 2014). Here I use svd-scores
     ## for the weights rather than genetic distances, but could do either.
-    weight = 0
-    if weights:
-        weight = get_weight_svd(rweight)
-        #weight = get_weight_snir(arr, rsplits)
+    weight = get_weight_svd(rweight)
+    #weight = get_weight_snir(arr, rsplits)
 
     ## return the split with the lowest score
     return rsplits[0], weight
@@ -315,10 +344,8 @@ def get_weight_svd(ssplits):
     rank 10 instead of JC distance. Experimental...
     """
     dl, dm, dh = ssplits
-    print(dl, dm, dh)
-
     calc = (dh-dl) / (np.exp(dh-dm) * dh)
-    print(calc)
+    #print(calc)
     return calc
 
 
@@ -613,7 +640,9 @@ def main(data, samples, ipyclient, dtype, nboots, force):
             LOGGER.info("  new boot array sampled")
             data.svd.checkpoint_boot = bidx
         ## start boot inference
+        progressbar(nboots, bidx)
         inference(data, ipyclient, bidx=True)
+    progressbar(nboots, nboots)
 
     ## create tree with support values on edges
     ## ...
@@ -668,7 +697,7 @@ def inference(data, ipyclient, bidx):
     finished = 0
 
     while res.keys():
-        time.sleep(5)
+        time.sleep(3)
         progressbar(njobs, finished)
         for key in keys:
             try:
