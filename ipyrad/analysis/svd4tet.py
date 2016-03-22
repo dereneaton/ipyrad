@@ -133,7 +133,7 @@ def get_quartets(data, samples):
     """ load all quartets into an array """
 
     ## calculate how many quartets to generate
-    qiter = itertools.combinations(range(1, len(samples)+1), 4)
+    qiter = itertools.combinations(range(len(samples)), 4)
     nquarts = sum(1 for _ in qiter)
 
     ## create a chunk size for sampling from the array of quartets. This should
@@ -298,15 +298,13 @@ def worker(args):
 
     tmpchunk = os.path.join(data.dirs.svd, data.name+"_tmp_{}.h5".format(qidx))
     with h5py.File(tmpchunk, 'w') as io5out:
-        #io5out["weights"][qidx:qidx+chunk] = np.array(rweights)
-        #io5out["quartets"][qidx:qidx+chunk] = np.array(rquartets)
         io5out["weights"] = np.array(rweights)
         io5out["quartets"] = np.array(rquartets)
 
     return tmpchunk
 
 
-
+## JIT THIS FUNC?, can't do svd...
 def svd4tet(arr, samples):
     """ calc rank. From Kubatko and Chiffman (2014)
 
