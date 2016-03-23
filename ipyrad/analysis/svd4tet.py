@@ -430,7 +430,7 @@ def run_qmc(data, boot):
     ## convert int names back to str names
     ## ... dendropy or ete2 code
 
-    ## save the tree
+    ## save the boot tree
     if boot:
         with open(data.svd.tboots, 'a') as outboot:
             outboot.write(tmptre+"\n")
@@ -498,12 +498,13 @@ def insert_to_array(data, result):
 
 
 
-def svd_obj_init(data):
+def svd_obj_init(data, method):
     """ creates svd attribute to Assembly object """
     ## create ObjDict for storage
     data.svd = ObjDict()
 
     ## add array path
+    data.svd.method = method
     data.svd.h5in = os.path.join(data.dirs.svd, data.name+"_input.h5")
     data.svd.h5out = os.path.join(data.dirs.svd, data.name+"_output.h5")
 
@@ -533,15 +534,20 @@ def svd_obj_init(data):
 
 
 
-def wrapper(data, samples=None, dtype='snp', nboots=100, force=False):
+def wrapper(data, samples=None, dtype='snp', nboots=100, method="all", 
+            force=False):
     """ wraps main in try/except statement """
+
+    ## check that method was entered correctly
+    assert method in ["all", "random", "equal"], \
+        "method type not recognized, must be one of ['all', 'random', 'equal']"
 
     ## launch ipclient, assumes ipyparallel is running
     ipyclient = ipp.Client(timeout=10)
 
     ## protects it from KBD
     try:
-        main(data, samples, ipyclient, dtype, nboots, force)
+        main(data, samples, ipyclient, dtype, nboots, method, force)
 
     except (KeyboardInterrupt, SystemExit):
 
@@ -570,7 +576,7 @@ def wrapper(data, samples=None, dtype='snp', nboots=100, force=False):
 
 
 
-def main(data, samples, ipyclient, dtype, nboots, force):
+def main(data, samples, ipyclient, dtype, nboots, method, force):
     """ 
     Run svd4tet inference on a sequence or SNP alignment for all samples 
     the Assembly. 
@@ -589,8 +595,14 @@ def main(data, samples, ipyclient, dtype, nboots, force):
         try:
             if data.svd.checkpoint_boot or data.svd.checkpoint_arr:
                 print("  loading from svd checkpoint")
-                print("  array checkpoint {}".format(data.svd.checkpoint_arr))
-                print("  boots checkpoint {}".format(data.svd.checkpoint_boot))
+                print("  array checkpoint: {}".format(data.svd.checkpoint_arr))
+                print("  boots checkpoint: {}".format(data.svd.checkpoint_boot))
+                print("  sampling method: {}".format(data.svd.method))
+                ## require method to be same as loaded type
+                assert method == data.svd.method, \
+                    "loaded object method={}, cannot change methods midstream"+\
+                    " use force argument to start new run with new method."
+
             else:
                 fresh = 1
         except (AttributeError, IOError):
@@ -615,7 +627,7 @@ def main(data, samples, ipyclient, dtype, nboots, force):
                 print("  new dir/ created: {}".format(data.dirs.svd))
 
         ## init new svd
-        data = svd_obj_init(data)
+        data = svd_obj_init(data, method)
 
         ## get the real seq array into hdf5 h5in
         print("  loading array")
@@ -625,6 +637,7 @@ def main(data, samples, ipyclient, dtype, nboots, force):
         ## and optimize chunk value given remaining quartets and ipyclient    
         print("  loading quartets")
         samples = data.samples
+
         data = get_quartets(data, samples)
 
     ## run the full inference 
