@@ -32,6 +32,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 import ipyparallel as ipp
+from fractions import Fraction
 from numba import jit
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
@@ -113,19 +114,128 @@ def get_seqarray(data, dtype, boot):
 
 
 
-def get_quartets(data, samples):
+## FROM THE ITERTOOLS RECIPES COOKCOOK
+def random_combination(iterable, nquarts):
+    """
+    Random selection from itertools.combinations(iterable, r). 
+    Use this if not sampling all possible quartets.
+    """
+    pool = tuple(iterable)
+    size = len(pool)
+    indices = random.sample(xrange(size), nquarts)
+    return tuple(pool[i] for i in indices)
+
+
+
+def random_product(iter1, iter2):
+    """ random sampler for equa_splits func"""
+    pool1 = tuple(iter1)
+    pool2 = tuple(iter2)
+    ind1 = random.sample(pool1, 2)
+    ind2 = random.sample(pool2, 2)
+    return tuple(ind1+ind2)
+
+
+
+MUL = lambda x, y: x*y
+
+def n_choose_k(n, k):
+    """ calculate the number of quartets as n-choose-k. This is used
+    in equal splits to decide whether a split should be exhaustively sampled
+    or randomly sampled. Edges near tips can be exhaustive while highly nested
+    edges probably have too many quartets
+    """
+    return int(reduce(MUL, (Fraction(n-i, i+1) for i in range(k)), 1))
+
+
+
+def equal_splits(data, nquarts):
+    """ sample quartets even across splits of the starting tree """
+    ## choose chunker for h5 arr
+    if nquarts < 1000:
+        chunk = nquarts // 20
+    else:
+        chunk = 500
+
+    ## get starting tree
+    tre = ete2.Tree(data.svd.starting_tree)
+    tre.unroot()
+    ## randomly sample all splits of tree
+    splits = [([z.name for z in i], 
+               [z.name for z in j]) \
+               for (i, j) in tre.get_edges()]
+    ## only keep internal splits
+    splits = [i for i in splits if all([len(j) > 1 for j in i])]
+    ## turn each into an iterable split sampler
+    ## if the nquartets for that split is small, then sample all of them
+    ## if it is UUUUUGE, then make it a random sampler from that split
+    qiters = []
+    ## how many quartets are we gonna sample from each quartet?
+    squarts = nquarts / len(splits)
+
+    for split in splits:
+        ## if small then sample all
+        if n_choose_k(split[0], 2) * n_choose_k(split[1], 2) < squarts*2:
+            qiter = itertools.product(
+                        itertools.combinations(split[0], 2), 
+                        itertools.combinations(split[1], 2))
+        ## or create random sampler
+        else:
+            qiter = (random_product(split[0], split[1]) for _ in xrange(nquarts))
+        qiters.append(qiter)
+
+    ## make qiters infinitely cycling
+    qiters = itertools.cycle(qiters)
+
+    ## iterate over qiters sampling from each, if one runs out, keep 
+    ## sampling from remaining qiters. Keep going until samples is filled
+    with h5py.File(data.svd.h5in, 'a') as io5:
+        ## create data sets
+        smps = io5.create_dataset("samples", (nquarts, 4), 
+                           dtype=np.uint16, chunks=(chunk, 4),
+                           compression='gzip')
+        io5.create_dataset("quartets", (nquarts, 4), 
+                            dtype=np.uint16, chunks=(chunk, 4),
+                            compression='gzip')
+
+        ## fill 1000 at a time for efficiency
+        i = 0
+        while i < nquarts:
+            qdat = []
+            while len(qdat) < 1000:
+                qiter = qiters.next()
+                try:
+                    qdat.append(qiter.next())
+                except StopIteration:
+                    pass
+                dat = np.array(qdat)
+            smps[i:i+dat.shape[0]] = qdat
+            i += 1000
+
+    ## save attrs to data object
+    data.svd.nquarts = nquarts
+    data.svd.chunk = chunk
+
+    return data
+
+
+
+
+def get_quartets(data, method, nquarts, ipyclient):
     """ load all quartets into an array """
 
     ## calculate how many quartets to generate
-    qiter = itertools.combinations(range(len(samples)), 4)
-    nquarts = sum(1 for _ in qiter)
+    if method == 'all':
+        nquarts = n_choose_k(len(data.samples), 4)
+        #qiter = itertools.combinations(range(len(data.samples)), 4)
+        #nquarts = sum(1 for _ in qiter)
 
     ## create a chunk size for sampling from the array of quartets. This should
     ## be relatively large so that we don't spend a lot of time doing I/O, but
     ## small enough that jobs finish every few hours since that is how the 
     ## checkpointing works.
     if nquarts < 1000:
-        chunk = nquarts // 20
+        chunk = 50 + nquarts // len(ipyclient)
     else:
         chunk = 500
 
@@ -141,17 +251,22 @@ def get_quartets(data, samples):
         io5.create_dataset("quartets", (nquarts, 4), 
                             dtype=np.uint16, chunks=(chunk, 4),
                             compression='gzip')
-        io5.create_dataset("weights", (nquarts,), 
-                            dtype=np.float16, chunks=(chunk,),
-                            compression='gzip')        
 
         ## populate array with all possible quartets. This allows us to 
         ## sample from the total, and also to continue from a checkpoint
-        qiter = itertools.combinations(range(len(samples)), 4)
+        qiter = itertools.combinations(range(len(data.samples)), 4)
         i = 0
+
         ## fill 1000 at a time for efficiency
         while i < nquarts:
-            dat = np.array(list(itertools.islice(qiter, 1000)))
+            if method != "all":
+                qiter = []
+                while len(qiter) < min(1000, smps.shape[0]):
+                    qiter.append(
+                        random_combination(range(len(data.samples)), 4))
+                dat = np.array(qiter)
+            else:
+                dat = np.array(list(itertools.islice(qiter, 1000)))
             smps[i:i+dat.shape[0]] = dat
             i += 1000
 
@@ -160,19 +275,6 @@ def get_quartets(data, samples):
     data.svd.chunk = chunk
 
     return data
-
-
-
-## FROM THE ITERTOOLS RECIPES COOKCOOK
-def random_combination(iterable, nquarts):
-    """
-    Random selection from itertools.combinations(iterable, r). 
-    Use this if not sampling all possible quartets.
-    """
-    pool = tuple(iterable)
-    size = len(pool)
-    indices = sorted(random.sample(xrange(size), nquarts))
-    return tuple(pool[i] for i in indices)
 
 
 
@@ -440,7 +542,7 @@ def renamer(data, tre):
     """ renames newick from numbers to sample names"""
     ## order the numbered tree tip lables
     names = tre.get_leaves()
-    names.sort(key=lambda x: int(x.names))
+    names.sort(key=lambda x: int(x.name))
 
     ## order the sample labels in the same order they are 
     ## in the seq file (e.g., .snp, .phy)
@@ -451,7 +553,8 @@ def renamer(data, tre):
     for (tip, sname) in zip(names, snames):
         tip.name = sname
 
-    return tre
+    ## return with only topology and leaf labels
+    return tre.write(format=9)
 
 
 
@@ -524,6 +627,7 @@ def svd_obj_init(data, method):
     ## bootstrap labeled o.g. trees paths
     data.svd.btre = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre.boots.support")
     data.svd.bwtre = os.path.join(data.dirs.svd, data.name+"_svd4tet.wtre.boots.support")
+
     ## checkpoints
     data.svd.checkpoint_boot = 0
     data.svd.checkpoint_arr = 0
@@ -535,19 +639,53 @@ def svd_obj_init(data, method):
 
 
 
-def wrapper(data, dtype='snp', nboots=100, method="all", force=False):
-    """ wraps main in try/except statement """
+def wrapper(data, dtype='snp', nboots=100, method="all", nquarts=None,
+            force=False):
+    """ wraps main in try/except statement 
+
+    data 
+        ipyrad Assembly object or a .phy formatted alignment
+    dtype
+        string ending (snp, usnp, or phy) which Assembly output to use
+    nboots
+        number of non-parametric bootstrap replicates to run
+    method
+        all, random, or equal. Default is all, which samples all possible
+        quartets. For very large trees (>50 tips) this may take too long, 
+        in which case you should use random or equal. The arg nquarts 
+        determines how many quartets will be samples. In random, nquarts
+        are sampled and used. In equal, a starting tree is inferred and
+        the random quartets are drawn so that they are spread ~equally
+        across splits of the tree. 
+    nquarts 
+        The numer of random quartets sampled in random or equal method. 
+        Default is 10000, or all if all < 10000. 
+
+    """
 
     ## check that method was entered correctly
     assert method in ["all", "random", "equal"], \
         "method type not recognized, must be one of ['all', 'random', 'equal']"
+
+    if method != "all":
+        ## require nquarts if method not all
+        assert nquarts, "if method != all, must enter a value for nquarts"
+        ## don't allow nquarts to be greater than all
+        totalquarts = n_choose_k(len(data.samples), 4)
+        if nquarts > totalquarts:
+            print("  nquarts > total quartets, switching to method='all'")
+            method = "all"
+        if nquarts < 500:
+            print("  few possible quartets, only method='all' available")
+            method = "all"
+
 
     ## launch ipclient, assumes ipyparallel is running
     ipyclient = ipp.Client(timeout=10)
 
     ## protects it from KBD
     try:
-        main(data, ipyclient, dtype, nboots, method, force)
+        main(data, ipyclient, dtype, nboots, method, nquarts, force)
 
     except (KeyboardInterrupt, SystemExit):
 
@@ -575,7 +713,7 @@ def wrapper(data, dtype='snp', nboots=100, method="all", force=False):
 
 
 
-def main(data, ipyclient, dtype, nboots, method, force):
+def main(data, ipyclient, dtype, nboots, method, nquarts, force):
     """ 
     Run svd4tet inference on a sequence or SNP alignment for all samples 
     the Assembly. 
@@ -631,14 +769,32 @@ def main(data, ipyclient, dtype, nboots, method, force):
         ## make quartet arrays into hdf5. Allow subsetting samples eventually.
         ## and optimize chunk value given remaining quartets and ipyclient    
         print("  loading quartets")
-        samples = data.samples
 
-        data = get_quartets(data, samples)
+        if method == "equal":
+            ## grab test number for starting tree
+            data = get_quartets(data, method, nquarts, ipyclient)
+            ## infer starting tree
+            inference(data, ipyclient, bidx=0)
+            ## sample quartets from starting tree
+            data = equal_splits(data, nquarts)
+            ## remove starting tree tmp files
+            tmps = [data.svd.tre, data.svd.wtre, data.svd.tboots, 
+                    data.svd.wboots, data.svd.btre, data.svd.bwtre]
+            for tmp in tmps:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    continue
+
+        ## will sample all or random set of quartets    
+        else:
+            data = get_quartets(data, method, nquarts, ipyclient)
 
     ## run the full inference 
     if not data.svd.checkpoint_boot:
         print("  inferring quartets for the full data")
-        inference(data, samples, ipyclient, bidx=0)
+        inference(data, ipyclient, bidx=0)
+
 
     ## run the bootstrap replicates
     print("  running {} bootstrap replicates".format(nboots))
@@ -652,33 +808,45 @@ def main(data, ipyclient, dtype, nboots, method, force):
             data.svd.checkpoint_boot = bidx
         ## start boot inference
         progressbar(nboots, bidx)
-        inference(data, samples, ipyclient, bidx=True)
+        inference(data, ipyclient, bidx=True)
     progressbar(nboots, nboots)
 
     ## create tree with support values on edges
     write_supports(data)
 
     ## print finished
-    print("  Finished. Tree files: \n{}\n{}\n{}\n{}\n{}\n{}".format(
+    print("\n\n  Finished. Intermediate tree files: \n  {}\n  {}\n  {}\n  {}".format(
           data.svd.tre, 
           data.svd.tboots,
           data.svd.wtre, 
           data.svd.wboots,
-          data.svd.btre,
-          data.svd.bwtre,
           ))
 
-    print("  Final trees with bootstraps as edge labels: \n{}\n{}".format(
+    print("\n  Final trees with bootstraps as edge labels: \n  {}\n  {}".format(
           data.svd.tre, 
           data.svd.wtre, 
           ))
 
-    print("  Quick and dirty tree figure with supports: \n{}\n{}".format(
-          data.svd.tre+'.pdf',
-          data.svd.wtre+'.pdf'
-          ))
+    ## make a quickfig
+    quickfig(data, False)
+    try:
+        print("\n  Tree figures with supports: \n  {}\n  {}".format(
+              data.svd.tre+'.pdf',
+              data.svd.wtre+'.pdf'))
+    except Exception:
+        pass
 
     return data
+
+
+
+def quickfig(data, starting_tree):
+    """ make a quick ete2 fig. Plots total quartets """
+    ## plot starting tree nquarts and nsampled quarts
+    if starting_tree:
+        pass
+    else:
+        pass
 
 
 
@@ -687,25 +855,37 @@ def write_supports(data):
     ## get unrooted best trees
     otre = ete2.Tree(data.svd.tre, format=0)
     otre.unroot()
+    for node in otre:
+        node.add_feature("bootstrap", 0)
+
     wtre = ete2.Tree(data.svd.wtre, format=0)
     wtre.unroot()
+    for node in wtre:
+        node.add_feature("bootstrap", 0)
 
     ## set edge lengths to zero
     for tre in [otre, wtre]:
         for node in tre.traverse():
+            if not node.is_leaf():
+                node.add_features(bootstrap=0)
             node.dist = 0
+            node.support = 0
 
     ## get unrooted boot trees
     oboots = open(data.svd.tboots, 'r').readlines()
     wboots = open(data.svd.wboots, 'r').readlines()
-    for boots in [oboots, wboots]:
-        for btre in boots:
-            btre.unroot()
+    oboots = [ete2.Tree(btre.strip()) for btre in oboots]
+    wboots = [ete2.Tree(btre.strip()) for btre in wboots]    
+    [btre.unroot() for btre in oboots]
+    [btre.unroot() for btre in wboots]
 
     ## get and set support values 
     for tre, boots in zip([otre, wtre], [oboots, wboots]):
         for btre in boots:
             ## get common edges between trees
+            #print('tre', tre)
+            #print('btre', btre)
+
             common = tre.compare(btre, unrooted=True)
             for bnode in common["common_edges"]:
                 ## check monophyly of each side of split
@@ -719,17 +899,25 @@ def write_supports(data):
                     ## add +1 suport to (edge dist) to this edge
                     if not node[0].is_leaf():
                         node[0].dist += 1
+                        node[0].support += 1
+                        node[0].bootstrap += 1                                                
 
     ## change support values to percentage
-    for node in tre.traverse():
-        node.dist = int(100 * (node.dist / len(boots)))
+    for tre in [otre, wtre]:
+        for node in tre.traverse():
+            node.dist = int(100 * (node.dist / len(wboots)))
+            node.support = int(100 * (node.support / len(wboots)))
+            node.bootstrap = int(100 * (node.bootstrap / len(wboots)))
 
     ## return as newick string w/ support as edge labels (lengths)
-    return tre.write(format=5)
+    with open(data.svd.btre, 'w') as outtre:
+        outtre.write(otre.write(format=6))
+    with open(data.svd.bwtre, 'w') as outtre:
+        outtre.write(wtre.write(format=6))
 
 
 
-def inference(data, samples, ipyclient, bidx):
+def inference(data, ipyclient, bidx):
     """ run inference and store results """
 
     ## a distributor of chunks
@@ -766,7 +954,8 @@ def inference(data, samples, ipyclient, bidx):
 
     while res.keys():
         time.sleep(3)
-        progressbar(njobs, finished)
+        if not bidx:
+            progressbar(njobs, finished)
         for key in keys:
             try:
                 ## query for finished results
@@ -795,8 +984,10 @@ def inference(data, samples, ipyclient, bidx):
 
             except (ipp.error.TimeoutError, KeyError):
                 continue
-    progressbar(njobs, finished)                
-    print("")
+
+    if not bidx:
+        progressbar(njobs, finished)                
+        print("")
 
     ## convert to txt file for wQMC
     dump(data)    
@@ -819,7 +1010,7 @@ if __name__ == "__main__":
     #import ipyparallel as ipp
 
     #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/cli/cli.json")
-    DATA = ipyrad.load_json("~/Documents/RADmissing/rad1/half_min20.json")
+    DATA = ipyrad.load_json("~/Documents/ipyrad/tests/iptutorial/cli.json")
     ## run
-    ipa.svd4tet.wrapper(DATA)
+    ipa.svd4tet.wrapper(DATA, nboots=10, method='equal', nquarts=50, force=True)
 
