@@ -535,8 +535,7 @@ def svd_obj_init(data, method):
 
 
 
-def wrapper(data, dtype='snp', nboots=100, method="all", 
-            force=False):
+def wrapper(data, dtype='snp', nboots=100, method="all", force=False):
     """ wraps main in try/except statement """
 
     ## check that method was entered correctly
@@ -548,7 +547,7 @@ def wrapper(data, dtype='snp', nboots=100, method="all",
 
     ## protects it from KBD
     try:
-        main(data, ipyclient, dtype, nboots, force)
+        main(data, ipyclient, dtype, nboots, method, force)
 
     except (KeyboardInterrupt, SystemExit):
 
@@ -576,7 +575,7 @@ def wrapper(data, dtype='snp', nboots=100, method="all",
 
 
 
-def main(data, ipyclient, dtype, nboots, force):
+def main(data, ipyclient, dtype, nboots, method, force):
     """ 
     Run svd4tet inference on a sequence or SNP alignment for all samples 
     the Assembly. 
