@@ -17,11 +17,13 @@ Theoretical Biology 374: 35-47
 # pylint: disable=F0401
 # pylint: disable=W0212
 # pylint: disable=C0103
+# pylint: disable=C0301
 
 from __future__ import print_function, division
 import os
 import glob
 import h5py
+import ete2
 import time
 import random
 import ipyrad
@@ -62,25 +64,6 @@ MKEYS = """
     TTAA TTAC TTAG TTAT  TTCA TTCC TTCG TTCT  TTGA TTGC TTGG TTGT  TTTA TTTC TTTG TTTT
 """
 
-MAT = np.zeros((16, 16), dtype=np.int32)
-
-
-
-# def regen_boot_array(data, resh5):
-#     """ bootstrap replicates re-using same quartet order as original """
-
-#     ## create the bootstrap sampled seqarray
-#     with h5py.File(data.svd.h5, 'r+') as io5:
-#         print("  resampling bootstrap array")
-#         ## get original seqarray as a DF
-#         seqarray = pd.DataFrame(resh5["seqarray"][:])
-#         ## get boot array by randomly sample columns w/ replacement
-#         bootarr = seqarray.sample(n=seqarray.shape[1], replace=True, axis=1)
-#         resh5["bootarr"][:] = bootarr
-#         del bootarr
-#         ## save the boot array 
-#         print("  done resampling bootstrap array")
-
 
 
 def get_seqarray(data, dtype, boot):
@@ -97,7 +80,7 @@ def get_seqarray(data, dtype, boot):
     line = spath.readline().strip().split()
     ntax = int(line[0])
     nbp = int(line[1])
-    LOGGER.info("array shape: (%s,%s)", ntax, nbp)
+    LOGGER.info("array shape: (%s, %s)", ntax, nbp)
 
     ## make a seq array
     tmpseq = np.zeros((ntax, nbp), dtype="S1")
@@ -116,6 +99,7 @@ def get_seqarray(data, dtype, boot):
             ## many engines on arbitrary nodes 
             seqarr[:] = tmpseq
             del tmpseq
+            
     else:
         ## use 'r+' to read and write to existing array
         with h5py.File(data.svd.h5in, 'r+') as io5:        
@@ -428,7 +412,10 @@ def run_qmc(data, boot):
     tmpwtre = open(".tmpwtre").read().strip()    
 
     ## convert int names back to str names
-    ## ... dendropy or ete2 code
+    tmptre = ete2.Tree(tmptre)
+    tmptre = renamer(data, tmptre)
+    tmpwtre = ete2.Tree(tmpwtre)
+    tmpwtre = renamer(data, tmpwtre)
 
     ## save the boot tree
     if boot:
@@ -447,6 +434,24 @@ def run_qmc(data, boot):
     ## save assembly with new tree
     data.save()
 
+
+
+def renamer(data, tre):
+    """ renames newick from numbers to sample names"""
+    ## order the numbered tree tip lables
+    names = tre.get_leaves()
+    names.sort(key=lambda x: int(x.names))
+
+    ## order the sample labels in the same order they are 
+    ## in the seq file (e.g., .snp, .phy)
+    snames = data.samples.keys()
+    snames.sort()
+
+    ## replace numbered names with snames
+    for (tip, sname) in zip(names, snames):
+        tip.name = sname
+
+    return tre
 
 
 
@@ -513,16 +518,12 @@ def svd_obj_init(data, method):
     data.svd.wtre = os.path.join(data.dirs.svd, data.name+"_svd4tet.wtre")
 
     ## bootstrap tree paths
-    data.svd.tboots = os.path.join(data.dirs.svd, 
-                                   data.name+"_svd4tet.tre.boots")
-    data.svd.wboots = os.path.join(data.dirs.svd, 
-                                   data.name+"_svd4tet.wtre.boots")
+    data.svd.tboots = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre.boots")
+    data.svd.wboots = os.path.join(data.dirs.svd, data.name+"_svd4tet.wtre.boots")
 
     ## bootstrap labeled o.g. trees paths
-    data.svd.btre = os.path.join(data.dirs.svd, 
-                                 data.name+"_svd4tet.tre.boots.support")
-    data.svd.bwtre = os.path.join(data.dirs.svd, 
-                                 data.name+"_svd4tet.wtre.boots.support")
+    data.svd.btre = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre.boots.support")
+    data.svd.bwtre = os.path.join(data.dirs.svd, data.name+"_svd4tet.wtre.boots.support")
     ## checkpoints
     data.svd.checkpoint_boot = 0
     data.svd.checkpoint_arr = 0
@@ -534,7 +535,7 @@ def svd_obj_init(data, method):
 
 
 
-def wrapper(data, samples=None, dtype='snp', nboots=100, method="all", 
+def wrapper(data, dtype='snp', nboots=100, method="all", 
             force=False):
     """ wraps main in try/except statement """
 
@@ -547,7 +548,7 @@ def wrapper(data, samples=None, dtype='snp', nboots=100, method="all",
 
     ## protects it from KBD
     try:
-        main(data, samples, ipyclient, dtype, nboots, method, force)
+        main(data, ipyclient, dtype, nboots, force)
 
     except (KeyboardInterrupt, SystemExit):
 
@@ -575,8 +576,7 @@ def wrapper(data, samples=None, dtype='snp', nboots=100, method="all",
 
 
 
-
-def main(data, samples, ipyclient, dtype, nboots, method, force):
+def main(data, ipyclient, dtype, nboots, force):
     """ 
     Run svd4tet inference on a sequence or SNP alignment for all samples 
     the Assembly. 
@@ -584,10 +584,6 @@ def main(data, samples, ipyclient, dtype, nboots, method, force):
     By default the job starts from 0 or where it last left off, unless 
     force=True, then it starts from 0. 
     """
-
-    ## subset the samples
-    if samples:
-        samples = ipyrad.core.assembly._get_samples(data, samples)
 
     ## load svd attributes if they exist
     fresh = 0
@@ -643,7 +639,7 @@ def main(data, samples, ipyclient, dtype, nboots, method, force):
     ## run the full inference 
     if not data.svd.checkpoint_boot:
         print("  inferring quartets for the full data")
-        inference(data, ipyclient, bidx=0)
+        inference(data, samples, ipyclient, bidx=0)
 
     ## run the bootstrap replicates
     print("  running {} bootstrap replicates".format(nboots))
@@ -657,14 +653,14 @@ def main(data, samples, ipyclient, dtype, nboots, method, force):
             data.svd.checkpoint_boot = bidx
         ## start boot inference
         progressbar(nboots, bidx)
-        inference(data, ipyclient, bidx=True)
+        inference(data, samples, ipyclient, bidx=True)
     progressbar(nboots, nboots)
 
     ## create tree with support values on edges
-    ## ...
+    write_supports(data)
 
     ## print finished
-    print("  Finished. Final tree files: \n{}\n{}\n{}\n{}\n{}\n{}".format(
+    print("  Finished. Tree files: \n{}\n{}\n{}\n{}\n{}\n{}".format(
           data.svd.tre, 
           data.svd.tboots,
           data.svd.wtre, 
@@ -673,11 +669,68 @@ def main(data, samples, ipyclient, dtype, nboots, method, force):
           data.svd.bwtre,
           ))
 
+    print("  Final trees with bootstraps as edge labels: \n{}\n{}".format(
+          data.svd.tre, 
+          data.svd.wtre, 
+          ))
+
+    print("  Quick and dirty tree figure with supports: \n{}\n{}".format(
+          data.svd.tre+'.pdf',
+          data.svd.wtre+'.pdf'
+          ))
+
     return data
 
 
 
-def inference(data, ipyclient, bidx):
+def write_supports(data):
+    """ writes support values as edge labels on unrooted tree """
+    ## get unrooted best trees
+    otre = ete2.Tree(data.svd.tre, format=0)
+    otre.unroot()
+    wtre = ete2.Tree(data.svd.wtre, format=0)
+    wtre.unroot()
+
+    ## set edge lengths to zero
+    for tre in [otre, wtre]:
+        for node in tre.traverse():
+            node.dist = 0
+
+    ## get unrooted boot trees
+    oboots = open(data.svd.tboots, 'r').readlines()
+    wboots = open(data.svd.wboots, 'r').readlines()
+    for boots in [oboots, wboots]:
+        for btre in boots:
+            btre.unroot()
+
+    ## get and set support values 
+    for tre, boots in zip([otre, wtre], [oboots, wboots]):
+        for btre in boots:
+            ## get common edges between trees
+            common = tre.compare(btre, unrooted=True)
+            for bnode in common["common_edges"]:
+                ## check monophyly of each side of split
+                a = tre.check_monophyly(bnode[0], target_attr='name', unrooted=True)
+                b = tre.check_monophyly(bnode[1], target_attr='name', unrooted=True)
+                ## if both sides are monophyletic
+                if a[0] and b[0]:
+                    ## find which is the 'bottom' node, to attach support to
+                    node = list(tre.get_monophyletic(bnode[0], target_attr='name'))
+                    node.extend(list(tre.get_monophyletic(bnode[1], target_attr='name')))
+                    ## add +1 suport to (edge dist) to this edge
+                    if not node[0].is_leaf():
+                        node[0].dist += 1
+
+    ## change support values to percentage
+    for node in tre.traverse():
+        node.dist = int(100 * (node.dist / len(boots)))
+
+    ## return as newick string w/ support as edge labels (lengths)
+    return tre.write(format=5)
+
+
+
+def inference(data, samples, ipyclient, bidx):
     """ run inference and store results """
 
     ## a distributor of chunks
