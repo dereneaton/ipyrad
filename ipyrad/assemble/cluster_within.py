@@ -14,15 +14,14 @@ from __future__ import print_function
 import os
 import sys
 import gzip
-#import shlex
-import socket
+import time
 import tempfile
 import itertools
 import subprocess
 import numpy as np
 import ipyrad
 
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from refmap import *
 from util import * 
 
@@ -406,69 +405,8 @@ def build_clusters(data, sample):
 
 
 
-def get_threaded_view(ipyclient, split=True):
-    """ gets optimum threaded view of ids given the host setup """
-    ## engine ids
-    ## e.g., [0, 1, 2, 3, 4, 5, 6, 7, 8]
-    eids = ipyclient.ids  
-
-    ## get host names    
-    ## e.g., ['a', 'a', 'b', 'b', 'a', 'c', 'c', 'c', 'c']
-    dview = ipyclient.direct_view()
-    hosts = dview.apply_sync(socket.gethostname)
-    del dview
-
-    ## group ids into a dict by their hostnames
-    ## e.g., {a: [0, 1, 4], b: [2, 3], c: [5, 6, 7, 8]}
-    hostdict = defaultdict(list)
-    for host, eid in zip(hosts, eids):
-        hostdict[host].append(eid)
-
-    ## Now split threads on the same host into separate proc if there are many
-    hostdictkeys = hostdict.keys()
-    for key in hostdictkeys:
-        gids = hostdict[key]
-        maxt = len(gids)
-        if len(gids) >= 4:
-            maxt = 2
-        if len(gids) >= 6:
-            maxt = 3
-        if len(gids) >= 16:
-            maxt = 4
-        ## split ids into groups of maxt
-        threaded = [gids[i:i+maxt] for i in xrange(0, len(gids), maxt)]
-        lth = len(threaded)
-        ## if anything was split (lth>1) update hostdict with new proc
-        if lth > 1:
-            hostdict.pop(key)
-            for hostid in range(lth):
-                hostdict[str(key)+"_"+str(hostid)] = threaded[hostid]
-
-    ## logprint for viewing
-    toview = "\n".join([str(key)+":"+str(val) for key, val in hostdict.items()])
-    LOGGER.info("threaded_view %s", toview)
-
-    ## make sure split numbering is correct
-    threaded = hostdict.values()                
-    #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
-    LOGGER.info("threaded_view: %s", dict(hostdict))
-    return threaded
-
-
-
-def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
-    """ pass the samples to N engines to execute run_full on each.
-
-    :param data: An Assembly object
-    :param samples: one or more samples selected from data
-    :param ipyclient: ipyparallel load_balanced_view client
-    :param noreverse: toggle revcomp clustering despite datatype default
-    :param force: force
-    :param preview: run preview
-    :param align_only: skips clustering/mapping and aligns existing files
-
-    :returns: None
-    """
+def setup_dirs(data):
+    """ sets up directories for step3 data """
     ## make output folder for clusters  
     data.dirs.clusts = os.path.join(
                 os.path.realpath(data.paramsdict["project_dir"]),
@@ -485,106 +423,129 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         if not os.path.exists(data.dirs.refmapping):
             os.makedirs(data.dirs.refmapping)
 
+
+
+def null_func(arglist):
+    """ 
+    Takes a list of args and prints them to the logger. Used as a null func
+    to skip steps that are only used in some assembly steps. 
+    """
+    LOGGER.info("null func skipping %s", str(arglist))
+
+
+
+def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
+    """ pass the samples to N engines to execute run_full on each.
+
+    :param data: An Assembly object
+    :param samples: one or more samples selected from data
+    :param ipyclient: ipyparallel load_balanced_view client
+    :param noreverse: toggle revcomp clustering despite datatype default
+    :param force: force
+    :param preview: run preview
+    :param align_only: skips clustering/mapping and aligns existing files
+
+    :returns: None
+    """
+    ## make directories
+    setup_dirs(data)
+
     ## Create threaded_view of engines by grouping only ids that are threaded
     ## load_balanced is not the right thing to use here, since we need to know
     ## which engines are being used for each job
+    hostdict = get_threaded_view(ipyclient)
+    threaded_views = {}
+    for host in hostdict:
+        ## e.g., client.load_balanced_view([1,3])
+        threaded_views[host] = ipyclient.load_balanced_view(host.values())
+    ## A single load-balanced view for FUNCs 3-4
+    lbview = ipyclient.load_balanced_view()
 
-    ## multi-node threading
-    _ = get_threaded_view(ipyclient)
-    #threaded_view = ipyclient.load_balanced_view(
-    #                    targets=[i[0] for i in threaded])
-    #tpproc = [len(i) for i in threaded][0]
+    ## FUNC 1: refmap
+    ## A dictionary to store finished 
+    res_ref = {sample:[] for sample in samples}
 
-    try:
-        ## PREVIEW should just use subsampled data from step2
-        #if preview:
-            ## Truncate the input files and temporarily swap out the values for
-            ## sample.files.edits
-        #    for sample in samples:
-        #        sample.files["edits_preview_bak"] = sample.files.edits
-        #        sample.files.edits = preview_truncate_fq(data, 
-        #                                     sample.files.edits_preview_bak)
-
-        ## single node threading
-        tpp = 1
-        if len(ipyclient) >= 4:
-            tpp = 2
-        if len(ipyclient) >= 10:
-            tpp = 3
-        if len(ipyclient) >= 20:
-            tpp = 4
-        threaded_view = ipyclient.load_balanced_view(
-                                            targets=ipyclient.ids[::tpp])
-        tpproc = len(threaded_view)
-
+    ## default null func skips if no reference
+    mcfunc = null_func
+    if "reference" in data.paramsdict["assembly_method"]:
+        ## set the func to mapreads
+        mcfunc = mapreads
         ## Initialize the mapped and unmapped file paths per sample
-        if not data.paramsdict["assembly_method"] == "denovo":
-            for sample in samples:
-                sample = refmap_init(data, sample)
-
-        ## FILL LIST ARGS for funcs mapreads and clustall
-        submitted_args = []
         for sample in samples:
-            ## Only cluster/map reads if it hasn't already been done.
-            ## If force is true always cluster every sample
-            if not sample.stats.state == 2.5 or force:
-                #if not align_only:
-                submitted_args.append([data, sample, noreverse, tpproc])
-        
-        ## If all samples are in step 2.5 then submitted_args will be empty
-        if submitted_args:
+            sample = refmap_init(data, sample)
 
-            ## MAP READS if reference sequence is specified
-            if not data.paramsdict["assembly_method"] == "denovo":
-                results = threaded_view.map(mapreads, submitted_args)
-                results.get()
+    ## Submit initial func for all samples (mapreads and/or clustall)    
+    for sample, thv in zip(samples, itertools.cycle(threaded_views)):
+        ## make args list with nthreads for this client
+        args = [data, sample, noreverse, len(thv.values())]
+        ## submit job to client w/ args
+        res_ref[sample] = thv.apply_async(mcfunc, args)
+
+    ## FUNC 2: clustall
+    ## A dictionary to store whether sample has finished clustering
+    res_clust = {sample:[] for sample in samples}
+
+    ## default null func skips if no denovo
+    if data.paramsdict["assembly_method"] in ["denovo", "denovo+reference"]: 
+        mcfunc = clustall
+
+    ## require that the sample successfully finished previous step
+    for sample, thv in zip(samples, itertools.cycle(threaded_views)):
+        with thv.temp_flags(after=res_ref[sample]):
+            res_clust[sample] = thv.apply_async(mcfunc, args)
+
+    ## FUNC 3: reference cleanup            
+    ## A dictionary to store whether sample has finished cleanup
+    res_clean = {sample:[] for sample in samples}
+
+    ## Pull in alignments from mapped bam files and write them to the clust.gz 
+    ## to fold them back into the pipeline. If we are doing "denovo" then 
+    ## don't call this, but less obvious, "denovo-reference" intentionally 
+    ## doesn't call this to effectively discard reference mapped reads.
+    mcfunc = null_func
+    if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
+        mcfunc = finalize_aligned_reads
+
+    ## requires sample to have finished the previous step before running
+    for sample in samples:
+        with lbview.temp_flags(after=res_clust[sample]):
+            res_clean[sample] = lbview.apply_async(mcfunc, [data, sample])
+            #TODO : finalize_aligned_reads(data, sample, ipyclient)
+
+    ## FUNC 4: split up and submit chunks of sample file for aligning
+    for sample in samples:
+        with lbview.temp_flags(after=res_clean[sample]):
+            lbview.apply(multi_muscle_align, [data, sample])
+
+
+    ## FUNC 5: split up and submit chunks of sample file for aligning
+    for sample in samples:
+        with lbview.temp_flags(after=res_clean[sample]):
+            lbview.apply(muscle_align, [data, fname])
+
+
+    ## FUNC 6: split up and submit chunks of sample file for aligning
+    for sample in samples:
+        with lbview.temp_flags(after=res_clean[sample]):
+            lbview.apply(cleanup, [data, sample])
+
+
+    ## RUN ALL FUNCTIONS:
+    lbview.wait_interactive()
+
+    ## do sample cleanup
+    for sample in samples:
+        sample_cleanup(data, sample)
+    LOGGER.debug("Finished sample cleanup. max_fragment_length = "\
+                + "{}".format(data._hackersonly["max_fragment_length"]))
  
-            ## DENOVO CLUSTER returns 0/1 of whether clust.gz built without fail
-            ## for samples in the order in which they were submitted
-            results = threaded_view.map(clustall, submitted_args)
-            for i, success in enumerate(results):
-                if success:
-                    LOGGER.debug("Finished clustering {}".format(samples[i]))
-                    samples[i].stats.state = 2.5
-            #results = results.get()
- 
-            ## TODO: should it look for REFSEQ reads if it had no utemp hits?
+    ## run data cleanup
+    data_cleanup(data, samples)
 
-            ## If we are keeping the results of ref mapping then pull in 
-            ## alignments from mapped bam files and write them to the clust.gz 
-            ## files to fold them back into the pipeline.
-            ## If we are doing "denovo" then obviously don't call this, but 
-            ## also, less obvious, "denovo-reference" intentionally doesn't 
-            ## call this to effectively discard reference mapped reads.
-            if data.paramsdict["assembly_method"] in \
-                                           ["reference", "denovo+reference"]: 
-                for sample in samples:
-                    finalize_aligned_reads(data, sample, ipyclient)
 
-            ## record that sample is clustered but not yet aligned
-            #for success, sample in zip(results, samples):
-            #    if success:
-            #        sample.stats.state = 2.5
 
-        ## Samples at step 2.5 pick up again here.
-        ## call ipp for muscle aligning only if the Sample passed clust/mapping
-        for sample in samples:
-            if sample.stats.state == 2.5:
-                LOGGER.info("muscle aligning")            
-                multi_muscle_align(data, sample, ipyclient)
-                ## run sample cleanup 
-                sample_cleanup(data, sample)
-    
-        LOGGER.debug("Finished sample cleanup. max_fragment_length = "\
-                    + "{}".format(data._hackersonly["max_fragment_length"]))
-        ## run data cleanup
-        data_cleanup(data, samples)
-
-    except Exception as inst:
-        LOGGER.warn(inst)
-        raise
-
-    finally:
+def split_among_cleanup(data, samples, preview):
+    """
         ## For preview/refmap restore original sample.files.edits paths and 
         ## clean up the tmp files.
 
@@ -592,30 +553,31 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
         ## condition. Have to do this before restoring preview files because
         ## the refmap edits backup will be a backup of the preview truncated 
         ## files. The order of these two functions matters.
-        if not "denovo" == data.paramsdict["assembly_method"]: 
-            for sample in samples:
-                refmap_cleanup(data, sample)
+    """
+    if not "denovo" == data.paramsdict["assembly_method"]: 
+        for sample in samples:
+            refmap_cleanup(data, sample)
 
-        if preview:
-            for sample in samples:
-                try:
-                    ## If edits and edits_preview_bak are the same then 
-                    ## something borked so don't delete any files
-                    if sample.files.edits == sample.files.edits_preview_bak:
-                        sample.files.pop("edits_preview_bak", None)
-                        continue
-
-                    for tmpf in sample.files.edits[0]:
-                        if os.path.exists(tmpf):
-                            os.remove(tmpf)
-
-                    ## Restore original paths to full fastq files
-                    sample.files.edits = sample.files.edits_preview_bak
-                    ## Remove the tmp file reference. The second arg defines 
-                    ## what to return if the key doesn't exist.
+    if preview:
+        for sample in samples:
+            try:
+                ## If edits and edits_preview_bak are the same then 
+                ## something borked so don't delete any files
+                if sample.files.edits == sample.files.edits_preview_bak:
                     sample.files.pop("edits_preview_bak", None)
-                except Exception:
-                    pass
+                    continue
+
+                for tmpf in sample.files.edits[0]:
+                    if os.path.exists(tmpf):
+                        os.remove(tmpf)
+
+                ## Restore original paths to full fastq files
+                sample.files.edits = sample.files.edits_preview_bak
+                ## Remove the tmp file reference. The second arg defines 
+                ## what to return if the key doesn't exist.
+                sample.files.pop("edits_preview_bak", None)
+            except Exception:
+                pass
 
 
 
@@ -761,49 +723,43 @@ def cluster(data, sample, noreverse, nthreads):
 
 
 
-def multi_muscle_align(data, sample, ipyclient):
-    """ Splits the muscle alignment across nthreads processors, each runs on 
-    1000 clusters at a time. This is a kludge until I find how to write a 
-    better wrapper for muscle. 
+def muscle_chunker(data, sample):
+    """ 
+    Splits the muscle alignment into chunks. Each runs on N clusters at a time.
     """
-    ## load balanced is fine for this b/c its on chunks and no threads
-    lbview = ipyclient.load_balanced_view()
-
     ## split clust.gz file into nthreads*10 bits cluster bits
     tmpnames = []
     tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
 
-    try: 
-        ## get the number of clusters
-        clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-        clustio = gzip.open(clustfile, 'rb')
-        optim = 100
-        if sample.stats.clusters_total > 500:
-            optim = int(sample.stats.clusters_total/len(ipyclient))//2
-        LOGGER.debug("optim for align chunks: %s", optim)
+    ## get the number of clusters
+    clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+    clustio = gzip.open(clustfile, 'rb')
+    tclust = clustio.read().count("//")//2
+    optim = int(tclust/10)
+    LOGGER.debug("optim for align chunks: %s", optim)
 
-        ## write optim clusters to each tmp file
-        inclusts = iter(clustio.read().strip().split("//\n//\n"))
+    ## write optim clusters to each tmp file
+    inclusts = iter(clustio.read().strip().split("//\n//\n"))
+    grabchunk = list(itertools.islice(inclusts, optim))
+    while grabchunk:
+        with tempfile.NamedTemporaryFile('w+b', delete=False, dir=tmpdir,
+                                         prefix=sample.name+"_", 
+                                         suffix='.ali') as out:
+            out.write("//\n//\n".join(grabchunk))
+        tmpnames.append(out.name)
         grabchunk = list(itertools.islice(inclusts, optim))
-        while grabchunk:
-            with tempfile.NamedTemporaryFile('w+b', delete=False, dir=tmpdir,
-                                             prefix=sample.name+"_", 
-                                             suffix='.ali') as out:
-                out.write("//\n//\n".join(grabchunk))
-            tmpnames.append(out.name)
-            grabchunk = list(itertools.islice(inclusts, optim))
-        clustio.close()
+    clustio.close()
 
-        ## create job queue
-        submitted_args = []
-        for fname in tmpnames:
-            submitted_args.append([data, fname])
+    return tmpnames
 
-        ## run muscle on all tmp files. 'map' returns in same order          
-        results = lbview.map_async(muscle_align, submitted_args)
-        results.get()
+
+
+def multi_muscle_align(data, sample, tmpname):
+    """ aligns chunked seqs using muscle """
+
+
 
         ## concatenate finished reads
         sample.files.clusters = os.path.join(data.dirs.clusts,
@@ -813,25 +769,22 @@ def multi_muscle_align(data, sample, ipyclient):
                 with open(fname) as infile:
                     out.write(infile.read()+"//\n//\n")
 
-    except Exception as inst:
-        LOGGER.warn(inst)
-        raise
 
-    finally:
-        ## still delete tmpfiles if job was interrupted
-        for fname in tmpnames:
-            if os.path.exists(fname):
-                os.remove(fname)
-        if os.path.exists(tmpdir):
-            try:
-                shutil.rmtree(tmpdir)
-            except OSError as inst:
-                ## In some instances nfs creates hidden dot files in directories
-                ## that claim to be "busy" when you try to remove them. Don't
-                ## kill the run if you can't remove this directory.
-                LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
 
-        del lbview
+def alignment_cleanup(tmpnames):
+    ## still delete tmpfiles if job was interrupted
+    for fname in tmpnames:
+        if os.path.exists(fname):
+            os.remove(fname)
+
+    if os.path.exists(tmpdir):
+        try:
+            shutil.rmtree(tmpdir)
+        except OSError as inst:
+            ## In some instances nfs creates hidden dot files in directories
+            ## that claim to be "busy" when you try to remove them. Don't
+            ## kill the run if you can't remove this directory.
+            LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
 
 
 
@@ -861,10 +814,6 @@ def clustall(args):
         #sample.stats.reads_merged = nmerged
         sample.merged = 1
         LOGGER.debug("Merged file - {}".format(sample.files.merged))
-
-        #with open(sample.files.pairs, 'a') as tmpout:
-        #    with open(sample.files.merged, 'r') as tmpin:
-        #        tmpout.write(tmpin.read().replace("_c1\n", "_m4\n"))
 
     ## convert fastq to fasta, then derep and sort reads by their size
     derep_and_sort(data, sample, nthreads)
@@ -917,38 +866,24 @@ def run(data, samples, noreverse, force, preview, ipyclient):
         print("  No Samples ready to be clustered. First run step2().")
     else:
         args = [data, subsamples, ipyclient, noreverse, force, preview]
-        ## Because this includes long running jobs we want to make sure
-        ## that if any Engine fails then all Engines stop and new jobs
-        ## are not submitted. This also means we need good Exception 
-        ## handling within 'split_among_processors' so that exceptions 
-        ## we know can arise (e.g., no utemp file) are handled without fails.
-        ## This will catch other exceptions such as KeyboardInterrupt, shut
-        ## everything down, and then re-raise the Exception. 
-        #try:
-            ## get pids in case you need to kill them later            
-            #pids = ipyclient[:].apply_async(os.getpid).get()
-            ## submit jobs
         LOGGER.debug("splitting among processors")
-        split_among_processors(*args)
+        try:
+            split_among_processors(*args)
+        except Exception as inst:
+            LOGGER.warn(inst)
+            raise
+        finally:
+            split_among_cleanup(data, samples, preview)
 
-        #except Exception as inst:
-            ## prevents waiting jobs from being added to queue
-        #    ipyclient.abort()
-            ## kill Engines left executing (e.g., vsearch, smalt). 
-            ## currently it kills your ipcluster instance tho... not ideal.
-            ## maybe this should be in the Assembly wrapper...?
-            ##ipyclient.shutdown()
-            ##ipyclient = ipp.Client()
-        #    raise inst
+
 
 
 
 if __name__ == "__main__":
     ## test...
-    import ipyrad as ip
 
     ## reload autosaved data. In case you quit and came back 
-    data1 = ip.load.load_assembly("test_rad/data1.assembly")
+    data1 = ip.load_json("test_rad/data1.assembly")
 
     ## run step 6
     data1.step3(force=True)
@@ -964,5 +899,5 @@ if __name__ == "__main__":
     #FASTQS = []
     #QUIET = 0
     #run(PARAMS, FASTQS, QUIET)
-    pass
+
     
