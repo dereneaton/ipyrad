@@ -779,9 +779,9 @@ def multi_muscle_align(data, sample, ipyclient):
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
         clustio = gzip.open(clustfile, 'rb')
-        optim = 100
-        if sample.stats.clusters_total > 500:
-            optim = int(sample.stats.clusters_total/len(ipyclient))//2
+        optim = 1000
+        #if sample.stats.clusters_total > 500:
+        #    optim = int(sample.stats.clusters_total/len(ipyclient))//2
         LOGGER.debug("optim for align chunks: %s", optim)
 
         ## write optim clusters to each tmp file

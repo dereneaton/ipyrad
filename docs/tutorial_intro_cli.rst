@@ -214,7 +214,7 @@ separate line with a tab between them.
 
 .. code-block:: bash
 
-    cat ./data/sim_rad_test_barcodes.txt
+    cat ./ipsimdata/sim_rad_test_barcodes.txt
 
 .. parsed-literal::
     1A_0    CATCAT
