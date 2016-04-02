@@ -950,6 +950,13 @@ def append_clusters(data, sample, derep_fasta_files):
     ## TODO: refmapping is not currently checking for a max *
     ## of snps per locus. Probably should fix that.
     with gzip.open(sample.files.clusters, write_flag) as out:
+        ## If doing `reference` only then we don't need to write the leading
+        ## //\n//\n, it breaks things in fact
+        if data.paramsdict["assembly_method"] == "reference":
+            pass
+        else:
+            out.write("//\n//\n")
+
         for fname in derep_fasta_files:
             LOGGER.info("derep_fasta_files %s", fname)
             # We need to update and accumulate all the seqs before
@@ -957,6 +964,7 @@ def append_clusters(data, sample, derep_fasta_files):
             # all over each other
             seqs = []
             with open(fname) as infile:
+
                 for i, duo in enumerate(itertools.izip(*[iter(infile)]*2)):
                     if i == 0:
                         name = duo[0].strip()+"*"
@@ -964,9 +972,8 @@ def append_clusters(data, sample, derep_fasta_files):
                         name = duo[0].strip()+"+"
                     seqs.append(name+"\n"+duo[1])
                     #LOGGER.info("".join(seqs))
-            out.write("//\n//\n")
             out.write("".join(seqs))
-        out.write("//\n//\n")
+            out.write("//\n//\n")
 
 
 
