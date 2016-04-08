@@ -439,9 +439,9 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         ## Cast to an int, since numreads should be a whole number and
         ## zcat_make_temps doesn't like the '100.0' float part.
         ## Here optim is measured in nreads.
-        optim = int(inputreads // (ncpus * 2))
+        optim = (inputreads // (ncpus * 2)) + (inputreads % (ncpus * 2))
         ## multiply by 4 to ensure fastq quartet sampling
-        ## The unit for optim is now nlines now
+        ## The unit for optim is now nlines
         optim *= 4
         LOGGER.info("optim=%s", optim)
 

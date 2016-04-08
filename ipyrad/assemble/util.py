@@ -223,24 +223,29 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, sample):
+def merge_pairs(data, sample, merge):
     """ 
     Merge PE reads. Takes in a tuple of unmerged files and returns the file 
     name of the merged/combined PE reads and the number of reads that were 
-    merged (overlapping)
+    merged (overlapping). If merge==0 then only concat pairs, no merging.
     """
     LOGGER.debug("Entering merge_pairs()")
 
     ## tempnames for merge files
     sample.files.merged = os.path.join(data.dirs.edits,
                                        sample.name+"_merged_.fastq")
-    sample.files.nonmerged1 = os.path.join(data.dirs.edits,
+    ## if merge then catch nonmerged in a separate file
+    if merge:
+        sample.files.nonmerged1 = os.path.join(data.dirs.edits,
                                            sample.name+"_nonmerged_R1_.fastq")
-    sample.files.nonmerged2 = os.path.join(data.dirs.edits,
+        sample.files.nonmerged2 = os.path.join(data.dirs.edits,
                                            sample.name+"_nonmerged_R2_.fastq")
-    #sample.files.revcomp = os.path.join(data.dirs.edits,
-    #                                    sample.name+"_revcomp_R2_.fastq")
+    ## if not merging then the nonmerged reads will come from the normal edits
+    else:
+        sample.files.nonmerged1 = sample.files.edits[0][0]
+        sample.files.nonmerged2 = sample.files.edits[0][1]
 
+    ## get the maxn and minlen values
     try:
         maxn = sum(data.paramsdict['max_low_qual_bases'])
     except TypeError:
@@ -248,57 +253,38 @@ def merge_pairs(data, sample):
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
     ## check for paired file
-    LOGGER.debug("heherh %s", sample.files.edits)
     if not os.path.exists(sample.files.edits[0][1]):
         raise IPyradWarningExit("    No paired read file (_R2_ file) found.")
 
-    ## make revcomp file
-    # cmd = ipyrad.bins.vsearch \
-    #   + " --fastx_revcomp "+sample.files.edits[0][1] \
-    #   + " --fastqout "+sample.files.revcomp
-    # LOGGER.warning(cmd)
-    # LOGGER.debug(cmd)    
-    # try:
-    #     subprocess.check_call(cmd, shell=True, 
-    #                                stderr=subprocess.STDOUT, 
-    #                                stdout=subprocess.PIPE)
-    # except subprocess.CalledProcessError as inst:
-    #     LOGGER.error(subprocess.STDOUT)
-    #     LOGGER.error(cmd)
-    #     raise SystemExit("Error in revcomping: \n ({})".format(inst))
+    ## do vsearch merging if merging
+    if merge:
+        cmd = ipyrad.bins.vsearch \
+          +" --fastq_mergepairs "+sample.files.edits[0][0] \
+          +" --reverse "+sample.files.edits[0][1] \
+          +" --fastqout "+sample.files.merged \
+          +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
+          +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
+          +" --fasta_width 0 " \
+          +" --fastq_allowmergestagger " \
+          +" --fastq_minmergelen "+minlen \
+          +" --fastq_maxns "+str(maxn) \
+          +" --fastq_minovlen 20 " \
+          +" --fastq_maxdiffs 4 " \
+          +" --label_suffix _m1" \
+          +" --threads 0"
 
-    ## vsearch merging
-    cmd = ipyrad.bins.vsearch \
-      +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.edits[0][1] \
-      +" --fastqout "+sample.files.merged \
-      +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
-      +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
-      +" --fasta_width 0 " \
-      +" --fastq_allowmergestagger " \
-      +" --fastq_minmergelen "+minlen \
-      +" --fastq_maxns "+str(maxn) \
-      +" --fastq_minovlen 20 " \
-      +" --fastq_maxdiffs 4 " \
-      +" --label_suffix _m1" \
-      +" --threads 0"
+        try:
+            subprocess.check_call(cmd, shell=True,
+                                       stderr=subprocess.STDOUT,
+                                       stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as inst:
+            LOGGER.error("  Error in merging pairs: \n({}).".format(inst))
+            IPyradWarningExit("  Error in merging pairs: \n({}).".format(inst))
 
-    LOGGER.warning(cmd)
-    try:
-        subprocess.check_call(cmd, shell=True,
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error("Error in merging pairs: \n({}).".format(inst))
-        LOGGER.error(subprocess.STDOUT)
-        LOGGER.error(cmd)
-        sys.exit("Error in merging pairs: \n({}).".format(inst))
-
-    ## record how many read pairs were merged
-    with open(sample.files.merged, 'r') as tmpf:
-        sample.stats.reads_merged = len(tmpf.readlines()) // 4
-
-    LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
+        ## record how many read pairs were merged
+        with open(sample.files.merged, 'r') as tmpf:
+            sample.stats.reads_merged = len(tmpf.readlines()) // 4
+        LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
 
     ## Combine the unmerged pairs and append to the merge file
     with open(sample.files.merged, 'ab') as combout:
@@ -340,10 +326,13 @@ def merge_pairs(data, sample):
             combout.write("\n".join(writing))
             combout.close()
 
-    os.remove(sample.files.nonmerged1)
-    os.remove(sample.files.nonmerged2)
+    ## if merged then delete the nonmerge tmp files
+    if merge:
+        os.remove(sample.files.nonmerged1)
+        os.remove(sample.files.nonmerged2)
 
     return sample
+
 
 
 ## This is hold-over code from pyrad V3 alignable, it's only used
@@ -351,9 +340,6 @@ def merge_pairs(data, sample):
 def most_common(L):
     return max(itertools.groupby(sorted(L)), 
                key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
-
-
-
 
 
 
@@ -577,13 +563,13 @@ def clustdealer(pairdealer, optim):
 
 
 
-def progressbar(njobs, finished):
+def progressbar(njobs, finished, msg=""):
     """ prints a progress bar """
     progress = 100*(finished / float(njobs))
     hashes = '#'*int(progress/5.)
     nohash = ' '*int(20-len(hashes))
-    print("\r  [{}] {:>3}% "\
-          .format(hashes+nohash, int(progress)), end="")
+    print("\r  [{}] {:>3}% {} "\
+          .format(hashes+nohash, int(progress), msg), end="")
     sys.stdout.flush()
 
 
@@ -632,10 +618,10 @@ def get_threaded_view(ipyclient, split=True):
                 hostdict[str(key)+"_"+str(hostid)] = threaded[hostid]
 
     ## make sure split numbering is correct
-    threaded = hostdict.values()                
+    #threaded = hostdict.values()                
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
     LOGGER.info("threaded_view: %s", dict(hostdict))
-    return threaded
+    return hostdict
 
 
 
