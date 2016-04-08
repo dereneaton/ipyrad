@@ -380,7 +380,7 @@ def prechecks(data, ipyclient, preview):
         tmp_file_name = "./tmp-step1-count.fq"
         if testfile.endswith(".gz"):
             infile = gzip.open(testfile)
-            outfile = gzip.open(tmp_file_name, 'wb')
+            outfile = gzip.open(tmp_file_name, 'wb', compresslevel=5)
         else:
             infile = open(testfile)
             outfile = open(tmp_file_name, 'w')
