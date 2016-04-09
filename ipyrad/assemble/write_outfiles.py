@@ -11,6 +11,7 @@ code is as follows:
 # pylint: disable=W0142
 # pylint: disable=E1101
 # pylint: disable=W0212
+# pylint: disable=C0301
 
 from __future__ import print_function
 
@@ -734,35 +735,87 @@ def filter_minsamp(data, superseqs):
 
 
 
+def fakeref(sitecol):
+    """
+    Used to find the most frequent base at each column for making a 
+    stand-in reference sequence for denovo loci that have no reference. 
+    Simply a way for representing the results in geno and VCF outputs.
+    """
+    ## a list for only catgs
+    catg = [i for i in sitecol if i in "CATG"]
+
+    ## find sites that are ambigs
+    where = [sitecol[sitecol == i] for i in "RSKYWM"]
+
+    ## for each occurrence of RSKWYM add ambig resolution to catg
+    for ambig in where:
+        for _ in range(ambig.size):
+            catg += list(AMBIGS[ambig[0]])
+
+    ## return the most common element, if tied, it doesn't matter who wins
+    return max(set(catg), key=catg.count)
+
+
+
 def ucount(sitecol):
     """ 
     Used to count the number of unique bases in a site for snpstring. 
     returns as a spstring with * and - 
     """
-    ## make into set
-    site = set(sitecol)
 
-    ## get resolutions of ambiguitites
-    for iupac in "RSKYWM":
-        if iupac in site:
-            site.discard(iupac)
-            site.update(AMBIGS[iupac])
+    ## a list for only catgs
+    catg = [i for i in sitecol if i in "CATG"]
 
-    ## remove - and N
-    site.discard("N")
-    site.discard("-")
+    ## find sites that are ambigs
+    where = [sitecol[sitecol == i] for i in "RSKYWM"]
 
-    ## if site is invariant return ""
-    if len(site) < 2:
+    ## for each occurrence of RSKWYM add ambig resolution to catg
+    for ambig in where:
+        for _ in range(ambig.size):
+            catg += list(AMBIGS[ambig[0]])
+
+    ## if invariant return " "
+    if len(set(catg)) < 2:
         return " "
     else:
-        ## get how many bases come up more than once 
-        ccx = np.sum(np.array([np.sum(sitecol == base) for base in site]) > 1)
-        ## if another site came up more than once return *
-        if ccx > 1:
+        ## get second most common site
+        second = Counter(catg).most_common()[1][1]
+        if second > 1:
             return "*"
         else:
             return "-"
+
+    # ## make into set
+    # #site = set(sitecol)
+    # catg = sitecol
+
+    # ## get resolutions of ambiguitites
+    # for iupac in "RSKYWM":
+    #     if iupac in sitecol:
+    #         ## remove from set
+    #         site.discard(iupac)
+    #         ## get resolved bases tuple
+    #         tup = AMBIGS[iupac]
+    #         ## add to observed bases
+    #         site.update(tup)
+    #         ## add to list for counts
+    #         catg + 
+
+    # ## remove - and N
+    # site.discard("N")
+    # site.discard("-")
+
+    # ## if site is invariant return ""
+    # if len(site) < 2:
+    #     return " "
+    # else:
+    #     ## get how many bases come up more than once 
+    #     ccx = np.sum(np.array([np.sum(sitecol == base) for base in site]) > 1)
+    #     ## if another site came up more than once return *
+    #     if ccx > 1:
+    #         return "*"
+    #     else:
+    #         return "-"
 
 
 
@@ -879,7 +932,6 @@ def make_phynex(data, samples, keep, output_formats):
     """ 
     Makes phylip and nexus formats. Also pulls out SNPs...? 
     """
-
     ## load the h5 database
     inh5 = h5py.File(data.database, 'r')
 
@@ -971,7 +1023,7 @@ def make_phynex(data, samples, keep, output_formats):
             out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
     ## write the snp string
-    data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+"_snps.phy")    
+    data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps.phy")    
     with open(data.outfiles.snps, 'w') as out:
         #ridx = np.all(snparr == "", axis=0)
         out.write("{} {}\n".format(snparr.shape[0], snparr.shape[1]))
@@ -981,7 +1033,7 @@ def make_phynex(data, samples, keep, output_formats):
 
     ## write the bisnp string
     data.outfiles.usnps = os.path.join(data.dirs.outfiles, 
-                                       data.name+"_usnps.phy")
+                                       data.name+".usnps.phy")
     with open(data.outfiles.usnps, 'w') as out:
         out.write("{} {}\n".format(bisarr.shape[0], bisarr.shape[1]))
                                    #bisarr.shape[1]))
@@ -991,7 +1043,7 @@ def make_phynex(data, samples, keep, output_formats):
     ## Write STRUCTURE format
     if "str" in output_formats:
         data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
-        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".ustr")        
+        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".u.str")        
         out1 = open(data.outfiles.str, 'w')
         out2 = open(data.outfiles.ustr, 'w')
         numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
@@ -1027,11 +1079,54 @@ def make_phynex(data, samples, keep, output_formats):
         data.outfiles.geno = os.path.join(data.dirs.outfiles, 
                                           data.name+".geno")
         data.outfiles.ugeno = os.path.join(data.dirs.outfiles, 
-                                          data.name+".ugeno")        
-        ## need to define a reference base and record 0,1,2 or missing=9
-        #snparr
-        #bisarr
+                                          data.name+".u.geno")
+        ## get most common base at each SNP as a pseudo-reference 
+        ## and record 0,1,2 or missing=9 for counts of the ref allele
+        snpref = np.apply_along_axis(fakeref, 0, snparr)
+        bisref = np.apply_along_axis(fakeref, 0, bisarr)
+
+        ## geno is printed as a matrix where columns are individuals
+        ## I order them by same order as in .loci, which is alphanumeric
+        snpgeno = np.zeros(snparr.shape, dtype=np.uint8)
+        ## put in missing
+        snpgeno[snparr == "N"] = 9
+        snpgeno[snparr == "-"] = 9
+        ## put in complete hits
+        snpgeno[snparr == snpref] = 2
+        ## put in hetero hits where resolve base matches ref
+        for reso in range(2):
+            hets = vecviewgeno(snparr, reso)
+            snpgeno[hets == snpref] = 1
+
+        ## geno is printed as a matrix where columns are individuals
+        ## I order them by same order as in .loci, which is alphanumeric
+        bisgeno = np.zeros(bisarr.shape, dtype=np.uint8)
+        ## put in missing
+        bisgeno[bisarr == "N"] = 9
+        bisgeno[bisarr == "-"] = 9
+        ## put in complete hits
+        bisgeno[bisarr == bisref] = 2
+        ## put in hetero hits where resolve base matches ref
+        for reso in range(2):
+            hets = vecviewgeno(bisarr, reso)
+            bisgeno[hets == bisref] = 1
+
+        ## print to files
+        np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
+        np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")        
+
     LOGGER.info("done writing outputs... ")
+
+
+
+def viewgeno(site, reso):
+    """ 
+    Get resolution. Only 1 or 0 allowed. Used for geno
+    """
+    return VIEW[site][reso]
+## vectorize the viewgeno func
+vecviewgeno = np.vectorize(viewgeno)
+
 
 
 ## Utility subfunctions

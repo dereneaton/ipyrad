@@ -127,6 +127,24 @@ class OrdObjDict(object):
         return self._od.items()
 
 
+
+
+## used for geno output 
+VIEW = {"R":("G", "A"),
+        "K":("G", "T"),
+        "S":("G", "C"),
+        "Y":("T", "C"),
+        "W":("T", "A"),
+        "M":("C", "A"),
+        "A":("X", "X"),
+        "T":("X", "X"),
+        "G":("X", "X"),
+        "C":("X", "X"),
+        "N":("X", "X"),
+        "-":("X", "X"), 
+        }
+
+## used for resolving ambiguities
 AMBIGS = {"R":("G", "A"),
           "K":("G", "T"),
           "S":("G", "C"),
