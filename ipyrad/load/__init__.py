@@ -13,4 +13,3 @@ ip.test_assembly()
 from .load import test_assembly
 from .load import save_json
 from .load import load_json
-from .load import load_old_json

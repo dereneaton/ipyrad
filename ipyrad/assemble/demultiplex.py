@@ -376,15 +376,44 @@ def prechecks(data, ipyclient, preview):
     else:
         ## count the len of one file and assume all others are similar len
         testfile = raws[0][0]
+        insize = os.path.getsize(testfile)
+        tmp_file_name = "./tmp-step1-count.fq"
         if testfile.endswith(".gz"):
             infile = gzip.open(testfile)
+            outfile = gzip.open(tmp_file_name, 'wb', compresslevel=5)
         else:
             infile = open(testfile)
-        inputreads = sum(1 for i in infile)
+            outfile = open(tmp_file_name, 'w')
+        
+        ## We'll take the average of the size of a file based on the
+        ## first 10000 reads to approximate number of reads in the main file
+        for i in xrange(40000):
+            outfile.write(next(infile))
+        outfile.close()
+        infile.close()
+
+        ## Get the size of the tmp file
+        tmp_size = os.path.getsize(tmp_file_name)
+
+        ## divide by the tmp file size and multiply by 10000 to approximate
+        ## the size of the input .fq files
+        inputreads = int(insize / tmp_size * 10000)
+        LOGGER.debug("inputreads estimate - {}".format(inputreads))
+
+        try:
+            os.remove(tmp_file_name)
+        except Exception:
+            ## Just leave it if it won't erase.
+            pass
+
+        #        inputreads = sum(1 for i in infile)
+
         ## it's going to be multiplied by 4 to ensure its divisible
         ## and then again by 4 if inside preview truncate, so x32 here.
-        ## should result in 2X as many chunk files as cpus. 
-        optim = inputreads // (ncpus * 32)
+        ## should result in 2X as many chunk files as cpus, but files are 
+        ## split by reads not by lines so divide this by 4 to get optim
+        ## num reads to split per tmp file. 
+        optim = (inputreads // (ncpus * 8)) + (inputreads % (ncpus * 8))
         ## multiply by 4 to ensure fastq quartet sampling
         optim *= 4
     LOGGER.info("precheck optim=%s", optim)
@@ -552,7 +581,7 @@ def run(data, preview, ipyclient):
             datatuples = raws
 
         LOGGER.info("Executing %s files, in %s chunks, across %s cpus", \
-                     len(raws), len(datatuples), len(ipyclient))
+                     len(raws), len(datatuples[0][1]), len(ipyclient))
 
         filenum = 0            
         for rawfilename, chunks in datatuples:

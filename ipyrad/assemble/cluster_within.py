@@ -545,26 +545,22 @@ def split_among_processors(data, samples, ipyclient, noreverse, force, preview):
             for i, success in enumerate(results):
                 if success:
                     LOGGER.debug("Finished clustering {}".format(samples[i]))
-                    samples[i].stats.state = 2.5
-            #results = results.get()
  
-            ## TODO: should it look for REFSEQ reads if it had no utemp hits?
+                    ## TODO: should it look for REFSEQ reads if it had no utemp hits?
+    
+                    ## If we are keeping the results of ref mapping then pull in 
+                    ## alignments from mapped bam files and write them to the clust.gz 
+                    ## files to fold them back into the pipeline.
+                    ## If we are doing "denovo" then obviously don't call this, but 
+                    ## also, less obvious, "denovo-reference" intentionally doesn't 
+                    ## call this to effectively discard reference mapped reads.
+                    if data.paramsdict["assembly_method"] in \
+                                               ["reference", "denovo+reference"]: 
+                        finalize_aligned_reads(data, samples[i], ipyclient)
 
-            ## If we are keeping the results of ref mapping then pull in 
-            ## alignments from mapped bam files and write them to the clust.gz 
-            ## files to fold them back into the pipeline.
-            ## If we are doing "denovo" then obviously don't call this, but 
-            ## also, less obvious, "denovo-reference" intentionally doesn't 
-            ## call this to effectively discard reference mapped reads.
-            if data.paramsdict["assembly_method"] in \
-                                           ["reference", "denovo+reference"]: 
-                for sample in samples:
-                    finalize_aligned_reads(data, sample, ipyclient)
+                    samples[i].stats.state = 2.5
 
-            ## record that sample is clustered but not yet aligned
-            #for success, sample in zip(results, samples):
-            #    if success:
-            #        sample.stats.state = 2.5
+            #results = results.get()
 
         ## Samples at step 2.5 pick up again here.
         ## call ipp for muscle aligning only if the Sample passed clust/mapping

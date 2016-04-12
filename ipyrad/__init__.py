@@ -4,10 +4,10 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.1.84"
+__version__ = "0.1.85"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "ERROR"
+__loglevel__ = "INFO"
 __debugfile__ = "./ipyrad_log.txt"
 
 ## main ip.functions
@@ -15,7 +15,6 @@ from . import load
 from . import assemble 
 from .load import save_json
 from .load import load_json
-from .load import load_old_json
 #from . import plotting  ## do not autoimport plotting, import as ipp
 #from . import analysis  ## do not autoimport analysis, import as ipa
 
