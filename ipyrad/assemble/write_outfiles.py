@@ -1113,7 +1113,15 @@ def make_phynex(data, samples, keep, output_formats):
 
         ## print to files
         np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
-        np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")        
+        np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
+
+        ## write a map file for use in admixture with locations of SNPs
+        ## for denovo data we just fake it and evenly space the unlinked SNPs
+        # 1  rs123456  0  1234555
+        # 1  rs234567  0  1237793
+        # 1  rs224534  0  -1237697        <-- exclude this SNP
+        # 1  rs233556  0  1337456        
+
 
     LOGGER.info("done writing outputs... ")
 
