@@ -23,7 +23,6 @@ from __future__ import print_function, division
 import os
 import glob
 import h5py
-import ete2
 import time
 import random
 import ipyrad
@@ -37,6 +36,13 @@ from numba import jit
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 from collections import Counter, OrderedDict
+
+## extra dependency that we cannot yet install ourselves using conda 
+try:
+    import ete3
+except ImportError:
+    IPyradWarningExit("  svd4tet requires the dependency `ete3`. You can install"+
+                      "  it with the command `conda install -c etetoolkit ete3`")
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -155,7 +161,7 @@ def equal_splits(data, nquarts, ipyclient):
     LOGGER.info("E: nquarts = %s, chunk = %s", nquarts, chunk)
 
     ## get starting tree
-    tre = ete2.Tree(".tmptre")
+    tre = ete3.Tree(".tmptre")
     tre.unroot()
     print("  starting tree:")
     print(tre)
@@ -425,9 +431,9 @@ def run_qmc(data, boot):
     tmpwtre = open(".tmpwtre").read().strip()    
 
     ## convert int names back to str names
-    tmptre = ete2.Tree(tmptre)
+    tmptre = ete3.Tree(tmptre)
     tmptre = renamer(data, tmptre)
-    tmpwtre = ete2.Tree(tmpwtre)
+    tmpwtre = ete3.Tree(tmpwtre)
     tmpwtre = renamer(data, tmpwtre)
 
     ## save the boot tree
@@ -787,7 +793,7 @@ def write_outputs(data, with_boots=1):
           data.svd.nhx,
           data.svd.wnhx))
 
-    qtre = ete2.Tree(data.svd.tre)
+    qtre = ete3.Tree(data.svd.tre)
     qtre.unroot()
     print("\n  Quick view of unrooted topology from unweighted analysis")
     print(qtre)
@@ -813,9 +819,9 @@ PIECOLORS = ['#a6cee3',
 def layout(node):
     """ layout for ete2 tree plotting fig """
     if node.is_leaf():
-        nameF = ete2.TextFace(node.name, tight_text=False, 
+        nameF = ete3.TextFace(node.name, tight_text=False, 
                                          fgcolor="#262626", fsize=8)
-        ete2.add_face_to_node(nameF, node, column=0, position="aligned")
+        ete3.add_face_to_node(nameF, node, column=0, position="aligned")
         node.img_style["size"] = 0
               
     else:
@@ -824,13 +830,13 @@ def layout(node):
             node.img_style["shape"] = 'square'
             node.img_style["fgcolor"] = "#262626"   
             if "quartets_total" in node.features:
-                ete2.add_face_to_node(ete2.PieChartFace(
+                ete3.add_face_to_node(ete2.PieChartFace(
                                     percents=[float(node.quartets_sampled_prop), 
                                     100-float(node.quartets_sampled_prop)],
                                     width=15, height=15, colors=PIECOLORS),
                                     node, column=0, position="float-behind")  
             if "bootstrap" in node.features:
-                ete2.add_face_to_node(ete2.AttrFace(
+                ete3.add_face_to_node(ete2.AttrFace(
                                   "bootstrap", fsize=7, fgcolor='red'),
                                   node, column=0, position="branch-top")  
         else:
@@ -844,7 +850,7 @@ def layout(node):
 
 def quickfig(input_tre, outname):
     """ make a quick ete2 fig. Plots total quartets """
-    ts = ete2.TreeStyle()
+    ts = ete3.TreeStyle()
     ts.layout_fn = layout
     ts.show_leaf_name = False
     ts.mode = 'r'
@@ -852,7 +858,7 @@ def quickfig(input_tre, outname):
     ts.show_scale = False
     ts.scale = 25
 
-    tre = ete2.Tree(input_tre)
+    tre = ete3.Tree(input_tre)
     tre.ladderize()
     tre.convert_to_ultrametric(tree_length=len(tre)//2)
     tre.render(file_name=outname, h=40*len(tre), tree_style=ts)
@@ -900,7 +906,7 @@ def write_supports(data, with_boots):
     names.sort()
 
     ## get unrooted best trees
-    otre = ete2.Tree(data.svd.tre, format=0)
+    otre = ete3.Tree(data.svd.tre, format=0)
     otre.unroot()
     for node in otre.traverse():
         node.add_feature("bootstrap", 0)
@@ -914,7 +920,7 @@ def write_supports(data, with_boots):
         node.dist = 0
         node.support = 0
 
-    wtre = ete2.Tree(data.svd.wtre, format=0)
+    wtre = ete3.Tree(data.svd.wtre, format=0)
     wtre.unroot()
     for node in wtre.traverse():
         node.add_feature("bootstrap", 0)
@@ -932,8 +938,8 @@ def write_supports(data, with_boots):
     if with_boots:
         oboots = open(data.svd.tboots, 'r').readlines()
         wboots = open(data.svd.wboots, 'r').readlines()
-        oboots = [ete2.Tree(btre.strip()) for btre in oboots]
-        wboots = [ete2.Tree(btre.strip()) for btre in wboots]    
+        oboots = [ete3.Tree(btre.strip()) for btre in oboots]
+        wboots = [ete3.Tree(btre.strip()) for btre in wboots]    
         _ = [btre.unroot() for btre in oboots]
         _ = [btre.unroot() for btre in wboots]
 

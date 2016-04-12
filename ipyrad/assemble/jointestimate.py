@@ -137,8 +137,8 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
 
 def tablestack(rstack):
     """ makes a count dict of each unique array element """
-    ## goes by 10% at a time to minimize memory overhead. Is possible it skips
-    ## the last chunk, but this shouldn't matter.
+    ## goes by 10% at a time to minimize memory overhead. 
+    ## Check on the last chunk.
     table = Counter()
     for i in xrange(0, rstack.shape[0], rstack.shape[0]//10):
         tmp = Counter([j.tostring() for j in rstack[i:i+rstack.shape[0]//10]])

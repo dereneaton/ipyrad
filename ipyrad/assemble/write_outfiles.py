@@ -11,6 +11,7 @@ code is as follows:
 # pylint: disable=W0142
 # pylint: disable=E1101
 # pylint: disable=W0212
+# pylint: disable=C0301
 
 from __future__ import print_function
 
@@ -844,7 +845,10 @@ def make_outfiles(data, samples, keep):
         output_formats = OUTPUT_FORMATS
 
     ## build arrays and outputs from arrays
-    make_phynex(data, samples, keep, output_formats)
+    seqarr, snparr, bisarr = make_phy(data, samples, keep, output_formats)
+
+    ## make other outputs
+    make_others()
 
     # ## run each func
     # for filetype in output_formats:
@@ -869,7 +873,7 @@ def make_outfiles(data, samples, keep):
 
 
 
-def make_phynex(data, samples, keep, output_formats):
+def make_phynex(data, samples, keep):
     """ make phylip and nexus formats. Also pulls out SNPs...? """
 
     ## load the h5 database
@@ -960,8 +964,17 @@ def make_phynex(data, samples, keep, output_formats):
         for idx, name in enumerate(pnames):
             out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
+    return seqarr, snparr, bisarr
+
+
+
+def make_others(data, pnames, output_formats, seqarr, snparr, bisarr):
+    """ 
+    Uses arrays built in makephy to build other output formats
+    """
+
     ## write the snp string
-    data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps")    
+    data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps.phy")    
     with open(data.outfiles.snps, 'w') as out:
         #ridx = np.all(snparr == "", axis=0)
         out.write("{} {}\n".format(snparr.shape[0], snparr.shape[1]))
@@ -970,7 +983,7 @@ def make_phynex(data, samples, keep, output_formats):
             out.write("{}{}\n".format(name, "".join(snparr[idx])))
 
     ## write the bisnp string
-    data.outfiles.usnps = os.path.join(data.dirs.outfiles, data.name+".usnps")
+    data.outfiles.usnps = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
     with open(data.outfiles.usnps, 'w') as out:
         out.write("{} {}\n".format(bisarr.shape[0], bisarr.shape[1]))
                                    #bisarr.shape[1]))
@@ -980,7 +993,7 @@ def make_phynex(data, samples, keep, output_formats):
     ## Write STRUCTURE format
     if "str" in output_formats:
         data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
-        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".ustr")        
+        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".u.str")        
         out1 = open(data.outfiles.str, 'w')
         out2 = open(data.outfiles.ustr, 'w')
         numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
@@ -1010,6 +1023,7 @@ def make_phynex(data, samples, keep, output_formats):
         out1.close()
         out2.close()
 
+
     ## Write GENO format
     if "geno" in output_formats:
         data.outfiles.geno = os.path.join(data.dirs.outfiles, 
@@ -1020,6 +1034,9 @@ def make_phynex(data, samples, keep, output_formats):
         #snparr
         #bisarr
     LOGGER.info("done writing outputs... ")
+
+
+
 
 
 ## Utility subfunctions

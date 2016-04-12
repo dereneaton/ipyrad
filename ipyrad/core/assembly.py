@@ -318,7 +318,7 @@ class Assembly(object):
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
 
-        print("""
+        print("""\
     Linking to demultiplexed fastq files in:
       {}""".format(path))
 

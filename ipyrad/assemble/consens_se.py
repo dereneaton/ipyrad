@@ -326,6 +326,7 @@ def nfilter3(data, consens):
         return 0
 
 
+
 def nfilter4(data, consens, hidx, arrayed):
     """ applies max haplotypes filter returns pass and consens"""
 
@@ -402,11 +403,10 @@ def storealleles(consens, hidx, alleles):
             consens[hsite] = consens[hsite].lower()
 
     ## return consens 
-    return consens     ##"".join(consens)
+    return consens    
 
 
 
-## maybe jit this func and/or vectorize
 def basecall(site, data):
     """ prepares stack for making base calls """
     ## count em
@@ -421,7 +421,7 @@ def basecall(site, data):
     ## get the two most common alleles
     if site:
         base1 = base2 = 0
-        comms = site.most_common()
+        comms = site.most_common(2)
         base1 = comms[0][1]
         if len(comms) > 1:
             base2 = comms[1][1]
@@ -432,12 +432,11 @@ def basecall(site, data):
             cons = "N"
 
         else:
-            ## if depth > 500 reduce to randomly sampled 500 
+            ## if depth > 500 divide both to a number below 500
             if bidepth >= 500: 
-                randomsample = numpy.array(tuple("A"*base1+"B"*base2))
-                numpy.random.shuffle(randomsample)
-                base1 = list(randomsample[:500]).count("A")
-                base2 = list(randomsample[:500]).count("B")
+                divisor = base1 // 500
+                base1 //= divisor
+                base2 //= divisor
 
             ## speedhack: make the base call using a method depending on depth
             ## if highdepth and invariable just call the only base
@@ -445,7 +444,7 @@ def basecall(site, data):
                 cons = comms[0][0]
             ## but if variable then use basecaller
             else:
-                cons = basecaller(data, site, base1, base2)
+                cons = basecaller(data, site, base1, base2, comms)
     else:
         cons = "N"
     return cons
@@ -453,7 +452,7 @@ def basecall(site, data):
 
 
 ## this could be vectorized right?
-def basecaller(data, site, base1, base2):
+def basecaller(data, site, base1, base2, comms):
     """ inputs data to binomprobr and gets alleles correctly oriented """
 
     ## make statistical base call
@@ -470,10 +469,10 @@ def basecaller(data, site, base1, base2):
     if float(prob) >= 0.95:
         if who != "ab":
             ## site is homozygous
-            cons = site.most_common(1)[0][0]
+            cons = comms[0][0]
         else:
             ## site is heterozygous
-            cons = hetero(*[i[0] for i in site.most_common(2)])
+            cons = hetero(*[i[0] for i in comms])
     else:
         cons = "N"
     return cons
