@@ -238,15 +238,8 @@ def consensus(args):
                         continue
 
                 ## get hetero sites
-                try:
-                    #LOGGER.info("HIDX: %s", consens)
-                    #np.where()
-                    hidx = [i for (i, j) in enumerate(consens) \
+                hidx = [i for (i, j) in enumerate(consens) \
                             if j in list("RKSYWM")]
-                except Exception as inst:
-                    LOGGER.info("%s, %s, %s", sample.name, consens, arrayed)
-                    LOGGER.info(inst)
-                    raise SystemExit("%s, %s", inst, arrayed)
                 nheteros = len(hidx)
 
                 ## filter for max number of hetero sites
@@ -262,7 +255,7 @@ def consensus(args):
                        dtype='uint32').T
                             catarr[counters["nconsens"]][:catg.shape[0]] = catg
                             ## store data for tmpchunk
-                            storeseq[counters["name"]] = consens
+                            storeseq[counters["name"]] = "".join(list(consens))
                             counters["name"] += 1
                             counters["nconsens"] += 1
                             counters["heteros"] += nheteros                            
@@ -323,8 +316,6 @@ def nfilter2(data, nheteros):
 def nfilter3(data, consens):
     """ applies filter for maxN and hard minlen (32) """
     ## minimum length for clustering in vsearch
-    #LOGGER.info(consens)
-    #LOGGER.info(consens[consens == "N"])
     if consens.size >= 32:
         if consens[consens == "N"].size <= \
                             sum(data.paramsdict["max_Ns_consens"]):
@@ -349,38 +340,18 @@ def nfilter4(data, consens, hidx, arrayed):
     ## store base calls for hetero sites
     harray = arrayed[:, hidx]
 
-    ## remove any rows that have N or - base calls at hetero sites
+    ## remove any reads that have N or - base calls at hetero sites
+    ## these cannot be used when calling alleles currently.
     harray = harray[~numpy.any(harray == "-", axis=1)]    
     harray = harray[~numpy.any(harray == "N", axis=1)]
 
-    ## get counts of each allele
+    ## get counts of each allele (e.g., AT:2, CG:2)
     ccx = Counter([tuple(i) for i in harray])
 
-    ## Two potential problems remain
+    ## Two possibilities we would like to distinguish, but we can't. Therefore, 
+    ## we just throw away low depth third alleles that are within seq. error. 
     ## 1) a third base came up as a sequencing error but is not a unique allele
     ## 2) a third or more unique allele is there but at low frequency
-
-    # ## get index of any rows that has a base that is not one of the bi-alleles
-    # rrows = numpy.array([])
-    # for hid, col in zip(hidx, xrange(harray.shape[0])):
-    #     ## the two good bases
-    #     iu1, iu2 = AMBIGS[consens[hid]]
-    #     ## find if there is a bad third base
-    #     ww1 = numpy.where(harray[:, col] != iu1)
-    #     ww2 = numpy.where(harray[:, col] != iu2)
-    #     rrow = numpy.intersect1d(ww1, ww2)
-    #     rrows = numpy.append(rrows, rrow)
-
-    # LOGGER.debug("""harray in 4 before
-    # %s 
-    # %s
-    # """, harray, rrows)
-    # ## remove rows
-    # harray = numpy.delete(harray, rrows, axis=0)
-
-    # LOGGER.debug("""harray in 4 after
-    # %s 
-    # """, harray)
 
     ## remove low freq alleles if more than 2, since they may reflect 
     ## sequencing errors instead of true heteros
@@ -424,14 +395,14 @@ def storealleles(consens, hidx, alleles):
     ## AT and TC, then since bigbase of (W) is A second hetero site should 
     ## be stored as y, since the ordering is swapped in this case; the priority
     ## base (C versus T) is C, but C goes with the minor base at h site 1. 
-    consens = list(consens)
+    #consens = list(consens)
 
     for hsite, pbase in zip(hidx[1:], bigallele[1:]):
         if PRIORITY[consens[hsite]] != pbase:
             consens[hsite] = consens[hsite].lower()
 
-    ## return consens as a string
-    return "".join(consens)
+    ## return consens 
+    return consens     ##"".join(consens)
 
 
 
