@@ -12,9 +12,9 @@ Tutorials
 
 Documentation is in the works_, for now there are working example tutorials_.
 
-.. _tutorials: http://nbviewer.ipython.org/github/dereneaton/ipyrad/tree/master/tests/
+.. _tutorials: http://ipyrad.readthedocs.org/en/latest/userguide.html
 
-.. _works: http://ipyrad.readthedocs.org/en/latest/  
+.. _works: http://ipyrad.readthedocs.org/en/latest/
 
 Installation
 ------------
