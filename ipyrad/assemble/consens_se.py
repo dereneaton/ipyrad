@@ -108,6 +108,9 @@ def removerepeats(consens, arrayed):
     is chosen so that mindepth=6 requires 2 base calls that are not in [N,-].
     """
 
+    ## TODO: Needs handle paired data.
+    
+
     ## default trim no edges
     consens = "".join(consens).replace("-", "N")
     edges = [None, None]
@@ -140,12 +143,10 @@ def removerepeats(consens, arrayed):
     ## find sites to remove
     ridx = []
     for nsite in nsites:
-        ## grab all N and - sites
-        if (idepths[nsite]+ndepths[nsite]) < mindepth:
+        ## If not at least mindepth non (N-) char at site, then remove
+        if (idepths[nsite]+ndepths[nsite]) > mindepth:
             ridx.append(nsite)
     
-    #pre = arrayed.copy()
-
     ## remove repeat sites from shortcon and stacked
     ## If consens is all N's this will raise a ValueError which 
     ## consensus() will catch and then pass over this sample.
@@ -234,11 +235,12 @@ def consensus(args):
 
                 ## apply a filter to remove low coverage sites/Ns that
                 ## are likely sequence repeat errors.
-                try:
-                    consens, arrayed = removerepeats(consens, arrayed)
-                except ValueError as inst:
-                    LOGGER.debug("Caught a bad chunk, all Ns in consensus. Skip it.")
-                    continue
+                if "N" in consens:
+                    try:
+                        consens, arrayed = removerepeats(consens, arrayed)
+                    except ValueError as _:
+                        LOGGER.debug("Caught a bad chunk w/ all Ns. Skip it.")
+                        continue
 
                 ## get hetero sites
                 hidx = [i for (i, j) in enumerate(consens) \

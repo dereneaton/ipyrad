@@ -961,8 +961,8 @@ def make_phynex(data, samples, keep, output_formats):
             out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
     ## write the snp string
-    data.outfiles.snp = os.path.join(data.dirs.outfiles, data.name+".snp")    
-    with open(data.outfiles.snp, 'w') as out:
+    data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps")    
+    with open(data.outfiles.snps, 'w') as out:
         #ridx = np.all(snparr == "", axis=0)
         out.write("{} {}\n".format(snparr.shape[0], snparr.shape[1]))
                                    #snparr[:, ~ridx].shape[1]))
@@ -970,8 +970,8 @@ def make_phynex(data, samples, keep, output_formats):
             out.write("{}{}\n".format(name, "".join(snparr[idx])))
 
     ## write the bisnp string
-    data.outfiles.usnp = os.path.join(data.dirs.outfiles, data.name+".usnp")
-    with open(data.outfiles.usnp, 'w') as out:
+    data.outfiles.usnps = os.path.join(data.dirs.outfiles, data.name+".usnps")
+    with open(data.outfiles.usnps, 'w') as out:
         out.write("{} {}\n".format(bisarr.shape[0], bisarr.shape[1]))
                                    #bisarr.shape[1]))
         for idx, name in enumerate(pnames):

@@ -4,10 +4,11 @@
 from __future__ import print_function
 
 import subprocess
-import psutil
 import atexit
+import shlex
 import sys
 import os
+from psutil import cpu_count
 
 # pylint: disable=W0212
 
@@ -21,9 +22,12 @@ def start(data, quiet):
     """ Start ipcluster """
 
     ## select all cores if no entry for args.cores
-    nproc = data._ipcluster["cores"]
-    if not data._ipcluster["cores"]:
-        nproc = str(psutil.cpu_count())
+    if data._ipcluster["cores"]:
+        ncores = "--n={}".format(data._ipcluster["cores"])
+        actual = data._ipcluster["cores"]
+    else:
+        ncores = ""
+        actual = cpu_count()
 
     ## open all ip views for MPI
     iparg = ""
@@ -31,23 +35,20 @@ def start(data, quiet):
         iparg = "--ip='*' "
 
     ## make ipcluster arg call
-    standard = ["ipcluster", "start", 
-                "--daemon", 
-                "--cluster-id="+data._ipcluster["id"],
-                "--engines="+data._ipcluster["engines"],
-                "--n="+str(nproc), 
-                iparg]
-
+    standard = """
+        ipcluster start --daemon --cluster-id={}
+        --engines={} {} {}"""\
+        .format(data._ipcluster["id"], 
+                data._ipcluster["engines"], ncores, iparg)
+                   
 
     ## wrap ipcluster start
     try: 
-        LOGGER.info(" ".join(standard))
-        with open(os.devnull, 'w') as fnull:
-            subprocess.Popen(standard, stderr=subprocess.STDOUT, 
-                                       stdout=fnull).communicate()
+        LOGGER.info(shlex.split(standard))
+        subprocess.check_output(shlex.split(standard))
 
         print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(data._ipcluster["engines"], nproc))
+              .format(data._ipcluster["engines"], actual))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
@@ -89,50 +90,3 @@ def ipcontroller_init(data, quiet=False):
     atexit.register(stop, data._ipcluster["id"])
 
     return data
-
-
-
-#global IPNAME
-#IPNAME = "ipyrad-"+str(os.getpid())
-
-
-# # def parallel(engines, controller="Local"):
-# #     """
-# #     The name is a unique id that keeps this __init__ of ipyrad distinct
-# #     from interfering with other ipcontrollers. The controller option is 
-# #     used to toggle between Local, MPI, PBS.
-# #     """
-# #     global __IPNAME__    
-# #     print("Establishing {} connection.".format(controller))
-# #     ipname = "ipyrad[id="+str(random.randint(1, 999))+"]"
-# #     start(ipname, controller, delay="1.0")
-# #     ## give engines time to connect... (longer?)    
-# #     time.sleep(1)    
-# #     atexit.register(stop, ipname)    
-# #     __IPNAME__ = ipname
-
-
-
-# def ipcontroller_set(controller="Local"):
-#     """
-#     The name is a unique id that keeps this __init__ of ipyrad distinct
-#     from interfering with other ipcontrollers. The controller option is 
-#     used to toggle between Local, MPI, PBS.
-#     """
-#     print("Establishing {} connection.".format(controller))
-#     ipname = "ipyrad-"+str(os.getpid())
-#     start(ipname, controller, delay="1.0")
-#     ## give engines time to connect... (longer?)    
-#     time.sleep(3)    
-#     atexit.register(stop, ipname)    
-#     return ipname  
-
-
-
-# if __name__ == "__main__":
-
-#     ## Start ipcluster and register exit call
-#     NAME = "test"
-#     start(NAME)
-#     atexit.register(stop, NAME)
-

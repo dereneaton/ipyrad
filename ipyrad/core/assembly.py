@@ -116,10 +116,6 @@ class Assembly(object):
         ## Store assembly version #
         self._version = ip.__version__ 
 
-        ## store analysis dicts
-        self.svd = ObjDict({})
-        self.dstat = ObjDict({})
-
         ## stores ipcluster launch info
         self._ipcluster = {}
         for ipkey in ["id", "profile", "engines", "cores"]:
@@ -127,6 +123,10 @@ class Assembly(object):
 
         ## print headers
         self._headers = 0
+
+        ## analysis save objects
+        self.svd = ObjDict({})
+        self.dstat = ObjDict({})
 
         ## statsfiles is a dict with file locations
         ## stats_dfs is a dict with pandas dataframes
@@ -775,7 +775,7 @@ class Assembly(object):
                         if len(ipyclient) == initid:
                             break
                     else:
-                        print("connecting to Engines...")
+                        print("  connecting to Engines...")
 
 
         except KeyboardInterrupt as inst:
@@ -807,7 +807,7 @@ class Assembly(object):
                 args.append(ipyclient)
                 stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError) as inst:
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
             ## raise by ipyparallel if no connection file is found for 30 sec.
             msg = """
     Check to ensure ipcluster is started. When using the API you must start
@@ -822,6 +822,10 @@ class Assembly(object):
             ## raise right away since there is no ipyclient to close
             msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg 
             raise IPyradError(msg)
+
+        except IOError as inst:
+            LOGGER.error("IOError: {}".format(inst))
+            raise
 
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
