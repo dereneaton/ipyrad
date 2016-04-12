@@ -106,7 +106,7 @@ def branch_assembly(args, parsedict):
 
     print("  Writing new params file to {}"\
           .format("params-"+new_data.name+".txt"))
-    new_data.write_params("params-"+new_data.name+".txt")
+    new_data.write_params("params-"+new_data.name+".txt", force=args.force)
 
 
 

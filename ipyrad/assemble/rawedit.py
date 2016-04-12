@@ -486,6 +486,21 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         results = lbview.map_async(rawedit, submitted_args)
         results.get()
 
+    except KeyboardInterrupt as inst:
+        ## Cleans up tmp files in the edits directory if rawedit passes,
+        ## but gets killed before sample_cleanup
+        tmpedit1 = glob.glob(os.path.join(data.dirs.edits,
+                    "tmp1_"+sample.name+"_*.fq"))
+        tmpedit2 = glob.glob(os.path.join(data.dirs.edits,
+                    "tmp2_"+sample.name+"_*.fq"))
+        try:
+            for i in tmpedit1:
+                os.remove(i)
+            for i in tmpedit2:
+                os.remove(i)
+        except:
+            pass
+        raise inst
     finally:
         ## if process failed at any point delete temp files
         tmpdirs = glob.glob(os.path.join(data.dirs.project, 
