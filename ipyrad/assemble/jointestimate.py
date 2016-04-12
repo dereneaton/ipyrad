@@ -9,9 +9,13 @@ from __future__ import print_function
 import scipy.stats
 import scipy.optimize
 import numpy as np
+import ipyparallel
 import itertools
-import os
+import datetime
+import time
 import gzip
+import os
+
 from collections import Counter
 from util import *
 
@@ -263,7 +267,7 @@ def optim(args):
                                             (bfreqs, ustacks, counts), 
                                              disp=False,
                                              full_output=False)
-    return [sample.name, hetero, errors]
+    return hetero, errors
 
 
 
@@ -299,56 +303,97 @@ def run(data, samples, subsample, force, ipyclient):
             else:
                 submitted_args.append([data, sample, subsample])
 
-    ## if jobs then run
-    if submitted_args:
-        ## first sort by cluster size
-        submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
-                                               reverse=True)
-        ## send all jobs to a load balanced map async job
-        lbview = ipyclient.load_balanced_view()
-        try:
-            results = lbview.map_async(optim, submitted_args)
-            results = results.get()
-        
-        ## if exception such as keyboard interrupt, save finished jobs
-        except Exception as inst:
-            ## now re-raise the exception
-            LOGGER.debug("Error in jointestimate - {}".format(inst))
+    if submitted_args:    
+        ## submit jobs to parallel client
+        submit(data, submitted_args, ipyclient)
+    else:
+        print("  no samples selected")
 
-            # stop any unfinished jobs
-            ipyclient.abort()
 
-            # clean up finished jobs
-            for job in ipyclient.metadata:
-                #print("error checking", job)
-                if ipyclient.metadata[job]['completed']:
-                    result = ipyclient.metadata[job]['outputs']
-                    samplename, hest, eest = result
-                    sample = data.samples[samplename]
-                    cleanup(data, sample, hest, eest)
-            raise inst
 
-        else:
-            ## do standard cleanup of finished samples
-            for result in results:
-                samplename, hest, eest = result
-                sample = data.samples[samplename]
-                cleanup(data, sample, hest, eest)            
+def submit(data, submitted_args, ipyclient):
+    """ 
+    sends jobs to engines and cleans up failures. Print progress. 
+    """
+
+    ## first sort by cluster size
+    submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, reverse=True)
+                                           
+    ## send all jobs to a load balanced client
+    lbview = ipyclient.load_balanced_view()
+    jobs = {}
+    for args in submitted_args:
+        ## stores async results using sample names
+        jobs[args[1].name] = lbview.apply(optim, args)
+
+    ## set wait job until all finished. 
+    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1)
+
+    ## wait on results inside try statement. If interrupted we ensure clean up
+    ## and save of finished results
+    try:
+        allwait = len(jobs)
+        while 1:
+            if not res.ready():
+                fwait = sum([jobs[i].ready() for i in jobs])
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(allwait, fwait, 
+                            " inferring [H, E]  | {}".format(elapsed))
+                ## got to next print row when done
+                sys.stdout.flush()
+                time.sleep(1)
+            else:
+                ## print final statement
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(20, 20, " inferring [H, E]  | {}".format(elapsed))
+                break
+
+    except (KeyboardInterrupt, SystemExit):
+        print('\n  Interrupted! Cleaning up... ')
+    
+    finally:
+        ## clean up jobs
+        for sname in jobs:
+            ## grab metadata
+            meta = jobs[sname].metadata            
+
+            ## do this if success
+            if meta.completed:
+                ## get the results
+                hest, eest = jobs[sname].get()
+                cleanup(data, data.samples[sname], hest, eest)
+
+            ## if not done do nothing, if failure print error
+            else:
+                LOGGER.error('  sample %s did not finish', sname)
+                if meta.error:
+                    LOGGER.error("""\
+                stdout: %s
+                stderr: %s 
+                error: %s""", meta.stdout, meta.stderr, meta.error)
+
 
 
 
 def cleanup(data, sample, hest, eest):
-    """ stores results to the Assembly object, writes to stats file, 
-    and cleans up temp files """
+    """ 
+    Stores results to the Assembly object, writes to stats file, 
+    and cleans up temp files 
+    """
     ## sample summary assignments
     sample.stats.state = 4
     sample.stats.hetero_est = hest
     sample.stats.error_est = eest
+
     ## sample full assigments
-    sample.stats_dfs.hetero_est = hest
-    sample.stats_dfs.error_est = eest
+    sample.stats_dfs.s4.hetero_est = hest
+    sample.stats_dfs.s4.error_est = eest
+
     ## Assembly assignment
     data.stats_dfs.s4 = data.build_stat("s4")
+    ## Update written file
     data.stats_files.s4 = os.path.join(data.dirs.clusts, 
                                        "s4_joint_estimate.txt")
     with open(data.stats_files.s4, 'w') as outfile:

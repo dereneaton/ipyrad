@@ -846,6 +846,7 @@ class Assembly(object):
         except AssertionError as inst:
             LOGGER.error("Assertion: %s", inst)
 
+
         ## An Engine Crashed. Raise a readable traceback message.
         except ipp.error.CompositeError as inst:
             ## print the trace if it's turned on, tho
@@ -865,6 +866,7 @@ class Assembly(object):
             ## Caught unhandled exception, print and reraise
             LOGGER.error(inst)
             print("  Caught unknown exception - {}".format(inst))
+            ## raise  ## uncomment raise to get traceback
 
 
         ## close client when done or interrupted
@@ -1032,7 +1034,7 @@ class Assembly(object):
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 4 for i in samples]):
-                print("""
+                print("""\
     Skipping: All {} selected Samples already joint estimated
     (can overwrite with force argument)
     """.format(len(samples)))
