@@ -402,18 +402,18 @@ def prechecks(data, ipyclient, preview):
 
         try:
             os.remove(tmp_file_name)
-        except:
+        except Exception:
             ## Just leave it if it won't erase.
             pass
 
-#        inputreads = sum(1 for i in infile)
+        #        inputreads = sum(1 for i in infile)
 
         ## it's going to be multiplied by 4 to ensure its divisible
         ## and then again by 4 if inside preview truncate, so x32 here.
         ## should result in 2X as many chunk files as cpus, but files are 
         ## split by reads not by lines so divide this by 4 to get optim
         ## num reads to split per tmp file. 
-        optim = inputreads // (ncpus * 8)
+        optim = (inputreads // (ncpus * 8)) + (inputreads % (ncpus * 8))
         ## multiply by 4 to ensure fastq quartet sampling
         optim *= 4
     LOGGER.info("precheck optim=%s", optim)
