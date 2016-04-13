@@ -186,7 +186,6 @@ def muscle_align(args):
                     if (intindels1 <= 5) and (intindels2 <= 5):
                         stack.append("\n".join([anames[i], 
                                         aseqs[i][0]+"nnnn"+aseqs[i][1]]))
-                        #somedic[anames[i]] = aseqs[i]]))
                     else:
                         LOGGER.info("""
                 high indels: %s
@@ -252,25 +251,22 @@ def muscle_align(args):
                         aseqs = [i[:rightlimit] for i in aseqs]
                         #LOGGER.info('rightlimit %s', rightlimit)                    
 
+                badalign = 0
                 for i in range(len(anames)):
                     ## filter for max internal indels 
                     intind = aseqs[i].rstrip('-').lstrip('-')
                     ind1 = intind.count('-') <= \
                                 data.paramsdict["max_Indels_locus"][0]
-                    ## could also filter by max indel inserts                                
-                    #ind2 = len([i.split("-") for i in intind if i]) < 3
                     if ind1:
                         stack.append("\n".join([anames[i], aseqs[i]]))
-                        #somedic[anames[i]] = aseqs[i]
                     else:
                         LOGGER.info("high indels: %s", aseqs[i])
+                        badalign = 1
 
-            ## save dict into a list ready for printing
-            #for key in somedic.keys():
-            #    stack.append(key+"\n"+somedic[key])
-
+        ## finally, add to outstack if alignment is good
         if stack:
-            out.append("\n".join(stack))
+            if not badalign:
+                out.append("\n".join(stack))
 
     ## write to file after
     infile.close()
@@ -341,6 +337,8 @@ def muscle_call(data, names, seqs):
     ## increase gap penalty if reference region is included
     if "_REF;+0" in names:
         args += ["-gapopen", "-1200"]
+
+    ## make a call arg
     proc1 = subprocess.Popen(args,
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE)
@@ -406,19 +404,15 @@ def build_clusters(data, sample):
                                          uitems[3]]]
 
     ## map sequences to clust file in order
-    ## TODO: return badalign info for stats
-    badaligncount = 0
     seqslist = [] 
     for key, values in udic.iteritems():
-        ## this is the seed. Store the left most non indel base for the seed. 
-        ## Do not allow any other hits to go left of this (for pairddrad)
+        ## this is the seed. 
         seedhit = hits[key][1]
         seq = [key.strip()+"*\n"+seedhit]
 
         ## allow only N internal indels in hits to seed for within-sample clust
-        ## prior to alignment. This improves alignments. 
-        ## could be written a little more cleanly but this allows better debug.
-        badalign = 0
+        ## prior to alignment. Exclude read that match poorly. This improves 
+        ## alignments. Whole stack will be excluded after alignment if poor. 
         for i in xrange(len(values)):
             inserts = int(values[i][3])
             if values[i][1] == "+":
@@ -427,7 +421,6 @@ def build_clusters(data, sample):
                     seq.append(values[i][0].strip()+"+\n"+fwdseq)
                 else:
                     LOGGER.info("exc indbld: %s %s", inserts, fwdseq)
-                    badalign = 1
             ## flip to the right orientation 
             else:
                 revseq = comp(hits[values[i][0]][1][::-1])
@@ -435,11 +428,8 @@ def build_clusters(data, sample):
                     seq.append(values[i][0].strip()+"-\n"+revseq)
                 else:
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
-                    badalign = 1
-        if not badalign:
-            seqslist.append("\n".join(seq))
-        else:
-            badaligncount += 1
+
+        seqslist.append("\n".join(seq))
     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
 
     ## make Dict. from seeds (_temp files) 
