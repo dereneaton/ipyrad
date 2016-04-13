@@ -46,8 +46,10 @@ class IPyradWarningExit(SystemExit):
 
 
 class ObjDict(dict):
-    """ object dictionary allows calling dictionaries in a more 
-    pretty and Python fashion for storing Assembly data """
+    """ 
+    Object dictionary allows calling dictionaries in a more 
+    pretty and Python fashion for storing Assembly data 
+    """
     def __getattr__(self, name):
         if name in self:
             return self[name]
@@ -65,7 +67,7 @@ class ObjDict(dict):
 
     def __repr__(self):
         result = ""
-        if "fastqs" in self.keys():
+        if "outfiles" in self.keys():
             dirs_order = ["fastqs", "edits", "clusts", "consens", "outfiles"]
             for key in dirs_order:
                 result += key + " : " + self[key] + "\n"
