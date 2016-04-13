@@ -15,11 +15,12 @@ population genetic and phylogenetic studies.
 
 In this documentation you can learn about the various features of ipyrad 
 (:ref:`Features <features>`), the broader motivation behind its design 
-(:ref:`Ethos <ethos>`), and access a detailed :ref:`User Guide<userguide>`.
-We provide a number of example :ref:`Tutorials <tutorials>` and analysis
-cookbook recipes to help users get started quickly.
+(:ref:`Ethos <ethos>`), and access detailed :ref:`Tutorials<userguide>`.
+Several new :ref:`Analysis tools <Analysis tools>` are included with ipyrad,
+and we are also building a large :ref:`Cookbook` with code for many 
+common downstream analyses.  
 
-Got questions about ipyrad? Join the conversation gitter_.
+Got questions about ipyrad? Join the conversation at gitter_.
 
 
 Documentation
