@@ -328,37 +328,25 @@ def parsemuscle(out):
 
 
 def muscle_call(data, names, seqs):
-    """ Makes subprocess call to muscle. A little faster than before. 
+    """ 
+    Makes subprocess call to muscle. A little faster than before. 
     TODO: Need to make sure this works on super large strings and does not 
     overload the PIPE buffer.
     """
 
     ## get input string
     inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
-    proc1 = subprocess.Popen([ipyrad.bins.muscle, 
-        "-quiet", "-gapopen", "-1200"], 
+    args = [ipyrad.bins.muscle, "-quiet"]
+
+    ## increase gap penalty if reference region is included
+    if "_REF;+0" in names:
+        args += ["-gapopen", "-1200"]
+    proc1 = subprocess.Popen(args,
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE)
-
+    ## return result
     return proc1.communicate(inputstr)[0]
 
-    # ## default test
-    # clwa, nstar = test_gaps(inputstr, -600)
-
-    # ## try two more stringent values
-    # for gaps in [-1200, -2400]:
-    #     tclwa, tnstar = test_gaps(inputstr, gaps)
-    #     if tnstar < nstar:
-    #         clwa = tclwa
-    #     LOGGER.info("CLWA %s", clwa)
-
-    # return clwa
-
-    #inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
-    #return subprocess.Popen(ipyrad.bins.muscle, 
-    #                        stdin=subprocess.PIPE, 
-    #                        stdout=subprocess.PIPE)\
-    #                        .communicate(inputstring)[0]
 
 
 
@@ -418,6 +406,8 @@ def build_clusters(data, sample):
                                          uitems[3]]]
 
     ## map sequences to clust file in order
+    ## TODO: return badalign info for stats
+    badaligncount = 0
     seqslist = [] 
     for key, values in udic.iteritems():
         ## this is the seed. Store the left most non indel base for the seed. 
@@ -428,6 +418,7 @@ def build_clusters(data, sample):
         ## allow only N internal indels in hits to seed for within-sample clust
         ## prior to alignment. This improves alignments. 
         ## could be written a little more cleanly but this allows better debug.
+        badalign = 0
         for i in xrange(len(values)):
             inserts = int(values[i][3])
             if values[i][1] == "+":
@@ -435,17 +426,20 @@ def build_clusters(data, sample):
                 if inserts < 6:
                     seq.append(values[i][0].strip()+"+\n"+fwdseq)
                 else:
-                    fwdseq = hits[values[i][0]][1]                    
-                    LOGGER.debug("exc indbld: %s %s", inserts, fwdseq)
+                    LOGGER.info("exc indbld: %s %s", inserts, fwdseq)
+                    badalign = 1
             ## flip to the right orientation 
             else:
                 revseq = comp(hits[values[i][0]][1][::-1])
                 if inserts < 6:
                     seq.append(values[i][0].strip()+"-\n"+revseq)
                 else:
-                    LOGGER.debug("exc indbld: %s %s", inserts, revseq)
-
-        seqslist.append("\n".join(seq))
+                    LOGGER.info("exc indbld: %s %s", inserts, revseq)
+                    badalign = 1
+        if not badalign:
+            seqslist.append("\n".join(seq))
+        else:
+            badaligncount += 1
     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
 
     ## make Dict. from seeds (_temp files) 
@@ -1007,6 +1001,7 @@ def clust_and_build(args):
         build_clusters(data, sample)
         ## record that it passed the clustfile build
         return 1
+
     except IPyradError as inst:
         print(inst)
         return 0
