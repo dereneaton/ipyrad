@@ -407,10 +407,10 @@ def storealleles(consens, hidx, alleles):
 
 
 
-def basecall(site, data):
+def basecall(rsite, data):
     """ prepares stack for making base calls """
     ## count em
-    site = Counter(site)
+    site = Counter(rsite)
 
     ## remove Ns and (-)s
     if "N" in site:
@@ -432,11 +432,11 @@ def basecall(site, data):
             cons = "N"
 
         else:
-            ## if depth > 500 divide both to a number below 500
+            ## if depth > 500 reduce to <500 at same proportion to avoid 
+            ## large memerror in scipy.misc.comb function
             if bidepth >= 500: 
-                divisor = base1 // 500
-                base1 //= divisor
-                base2 //= divisor
+                base1 = 500 * (base1 / float(base1))
+                base2 = 500 * (base2 / float(base1))
 
             ## speedhack: make the base call using a method depending on depth
             ## if highdepth and invariable just call the only base
@@ -447,6 +447,7 @@ def basecall(site, data):
                 cons = basecaller(data, site, base1, base2, comms)
     else:
         cons = "N"
+
     return cons
 
 
