@@ -50,33 +50,35 @@ def sample_cleanup(data, sample):
     infile = gzip.open(sample.files.clusters)
     duo = itertools.izip(*[iter(infile)]*2)
     depth = []
-    thisdepth = 0
     maxlen = 0
+    thisdepth = []
     while 1:
         try:
             itera = duo.next()
-            seqlen = len(itera[1])
-            itera = itera[0]
-            if seqlen > maxlen:
-                maxlen = seqlen
         except StopIteration:
             break
-        if itera != "//\n":
+        ## keep going until the end of cluster
+        if itera[0] != "//\n":
             try:
-                tdepth = int(itera.split(";")[-2][5:])
+                ## get longest seqlen 
+                seqlen = len(itera[1])            
+                ## get nreps in read
+                tdepth = int(itera[0].split(";")[-2][5:])
                 ## double depth for merged reads
-                if "_m1;s" in itera:
+                if "_m1;s" in itera[0]:
                     tdepth *= 2 
-                thisdepth += tdepth
-
+                thisdepth.append(tdepth)
             except IndexError:
-                ## TODO: if no clusts pass align filter this will raise
-                LOGGER.debug("Here %s, %s", sample.name, itera)
-                raise IPyradError("ERROR 63: bad cluster file: %s", sample.name)
+                ## if no clusts pass align filter this will raise
+                #LOGGER.info("No aligned clusters passed for %s", sample.name)
+                pass#raise IPyradError("No aligned clusters passed: {}".format(sample.name))
         else:
+            ## update maxlen
+            if seqlen > maxlen:
+                maxlen = seqlen
             ## append and reset
-            depth.append(thisdepth)
-            thisdepth = 0
+            depth.append(sum(thisdepth))
+            thisdepth = []
     infile.close()
 
     ## If our longest sequence is longer than the current max_fragment_length
@@ -95,7 +97,7 @@ def sample_cleanup(data, sample):
         sample.stats["state"] = 3
         sample.stats["clusters_total"] = len(depth)
         sample.stats["clusters_hidepth"] = \
-                                    max([len(i) for i in (keepmj, keepstat)])
+                                max([i.shape[0] for i in (keepmj, keepstat)])
         ## store large list of depths as a counter dict
         sample.depths = dict(Counter(depth))
 
