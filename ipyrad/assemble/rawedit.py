@@ -501,6 +501,7 @@ def run_sample(data, sample, nreplace, preview, ipyclient):
         except:
             pass
         raise inst
+
     finally:
         ## if process failed at any point delete temp files
         tmpdirs = glob.glob(os.path.join(data.dirs.project, 
@@ -654,6 +655,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     Running preview mode: subselecting maximum of {} reads per sample\
     """.format(nlines))
 
+
     ## RUN THE SAMPLES
     try:
         for njob, sample in enumerate(subsamples):
@@ -665,6 +667,12 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     ## ensure the assembly is cleaned up even if stopped
     finally:
         assembly_cleanup(data)
+
+
+    ## Alternative execution. One proc keeps slicing data while others run.
+
+
+
 
 
 

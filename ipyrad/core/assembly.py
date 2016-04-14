@@ -866,7 +866,7 @@ class Assembly(object):
             ## Caught unhandled exception, print and reraise
             LOGGER.error(inst)
             print("  Caught unknown exception - {}".format(inst))
-            ## raise  ## uncomment raise to get traceback
+            raise  ## uncomment raise to get traceback
 
 
         ## close client when done or interrupted

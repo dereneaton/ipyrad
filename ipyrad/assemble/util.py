@@ -449,11 +449,11 @@ def zcat_make_temps(args):
 
     ## split args
     data, raws, num, tmpdir, optim = args
-    LOGGER.debug("zcat splittin' %s", os.path.split(raws[0])[-1])
 
     ## get optimum lines per file
     if not optim:
         optim = getsplits(raws[0])
+    #optim = int(optim)    
     LOGGER.info("zcat is using optim = %s", optim)
 
     ## is it gzipped

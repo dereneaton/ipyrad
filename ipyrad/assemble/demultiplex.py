@@ -248,6 +248,7 @@ def chunker(data, raws, optim):
     tups = []
     for num, rawtuple in enumerate(list(raws)):
         ## pass w/o arg for optim split size
+        LOGGER.info("optim is is is %s", optim)
         tup = zcat_make_temps([data, rawtuple, num, tmpdir, optim])
         tups.append(tup)
         num += 1
@@ -310,12 +311,14 @@ def collate_tmps(data, name):
 
 
 def prechecks(data, ipyclient, preview):
-    """ todo before starting analysis """
+    """ 
+    Checks before starting analysis 
+    """
 
     ## check for data, do glob for fuzzy matching
     if not glob.glob(data.paramsdict["raw_fastq_path"]):
-        raise IPyradError("""
-    No data found in {}. Fix path to data files""".
+        raise IPyradWarningExit("""\
+    No data found in {}. Fix path to data files.""".
     format(data.paramsdict["raw_fastq_path"]))
 
     ## find longest barcode
@@ -326,11 +329,11 @@ def prechecks(data, ipyclient, preview):
         else:
             longbar = (max(barlens), 'diff')
     except ValueError:
-        raise IPyradError("    Barcodes file not found")
+        raise IPyradWarningExit("    Barcodes file not found.")
 
     ## make sure there is a [workdir] and a [workdir/name_fastqs]
-    data.dirs.fastqs = os.path.join(data.paramsdict["project_dir"],
-                                    data.name+"_fastqs")
+    data.dirs.fastqs = os.path.join(
+                        data.paramsdict["project_dir"], data.name+"_fastqs")
     if not os.path.exists(data.paramsdict["project_dir"]):
         os.mkdir(data.paramsdict["project_dir"])
     if not os.path.exists(data.dirs.fastqs):
@@ -406,18 +409,16 @@ def prechecks(data, ipyclient, preview):
             ## Just leave it if it won't erase.
             pass
 
-        #        inputreads = sum(1 for i in infile)
-
         ## it's going to be multiplied by 4 to ensure its divisible
         ## and then again by 4 if inside preview truncate, so x32 here.
         ## should result in 2X as many chunk files as cpus, but files are 
         ## split by reads not by lines so divide this by 4 to get optim
         ## num reads to split per tmp file. 
-        optim = (inputreads // (ncpus * 8)) + (inputreads % (ncpus * 8))
+        optim = inputreads // (ncpus * 8)
         ## multiply by 4 to ensure fastq quartet sampling
         optim *= 4
-    LOGGER.info("precheck optim=%s", optim)
 
+    LOGGER.info("precheck optim=%s", optim)
     return raws, longbar, cutters, optim
 
 

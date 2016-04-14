@@ -21,7 +21,6 @@ import numpy as np
 import ipyrad
 import time
 import datetime
-import shlex
 
 from collections import Counter
 from refmap import *
@@ -297,38 +296,11 @@ def parsemuscle(out):
 
 
 
-# def test_gaps(inputstr, gapopen):
-#     """ 
-#     Try 3 different values for gapopen to minimize misaligns
-#     """
-#     ##
-#     args = shlex.split("{} -quiet -clw -gapopen {} -in -"\
-#                        .format(ipyrad.bins.muscle, gapopen))
-#     proc1 = subprocess.Popen(args,
-#                           stdin=subprocess.PIPE,
-#                           stdout=subprocess.PIPE,
-#                           stderr=subprocess.STDOUT)
-#     proc2 = subprocess.Popen(["tr", "-d", "-C", "\*"],
-#                           stdin=proc1.stdout,
-#                           stdout=subprocess.PIPE)
-#     proc3 = subprocess.Popen(["wc", "-c"], 
-#                           stdin=proc2.stdout,
-#                           stdout=subprocess.PIPE)
-#     ## pass sequences to p1 and get clw alignment returned
-#     clwa = proc1.communicate(inputstr)[0]
-#     star = proc2.communicate()
-#     nstar = int(proc3.communicate()[0].strip())
-
-#     LOGGER.info("clwa %s", clwa)
-#     LOGGER.info("nstars %s", nstar)
-#     ## 
-#     return clwa, nstar
-
-
 
 
 def muscle_call(data, names, seqs):
-    """ Makes subprocess call to muscle. A little faster than before. 
+    """ 
+    Makes subprocess call to muscle. A little faster than before. 
     TODO: Need to make sure this works on super large strings and does not 
     overload the PIPE buffer.
     """
@@ -342,23 +314,6 @@ def muscle_call(data, names, seqs):
 
     return proc1.communicate(inputstr)[0]
 
-    # ## default test
-    # clwa, nstar = test_gaps(inputstr, -600)
-
-    # ## try two more stringent values
-    # for gaps in [-1200, -2400]:
-    #     tclwa, tnstar = test_gaps(inputstr, gaps)
-    #     if tnstar < nstar:
-    #         clwa = tclwa
-    #     LOGGER.info("CLWA %s", clwa)
-
-    # return clwa
-
-    #inputstring = "\n".join(">"+i+"\n"+j for i, j in zip(names, seqs))
-    #return subprocess.Popen(ipyrad.bins.muscle, 
-    #                        stdin=subprocess.PIPE, 
-    #                        stdout=subprocess.PIPE)\
-    #                        .communicate(inputstring)[0]
 
 
 
