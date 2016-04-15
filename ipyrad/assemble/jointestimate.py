@@ -288,10 +288,6 @@ def run(data, samples, subsample, force, ipyclient):
             elif sample.stats.state < 3:
                 print("    skipping {}; ".format(sample.name)+\
                       "not clustered yet. Run step3() first.")
-            elif sample.stats.clusters_hidepth < 100:
-                print("    skipping {}. Too few high depth reads ({}). "\
-                      .format(sample.name, sample.stats.clusters_hidepth)+\
-                      "Use force=True to override")
             else:
                 submitted_args.append([data, sample, subsample])
         else:
@@ -306,8 +302,8 @@ def run(data, samples, subsample, force, ipyclient):
     if submitted_args:    
         ## submit jobs to parallel client
         submit(data, submitted_args, ipyclient)
-    else:
-        print("  no samples selected")
+    #else:
+    #    print("  no samples selected")
 
 
 

@@ -248,7 +248,7 @@ def chunker(data, raws, optim):
     tups = []
     for num, rawtuple in enumerate(list(raws)):
         ## pass w/o arg for optim split size
-        LOGGER.info("optim is is is %s", optim)
+        LOGGER.info("OPTIM RIGHT HERE %s", optim)
         tup = zcat_make_temps([data, rawtuple, num, tmpdir, optim])
         tups.append(tup)
         num += 1
@@ -376,6 +376,7 @@ def prechecks(data, ipyclient, preview):
     ncpus = len(ipyclient)
     if preview:
         optim = ((data._hackersonly["preview_step1"]) // ncpus) 
+
     else:
         ## count the len of one file and assume all others are similar len
         testfile = raws[0][0]
@@ -416,8 +417,6 @@ def prechecks(data, ipyclient, preview):
         ## num reads to split per tmp file. 
         optim = inputreads // (ncpus * 8)
         ## multiply by 4 to ensure fastq quartet sampling
-        optim *= 4
-
     LOGGER.info("precheck optim=%s", optim)
     return raws, longbar, cutters, optim
 
@@ -551,7 +550,9 @@ def make_stats(data, raws):
 
 
 def run(data, preview, ipyclient):
-    """ demultiplexes raw fastq files given a barcodes file"""
+    """ 
+    Demultiplexes raw fastq files given a barcodes file
+    """
 
     ## nested structure to prevent abandoned temp files
     try: 

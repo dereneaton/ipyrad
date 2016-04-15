@@ -49,33 +49,35 @@ def sample_cleanup(data, sample):
     infile = gzip.open(sample.files.clusters)
     duo = itertools.izip(*[iter(infile)]*2)
     depth = []
-    thisdepth = 0
     maxlen = 0
+    thisdepth = []
     while 1:
         try:
             itera = duo.next()
-            seqlen = len(itera[1])
-            itera = itera[0]
-            if seqlen > maxlen:
-                maxlen = seqlen
         except StopIteration:
             break
-        if itera != "//\n":
+        ## keep going until the end of cluster
+        if itera[0] != "//\n":
             try:
-                tdepth = int(itera.split(";")[-2][5:])
+                ## get longest seqlen 
+                seqlen = len(itera[1])            
+                ## get nreps in read
+                tdepth = int(itera[0].split(";")[-2][5:])
                 ## double depth for merged reads
-                if "_m1;s" in itera:
+                if "_m1;s" in itera[0]:
                     tdepth *= 2 
-                thisdepth += tdepth
-
+                thisdepth.append(tdepth)
             except IndexError:
-                ## TODO: if no clusts pass align filter this will raise
-                LOGGER.debug("Here %s, %s", sample.name, itera)
-                raise IPyradError("ERROR 63: bad cluster file: %s", sample.name)
+                ## if no clusts pass align filter this will raise
+                #LOGGER.info("No aligned clusters passed for %s", sample.name)
+                pass#raise IPyradError("No aligned clusters passed: {}".format(sample.name))
         else:
+            ## update maxlen
+            if seqlen > maxlen:
+                maxlen = seqlen
             ## append and reset
-            depth.append(thisdepth)
-            thisdepth = 0
+            depth.append(sum(thisdepth))
+            thisdepth = []
     infile.close()
 
     ## If our longest sequence is longer than the current max_fragment_length
@@ -94,7 +96,7 @@ def sample_cleanup(data, sample):
         sample.stats["state"] = 3
         sample.stats["clusters_total"] = len(depth)
         sample.stats["clusters_hidepth"] = \
-                                    max([len(i) for i in (keepmj, keepstat)])
+                                max([i.shape[0] for i in (keepmj, keepstat)])
         ## store large list of depths as a counter dict
         sample.depths = dict(Counter(depth))
 
@@ -185,7 +187,6 @@ def muscle_align(args):
                     if (intindels1 <= 5) and (intindels2 <= 5):
                         stack.append("\n".join([anames[i], 
                                         aseqs[i][0]+"nnnn"+aseqs[i][1]]))
-                        #somedic[anames[i]] = aseqs[i]]))
                     else:
                         LOGGER.info("""
                 high indels: %s
@@ -251,25 +252,22 @@ def muscle_align(args):
                         aseqs = [i[:rightlimit] for i in aseqs]
                         #LOGGER.info('rightlimit %s', rightlimit)                    
 
+                badalign = 0
                 for i in range(len(anames)):
                     ## filter for max internal indels 
                     intind = aseqs[i].rstrip('-').lstrip('-')
                     ind1 = intind.count('-') <= \
                                 data.paramsdict["max_Indels_locus"][0]
-                    ## could also filter by max indel inserts                                
-                    #ind2 = len([i.split("-") for i in intind if i]) < 3
                     if ind1:
                         stack.append("\n".join([anames[i], aseqs[i]]))
-                        #somedic[anames[i]] = aseqs[i]
                     else:
                         LOGGER.info("high indels: %s", aseqs[i])
+                        badalign = 1
 
-            ## save dict into a list ready for printing
-            #for key in somedic.keys():
-            #    stack.append(key+"\n"+somedic[key])
-
+        ## finally, add to outstack if alignment is good
         if stack:
-            out.append("\n".join(stack))
+            if not badalign:
+                out.append("\n".join(stack))
 
     ## write to file after
     infile.close()
@@ -307,11 +305,17 @@ def muscle_call(data, names, seqs):
 
     ## get input string
     inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
-    proc1 = subprocess.Popen([ipyrad.bins.muscle, 
-        "-quiet", "-gapopen", "-1200"], 
+    args = [ipyrad.bins.muscle, "-quiet"]
+
+    ## increase gap penalty if reference region is included
+    if "_REF;+0" in names:
+        args += ["-gapopen", "-1200"]
+
+    ## make a call arg
+    proc1 = subprocess.Popen(args,
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE)
-
+    ## return result
     return proc1.communicate(inputstr)[0]
 
 
@@ -375,14 +379,13 @@ def build_clusters(data, sample):
     ## map sequences to clust file in order
     seqslist = [] 
     for key, values in udic.iteritems():
-        ## this is the seed. Store the left most non indel base for the seed. 
-        ## Do not allow any other hits to go left of this (for pairddrad)
+        ## this is the seed. 
         seedhit = hits[key][1]
         seq = [key.strip()+"*\n"+seedhit]
 
         ## allow only N internal indels in hits to seed for within-sample clust
-        ## prior to alignment. This improves alignments. 
-        ## could be written a little more cleanly but this allows better debug.
+        ## prior to alignment. Exclude read that match poorly. This improves 
+        ## alignments. Whole stack will be excluded after alignment if poor. 
         for i in xrange(len(values)):
             inserts = int(values[i][3])
             if values[i][1] == "+":
@@ -390,15 +393,14 @@ def build_clusters(data, sample):
                 if inserts < 6:
                     seq.append(values[i][0].strip()+"+\n"+fwdseq)
                 else:
-                    fwdseq = hits[values[i][0]][1]                    
-                    LOGGER.debug("exc indbld: %s %s", inserts, fwdseq)
+                    LOGGER.info("exc indbld: %s %s", inserts, fwdseq)
             ## flip to the right orientation 
             else:
                 revseq = comp(hits[values[i][0]][1][::-1])
                 if inserts < 6:
                     seq.append(values[i][0].strip()+"-\n"+revseq)
                 else:
-                    LOGGER.debug("exc indbld: %s %s", inserts, revseq)
+                    LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
         seqslist.append("\n".join(seq))
     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
@@ -962,6 +964,7 @@ def clust_and_build(args):
         build_clusters(data, sample)
         ## record that it passed the clustfile build
         return 1
+
     except IPyradError as inst:
         print(inst)
         return 0
