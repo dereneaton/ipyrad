@@ -653,7 +653,7 @@ class Assembly(object):
         """
         if outfile is None:
             outfile = os.path.join(self.paramsdict["project_dir"],
-                                self.name+"-params.txt")
+                                "params-"+self.name+".txt")
 
         ## Test if params file already exists?
         ## If not forcing, test for file and bail out if it exists

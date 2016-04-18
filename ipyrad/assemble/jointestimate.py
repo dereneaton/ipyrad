@@ -165,6 +165,7 @@ def stackarray(data, sample):
         readlen = data._hackersonly["max_fragment_length"]
     dims = (int(sample.stats.clusters_hidepth), readlen, 4)
     stacked = np.zeros(dims, dtype=np.uint32)
+    LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
 
     ## don't use sequence edges / restriction overhangs
     cutlens = [None, None]
@@ -185,6 +186,7 @@ def stackarray(data, sample):
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
             raise IPyradError("clustfile formatting error in %s", chunk)
+
         if chunk:
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
@@ -212,8 +214,13 @@ def stackarray(data, sample):
                 catg = np.array(\
                     [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
                     dtype=np.uint32).T
-                stacked[nclust, :catg.shape[0], :] = catg
-                nclust += 1
+                
+                try:
+                    stacked[nclust, :catg.shape[0], :] = catg
+                    nclust += 1
+                except IndexError:
+                    LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
+
     return stacked
 
 
@@ -357,16 +364,17 @@ def submit(data, submitted_args, ipyclient):
             print("")
         ## clean up jobs
         for sname in jobs:
-            ## grab metadata
-            meta = jobs[sname].metadata            
 
             ## do this if success
-            if meta.completed:
+            if jobs[sname].successful():
                 ## get the results
                 hest, eest = jobs[sname].get()
                 cleanup(data, data.samples[sname], hest, eest)
 
-            ## if not done do nothing, if failure print error
+            else:
+                ## grab metadata                
+                meta = jobs[sname].metadata
+                ## if not done do nothing, if failure print error
                 LOGGER.error('  sample %s did not finish', sname)
                 if meta.error:
                     LOGGER.error("""\

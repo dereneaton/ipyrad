@@ -892,17 +892,23 @@ def reconcat(args):
     with gzip.open(sample.files.clusters, 'wb') as out:
         for fname in chunks:
             with open(fname) as infile:
-                out.write(infile.read()+"//\n//\n")
+                dat = infile.read()
+                ## avoids mess if last chunk was empty
+                if dat.endswith("\n"):
+                    out.write(dat+"//\n//\n")
+                else:
+                    out.write(dat+"\n//\n//\n")
             os.remove(fname)
 
 
 
-def alignment_cleanup(tmpnames):
+def alignment_cleanup(data, tmpnames):
     ## still delete tmpfiles if job was interrupted
     for fname in tmpnames:
         if os.path.exists(fname):
             os.remove(fname)
 
+    tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
     if os.path.exists(tmpdir):
         try:
             shutil.rmtree(tmpdir)
