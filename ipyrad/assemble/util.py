@@ -129,6 +129,7 @@ class OrdObjDict(object):
         return self._od.items()
 
 
+CDICT = {i:j for i, j in zip("CATG", "0123")}
 
 
 ## used for geno output 
@@ -378,6 +379,8 @@ def unhetero(amb):
     " returns bases from ambiguity code"
     amb = amb.upper()
     return AMBIGS.get(amb)
+
+
 
 
 ## Alleles priority dict. The key:vals are the same as the AMBIGS dict 
@@ -646,60 +649,50 @@ def get_threaded_view(ipyclient, split=True):
 
 
 
+#############################################################
+## code from below to read streaming stdout from subprocess
+## http://eyalarubas.com/python-subproc-nonblock.html
+#############################################################
+from threading import Thread
+from Queue import Queue, Empty
 
-#### Worker class to hold threaded or non-threaded views
-class Worker():
-    """ independent threaded CPUs"""
-    def __init__(self, name, ipyclient, targets, func, data):
-        ## Engine views
-        self.client = ipyclient
-        self.lview = self.client.load_balanced_view(targets=targets)
-        self.dview = self.client.direct_view(targets=targets)
-        self.ids = targets
-        self.name = name
-        
-        ## how long to wait between checking for available proc
-        self.delay = 0.5
-        
-        ## store the data and func
-        self.data = data
-        self.func = func
-        
-        ## is job finished
-        self.result = {}
-        
-        ## finished results
-        self.running = 0
-        self.finished = 0
-        
-    
-    def synchronize(self):
-        """ checks whether it's finished """
+class NonBlockingStreamReader:
+
+    def __init__(self, stream):
+        '''
+        stream: the stream to read from.
+                Usually a process' stdout or stderr.
+        '''
+
+        self._s = stream
+        self._q = Queue()
+
+        def _populateQueue(stream, queue):
+            '''
+            Collect lines from 'stream' and put them in 'quque'.
+            '''
+
+            while True:
+                line = stream.readline()
+                if line:
+                    queue.put(line)
+                else:
+                    raise UnexpectedEndOfStream
+
+        self._t = Thread(target = _populateQueue,
+                args = (self._s, self._q))
+        self._t.daemon = True
+        self._t.start() #start collecting lines from the stream
+
+    def readline(self, timeout = None):
         try:
-            self.result[self.name] = self.running.get(0)
-        except ipp.error.TimeoutError:
-            pass
-        except Exception as e:
-            self.finished = 1
-            #print(data, ': fail', e.traceback)
-            self.result[self.name] = e
-        else:
-            self.finished = 1
-            self.running = None
-            
+            return self._q.get(block = timeout is not None,
+                    timeout = timeout)
+        except Empty:
+            return None
 
-    def job(self, data, func):
-        """ while job is running store async result in running."""
-        self.running = self.lview.apply_async(func, data)
-        
-                
-    def run(self):
-        ## starts self.running
-        self.job(self.data, self.func)
-        while self.running:
-            print(self.name, 'pending...')
-            ## check for jobs finished, stops self.running
-            self.synchronize()
-            time.sleep(self.delay)
+class UnexpectedEndOfStream(Exception): pass
+
+
 
 

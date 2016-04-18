@@ -19,10 +19,12 @@ import pandas as pd
 import numpy as np
 import itertools
 import shutil
+import time
 import h5py
 import os
 from collections import Counter, OrderedDict
-from ipyrad.file_conversion import *
+#from ipyrad.file_conversion import *
+from ipyrad import __version__
 from util import *
 
 import logging
@@ -33,7 +35,7 @@ LOGGER = logging.getLogger(__name__)
 ## referenced by assembly.py and also paramsinfo. Easier to have it
 ## centralized. LOCI and VCF are default. Some others are created as 
 ## dependencies of others.
-OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps',
+OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
                   'str', 'geno', 'treemix', 'migrate', 'gphocs']
 
 
@@ -53,20 +55,35 @@ def run(data, samples, force, ipyclient):
     filter_all_clusters(data, samples, ipyclient)
 
     ## Everything needed is in the now filled h5 database. Filters were applied
-    ## with 'samples' taken into account
+    ## with 'samples' taken into account. Now we create the loci file (default)
+    ## output and get some data back for building the stats file
+    ## 'keep' has the non-filtered loci idxs. 
     LOGGER.info("Writing .loci file")
     samplecounts, locuscounts, keep = make_loci(data, samples)
 
+    ## Write stats file output
     LOGGER.info("Writing stats output")
     make_stats(data, samples, samplecounts, locuscounts)
 
-    ## 'keep' has the non-filtered loci idx
-    LOGGER.info("Writing .vcf file")
-    #make_vcf(data)
+    ## OPTIONAL OUTPUTS
+    ## select the output formats. Should we allow some kind of fuzzy matching?
+    output_formats = data.paramsdict["output_formats"]
+    if "*" in output_formats:
+        output_formats = OUTPUT_FORMATS
 
+    ## Three types of vcf:
+    ##   + TODO: Full data included filtered loci with filter flags
+    ##   + TODO: Full data - filtered loci
+    ##   + Just SNPs
+    if 'vcf' in output_formats:
+        LOGGER.info("Writing .vcf file")        
+        make_vcf(data, samples, keep)
+
+    ## make other array-based formats
     LOGGER.info("Writing other formats")
-    make_outfiles(data, samples, keep)
+    make_outfiles(data, samples, keep, output_formats)
 
+    ## print friendly message
     shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
     print("    Outfiles written to: {}".format(shortpath))
 
@@ -196,6 +213,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ## close it
     outstats.close()
+    inh5.close()
 
 
 
@@ -371,7 +389,6 @@ def make_loci(data, samples):
     ## get sidx of samples
     anames = inh5["seqs"].attrs["samples"]
     ## get name and snp padding
-    #longname_len = max(len(i) for i in anames)
     pnames, snppad = padnames(anames)
     snames = [i.name for i in samples]
     smask = np.array([i not in snames for i in anames])
@@ -410,31 +427,6 @@ def make_loci(data, samples):
                 outstr, samplecov, locuscov = enter_singles(*args)
                 store.append(outstr)
 
-            # ## grab all seqs between edges
-            # seq = aseqs[iloc, :, edg[0]:edg[1]]
-            # ## snps was created using only the selected samples.
-            # snp = asnps[iloc, edg[0]:edg[1], ]
-            # ## remove rows with all Ns, seq has only selected samples
-            # nalln = np.all(seq == "N", axis=1)
-            # ## make mask of removed rows and excluded samples. Use the inverse
-            # ## of this to save the coverage for samples
-            # nsidx = nalln + smask
-            # samplecov += np.invert(nsidx).astype(int)
-            # locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
-            # ## select the remaining names in order
-            # seq = seq[~nsidx, ]
-            # names = pnames[~nsidx]
-
-            # ## save string for printing, excluding names not in samples
-            # store.append("\n".join(\
-            #     [name + s.tostring() for name, s in zip(names, seq)]))
-
-            # ## get snp string and add to store
-            # snpstring = ["-" if snp[i, 0] else \
-            #              "*" if snp[i, 1] else \
-            #              " " for i in range(len(snp))]
-            # store.append(snppad + "".join(snpstring))
-
         ## write to file and clear store
         locifile.write("\n".join(store) + "\n")
         store = []
@@ -444,6 +436,7 @@ def make_loci(data, samples):
 
     ## close handle
     locifile.close()
+    inh5.close()
 
     ## return sample counter
     return samplecov, locuscov, keep
@@ -719,7 +712,7 @@ def get_edges(data, superseqs, splits):
 
 def filter_minsamp(data, superseqs):
     """ Filter minimum # of samples per locus from superseqs[chunk]. The shape
-    of superseqs is [chunk, len(sidx), maxlen]
+    of superseqs is [chunk, sum(sidx), maxlen]
     """
     ## the minimum filter
     minsamp = data.paramsdict["min_samples_locus"]
@@ -735,11 +728,12 @@ def filter_minsamp(data, superseqs):
 
 
 
-def fakeref(sitecol):
+def fakeref(sitecol, idx=0):
     """
     Used to find the most frequent base at each column for making a 
     stand-in reference sequence for denovo loci that have no reference. 
     Simply a way for representing the results in geno and VCF outputs.
+    If alt arg, returns all others alleles that are non-REF. 
     """
     ## a list for only catgs
     catg = [i for i in sitecol if i in "CATG"]
@@ -753,7 +747,24 @@ def fakeref(sitecol):
             catg += list(AMBIGS[ambig[0]])
 
     ## return the most common element, if tied, it doesn't matter who wins
-    return max(set(catg), key=catg.count)
+    setg = set(catg)
+    base = max(setg or ["."], key=catg.count)
+    if not idx:
+        return base
+    else:
+        setg.discard(base)
+        base = max(setg or ["."], key=catg.count)
+        if idx == 1:
+            return base
+        else:
+            setg.discard(base)
+            base = max(setg or [""], key=catg.count)
+            if idx == 2:
+                return base
+            else:
+                setg.discard(base)
+                base = max(setg or [""], key=catg.count)
+                return base
 
 
 
@@ -784,38 +795,6 @@ def ucount(sitecol):
             return "*"
         else:
             return "-"
-
-    # ## make into set
-    # #site = set(sitecol)
-    # catg = sitecol
-
-    # ## get resolutions of ambiguitites
-    # for iupac in "RSKYWM":
-    #     if iupac in sitecol:
-    #         ## remove from set
-    #         site.discard(iupac)
-    #         ## get resolved bases tuple
-    #         tup = AMBIGS[iupac]
-    #         ## add to observed bases
-    #         site.update(tup)
-    #         ## add to list for counts
-    #         catg + 
-
-    # ## remove - and N
-    # site.discard("N")
-    # site.discard("-")
-
-    # ## if site is invariant return ""
-    # if len(site) < 2:
-    #     return " "
-    # else:
-    #     ## get how many bases come up more than once 
-    #     ccx = np.sum(np.array([np.sum(sitecol == base) for base in site]) > 1)
-    #     ## if another site came up more than once return *
-    #     if ccx > 1:
-    #         return "*"
-    #     else:
-    #         return "-"
 
 
 
@@ -860,7 +839,7 @@ def filter_maxsnp(data, superseqs, edges):
 def filter_maxhet(data, superseqs, edges):
     """ 
     Filter max shared heterozygosity per locus. The dimensions of superseqs
-    are (chunk, len(sidx), maxlen). Don't need split info since it applies to 
+    are (chunk, sum(sidx), maxlen). Don't need split info since it applies to 
     entire loci based on site patterns (i.e., location along the seq doesn't 
     matter.) Current implementation does ints, but does not apply float diff
     to every loc based on coverage... 
@@ -889,55 +868,16 @@ def filter_maxhet(data, superseqs, edges):
 
 
 
-def make_outfiles(data, samples, keep):
-    """ Get desired formats from paramsdict and write files to outfiles 
-    directory 
+def make_outfiles(data, samples, keep, output_formats):
     """
-    ## Read in the input .loci file that gets transformed into other formats
-    ## locifile = os.path.join(data.dirs.outfiles, data.name+".loci")
-    #samples = [i.name for i in samples]
-
-    ## select the output formats. Should we allow some kind of fuzzy matching?
-    output_formats = data.paramsdict["output_formats"]
-    if "*" in output_formats:
-        output_formats = OUTPUT_FORMATS
-
-    ## build arrays and outputs from arrays
-    make_phynex(data, samples, keep, output_formats)
-
-
-    # ## run each func
-    # for filetype in output_formats:
-    #     LOGGER.info("Doing - {}".format(filetype))
-
-    #     # phy & nex come from loci2phynex
-    #     if filetype in ["phy", "nex"]:
-    #         filetype = "phynex"
-
-    #     # All these file types come from loci2SNP
-    #     elif filetype in ["snps", "usnps", "str", "geno"]:
-    #         filetype = "SNP"
-
-        ## Everything else has its own loci2*.py conversion file.
-        ## Get the correct module for this filetype
-        ## globals() here gets the module name, and then we can call
-        ## the .make() function. This is a little tricky.
-        #format_module = globals()["loci2"+filetype]
-
-        ## do the call to make the new file format
-        #format_module.make(data, samples)
-
-
-
-def make_phynex(data, samples, keep, output_formats):
-    """ 
-    Makes phylip and nexus formats. Also pulls out SNPs...? 
+    Get desired formats from paramsdict and write files to outfiles 
+    directory.
     """
 
     ## load the h5 database
     inh5 = h5py.File(data.database, 'r')
 
-    ## iterate 1000 loci at a time
+    ## will iterate optim loci at a time
     optim = inh5["seqs"].attrs["chunksize"]
     nloci = inh5["seqs"].shape[0]
 
@@ -950,25 +890,72 @@ def make_phynex(data, samples, keep, output_formats):
     ## get names index
     sidx = np.invert([i not in snames for i in anames])
 
-    ## make empty array for filling
+    ## build arrays and outputs from arrays
+    arrs = make_arrays(data, sidx, optim, nloci, keep, inh5)
+    seqarr, snparr, bisarr, _ = arrs
+
+    ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
+    if "phy" in output_formats:
+        write_phy(data, seqarr, sidx, pnames)
+
+    ## other outputs
+    ## nexus format includes ... additional information ({}.nex)
+    if 'nexus' in output_formats:
+        write_nex(data, seqarr, sidx, pnames)
+
+    ## snps is actually all snps written in phylip format ({}.snps.phy)
+    if 'snps' in output_formats:
+        write_snps(data, snparr, sidx, pnames)
+
+    ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
+    if 'usnps' in output_formats:
+        write_usnps(data, bisarr, sidx, pnames)
+
+    ## str and ustr are for structure analyses. A fairly outdated format, six
+    ## columns of empty space. Full and subsample included ({}.str, {}.u.str)
+    if 'str' in output_formats:
+        write_str(data, snparr, bisarr, sidx, pnames)
+
+    ## geno output is for admixture and other software. We include all SNPs, 
+    ## but also a .map file which has "distances" between SNPs.
+    ## ({}.geno, {}.map)
+    if 'geno' in output_formats:
+        write_geno(data, snparr, bisarr, sidx, pnames)
+
+    ## close h5 handle
+    inh5.close()
+
+
+
+
+def make_arrays(data, sidx, optim, nloci, keep, inh5):
+    """ 
+    Writes loci and VCF formats and builds and returns arrays for contructing
+    all other output types if specified. 
+    """
+
+    ## make empty arrays for filling
     maxlen = data._hackersonly["max_fragment_length"]
     maxsnp = inh5["snps"][:].sum()
 
-    seqarr = np.zeros((len(samples), maxlen*nloci), dtype="S1")
-    snparr = np.zeros((len(samples), maxsnp), dtype="S1")
-    bisarr = np.zeros((len(samples), nloci), dtype="S1")        
+    ## shape of arrays is sidx, we will subsample h5 w/ sidx to match
+    seqarr = np.zeros((sum(sidx), maxlen*nloci), dtype="S1")
+    snparr = np.zeros((sum(sidx), maxsnp), dtype="S1")
+    bisarr = np.zeros((sum(sidx), nloci), dtype="S1")        
 
     ## apply all filters and write loci data
     start = 0
     seqleft = 0
     snpleft = 0
-    LOGGER.info("starting to build phy")
+
+    #LOGGER.info("starting to build phy")
     while start < nloci:
         hslice = [start, start+optim]
         afilt = inh5["filters"][hslice[0]:hslice[1], ]
         aedge = inh5["edges"][hslice[0]:hslice[1], ]
         aseqs = inh5["seqs"][hslice[0]:hslice[1], sidx, ]
         asnps = inh5["snps"][hslice[0]:hslice[1], ]
+        #acatg = inh5["catgs"][hslice[0]:hslice[1], sidx, ]
 
         ## which loci passed all filters
         keep = np.where(np.sum(afilt, axis=1) == 0)[0]
@@ -978,7 +965,10 @@ def make_phynex(data, samples, keep, output_formats):
             edg = aedge[iloc]
             ## grab all seqs between edges
             seq = aseqs[iloc, :, edg[0]:edg[1]]
-            ## grab SNPs
+
+            ## grab SNPs from seqs which is sidx subsampled
+            ## and built after filters are applied, so subsampling
+            ## does not get SNPs wrong.
             getsnps = asnps[iloc].sum(axis=1).astype(np.bool)
             snps = aseqs[iloc, :, getsnps].T
 
@@ -1000,11 +990,11 @@ def make_phynex(data, samples, keep, output_formats):
             if snps.shape[1]:
                 samp = np.random.randint(snps.shape[1])
                 bisarr[:, iloc] = snps[:, samp]
-    
+
         ## increase the counter
         start += optim
 
-    LOGGER.info("done building phy... ")
+    #LOGGER.info("done building phy... ")
     ## trim trailing edges
     ridx = np.all(seqarr == "", axis=0)    
     seqarr = seqarr[:, ~ridx]
@@ -1012,8 +1002,17 @@ def make_phynex(data, samples, keep, output_formats):
     snparr = snparr[:, ~ridx]
     ridx = np.all(bisarr == "", axis=0)
     bisarr = bisarr[:, ~ridx]
-    LOGGER.info("done trimming phy... ")
+    #LOGGER.info("done trimming phy... ")
 
+    ## return these three arrays which are pretty small
+    ## catg array gets to be pretty huge, so we return only 
+    ## the partition info TODO:
+    partitions = 0
+    return seqarr, snparr, bisarr, partitions
+
+
+
+def write_phy(data, seqarr, sidx, pnames):
     ## write the phylip string
     data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
     with open(data.outfiles.phy, 'w') as out:
@@ -1024,7 +1023,22 @@ def make_phynex(data, samples, keep, output_formats):
         for idx, name in zip(sidx, pnames):
             out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
+## TODO:
+def write_nex(data, seqarr, sidx, pnames):
+    """ not implemented yet """
+    return 0
+    ## write the phylip string
+    data.outfiles.nex = os.path.join(data.dirs.outfiles, data.name+".nex")
+    with open(data.outfiles.nex, 'w') as out:
+        ## trim down to size
+        #ridx = np.all(seqarr == "", axis=0)
+        out.write("{} {}\n".format(seqarr.shape[0], seqarr.shape[1]))
+                                   #seqarr[:, ~ridx].shape[1]))
+        for idx, name in zip(sidx, pnames):
+            out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
+
+def write_snps(data, snparr, sidx, pnames):
     ## write the snp string
     data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps.phy")    
     with open(data.outfiles.snps, 'w') as out:
@@ -1034,6 +1048,8 @@ def make_phynex(data, samples, keep, output_formats):
         for idx, name in zip(sidx, pnames):
             out.write("{}{}\n".format(name, "".join(snparr[idx])))
 
+
+def write_usnps(data, bisarr, sidx, pnames):
     ## write the bisnp string
     data.outfiles.usnps = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
     with open(data.outfiles.usnps, 'w') as out:
@@ -1042,90 +1058,221 @@ def make_phynex(data, samples, keep, output_formats):
         for idx, name in zip(sidx, pnames):
             out.write("{}{}\n".format(name, "".join(bisarr[idx])))
 
+
+def write_str(data, snparr, bisarr, sidx, pnames):
     ## Write STRUCTURE format
-    if "str" in output_formats:
-        data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
-        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".u.str")        
-        out1 = open(data.outfiles.str, 'w')
-        out2 = open(data.outfiles.ustr, 'w')
-        numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
-        if data.paramsdict["max_alleles_consens"] > 1:
-            for idx, name in zip(sidx, pnames):
-                out1.write("{}\t\t\t\t\t{}\n"\
-                    .format(name,
-                    "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
-                out1.write("{}\t\t\t\t\t{}\n"\
-                    .format(name,
-                    "\t".join([numdict[DUCT[i][1]] for i in snparr[idx]])))
-                out2.write("{}\t\t\t\t\t{}\n"\
-                    .format(name,
-                    "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
-                out2.write("{}\t\t\t\t\t{}\n"\
-                    .format(name,
-                    "\t".join([numdict[DUCT[i][1]] for i in bisarr[idx]])))
-        else:
-            ## haploid output
-            for idx, name in zip(sidx, pnames):
-                out1.write("{}\t\t\t\t\t{}\n"\
-                    .format(name,
-                    "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
-                out2.write("{}\t\t\t\t\t{}\n"\
-                    .format(name,
-                    "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
-        out1.close()
-        out2.close()
+    data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
+    data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".u.str")        
+    out1 = open(data.outfiles.str, 'w')
+    out2 = open(data.outfiles.ustr, 'w')
+    numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
+    if data.paramsdict["max_alleles_consens"] > 1:
+        for idx, name in zip(sidx, pnames):
+            out1.write("{}\t\t\t\t\t{}\n"\
+                .format(name,
+                "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
+            out1.write("{}\t\t\t\t\t{}\n"\
+                .format(name,
+                "\t".join([numdict[DUCT[i][1]] for i in snparr[idx]])))
+            out2.write("{}\t\t\t\t\t{}\n"\
+                .format(name,
+                "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
+            out2.write("{}\t\t\t\t\t{}\n"\
+                .format(name,
+                "\t".join([numdict[DUCT[i][1]] for i in bisarr[idx]])))
+    else:
+        ## haploid output
+        for idx, name in zip(sidx, pnames):
+            out1.write("{}\t\t\t\t\t{}\n"\
+                .format(name,
+                "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
+            out2.write("{}\t\t\t\t\t{}\n"\
+                .format(name,
+                "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
+    out1.close()
+    out2.close()
 
 
+
+def write_geno(data, snparr, bisarr, sidx, inh5):
     ## Write GENO format
-    if "geno" in output_formats:
-        data.outfiles.geno = os.path.join(data.dirs.outfiles, 
-                                          data.name+".geno")
-        data.outfiles.ugeno = os.path.join(data.dirs.outfiles, 
-                                          data.name+".u.geno")
-        ## get most common base at each SNP as a pseudo-reference 
-        ## and record 0,1,2 or missing=9 for counts of the ref allele
-        snpref = np.apply_along_axis(fakeref, 0, snparr)
-        bisref = np.apply_along_axis(fakeref, 0, bisarr)
+    data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
+                                      
+    data.outfiles.ugeno = os.path.join(data.dirs.outfiles, data.name+".u.geno")
+    ## get most common base at each SNP as a pseudo-reference 
+    ## and record 0,1,2 or missing=9 for counts of the ref allele
+    snpref = np.apply_along_axis(fakeref, 0, snparr)
+    bisref = np.apply_along_axis(fakeref, 0, bisarr)
 
-        ## geno is printed as a matrix where columns are individuals
-        ## I order them by same order as in .loci, which is alphanumeric
-        snpgeno = np.zeros(snparr.shape, dtype=np.uint8)
-        ## put in missing
-        snpgeno[snparr == "N"] = 9
-        snpgeno[snparr == "-"] = 9
-        ## put in complete hits
-        snpgeno[snparr == snpref] = 2
-        ## put in hetero hits where resolve base matches ref
-        for reso in range(2):
-            hets = vecviewgeno(snparr, reso)
-            snpgeno[hets == snpref] = 1
+    ## geno is printed as a matrix where columns are individuals
+    ## I order them by same order as in .loci, which is alphanumeric
+    snpgeno = np.zeros(snparr.shape, dtype=np.uint8)
+    ## put in missing
+    snpgeno[snparr == "N"] = 9
+    snpgeno[snparr == "-"] = 9
+    ## put in complete hits
+    snpgeno[snparr == snpref] = 2
+    ## put in hetero hits where resolve base matches ref
+    for reso in range(2):
+        hets = vecviewgeno(snparr, reso)
+        snpgeno[hets == snpref] = 1
 
-        ## geno is printed as a matrix where columns are individuals
-        ## I order them by same order as in .loci, which is alphanumeric
-        bisgeno = np.zeros(bisarr.shape, dtype=np.uint8)
-        ## put in missing
-        bisgeno[bisarr == "N"] = 9
-        bisgeno[bisarr == "-"] = 9
-        ## put in complete hits
-        bisgeno[bisarr == bisref] = 2
-        ## put in hetero hits where resolve base matches ref
-        for reso in range(2):
-            hets = vecviewgeno(bisarr, reso)
-            bisgeno[hets == bisref] = 1
+    ## geno is printed as a matrix where columns are individuals
+    ## I order them by same order as in .loci, which is alphanumeric
+    bisgeno = np.zeros(bisarr.shape, dtype=np.uint8)
+    ## put in missing
+    bisgeno[bisarr == "N"] = 9
+    bisgeno[bisarr == "-"] = 9
+    ## put in complete hits
+    bisgeno[bisarr == bisref] = 2
+    ## put in hetero hits where resolve base matches ref
+    for reso in range(2):
+        hets = vecviewgeno(bisarr, reso)
+        bisgeno[hets == bisref] = 1
 
-        ## print to files
-        np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
-        np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
+    ## print to files
+    np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
+    np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
 
-        ## write a map file for use in admixture with locations of SNPs
-        ## for denovo data we just fake it and evenly space the unlinked SNPs
-        # 1  rs123456  0  1234555
-        # 1  rs234567  0  1237793
-        # 1  rs224534  0  -1237697        <-- exclude this SNP
-        # 1  rs233556  0  1337456        
+    ## write a map file for use in admixture with locations of SNPs
+    ## for denovo data we just fake it and evenly space the unlinked SNPs
+    # 1  rs123456  0  1234555
+    # 1  rs234567  0  1237793
+    # 1  rs224534  0  -1237697        <-- exclude this SNP
+    # 1  rs233556  0  1337456        
 
 
-    LOGGER.info("done writing outputs... ")
+
+def make_vcf(data, samples, inh5):
+    """ 
+    Write the SNPs-only VCF output 
+    """
+
+    ## load the h5 database
+    inh5 = h5py.File(data.database, 'r')
+
+    ## create outputs
+    #data.outfiles.vcf = os.path.join(data.dirs.outfiles, 
+    #                                    data.name+".snps.vcf")
+    data.outfiles.vcf = os.path.join(data.dirs.outfiles, 
+                                        data.name+".vcf")
+
+    ## will iterate optim loci at a time
+    maxlen = data._hackersonly["max_fragment_length"]
+    optim = inh5["seqs"].attrs["chunksize"]
+    nloci = inh5["seqs"].shape[0]
+
+    ## get name and snp padding
+    anames = inh5["seqs"].attrs["samples"]
+    snames = [i.name for i in samples]
+    names = [i for i in anames if i in snames]
+
+    ## write headers
+    vout = open(data.outfiles.vcf, 'w')
+    vcfheader(data, names, vout)
+
+    ## get names index
+    sidx = np.invert([i not in snames for i in anames])
+
+    ## apply all filters and write loci data
+    start = 0
+    seqleft = 0
+    snpleft = 0
+
+    ## empty array to be filled before writing 
+    ## will not actually be optim*maxlen, extra needs to be trimmed
+    gstr = np.zeros((optim*maxlen, 9+sum(sidx)), dtype="S20")
+
+    #LOGGER.info("starting to build phy")
+    while start < nloci:
+        hslice = [start, start+optim]
+        afilt = inh5["filters"][hslice[0]:hslice[1], ]
+        aedge = inh5["edges"][hslice[0]:hslice[1], ]
+        aseqs = inh5["seqs"][hslice[0]:hslice[1], sidx, ]
+        acatg = inh5["catgs"][hslice[0]:hslice[1], sidx, ]
+
+        ## which loci passed all filters
+        keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+
+        ## write loci that passed after trimming edges, then write snp string
+        for iloc in keep:
+            edg = aedge[iloc]
+            ## grab all seqs between edges
+            seq = aseqs[iloc, :, edg[0]:edg[1]]
+            catg = acatg[iloc, :, edg[0]:edg[1]]
+
+            ## ----  build string array ---- 
+            ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
+            gstr[seqleft:seqleft+seq.shape[1], 0] = "RAD_{}_".format(iloc)
+            ## fill (POS) position
+            gstr[seqleft:seqleft+seq.shape[1], 1] = range(seq.shape[1])
+            ## fill (ID) what is this? missing value is .
+            gstr[seqleft:seqleft+seq.shape[1], 2] = "."
+            ## fill (REF) must be ACGTN, TODO: indels gets complicated
+            ## get reference seq and put it in 
+            seqref = np.apply_along_axis(fakeref, 0, seq)
+            gstr[seqleft:seqleft+seq.shape[1], 3] = seqref
+            ## get alt alleles and put them in 
+            coma1 = np.zeros(seqref.shape, dtype="S1")
+            coma2 = np.zeros(seqref.shape, dtype="S1")
+            seqa = np.apply_along_axis(fakeref, 0, seq, *[1])
+            seqb = np.char.array(np.apply_along_axis(fakeref, 0, seq, *[2]))
+            seqc = np.char.array(np.apply_along_axis(fakeref, 0, seq, *[3]))
+            coma1[seqb != ""] = ","
+            coma2[seqc != ""] = ","
+
+            seqr = np.char.array(seqa) + np.char.array(coma1) + \
+                   np.char.array(seqb) + np.char.array(coma2) + \
+                   np.char.array(seqc)
+            ## fill ALT allele
+            gstr[seqleft:seqleft+seq.shape[1], 4] = seqr
+
+            ## put in [for now default min] QUAL score
+            gstr[seqleft:seqleft+seq.shape[1], 5] = 13
+
+            ## print filter (none for now)
+            gstr[seqleft:seqleft+seq.shape[1], 6] = "PASS"
+
+            ## print info (just NS and DP)
+            info = np.array(seqref.shape, dtype="S20")
+            _ns = np.sum(catg.sum(axis=1).sum(axis=1) != 0)
+            for i in xrange(info.shape[0]):
+                info[i] = "NS={};DP={}".format(_ns, str(catg[:, i].sum()))
+            gstr[seqleft:seqleft+seq.shape[1], 7] = info
+
+            ## print format
+            gstr[seqleft:seqleft+seq.shape[1], 8] = "GT:CATG"
+
+            ## ----  build counts array ----
+            cnts = np.zeros((catg.shape[1], catg.shape[0]), dtype="S20")
+            carr = catg.astype("S20")
+
+            for site in xrange(cnts.shape[0]):
+                obs = seqref[site]+seqr[site].replace(".", "").replace(",", "")
+                ords = {i:j for (i, j) in zip(obs+"N-", '0123..')}
+                for taxon in range(cnts.shape[1]):
+                    base1, base2 = DUCT[seq[taxon][site]]
+                    cnts[site][taxon] = "{}/{}:{}".format(\
+                    ords[base1],
+                    ords[base2],
+                    ",".join(carr[taxon][site].tolist())
+                    )
+            gstr[seqleft:seqleft+seq.shape[1], 9:] = cnts
+
+
+            ## advance counter
+            seqleft += seq.shape[1]
+
+        #pd.DataFrame(gstr)to_string(buf=vout)
+        np.savetxt(vout, gstr, delimiter="\t", fmt="%s")
+        ## write locus chunk to file and clear
+        ## ...
+
+        ## 
+        start += optim
+
+    vout.close()        
+    inh5.close()
 
 
 
@@ -1207,8 +1354,39 @@ def count_snps(seqs):
 
 
 
-def make_vcfheader(data, samples, outvcf):
-    LOGGER.debug("Entering make_vcfheader()")
+def vcfheader(data, names, ofile):
+    """ 
+    Prints header for vcf files
+    """
+    ## choose reference string
+    if data.paramsdict["reference_sequence"]:
+        reference = data.paramsdict["reference_sequence"]
+    else:
+        reference = "pseudo-reference (most common base at site)"
+
+
+    ##FILTER=<ID=minCov,Description="Data shared across <{mincov} samples">
+    ##FILTER=<ID=maxSH,Description="Heterozygosous site shared across >{maxsh} samples">
+    header = """\
+##fileformat=VCFv4.0
+##fileDate={date}
+##source=ipyrad_v.{version}
+##reference={reference}
+##phasing=unphased
+##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=CATG,Number=1,Type=String,Description="Base Counts (CATG)">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{names}
+""".format(date=time.strftime("%Y/%m/%d"),
+           version=__version__, 
+           reference=os.path.basename(reference),
+           mincov=data.paramsdict["min_samples_locus"],
+           maxsh=data.paramsdict["max_shared_Hs_locus"],
+           names="\t".join(names))
+    ## WRITE
+    ofile.write(header)
+
 
 
 

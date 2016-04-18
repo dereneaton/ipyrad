@@ -16,13 +16,14 @@ import h5py
 import time
 import random
 import shutil
+import datetime
 import itertools
 import subprocess
 import numpy as np
 import pandas as pd
 import ipyrad as ip
 from ipyparallel.error import TimeoutError
-from ipyrad.assemble.util import clustdealer, IPyradError, fullcomp, splitalleles
+from ipyrad.assemble.util import *
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 
@@ -104,7 +105,7 @@ def muscle_align_across(args):
     ## write to file after
     infile.close()
     with open(chunk, 'wb') as outfile:
-        outfile.write("\n//\n//\n".join(out)+"\n")#//\n//\n")
+        outfile.write("\n//\n//\n".join(out)+"\n")
 
     return chunk, indels, loc+1
 
@@ -112,8 +113,7 @@ def muscle_align_across(args):
 
 def multi_muscle_align(data, samples, clustbits, ipyclient):
     """ 
-    Splits the muscle alignment across nprocessors. Each runs on clustbit 
-    clusters at a time. 
+    Sends the cluster bits to nprocessors for muscle alignment. 
     """
 
     ## get client
@@ -124,111 +124,129 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     submitted_args = []
     for fname in clustbits:
         submitted_args.append([data, samples, fname])
-    njobs = len(submitted_args)
-    jobs = iter(submitted_args)
 
+    ## submit queued jobs
+    jobs = {}
+    for idx, job in enumerate(submitted_args):
+        jobs[idx] = lbview.apply(muscle_align_across, job)
 
-    ## wrap in try to make sure tmp-aligns/ is deleted
+    ## set wait job until all finished. 
+    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1)
+
+    ## wait on results inside try statement. If interrupted we ensure clean up
+    ## and save of finished results
     try:
+        allwait = len(jobs)
+        while 1:
+            if not res.ready():
+                fwait = sum([jobs[i].ready() for i in jobs])
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(allwait, fwait, 
+                            " aligning clusters 2/3  | {}".format(elapsed))
+                ## got to next print row when done
+                sys.stdout.flush()
+                time.sleep(1)
+            else:
+                ## print final statement
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(20, 20, " aligning clusters 2/3  | {}".format(elapsed))
+                break
 
-        ## submit initial nproc jobs
-        res = {}
-        for i in range(min(njobs, len(ipyclient))):
-            res[i] = lbview.apply(muscle_align_across, jobs.next())
-
-        ## iterate over remaining jobs
-        indeltups = []
-        keys = res.keys()
-        finished = 0
-        while res.keys():
-            time.sleep(1)
-            for key in keys:
-                try:
-                    ## query for finished results
-                    indeltup = res[key].get(0)
-                    indeltups.append(indeltup)
-                    ## clear it
-                    del res[key]
-                    ## print progress bar                    
-                    finished += 1
-                    progress = 100*(finished / njobs)
-                    hashes = '#'*int(progress/5)
-                    nohash = ' '*int(20-len(hashes))
-                    if data._headers:
-                        print("\r  [{}] {:>3}%  aligning clusters 2/3"\
-                              .format(hashes+nohash, int(progress)), end="")
-                        sys.stdout.flush()
-                    ## submit new job to replace old one unless done               
-                    try:
-                        res[key] = lbview.apply(muscle_align_across, jobs.next())
-                    except StopIteration:
-                        continue
-                except (TimeoutError, KeyError):
-                    continue
-        if data._headers:
-            print("")
-
-        ## old run muscle on all tmp files            
-        #results = lbview.map_async(muscle_align_across, submitted_args)
-
-        ## old return tuple of (chunkname, indelarray, nloci)
-        ## indeltups = results.get()
-
-        ## sort into input order by chunk names
-        indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
-
-        ## get dims for full indel array
-        maxlen = data._hackersonly["max_fragment_length"]
-        if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-            maxlen *= 2
-
-        ## INIT INDEL ARRAY
-        ## build an indel array for ALL loci in cat.clust.gz
-        ipath = os.path.join(data.dirs.consens, data.name+".indels")
-        io5 = h5py.File(ipath, 'w')
-        iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
-                                  dtype=np.bool, 
-                                  chunks=(1, data.nloci, maxlen),
-                                  compression="gzip")
-
-        ## enter all tmpindel arrays into full indel array
-        for tup in indeltups:
-            start = int(tup[0].rsplit("_", 1)[1])
-            iset[:, start:start+tup[2], :] = tup[1]
-        io5.close()
-
-        ## concatenate finished seq clusters into a tmp file 
-        outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
-        with gzip.open(outhandle, 'wb') as out:
-            for fname in clustbits:
-                with open(fname) as infile:
-                    out.write(infile.read()+"//\n//\n")
-
-    except Exception as inst:
-        LOGGER.warn(inst)
+    except (KeyboardInterrupt, SystemExit):
+        print('\n  Interrupted! Cleaning up... ')
         raise
-
+    
     finally:
-        ## still delete tmpfiles if job was interrupted. 
+        ## save result tuples into a list
+        indeltups = []
+
+        ## clean up jobs
+        for idx in jobs:
+            ## grab metadata
+            meta = jobs[idx].metadata            
+
+            ## do this if success
+            if meta.completed:
+                ## get the results
+                indeltups.append(jobs[idx].get())
+
+            ## if not done do nothing, if failure print error
+            else:
+                LOGGER.error('  chunk %s did not finish', idx)
+                if meta.error:
+                    LOGGER.error("""\
+                stdout: %s
+                stderr: %s 
+                error: %s""", meta.stdout, meta.stderr, meta.error)
+
+        ## build indels array and seqs if res finished succesful
+        if res.metadata.completed:
+            build(data, samples, indeltups, clustbits)
+
+        ## Do tmp file cleanup
         for path in ["_cathaps.tmp", "_catcons.tmp", ".utemp", ".htemp"]:
             fname = os.path.join(data.dirs.consens, data.name+path)
             if os.path.exists(path):
-                pass
-                #os.remove(path)
+                os.remove(path)
+
         tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
         if os.path.exists(tmpdir):
             try:
                 shutil.rmtree(tmpdir)
-            except OSError as inst:
+            except OSError as _:
                 ## In some instances nfs creates hidden dot files in directories
                 ## that claim to be "busy" when you try to remove them. Don't
                 ## kill the run if you can't remove this directory.
                 LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
 
+    if data._headers:
+        print("")
+
+
+
+def build(data, samples, indeltups, clustbits):
+    """ 
+    Builds the indels array and catclust.gz file from the aligned clusters.
+    """
+    ## sort into input order by chunk names
+    indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
+
+    ## get dims for full indel array
+    maxlen = data._hackersonly["max_fragment_length"]
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
+        maxlen *= 2
+
+    ## INIT INDEL ARRAY
+    ## build an indel array for ALL loci in cat.clust.gz
+    ipath = os.path.join(data.dirs.consens, data.name+".indels")
+    io5 = h5py.File(ipath, 'w')
+    iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
+                              dtype=np.bool, 
+                              chunks=(1, data.nloci, maxlen))
+                              #, compression="gzip")
+
+    ## enter all tmpindel arrays into full indel array
+    for tup in indeltups:
+        start = int(tup[0].rsplit("_", 1)[1])
+        iset[:, start:start+tup[2], :] = tup[1]
+    io5.close()
+
+    ## concatenate finished seq clusters into a tmp file 
+    outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
+    with gzip.open(outhandle, 'wb') as out:
+        for fname in clustbits:
+            with open(fname) as infile:
+                out.write(infile.read()+"//\n//\n")
+
+
 
 
 def cluster(data, noreverse):
-    """ calls vsearch for clustering across samples. """
+    """ 
+    Calls vsearch for clustering across samples. 
+    """
 
     ## progress bar
     progress = 0  #100*(finished / njobs)
@@ -278,10 +296,27 @@ def cluster(data, noreverse):
        +" -fulldp " \
        +" -usersort " \
        +" -quiet"
-    ## TODO: Should -threads be len(ipyclient) ?
 
     try:
         LOGGER.debug(cmd)
+        #proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,            
+        #                             stdout=subprocess.PIPE)
+        ## fork to non-blocking stream so we can read the output
+        start = time.time()
+
+        # nbsr = NonBlockingStreamReader(proc.stdout)
+        # #proc.stdin.write(cmd)
+        # ## parse stdout as it comes in
+        # while 1:
+        #     output = nbsr.readline(0.1)
+        #     print(output)
+        #     if not output:
+        #         break
+        #     print(output)
+        #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(100, 100, " clustering across 1/3  | {}".format(elapsed))
         subprocess.check_call(cmd, shell=True, 
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
@@ -290,17 +325,13 @@ def cluster(data, noreverse):
         ## ...
 
     except subprocess.CalledProcessError as inst:
-        sys.exit("Error in vsearch: \n{}\n{}".format(inst, subprocess.STDOUT))
+        raise IPyradWarningExit("""
+        Error in vsearch: \n{}\n{}""".format(inst, subprocess.STDOUT))
 
     ## progress bar
-    progress = 100  #100*(finished / njobs)
-    hashes = '#'*int(progress/5)
-    nohash = ' '*int(20-len(hashes))
-    if data._headers:
-        print("\r  [{}] {:>3}%  clustering across 1/3"\
-              .format(hashes+nohash, int(progress)), end="")
-        sys.stdout.flush()
-        print("")
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 100, " clustering across 1/3  | {}".format(elapsed))
+    print("")
 
 
 
@@ -389,67 +420,81 @@ def build_h5_array(data, samples, ipyclient):
 
 def multicat(data, samples, ipyclient):
     """
-    runs singlecat for each sample.
-    ## for each sample fill its own hdf5 array with catg data & indels. 
+    Runs singlecat for each sample.
+    For each sample this fills its own hdf5 array with catg data & indels. 
     ## maybe this can be parallelized. Can't right now since we pass it 
     ## an open file object (indels). Room for speed improvements, tho.
     """
 
     ## make a list of jobs
-    jobs = []
+    submitted_args = []
     for sidx, sample in enumerate(samples):
-        jobs.append([data, sample, sidx])
-    njobs = len(jobs)
-    jobs = iter(jobs)
+        submitted_args.append([data, sample, sidx])
 
     ## create parallel client
     lbview = ipyclient.load_balanced_view()
 
     ## submit initial nproc jobs
     LOGGER.info("submitting singlecat jobs")
-    res = {}
-    for i in range(min(njobs, len(ipyclient))):
-        res[i] = lbview.apply(singlecat, jobs.next())
+    jobs = {}
+    for args in submitted_args:
+        jobs[args[1].name] = lbview.apply(singlecat, args)
 
-    ## iterate over remaining jobs
-    keys = res.keys()
-    finished = 0
-    while res.keys():
-        time.sleep(1)
-        for key in keys:
-            try:
-                ## query for finished results
-                sname = res[key].get(0)
-                LOGGER.info("finished %s", sname)
-                ## load tmp arrays of finished sample
+    ## set wait job until all finished. 
+    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1)
+
+    try:
+        allwait = len(jobs)
+        while 1:
+            if not res.ready():
+                fwait = sum([i.ready() for i in jobs.values()])
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(allwait, fwait, 
+                            " building database 3/3  | {}".format(elapsed))
+                ## got to next print row when done
+                sys.stdout.flush()
+                time.sleep(1)
+            else:
+                ## print final statement
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(20, 20, " building database 3/3  | {}".format(elapsed))
+                break
+
+    except (KeyboardInterrupt, SystemExit):
+        print('\n  Interrupted! Cleaning up... ')
+    
+    finally:
+        for sname in jobs:
+            ## grab metadata
+            meta = jobs[sname].metadata
+
+            ## do this if success
+            if meta.completed:
+                ## get the results
                 insert_and_cleanup(data, sname)
-                ## submit new job to replace old one unless done
-                del res[key]
-                finished += 1
-                progress = 100*(finished / njobs)
-                hashes = '#'*int(progress/5)
-                nohash = ' '*int(20-len(hashes))
-                if data._headers:
-                    print("\r  [{}] {}%  building database 3/3"\
-                          .format(hashes+nohash, int(progress)), end="")
-                    sys.stdout.flush()
-                ##                
-                try:
-                    res[key] = lbview.apply(singlecat, jobs.next())
-                except StopIteration:
-                    continue
-            except (TimeoutError, KeyError):
-                continue
+
+            ## if not done do nothing, if failure print error
+            else:
+                LOGGER.error('  sample %s did not finish', sname)
+                if meta.error:
+                    LOGGER.error("""\
+                stdout: %s
+                stderr: %s 
+                error: %s""", meta.stdout, meta.stderr, meta.error)
+
     if data._headers:
         print("")
 
     ## remove indels array
-    os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
+    pass#os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
 
 
 
 def insert_and_cleanup(data, sname):
-    """ result is a sample name returned by singlecat. This function loads 
+    """ 
+    Result is a sample name returned by singlecat. This function loads 
     three tmp arrays saved by singlecat: dupfilter, indfilter, and indels, 
     and inserts them into the superfilters array and the catg array. 
     """
@@ -479,7 +524,7 @@ def insert_and_cleanup(data, sname):
 
     ## clean up / remove individual h5 catg file
     if os.path.exists(smp5):
-        os.remove(smp5)
+        pass#os.remove(smp5)
 
     # ## FILL SUPERCATG -- combine individual hdf5 arrays into supercatg
     # h5handles = []
@@ -505,7 +550,6 @@ def singlecat(args):
     ## parse args
     data, sample, sidx = args
 
-
     ## load utemp cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
     updf = pd.read_table(uhandle, header=None)
@@ -514,7 +558,7 @@ def singlecat(args):
     ## create a column with only consens index
     updf.loc[:, 4] = [i.rsplit("_", 1)[1] for i in updf[0]]
     ## group by seed
-    udic = updf.groupby(by=1, sort=False)
+    udic = updf.groupby(by=1, sort=True)
     ## get number of clusters
     nloci = sum(1 for _ in udic.groups.iterkeys())
 
@@ -557,7 +601,9 @@ def singlecat(args):
         ## write to disk after 10000 writes
         if not iloc % 10000:
             icatg[start:iloc] = local[:]
+            ## reset
             start = iloc
+            local = np.zeros((10000, maxlen, 4), dtype=np.uint32)
 
         ## fill local array one at a time
         if ask.shape[0] == 1: 
@@ -580,7 +626,8 @@ def singlecat(args):
     LOGGER.debug("starting seedmatching")
     for iloc in seedmatch2:
         try:
-            icatg[iloc] = catarr[iloc, :, :]
+            sfill = udic.groups.keys()[iloc].split("_")[-1]
+            icatg[iloc] = catarr[sfill, :, :]
         except IndexError:
             LOGGER.error("""
                 sample %s, 

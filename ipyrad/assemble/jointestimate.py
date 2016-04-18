@@ -348,7 +348,8 @@ def submit(data, submitted_args, ipyclient):
 
     except (KeyboardInterrupt, SystemExit):
         print('\n  Interrupted! Cleaning up... ')
-    
+        raise
+        
     finally:
         ## clean up jobs
         for sname in jobs:
