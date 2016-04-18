@@ -139,6 +139,7 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
     return score
 
 
+
 def tablestack(rstack):
     """ makes a count dict of each unique array element """
     ## goes by 10% at a time to minimize memory overhead. 
@@ -351,6 +352,9 @@ def submit(data, submitted_args, ipyclient):
         raise
         
     finally:
+        ## print clear
+        if data._headers:
+            print("")
         ## clean up jobs
         for sname in jobs:
             ## grab metadata
@@ -363,7 +367,6 @@ def submit(data, submitted_args, ipyclient):
                 cleanup(data, data.samples[sname], hest, eest)
 
             ## if not done do nothing, if failure print error
-            else:
                 LOGGER.error('  sample %s did not finish', sname)
                 if meta.error:
                     LOGGER.error("""\

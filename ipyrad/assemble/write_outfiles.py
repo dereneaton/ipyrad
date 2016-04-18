@@ -35,7 +35,7 @@ LOGGER = logging.getLogger(__name__)
 ## referenced by assembly.py and also paramsinfo. Easier to have it
 ## centralized. LOCI and VCF are default. Some others are created as 
 ## dependencies of others.
-OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
+OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 
                   'str', 'geno', 'treemix', 'migrate', 'gphocs']
 
 
@@ -95,7 +95,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     inh5 = h5py.File(data.database, 'r')
     anames = inh5["seqs"].attrs["samples"]
     nloci = inh5["seqs"].shape[0]
-    optim = 1000
+    optim = inh5["seqs"].attrs["chunksize"]#    optim = 1000
 
     ## open the out handle. This will have three data frames saved to it. 
     ## locus_filtering, sample_coverages, and snp_distributions
@@ -383,7 +383,8 @@ def make_loci(data, samples):
     locifile = open(data.outfiles.loci, 'w')
 
     ## iterate 1000 loci at a time
-    optim = 1000
+    #optim = 1000
+    optim = inh5["seqs"].attrs["chunksize"]    
     nloci = inh5["seqs"].shape[0]
 
     ## get sidx of samples
@@ -642,8 +643,8 @@ def get_edges(data, superseqs, splits):
                 4: allsamp}
     edgemins = [edgedict.get(i) for i in edgetuple]
 
-    LOGGER.info("edgemins %s", edgemins)
-    LOGGER.info("splits %s", splits)
+    #LOGGER.info("edgemins %s", edgemins)
+    #LOGGER.info("splits %s", splits)
 
     ## convert all - to N to make this easier
     superseqs[superseqs == "-"] = "N"
@@ -886,9 +887,13 @@ def make_outfiles(data, samples, keep, output_formats):
     snames = [i.name for i in samples]
     names = [i for i in anames if i in snames]
     pnames, _ = padnames(names)
+    pnames.sort()
 
-    ## get names index
-    sidx = np.invert([i not in snames for i in anames])
+    ## get names boolean
+    sidx = np.array([i in snames for i in anames])
+    assert len(pnames) == sum(sidx)
+    ## get names index in order of pnames
+    #sindx = [list(anames).index(i) for i in snames]
 
     ## build arrays and outputs from arrays
     arrs = make_arrays(data, sidx, optim, nloci, keep, inh5)
@@ -951,11 +956,10 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
     #LOGGER.info("starting to build phy")
     while start < nloci:
         hslice = [start, start+optim]
-        afilt = inh5["filters"][hslice[0]:hslice[1], ]
-        aedge = inh5["edges"][hslice[0]:hslice[1], ]
-        aseqs = inh5["seqs"][hslice[0]:hslice[1], sidx, ]
-        asnps = inh5["snps"][hslice[0]:hslice[1], ]
-        #acatg = inh5["catgs"][hslice[0]:hslice[1], sidx, ]
+        afilt = inh5["filters"][hslice[0]:hslice[1], ...]
+        aedge = inh5["edges"][hslice[0]:hslice[1], ...]
+        aseqs = inh5["seqs"][hslice[0]:hslice[1], sidx, ...]
+        asnps = inh5["snps"][hslice[0]:hslice[1], ...]
 
         ## which loci passed all filters
         keep = np.where(np.sum(afilt, axis=1) == 0)[0]
@@ -973,13 +977,18 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
             snps = aseqs[iloc, :, getsnps].T
 
             ## remove cols that are all N-
+            before = seq.shape
             lcopy = seq
             lcopy[lcopy == "-"] = "N"
             bcols = np.all(lcopy == "N", axis=0)
             seq = seq[:, ~bcols]
+            if seq.shape != before:
+                print(before, seq.shape)
+                print(seq)
 
             ## put into large array
             seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
+            #print(seqarr[:, seqleft:seqleft+10])
             seqleft += seq.shape[1]
 
             ## subsample all SNPs into an array
@@ -995,7 +1004,7 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
         start += optim
 
     #LOGGER.info("done building phy... ")
-    ## trim trailing edges
+    ## trim trailing edges b/c we made the array bigger than needed.
     ridx = np.all(seqarr == "", axis=0)    
     seqarr = seqarr[:, ~ridx]
     ridx = np.all(snparr == "", axis=0)
@@ -1013,15 +1022,16 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
 
 
 def write_phy(data, seqarr, sidx, pnames):
-    ## write the phylip string
+    """ write the phylip output file"""
     data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
     with open(data.outfiles.phy, 'w') as out:
-        ## trim down to size
-        #ridx = np.all(seqarr == "", axis=0)
+        ## write header
         out.write("{} {}\n".format(seqarr.shape[0], seqarr.shape[1]))
-                                   #seqarr[:, ~ridx].shape[1]))
-        for idx, name in zip(sidx, pnames):
-            out.write("{}{}\n".format(name, "".join(seqarr[idx])))
+        ## write data rows
+        for idx, name in enumerate(pnames):
+            out.write("{}{}\n".format(name, "".join(seqarr[sidx][idx, :])))
+
+
 
 ## TODO:
 def write_nex(data, seqarr, sidx, pnames):
@@ -1038,59 +1048,60 @@ def write_nex(data, seqarr, sidx, pnames):
             out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
 
+
 def write_snps(data, snparr, sidx, pnames):
-    ## write the snp string
+    """ write the snp string """
     data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps.phy")    
     with open(data.outfiles.snps, 'w') as out:
-        #ridx = np.all(snparr == "", axis=0)
         out.write("{} {}\n".format(snparr.shape[0], snparr.shape[1]))
-                                   #snparr[:, ~ridx].shape[1]))
-        for idx, name in zip(sidx, pnames):
-            out.write("{}{}\n".format(name, "".join(snparr[idx])))
+        for idx, name in enumerate(pnames):
+            out.write("{}{}\n".format(name, "".join(snparr[sidx][idx, :])))
+
 
 
 def write_usnps(data, bisarr, sidx, pnames):
-    ## write the bisnp string
+    """ write the bisnp string """
     data.outfiles.usnps = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
     with open(data.outfiles.usnps, 'w') as out:
         out.write("{} {}\n".format(bisarr.shape[0], bisarr.shape[1]))
-                                   #bisarr.shape[1]))
-        for idx, name in zip(sidx, pnames):
-            out.write("{}{}\n".format(name, "".join(bisarr[idx])))
+        for idx, name in enumerate(pnames):
+            out.write("{}{}\n".format(name, "".join(bisarr[sidx][idx, :])))
+
 
 
 def write_str(data, snparr, bisarr, sidx, pnames):
-    ## Write STRUCTURE format
+    """ Write STRUCTURE format """
     data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
     data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".u.str")        
     out1 = open(data.outfiles.str, 'w')
     out2 = open(data.outfiles.ustr, 'w')
     numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
     if data.paramsdict["max_alleles_consens"] > 1:
-        for idx, name in zip(sidx, pnames):
+        for idx, name in enumerate(pnames):
             out1.write("{}\t\t\t\t\t{}\n"\
                 .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
+                "\t".join([numdict[DUCT[i][0]] for i in snparr[sidx][idx]])))
             out1.write("{}\t\t\t\t\t{}\n"\
                 .format(name,
-                "\t".join([numdict[DUCT[i][1]] for i in snparr[idx]])))
+                "\t".join([numdict[DUCT[i][1]] for i in snparr[sidx][idx]])))
             out2.write("{}\t\t\t\t\t{}\n"\
                 .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
+                "\t".join([numdict[DUCT[i][0]] for i in bisarr[sidx][idx]])))
             out2.write("{}\t\t\t\t\t{}\n"\
                 .format(name,
-                "\t".join([numdict[DUCT[i][1]] for i in bisarr[idx]])))
+                "\t".join([numdict[DUCT[i][1]] for i in bisarr[sidx][idx]])))
     else:
         ## haploid output
-        for idx, name in zip(sidx, pnames):
+        for idx, name in enumerate(pnames):
             out1.write("{}\t\t\t\t\t{}\n"\
                 .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
+                "\t".join([numdict[DUCT[i][0]] for i in snparr[sidx][idx]])))
             out2.write("{}\t\t\t\t\t{}\n"\
                 .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
+                "\t".join([numdict[DUCT[i][0]] for i in bisarr[sidx][idx]])))
     out1.close()
     out2.close()
+
 
 
 
@@ -1172,7 +1183,7 @@ def make_vcf(data, samples, inh5):
     vcfheader(data, names, vout)
 
     ## get names index
-    sidx = np.invert([i not in snames for i in anames])
+    sidx = np.array([i in snames for i in anames])
 
     ## apply all filters and write loci data
     start = 0

@@ -69,8 +69,8 @@ def sample_cleanup(data, sample):
                 thisdepth.append(tdepth)
             except IndexError:
                 ## if no clusts pass align filter this will raise
-                #LOGGER.info("No aligned clusters passed for %s", sample.name)
-                pass#raise IPyradError("No aligned clusters passed: {}".format(sample.name))
+                LOGGER.info("No aligned clusters passed for %s", sample.name)
+                raise IPyradError("No aligned clusters passed: {}".format(sample.name))
         else:
             ## update maxlen
             if seqlen > maxlen:

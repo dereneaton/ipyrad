@@ -248,14 +248,6 @@ def cluster(data, noreverse):
     Calls vsearch for clustering across samples. 
     """
 
-    ## progress bar
-    progress = 0  #100*(finished / njobs)
-    hashes = '#'*int(progress/5)
-    nohash = ' '*int(20-len(hashes))
-    print("\r  [{}] {:>3}%  clustering across 1/3"\
-          .format(hashes+nohash, int(progress)), end="")
-    sys.stdout.flush()
-
     ## input and output file handles
     cathaplos = os.path.join(data.dirs.consens, data.name+"_cathaps.tmp")
     uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -316,7 +308,7 @@ def cluster(data, noreverse):
         #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
         #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 100, " clustering across 1/3  | {}".format(elapsed))
+        progressbar(100, 1, " clustering across 1/3  | {}".format(elapsed))
         subprocess.check_call(cmd, shell=True, 
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
