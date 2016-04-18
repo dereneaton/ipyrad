@@ -37,7 +37,11 @@ def binomprobr(base1, base2, error, het):
     prior_het = het
 
     ## get probabilities. Note, b/c only allow two bases, base2 == sum-base1
-    hetro = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
+    try:
+        hetro = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
+    except OverflowError:
+        LOGGER.error("OVERFLOW %s %s", base1, base2)
+        hetro = 0.5
     homoa = scipy.stats.binom.pmf(base2, base1+base2, error)
     homob = scipy.stats.binom.pmf(base1, base1+base2, error)
 
@@ -431,20 +435,23 @@ def basecall(rsite, data):
         if bidepth < data.paramsdict["mindepth_majrule"]:
             cons = "N"
 
+        ## speedhack: make the base call using a method depending on depth
+        ## if highdepth and invariable just call the only base
+        elif (bidepth > 10) and (not base2):
+            cons = comms[0][0]
+
         else:
             ## if depth > 500 reduce to <500 at same proportion to avoid 
             ## large memerror in scipy.misc.comb function
             if bidepth >= 500: 
-                base1 = 500 * (base1 / float(base1))
-                base2 = 500 * (base2 / float(base1))
-
-            ## speedhack: make the base call using a method depending on depth
-            ## if highdepth and invariable just call the only base
-            if (bidepth > 10) and (not base2):
-                cons = comms[0][0]
-            ## but if variable then use basecaller
+                sbase1 = int(500 * (base1 / float(base1)))
+                sbase2 = int(500 * (base2 / float(base1)))
             else:
-                cons = basecaller(data, site, base1, base2, comms)
+                sbase1 = base1
+                sbase2 = base2
+
+            ## And then use basecaller
+            cons = basecaller(data, site, sbase1, sbase2, comms)
     else:
         cons = "N"
 
