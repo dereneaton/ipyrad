@@ -649,7 +649,8 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             elapsed = datetime.timedelta(seconds=int(res.elapsed))                            
             progressbar(20, 20,
                 " aligning clusters | {}".format(elapsed))
-            print("")
+            if data._headers:
+                print("")
             break
 
     ## Cleanup -------------------------------------------------------
