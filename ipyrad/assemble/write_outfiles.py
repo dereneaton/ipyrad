@@ -192,20 +192,29 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     #########################################################################
     ## get stats for SNP_distribution    
-    srange = range(max([i for i in varcounts if varcounts[i]])+1)
-    vardat = pd.Series(varcounts, name="var", index=srange).fillna(0)
-    sumd = {0: 0}
-    sumd.update({i: np.sum(vardat.values[1:i+1]) for i in srange[1:]})
-    varsums = pd.Series(sumd, name="sum_var", index=srange)
+    smax = max([i+1 for i in varcounts if varcounts[i]])
+    print("smax", smax)
+    print("varcounts", varcounts)
 
-    pisdat = pd.Series(piscounts, name="pis", index=srange).fillna(0)
-    sumd = {0: 0}    
-    sumd.update({i: np.sum(pisdat.values[1:i+1]) for i in srange[1:]})
-    pissums = pd.Series(sumd, name="sum_pis", index=srange)
+    vardat = pd.Series(varcounts, name="var", index=range(smax)).fillna(0)
+    sumd = {}
+    for i in range(smax):
+        #print(i, vardat.values[i], range(i))
+        sumd[i] = np.sum([i*vardat.values[i] for i in range(i+1)])
+    #sumd.update({i: np.sum(vardat.values[1:i+1]) for i in srange[1:]})
+    varsums = pd.Series(sumd, name="sum_var", index=range(smax))
+
+
+    pisdat = pd.Series(piscounts, name="pis", index=range(smax)).fillna(0)
+    sumd = {}
+    for i in range(smax):
+        sumd[i] = np.sum([i*pisdat.values[i] for i in range(i+1)])
+    #sumd.update({i: np.sum(pisdat.values[1:i+1]) for i in srange[1:]})
+    pissums = pd.Series(sumd, name="sum_pis", index=range(smax))
 
     print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
-          "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
           "\n## var = all variable sites (pis + autapomorphies)"+\
+          "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
           "\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
           file=outstats)
     data.stats_dfs.s7_snps = pd.concat([vardat, varsums, pisdat, pissums], 
@@ -953,6 +962,7 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
     start = 0
     seqleft = 0
     snpleft = 0
+    bis = 0
 
     #LOGGER.info("starting to build phy")
     while start < nloci:
@@ -978,14 +988,10 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
             snps = aseqs[iloc, :, getsnps].T
 
             ## remove cols that are all N-
-            before = seq.shape
             lcopy = seq
             lcopy[lcopy == "-"] = "N"
             bcols = np.all(lcopy == "N", axis=0)
             seq = seq[:, ~bcols]
-            #if seq.shape != before:
-            #    print(before, seq.shape)
-            #    print(seq)
 
             ## put into large array
             seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
@@ -999,7 +1005,8 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
             ## subsample one SNP into an array
             if snps.shape[1]:
                 samp = np.random.randint(snps.shape[1])
-                bisarr[:, iloc] = snps[:, samp]
+                bisarr[:, bis] = snps[:, samp]
+                bis += 1
 
         ## increase the counter
         start += optim
