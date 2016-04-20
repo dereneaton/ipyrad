@@ -45,6 +45,7 @@ class IPyradWarningExit(SystemExit):
         SystemExit.__init__(self, *args, **kwargs)
 
 
+
 class ObjDict(dict):
     """ 
     Object dictionary allows calling dictionaries in a more 
@@ -75,58 +76,6 @@ class ObjDict(dict):
             for key in sorted(self):
                 result += key + " : " + str(self[key]) + "\n"
         return result
-
-        
-
-## This is unused right now and kind of broken. get rid of it soon.
-class OrdObjDict(object):
-    """ ordered object dictionary allows calling dictionaries in a more 
-    pretty and Python fashion for storing Assembly data """
-
-    def __init__(self, *args, **kwargs):
-        self._od = collections.OrderedDict(*args, **kwargs)
-
-    def __repr__(self):
-        return str(self._od.items())
-
-    def __getattr__(self, name):
-        return self._od[name]
-
-    def __setattr__(self, name, value):
-        if name == '_od':
-            self.__dict__['_od'] = value
-        else:
-            self._od[name] = value
-
-    def __delattr__(self, name):
-        del self._od[name]
-
-    def __getitem__(self, name):
-        if isinstance(name, int):
-            return self._od.values()[name]
-        else:
-            return self._od[name]
-
-    def __setitem__(self, name, value):
-        self._od[name] = value
-
-    def __delitm__(self, name):
-        del self._od[name]
-
-    def __reduce__(self):
-        return self._od.__reduce__()
-
-    def __iter(self):
-        return self._od._iterable
-
-    def keys(self):
-        return self._od.keys()
-
-    def values(self):
-        return self._od.values()
-
-    def items(self):
-        return self._od.items()
 
 
 CDICT = {i:j for i, j in zip("CATG", "0123")}
@@ -356,11 +305,11 @@ def merge_pairs(data, sample, merge):
 
 
 
-## This is hold-over code from pyrad V3 alignable, it's only used
-## by loci2vcf so you could move it there if you like
-def most_common(L):
-    return max(itertools.groupby(sorted(L)), 
-               key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
+# ## This is hold-over code from pyrad V3 alignable, it's only used
+# ## by loci2vcf so you could move it there if you like
+# def most_common(L):
+#     return max(itertools.groupby(sorted(L)), 
+#                key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
 
 
 
@@ -427,136 +376,138 @@ def unstruct(amb):
 
 
 
-def getsplits(filename):
-    """ Calculate optimum splitting based on file size. Does not unzip files, 
-    assumes average rate of compression. This is a fast alternative to counting 
-    lines which takes too long on huge files.
-    """
-    filesize = os.stat(filename).st_size
-    if filesize < 10000000:
-        optim = 200000
-    elif filesize < 4000000000:
-        optim = 500000
-    elif filesize < 8000000000:
-        optim = 4000000
-    else:
-        optim = 8000000
-    return optim
+# def getsplits(filename):
+#     """ Calculate optimum splitting based on file size. Does not unzip files, 
+#     assumes average rate of compression. This is a fast alternative to counting 
+#     lines which takes too long on huge files.
+#     """
+#     filesize = os.stat(filename).st_size
+#     if filesize < 10000000:
+#         optim = 200000
+#     elif filesize < 4000000000:
+#         optim = 500000
+#     elif filesize < 8000000000:
+#         optim = 4000000
+#     else:
+#         optim = 8000000
+#     return optim
 
 
 
-def zcat_make_temps(args):
-    """ 
-    Call bash command 'zcat' and 'split' to split large files. The goal
-    is to create N splitfiles where N is a multiple of the number of processors
-    so that each processor can work on a file in parallel.
-    """
+# def zcat_make_temps(args):
+#     """ 
+#     Call bash command 'cat' and 'split' to split large files. The goal
+#     is to create N splitfiles where N is a multiple of the number of processors
+#     so that each processor can work on a file in parallel.
+#     """
 
-    ## split args
-    data, raws, num, tmpdir, optim = args
+#     ## split args
+#     data, raws, num, tmpdir, optim = args
 
-    ## get optimum lines per file
-    if not optim:
-        optim = getsplits(raws[0])
-    #optim = int(optim)    
-    LOGGER.info("zcat is using optim = %s", optim)
+#     ## get optimum lines per file
+#     if not optim:
+#         optim = getsplits(raws[0])
+#     #optim = int(optim)    
+#     LOGGER.info("zcat is using optim = %s", optim)
 
-    ## is it gzipped
-    cat = "cat"
-    if raws[0].endswith(".gz"):
-        cat = "gunzip -c"
+#     ## is it gzipped
+#     cat = ["cat"]
+#     if raws[0].endswith(".gz"):
+#         cat = ["gunzip", "-c"]
 
-    ### run splitter
-    ### The -a flag tells split how long the suffix for each split file
-    ### should be. It uses lowercase letters of the alphabet, so `-a 4`
-    ### will have 26^4 possible tmp file names.
-    cmd = " ".join([cat, raws[0], "|", "split", "-a", "4", "-l", str(optim),
-                   "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")])
-    _ = subprocess.check_call(cmd, shell=True)
+#     ### run splitter
+#     ### The -a flag tells split how long the suffix for each split file
+#     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
+#     ### will have 26^4 possible tmp file names.
+#     cmd = cat + [raws[0], "|", "split", "-a", "4", 
+#                  "-l", str(optim), 
+#                  "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")]
 
-    chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
-    chunks1.sort()
+#     subprocess.Popen(cmd).communicate()
 
-    if "pair" in data.paramsdict["datatype"]:
-        cmd = " ".join([cat, raws[1], "|", "split", "-a", "4", "-l", str(optim),
-                  "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
-        _ = subprocess.check_call(cmd, shell=True)
+#     chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
+#     chunks1.sort()
 
-        chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
-        chunks2.sort()
+#     if "pair" in data.paramsdict["datatype"]:
+#         cmd = " ".join([cat, raws[1], "|", "split", "-a", "4", "-l", str(optim),
+#                   "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
+#         _ = subprocess.check_call(cmd, shell=True)
+
+#         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
+#         chunks2.sort()
     
-    else:
-        chunks2 = [0]*len(chunks1)
+#     else:
+#         chunks2 = [0]*len(chunks1)
 
-    assert len(chunks1) == len(chunks2), \
-        "R1 and R2 files are not the same length."
+#     assert len(chunks1) == len(chunks2), \
+#         "R1 and R2 files are not the same length."
 
-    return [raws[0], zip(chunks1, chunks2)]
+#     return [raws[0], zip(chunks1, chunks2)]
 
 
 
-def preview_truncate_fq(data, sample_fastq, nlines=None):
-    """ 
-    If we are running in preview mode, truncate the input fq.gz file so it'll 
-    run quicker, just so we can see if it works. Input is tuple of the file
-    names of the sample fq, and the # of lines to truncate to. Function 
-    returns a list of one tuple of 1 or 2 elements depending on whether 
-    you're doing paired or single end. The elements are paths to a temp files 
-    of the sample fq truncated to some much smaller size.
-    """
+# def preview_truncate_fq(data, sample_fastq, nlines=None):
+#     """ 
+#     If we are running in preview mode, truncate the input fq.gz file so it'll 
+#     run quicker, just so we can see if it works. Input is tuple of the file
+#     names of the sample fq, and the # of lines to truncate to. Function 
+#     returns a list of one tuple of 1 or 2 elements depending on whether 
+#     you're doing paired or single end. The elements are paths to a temp files 
+#     of the sample fq truncated to some much smaller size.
+#     """
 
-    ## Return a list of filenames
-    truncated_fq = []
+#     ## Return a list of filenames
+#     truncated_fq = []
 
-    ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
-    ## do not need to worry about multiple appended fastq files b/c preview
-    ## mode will only want to sample from one file pair.
-    for read in sample_fastq[0]:
+#     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
+#     ## do not need to worry about multiple appended fastq files b/c preview
+#     ## mode will only want to sample from one file pair.
+#     for read in sample_fastq[0]:
 
-        ## If the R2 is empty then exit the loop
-        if not read:
-            continue
-        try:
-            if read.endswith(".gz"):
-                infile = gzip.open(os.path.realpath(read), 'rb')
-            else:
-                infile = open(os.path.realpath(read), 'rb')
+#         ## If the R2 is empty then exit the loop
+#         if not read:
+#             continue
+#         try:
+#             if read.endswith(".gz"):
+#                 infile = gzip.open(os.path.realpath(read), 'rb')
+#             else:
+#                 infile = open(os.path.realpath(read), 'rb')
 
-            ## slice from data some multiple of 4 lines, no need to worry
-            ## about truncate length being longer than the file this way.
-            quarts = itertools.islice(infile, nlines*4)
+#             ## slice from data some multiple of 4 lines, no need to worry
+#             ## about truncate length being longer than the file this way.
+#             quarts = itertools.islice(infile, nlines*4)
 
-            ## write to a tmp file in the same place zcat_make_tmps would write
-            with tempfile.NamedTemporaryFile('w+b', delete=False,
-                          dir=data.dirs.fastqs,
-                          prefix="preview_tmp_", 
-                          suffix=".fq") as tmp_fq:
-                tmp_fq.write("".join(quarts))
-            ## save file name and close input
-            truncated_fq.append(tmp_fq.name)
-            infile.close()
+#             ## write to a tmp file in the same place zcat_make_tmps would write
+#             with tempfile.NamedTemporaryFile('w+b', delete=False,
+#                           dir=data.dirs.fastqs,
+#                           prefix="preview_tmp_", 
+#                           suffix=".fq") as tmp_fq:
+#                 tmp_fq.write("".join(quarts))
+#             ## save file name and close input
+#             truncated_fq.append(tmp_fq.name)
+#             infile.close()
 
-        except KeyboardInterrupt as holdup:
-            LOGGER.info("""
-    Caught keyboard interrupt during preview mode. Cleaning up preview files.
-            """)
-            ## clean up preview files
-            try:
-                truncated_fq.append(tmp_fq.name)
-                for truncfile in truncated_fq:
-                    if os.path.exists(truncfile):
-                        os.remove(truncfile)
-            except OSError as inst:
-                LOGGER.debug("Error cleaning up truncated fq files: {}"\
-                             .format(inst))
-            finally:
-                ## re-raise the keyboard interrupt after cleaning up
-                raise holdup
+#         except KeyboardInterrupt as holdup:
+#             LOGGER.info("""
+#     Caught keyboard interrupt during preview mode. Cleaning up preview files.
+#             """)
+#             ## clean up preview files
+#             try:
+#                 truncated_fq.append(tmp_fq.name)
+#                 for truncfile in truncated_fq:
+#                     if os.path.exists(truncfile):
+#                         os.remove(truncfile)
+#             except OSError as inst:
+#                 LOGGER.debug("Error cleaning up truncated fq files: {}"\
+#                              .format(inst))
+#             finally:
+#                 ## re-raise the keyboard interrupt after cleaning up
+#                 raise holdup
 
-        except Exception as inst:
-            LOGGER.debug("Some other stupid error - {}".format(inst))
+#         except Exception as inst:
+#             LOGGER.debug("Some other stupid error - {}".format(inst))
 
-    return [tuple(truncated_fq)]
+#     return [tuple(truncated_fq)]
 
 
 
@@ -647,6 +598,29 @@ def get_threaded_view(ipyclient, split=True):
     return hostdict
 
 
+
+
+##############################################################
+def detect_cpus():
+    """
+    Detects the number of CPUs on a system. This is better than asking
+    ipyparallel since ipp has to wait for Engines to spin up. 
+    """
+    # Linux, Unix and MacOS:
+    if hasattr(os, "sysconf"):
+        if os.sysconf_names.has_key("SC_NPROCESSORS_ONLN"):
+            # Linux & Unix:
+            ncpus = os.sysconf("SC_NPROCESSORS_ONLN")
+            if isinstance(ncpus, int) and ncpus > 0:
+                return ncpus
+        else: # OSX:
+            return int(os.popen2("sysctl -n hw.ncpu")[1].read())
+    # Windows:
+    if os.environ.has_key("NUMBER_OF_PROCESSORS"):
+        ncpus = int(os.environ["NUMBER_OF_PROCESSORS"])
+        if ncpus > 0:
+            return ncpus
+    return 1 # Default
 
 
 #############################################################
