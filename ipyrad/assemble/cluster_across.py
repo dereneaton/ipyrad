@@ -480,7 +480,7 @@ def multicat(data, samples, ipyclient):
         print("")
 
     ## remove indels array
-    pass#os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
+    os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
 
 
 
@@ -516,7 +516,7 @@ def insert_and_cleanup(data, sname):
 
     ## clean up / remove individual h5 catg file
     if os.path.exists(smp5):
-        pass#os.remove(smp5)
+        os.remove(smp5)
 
     # ## FILL SUPERCATG -- combine individual hdf5 arrays into supercatg
     # h5handles = []
