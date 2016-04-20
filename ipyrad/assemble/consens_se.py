@@ -10,7 +10,9 @@ from __future__ import print_function
 import scipy.stats
 import scipy.misc
 import itertools
+import datetime
 import numpy
+import time
 import h5py
 import gzip
 import glob
@@ -149,12 +151,6 @@ def removerepeats(consens, arrayed):
     arrayed = arrayed[:, ~ridx]
     
     return consens, arrayed
-
-    # if arrayed.shape != pre:
-    #     LOGGER.info("""
-    #         ridx %s
-    #         arr shape %s
-    #         """, ridx, arrayed.shape)
 
 
 
@@ -689,17 +685,17 @@ def run(data, samples, force, ipyclient):
 
     if data._headers:
         if data.paramsdict["max_alleles_consens"] == 1:
-            print("    Haploid base calls and paralog filter (max haplos = 1)")
+            print("  Haploid base calls and paralog filter [max haplos = 1]")
         elif data.paramsdict["max_alleles_consens"] == 2:
-            print("    Diploid base calls and paralog filter (max haplos = 2)")
+            print("  Diploid base calls and paralog filter [max haplos = 2]")
         elif data.paramsdict["max_alleles_consens"] > 2:
-            print("    Diploid base calls and no paralog filter "\
+            print("  Diploid base calls and no paralog filter "\
                     "(max haplos = {})".\
                     format(data.paramsdict["max_alleles_consens"]))
-        print("    error rate (mean, std):  " \
+        print("  error rate (mean, std):  " \
                  +"{:.5f}, ".format(data.stats.error_est.mean()) \
                  +"{:.5f}\n".format(data.stats.error_est.std()) \
-             +"    heterozyg. (mean, std):  " \
+             +"  heterozyg. (mean, std):  " \
                  +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
                  +"{:.5f}".format(data.stats.hetero_est.std()))
 
@@ -708,7 +704,11 @@ def run(data, samples, force, ipyclient):
         ## Samples on queue
         for sidx, sample in enumerate(samples):
             ## not force need checks
-            progressbar(len(samples), sidx)
+            start = time.time()
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(samples), sidx, 
+                        " consensus calling  | {}".format(elapsed))
+
             try:
                 if not force:
                     if sample.stats.state >= 5:
@@ -725,6 +725,7 @@ def run(data, samples, force, ipyclient):
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)
+                
                 else:
                     if not sample.stats.clusters_hidepth:
                         print("Skipping Sample {}; ".format(sample.name)
@@ -737,16 +738,22 @@ def run(data, samples, force, ipyclient):
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)
-                progressbar(len(samples), sidx)
+    
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+                progressbar(len(samples), sidx, 
+                            " consensus calling  | {}".format(elapsed))
+
             finally:
                 ## if process failed at any point delete tmp files
-                progressbar(len(samples), len(samples))                                
                 tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
                 tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
                 for tmpchunk in tmpcons+tmpcats:
                     if os.path.exists(tmpchunk):
                         os.remove(tmpchunk)
 
+        progressbar(20, 20, " consensus calling  | {}".format(elapsed))            
+        if data._headers:
+            print("")
 
 
 if __name__ == "__main__":
