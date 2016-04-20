@@ -85,7 +85,7 @@ def run(data, samples, force, ipyclient):
 
     ## print friendly message
     shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
-    print("    Outfiles written to: {}".format(shortpath))
+    print("  Outfiles written to: {}".format(shortpath))
 
 
 
@@ -195,13 +195,14 @@ def make_stats(data, samples, samplecounts, locuscounts):
     srange = range(max([i for i in varcounts if varcounts[i]])+1)
     vardat = pd.Series(varcounts, name="var", index=srange).fillna(0)
     sumd = {0: 0}
-    sumd.update({i: np.sum(vardat.values[1:i]) for i in srange[1:]})
+    sumd.update({i: np.sum(vardat.values[1:i+1]) for i in srange[1:]})
     varsums = pd.Series(sumd, name="sum_var", index=srange)
 
     pisdat = pd.Series(piscounts, name="pis", index=srange).fillna(0)
     sumd = {0: 0}    
-    sumd.update({i: np.sum(pisdat.values[1:i]) for i in srange[1:]})
-    pissums = pd.Series(name="sum_pis", index=srange)
+    sumd.update({i: np.sum(pisdat.values[1:i+1]) for i in srange[1:]})
+    pissums = pd.Series(sumd, name="sum_pis", index=srange)
+
     print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
           "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
           "\n## var = all variable sites (pis + autapomorphies)"+\
@@ -982,9 +983,9 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
             lcopy[lcopy == "-"] = "N"
             bcols = np.all(lcopy == "N", axis=0)
             seq = seq[:, ~bcols]
-            if seq.shape != before:
-                print(before, seq.shape)
-                print(seq)
+            #if seq.shape != before:
+            #    print(before, seq.shape)
+            #    print(seq)
 
             ## put into large array
             seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
