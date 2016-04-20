@@ -8,7 +8,7 @@ import atexit
 import shlex
 import sys
 import os
-from psutil import cpu_count
+from ipyrad.assemble.util import detect_cpus
 
 # pylint: disable=W0212
 
@@ -27,7 +27,7 @@ def start(data, quiet):
         actual = data._ipcluster["cores"]
     else:
         ncores = ""
-        actual = cpu_count()
+        actual = detect_cpus()
 
     ## open all ip views for MPI
     iparg = ""
