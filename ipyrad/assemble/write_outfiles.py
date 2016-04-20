@@ -193,23 +193,17 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #########################################################################
     ## get stats for SNP_distribution    
     smax = max([i+1 for i in varcounts if varcounts[i]])
-    print("smax", smax)
-    print("varcounts", varcounts)
 
     vardat = pd.Series(varcounts, name="var", index=range(smax)).fillna(0)
     sumd = {}
     for i in range(smax):
-        #print(i, vardat.values[i], range(i))
         sumd[i] = np.sum([i*vardat.values[i] for i in range(i+1)])
-    #sumd.update({i: np.sum(vardat.values[1:i+1]) for i in srange[1:]})
     varsums = pd.Series(sumd, name="sum_var", index=range(smax))
-
 
     pisdat = pd.Series(piscounts, name="pis", index=range(smax)).fillna(0)
     sumd = {}
     for i in range(smax):
         sumd[i] = np.sum([i*pisdat.values[i] for i in range(i+1)])
-    #sumd.update({i: np.sum(pisdat.values[1:i+1]) for i in srange[1:]})
     pissums = pd.Series(sumd, name="sum_pis", index=range(smax))
 
     print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\

@@ -238,19 +238,24 @@ def rawedit(args):
     ## get cut sites 
     cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
+
     #LOGGER.info("cutsites %s %s", cuts1, cuts2)
     #LOGGER.info([i for i in data.paramsdict["restriction_overhang"]])
 
-    ## make quarts iterator to sample (r1,r2) or (r1, 1)
-    tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
-    read1 = os.path.join(tmpdir, "tmp_{}_{}_R1.fastq".format(sample.name, num))
-    read2 = os.path.join(tmpdir, "tmp_{}_{}_R2.fastq".format(sample.name, num))
+    ## get data slices as iterators and open file handles
+    fr1, fr2, io1, io2 = get_slice(sample, optim, num)
 
-    fr1 = open(read1, 'rb')
-    quart1 = itertools.izip(*[iter(fr1)]*4)
+    ## make quarts iterator to sample (r1,r2) or (r1, 1)
+    #tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
+    #read1 = os.path.join(tmpdir, "tmp_{}_{}_R1.fastq".format(sample.name, num))
+    #read2 = os.path.join(tmpdir, "tmp_{}_{}_R2.fastq".format(sample.name, num))
+
+    # fr1 = open(read1, 'rb')
+    # quart1 = itertools.izip(*[iter(fr1)]*4)
+    quart1 = itertools.izip(fr1, fr1, fr1, fr1)
     if "pair" in data.paramsdict["datatype"]:
-        fr2 = open(read2, 'rb')
-        quart2 = itertools.izip(*[iter(fr2)]*4)
+        #fr2 = open(read2, 'rb')
+        quart2 = itertools.izip(fr2, fr2, fr2, fr2)
         quarts = itertools.izip(quart1, quart2)
     else:
         quarts = itertools.izip(quart1, iter(int, 1))
@@ -304,7 +309,9 @@ def rawedit(args):
         point += 1
 
     ## close file handles
-    fr1.close()
+    #fr1.close()
+    io1.close()
+
     ## write to file
     handle = os.path.join(data.dirs.edits, 
                           "tmp1_"+sample.name+"_"+str(point)+".fq")
@@ -313,7 +320,8 @@ def rawedit(args):
         out1.write("\n")
 
     if "pair" in data.paramsdict["datatype"]:    
-        fr2.close()
+        #fr2.close()
+        io2.close()
         handle = os.path.join(data.dirs.edits, 
                           "tmp2_"+sample.name+"_"+str(point)+".fq")
         with open(handle, 'wb') as out2:
@@ -399,17 +407,6 @@ def roundup(num):
 
 
 
-def pre_run(data):
-    """ setup and optim """
-    ## link output directories 
-    data.dirs.edits = os.path.join(os.path.realpath(
-                                   data.paramsdict["project_dir"]), 
-                                   data.name+"_edits")
-
-    ## create output directory if doesn't exist
-    if not os.path.exists(data.dirs.edits):
-        os.makedirs(data.dirs.edits)
-
     # ## set optim size, can only be optimized if reads_raw 
     # optim = 10000
     # ncpus = detect_cpus()
@@ -432,26 +429,78 @@ def pre_run(data):
     # .format(nlines))
 
     ## tmpdir for slices
-    tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
-    if not os.path.exists(tmpdir):
-        os.mkdir(tmpdir)
+    # tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
+    # if not os.path.exists(tmpdir):
+    #     os.mkdir(tmpdir)
 
     #return optim
 
 
 
-def send_slices(args):
+# def send_slices(args):
+#     """ 
+#     Splits fastq file into smaller chunks.
+#     """
+#     ## parse args
+#     data, sample, optim = args
+
+#     ### location for slices
+#     tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
+
+#     ## iterate over samples
+#     num = 0
+#     ## open file handles
+#     tups = sample.files.fastqs[0]
+
+#     if tups[0].endswith(".gz"):
+#         io1 = gzip.open(tups[0])
+#         rawr1 = iter(io1)
+#         if tups[1]:
+#             io2 = gzip.open(tups[1])
+#             rawr2 = iter(io2)
+#     else:
+#         io1 = open(tups[0])
+#         rawr1 = iter(io1)
+#         if tups[1]:
+#             io2 = open(tups[1])
+#             rawr2 = iter(io2)
+
+#     ## creating 10 slices per sample
+#     for num in range(10):
+#         dat1 = "".join(itertools.islice(rawr1, int(optim*4)))
+#         if tups[1]:
+#             dat2 = "".join(itertools.islice(rawr2, int(optim*4)))                
+
+#         ## send slices
+#         if dat1:
+#             ## get outhandle
+#             out1 = os.path.join(tmpdir, "tmp_{}_{}_R1.fastq"\
+#                             .format(sample.name, num))
+#             ## write slice
+#             with open(out1, 'w') as tmpout:
+#                 tmpout.write(dat1)
+                
+#             ## if paired-end
+#             if tups[1]:
+#                 ## get outhandle
+#                 out2 = os.path.join(tmpdir, "tmp_{}_{}_R2.fastq"\
+#                                 .format(sample.name, num))
+#                 ## write slice
+#                 with open(out2, 'w') as tmpout:
+#                     tmpout.write(dat2)
+#                 ## advance counter
+#                 num += 1
+
+#     io1.close()
+#     if tups[1]:
+#         io2.close()
+
+
+
+def get_slice(sample, optim, jnum):
     """ 
-    Splits fastq file into smaller chunks.
+    Slices a chunk from a fastq file and returns it as a list
     """
-    ## parse args
-    data, sample, optim = args
-
-    ### location for slices
-    tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
-
-    ## iterate over samples
-    num = 0
     ## open file handles
     tups = sample.files.fastqs[0]
 
@@ -461,42 +510,33 @@ def send_slices(args):
         if tups[1]:
             io2 = gzip.open(tups[1])
             rawr2 = iter(io2)
+        else:
+            io2 = 0
     else:
         io1 = open(tups[0])
         rawr1 = iter(io1)
         if tups[1]:
             io2 = open(tups[1])
             rawr2 = iter(io2)
+        else:
+            io2 = 0
 
-    ## creating 10 slices per sample
-    for num in range(10):
-        dat1 = "".join(itertools.islice(rawr1, int(optim*4)))
+    ## skip until jnum slice 
+    ## sum takes about 5 seconds for 2M gzipped reads.
+    for _ in range(jnum):
+        _ = sum(1 for i in itertools.islice(rawr1, int(optim*4)))
         if tups[1]:
-            dat2 = "".join(itertools.islice(rawr2, int(optim*4)))                
+            _ = sum(1 for i in itertools.islice(rawr2, int(optim*4)))
 
-        ## send slices
-        if dat1:
-            ## get outhandle
-            out1 = os.path.join(tmpdir, "tmp_{}_{}_R1.fastq"\
-                            .format(sample.name, num))
-            ## write slice
-            with open(out1, 'w') as tmpout:
-                tmpout.write(dat1)
-                
-            ## if paired-end
-            if tups[1]:
-                ## get outhandle
-                out2 = os.path.join(tmpdir, "tmp_{}_{}_R2.fastq"\
-                                .format(sample.name, num))
-                ## write slice
-                with open(out2, 'w') as tmpout:
-                    tmpout.write(dat2)
-                ## advance counter
-                num += 1
-
-    io1.close()
+    ## now return the correct slice as a generator
+    dat1 = itertools.islice(rawr1, int(optim*4))
     if tups[1]:
-        io2.close()
+        dat2 = itertools.islice(rawr2, int(optim*4))
+    else:
+        dat2 = iter(int, 1)
+
+    return dat1, dat2, io1, io2
+
 
 
 
@@ -540,7 +580,7 @@ def send_slices(args):
 def sample_cleanup(data, sample, results):
     """ cleaning up for one sample """
 
-    ## rejoin chunks
+    ## get tmp files and sort them 
     combs1 = glob.glob(os.path.join(
                         data.dirs.edits,
                         "tmp1_"+sample.name+"_*.fq"))
@@ -559,7 +599,7 @@ def sample_cleanup(data, sample, results):
             "mismatched number of paired read files - {} {}"\
             .format(len(combs1), len(combs2))
 
-    ## Clean up tmp files
+    ## Concatenate tmp files
     with open(handle1, 'wb') as out:
         for fname in combs1:
             with open(fname) as infile:
@@ -609,15 +649,15 @@ def assembly_cleanup(data):
     """ cleanup for assembly object """
 
     ## remove tmpchunks dir
-    tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
-    if os.path.exists(tmpdir):
-        try:
-            shutil.rmtree(tmpdir)   
-        except OSError:
-            ## In some instances nfs creates hidden dot files in directories
-            ## that claim to be "busy" when you try to remove them. Don't
-            ## kill the run if you can't remove this directory.
-            LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
+    # tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
+    # if os.path.exists(tmpdir):
+    #     try:
+    #         shutil.rmtree(tmpdir)   
+    #     except OSError:
+    #         ## In some instances nfs creates hidden dot files in directories
+    #         ## that claim to be "busy" when you try to remove them. Don't
+    #         ## kill the run if you can't remove this directory.
+    #         LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
 
     ## build s2 results data frame
     data.stats_dfs.s2 = data.build_stat("s2")
@@ -640,14 +680,12 @@ def run(data, samples, nreplace, force, preview, ipyclient):
         for sample in samples:
             if sample.stats.state >= 2:
                 print("""
-    Skipping Sample {}; Already filtered. Use force=True to overwrite.""".\
+    Skipping Sample {}; Already filtered. Use force argument to overwrite.""".\
     format(sample.name))
-
             elif not sample.stats.reads_raw:
                 print("""
-    Skipping Sample {}; Too few reads ({}). Use force=True to run anyways.""".\
-    format(sample.name, sample.stats.reads_raw))
-
+    Skipping Sample {}; No reads found in file {}"""\
+    .format(sample.name, sample.files.fastqs))
             else:
                 subsamples.append(sample)
 
@@ -657,15 +695,17 @@ def run(data, samples, nreplace, force, preview, ipyclient):
                 print("""
     Skipping Sample {}; No reads found in file {}""".\
     format(sample.name, sample.files.fastqs))
-
             else:
                 subsamples.append(sample)
 
-    ## print to screen if preview method
+    ## get optim which is used to slice a sample into 10 equal sized chunks
+    ## if preview-mode then 10 chunks are made out of 'preview' reads.
     optims = {}
     for sample in subsamples:
         if preview:
             tots = data._hackersonly["preview_step2"]
+            assert not tots % 4, \
+            "_hackersonly preview_step2 value (nlines) must be divisible by 4."
             optims[sample.name] = (tots // 10) + (tots % 10)
         else:
             tots = int(sample.stats.reads_raw)
@@ -677,10 +717,16 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     Running preview mode: subselecting maximum of {} reads per sample\
     """.format(data._hackersonly["preview_step2"]))
 
-    ## RUN THE SAMPLES
-    pre_run(data)
+    ## link output directories 
+    data.dirs.edits = os.path.join(os.path.realpath(
+                                   data.paramsdict["project_dir"]), 
+                                   data.name+"_edits")
 
-    ## slicer slices off chunks to tmpdir
+    ## create output directory if doesn't exist
+    if not os.path.exists(data.dirs.edits):
+        os.makedirs(data.dirs.edits)
+
+    ## client
     lbview = ipyclient.load_balanced_view()
 
     ## start progress
@@ -690,24 +736,32 @@ def run(data, samples, nreplace, force, preview, ipyclient):
                " processing jobs  | {}".format(elapsed))            
 
     ## send jobs to slicer
-    sent = {} # {i.name:[] for i in subsamples}
-    for sample in subsamples:
-        optim = optims[sample.name]
-        sent[sample.name] = lbview.apply(send_slices, [data, sample, optim])
+    # sent = {} # {i.name:[] for i in subsamples}
+    # for sample in subsamples:
+    #    optim = optims[sample.name]
+    #    sent[sample.name] = lbview.apply(send_slices, [data, sample, optim])
 
     ## send slices to queue 
     ## we know there will be 10 slices per sample.
     sliced = {i.name:[] for i in subsamples}    
-    for sname in sent:
-        with lbview.temp_flags(after=sent[sname]):
-            for i in range(10):
-                args = [data, data.samples[sname], i, nreplace, optim]
-                sliced[sname].append(lbview.apply(rawedit, args))
+    # for sname in sent:
+    #     with lbview.temp_flags(after=sent[sname]):
+    #         for i in range(10):
+    #             args = [data, data.samples[sname], i, nreplace, optim]
+    #             sliced[sname].append(lbview.apply(rawedit, args))
+
+    ## send jobs to queue to get slices and process them
+    for sample in subsamples:
+        ## get optim slice size for this sample
+        optim = optims[sample.name]        
+        for job in range(10):
+            args = [data, sample, job, nreplace, optim]
+            sliced[sample.name].append(lbview.apply(rawedit, args))            
 
     ## print progress
     try:
         while 1:
-            asyncs = list(itertools.chain(*sliced.values()))+sent.values()
+            asyncs = list(itertools.chain(*sliced.values()))#+sent.values()
             tots = len(asyncs)
             done = sum([i.ready() for i in asyncs])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
