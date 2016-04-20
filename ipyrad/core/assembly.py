@@ -365,7 +365,7 @@ class Assembly(object):
         `datatype` to a paired type (e.g., pairddrad or pairgbs) and run
         with the force argument to re-link fastq data.
         """)
-            fastqs = [(i, ) for i in fastqs]
+            fastqs = [(i, "") for i in fastqs]
 
         ## counters for the printed output
         created = 0
@@ -724,7 +724,7 @@ class Assembly(object):
 
         """
         if self._headers:
-            print("    Saving Assembly.")
+            print("  Saving Assembly.\n")
         ip.save_json(self)
 
 
@@ -882,7 +882,7 @@ class Assembly(object):
                     ## if API, stop jobs and clean queue
                     else:
                         ipyclient.abort()
-                        ipyclient.purge_everything()
+                        #ipyclient.purge_everything()
                     ipyclient.close()
             ## if exception is close and save, print and ignore
             except Exception as inst2:
