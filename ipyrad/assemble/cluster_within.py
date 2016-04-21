@@ -621,7 +621,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## if one dies then error out and report
 
     all_msg_ids = list(itertools.chain(*[i.msg_ids for i in all_async_obj]))
-    print(all_msg_ids)
+    #print(all_msg_ids)
     check_deps = Dependency(all_msg_ids, failure=True, success=True)
     #check_deps = Dependency(all_msg_ids, failure=False, success=True)
     with lbview.temp_flags(after=check_deps):
@@ -670,7 +670,6 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                     " aligning clusters | {}".format(elapsed))
             sys.stdout.flush()
             time.sleep(1)
-            print(all_check.metadata.status)
 
         else:
             elapsed = datetime.timedelta(seconds=int(res.elapsed))                            
@@ -680,10 +679,12 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 print("")
             break
 
-    for i in all_async_obj:
-        if not i.metadata.error == None:
-            print(i, i.metadata)
-    print(all_check.metadata)
+## This is for checking results for the old way of error handling, 
+## delete when the new way works.
+#    for i in all_async_obj:
+#        if not i.metadata.error == None:
+#            print(i, i.metadata)
+#    print(all_check.metadata)
 
     ## Cleanup -------------------------------------------------------
     for sample in samples:
