@@ -78,7 +78,7 @@ def showstats(parsedict):
          +"\n------------------------------------------------")
 
         fullcurdir = os.path.realpath(os.path.curdir)
-        for i in range(1,8):
+        for i in range(1, 8):
             #enumerate(sorted(data.stats_files)):
             key = "s"+str(i)
             try:
@@ -234,8 +234,8 @@ def parse_command_line():
         help="create a new branch of the Assembly as params-{branch}.txt")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
-        type=str, default="1234567",
-        help="subset of assembly steps to perform (Default=1234567)")
+        type=str, default=None,
+        help="Set of assembly steps to perform, e.g., -s 123 (Default=None)")
 
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=4,
@@ -276,7 +276,6 @@ def main():
 
     ## create new paramsfile if -n
     if args.new:
-
         ## Create a tmp assembly and call write_params to write out
         ## default params.txt file
         try:
@@ -291,18 +290,31 @@ def main():
                format(args.new, os.path.realpath(os.path.curdir)))
         sys.exit(2)
 
-    ## if showing results or branching, do not do any steps and do not print header
-    if any( [args.results, args.branch, args.info] ):
-        args.steps = ""
-        print("")
-    else:
-        header = \
+
+    ## if params then must provide action argument with it
+    if args.params:
+        if not any([args.branch, args.steps]):
+            print("""
+    Must provide action argument along with -p argument for params file. 
+    e.g., ipyrad -p params-test.txt -r      ## shows results
+    e.g., ipyrad -p params-test.txt -s 12   ## runs steps 1 & 2
+    """)
+            sys.exit(2)
+
+
+    ## if branching or info do not allow steps in same command, print spacer
+    if any([args.branch, args.info]):        
+        args.steps = ""    
+        print("")    
+
+    ## always print the header when doing steps
+    header = \
     "\n --------------------------------------------------"+\
     "\n  ipyrad [v.{}]".format(ip.__version__)+\
     "\n  Interactive assembly and analysis of RADseq data"+\
     "\n --------------------------------------------------"
-        print(header)
-    
+
+    ## if info print the info and exit        
     if not args.info == False:
         if args.info:
             ip.paramsinfo(int(args.info))
@@ -314,36 +326,37 @@ def main():
     elif args.params:
         parsedict = parse_params(args)
 
-        if args.results:
-            showstats(parsedict)
-
-        elif args.branch:
+        if args.branch:
             branch_assembly(args, parsedict)
 
-        else:
+        elif args.steps:
+            ## print header
+            print(header)
+
             ## run Assembly steps
-            if args.steps:
+            ## launch or load assembly with custom profile/pid
+            data = getassembly(args, parsedict)
 
-                ## launch or load assembly with custom profile/pid
-                data = getassembly(args, parsedict)
+            ## store ipcluster info
+            data._ipcluster["cores"] = args.cores
 
-                ## store ipcluster info
-                data._ipcluster["cores"] = args.cores
+            if args.MPI:
+                data._ipcluster["engines"] = "MPI"
+            else:
+                data._ipcluster["engines"] = "Local"
 
-                if args.MPI:
-                    data._ipcluster["engines"] = "MPI"
-                else:
-                    data._ipcluster["engines"] = "Local"
+            ## launch ipcluster and register for later destruction
+            data = ipcontroller_init(data)
 
-                ## launch ipcluster and register for later destruction
-                data = ipcontroller_init(data)
+            ## set to print headers
+            data._headers = 1
 
-                ## set to print headers
-                data._headers = 1
+            ## run assembly steps
+            steps = list(args.steps)
+            data.run(steps=steps, force=args.force, preview=args.preview)
 
-                ## run assembly steps
-                steps = list(args.steps)
-                data.run(steps=steps, force=args.force, preview=args.preview)
+        if args.results:
+            showstats(parsedict)
 
 
 if __name__ == "__main__": 

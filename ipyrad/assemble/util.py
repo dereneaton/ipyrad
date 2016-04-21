@@ -12,11 +12,13 @@ import os
 import sys
 import glob
 import gzip
+import socket
 import tempfile
 import itertools
 import subprocess
 import collections
 import ipyrad 
+from collections import defaultdict
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -43,9 +45,12 @@ class IPyradWarningExit(SystemExit):
         SystemExit.__init__(self, *args, **kwargs)
 
 
+
 class ObjDict(dict):
-    """ object dictionary allows calling dictionaries in a more 
-    pretty and Python fashion for storing Assembly data """
+    """ 
+    Object dictionary allows calling dictionaries in a more 
+    pretty and Python fashion for storing Assembly data 
+    """
     def __getattr__(self, name):
         if name in self:
             return self[name]
@@ -63,7 +68,7 @@ class ObjDict(dict):
 
     def __repr__(self):
         result = ""
-        if "fastqs" in self.keys():
+        if "outfiles" in self.keys():
             dirs_order = ["fastqs", "edits", "clusts", "consens", "outfiles"]
             for key in dirs_order:
                 result += key + " : " + self[key] + "\n"
@@ -72,59 +77,34 @@ class ObjDict(dict):
                 result += key + " : " + str(self[key]) + "\n"
         return result
 
-        
 
-## This is unused right now and kind of broken. get rid of it soon.
-class OrdObjDict(object):
-    """ ordered object dictionary allows calling dictionaries in a more 
-    pretty and Python fashion for storing Assembly data """
-
-    def __init__(self, *args, **kwargs):
-        self._od = collections.OrderedDict(*args, **kwargs)
-
-    def __repr__(self):
-        return str(self._od.items())
-
-    def __getattr__(self, name):
-        return self._od[name]
-
-    def __setattr__(self, name, value):
-        if name == '_od':
-            self.__dict__['_od'] = value
-        else:
-            self._od[name] = value
-
-    def __delattr__(self, name):
-        del self._od[name]
-
-    def __getitem__(self, name):
-        if isinstance(name, int):
-            return self._od.values()[name]
-        else:
-            return self._od[name]
-
-    def __setitem__(self, name, value):
-        self._od[name] = value
-
-    def __delitm__(self, name):
-        del self._od[name]
-
-    def __reduce__(self):
-        return self._od.__reduce__()
-
-    def __iter(self):
-        return self._od._iterable
-
-    def keys(self):
-        return self._od.keys()
-
-    def values(self):
-        return self._od.values()
-
-    def items(self):
-        return self._od.items()
+CDICT = {i:j for i, j in zip("CATG", "0123")}
 
 
+## used for geno output 
+VIEW = {"R":("G", "A"),
+        "K":("G", "T"),
+        "S":("G", "C"),
+        "Y":("T", "C"),
+        "W":("T", "A"),
+        "M":("C", "A"),
+        "A":("X", "X"),
+        "T":("X", "X"),
+        "G":("X", "X"),
+        "C":("X", "X"),
+        "N":("X", "X"),
+        "-":("X", "X"), 
+        }
+
+## used in hetero() func of consens_se.py
+TRANS = {('G', 'A'):"R",
+         ('G', 'T'):"K",
+         ('G', 'C'):"S",
+         ('T', 'C'):"Y",
+         ('T', 'A'):"W",
+         ('C', 'A'):"M"}
+
+## used for resolving ambiguities
 AMBIGS = {"R":("G", "A"),
           "K":("G", "T"),
           "S":("G", "C"),
@@ -221,24 +201,29 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, sample):
+def merge_pairs(data, sample, merge):
     """ 
     Merge PE reads. Takes in a tuple of unmerged files and returns the file 
     name of the merged/combined PE reads and the number of reads that were 
-    merged (overlapping)
+    merged (overlapping). If merge==0 then only concat pairs, no merging.
     """
     LOGGER.debug("Entering merge_pairs()")
 
     ## tempnames for merge files
     sample.files.merged = os.path.join(data.dirs.edits,
                                        sample.name+"_merged_.fastq")
-    sample.files.nonmerged1 = os.path.join(data.dirs.edits,
+    ## if merge then catch nonmerged in a separate file
+    if merge:
+        sample.files.nonmerged1 = os.path.join(data.dirs.edits,
                                            sample.name+"_nonmerged_R1_.fastq")
-    sample.files.nonmerged2 = os.path.join(data.dirs.edits,
+        sample.files.nonmerged2 = os.path.join(data.dirs.edits,
                                            sample.name+"_nonmerged_R2_.fastq")
-    #sample.files.revcomp = os.path.join(data.dirs.edits,
-    #                                    sample.name+"_revcomp_R2_.fastq")
+    ## if not merging then the nonmerged reads will come from the normal edits
+    else:
+        sample.files.nonmerged1 = sample.files.edits[0][0]
+        sample.files.nonmerged2 = sample.files.edits[0][1]
 
+    ## get the maxn and minlen values
     try:
         maxn = sum(data.paramsdict['max_low_qual_bases'])
     except TypeError:
@@ -246,57 +231,38 @@ def merge_pairs(data, sample):
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
     ## check for paired file
-    LOGGER.debug("heherh %s", sample.files.edits)
     if not os.path.exists(sample.files.edits[0][1]):
         raise IPyradWarningExit("    No paired read file (_R2_ file) found.")
 
-    ## make revcomp file
-    # cmd = ipyrad.bins.vsearch \
-    #   + " --fastx_revcomp "+sample.files.edits[0][1] \
-    #   + " --fastqout "+sample.files.revcomp
-    # LOGGER.warning(cmd)
-    # LOGGER.debug(cmd)    
-    # try:
-    #     subprocess.check_call(cmd, shell=True, 
-    #                                stderr=subprocess.STDOUT, 
-    #                                stdout=subprocess.PIPE)
-    # except subprocess.CalledProcessError as inst:
-    #     LOGGER.error(subprocess.STDOUT)
-    #     LOGGER.error(cmd)
-    #     raise SystemExit("Error in revcomping: \n ({})".format(inst))
+    ## do vsearch merging if merging
+    if merge:
+        cmd = ipyrad.bins.vsearch \
+          +" --fastq_mergepairs "+sample.files.edits[0][0] \
+          +" --reverse "+sample.files.edits[0][1] \
+          +" --fastqout "+sample.files.merged \
+          +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
+          +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
+          +" --fasta_width 0 " \
+          +" --fastq_allowmergestagger " \
+          +" --fastq_minmergelen "+minlen \
+          +" --fastq_maxns "+str(maxn) \
+          +" --fastq_minovlen 20 " \
+          +" --fastq_maxdiffs 4 " \
+          +" --label_suffix _m1" \
+          +" --threads 0"
 
-    ## vsearch merging
-    cmd = ipyrad.bins.vsearch \
-      +" --fastq_mergepairs "+sample.files.edits[0][0] \
-      +" --reverse "+sample.files.edits[0][1] \
-      +" --fastqout "+sample.files.merged \
-      +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
-      +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
-      +" --fasta_width 0 " \
-      +" --fastq_allowmergestagger " \
-      +" --fastq_minmergelen "+minlen \
-      +" --fastq_maxns "+str(maxn) \
-      +" --fastq_minovlen 20 " \
-      +" --fastq_maxdiffs 4 " \
-      +" --label_suffix _m1" \
-      +" --threads 0"
+        try:
+            subprocess.check_call(cmd, shell=True,
+                                       stderr=subprocess.STDOUT,
+                                       stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as inst:
+            LOGGER.error("  Error in merging pairs: \n({}).".format(inst))
+            IPyradWarningExit("  Error in merging pairs: \n({}).".format(inst))
 
-    LOGGER.warning(cmd)
-    try:
-        subprocess.check_call(cmd, shell=True,
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error("Error in merging pairs: \n({}).".format(inst))
-        LOGGER.error(subprocess.STDOUT)
-        LOGGER.error(cmd)
-        sys.exit("Error in merging pairs: \n({}).".format(inst))
-
-    ## record how many read pairs were merged
-    with open(sample.files.merged, 'r') as tmpf:
-        sample.stats.reads_merged = len(tmpf.readlines()) // 4
-
-    LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
+        ## record how many read pairs were merged
+        with open(sample.files.merged, 'r') as tmpf:
+            sample.stats.reads_merged = len(tmpf.readlines()) // 4
+        LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
 
     ## Combine the unmerged pairs and append to the merge file
     with open(sample.files.merged, 'ab') as combout:
@@ -338,20 +304,20 @@ def merge_pairs(data, sample):
             combout.write("\n".join(writing))
             combout.close()
 
-    os.remove(sample.files.nonmerged1)
-    os.remove(sample.files.nonmerged2)
+    ## if merged then delete the nonmerge tmp files
+    if merge:
+        os.remove(sample.files.nonmerged1)
+        os.remove(sample.files.nonmerged2)
 
     return sample
 
 
-## This is hold-over code from pyrad V3 alignable, it's only used
-## by loci2vcf so you could move it there if you like
-def most_common(L):
-    return max(itertools.groupby(sorted(L)), 
-               key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
 
-
-
+# ## This is hold-over code from pyrad V3 alignable, it's only used
+# ## by loci2vcf so you could move it there if you like
+# def most_common(L):
+#     return max(itertools.groupby(sorted(L)), 
+#                key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
 
 
 
@@ -370,6 +336,8 @@ def unhetero(amb):
     " returns bases from ambiguity code"
     amb = amb.upper()
     return AMBIGS.get(amb)
+
+
 
 
 ## Alleles priority dict. The key:vals are the same as the AMBIGS dict 
@@ -416,136 +384,138 @@ def unstruct(amb):
 
 
 
-def getsplits(filename):
-    """ Calculate optimum splitting based on file size. Does not unzip files, 
-    assumes average rate of compression. This is a fast alternative to counting 
-    lines which takes too long on huge files.
-    """
-    filesize = os.stat(filename).st_size
-    if filesize < 10000000:
-        optim = 200000
-    elif filesize < 4000000000:
-        optim = 500000
-    elif filesize < 8000000000:
-        optim = 4000000
-    else:
-        optim = 8000000
-    return optim
+# def getsplits(filename):
+#     """ Calculate optimum splitting based on file size. Does not unzip files, 
+#     assumes average rate of compression. This is a fast alternative to counting 
+#     lines which takes too long on huge files.
+#     """
+#     filesize = os.stat(filename).st_size
+#     if filesize < 10000000:
+#         optim = 200000
+#     elif filesize < 4000000000:
+#         optim = 500000
+#     elif filesize < 8000000000:
+#         optim = 4000000
+#     else:
+#         optim = 8000000
+#     return optim
 
 
 
-def zcat_make_temps(args):
-    """ 
-    Call bash command 'zcat' and 'split' to split large files. The goal
-    is to create N splitfiles where N is a multiple of the number of processors
-    so that each processor can work on a file in parallel.
-    """
+# def zcat_make_temps(args):
+#     """ 
+#     Call bash command 'cat' and 'split' to split large files. The goal
+#     is to create N splitfiles where N is a multiple of the number of processors
+#     so that each processor can work on a file in parallel.
+#     """
 
-    ## split args
-    data, raws, num, tmpdir, optim = args
-    LOGGER.debug("zcat splittin' %s", os.path.split(raws[0])[-1])
+#     ## split args
+#     data, raws, num, tmpdir, optim = args
 
-    ## get optimum lines per file
-    if not optim:
-        optim = getsplits(raws[0])
-    LOGGER.info("zcat is using optim = %s", optim)
+#     ## get optimum lines per file
+#     if not optim:
+#         optim = getsplits(raws[0])
+#     #optim = int(optim)    
+#     LOGGER.info("zcat is using optim = %s", optim)
 
-    ## is it gzipped
-    cat = "cat"
-    if raws[0].endswith(".gz"):
-        cat = "gunzip -c"
+#     ## is it gzipped
+#     cat = ["cat"]
+#     if raws[0].endswith(".gz"):
+#         cat = ["gunzip", "-c"]
 
-    ### run splitter
-    ### The -a flag tells split how long the suffix for each split file
-    ### should be. It uses lowercase letters of the alphabet, so `-a 4`
-    ### will have 26^4 possible tmp file names.
-    cmd = " ".join([cat, raws[0], "|", "split", "-a", "4", "-l", str(optim),
-                   "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")])
-    _ = subprocess.check_call(cmd, shell=True)
+#     ### run splitter
+#     ### The -a flag tells split how long the suffix for each split file
+#     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
+#     ### will have 26^4 possible tmp file names.
+#     cmd = cat + [raws[0], "|", "split", "-a", "4", 
+#                  "-l", str(optim), 
+#                  "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")]
 
-    chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
-    chunks1.sort()
+#     subprocess.Popen(cmd).communicate()
 
-    if "pair" in data.paramsdict["datatype"]:
-        cmd = " ".join([cat, raws[1], "|", "split", "-a", "4", "-l", str(optim),
-                  "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
-        _ = subprocess.check_call(cmd, shell=True)
+#     chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
+#     chunks1.sort()
 
-        chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
-        chunks2.sort()
+#     if "pair" in data.paramsdict["datatype"]:
+#         cmd = " ".join([cat, raws[1], "|", "split", "-a", "4", "-l", str(optim),
+#                   "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
+#         _ = subprocess.check_call(cmd, shell=True)
+
+#         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
+#         chunks2.sort()
     
-    else:
-        chunks2 = [0]*len(chunks1)
+#     else:
+#         chunks2 = [0]*len(chunks1)
 
-    assert len(chunks1) == len(chunks2), \
-        "R1 and R2 files are not the same length."
+#     assert len(chunks1) == len(chunks2), \
+#         "R1 and R2 files are not the same length."
 
-    return [raws[0], zip(chunks1, chunks2)]
+#     return [raws[0], zip(chunks1, chunks2)]
 
 
 
-def preview_truncate_fq(data, sample_fastq, nlines=None):
-    """ 
-    If we are running in preview mode, truncate the input fq.gz file so it'll 
-    run quicker, just so we can see if it works. Input is tuple of the file
-    names of the sample fq, and the # of lines to truncate to. Function 
-    returns a list of one tuple of 1 or 2 elements depending on whether 
-    you're doing paired or single end. The elements are paths to a temp files 
-    of the sample fq truncated to some much smaller size.
-    """
+# def preview_truncate_fq(data, sample_fastq, nlines=None):
+#     """ 
+#     If we are running in preview mode, truncate the input fq.gz file so it'll 
+#     run quicker, just so we can see if it works. Input is tuple of the file
+#     names of the sample fq, and the # of lines to truncate to. Function 
+#     returns a list of one tuple of 1 or 2 elements depending on whether 
+#     you're doing paired or single end. The elements are paths to a temp files 
+#     of the sample fq truncated to some much smaller size.
+#     """
 
-    ## Return a list of filenames
-    truncated_fq = []
+#     ## Return a list of filenames
+#     truncated_fq = []
 
-    ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
-    ## do not need to worry about multiple appended fastq files b/c preview
-    ## mode will only want to sample from one file pair.
-    for read in sample_fastq[0]:
+#     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
+#     ## do not need to worry about multiple appended fastq files b/c preview
+#     ## mode will only want to sample from one file pair.
+#     for read in sample_fastq[0]:
 
-        ## If the R2 is empty then exit the loop
-        if not read:
-            continue
-        try:
-            if read.endswith(".gz"):
-                infile = gzip.open(os.path.realpath(read), 'rb')
-            else:
-                infile = open(os.path.realpath(read), 'rb')
+#         ## If the R2 is empty then exit the loop
+#         if not read:
+#             continue
+#         try:
+#             if read.endswith(".gz"):
+#                 infile = gzip.open(os.path.realpath(read), 'rb')
+#             else:
+#                 infile = open(os.path.realpath(read), 'rb')
 
-            ## slice from data some multiple of 4 lines, no need to worry
-            ## about truncate length being longer than the file this way.
-            quarts = itertools.islice(infile, nlines*4)
+#             ## slice from data some multiple of 4 lines, no need to worry
+#             ## about truncate length being longer than the file this way.
+#             quarts = itertools.islice(infile, nlines*4)
 
-            ## write to a tmp file in the same place zcat_make_tmps would write
-            with tempfile.NamedTemporaryFile('w+b', delete=False,
-                          dir=data.dirs.fastqs,
-                          prefix="preview_tmp_", 
-                          suffix=".fq") as tmp_fq:
-                tmp_fq.write("".join(quarts))
-            ## save file name and close input
-            truncated_fq.append(tmp_fq.name)
-            infile.close()
+#             ## write to a tmp file in the same place zcat_make_tmps would write
+#             with tempfile.NamedTemporaryFile('w+b', delete=False,
+#                           dir=data.dirs.fastqs,
+#                           prefix="preview_tmp_", 
+#                           suffix=".fq") as tmp_fq:
+#                 tmp_fq.write("".join(quarts))
+#             ## save file name and close input
+#             truncated_fq.append(tmp_fq.name)
+#             infile.close()
 
-        except KeyboardInterrupt as holdup:
-            LOGGER.info("""
-    Caught keyboard interrupt during preview mode. Cleaning up preview files.
-            """)
-            ## clean up preview files
-            try:
-                truncated_fq.append(tmp_fq.name)
-                for truncfile in truncated_fq:
-                    if os.path.exists(truncfile):
-                        os.remove(truncfile)
-            except OSError as inst:
-                LOGGER.debug("Error cleaning up truncated fq files: {}"\
-                             .format(inst))
-            finally:
-                ## re-raise the keyboard interrupt after cleaning up
-                raise holdup
+#         except KeyboardInterrupt as holdup:
+#             LOGGER.info("""
+#     Caught keyboard interrupt during preview mode. Cleaning up preview files.
+#             """)
+#             ## clean up preview files
+#             try:
+#                 truncated_fq.append(tmp_fq.name)
+#                 for truncfile in truncated_fq:
+#                     if os.path.exists(truncfile):
+#                         os.remove(truncfile)
+#             except OSError as inst:
+#                 LOGGER.debug("Error cleaning up truncated fq files: {}"\
+#                              .format(inst))
+#             finally:
+#                 ## re-raise the keyboard interrupt after cleaning up
+#                 raise holdup
 
-        except Exception as inst:
-            LOGGER.debug("Some other stupid error - {}".format(inst))
+#         except Exception as inst:
+#             LOGGER.debug("Some other stupid error - {}".format(inst))
 
-    return [tuple(truncated_fq)]
+#     return [tuple(truncated_fq)]
 
 
 
@@ -575,70 +545,136 @@ def clustdealer(pairdealer, optim):
 
 
 
-def progressbar(njobs, finished):
+def progressbar(njobs, finished, msg=""):
     """ prints a progress bar """
     progress = 100*(finished / float(njobs))
     hashes = '#'*int(progress/5.)
     nohash = ' '*int(20-len(hashes))
-    print("\r  [{}] {:>3}% "\
-          .format(hashes+nohash, int(progress)), end="")
+    print("\r  [{}] {:>3}% {} "\
+          .format(hashes+nohash, int(progress), msg), end="")
     sys.stdout.flush()
 
 
 
-#### Worker class to hold threaded or non-threaded views
-class Worker():
-    """ independent threaded CPUs"""
-    def __init__(self, name, ipyclient, targets, func, data):
-        ## Engine views
-        self.client = ipyclient
-        self.lview = self.client.load_balanced_view(targets=targets)
-        self.dview = self.client.direct_view(targets=targets)
-        self.ids = targets
-        self.name = name
-        
-        ## how long to wait between checking for available proc
-        self.delay = 0.5
-        
-        ## store the data and func
-        self.data = data
-        self.func = func
-        
-        ## is job finished
-        self.result = {}
-        
-        ## finished results
-        self.running = 0
-        self.finished = 0
-        
-    
-    def synchronize(self):
-        """ checks whether it's finished """
-        try:
-            self.result[self.name] = self.running.get(0)
-        except ipp.error.TimeoutError:
-            pass
-        except Exception as e:
-            self.finished = 1
-            #print(data, ': fail', e.traceback)
-            self.result[self.name] = e
-        else:
-            self.finished = 1
-            self.running = None
-            
 
-    def job(self, data, func):
-        """ while job is running store async result in running."""
-        self.running = self.lview.apply_async(func, data)
-        
-                
-    def run(self):
-        ## starts self.running
-        self.job(self.data, self.func)
-        while self.running:
-            print(self.name, 'pending...')
-            ## check for jobs finished, stops self.running
-            self.synchronize()
-            time.sleep(self.delay)
+def get_threaded_view(ipyclient, split=True):
+    """ gets optimum threaded view of ids given the host setup """
+    ## engine ids
+    ## e.g., [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    eids = ipyclient.ids  
+
+    ## get host names    
+    ## e.g., ['a', 'a', 'b', 'b', 'a', 'c', 'c', 'c', 'c']
+    dview = ipyclient.direct_view()
+    hosts = dview.apply_sync(socket.gethostname)
+
+    ## group ids into a dict by their hostnames
+    ## e.g., {a: [0, 1, 4], b: [2, 3], c: [5, 6, 7, 8]}
+    hostdict = defaultdict(list)
+    for host, eid in zip(hosts, eids):
+        hostdict[host].append(eid)
+
+    ## Now split threads on the same host into separate proc if there are many
+    hostdictkeys = hostdict.keys()
+    for key in hostdictkeys:
+        gids = hostdict[key]
+        maxt = len(gids)
+        if len(gids) >= 4:
+            maxt = 2
+        ## if 4 nodes and 4 ppn, put one sample per host
+        if (len(gids) == 4) and (len(hosts) >= 4):
+            maxt = 4
+        if len(gids) >= 6:
+            maxt = 3
+        if len(gids) >= 8:
+            maxt = 4
+        if len(gids) >= 16:
+            maxt = 4
+        ## split ids into groups of maxt
+        threaded = [gids[i:i+maxt] for i in xrange(0, len(gids), maxt)]
+        lth = len(threaded)
+        ## if anything was split (lth>1) update hostdict with new proc
+        if lth > 1:
+            hostdict.pop(key)
+            for hostid in range(lth):
+                hostdict[str(key)+"_"+str(hostid)] = threaded[hostid]
+
+    ## make sure split numbering is correct
+    #threaded = hostdict.values()                
+    #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
+    LOGGER.info("threaded_view: %s", dict(hostdict))
+    return hostdict
+
+
+
+
+##############################################################
+def detect_cpus():
+    """
+    Detects the number of CPUs on a system. This is better than asking
+    ipyparallel since ipp has to wait for Engines to spin up. 
+    """
+    # Linux, Unix and MacOS:
+    if hasattr(os, "sysconf"):
+        if os.sysconf_names.has_key("SC_NPROCESSORS_ONLN"):
+            # Linux & Unix:
+            ncpus = os.sysconf("SC_NPROCESSORS_ONLN")
+            if isinstance(ncpus, int) and ncpus > 0:
+                return ncpus
+        else: # OSX:
+            return int(os.popen2("sysctl -n hw.ncpu")[1].read())
+    # Windows:
+    if os.environ.has_key("NUMBER_OF_PROCESSORS"):
+        ncpus = int(os.environ["NUMBER_OF_PROCESSORS"])
+        if ncpus > 0:
+            return ncpus
+    return 1 # Default
+
+
+#############################################################
+## code from below to read streaming stdout from subprocess
+## http://eyalarubas.com/python-subproc-nonblock.html
+#############################################################
+from threading import Thread
+from Queue import Queue, Empty
+
+class NonBlockingStreamReader:
+
+    def __init__(self, stream):
+        '''
+        stream: the stream to read from.
+                Usually a process' stdout or stderr.
+        '''
+
+        self._s = stream
+        self._q = Queue()
+
+        def _populateQueue(stream, queue):
+            '''
+            Collect lines from 'stream' and put them in 'quque'.
+            '''
+
+            while True:
+                line = stream.readline()
+                if line:
+                    queue.put(line)
+                else:
+                    raise UnexpectedEndOfStream
+
+        self._t = Thread(target = _populateQueue,
+                args = (self._s, self._q))
+        self._t.daemon = True
+        self._t.start() #start collecting lines from the stream
+
+    def readline(self, timeout = None):
+        try:
+            return self._q.get(block = timeout is not None,
+                    timeout = timeout)
+        except Empty:
+            return None
+
+class UnexpectedEndOfStream(Exception): pass
+
+
 
 

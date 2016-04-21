@@ -116,10 +116,6 @@ class Assembly(object):
         ## Store assembly version #
         self._version = ip.__version__ 
 
-        ## store analysis dicts
-        self.svd = ObjDict({})
-        self.dstat = ObjDict({})
-
         ## stores ipcluster launch info
         self._ipcluster = {}
         for ipkey in ["id", "profile", "engines", "cores"]:
@@ -127,6 +123,10 @@ class Assembly(object):
 
         ## print headers
         self._headers = 0
+
+        ## analysis save objects
+        self.svd = ObjDict({})
+        self.dstat = ObjDict({})
 
         ## statsfiles is a dict with file locations
         ## stats_dfs is a dict with pandas dataframes
@@ -318,7 +318,7 @@ class Assembly(object):
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
 
-        print("""
+        print("""\
     Linking to demultiplexed fastq files in:
       {}""".format(path))
 
@@ -365,7 +365,7 @@ class Assembly(object):
         `datatype` to a paired type (e.g., pairddrad or pairgbs) and run
         with the force argument to re-link fastq data.
         """)
-            fastqs = [(i, ) for i in fastqs]
+            fastqs = [(i, "") for i in fastqs]
 
         ## counters for the printed output
         created = 0
@@ -653,7 +653,7 @@ class Assembly(object):
         """
         if outfile is None:
             outfile = os.path.join(self.paramsdict["project_dir"],
-                                self.name+"-params.txt")
+                                "params-"+self.name+".txt")
 
         ## Test if params file already exists?
         ## If not forcing, test for file and bail out if it exists
@@ -724,7 +724,7 @@ class Assembly(object):
 
         """
         if self._headers:
-            print("    Saving Assembly.")
+            print("  Saving Assembly.\n")
         ip.save_json(self)
 
 
@@ -757,14 +757,17 @@ class Assembly(object):
                     break
 
                 except IOError as inst:
-                    time.sleep(1)
+                    time.sleep(0.1)
 
             ## check that all engines have connected            
             for _ in range(300):
                 initid = len(ipyclient)
                 time.sleep(0.1)
                 if not ip.__interactive__:
-                    if len(ipyclient) == self._ipcluster["cores"]:
+                    ## no longer waiting for all engines, just one, and trust
+                    ## that others will come. We let load_balance distribute
+                    ## jobs to them.
+                    if initid:
                         break
                 else:
                     ## don't know how many to expect for interactive, but the
@@ -775,7 +778,7 @@ class Assembly(object):
                         if len(ipyclient) == initid:
                             break
                     else:
-                        print("connecting to Engines...")
+                        print("  connecting to Engines...")
 
 
         except KeyboardInterrupt as inst:
@@ -802,12 +805,10 @@ class Assembly(object):
         try:
             ipyclient = ""
             ipyclient = self._launch2(nwait)
-            if ipyclient.ids:
-                ## append client to args and call stepfunc
-                args.append(ipyclient)
-                stepfunc(*args)
+            args.append(ipyclient)
+            stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered, IOError) as inst:
+        except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
             ## raise by ipyparallel if no connection file is found for 30 sec.
             msg = """
     Check to ensure ipcluster is started. When using the API you must start
@@ -823,23 +824,28 @@ class Assembly(object):
             msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg 
             raise IPyradError(msg)
 
+        except IOError as inst:
+            LOGGER.error("IOError: {}".format(inst))
+            raise
+
         ## except user or system interrupt
         except KeyboardInterrupt as inst:
             ## abort and allow wrapper to save and close
-            LOGGER.error("assembly interrupted by user.")
+            LOGGER.info("assembly interrupted by user.")
             print("  Keyboard Interrupt by user")
 
         except IPyradWarningExit as inst:
             ## save inst for raise error after finally statement
-            LOGGER.error("IPyradWarningExit: %s", inst)
+            LOGGER.info("IPyradWarningExit: %s", inst)
             print("  IPyradWarningExit: {}".format(inst))
 
         except SystemExit as inst:
-            LOGGER.error("assembly interrupted by sys.exit.")
+            LOGGER.info("assembly interrupted by sys.exit.")
             print("  SystemExit Interrupt: {}".format(inst))
 
         except AssertionError as inst:
             LOGGER.error("Assertion: %s", inst)
+
 
         ## An Engine Crashed. Raise a readable traceback message.
         except ipp.error.CompositeError as inst:
@@ -852,7 +858,7 @@ class Assembly(object):
                     print(ipyclient.metadata[job]['error'])
 
         except IPyradError as inst:
-            LOGGER.error(inst)
+            LOGGER.info(inst)
             print("  IPyradError: {}".format(inst))            
 
 
@@ -860,6 +866,7 @@ class Assembly(object):
             ## Caught unhandled exception, print and reraise
             LOGGER.error(inst)
             print("  Caught unknown exception - {}".format(inst))
+            raise  ## uncomment raise to get traceback
 
 
         ## close client when done or interrupted
@@ -875,7 +882,7 @@ class Assembly(object):
                     ## if API, stop jobs and clean queue
                     else:
                         ipyclient.abort()
-                        ipyclient.purge_everything()
+                        #ipyclient.purge_everything()
                     ipyclient.close()
             ## if exception is close and save, print and ignore
             except Exception as inst2:
@@ -1027,7 +1034,7 @@ class Assembly(object):
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 4 for i in samples]):
-                print("""
+                print("""\
     Skipping: All {} selected Samples already joint estimated
     (can overwrite with force argument)
     """.format(len(samples)))
@@ -1100,21 +1107,6 @@ class Assembly(object):
         assemble.cluster_across.run(self, csamples, noreverse,
                                     force, randomseed, ipyclient)
 
-    #     ## check for existing and force
-    #     if not force:
-    #         if os.path.exists(self.database):
-    #             print("""
-    # Skipping step6: Clust file already exists.
-    # Re-using existing file: {}
-    # Use the force argument to overwrite.
-    # """.format(self.database))
-
-    #         else:
-    #             assemble.cluster_across.run(self, samples, noreverse,
-    #                                         force, randomseed, ipyclient)
-    #     else:
-    #         assemble.cluster_across.run(self, samples, noreverse,
-    #                                     force, randomseed, ipyclient)
 
 
     def _step7func(self, samples, force, ipyclient):
@@ -1123,18 +1115,15 @@ class Assembly(object):
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
-        ## Get samples that are in state=6
-        csamples = self.samples_precheck(samples, 6, force)
-
         if self._headers:
             print("  Step7: Filter and write output files for {} Samples.".\
-                  format(len(csamples)))
+                  format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
         try:
             with h5py.File(self.database, 'r') as ioh5:
                 dbset = set(ioh5["seqs"].attrs['samples'])
-                iset = set([i.name for i in csamples])
+                iset = set([i.name for i in samples])
                 diff = iset.difference(dbset)
                 if diff:
                     raise IPyradError("""
@@ -1153,12 +1142,12 @@ class Assembly(object):
         if not force:
             if os.path.exists(self.dirs.outfiles):
                 raise IPyradWarningExit("""
-    Output files already created for this Assembly in the directory: 
+    Output files already created for this Assembly in:
     {} 
-    rerun with force argument to overwrite.""".format(self.dirs.outfiles))
+    To overwrite, rerun using the force argument.""".format(self.dirs.outfiles))
 
         ## Run step7
-        assemble.write_outfiles.run(self, csamples, force, ipyclient)
+        assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
 
@@ -1170,12 +1159,15 @@ class Assembly(object):
             mystep is the state produced by the current step.
         """
         subsample = []
+
+        ## filter by state and remove excludes
         for sample in samples:
             if sample.stats.state < mystep - 1:
                 LOGGER.debug("Sample {} not in proper state."\
                              .format(sample.name))
             else:
                 subsample.append(sample)
+
         return subsample
         
 
@@ -1877,7 +1869,8 @@ def paramschecker(self, param, newvalue):
 
             nomatch = exc.difference(inc)
             if list(nomatch):
-                raise IPyradWarningExit("""
+                #raise IPyradWarningExit()
+                LOGGER.warning("""
     Warning: The following Sample cannot be excluded because it was not found 
     in the list of existing Samples. Check for typos in Sample names.
     Bad Sample name(s): {}""".format(list(nomatch)))

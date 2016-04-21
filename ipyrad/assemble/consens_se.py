@@ -10,7 +10,9 @@ from __future__ import print_function
 import scipy.stats
 import scipy.misc
 import itertools
+import datetime
 import numpy
+import time
 import h5py
 import gzip
 import glob
@@ -37,7 +39,11 @@ def binomprobr(base1, base2, error, het):
     prior_het = het
 
     ## get probabilities. Note, b/c only allow two bases, base2 == sum-base1
-    hetro = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
+    try:
+        hetro = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
+    except OverflowError:
+        LOGGER.error("OVERFLOW %s %s", base1, base2)
+        hetro = 0.5
     homoa = scipy.stats.binom.pmf(base2, base1+base2, error)
     homob = scipy.stats.binom.pmf(base1, base1+base2, error)
 
@@ -54,6 +60,7 @@ def binomprobr(base1, base2, error, het):
     return [bestprob, mjaf, genotypes[probabilities.index(max(probabilities))]]
 
 
+
 def simpleconsensus(base1, base2):
     """
     majority consensus calling for sites with too low of coverage for
@@ -65,19 +72,14 @@ def simpleconsensus(base1, base2):
     return [1.0, maf, 'aa']
 
 
+
 def hetero(base1, base2):
     """
     returns IUPAC symbol for ambiguity bases, used for polymorphic sites.
     """
     iupac = "N"
-    trans = {('G', 'A'):"R",
-             ('G', 'T'):"K",
-             ('G', 'C'):"S",
-             ('T', 'C'):"Y",
-             ('T', 'A'):"W",
-             ('C', 'A'):"M"}
-    order1 = trans.get((base1, base2))
-    order2 = trans.get((base2, base1))
+    order1 = TRANS.get((base1, base2))
+    order2 = TRANS.get((base2, base1))
     if order1:
         iupac = order1
     elif order2:
@@ -124,44 +126,26 @@ def removerepeats(consens, arrayed):
         edges[1] = -1*(lcons - len(consens))
 
     ## trim same from arrayed
+    consens = numpy.array(list(consens))
     arrayed = arrayed[:, edges[0]:edges[1]]
-
-    ## what is the total site coverage
-    totdepth = arrayed.shape[0]
-    mindepth = max(1, totdepth // 3)
-
-    ## test across N-called sites
-    nsites = [i for (i, j) in enumerate(consens) if j == "N"]
 
     ## get column counts of Ns and -s
     ndepths = numpy.sum(arrayed == 'N', axis=0) 
     idepths = numpy.sum(arrayed == '-', axis=0)
 
-    ## find sites to remove
-    ridx = []
-    for nsite in nsites:
-        ## grab all N and - sites
-        if (idepths[nsite]+ndepths[nsite]) < mindepth:
-            ridx.append(nsite)
+    ## get proportion of bases that are N- at each site
+    nons = ((ndepths + idepths) / float(arrayed.shape[0])) >= 0.75
+    ## boolean of whether base was called N
+    isn = consens == "N"
+    ## make ridx
+    ridx = nons * isn
+
+    ## apply filter
+    consens = consens[~ridx]
+    arrayed = arrayed[:, ~ridx]
     
-    #pre = arrayed.copy()
+    return consens, arrayed
 
-    ## remove repeat sites from shortcon and stacked
-    ## If consens is all N's this will raise a ValueError which 
-    ## consensus() will catch and then pass over this sample.
-    keeps, consens = zip(*[(i, j) for (i, j) in enumerate(consens) \
-                        if i not in ridx])
-
-    consens = "".join(list(consens))
-    arrayed = arrayed[:, list(keeps)]
-
-    # if arrayed.shape != pre:
-    #     LOGGER.info("""
-    #         ridx %s
-    #         arr shape %s
-    #         """, ridx, arrayed.shape)
-
-    return "".join(consens), arrayed
 
 
 
@@ -173,8 +157,11 @@ def consensus(args):
     """
 
     ## unpack args
-    #LOGGER.info(args)    
     data, sample, tmpchunk, optim = args
+
+    ## temporarily store the mean estimates to Assembly
+    data._este = data.stats.error_est.mean()
+    data._esth = data.stats.hetero_est.mean()
 
     ## number relative to tmp file
     tmpnum = int(tmpchunk.split(".")[-1])
@@ -202,6 +189,7 @@ def consensus(args):
                "heteros" : 0,
                "haplos" : 0,
                "maxn" : 0}
+
     ## store data for writing
     storeseq = {}
 
@@ -229,20 +217,23 @@ def consensus(args):
                 arrayed = numpy.concatenate(
                           [[seq]*rep for seq, rep in zip(sseqs, reps)])
 
-                ## get consens call for each site, paralog site filter
+                ## get consens call for each site, applies paralog-x-site filter
                 consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
 
                 ## apply a filter to remove low coverage sites/Ns that
-                ## are likely sequence repeat errors.
-                try:
-                    consens, arrayed = removerepeats(consens, arrayed)
-                except ValueError as inst:
-                    LOGGER.debug("Caught a bad chunk, all Ns in consensus. Skip it.")
-                    continue
+                ## are likely sequence repeat errors. This is only applied to 
+                ## clusters that already passed the read-depth filter (1)
+                if "N" in consens:
+                    try:
+                        consens, arrayed = removerepeats(consens, arrayed)
+
+                    except ValueError as _:
+                        LOGGER.info("Caught a bad chunk w/ all Ns. Skip it.")
+                        continue
 
                 ## get hetero sites
                 hidx = [i for (i, j) in enumerate(consens) \
-                        if j in list("RKSYWM")]
+                            if j in list("RKSYWM")]
                 nheteros = len(hidx)
 
                 ## filter for max number of hetero sites
@@ -258,7 +249,7 @@ def consensus(args):
                        dtype='uint32').T
                             catarr[counters["nconsens"]][:catg.shape[0]] = catg
                             ## store data for tmpchunk
-                            storeseq[counters["name"]] = consens
+                            storeseq[counters["name"]] = "".join(list(consens))
                             counters["name"] += 1
                             counters["nconsens"] += 1
                             counters["heteros"] += nheteros                            
@@ -317,15 +308,17 @@ def nfilter2(data, nheteros):
 
 
 def nfilter3(data, consens):
-    """ applies filter for maxN """
+    """ applies filter for maxN and hard minlen (32) """
     ## minimum length for clustering in vsearch
-    if len(consens) >= 32:
-        if consens.count("N") <= sum(data.paramsdict["max_Ns_consens"]):
+    if consens.size >= 32:
+        if consens[consens == "N"].size <= \
+                            sum(data.paramsdict["max_Ns_consens"]):
             return 1
         else:
             return 0
     else:
         return 0
+
 
 
 def nfilter4(data, consens, hidx, arrayed):
@@ -342,38 +335,18 @@ def nfilter4(data, consens, hidx, arrayed):
     ## store base calls for hetero sites
     harray = arrayed[:, hidx]
 
-    ## remove any rows that have N or - base calls at hetero sites
+    ## remove any reads that have N or - base calls at hetero sites
+    ## these cannot be used when calling alleles currently.
     harray = harray[~numpy.any(harray == "-", axis=1)]    
     harray = harray[~numpy.any(harray == "N", axis=1)]
 
-    ## get counts of each allele
+    ## get counts of each allele (e.g., AT:2, CG:2)
     ccx = Counter([tuple(i) for i in harray])
 
-    ## Two potential problems remain
+    ## Two possibilities we would like to distinguish, but we can't. Therefore, 
+    ## we just throw away low depth third alleles that are within seq. error. 
     ## 1) a third base came up as a sequencing error but is not a unique allele
     ## 2) a third or more unique allele is there but at low frequency
-
-    # ## get index of any rows that has a base that is not one of the bi-alleles
-    # rrows = numpy.array([])
-    # for hid, col in zip(hidx, xrange(harray.shape[0])):
-    #     ## the two good bases
-    #     iu1, iu2 = AMBIGS[consens[hid]]
-    #     ## find if there is a bad third base
-    #     ww1 = numpy.where(harray[:, col] != iu1)
-    #     ww2 = numpy.where(harray[:, col] != iu2)
-    #     rrow = numpy.intersect1d(ww1, ww2)
-    #     rrows = numpy.append(rrows, rrow)
-
-    # LOGGER.debug("""harray in 4 before
-    # %s 
-    # %s
-    # """, harray, rrows)
-    # ## remove rows
-    # harray = numpy.delete(harray, rrows, axis=0)
-
-    # LOGGER.debug("""harray in 4 after
-    # %s 
-    # """, harray)
 
     ## remove low freq alleles if more than 2, since they may reflect 
     ## sequencing errors instead of true heteros
@@ -417,19 +390,21 @@ def storealleles(consens, hidx, alleles):
     ## AT and TC, then since bigbase of (W) is A second hetero site should 
     ## be stored as y, since the ordering is swapped in this case; the priority
     ## base (C versus T) is C, but C goes with the minor base at h site 1. 
-    consens = list(consens)
+    #consens = list(consens)
 
     for hsite, pbase in zip(hidx[1:], bigallele[1:]):
         if PRIORITY[consens[hsite]] != pbase:
             consens[hsite] = consens[hsite].lower()
 
-    ## return consens as a string
-    return "".join(consens)
+    ## return consens 
+    return consens    
 
 
-def basecall(site, data):
+
+def basecall(rsite, data):
     """ prepares stack for making base calls """
-    site = Counter(site)
+    ## count em
+    site = Counter(rsite)
 
     ## remove Ns and (-)s
     if "N" in site:
@@ -437,10 +412,10 @@ def basecall(site, data):
     if "-" in site:
         site.pop("-")
 
-    ## get the most common alleles
+    ## get the two most common alleles
     if site:
         base1 = base2 = 0
-        comms = site.most_common()
+        comms = site.most_common(2)
         base1 = comms[0][1]
         if len(comms) > 1:
             base2 = comms[1][1]
@@ -449,35 +424,38 @@ def basecall(site, data):
         bidepth = base1 + base2
         if bidepth < data.paramsdict["mindepth_majrule"]:
             cons = "N"
-        else:
-            ## if depth > 500 reduce to randomly sampled 500 
-            if bidepth >= 500: 
-                randomsample = numpy.array(tuple("A"*base1+"B"*base2))
-                numpy.random.shuffle(randomsample)
-                base1 = list(randomsample[:500]).count("A")
-                base2 = list(randomsample[:500]).count("B")
 
-            ## speedhack: make the base call using a method depending on depth
-            ## if highdepth and invariable just call the only base
-            if (bidepth > 10) and (not base2):
-                cons = comms[0][0]
-            ## but if variable then use basecaller
+        ## speedhack: make the base call using a method depending on depth
+        ## if highdepth and invariable just call the only base
+        elif (bidepth > 10) and (not base2):
+            cons = comms[0][0]
+
+        else:
+            ## if depth > 500 reduce to <500 at same proportion to avoid 
+            ## large memerror in scipy.misc.comb function
+            if bidepth >= 500: 
+                sbase1 = int(500 * (base1 / float(base1)))
+                sbase2 = int(500 * (base2 / float(base1)))
             else:
-                cons = basecaller(data, site, base1, base2)
+                sbase1 = base1
+                sbase2 = base2
+
+            ## And then use basecaller
+            cons = basecaller(data, site, sbase1, sbase2, comms)
     else:
         cons = "N"
+
     return cons
 
 
 
-def basecaller(data, site, base1, base2):
+## this could be vectorized right?
+def basecaller(data, site, base1, base2, comms):
     """ inputs data to binomprobr and gets alleles correctly oriented """
 
     ## make statistical base call
     if base1+base2 >= data.paramsdict["mindepth_statistical"]:
-        prob, _, who = binomprobr(base1, base2, 
-                                  data.stats.error_est.mean(),
-                                  data.stats.hetero_est.mean())
+        prob, _, who = binomprobr(base1, base2, data._este, data._esth)
 
     elif base1+base2 >= data.paramsdict["mindepth_majrule"]:
         prob, _, who = simpleconsensus(base1, base2)
@@ -489,10 +467,10 @@ def basecaller(data, site, base1, base2):
     if float(prob) >= 0.95:
         if who != "ab":
             ## site is homozygous
-            cons = site.most_common(1)[0][0]
+            cons = comms[0][0]
         else:
             ## site is heterozygous
-            cons = hetero(*[i[0] for i in site.most_common(2)])
+            cons = hetero(*[i[0] for i in comms])
     else:
         cons = "N"
     return cons
@@ -609,13 +587,9 @@ def run_full(data, sample, ipyclient):
     ## set optim size for chunks in N clusters. The first few chunks take longer
     ## because they contain larger clusters, so we create 4X as many chunks as
     ## processors so that they are split more evenly.
-    optim = 100
-    if sample.stats.clusters_total > 2000:
-        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/4
-    if sample.stats.clusters_total > 20000:
-        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/10
-    if sample.stats.clusters_total > 100000:
-        optim = int(sample.stats.clusters_total/len(ipyclient.ids))/20
+    ncpus = detect_cpus()
+    optim = (sample.stats.clusters_total // ncpus) + \
+            (sample.stats.clusters_total % ncpus) 
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
@@ -698,25 +672,30 @@ def run(data, samples, force, ipyclient):
 
     if data._headers:
         if data.paramsdict["max_alleles_consens"] == 1:
-            print("    Haploid base calls and paralog filter (max haplos = 1)")
+            print("  Haploid base calls and paralog filter [max haplos = 1]")
         elif data.paramsdict["max_alleles_consens"] == 2:
-            print("    Diploid base calls and paralog filter (max haplos = 2)")
+            print("  Diploid base calls and paralog filter [max haplos = 2]")
         elif data.paramsdict["max_alleles_consens"] > 2:
-            print("    Diploid base calls and no paralog filter "\
+            print("  Diploid base calls and no paralog filter "\
                     "(max haplos = {})".\
                     format(data.paramsdict["max_alleles_consens"]))
-        print("    error rate (mean, std):  " \
+        print("  error rate (mean, std):  " \
                  +"{:.5f}, ".format(data.stats.error_est.mean()) \
                  +"{:.5f}\n".format(data.stats.error_est.std()) \
-             +"    heterozyg. (mean, std):  " \
+             +"  heterozyg. (mean, std):  " \
                  +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
                  +"{:.5f}".format(data.stats.hetero_est.std()))
+
 
     if not skip:
         ## Samples on queue
         for sidx, sample in enumerate(samples):
             ## not force need checks
-            progressbar(len(samples), sidx)
+            start = time.time()
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(samples), sidx, 
+                        " consensus calling  | {}".format(elapsed))
+
             try:
                 if not force:
                     if sample.stats.state >= 5:
@@ -733,6 +712,7 @@ def run(data, samples, force, ipyclient):
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)
+                
                 else:
                     if not sample.stats.clusters_hidepth:
                         print("Skipping Sample {}; ".format(sample.name)
@@ -745,16 +725,22 @@ def run(data, samples, force, ipyclient):
                     else:
                         statsdicts = run_full(data, sample, ipyclient)
                         cleanup(data, sample, statsdicts)
-                progressbar(len(samples), sidx)
+    
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+                progressbar(len(samples), sidx, 
+                            " consensus calling  | {}".format(elapsed))
+
             finally:
                 ## if process failed at any point delete tmp files
-                progressbar(len(samples), len(samples))                                
                 tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
                 tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
                 for tmpchunk in tmpcons+tmpcats:
                     if os.path.exists(tmpchunk):
                         os.remove(tmpchunk)
 
+        progressbar(20, 20, " consensus calling  | {}".format(elapsed))            
+        if data._headers:
+            print("")
 
 
 if __name__ == "__main__":

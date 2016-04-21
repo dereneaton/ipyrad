@@ -9,17 +9,24 @@ from __future__ import print_function
 import scipy.stats
 import scipy.optimize
 import numpy as np
+import ipyparallel
 import itertools
-import os
+import datetime
+import time
 import gzip
+import os
+
 from collections import Counter
 from util import *
 
+
+#from numba import jit
 # try: 
-#     from numba import jit
+#     
 #     NUMBA = 1
 # except ImportError:
 #     NUMBA = 0
+
 
 
 def frequencies(stacked):
@@ -30,7 +37,7 @@ def frequencies(stacked):
     return freqs
 
 
-# @jit(['float32[:,:](float32, float32, int16[:,:])'])
+# @jit(['float32[:,:](float32, float32, int16[:,:])'], nopython=True)
 # def jlikelihood1(errors, bfreqs, ustacks):
 #     """Probability homozygous. All numpy and no loop so there was 
 #     no numba improvement to speed when tested. """
@@ -39,6 +46,7 @@ def frequencies(stacked):
 #     totals = np.array([ustacks.sum(axis=1)]*4).T
 #     prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
 #     return np.sum(bfreqs*prob, axis=1)
+
 
 def likelihood1(errors, bfreqs, ustacks):
     """Probability homozygous. All numpy and no loop so there was 
@@ -135,10 +143,11 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
     return score
 
 
+
 def tablestack(rstack):
     """ makes a count dict of each unique array element """
-    ## goes by 10% at a time to minimize memory overhead. Is possible it skips
-    ## the last chunk, but this shouldn't matter.
+    ## goes by 10% at a time to minimize memory overhead. 
+    ## Check on the last chunk.
     table = Counter()
     for i in xrange(0, rstack.shape[0], rstack.shape[0]//10):
         tmp = Counter([j.tostring() for j in rstack[i:i+rstack.shape[0]//10]])
@@ -160,6 +169,7 @@ def stackarray(data, sample):
         readlen = data._hackersonly["max_fragment_length"]
     dims = (int(sample.stats.clusters_hidepth), readlen, 4)
     stacked = np.zeros(dims, dtype=np.uint32)
+    LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
 
     ## don't use sequence edges / restriction overhangs
     cutlens = [None, None]
@@ -180,6 +190,7 @@ def stackarray(data, sample):
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
             raise IPyradError("clustfile formatting error in %s", chunk)
+
         if chunk:
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
@@ -207,8 +218,13 @@ def stackarray(data, sample):
                 catg = np.array(\
                     [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
                     dtype=np.uint32).T
-                stacked[nclust, :catg.shape[0], :] = catg
-                nclust += 1
+                
+                try:
+                    stacked[nclust, :catg.shape[0], :] = catg
+                    nclust += 1
+                except IndexError:
+                    LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
+
     return stacked
 
 
@@ -263,7 +279,7 @@ def optim(args):
                                             (bfreqs, ustacks, counts), 
                                              disp=False,
                                              full_output=False)
-    return [sample.name, hetero, errors]
+    return hetero, errors
 
 
 
@@ -284,10 +300,6 @@ def run(data, samples, subsample, force, ipyclient):
             elif sample.stats.state < 3:
                 print("    skipping {}; ".format(sample.name)+\
                       "not clustered yet. Run step3() first.")
-            elif sample.stats.clusters_hidepth < 100:
-                print("    skipping {}. Too few high depth reads ({}). "\
-                      .format(sample.name, sample.stats.clusters_hidepth)+\
-                      "Use force=True to override")
             else:
                 submitted_args.append([data, sample, subsample])
         else:
@@ -299,56 +311,101 @@ def run(data, samples, subsample, force, ipyclient):
             else:
                 submitted_args.append([data, sample, subsample])
 
-    ## if jobs then run
-    if submitted_args:
-        ## first sort by cluster size
-        submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, 
-                                               reverse=True)
-        ## send all jobs to a load balanced map async job
-        lbview = ipyclient.load_balanced_view()
-        try:
-            results = lbview.map_async(optim, submitted_args)
-            results = results.get()
+    if submitted_args:    
+        ## submit jobs to parallel client
+        submit(data, submitted_args, ipyclient)
+    #else:
+    #    print("  no samples selected")
+
+
+
+def submit(data, submitted_args, ipyclient):
+    """ 
+    sends jobs to engines and cleans up failures. Print progress. 
+    """
+
+    ## first sort by cluster size
+    submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, reverse=True)
+                                           
+    ## send all jobs to a load balanced client
+    lbview = ipyclient.load_balanced_view()
+    jobs = {}
+    for args in submitted_args:
+        ## stores async results using sample names
+        jobs[args[1].name] = lbview.apply(optim, args)
+
+    ## set wait job until all finished. 
+    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1)
+
+    ## wait on results inside try statement. If interrupted we ensure clean up
+    ## and save of finished results
+    try:
+        allwait = len(jobs)
+        while 1:
+            if not res.ready():
+                fwait = sum([jobs[i].ready() for i in jobs])
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(allwait, fwait, 
+                            " inferring [H, E]  | {}".format(elapsed))
+                ## got to next print row when done
+                sys.stdout.flush()
+                time.sleep(1)
+            else:
+                ## print final statement
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(20, 20, " inferring [H, E]  | {}".format(elapsed))
+                break
+
+    except (KeyboardInterrupt, SystemExit):
+        print('\n  Interrupted! Cleaning up... ')
+        raise
         
-        ## if exception such as keyboard interrupt, save finished jobs
-        except Exception as inst:
-            ## now re-raise the exception
-            LOGGER.debug("Error in jointestimate - {}".format(inst))
+    finally:
+        ## print clear
+        if data._headers:
+            print("")
+        ## clean up jobs
+        for sname in jobs:
 
-            # stop any unfinished jobs
-            ipyclient.abort()
+            ## do this if success
+            if jobs[sname].successful():
+                ## get the results
+                hest, eest = jobs[sname].get()
+                cleanup(data, data.samples[sname], hest, eest)
 
-            # clean up finished jobs
-            for job in ipyclient.metadata:
-                #print("error checking", job)
-                if ipyclient.metadata[job]['completed']:
-                    result = ipyclient.metadata[job]['outputs']
-                    samplename, hest, eest = result
-                    sample = data.samples[samplename]
-                    cleanup(data, sample, hest, eest)
-            raise inst
+            else:
+                ## grab metadata                
+                meta = jobs[sname].metadata
+                ## if not done do nothing, if failure print error
+                LOGGER.error('  sample %s did not finish', sname)
+                if meta.error:
+                    LOGGER.error("""\
+                stdout: %s
+                stderr: %s 
+                error: %s""", meta.stdout, meta.stderr, meta.error)
 
-        else:
-            ## do standard cleanup of finished samples
-            for result in results:
-                samplename, hest, eest = result
-                sample = data.samples[samplename]
-                cleanup(data, sample, hest, eest)            
 
 
 
 def cleanup(data, sample, hest, eest):
-    """ stores results to the Assembly object, writes to stats file, 
-    and cleans up temp files """
+    """ 
+    Stores results to the Assembly object, writes to stats file, 
+    and cleans up temp files 
+    """
     ## sample summary assignments
     sample.stats.state = 4
     sample.stats.hetero_est = hest
     sample.stats.error_est = eest
+
     ## sample full assigments
-    sample.stats_dfs.hetero_est = hest
-    sample.stats_dfs.error_est = eest
+    sample.stats_dfs.s4.hetero_est = hest
+    sample.stats_dfs.s4.error_est = eest
+
     ## Assembly assignment
     data.stats_dfs.s4 = data.build_stat("s4")
+    ## Update written file
     data.stats_files.s4 = os.path.join(data.dirs.clusts, 
                                        "s4_joint_estimate.txt")
     with open(data.stats_files.s4, 'w') as outfile:
