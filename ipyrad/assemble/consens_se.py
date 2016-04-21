@@ -78,14 +78,8 @@ def hetero(base1, base2):
     returns IUPAC symbol for ambiguity bases, used for polymorphic sites.
     """
     iupac = "N"
-    trans = {('G', 'A'):"R",
-             ('G', 'T'):"K",
-             ('G', 'C'):"S",
-             ('T', 'C'):"Y",
-             ('T', 'A'):"W",
-             ('C', 'A'):"M"}
-    order1 = trans.get((base1, base2))
-    order2 = trans.get((base2, base1))
+    order1 = TRANS.get((base1, base2))
+    order2 = TRANS.get((base2, base1))
     if order1:
         iupac = order1
     elif order2:
@@ -593,16 +587,9 @@ def run_full(data, sample, ipyclient):
     ## set optim size for chunks in N clusters. The first few chunks take longer
     ## because they contain larger clusters, so we create 4X as many chunks as
     ## processors so that they are split more evenly.
-    optim = 100
-    if sample.stats.clusters_total > 2000:
-        optim = int(sample.stats.clusters_total // (len(ipyclient) * 4))
-        optim += int(sample.stats.clusters_total % (len(ipyclient) * 4))
-    if sample.stats.clusters_total > 20000:
-        optim = int(sample.stats.clusters_total // (len(ipyclient) * 10))
-        optim += int(sample.stats.clusters_total % (len(ipyclient) * 10))
-    if sample.stats.clusters_total > 100000:
-        optim = int(sample.stats.clusters_total // (len(ipyclient) * 20))
-        optim += int(sample.stats.clusters_total % (len(ipyclient) * 20))
+    ncpus = detect_cpus()
+    optim = (sample.stats.clusters_total // ncpus) + \
+            (sample.stats.clusters_total % ncpus) 
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
