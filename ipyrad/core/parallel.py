@@ -36,6 +36,7 @@ def start(data, quiet):
                 "--cluster-id="+data._ipcluster["id"],
                 "--engines="+data._ipcluster["engines"],
                 "--n="+str(nproc), 
+#                "--log-level='DEBUG'",
                 iparg]
 
 
