@@ -243,7 +243,8 @@ def rawedit(args):
     #LOGGER.info([i for i in data.paramsdict["restriction_overhang"]])
 
     ## get data slices as iterators and open file handles
-    fr1, fr2, io1, io2 = get_slice(sample, optim, num)
+    tups = sample.files.fastqs[0]
+    fr1, fr2, io1, io2 = get_slice(tups, optim, num)
 
     ## make quarts iterator to sample (r1,r2) or (r1, 1)
     #tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
@@ -497,13 +498,11 @@ def roundup(num):
 
 
 
-def get_slice(sample, optim, jnum):
+def get_slice(tups, optim, jnum):
     """ 
     Slices a chunk from a fastq file and returns it as a list
     """
     ## open file handles
-    tups = sample.files.fastqs[0]
-
     if tups[0].endswith(".gz"):
         io1 = gzip.open(tups[0])
         rawr1 = iter(io1)
@@ -523,10 +522,12 @@ def get_slice(sample, optim, jnum):
 
     ## skip until jnum slice 
     ## sum takes about 5 seconds for 2M gzipped reads.
+    skip = 0
     for _ in range(jnum):
-        _ = sum(1 for i in itertools.islice(rawr1, int(optim*4)))
+        skip += sum(1 for i in itertools.islice(rawr1, int(optim*4)))
         if tups[1]:
             _ = sum(1 for i in itertools.islice(rawr2, int(optim*4)))
+    LOGGER.info("skipped %s reads", skip)
 
     ## now return the correct slice as a generator
     dat1 = itertools.islice(rawr1, int(optim*4))
@@ -733,7 +734,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(0))
     progressbar(len(subsamples), 0, 
-               " processing jobs  | {}".format(elapsed))            
+               " processing reads  | {}".format(elapsed))            
 
     ## send jobs to slicer
     # sent = {} # {i.name:[] for i in subsamples}

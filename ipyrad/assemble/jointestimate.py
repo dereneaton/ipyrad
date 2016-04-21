@@ -19,11 +19,14 @@ import os
 from collections import Counter
 from util import *
 
+
+#from numba import jit
 # try: 
-#     from numba import jit
+#     
 #     NUMBA = 1
 # except ImportError:
 #     NUMBA = 0
+
 
 
 def frequencies(stacked):
@@ -34,7 +37,7 @@ def frequencies(stacked):
     return freqs
 
 
-# @jit(['float32[:,:](float32, float32, int16[:,:])'])
+# @jit(['float32[:,:](float32, float32, int16[:,:])'], nopython=True)
 # def jlikelihood1(errors, bfreqs, ustacks):
 #     """Probability homozygous. All numpy and no loop so there was 
 #     no numba improvement to speed when tested. """
@@ -43,6 +46,7 @@ def frequencies(stacked):
 #     totals = np.array([ustacks.sum(axis=1)]*4).T
 #     prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
 #     return np.sum(bfreqs*prob, axis=1)
+
 
 def likelihood1(errors, bfreqs, ustacks):
     """Probability homozygous. All numpy and no loop so there was 

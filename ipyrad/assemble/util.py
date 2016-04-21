@@ -96,6 +96,14 @@ VIEW = {"R":("G", "A"),
         "-":("X", "X"), 
         }
 
+## used in hetero() func of consens_se.py
+TRANS = {('G', 'A'):"R",
+         ('G', 'T'):"K",
+         ('G', 'C'):"S",
+         ('T', 'C'):"Y",
+         ('T', 'A'):"W",
+         ('C', 'A'):"M"}
+
 ## used for resolving ambiguities
 AMBIGS = {"R":("G", "A"),
           "K":("G", "T"),
