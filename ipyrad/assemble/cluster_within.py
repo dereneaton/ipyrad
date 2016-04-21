@@ -903,12 +903,14 @@ def reconcat(args):
 
 
 
-def alignment_cleanup(data, tmpnames):
+def alignment_cleanup(data):
+    """ delete tmp-align dir and ..."""
     ## still delete tmpfiles if job was interrupted
-    for fname in tmpnames:
-        if os.path.exists(fname):
-            os.remove(fname)
+    # for fname in tmpnames:
+    #     if os.path.exists(fname):
+    #         os.remove(fname)
 
+    ## remove aligns dir
     tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
     if os.path.exists(tmpdir):
         try:
@@ -1022,10 +1024,8 @@ def run(data, samples, noreverse, force, preview, ipyclient):
             LOGGER.warn(inst)
             raise
         finally:
-            pass
-            #jobs_cleanup(data, samples, preview)
-            #if inst:
-            #    raise inst
+            alignment_cleanup(data)
+
 
 
 if __name__ == "__main__":
