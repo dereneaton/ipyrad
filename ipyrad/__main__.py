@@ -293,7 +293,7 @@ def main():
 
     ## if params then must provide action argument with it
     if args.params:
-        if not any([args.branch, args.steps]):
+        if not any([args.results, args.branch, args.steps]):
             print("""
     Must provide action argument along with -p argument for params file. 
     e.g., ipyrad -p params-test.txt -r      ## shows results

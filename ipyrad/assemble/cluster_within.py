@@ -23,6 +23,7 @@ import time
 import datetime
 
 from collections import Counter
+from ipyparallel import Dependency
 from refmap import *
 from util import * 
 
@@ -154,8 +155,14 @@ def muscle_align(args):
         ## append counter to end of names b/c muscle doesn't retain order
         names = [j+str(i) for i, j in enumerate(names)]        
 
+
+        ## 0 length names indicates back to back //\n//\n sequences, so pass
+        ## TODO: This should probably be fixed upstream so it doesn't happen
+        ## but it's protective regardless
+        if len(names) == 0:
+            pass
         ## don't bother aligning singletons
-        if len(names) <= 1:
+        elif len(names) <= 1:
             if names:
                 stack = [names[0]+"\n"+seqs[0]]
         else:
@@ -487,43 +494,43 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## A single load-balanced view for FUNCs 3-4
     lbview = ipyclient.load_balanced_view()
 
+    ## If doing reference sequence mapping in any fashion then init
+    ## the samples. This is very fast operation.
+    if "reference" in data.paramsdict["assembly_method"]:
+        samples = [refmap_init([data, s]) for s in samples]
+            
+    ## A list of all the asyncresults objects we generate. We'll set
+    ## a task after all jobs are spawned to track whether or not 
+    ## any failed and act accordingly
+    all_async_obj = []
+
     ## FUNC 1: derep ---------------------------------------------------
     res_derep = {}
     for sample in samples:
         args = [data, sample]
         res_derep[sample] = lbview.apply(derep_concat_split, args)
 
-    ## FUNC 2: init ref -----------------------------------------------------
-    ## pull out the seqs that match to the reference
-    done_ref = 1
-    res_refinit = {}
-    mcfunc = null_func
-    if "reference" in data.paramsdict["assembly_method"]:
-        done_ref = 0
-        ## if reference set func to mapping func
-        mcfunc = refmap_init
-    ## Initialize the mapped and unmapped file paths per sample
-    for sample in samples:
-        args = [data, sample]
-        with lbview.temp_flags(after=res_derep[sample]):            
-            res_refinit[sample] = lbview.apply(mcfunc, args)            
-    #[res_refinit[i].get() for i in res_refinit]
-    #return 1
-
+    all_async_obj.extend(res_derep.values())
 
     ## FUNC 3: mapreads ----------------------------------------------------
     ## Submit samples to reference map else null
     res_ref = {}
     mcfunc = null_func
+    done_ref = 1
     if "reference" in data.paramsdict["assembly_method"]:
+        done_ref = 0
         mcfunc = mapreads
     for sample in samples:
+        ## Create a depedency for each sample. To run, the result from the
+        ## previous step must not have failed.
+        check_deps = Dependency(res_derep[sample], failure=False, success=True)
         args = [data, sample, noreverse, 1]
-        with lbview.temp_flags(after=res_refinit[sample]):
+        with lbview.temp_flags(after=check_deps):
             res_ref[sample] = lbview.apply(mcfunc, args)
     ## test just up to this point [comment this out when done]
     #[res_ref[i].get() for i in res_ref]
     #return 1
+    all_async_obj.extend(res_ref.values())
 
 
     ## FUNC 4: clustering ---------------------------------------------------
@@ -535,12 +542,14 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## require that the sample successfully finished previous step
     res_clust = {}
     for sample in samples:
+        check_deps = Dependency(res_ref[sample], failure=False, success=True)
         args = [data, sample, noreverse, 1] 
-        with lbview.temp_flags(after=res_ref[sample]):
+        with lbview.temp_flags(after=check_deps):
             res_clust[sample] = lbview.apply(mcfunc, args)
     ## test just up to this point [comment this out when done]
     #[res_clust[i].get() for i in res_clust]
     #return 1
+    all_async_obj.extend(res_clust.values())
 
 
     ## FUNC 5: reference cleanup -------------------------------------------
@@ -554,11 +563,13 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## requires sample to have finished the previous step before running
     res_clean = {}
     for sample in samples:
-        with lbview.temp_flags(after=res_clust[sample]):
+        check_deps = Dependency(res_clust[sample], failure=False, success=True)
+        with lbview.temp_flags(after=check_deps):
             res_clean[sample] = lbview.apply(mcfunc, [data, sample])
     ## test just up to this point [comment this out when done]
     #[res_clean[i].get() for i in res_clean]
     #return 1
+    all_async_obj.extend(res_clean.values())
 
 
     ## FUNC 6: split up clusters into chunks -------------------------------
@@ -568,39 +579,54 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     res_chunk = {}
     tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')    
     for sample in samples:
-        with lbview.temp_flags(after=res_clean[sample]):
+        check_deps = Dependency(res_clean[sample], failure=False, success=True)
+        with lbview.temp_flags(after=check_deps):
             args = [data, sample, tmpdir]
             res_chunk[sample] = lbview.apply(mcfunc, args)
     ## test just up to this point [comment this out when done]
     #[res_chunk[i].get() for i in res_chunk]
     #return 1
+    all_async_obj.extend(res_chunk.values())
 
 
     ## FUNC 7: align chunks -------------------------------------------------
     res_align = {sample:[] for sample in samples}
     for sample in samples:
         ## get all chunks for this sample
-        with lbview.temp_flags(after=res_chunk[sample]):
+        check_deps = Dependency(res_chunk[sample], failure=False, success=True)
+        with lbview.temp_flags(after=check_deps):
             for i in range(10):
                 chunk = os.path.join(tmpdir, sample.name+"_chunk_{}.ali".format(i))
                 res_align[sample].append(lbview.apply(muscle_align, [data, chunk]))
-    ## get all async results for aligners
-    all_aligns = list(itertools.chain(*res_align.values()))    
+
     ## test just up to this point [comment this out when done]
     #[i.get() for i in all_aligns]
     #return 1
-
+    all_async_obj.extend(list(itertools.chain(*res_align.values())))
 
     ## FUNC 6: concat chunks -------------------------------------------------
     res_concat = {}
     for sample in samples:
         #LOGGER.info('resalign[sample] %s', res_align[sample])
         tmpids = list(itertools.chain(*[i.msg_ids for i in res_align[sample]]))
+        check_deps = Dependency(tmpids, failure=False, success=True)
         #LOGGER.info('tmpids %s', tmpids)
-        with lbview.temp_flags(after=tmpids):
+        with lbview.temp_flags(after=check_deps):
             res_concat[sample] = lbview.apply(reconcat, [data, sample])
     ## test just up to this point [comment this out when done]
     #[res_concat[i].get() for i in res_concat]
+    all_async_obj.extend(res_concat.values())
+
+    ## Create a job to keep an eye on the threads spawned for this task
+    ## if one dies then error out and report
+
+    all_msg_ids = list(itertools.chain(*[i.msg_ids for i in all_async_obj]))
+    print(all_msg_ids)
+    check_deps = Dependency(all_msg_ids, failure=True, success=True)
+    #check_deps = Dependency(all_msg_ids, failure=False, success=True)
+    with lbview.temp_flags(after=check_deps):
+        all_check = lbview.apply(cleanup_and_die, [i.error for i in all_async_obj])
+
 
     ## wait func
     tmpids = list(itertools.chain(*[i.msg_ids for i in res_concat.values()]))
@@ -644,6 +670,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                     " aligning clusters | {}".format(elapsed))
             sys.stdout.flush()
             time.sleep(1)
+            print(all_check.metadata.status)
 
         else:
             elapsed = datetime.timedelta(seconds=int(res.elapsed))                            
@@ -652,6 +679,11 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             if data._headers:
                 print("")
             break
+
+    for i in all_async_obj:
+        if not i.metadata.error == None:
+            print(i, i.metadata)
+    print(all_check.metadata)
 
     ## Cleanup -------------------------------------------------------
     for sample in samples:
@@ -978,7 +1010,17 @@ def clust_and_build(args):
         print(inst)
         return 0
 
-
+def cleanup_and_die(async_results):
+    LOGGER.debug("Entering cleanup_and_die")
+    
+    LOGGER.debug(async_results)
+    res = []
+    ## Sort through msg_ids and check metadata stats to figure out what went wrong
+    for i in async_results:
+        if not i == None:
+            res.extend(i)
+            LOGGER.warn("Got error - {}".format(i))
+    return res
 
 def run(data, samples, noreverse, force, preview, ipyclient):
     """ run the major functions for clustering within samples """
