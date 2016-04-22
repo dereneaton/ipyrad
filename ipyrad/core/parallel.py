@@ -39,7 +39,6 @@ def start(data, quiet):
                 data.cpus,
                 iparg)
                    
-
     ## wrap ipcluster start
     try: 
         LOGGER.info(shlex.split(standard))
