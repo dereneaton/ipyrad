@@ -527,7 +527,7 @@ def get_slice(tups, optim, jnum):
         skip += sum(1 for i in itertools.islice(rawr1, int(optim*4)))
         if tups[1]:
             _ = sum(1 for i in itertools.islice(rawr2, int(optim*4)))
-    LOGGER.info("skipped %s reads", skip)
+    LOGGER.info("%s. skipped %s lines", jnum, skip)
 
     ## now return the correct slice as a generator
     dat1 = itertools.islice(rawr1, int(optim*4))
@@ -736,33 +736,21 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     progressbar(len(subsamples), 0, 
                " processing reads  | {}".format(elapsed))            
 
-    ## send jobs to slicer
-    # sent = {} # {i.name:[] for i in subsamples}
-    # for sample in subsamples:
-    #    optim = optims[sample.name]
-    #    sent[sample.name] = lbview.apply(send_slices, [data, sample, optim])
-
-    ## send slices to queue 
-    ## we know there will be 10 slices per sample.
+    ## save sliced asyncs
     sliced = {i.name:[] for i in subsamples}    
-    # for sname in sent:
-    #     with lbview.temp_flags(after=sent[sname]):
-    #         for i in range(10):
-    #             args = [data, data.samples[sname], i, nreplace, optim]
-    #             sliced[sname].append(lbview.apply(rawedit, args))
-
     ## send jobs to queue to get slices and process them
     for sample in subsamples:
         ## get optim slice size for this sample
         optim = optims[sample.name]        
         for job in range(10):
             args = [data, sample, job, nreplace, optim]
-            sliced[sample.name].append(lbview.apply(rawedit, args))            
+            async = lbview.apply(rawedit, args)
+            sliced[sample.name].append(async)
 
     ## print progress
     try:
         while 1:
-            asyncs = list(itertools.chain(*sliced.values()))#+sent.values()
+            asyncs = list(itertools.chain(*sliced.values()))
             tots = len(asyncs)
             done = sum([i.ready() for i in asyncs])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -779,21 +767,23 @@ def run(data, samples, nreplace, force, preview, ipyclient):
 
     except (KeyboardInterrupt, SystemExit):
         print('\n  Interrupted! Cleaning up... ')
-        raise
+        raise #raise IPyradWarningExit("Keyboard Interrupt")
 
     ## enforced cleanup
     finally:
         ## if all jobs were successful in a sample then cleanup
         for sample in subsamples:
-            if all([i.successful() for i in sliced[sample.name]]):
-                results = [i.get() for i in sliced[sample.name]]
-                sample_cleanup(data, sample, results)
-
-        ## print errors if they occurred
-        for sample in sliced:
-            for async in sliced[sample]:
-                if not async.successful():
-                    print(async.metadata.error)
+            ## if finished
+            if all([i.ready() for i in sliced[sample.name]]):
+                ## if no errors
+                if all([i.successful() for i in sliced[sample.name]]):                
+                    results = [i.get() for i in sliced[sample.name]]
+                    sample_cleanup(data, sample, results)
+                ## print errors if they occurred
+                else:
+                    for async in sliced[sample]:
+                        if not async.successful():
+                            print(async.metadata.error)
 
         ## do final stats and cleanup
         assembly_cleanup(data)

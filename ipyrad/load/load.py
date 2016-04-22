@@ -310,8 +310,7 @@ def load_json(path, quiet=False):
         raise IPyradWarningExit("""
     No samples found in saved assembly. If you are just starting a new
     assembly the file probably got saved erroneously, so it's safe to try 
-    removing the assembly file and rerunning.
-      `rm {}`
+    removing the assembly file (e.g., rm {}.json) and restarting.
 
     If you fully completed step 1 and you see this message you should probably
     contact the developers.

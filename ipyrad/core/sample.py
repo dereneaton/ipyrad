@@ -95,7 +95,8 @@ class Sample(object):
 
 
     def _to_fulldict(self):
-        """ Write to dict including data frames. All sample dicts 
+        """ 
+        Write to dict including data frames. All sample dicts 
         are combined in save() to dump JSON output """
         
         ## 
@@ -115,11 +116,5 @@ class Sample(object):
 
         return returndict
 
-
-    #def save(self):
-    #    """ pickle the data object """
-    #    dillout = open(self.name+".dataobj", "wb")
-    #    dill.dump(self, dillout)
-    #    dillout.close()
 
 

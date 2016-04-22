@@ -111,9 +111,14 @@ AMBIGS = {"R":("G", "A"),
           "Y":("T", "C"),
           "W":("T", "A"),
           "M":("C", "A")}
+
+
+
 def ambigcutters(seq):
-    """ Returns both resolutions of a cut site that has an ambiguous base in 
-    it, else the single cut site """
+    """ 
+    Returns both resolutions of a cut site that has an ambiguous base in 
+    it, else the single cut site 
+    """
     resos = []
     if any([i in list("RKSYWM") for i in seq]):
         for base in list("RKSYWM"):

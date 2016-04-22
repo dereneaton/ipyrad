@@ -14,13 +14,11 @@ import time
 import glob
 import sys
 import gzip
-import dill
 import copy
 import h5py
 import string
 import cStringIO
 import itertools
-import subprocess
 import pandas as pd
 import ipyparallel as ipp
 import ipyrad as ip
@@ -128,6 +126,9 @@ class Assembly(object):
         self.svd = ObjDict({})
         self.dstat = ObjDict({})
 
+        ## all available cpus
+        self.cpus = detect_cpus()
+
         ## statsfiles is a dict with file locations
         ## stats_dfs is a dict with pandas dataframes
         self.stats_files = ObjDict({})
@@ -214,11 +215,17 @@ class Assembly(object):
         """ Returns a data frame with Sample data and state. """
         nameordered = self.samples.keys()
         nameordered.sort()
+
         ## Set pandas to display all samples instead of truncating
         pd.options.display.max_rows = len(self.samples)
-        return pd.DataFrame([self.samples[i].stats for i in nameordered], 
+        statdat = pd.DataFrame([self.samples[i].stats for i in nameordered], 
                       index=nameordered).dropna(axis=1, how='all')
-                      #dtype=[int, int, int, int, int, float, float, int])
+        # ensure non h,e columns print as ints
+        for column in statdat:
+            if column not in ["hetero_est", "error_est"]:
+                statdat[column] = statdat[column].astype(int)
+        return statdat    
+
 
     @property
     def files(self):
@@ -231,18 +238,15 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
 
 
-    def build_stat(self, idx):
+    def build_stat(self, idx, dtype=int):
         """ Returns a data frame with Sample stats for each step """
         nameordered = self.samples.keys()
         nameordered.sort()
         return pd.DataFrame([self.samples[i].stats_dfs[idx] \
                       for i in nameordered], 
-                      index=nameordered).dropna(axis=1, how='all')
-
-
-    def cpus(self):
-        """ View the connection  """
-        pass
+                      index=nameordered)\
+                      .dropna(axis=1, how='all')\
+                      .astype(dtype)
 
 
 
@@ -833,6 +837,7 @@ class Assembly(object):
             ## abort and allow wrapper to save and close
             LOGGER.info("assembly interrupted by user.")
             print("  Keyboard Interrupt by user")
+            sys.exit(2)
 
         except IPyradWarningExit as inst:
             ## save inst for raise error after finally statement
@@ -842,10 +847,6 @@ class Assembly(object):
         except SystemExit as inst:
             LOGGER.info("assembly interrupted by sys.exit.")
             print("  SystemExit Interrupt: {}".format(inst))
-
-        except AssertionError as inst:
-            LOGGER.error("Assertion: %s", inst)
-
 
         ## An Engine Crashed. Raise a readable traceback message.
         except ipp.error.CompositeError as inst:
@@ -860,7 +861,6 @@ class Assembly(object):
         except IPyradError as inst:
             LOGGER.info(inst)
             print("  IPyradError: {}".format(inst))            
-
 
         except Exception as inst:
             ## Caught unhandled exception, print and reraise

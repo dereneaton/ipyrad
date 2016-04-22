@@ -4,7 +4,7 @@
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradError, IPyradWarningExit
+from ipyrad.assemble.util import IPyradError, IPyradWarningExit, detect_cpus
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -44,6 +44,7 @@ def parse_params(args):
     return parsedict
 
 
+
 def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
 
@@ -55,8 +56,8 @@ def showstats(parsedict):
     ## If the project_dir doesn't exist don't even bother trying harder.
     if not os.path.isdir(project_dir):
         msg = """
-    Trying to print stats for a project dir ({}) that doesn't exist. You must 
-    run steps before you can show stats.
+    Trying to print stats for Assembly ({}) that doesn't exist. You must 
+    first run steps before you can show results.
     """.format(project_dir)
         sys.exit(msg)
 
@@ -72,6 +73,7 @@ def showstats(parsedict):
 
     print("\nSummary stats of Assembly {}".format(data.name) \
          +"\n------------------------------------------------")
+    
     if not data.stats.empty:
         print(data.stats)
         print("\n\nFull stats files"\
@@ -293,7 +295,7 @@ def main():
 
     ## if params then must provide action argument with it
     if args.params:
-        if not any([args.branch, args.steps]):
+        if not any([args.branch, args.results, args.steps]):
             print("""
     Must provide action argument along with -p argument for params file. 
     e.g., ipyrad -p params-test.txt -r      ## shows results
@@ -337,8 +339,11 @@ def main():
             ## launch or load assembly with custom profile/pid
             data = getassembly(args, parsedict)
 
-            ## store ipcluster info
-            data._ipcluster["cores"] = args.cores
+            ## if cores was entered, limit cores to this number
+            ## otherwise use all available cores. By default _ipcluster[cores] 
+            ## is set to detect_cpus in Assembly.__init__)
+            if args.cores:
+                data.cpus = args.cores
 
             if args.MPI:
                 data._ipcluster["engines"] = "MPI"

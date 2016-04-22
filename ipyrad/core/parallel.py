@@ -21,14 +21,6 @@ LOGGER = logging.getLogger(__name__)
 def start(data, quiet):
     """ Start ipcluster """
 
-    ## select all cores if no entry for args.cores
-    if data._ipcluster["cores"]:
-        ncores = "--n={}".format(data._ipcluster["cores"])
-        actual = data._ipcluster["cores"]
-    else:
-        ncores = ""
-        actual = detect_cpus()
-
     ## open all ip views for MPI
     iparg = ""
     if "MPI" in data._ipcluster["engines"]:
@@ -36,10 +28,16 @@ def start(data, quiet):
 
     ## make ipcluster arg call
     standard = """
-        ipcluster start --daemon --cluster-id={}
-        --engines={} {} {}"""\
+        ipcluster start 
+                  --daemon 
+                  --cluster-id={}
+                  --engines={} 
+                  --n={}
+                  {}"""\
         .format(data._ipcluster["id"], 
-                data._ipcluster["engines"], ncores, iparg)
+                data._ipcluster["engines"], 
+                data.cpus,
+                iparg)
                    
 
     ## wrap ipcluster start
@@ -48,7 +46,7 @@ def start(data, quiet):
         subprocess.check_output(shlex.split(standard))
 
         print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(data._ipcluster["engines"], actual))
+              .format(data._ipcluster["engines"], data.cpus))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
