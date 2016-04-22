@@ -25,7 +25,7 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
-
+@memoize
 def binomprobr(base1, base2, error, het):
     """
     given two bases are observed at a site n1 and n2, and the error rate e, the
@@ -73,6 +73,7 @@ def simpleconsensus(base1, base2):
 
 
 
+@memoize
 def hetero(base1, base2):
     """
     returns IUPAC symbol for ambiguity bases, used for polymorphic sites.
@@ -105,7 +106,8 @@ def hetero(base1, base2):
 
 
 def removerepeats(consens, arrayed):
-    """ Checks for interior Ns in consensus seqs and removes those that are at
+    """ 
+    Checks for interior Ns in consensus seqs and removes those that are at
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3
     is chosen so that mindepth=6 requires 2 base calls that are not in [N,-].
     """
@@ -401,6 +403,8 @@ def storealleles(consens, hidx, alleles):
 
 
 
+
+
 def basecall(rsite, data):
     """ prepares stack for making base calls """
     ## count em
@@ -441,7 +445,7 @@ def basecall(rsite, data):
                 sbase2 = base2
 
             ## And then use basecaller
-            cons = basecaller(data, site, sbase1, sbase2, comms)
+            cons = basecaller(data, sbase1, sbase2, comms)
     else:
         cons = "N"
 
@@ -449,8 +453,7 @@ def basecall(rsite, data):
 
 
 
-## this could be vectorized right?
-def basecaller(data, site, base1, base2, comms):
+def basecaller(data, base1, base2, comms):
     """ inputs data to binomprobr and gets alleles correctly oriented """
 
     ## make statistical base call
@@ -460,8 +463,8 @@ def basecaller(data, site, base1, base2, comms):
     elif base1+base2 >= data.paramsdict["mindepth_majrule"]:
         prob, _, who = simpleconsensus(base1, base2)
 
-    else:
-        LOGGER.error("gap in mindepth settings")
+    #else:
+    #    LOGGER.error("gap in mindepth settings")
 
     ## if the base could be called with 95% probability
     if float(prob) >= 0.95:
@@ -471,14 +474,18 @@ def basecaller(data, site, base1, base2, comms):
         else:
             ## site is heterozygous
             cons = hetero(*[i[0] for i in comms])
+            #LOGGER.info("GIVE: %s, GET: %s", [i[0] for i in comms], cons)
     else:
         cons = "N"
     return cons
 
 
 
-def cleanup(data, sample, statsdicts):
+def cleanup(args):
     """ cleaning up. optim is the size (nloci) of tmp arrays """
+
+    ##
+    data, sample, statsdicts = args
 
     ## collect consens chunk files
     combs1 = glob.glob(os.path.join(
@@ -503,9 +510,9 @@ def cleanup(data, sample, statsdicts):
     ioh5 = h5py.File(handle1, 'w')
     nloci = len(tmpcats) * optim
     dset = ioh5.create_dataset("catg", (nloci, maxlen, 4), 
-                               dtype=numpy.uint32)
-                               #chunks=(optim, maxlen, 4),
-                               #compression="gzip")
+                               dtype=numpy.uint32,
+                               chunks=(optim, maxlen, 4),
+                               compression="gzip")
 
     ## Combine all those tmp cats into the big cat
     start = 0
@@ -578,7 +585,7 @@ def cleanup(data, sample, statsdicts):
 
 
 
-def run_full(data, sample, ipyclient):
+def run_full(data, sample, lbview):
     """ split job into bits and pass to the client """
 
     ## counter for split job submission
@@ -588,8 +595,9 @@ def run_full(data, sample, ipyclient):
     ## because they contain larger clusters, so we create 4X as many chunks as
     ## processors so that they are split more evenly.
     ncpus = detect_cpus()
-    optim = (sample.stats.clusters_total // ncpus) + \
-            (sample.stats.clusters_total % ncpus) 
+    optim = int((sample.stats.clusters_total // ncpus) + \
+                (sample.stats.clusters_total % ncpus))
+    #LOGGER.info("ncpus %s, optim %s", ncpus, optim)
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
@@ -617,39 +625,20 @@ def run_full(data, sample, ipyclient):
     clusters.close()
 
     ## send chunks across engines, will delete tmps if failed
-    try:
-        submitted_args = []
-        for chunkhandle in chunkslist:
-            ## used to increment names across processors
-            args = [data, sample, chunkhandle, optim]
-            submitted_args.append(args)
-            num += 1
+    asyncs = []
+    for chunkhandle in chunkslist:
+        ## used to increment names across processors
+        args = [data, sample, chunkhandle, optim]
+        async = lbview.apply_async(consensus, args)
+        asyncs.append(async)
 
-        lbview = ipyclient.load_balanced_view()
-        results = lbview.map_async(consensus, submitted_args)
-        statsdicts = results.get()
-        del lbview
+    return asyncs
 
-    ## cleanup whether or not a process failed
-    finally:
-        for tmpchunk in chunkslist:
-            if os.path.exists(tmpchunk):
-                os.remove(tmpchunk)
 
-    return statsdicts
-
-        
 
 
 def run(data, samples, force, ipyclient):
     """ checks if the sample should be run and passes the args """
-    ## message to skip all samples
-    skip = 0
-    if not force:
-        if all([i.stats.state >= 5 for i in samples]):
-            print("  Skipping step5: All {} ".format(len(data.samples))\
-                 +"Samples already have consens reads ")
-            skip = 1
 
     ## prepare dirs
     data.dirs.consens = os.path.join(data.dirs.project, data.name+"_consens")
@@ -662,85 +651,128 @@ def run(data, samples, force, ipyclient):
     for tmpfile in tmpcons+tmpcats:
         os.remove(tmpfile)
 
+    ## filter through samples for those ready
+    subsamples = []
+    for sample in samples:
+        if not force:
+            if sample.stats.state >= 5:
+                print("""\
+    Skipping Sample {}; Already has consens reads. Use force arg to overwrite.\
+    """.format(sample.name))
+            elif not sample.stats.clusters_hidepth:
+                print("""\
+    Skipping Sample {}; No clusters found."""\
+    .format(sample.name, int(sample.stats.clusters_hidepth)))
+            elif sample.stats.state < 4:
+                print("""\
+    Skipping Sample {}; not yet finished step4 """)
+            else:
+                subsamples.append(sample)
+                
+        else:
+            if not sample.stats.clusters_hidepth:
+                print("""\
+    Skipping Sample {}; No clusters found in {}."""\
+    .format(sample.name, sample.files.clusters))
+            elif sample.stats.state < 4:
+                print("""\
+    Skipping Sample {}; not yet finished step4"""\
+    .format(sample.name))
+            else:
+                subsamples.append(sample)
+
     ## if sample is already done skip
     if "hetero_est" not in data.stats:
         print("  No estimates of heterozygosity and error rate. Using default "\
               "values")
-        for _, sample in data.samples.items():
+        for sample in samples:
             sample.stats.hetero_est = 0.001
             sample.stats.error_est = 0.0001
 
     if data._headers:
         if data.paramsdict["max_alleles_consens"] == 1:
-            print("  Haploid base calls and paralog filter [max haplos = 1]")
+            print("  Haploid calls with paralog filter [max alleles = 1]")
         elif data.paramsdict["max_alleles_consens"] == 2:
-            print("  Diploid base calls and paralog filter [max haplos = 2]")
+            print("  Diploid calls with paralog filter [max alleles = 2]")
         elif data.paramsdict["max_alleles_consens"] > 2:
-            print("  Diploid base calls and no paralog filter "\
-                    "(max haplos = {})".\
+            print("  Diploid base calls with relaxed paralog filter "\
+                    "(max alleles = {})".\
                     format(data.paramsdict["max_alleles_consens"]))
-        print("  error rate (mean, std):  " \
-                 +"{:.5f}, ".format(data.stats.error_est.mean()) \
-                 +"{:.5f}\n".format(data.stats.error_est.std()) \
-             +"  heterozyg. (mean, std):  " \
-                 +"{:.5f}, ".format(data.stats.hetero_est.mean()) \
-                 +"{:.5f}".format(data.stats.hetero_est.std()))
+        print(u"""\
+  [Mean \u00B1 1SD] error_rate [{:.5f} \u00B1 {:.5f}] heterozyg. [{} \u00B1 {}]"""\
+  .format(data.stats.error_est.mean(), data.stats.error_est.std(), 
+          data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
+    ## send off jobs to be processed
+    start = time.time()
+    lbview = ipyclient.load_balanced_view()
+    lasyncs = {}
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+    progressbar(10, 0, " consensus calling  | {}".format(elapsed))
 
-    if not skip:
-        ## Samples on queue
-        for sidx, sample in enumerate(samples):
-            ## not force need checks
-            start = time.time()
+    njobs = 0
+    for sample in samples:
+        ## start progress bar
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        ## make chunks and submit them to apply queue
+        lasyncs[sample.name] = run_full(data, sample, lbview)
+        njobs += len(lasyncs[sample.name])
+        ## print progress post-slice
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+        progressbar(10, 0, " consensus calling  | {}".format(elapsed))
+
+    try:
+        while 1:
+            time.sleep(1)
+            nfinished = 0
+            for sname, lasync in lasyncs.items():
+                ready = [i.ready() for i in lasync]
+                nfinished += sum(ready)
+
+                ## if all asyncs are done for this sample
+                if all(ready):
+                    statsdicts = [i.get() for i in lasync]
+                    lbview.apply(cleanup, [data.samples[sname], statsdicts])
+
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(samples), sidx, 
-                        " consensus calling  | {}".format(elapsed))
+            progressbar(njobs, nfinished,
+                " consensus calling  | {}".format(elapsed))
+            if njobs == nfinished:
+                break
 
-            try:
-                if not force:
-                    if sample.stats.state >= 5:
-                        print("Skipping Sample {}; ".format(sample.name)
-                     +"Already has consens reads. Use force=True to overwrite.")
-                    elif not sample.stats.clusters_hidepth:
-                        print("Skipping Sample {}; ".format(sample.name)
-                     +"No clusters in ({}).".\
-                       format(int(sample.stats.clusters_hidepth)))
-                    elif sample.stats.state < 4:
-                        print("skipping {}; ".format(sample.name)\
-                     + "not yet estimated error rate/heterozygosity. "\
-                     + "Run step4() first.")
-                    else:
-                        statsdicts = run_full(data, sample, ipyclient)
-                        cleanup(data, sample, statsdicts)
-                
-                else:
-                    if not sample.stats.clusters_hidepth:
-                        print("Skipping Sample {}; ".format(sample.name)
-                             +"No clusters found in file {}".\
-                               format(sample.files.clusters_hidepth))
-                    elif sample.stats.state < 4:
-                        print("skipping {}; ".format(sample.name)\
-                     + "not yet estimated error rate/heterozygosity. "\
-                     + "Run step4() first.")
-                    else:
-                        statsdicts = run_full(data, sample, ipyclient)
-                        cleanup(data, sample, statsdicts)
-    
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-                progressbar(len(samples), sidx, 
-                            " consensus calling  | {}".format(elapsed))
+    finally:
+        print("stil stopping by here")
 
-            finally:
-                ## if process failed at any point delete tmp files
-                tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-                tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-                for tmpchunk in tmpcons+tmpcats:
-                    if os.path.exists(tmpchunk):
-                        os.remove(tmpchunk)
+    ## set up clean up job for after all chunks have finished
+    # tmpids = list(itertools.chain(*[i.msg_ids for i in lasync[sample.name]]))
 
-        progressbar(20, 20, " consensus calling  | {}".format(elapsed))            
-        if data._headers:
-            print("")
+
+    # with lbview.temp_flags(after=tmpids):
+    #     statsdicts = [i.get() for i in lasync[sample.name]]
+    #     
+
+
+    # finally:
+    #     ## if process failed at any point delete tmp files
+    #         tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+    #         tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+    #         for tmpchunk in tmpcons+tmpcats:
+    #             if os.path.exists(tmpchunk):
+    #                 os.remove(tmpchunk)
+
+    #     progressbar(20, 20, " consensus calling  | {}".format(elapsed))            
+    #     if data._headers:
+    #         print("")
+    #     #cleanup(data, sample, statsdicts)
+
+
+    # ## cleanup whether or not a process failed
+    # finally:
+    #     for tmpchunk in chunkslist:
+    #         if os.path.exists(tmpchunk):
+    #             os.remove(tmpchunk)
+
+
 
 
 if __name__ == "__main__":
