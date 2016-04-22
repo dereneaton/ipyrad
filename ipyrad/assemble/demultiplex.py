@@ -82,8 +82,7 @@ def barmatch(args):
 
     ## read in list of args
     data, filenum, subnum, cutters, longbar, matchdict, fr1, fr2 = args
-    LOGGER.info("Entering barmatch - {}.{}"\
-                 .format(filenum, subnum))
+    #LOGGER.info("Entering barmatch - {}.{}".format(filenum, subnum))
 
     ## counters for total reads, those with cutsite, and those that matched
     total = 0
@@ -243,7 +242,7 @@ def collate_subs(args):
     """
     ## parse args
     data, filenum, sublist = args
-    LOGGER.info("in collatesubs %s: %s", filenum, sublist)
+    #LOGGER.info("in collatesubs %s: %s", filenum, sublist)
 
     ## output R1 collated file handle
     checkpoint = 0
@@ -601,7 +600,7 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
 
 
 
-def main(data, preview, ipyclient):
+def run(data, preview, ipyclient):
     """ 
     Demultiplexes raw fastq files given a barcodes file.
     """
@@ -642,9 +641,11 @@ def main(data, preview, ipyclient):
     lbview = ipyclient.load_balanced_view()
 
     ## count expected total number of jobs, set total a bit less than 100%
+    chunksize = 400000
     nfiles = len(raws)
-    nchunks = optim//120000
+    nchunks = optim//(chunksize//4)
     totaljobs = nchunks * nfiles
+    print(totaljobs, chunksize, nchunks)
 
     ## dictionary to store asyncresults for barmatch jobs
     filesort = {}
@@ -681,9 +682,9 @@ def main(data, preview, ipyclient):
         for _ in range(data.cpus+1):
             try:
                 ## grab a jnum slice
-                dat1 = list(itertools.islice(rawr1, 400000))
+                dat1 = list(itertools.islice(rawr1, chunksize))
                 if tups[1]:
-                    dat2 = list(itertools.islice(rawr2, 400000))
+                    dat2 = list(itertools.islice(rawr2, chunksize))
                 else:
                     dat2 = [""]
                 args = [data, filenum, subnum, cutters, longbar,
@@ -738,9 +739,9 @@ def main(data, preview, ipyclient):
                     done += 1
 
                     ## grab a new 40K slice and send to open Engine
-                    dat1 = list(itertools.islice(rawr1, 400000))
+                    dat1 = list(itertools.islice(rawr1, chunksize))
                     if tups[1]:
-                        dat2 = list(itertools.islice(rawr2, 400000))
+                        dat2 = list(itertools.islice(rawr2, chunksize))
                     else:
                         dat2 = [""]
 
@@ -766,7 +767,7 @@ def main(data, preview, ipyclient):
                 break
 
             ## if 20 chunks are done then collate them
-            elif len(sublist) > 20:
+            elif len(sublist) >= 20:
                 casync = lbview.apply(collate_subs, [data, filenum, sublist])
                 collatesubs[filenum].append(casync)
                 sublist = []
