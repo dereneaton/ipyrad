@@ -623,8 +623,9 @@ def run(data, preview, ipyclient):
     ## optim is the number of reads per cpu, if it is too large then we 
     ## load too much into memory. So if optim > 1M then we subsample it
     ## which makes things run just a bit slower
-    if optim > int(4e6):
+    while optim > int(4e6):
         optim //= 10
+
     nfiles = len(raws)
     totaljobs = data.cpus * nfiles
     done = 0
@@ -672,6 +673,10 @@ def run(data, preview, ipyclient):
         subnum = 0
         sublist = []        
         while 1:
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(totaljobs, done, 
+               ' sorting reads  | {}'.format(elapsed))
+
             ## if engines are available add jobs to fill up engines
             ready = [i.ready() for i in filesort[filenum]]
 
