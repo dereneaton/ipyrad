@@ -623,11 +623,13 @@ def run(data, preview, ipyclient):
     ## optim is the number of reads per cpu, if it is too large then we 
     ## load too much into memory. So if optim > 1M then we subsample it
     ## which makes things run just a bit slower
+    multi = 1
     while optim > int(4e6):
         optim //= 10
+        multi *= 10
 
     nfiles = len(raws)
-    totaljobs = data.cpus * nfiles
+    totaljobs = data.cpus * nfiles * multi
     done = 0
 
     ### progress
