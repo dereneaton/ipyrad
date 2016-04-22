@@ -13,9 +13,8 @@ import time
 import shutil
 import datetime
 import itertools
-from ipyparallel import TimeoutError
+import numpy as np
 from ipyrad.core.sample import Sample
-from ipyrad.assemble.rawedit import get_slice
 from ipyrad.assemble.util import *
 from collections import defaultdict, Counter
 
@@ -40,21 +39,6 @@ def combinefiles(filepath):
 
 
 
-# def matching(barcode, data):
-#     "allows for N base difference between barcodes"
-#     ## try perfect match
-#     if data.barcodes
-
-#     for name, realbar in data.barcodes.items():
-#         if len(barcode) == len(realbar):
-#             sames = sum([i == j for (i, j) in zip(barcode, realbar)])
-#             diffs = len(barcode) - sames
-#             if diffs <= data.paramsdict["max_barcode_mismatch"]:
-#                 return name
-#     return 0
-
-
-
 def findbcode(cut, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
@@ -62,14 +46,99 @@ def findbcode(cut, longbar, read1):
     barcode = search.rsplit(cut, 1)[0]
     return barcode 
 
-    # countcuts = search.count(cut)
-    # if countcuts == 1:
-    #     barcode = search.split(cut, 1)[0]
-    # elif countcuts == 2:
-    #     barcode = search.rsplit(cut, 2)[0]
-    # else:
-    #     barcode = ""
-    # return barcode
+
+
+def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
+    """
+    Write stats and stores to Assembly object.
+    """
+
+    ## out file
+    outhandle = os.path.join(data.dirs.fastqs, 's1_demultiplex_stats.txt')
+    outfile = open(outhandle, 'w')
+
+    ## how many from each rawfile
+    outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+                  format("raw_file", "total_reads", "cut_found", "bar_matched"))
+
+    ## sort rawfile names
+    rawfilenames = sorted(perfile)
+    for rawstat in rawfilenames:
+        dat = [perfile[rawstat][i] for i in ["ftotal", "fcutfound", "fmatched"]]
+        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+            format(*[rawstat]+[str(i) for i in dat]))
+        if "pair" in data.paramsdict["datatype"]:
+            rawstat2 = rawstat.replace("_R1_", "_R2_")
+            outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+                format(*[rawstat2]+[str(i) for i in dat]))
+
+    ## spacer, how many records for each sample
+    outfile.write('\n{:<35}  {:>13}\n'.\
+                  format("sample_name", "total_reads"))
+
+    ## names alphabetical. Write to file. Will save again below to Samples.
+    names_sorted = sorted(data.barcodes)
+    for name in names_sorted:
+        outfile.write("{:<35}  {:>13}\n".format(name, fsamplehits[name]))
+
+    ## spacer, which barcodes were found
+    outfile.write('\n{:<35}  {:>13}{:>13}{:>13}\n'.\
+                  format("sample_name", "true_bar", "obs_bar", "N_records"))
+
+    ## write sample results
+    for name in names_sorted:
+        ## write perfect hit
+        hit = data.barcodes[name]
+        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+            format(name, hit, hit, fsamplehits[name]))
+
+        ## write off-n hits
+        ## sort list of off-n hits
+        if name in fdbars:
+            offkeys = list(fdbars.get(name))
+            offkeys.sort(key=fbarhits.get)
+            for offhit in offkeys[::-1]:
+                ## exclude perfect hit
+                if offhit not in data.barcodes.values():
+                    outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+                        format(name, hit, offhit, fbarhits[offhit]))
+
+    ## write misses
+    misskeys = list(fmisses.keys())
+    misskeys.sort(key=fmisses.get)
+    for key in misskeys[::-1]:
+        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+            format("no_match", "_", key, fmisses[key]))
+    outfile.close()
+
+    ## Link Sample with this data file to the Assembly object
+    for name in data.barcodes:
+        sample = Sample()
+        sample.name = name
+        sample.barcode = data.barcodes[name]
+        if "pair" in data.paramsdict["datatype"]:
+            sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
+                                                  name+"_R1_.fastq.gz"),
+                                     os.path.join(data.dirs.fastqs,
+                                                  name+"_R2_.fastq.gz"))]
+        else:
+            sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
+                                                  name+"_R1_.fastq.gz"), "")]
+        ## fill in the summary stats
+        sample.stats["reads_raw"] = int(fsamplehits[name])
+        ## fill in the full df stats value
+        sample.stats_dfs.s1["reads_raw"] = int(fsamplehits[name])
+
+        ## Only link Sample if it has data
+        if sample.stats["reads_raw"]:
+            sample.stats.state = 1
+            data.samples[sample.name] = sample
+        else:
+            print("Excluded sample: no data found for", name)
+
+    ## initiate s1 key for data object
+    data.stats_dfs.s1 = data.build_stat("s1")
+    data.stats_files.s1 = outhandle
 
 
 
@@ -302,7 +371,7 @@ def collate_subs(args):
 
 
 
-def collate_files(data):
+def collate_files(data, filenum):
     """ 
     Collate temp fastq files in tmp-dir into 1 gzipped sample.
     """
@@ -313,7 +382,7 @@ def collate_files(data):
         ## get chunks
         incols = os.path.join(data.dirs.fastqs, 
                         "tmp_{}_R1_".format(sname), 
-                        "coll_*_R1_.fastq")
+                        "coll_*_R1_{}.fastq".format(filenum))
         out1 = os.path.join(data.dirs.fastqs, 
                         "{}_R1_.fastq.gz".format(sname))
 
@@ -322,13 +391,14 @@ def collate_files(data):
             chunks.sort(key=lambda x: int(x.split("_")[-3]))
             for incol in chunks:
                 with open(incol, 'r') as tmpin:
+                    print(incol, out1)
                     tmpout.write(tmpin.read())
 
         if "pair" in data.paramsdict["datatype"]:
             ## get chunks
             incols = os.path.join(data.dirs.fastqs, 
                         "tmp_{}_R2_".format(sname), 
-                        "coll_*_R2_.fastq".format(sname))
+                        "coll_*_R2_{}.fastq".format(filenum))
             out2 = os.path.join(data.dirs.fastqs, 
                         "{}_R2_.fastq.gz".format(sname))
             with gzip.open(out2, 'a') as tmpout:
@@ -340,7 +410,7 @@ def collate_files(data):
 
 
 
-def prechecks(data, ipyclient, preview):
+def prechecks(data, preview):
     """ 
     Checks before starting analysis. 
     -----------------------------------
@@ -416,7 +486,6 @@ def prechecks(data, ipyclient, preview):
     else:
         optim = estimate_optim(raws[0][0], data.cpus)
 
-    ## if only allowing 1 difference then use fast dictionary
     ## Build full inverse barcodes dictionary
     matchdict = {}
     bases = set("CATGN")
@@ -497,106 +566,13 @@ def estimate_optim(testfile, ncpus):
     inputreads = int(insize / tmp_size) * 10000
     os.remove(tmp_file_name)
 
-    ## break into ncpu chunks for sending to queue
+    ## break into ncpu chunks for sending to optim lines of data to each cpu
     optim = (inputreads // (ncpus)) + (inputreads % (ncpus))
-    LOGGER.info("estimated total length: %s", inputreads)
+    optim = int(optim*4)
+    LOGGER.info("total reads: %s, total lines: %s", inputreads, inputreads*4)
     LOGGER.info("optim=%s, optim*ncpus=%s", optim, optim*ncpus)
 
-    return inputreads
-
-
-
-def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
-    """
-    Write stats and stores to Assembly object.
-    """
-
-    ## out file
-    outhandle = os.path.join(data.dirs.fastqs, 's1_demultiplex_stats.txt')
-    outfile = open(outhandle, 'w')
-
-    ## how many from each rawfile
-    outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-                  format("raw_file", "total_reads", "cut_found", "bar_matched"))
-
-    ## sort rawfile names
-    rawfilenames = sorted(perfile)
-    for rawstat in rawfilenames:
-        dat = [perfile[rawstat][i] for i in ["ftotal", "fcutfound", "fmatched"]]
-        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-            format(*[rawstat]+[str(i) for i in dat]))
-        if "pair" in data.paramsdict["datatype"]:
-            rawstat2 = rawstat.replace("_R1_", "_R2_")
-            outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-                format(*[rawstat2]+[str(i) for i in dat]))
-
-    ## spacer, how many records for each sample
-    outfile.write('\n{:<35}  {:>13}\n'.\
-                  format("sample_name", "total_reads"))
-
-    ## names alphabetical. Write to file. Will save again below to Samples.
-    names_sorted = sorted(data.barcodes)
-    for name in names_sorted:
-        outfile.write("{:<35}  {:>13}\n".format(name, fsamplehits[name]))
-
-    ## spacer, which barcodes were found
-    outfile.write('\n{:<35}  {:>13}{:>13}{:>13}\n'.\
-                  format("sample_name", "true_bar", "obs_bar", "N_records"))
-
-    ## write sample results
-    for name in names_sorted:
-        ## write perfect hit
-        hit = data.barcodes[name]
-        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-            format(name, hit, hit, fsamplehits[name]))
-
-        ## write off-n hits
-        ## sort list of off-n hits
-        if name in fdbars:
-            offkeys = list(fdbars.get(name))
-            offkeys.sort(key=fbarhits.get)
-            for offhit in offkeys[::-1]:
-                ## exclude perfect hit
-                if offhit not in data.barcodes.values():
-                    outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-                        format(name, hit, offhit, fbarhits[offhit]))
-
-    ## write misses
-    misskeys = list(fmisses.keys())
-    misskeys.sort(key=fmisses.get)
-    for key in misskeys[::-1]:
-        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
-            format("no_match", "_", key, fmisses[key]))
-    outfile.close()
-
-    ## Link Sample with this data file to the Assembly object
-    for name in data.barcodes:
-        sample = Sample()
-        sample.name = name
-        sample.barcode = data.barcodes[name]
-        if "pair" in data.paramsdict["datatype"]:
-            sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
-                                                  name+"_R1_.fastq.gz"),
-                                     os.path.join(data.dirs.fastqs,
-                                                  name+"_R2_.fastq.gz"))]
-        else:
-            sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
-                                                  name+"_R1_.fastq.gz"), "")]
-        ## fill in the summary stats
-        sample.stats["reads_raw"] = int(fsamplehits[name])
-        ## fill in the full df stats value
-        sample.stats_dfs.s1["reads_raw"] = int(fsamplehits[name])
-
-        ## Only link Sample if it has data
-        if sample.stats["reads_raw"]:
-            sample.stats.state = 1
-            data.samples[sample.name] = sample
-        else:
-            print("Excluded sample: no data found for", name)
-
-    ## initiate s1 key for data object
-    data.stats_dfs.s1 = data.build_stat("s1")
-    data.stats_files.s1 = outhandle
+    return optim
 
 
 
@@ -606,7 +582,7 @@ def run(data, preview, ipyclient):
     """
 
     ## checks on data before starting
-    raws, longbar, cutters, optim, matchdict = prechecks(data, ipyclient, preview)
+    raws, longbar, cutters, optim, matchdict = prechecks(data, preview)
     LOGGER.info('ncpus %s', data.cpus)
     LOGGER.info('optim %s', optim)
 
@@ -634,6 +610,9 @@ def run(data, preview, ipyclient):
     fbarhits = Counter()
     fmisses = Counter()
 
+    ## a dictionary to hold my dictionaries
+    statdicts = perfile, fsamplehits, fbarhits, fmisses, fdbars
+
     ## initial progress bar
     start = time.time()
 
@@ -641,11 +620,22 @@ def run(data, preview, ipyclient):
     lbview = ipyclient.load_balanced_view()
 
     ## count expected total number of jobs, set total a bit less than 100%
-    chunksize = 400000
+    ## optim is the number of reads per cpu, if it is too large then we 
+    ## load too much into memory. So if optim > 1M then we subsample it
+    ## which makes things run just a bit slower
+    if optim > int(4e6):
+        optim //= 10
     nfiles = len(raws)
-    nchunks = optim//(chunksize//4)
-    totaljobs = nchunks * nfiles
-    print(totaljobs, chunksize, nchunks)
+    totaljobs = data.cpus * nfiles
+    done = 0
+
+    ### progress
+    LOGGER.info("doing {} chunks [size = {} lines] on {} cpus"\
+                .format(totaljobs, optim, data.cpus))
+
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(totaljobs, min(totaljobs, done), 
+               ' sorting reads  | {}'.format(elapsed))
 
     ## dictionary to store asyncresults for barmatch jobs
     filesort = {}
@@ -653,11 +643,12 @@ def run(data, preview, ipyclient):
 
     ## send slices N at a time
     filenum = 0
-    chunkdone = 0
     for tups in raws:
-        filesort.setdefault(filenum, [])
+        ## submit some fake jobs to filesort
+        filesort.setdefault(filenum, [])                
         collatesubs.setdefault(filenum, [])        
-        LOGGER.info("sending tups %s %s", tups, raws)
+        for i in range(data.cpus):
+            filesort[filenum].append(lbview.apply(time.sleep, 0.1))
 
         ## open file handles
         if tups[0].endswith(".gz"):
@@ -677,103 +668,200 @@ def run(data, preview, ipyclient):
             else:
                 io2 = 0
 
-        ## add jobs to fill up engines
+        ###############################
         subnum = 0
-        for _ in range(data.cpus+1):
-            try:
-                ## grab a jnum slice
-                dat1 = list(itertools.islice(rawr1, chunksize))
+        sublist = []        
+        while 1:
+            ## if engines are available add jobs to fill up engines
+            ready = [i.ready() for i in filesort[filenum]]
+
+            if any(ready):
+                ## grab a 4K slice
+                dat1 = list(itertools.islice(rawr1, optim))
                 if tups[1]:
-                    dat2 = list(itertools.islice(rawr2, chunksize))
+                    dat2 = list(itertools.islice(rawr2, optim))
                 else:
                     dat2 = [""]
+
+                ## done collate and quit
+                if not dat1:
+                    if sublist:
+                        ## wait for last jobs to finish (I know, not ideal)
+                        ipyclient.wait()
+                        lbview.apply(collate_subs, [data, filenum, sublist])
+                    ## close files
+                    io1.close()
+                    if tups[1]:
+                        io2.close()
+                    break
+
+                ## if too many subs, collate
+                elif len(sublist) >= 20:
+                    lbview.apply(collate_subs, [data, filenum, sublist])
+                    sublist = []
+
+                ## updates stat dicts for finished jobs
+                asyncs = [i for (i, j) in zip(filesort[filenum], ready) if j]
+                for async in asyncs:
+                    result = async.result()
+                    if result:
+                        statdicts = putstats(
+                                        result, raws[filenum][0], statdicts)
+                    ## purge from memory
+                    ipyclient.purge_local_results(async)
+
+                ## update dictionary to know about missing asyncs
+                filesort[filenum] = [i for (i, j) in \
+                                     zip(filesort[filenum], ready) if not j]
+
+                ## build a list of args
                 args = [data, filenum, subnum, cutters, longbar,
                         matchdict, dat1, dat2]
-                async = lbview.apply(barmatch, args)
-                filesort[filenum].append(async)
-                subnum += 1
 
-            except StopIteration:
-                continue
+                ## send the list to N engines
+                async = lbview.apply_async(barmatch, args)
+                filesort[filenum].append(async)
+
+                ## advance subs
+                sublist.append(subnum)
+                subnum += 1
+                done += 1
+        filenum += 1
+        ## collate colls from across files
+        ipyclient.wait()
+
+
+    for filenum in range(filenum):
+        for async in filesort[filenum]:
+            result = async.get()
+            if result:
+                statdicts = putstats(result, raws[filenum][0], statdicts)
+        ## collate across files
+        collate_files(data, filenum)
+
+    ## clean up junk files
+    tmpdirs = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*_"))
+    for tmpdir in tmpdirs:
+        try:
+            shutil.rmtree(tmpdir)
+        except Exception:
+            pass
+
+    ## final progress
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 20,
+               ' sorting reads  | {}'.format(elapsed))
+
+    ## build stats from dictionaries
+    perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts    
+    make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars)
+
+
+
+def putstats(result, handle, statdicts):
+    """ puts stats from async into dictionaries """
+    filestats, samplestats = result
+    _, total, cutfound, matched = filestats
+    samplehits, barhits, misses, dbars = samplestats
+
+    ## get dicts
+    perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts
+
+    ## update file stats
+    handle = os.path.splitext(os.path.basename(handle))[0]
+    perfile[handle]["ftotal"] += total
+    perfile[handle]["fcutfound"] += cutfound
+    perfile[handle]["fmatched"] += matched    
+
+    ## update sample stats
+    fsamplehits.update(samplehits)
+    fbarhits.update(barhits)        
+    fmisses.update(misses)
+    fdbars.update(dbars)
+
+    statdicts = perfile, fsamplehits, fbarhits, fmisses, fdbars
+    return statdicts
+
+
 
         ## send new slices from iterator as others finish
-        done = 0
-        sublist = []
-        while 1:
-            time.sleep(0.1)
-            ## progress bar is not perfect in this case
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(totaljobs, min(totaljobs, chunkdone+done), 
-                ' sorting reads  | {}'.format(elapsed))
+        # done = 0
+        # sublist = []
+        # while 1:
+        #     time.sleep(0.1)
+        #     ## progress bar is not perfect in this case
+        #     #elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        #     #progressbar(totaljobs, min(totaljobs, chunkdone+done), 
+        #     #    ' sorting reads  | {}'.format(elapsed))
 
-            ## check if any engine jobs finished
-            subsyncs = filesort[filenum]
+        #     ## check if any engine jobs finished
+        #     subsyncs = filesort[filenum]
 
-            ## for each individual job, if done, send new, store dones
-            for ridx, rasync in enumerate(subsyncs):
-                if rasync.ready():
-                    ## if done then get stats, bounces if not done
-                    results = rasync.get(0)
-                    filestats, samplestats = results
-                    rsubnum, total, cutfound, matched = filestats
-                    samplehits, barhits, misses, dbars = samplestats
+        #     ## for each individual job, if done, send new, store dones
+        #     for ridx, rasync in enumerate(subsyncs):
+        #         if rasync.ready():
+        #             ## if done then get stats, bounces if not done
+        #             results = rasync.get(0)
+        #             filestats, samplestats = results
+        #             rsubnum, total, cutfound, matched = filestats
+        #             samplehits, barhits, misses, dbars = samplestats
 
-                    ## save that this sub finished so we can add it to collate
-                    sublist.append(rsubnum)
+        #             ## save that this sub finished so we can add it to collate
+        #             sublist.append(rsubnum)
 
-                    ## update file stats
-                    handle = os.path.splitext(
-                                os.path.basename(raws[filenum][0]))[0]
-                    perfile[handle]["ftotal"] += total
-                    perfile[handle]["fcutfound"] += cutfound
-                    perfile[handle]["fmatched"] += matched    
+        #             ## update file stats
+        #             handle = os.path.splitext(
+        #                         os.path.basename(raws[filenum][0]))[0]
+        #             perfile[handle]["ftotal"] += total
+        #             perfile[handle]["fcutfound"] += cutfound
+        #             perfile[handle]["fmatched"] += matched    
 
-                    ## update sample stats
-                    fsamplehits.update(samplehits)
-                    fbarhits.update(barhits)        
-                    fmisses.update(misses)
-                    fdbars.update(dbars) 
+        #             ## update sample stats
+        #             fsamplehits.update(samplehits)
+        #             fbarhits.update(barhits)        
+        #             fmisses.update(misses)
+        #             fdbars.update(dbars) 
 
-                    ## store as done
-                    del filesort[filenum][ridx]
-                    done += 1
+        #             ## store as done
+        #             del filesort[filenum][ridx]
+        #             done += 1
 
-                    ## grab a new 40K slice and send to open Engine
-                    dat1 = list(itertools.islice(rawr1, chunksize))
-                    if tups[1]:
-                        dat2 = list(itertools.islice(rawr2, chunksize))
-                    else:
-                        dat2 = [""]
+        #             ## grab a new 40K slice and send to open Engine
+        #             dat1 = list(itertools.islice(rawr1, chunksize))
+        #             if tups[1]:
+        #                 dat2 = list(itertools.islice(rawr2, chunksize))
+        #             else:
+        #                 dat2 = [""]
 
-                    if dat1:
-                        args = [data, filenum, subnum, cutters, longbar,
-                                matchdict, dat1, dat2]
-                        async = lbview.apply(barmatch, args)
-                        filesort[filenum].append(async)
-                        subnum += 1
-                    else:
-                        continue
+        #             if dat1:
+        #                 args = [data, filenum, subnum, cutters, longbar,
+        #                         matchdict, dat1, dat2]
+        #                 async = lbview.apply(barmatch, args)
+        #                 filesort[filenum].append(async)
+        #                 subnum += 1
+        #             else:
+        #                 continue
 
-            ## if all jobs in key are done then collate subs and break
-            if done == subnum:
-                if sublist:
-                    casync = lbview.apply(collate_subs, 
-                                          [data, filenum, sublist])
-                    collatesubs[filenum].append(casync)
-                ## close files
-                io1.close()
-                if tups[1]:
-                    io2.close()
-                break
+        #     ## if all jobs in key are done then collate subs and break
+        #     if done == subnum:
+        #         if sublist:
+        #             casync = lbview.apply(collate_subs, 
+        #                                   [data, filenum, sublist])
+        #             collatesubs[filenum].append(casync)
+        #         ## close files
+        #         io1.close()
+        #         if tups[1]:
+        #             io2.close()
+        #         break
 
-            ## if 20 chunks are done then collate them
-            elif len(sublist) >= 20:
-                casync = lbview.apply(collate_subs, [data, filenum, sublist])
-                collatesubs[filenum].append(casync)
-                sublist = []
+        #     ## if 20 chunks are done then collate them
+        #     elif len(sublist) >= 20:
+        #         casync = lbview.apply(collate_subs, [data, filenum, sublist])
+        #         collatesubs[filenum].append(casync)
+        #         sublist = []
             
-        filenum += 1
-        chunkdone += done
+        # filenum += 1
+        # chunkdone += done
     
     ## set wait job until all finished. THen collate files
     # tmpids = []

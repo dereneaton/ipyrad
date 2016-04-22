@@ -484,7 +484,7 @@ def basecaller(data, base1, base2, comms):
 def cleanup(args):
     """ cleaning up. optim is the size (nloci) of tmp arrays """
 
-    ##
+    ## parse args list
     data, sample, statsdicts = args
 
     ## collect consens chunk files
@@ -499,13 +499,13 @@ def cleanup(args):
                         sample.name+"_tmpcats.*"))
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
-    ## get shape info from the first cat, they're all the same size
+    ## get shape info from the first cat, they're all the same size arrays
     with open(tmpcats[0]) as cat:
         catg = numpy.load(cat)
     ## (optim, maxlen, 4)
     optim, maxlen, _ = catg.shape
 
-    ## replace numpy save with hdf5 array someday
+    ## save as a chunked compressed hdf5 array
     handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
     ioh5 = h5py.File(handle1, 'w')
     nloci = len(tmpcats) * optim
@@ -563,7 +563,6 @@ def cleanup(args):
     sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
     sample.stats_dfs.s5.filtered_by_maxH = xfilters['haplos']    
     sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
-    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
     sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
     sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
     sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
@@ -575,6 +574,9 @@ def cleanup(args):
     ## set the Assembly stats
     data.stats_files.s5 = os.path.join(data.dirs.consens, 
                                        's5_consens_stats.txt')
+    with open(data.stats_files.s5, 'w') as out:
+        out.write(data.stats_dfs.s5.to_string())
+
     data.stats_dfs.s5 = data.build_stat("s5")
 
     ## save state to Sample if successful

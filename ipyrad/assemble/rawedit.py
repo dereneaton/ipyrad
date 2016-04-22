@@ -781,12 +781,12 @@ def run(data, samples, nreplace, force, preview, ipyclient):
                     sample_cleanup(data, sample, results)
                 ## print errors if they occurred
                 else:
-                    for async in sliced[sample]:
+                    for async in sliced[sample.name]:
                         if not async.successful():
-                            print(async.metadata.error)
+                            print("Error: %s", async.metadata.error)
 
         ## do final stats and cleanup
-        assembly_cleanup(data)
+        #assembly_cleanup(data)
 
 
 
