@@ -150,7 +150,6 @@ def removerepeats(consens, arrayed):
 
 
 
-
 def consensus(args):
     """
     from a clust file handle, reads in all copies at a locus and sorts
@@ -301,12 +300,14 @@ def nfilter1(data, reps):
         return 0
 
 
+
 def nfilter2(data, nheteros):
     """ applies max heteros in a seq filter """
     if nheteros <= sum(data.paramsdict["max_Hs_consens"]):
         return 1
     else:
         return 0
+
 
 
 def nfilter3(data, consens):
@@ -403,8 +404,6 @@ def storealleles(consens, hidx, alleles):
 
 
 
-
-
 def basecall(rsite, data):
     """ prepares stack for making base calls """
     ## count em
@@ -486,6 +485,7 @@ def cleanup(args):
 
     ## parse args list
     data, sample, statsdicts = args
+    LOGGER.info("in cleanup for: %s", sample.name)
 
     ## collect consens chunk files
     combs1 = glob.glob(os.path.join(
@@ -555,35 +555,29 @@ def cleanup(args):
     sample.files.consens = [handle1]
 
     ## set Sample stats_dfs values
-    try:
-        prop = xcounters["heteros"]/float(xcounters['nsites'])
-    except ZeroDivisionError: 
+    if int(xcounters['nsites']):
+        prop = int(xcounters["heteros"]) / float(xcounters['nsites'])
+    else:
         prop = 0
-    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
+
+    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
+    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
     sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
     sample.stats_dfs.s5.filtered_by_maxH = xfilters['haplos']    
     sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
     sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
-    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
-    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
-    sample.stats_dfs.s5.heterozygosity = prop
+    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
+    sample.stats_dfs.s5.heterozygosity = float(prop)
 
     ## set the Sample stats summary value
     sample.stats.reads_consens = int(xcounters["nconsens"])
-
-    ## set the Assembly stats
-    data.stats_files.s5 = os.path.join(data.dirs.consens, 
-                                       's5_consens_stats.txt')
-    with open(data.stats_files.s5, 'w') as out:
-        out.write(data.stats_dfs.s5.to_string())
-
-    data.stats_dfs.s5 = data.build_stat("s5")
 
     ## save state to Sample if successful
     if sample.stats.reads_consens:
         sample.stats.state = 5
     else:
         print("No clusters passed filtering in Sample: {}".format(sample.name))
+    return sample
 
 
 
@@ -638,7 +632,6 @@ def run_full(data, sample, lbview):
 
 
 
-
 def run(data, samples, force, ipyclient):
     """ checks if the sample should be run and passes the args """
 
@@ -687,7 +680,7 @@ def run(data, samples, force, ipyclient):
     if "hetero_est" not in data.stats:
         print("  No estimates of heterozygosity and error rate. Using default "\
               "values")
-        for sample in samples:
+        for sample in subsamples:
             sample.stats.hetero_est = 0.001
             sample.stats.error_est = 0.0001
 
@@ -701,78 +694,81 @@ def run(data, samples, force, ipyclient):
                     "(max alleles = {})".\
                     format(data.paramsdict["max_alleles_consens"]))
         print(u"""\
-  [Mean \u00B1 1SD] error_rate [{:.5f} \u00B1 {:.5f}] heterozyg. [{} \u00B1 {}]"""\
+  Mean error  [{:.5f} \u00B1 {:.5f}]
+  Mean hetero [{:.5f} \u00B1 {:.5f}]"""\
   .format(data.stats.error_est.mean(), data.stats.error_est.std(), 
           data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
-    ## send off jobs to be processed
+    ## start a client
     start = time.time()
     lbview = ipyclient.load_balanced_view()
+
+    ## store asyncs for consens call functions
     lasyncs = {}
+
+    ## first progress bar 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
     progressbar(10, 0, " consensus calling  | {}".format(elapsed))
 
+    ## send off jobs to be processed
     njobs = 0
-    for sample in samples:
-        ## start progress bar
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    for sample in subsamples:
         ## make chunks and submit them to apply queue
         lasyncs[sample.name] = run_full(data, sample, lbview)
         njobs += len(lasyncs[sample.name])
+
         ## print progress post-slice
         elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
         progressbar(10, 0, " consensus calling  | {}".format(elapsed))
 
+    ## create a waiting object
+    tmpids = lbview.history
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1)
+
     try:
         while 1:
-            time.sleep(1)
-            nfinished = 0
-            for sname, lasync in lasyncs.items():
-                ready = [i.ready() for i in lasync]
-                nfinished += sum(ready)
+            if not res.ready():
+                time.sleep(1)
 
-                ## if all asyncs are done for this sample
-                if all(ready):
-                    statsdicts = [i.get() for i in lasync]
-                    lbview.apply(cleanup, [data.samples[sname], statsdicts])
+                ## count how many finished for the progress bar
+                nfinished = 0
+                for joblist in lasyncs.values():
+                    nfinished += sum([i.ready() for i in joblist])
 
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(njobs, nfinished,
-                " consensus calling  | {}".format(elapsed))
-            if njobs == nfinished:
+                ## print progress bars while we wait
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(njobs, nfinished,
+                    " consensus calling  | {}".format(elapsed))
+
+            else:
                 break
 
+        ## get clean samples
+        for sample in subsamples:
+            statsdicts = [i.get() for i in lasyncs[sample.name]]
+            cleanup([data, data.samples[sample.name], statsdicts])
+
+        ## build Assembly stats
+        data.stats_dfs.s5 = data.build_stat("s5")
+
+        ## write stats file
+        data.stats_files.s5 = os.path.join(data.dirs.consens, 
+                                               's5_consens_stats.txt')
+        with open(data.stats_files.s5, 'w') as out:
+            out.write(data.stats_dfs.s5.to_string())
+
     finally:
-        print("stil stopping by here")
+        ## if process failed at any point delete tmp files
+        tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+        tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+        for tmpchunk in tmpcons+tmpcats:
+            if os.path.exists(tmpchunk):
+                os.remove(tmpchunk)
 
-    ## set up clean up job for after all chunks have finished
-    # tmpids = list(itertools.chain(*[i.msg_ids for i in lasync[sample.name]]))
-
-
-    # with lbview.temp_flags(after=tmpids):
-    #     statsdicts = [i.get() for i in lasync[sample.name]]
-    #     
-
-
-    # finally:
-    #     ## if process failed at any point delete tmp files
-    #         tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-    #         tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-    #         for tmpchunk in tmpcons+tmpcats:
-    #             if os.path.exists(tmpchunk):
-    #                 os.remove(tmpchunk)
-
-    #     progressbar(20, 20, " consensus calling  | {}".format(elapsed))            
-    #     if data._headers:
-    #         print("")
-    #     #cleanup(data, sample, statsdicts)
-
-
-    # ## cleanup whether or not a process failed
-    # finally:
-    #     for tmpchunk in chunkslist:
-    #         if os.path.exists(tmpchunk):
-    #             os.remove(tmpchunk)
+        progressbar(20, 20, " consensus calling  | {}".format(elapsed))            
+        if data._headers:
+            print("")
 
 
 

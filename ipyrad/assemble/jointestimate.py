@@ -404,7 +404,8 @@ def cleanup(data, sample, hest, eest):
     sample.stats_dfs.s4.error_est = eest
 
     ## Assembly assignment
-    data.stats_dfs.s4 = data.build_stat("s4", dtype=np.float32)
+    data.stats_dfs.s4 = data.build_stat("s4")#, dtype=np.float32)
+
     ## Update written file
     data.stats_files.s4 = os.path.join(data.dirs.clusts, 
                                        "s4_joint_estimate.txt")
