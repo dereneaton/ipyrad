@@ -146,7 +146,7 @@ def muscle_align(args):
     out = []
 
     ## a counter for discarded clusters due to poor alignment
-    badalign = 0
+    highindels = 0
 
     ## iterate over clusters and align
     for clust in clusts:
@@ -154,6 +154,7 @@ def muscle_align(args):
         lines = clust.split("\n")
         names = lines[::2]
         seqs = lines[1::2]
+        badalign = 0
 
         ## append counter to end of names b/c muscle doesn't retain order
         names = [j+str(i) for i, j in enumerate(names)]
@@ -197,6 +198,8 @@ def muscle_align(args):
                         stack.append("\n".join([anames[i], 
                                         aseqs[i][0]+"nnnn"+aseqs[i][1]]))
                     else:
+                        highindels += 1
+                        badalign = 1
                         LOGGER.info("""
                 high indels: %s
                 1, 2: (%s, %s)
@@ -270,8 +273,9 @@ def muscle_align(args):
                     if ind1:
                         stack.append("\n".join([anames[i], aseqs[i]]))
                     else:
-                        LOGGER.info("high indels: %s", aseqs[i])
+                        highindels += 1
                         badalign = 1
+                        LOGGER.info("high indels: %s", aseqs[i])
 
         ## finally, add to outstack if alignment is good
         if stack:
@@ -280,9 +284,10 @@ def muscle_align(args):
 
     ## write to file after
     infile.close()
-    outfile = open(chunk, 'wb')#+"_tmpout_"+str(num))
-    outfile.write("\n//\n//\n".join(out)+"\n")#//\n//\n")
+    outfile = open(chunk, 'wb')
+    outfile.write("\n//\n//\n".join(out)+"\n")
     outfile.close()
+    return highindels
 
 
 
@@ -673,11 +678,16 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             time.sleep(1)
 
         else:
+            ## print final progress bar
             elapsed = datetime.timedelta(seconds=int(res.elapsed))                            
             progressbar(20, 20,
                 " aligning clusters | {}".format(elapsed))
             if data._headers:
                 print("")
+            ## store returned badalign values from muscle_align
+            for sample in samples:
+                badaligns = sum([i.get() for i in res_align[sample]])
+                sample.stats_dfs.s3.filtered_bad_align = badaligns
             break
 
 ## This is for checking results for the old way of error handling, 
@@ -1012,6 +1022,8 @@ def clust_and_build(args):
         print(inst)
         return 0
 
+
+
 def cleanup_and_die(async_results):
     LOGGER.debug("Entering cleanup_and_die")
     
@@ -1023,6 +1035,8 @@ def cleanup_and_die(async_results):
             res.extend(i)
             LOGGER.warn("Got error - {}".format(i))
     return res
+
+
 
 def run(data, samples, noreverse, force, preview, ipyclient):
     """ run the major functions for clustering within samples """
