@@ -655,8 +655,11 @@ class Assembly(object):
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:
-            outfile = os.path.join(self.paramsdict["project_dir"],
-                                "params-"+self.name+".txt")
+            #usedir = self.paramsdict["project_dir"]
+            #if not os.path.exists(usedir):
+            #    usedir = "./"
+            #outfile = os.path.join(
+            outfile = "params-"+self.name+".txt"
 
         ## Test if params file already exists?
         ## If not forcing, test for file and bail out if it exists
@@ -1005,9 +1008,9 @@ class Assembly(object):
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 3 for i in samples]):
-                print("""
+                print("""\
     Skipping: All {} selected Samples already clustered.
-    (can overwrite with force argument)
+    (can overwrite with force argument)\
     """.format(len(samples)))
                 return
 
@@ -1035,7 +1038,7 @@ class Assembly(object):
             if all([i.stats.state >= 4 for i in samples]):
                 print("""\
     Skipping: All {} selected Samples already joint estimated
-    (can overwrite with force argument)
+    (can overwrite with force argument)\
     """.format(len(samples)))
                 return
 
@@ -1060,9 +1063,9 @@ class Assembly(object):
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 5 for i in samples]):
-                print("""
+                print("""\
     Skipping: All {} selected Samples already consensus called
-    (can overwrite with force argument)
+    (can overwrite with force argument)\
     """.format(len(samples)))
                 return
         ## pass samples to rawedit
