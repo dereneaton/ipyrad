@@ -923,9 +923,9 @@ class Assembly(object):
         ## if Samples already exist then no demultiplexing
         if self.samples:
             if not force:
-                print("""
-    Skipping step1: {} Samples already found in {}. 
-    (can overwrite with force argument)
+                print("""\
+    Skipping: {} Samples already found in Assembly {}. 
+    (can overwrite with force argument)\
     """.format(len(self.samples), self.name))
             else:
                 ## overwrite existing data
@@ -969,9 +969,9 @@ class Assembly(object):
         if not force:
             ## skip if all are finished
             if all([i.stats.state >= 2 for i in samples]):
-                print("""
+                print("""\
     Skipping: All {} selected Samples already edited.
-    (can overwrite with force argument)
+    (can overwrite with force argument)\
     """.format(len(samples)))
                 return
 
