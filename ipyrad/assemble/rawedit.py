@@ -46,8 +46,8 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     if not rvcuts[1]:
         rvcuts[1] = "Z"*4
 
-    ## only look for cut sites if there are cut sites
-    if any(rvcuts):
+    ## only look for filter1 if cut sites and barcode info
+    if any(rvcuts) and (data.barcodes):
         ## Look for adapters -- rvcut+[adapter]
         if read == 1:
             lookfor1 = rvcuts[0]+"AGA"
@@ -55,15 +55,13 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
         else:
             ## read 2 will have the barcode between: rvcut+[barcode]+[adapter]
             ## and so should only be checked for if barcode info is available
-            if sample.name in data.barcodes:
+            #if sample.name in data.barcodes:
+            try:
                 barcode = data.barcodes[sample.name]
-                lookfor1 = rvcuts[0]+comp(barcode)[::-1][:3]
-                lookfor2 = rvcuts[1]+comp(barcode)[::-1][:3]
-            else:
-                ## this gets cancelled out if there's no barcodes info
-                ## unless setting is strict (2)
-                lookfor1 = rvcuts[0]+"NNN"
-                lookfor2 = rvcuts[1]+"NNN"
+            except KeyError:
+                barcode = ""
+            lookfor1 = rvcuts[0]+comp(barcode)[::-1][:3]
+            lookfor2 = rvcuts[1]+comp(barcode)[::-1][:3]
 
         ## if strict then shorter lookfor
         if data.paramsdict["filter_adapters"] == 2:
@@ -86,7 +84,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     #LOGGER.debug("where1:%s, ch1:%s, ch2:%s, read:%s", 
     #              where1, check1, check2, read)
 
-    ## look for adapter sequence directly in two parts: "AGATCGGA.AGAGCGTC"
+    ## look for adapter sequence directly in two parts: "AGATCGG.AGAGCGTC"
     ## if strict then shorten the lookfor string
     dist = None
     if data.paramsdict["filter_adapters"] == 2:
@@ -97,7 +95,7 @@ def afilter(data, sample, bases, cuts1, cuts2, read):
     check1 = max(0, bases[1].tostring().find(lookfor1))
     check2 = max(0, bases[1].tostring().find(lookfor2))
     ### CHECK FOR SECOND FILTER
-    mincheck = min(check1, check2)
+    mincheck = max(check1, check2)
 
     ## How far back from adapter to trim to remove cutsite and barcodes
     if mincheck:
