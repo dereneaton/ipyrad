@@ -145,6 +145,9 @@ def muscle_align(args):
     clusts = infile.read().split("//\n//\n")
     out = []
 
+    ## a counter for discarded clusters due to poor alignment
+    badalign = 0
+
     ## iterate over clusters and align
     for clust in clusts:
         stack = []
@@ -153,12 +156,11 @@ def muscle_align(args):
         seqs = lines[1::2]
 
         ## append counter to end of names b/c muscle doesn't retain order
-        names = [j+str(i) for i, j in enumerate(names)]        
-
+        names = [j+str(i) for i, j in enumerate(names)]
 
         ## 0 length names indicates back to back //\n//\n sequences, so pass
         ## TODO: This should probably be fixed upstream so it doesn't happen
-        ## but it's protective regardless
+        ## but it's protective regardless... but still, it's slowing us down...
         if len(names) == 0:
             pass
         ## don't bother aligning singletons
@@ -598,11 +600,10 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             for i in range(10):
                 chunk = os.path.join(tmpdir, sample.name+"_chunk_{}.ali".format(i))
                 res_align[sample].append(lbview.apply(muscle_align, [data, chunk]))
-
     ## test just up to this point [comment this out when done]
-    #[i.get() for i in all_aligns]
-    #return 1
-    all_async_obj.extend(list(itertools.chain(*res_align.values())))
+    align_asyncs = list(itertools.chain(*res_align.values()))
+    #[i.get() for i in align_asyncs]
+    all_async_obj.extend(align_asyncs)
 
     ## FUNC 6: concat chunks -------------------------------------------------
     res_concat = {}

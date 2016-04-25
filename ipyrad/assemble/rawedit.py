@@ -675,6 +675,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
 
     ## hold samples that pass
     subsamples = []
+    asyncs = []
 
     ## filter the samples again
     if not force:
@@ -772,21 +773,22 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     ## enforced cleanup
     finally:
         ## if all jobs were successful in a sample then cleanup
-        for sample in subsamples:
-            ## if finished
-            if all([i.ready() for i in sliced[sample.name]]):
-                ## if no errors
-                if all([i.successful() for i in sliced[sample.name]]):                
-                    results = [i.get() for i in sliced[sample.name]]
-                    sample_cleanup(data, sample, results)
-                ## print errors if they occurred
-                else:
-                    for async in sliced[sample.name]:
-                        if not async.successful():
-                            print("Error: %s", async.metadata.error)
-
-        ## do final stats and cleanup
-        #assembly_cleanup(data)
+        if asyncs:
+            for sample in subsamples:
+                ## if finished
+                if all([i.ready() for i in sliced[sample.name]]):
+                    ## if no errors
+                    if all([i.successful() for i in sliced[sample.name]]):                
+                        results = [i.get() for i in sliced[sample.name]]
+                        sample_cleanup(data, sample, results)
+                    ## print errors if they occurred
+                    else:
+                        for async in sliced[sample.name]:
+                            if not async.successful():
+                                print("Error: %s", async.metadata.error)
+        if all([i.successful() for i in asyncs]):
+            ## do final stats and cleanup
+            assembly_cleanup(data)
 
 
 
