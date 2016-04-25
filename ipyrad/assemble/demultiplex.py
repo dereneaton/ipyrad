@@ -173,6 +173,7 @@ def barmatch(args):
     ## get slice of data as a generator
     # tups = rawtuple
     # fr1, fr2, io1, io2 = get_slice(tups, optim, subnum)
+    LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
 
     fr1 = iter(fr1)
     fr2 = iter(fr2)
@@ -371,42 +372,40 @@ def collate_subs(args):
 
 
 
-def collate_files(data, filenum):
+def collate_files(args):
     """ 
     Collate temp fastq files in tmp-dir into 1 gzipped sample.
     """
+    ## parse args
+    data, filenum, sname = args
 
-    ## sample names are in data.barcodes
-    for sname in data.barcodes:
+    ## get chunks
+    incols = os.path.join(data.dirs.fastqs, 
+                    "tmp_{}_R1_".format(sname), 
+                    "coll_{}_R1_*.fastq".format(filenum))
+    out1 = os.path.join(data.dirs.fastqs, 
+                    "{}_R1_.fastq.gz".format(sname))
 
+    with gzip.open(out1, 'a') as tmpout:
+        chunks = glob.glob(incols)
+        chunks.sort(key=lambda x: int(x.split("_")[-3]))
+        for incol in chunks:
+            with open(incol, 'r') as tmpin:
+                tmpout.write(tmpin.read())
+
+    if "pair" in data.paramsdict["datatype"]:
         ## get chunks
         incols = os.path.join(data.dirs.fastqs, 
-                        "tmp_{}_R1_".format(sname), 
-                        "coll_*_R1_{}.fastq".format(filenum))
-        out1 = os.path.join(data.dirs.fastqs, 
-                        "{}_R1_.fastq.gz".format(sname))
-
-        with gzip.open(out1, 'a') as tmpout:
+                    "tmp_{}_R2_".format(sname), 
+                    "coll_{}_R2_*.fastq".format(filenum))
+        out2 = os.path.join(data.dirs.fastqs, 
+                    "{}_R2_.fastq.gz".format(sname))
+        with gzip.open(out2, 'a') as tmpout:
             chunks = glob.glob(incols)
             chunks.sort(key=lambda x: int(x.split("_")[-3]))
             for incol in chunks:
                 with open(incol, 'r') as tmpin:
-                    print(incol, out1)
                     tmpout.write(tmpin.read())
-
-        if "pair" in data.paramsdict["datatype"]:
-            ## get chunks
-            incols = os.path.join(data.dirs.fastqs, 
-                        "tmp_{}_R2_".format(sname), 
-                        "coll_*_R2_{}.fastq".format(filenum))
-            out2 = os.path.join(data.dirs.fastqs, 
-                        "{}_R2_.fastq.gz".format(sname))
-            with gzip.open(out2, 'a') as tmpout:
-                chunks = glob.glob(incols)
-                chunks.sort(key=lambda x: int(x.split("_")[-3]))
-                for incol in chunks:
-                    with open(incol, 'r') as tmpin:
-                        tmpout.write(tmpin.read())
 
 
 
@@ -570,7 +569,6 @@ def estimate_optim(testfile, ncpus):
     optim = (inputreads // (ncpus)) + (inputreads % (ncpus))
     optim = int(optim*4)
     LOGGER.info("total reads: %s, total lines: %s", inputreads, inputreads*4)
-    LOGGER.info("optim=%s, optim*ncpus=%s", optim, optim*ncpus)
 
     return optim
 
@@ -629,8 +627,12 @@ def run(data, preview, ipyclient):
         multi *= 10
 
     nfiles = len(raws)
-    totaljobs = data.cpus * nfiles * multi
+    totaljobs = data.cpus + (data.cpus * nfiles * multi)
     done = 0
+    
+    ## ensure optim is divisible by 4
+    while optim % 4:
+        optim += 1
 
     ### progress
     LOGGER.info("doing {} chunks [size = {} lines] on {} cpus"\
@@ -647,7 +649,7 @@ def run(data, preview, ipyclient):
     ## send slices N at a time
     filenum = 0
     for tups in raws:
-        ## submit some fake jobs to filesort
+        ## submit some wait jobs to filesort
         filesort.setdefault(filenum, [])                
         collatesubs.setdefault(filenum, [])        
         for i in range(data.cpus):
@@ -733,18 +735,48 @@ def run(data, preview, ipyclient):
                 sublist.append(subnum)
                 subnum += 1
                 done += 1
+            time.sleep(0.1)
         filenum += 1
         ## collate colls from across files
         ipyclient.wait()
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(20, 20, 
+        ' sorting reads  | {}'.format(elapsed))
+        if data._headers:
+            print("")
 
+    ## collate progress bar
+    start = time.time()
+    total = int(filenum*len(data.barcodes))
+    done = 0
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(total, done, ' writing files  | {}'.format(elapsed))
 
-    for filenum in range(filenum):
-        for async in filesort[filenum]:
+    colls = []
+    for fnum in range(filenum):
+        for async in filesort[fnum]:
             result = async.get()
             if result:
-                statdicts = putstats(result, raws[filenum][0], statdicts)
+                statdicts = putstats(result, raws[fnum][0], statdicts)
         ## collate across files
-        collate_files(data, filenum)
+        for sname in data.barcodes:
+            colls.append(lbview.apply(collate_files, [data, fnum, sname]))
+            
+    ## wait for collates
+    while 1:
+        done = sum([i.ready() for i in colls])
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(total, done, ' writing files  | {}'.format(elapsed))
+        if done == total:
+            break
+        else:
+            time.sleep(0.2)
+
+    ## final prog
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 20, ' writing files  | {}'.format(elapsed))
+    if data._headers:
+        print("")
 
     ## clean up junk files
     tmpdirs = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*_"))
@@ -753,11 +785,6 @@ def run(data, preview, ipyclient):
             shutil.rmtree(tmpdir)
         except Exception:
             pass
-
-    ## final progress
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 20,
-               ' sorting reads  | {}'.format(elapsed))
 
     ## build stats from dictionaries
     perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts    
@@ -789,152 +816,6 @@ def putstats(result, handle, statdicts):
     statdicts = perfile, fsamplehits, fbarhits, fmisses, fdbars
     return statdicts
 
-
-
-        ## send new slices from iterator as others finish
-        # done = 0
-        # sublist = []
-        # while 1:
-        #     time.sleep(0.1)
-        #     ## progress bar is not perfect in this case
-        #     #elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        #     #progressbar(totaljobs, min(totaljobs, chunkdone+done), 
-        #     #    ' sorting reads  | {}'.format(elapsed))
-
-        #     ## check if any engine jobs finished
-        #     subsyncs = filesort[filenum]
-
-        #     ## for each individual job, if done, send new, store dones
-        #     for ridx, rasync in enumerate(subsyncs):
-        #         if rasync.ready():
-        #             ## if done then get stats, bounces if not done
-        #             results = rasync.get(0)
-        #             filestats, samplestats = results
-        #             rsubnum, total, cutfound, matched = filestats
-        #             samplehits, barhits, misses, dbars = samplestats
-
-        #             ## save that this sub finished so we can add it to collate
-        #             sublist.append(rsubnum)
-
-        #             ## update file stats
-        #             handle = os.path.splitext(
-        #                         os.path.basename(raws[filenum][0]))[0]
-        #             perfile[handle]["ftotal"] += total
-        #             perfile[handle]["fcutfound"] += cutfound
-        #             perfile[handle]["fmatched"] += matched    
-
-        #             ## update sample stats
-        #             fsamplehits.update(samplehits)
-        #             fbarhits.update(barhits)        
-        #             fmisses.update(misses)
-        #             fdbars.update(dbars) 
-
-        #             ## store as done
-        #             del filesort[filenum][ridx]
-        #             done += 1
-
-        #             ## grab a new 40K slice and send to open Engine
-        #             dat1 = list(itertools.islice(rawr1, chunksize))
-        #             if tups[1]:
-        #                 dat2 = list(itertools.islice(rawr2, chunksize))
-        #             else:
-        #                 dat2 = [""]
-
-        #             if dat1:
-        #                 args = [data, filenum, subnum, cutters, longbar,
-        #                         matchdict, dat1, dat2]
-        #                 async = lbview.apply(barmatch, args)
-        #                 filesort[filenum].append(async)
-        #                 subnum += 1
-        #             else:
-        #                 continue
-
-        #     ## if all jobs in key are done then collate subs and break
-        #     if done == subnum:
-        #         if sublist:
-        #             casync = lbview.apply(collate_subs, 
-        #                                   [data, filenum, sublist])
-        #             collatesubs[filenum].append(casync)
-        #         ## close files
-        #         io1.close()
-        #         if tups[1]:
-        #             io2.close()
-        #         break
-
-        #     ## if 20 chunks are done then collate them
-        #     elif len(sublist) >= 20:
-        #         casync = lbview.apply(collate_subs, [data, filenum, sublist])
-        #         collatesubs[filenum].append(casync)
-        #         sublist = []
-            
-        # filenum += 1
-        # chunkdone += done
-    
-    ## set wait job until all finished. THen collate files
-    # tmpids = []
-    # for fnum in collatesubs:
-    #     tmpl = list(itertools.chain(*collatesubs[fnum]))
-    #     tmpids.append(tmpl)
-    # tmpids = list(itertools.chain(*collatesubs[tmpids]))
-
-    # print(tmpids)
-    # with lbview.temp_flags(after=tmpids):
-    #     res = lbview.apply(collate_files, data)
-
-    # ## print final progress
-    # elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    # progressbar(totaljobs, totaljobs, 
-    #             ' sorting reads  | {}'.format(elapsed))
-    # if data._headers:
-    #     print("")
-    # ## wait on final collate files job. progress bar?
-    # res.wait()
-    ipyclient.wait()
-
-    # except (KeyboardInterrupt, SystemExit):
-    #     print('\n  Interrupted! Cleaning up... ')
-    #     raise
-
-    ## clean up junk files
-    tmpdirs = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*_"))
-    for tmpdir in tmpdirs:
-        try:
-            shutil.rmtree(tmpdir)
-        except Exception:
-            pass
-
-    #     ## if success: make stats
-    ## build stats from dictionaries
-    make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars)
-
-
-    #     for job in range(filenum):
-    #         for async in sorting[job]:
-    #             if async.ready():
-    #                 if async.successful():
-    #                     filestats, samplestats = async.get()
-    #                     handle, total, cutfound, matched = filestats
-    #                     samplehits, barhits, misses, dbars = samplestats
-
-    #                     ## update file stats
-    #                     perfile[handle]["ftotal"] += total
-    #                     perfile[handle]["fcutfound"] += cutfound
-    #                     perfile[handle]["fmatched"] += matched    
-
-    #                     ## update sample stats
-    #                     fsamplehits.update(samplehits)
-    #                     fbarhits.update(barhits)        
-    #                     fmisses.update(misses)
-    #                     fdbars.update(dbars)
-
-    #                 else:
-    #                     ## grab metadata and complain
-    #                     meta = async.metadata
-    #                     ## if not done do nothing, if failure print error
-    #                     if meta.error:
-    #                         LOGGER.error("error: %s", meta.error)
-
-                         
 
 
 
