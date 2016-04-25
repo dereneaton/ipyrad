@@ -243,7 +243,7 @@ def build(data, samples, indeltups, clustbits):
 
 
 
-def cluster(data, noreverse):
+def cluster(data, noreverse, ipyclient):
     """ 
     Calls vsearch for clustering across samples. 
     """
@@ -252,6 +252,7 @@ def cluster(data, noreverse):
     cathaplos = os.path.join(data.dirs.consens, data.name+"_cathaps.tmp")
     uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
     hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
+    logfile = os.path.join(data.dirs.consens, "s6_cluster_stats.txt")
 
     ## parameters that vary by datatype 
     ## (too low of cov values yield too many poor alignments)
@@ -287,10 +288,11 @@ def cluster(data, noreverse):
        +" -threads 0" \
        +" -fulldp " \
        +" -usersort " \
-       +" -quiet"
+       +" -log "+logfile
 
     try:
         LOGGER.debug(cmd)
+        #ipyclient[:].apply(subprocess.call, cmd)
         #proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,            
         #                             stdout=subprocess.PIPE)
         ## fork to non-blocking stream so we can read the output
@@ -307,8 +309,8 @@ def cluster(data, noreverse):
         #     print(output)
         #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
         #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 1, " clustering across 1/3  | {}".format(elapsed))
+        #elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(100, 1, " clustering across 1/3  | {}".format('running...'))
         subprocess.check_call(cmd, shell=True, 
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
@@ -355,8 +357,8 @@ def build_h5_array(data, samples, ipyclient):
     ## store catgs with a .10 loci chunk size
     supercatg = io5.create_dataset("catgs", (data.nloci, len(samples), maxlen, 4),
                                     dtype=np.uint32,
-                                    chunks=(chunks, len(samples), maxlen, 4))
-                                    #compression="gzip")
+                                    chunks=(chunks, len(samples), maxlen, 4), 
+                                    compression="gzip")
     supercatg.attrs["chunksize"] = chunks
     supercatg.attrs["samples"] = [i.name for i in samples]
 
@@ -365,30 +367,36 @@ def build_h5_array(data, samples, ipyclient):
     ## array for clusters of consens seqs
     superseqs = io5.create_dataset("seqs", (data.nloci, len(samples), maxlen),
                                     dtype="|S1",
-                                    chunks=(chunks, len(samples), maxlen))
+                                    chunks=(chunks, len(samples), maxlen), 
+                                    compression='gzip')
     superseqs.attrs["chunksize"] = chunks
     superseqs.attrs["samples"] = [i.name for i in samples]
 
 
     ## INIT FULL SNPS ARRAY
     ## array for snp string, 2 cols, - and *
-    snps = io5.create_dataset("snps", (data.nloci, maxlen, 2), dtype=np.bool,
-                              chunks=(chunks, maxlen, 2))
+    snps = io5.create_dataset("snps", (data.nloci, maxlen, 2), 
+                              dtype=np.bool,
+                              chunks=(chunks, maxlen, 2), 
+                              compression='gzip')
     snps.attrs["chunksize"] = chunks
     snps.attrs["names"] = ["-", "*"]
 
 
     ## INIT FULL FILTERS ARRAY
     ## array for filters that will be applied in step7
-    filters = io5.create_dataset("filters", (data.nloci, 6), dtype=np.bool)#,
+    filters = io5.create_dataset("filters", (data.nloci, 6), 
+                                 dtype=np.bool)
     filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
                                 "max_hets", "min_samps", "bad_edges"]
 
 
     ## INIT FULL EDGE ARRAY
     ## array for edgetrimming 
-    edges = io5.create_dataset("edges", (data.nloci, 5), dtype=np.uint16,
-                               chunks=(chunks, 5))
+    edges = io5.create_dataset("edges", (data.nloci, 5), 
+                               dtype=np.uint16,
+                               chunks=(chunks, 5), 
+                               compression="gzip")
     edges.attrs["chunksize"] = chunks
     edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
 
@@ -444,20 +452,27 @@ def multicat(data, samples, ipyclient):
                 fwait = sum([i.ready() for i in jobs.values()])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " building database 3/3  | {}".format(elapsed))
+                            " ordering clusters 3/4  | {}".format(elapsed))
                 ## got to next print row when done
-                sys.stdout.flush()
+                #sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " building database 3/3  | {}".format(elapsed))
+                progressbar(20, 20, " ordering clusters 3/4  | {}".format(elapsed))
+                if data._headers:
+                    print("")
                 break
 
     except (KeyboardInterrupt, SystemExit):
         print('\n  Interrupted! Cleaning up... ')
     
     finally:
+        elapsed = datetime.timedelta(seconds=int(res.elapsed))
+        progressbar(20, 0, " building database 4/4  | {}".format(elapsed))
+        start = time.time()
+        done = 0
+
         for sname in jobs:
             ## grab metadata
             meta = jobs[sname].metadata
@@ -466,6 +481,10 @@ def multicat(data, samples, ipyclient):
             if meta.completed:
                 ## get the results
                 insert_and_cleanup(data, sname)
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(len(jobs), done, 
+                    " building database 4/4  | {}".format(elapsed))
+                done += 1
 
             ## if not done do nothing, if failure print error
             else:
@@ -475,9 +494,11 @@ def multicat(data, samples, ipyclient):
                 stdout: %s
                 stderr: %s 
                 error: %s""", meta.stdout, meta.stderr, meta.error)
-
-    if data._headers:
-        print("")
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(jobs), done, 
+        " building database 4/4  | {}".format(elapsed))
+        if data._headers:
+            print("")
 
     ## remove indels array
     os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
@@ -506,9 +527,11 @@ def insert_and_cleanup(data, sname):
         catg[chu:chu+chunk, sidx, ...] = icatg[chu:chu+chunk]
 
     ## put in loci that were filtered b/c of dups [0] or inds [1]
+    ## this is not chunked in any way, and so needs to be changed if we 
+    ## later decide to have multiple samples write to the disk at once.
     filters = io5["filters"]
-    filters[:, 0] = ind5["dupfilter"][:]
-    filters[:, 1] = ind5["indfilter"][:]
+    filters[:, 0] += ind5["dupfilter"][:]
+    filters[:, 1] += ind5["indfilter"][:]
 
     ## close h5s
     io5.close()
@@ -517,16 +540,6 @@ def insert_and_cleanup(data, sname):
     ## clean up / remove individual h5 catg file
     if os.path.exists(smp5):
         os.remove(smp5)
-
-    # ## FILL SUPERCATG -- combine individual hdf5 arrays into supercatg
-    # h5handles = []
-    # for sidx, sample in enumerate(samples):
-    #     h5handle = os.path.join(data.dirs.consens, sample.name+".hdf5")
-    #     h5handles.append(h5handle)
-    #     ## open, read, and close individual data base
-    #     with h5py.File(h5handle, 'r') as singleh5:
-    #         icatg = singleh5[sample.name]
-    #         supercatg[:, sidx, :, :] = icatg
 
 
 
@@ -572,7 +585,8 @@ def singlecat(args):
     if os.path.exists(smpio):
         os.remove(smpio)
     smp5 = h5py.File(smpio, 'w')
-    icatg = smp5.create_dataset('icatg', (nloci, maxlen, 4), dtype=np.uint32)
+    icatg = smp5.create_dataset('icatg', (nloci, maxlen, 4), 
+                                dtype=np.uint32)
 
     ## LOAD IN STEP5 CATG ARRAY
     ## get catg from step5 for this sample, the shape is (nconsens, maxlen)
@@ -583,19 +597,19 @@ def singlecat(args):
     dupfilter = np.zeros(nloci, dtype=np.bool)
     indfilter = np.zeros(nloci, dtype=np.bool)
 
-    ## create a local array to fill until writing to disk for mem efficiency
-    local = np.zeros((10000, maxlen, 4), dtype=np.uint32)
+    ## create a local array to fill until writing to disk for write efficiency
+    local = np.zeros((1000, maxlen, 4), dtype=np.uint32)
     start = iloc = 0
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
 
         ## write to disk after 10000 writes
-        if not iloc % 10000:
+        if not iloc % 1000:
             icatg[start:iloc] = local[:]
             ## reset
             start = iloc
-            local = np.zeros((10000, maxlen, 4), dtype=np.uint32)
+            local = np.zeros((1000, maxlen, 4), dtype=np.uint32)
 
         ## fill local array one at a time
         if ask.shape[0] == 1: 
@@ -608,7 +622,7 @@ def singlecat(args):
             ## store that this cluster failed b/c it had duplicate samples. 
             dupfilter[iloc] = True
 
-    ## write the leftover 
+    ## write the leftover chunk 
     icatg[start:iloc] = local[:icatg[start:iloc].shape[0]]
 
     ## for each locus in which Sample was the seed. This writes quite a bit
@@ -915,7 +929,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## call vsearch
     LOGGER.info("clustering")    
-    cluster(data, noreverse)
+    cluster(data, noreverse, ipyclient)
 
     ## build consens clusters and returns chunk handles to be aligned
     LOGGER.info("building consens clusters")        
