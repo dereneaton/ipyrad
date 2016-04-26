@@ -760,11 +760,11 @@ def run(data, samples, force, ipyclient):
 
     finally:
         ## if process failed at any point delete tmp files
-        tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-        tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-        for tmpchunk in tmpcons+tmpcats:
-            if os.path.exists(tmpchunk):
-                os.remove(tmpchunk)
+        tmpcons = glob.glob(os.path.join(data.dirs.clusts, "tmp_*.[0-9]*"))
+        tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+        tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+        for tmpchunk in tmpcons:
+            os.remove(tmpchunk)
 
         progressbar(20, 20, " consensus calling | {}".format(elapsed))            
         if data._headers:

@@ -35,12 +35,13 @@ LOGGER = logging.getLogger(__name__)
 ## referenced by assembly.py and also paramsinfo. Easier to have it
 ## centralized. LOCI and VCF are default. Some others are created as 
 ## dependencies of others.
-OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 
+OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
                   'str', 'geno', 'treemix', 'migrate', 'gphocs']
 
 
 def run(data, samples, force, ipyclient):
-    """ Check all samples requested have been clustered (state=6), make output 
+    """ 
+    Check all samples requested have been clustered (state=6), make output 
     directory, then create the requested outfiles. Excluded samples are already
     removed from samples.
     """
@@ -512,14 +513,15 @@ def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps,
     snpstring = ["-" if snp[i, 0] else \
                  "*" if snp[i, 1] else \
                  " " for i in range(len(snp))]
-    outstr += "\n" + snppad + "".join(snpstring) + "|"
+    outstr += "\n" + snppad + "".join(snpstring) + "|{}|".format(iloc)
 
     return outstr, samplecov, locuscov
 
 
 
 def filter_stacks(args):
-    """ Grab a chunk of loci from the HDF5 database. Apply filters and fill the 
+    """ 
+    Grab a chunk of loci from the HDF5 database. Apply filters and fill the 
     the filters boolean array. 
 
     The design of the filtering steps intentionally sacrifices some performance
@@ -537,25 +539,16 @@ def filter_stacks(args):
         LOGGER.info('logging from engine: %s', superseqs.shape)
 
         ## get first index of splits for paired reads. Only need this until 
-        ## get_edges gets the edges
+        ## get_edges gets the edges and then these are stored together
         splits = ioh5["edges"][hslice[0]:hslice[1], 4]
         #LOGGER.info('splits preview %s', splits[:10])
         #LOGGER.info('splits preview %s', splits[-10:])        
-        ## Empty arrays to be filled in used to later fill in the full 
-        ## filter array. Filter dims = (nloci, 5)
-        ## Filter order is: [dups, indels, maxhets, maxsnps, minsamp]
-        #dupfilter = np.zeros((hslice[1],), dtype=np.bool)
-        #indfilter = np.zeros((hslice[1],), dtype=np.bool)
-        #hetfilter = np.zeros((hslice[1],), dtype=np.bool)
-        #minfilter = np.zeros((hslice[1],), dtype=np.bool)
-        #edgfilter = np.zeros((hslice[1],), dtype=np.bool)
-        #snpfilter = np.zeros((hslice[1],), dtype=np.bool)
 
         ## get edges of superseqs, since edges should be trimmed off before
         ## counting hets and snps. Technically, this could edge trim clusters
         ## to the point that they are below the minlen, and so this also 
         ## constitutes a filter, though one that is uncommon. For this reason
-        ## we have a filter also called edgfilter. (needs to be added to filter)
+        ## we have a filter also called edgfilter.
         LOGGER.debug("getting edges")
         edgfilter, edgearr = get_edges(data, superseqs, splits)
         del splits
@@ -716,7 +709,8 @@ def get_edges(data, superseqs, splits):
 
 
 def filter_minsamp(data, superseqs):
-    """ Filter minimum # of samples per locus from superseqs[chunk]. The shape
+    """ 
+    Filter minimum # of samples per locus from superseqs[chunk]. The shape
     of superseqs is [chunk, sum(sidx), maxlen]
     """
     ## the minimum filter
@@ -738,7 +732,7 @@ def fakeref(sitecol, idx=0):
     Used to find the most frequent base at each column for making a 
     stand-in reference sequence for denovo loci that have no reference. 
     Simply a way for representing the results in geno and VCF outputs.
-    If alt arg, returns all others alleles that are non-REF. 
+    If idx, returns others alleles that are non-REF. 
     """
     ## a list for only catgs
     catg = [i for i in sitecol if i in "CATG"]
@@ -1240,20 +1234,21 @@ def make_vcf(data, samples, inh5):
             ## fill ALT allele
             gstr[seqleft:seqleft+seq.shape[1], 4] = seqr
 
-            ## put in [for now default min] QUAL score
-            gstr[seqleft:seqleft+seq.shape[1], 5] = 13
+            ## add qual [just 0.95 for now]
+            gstr[seqleft:seqleft+seq.shape[1], 5] = '13'
 
-            ## print filter (none for now)
+            ## add filter (only PASS for now)
             gstr[seqleft:seqleft+seq.shape[1], 6] = "PASS"
 
-            ## print info (just NS and DP)
-            info = np.array(seqref.shape, dtype="S20")
-            _ns = np.sum(catg.sum(axis=1).sum(axis=1) != 0)
-            for i in xrange(info.shape[0]):
-                info[i] = "NS={};DP={}".format(_ns, str(catg[:, i].sum()))
+            ## add info (just NS and DP)
+            info = np.zeros(catg.shape[1], dtype="S20")
+            nons = np.sum(np.sum(catg, axis=2) != 0, axis=0)            
+            sums = np.sum(np.sum(catg, axis=2), axis=0)
+            for i in xrange(catg.shape[1]):
+                info[i] = "NS={};DP={}".format(nons[i], sums[i])
             gstr[seqleft:seqleft+seq.shape[1], 7] = info
 
-            ## print format
+            ## add format string
             gstr[seqleft:seqleft+seq.shape[1], 8] = "GT:CATG"
 
             ## ----  build counts array ----
@@ -1261,8 +1256,9 @@ def make_vcf(data, samples, inh5):
             carr = catg.astype("S20")
 
             for site in xrange(cnts.shape[0]):
-                obs = seqref[site]+seqr[site].replace(".", "").replace(",", "")
-                ords = {i:j for (i, j) in zip(obs+"N-", '0123..')}
+                obs = seqref[site]+seqr[site].replace(",", "")
+                ords = {i:j for (i, j) in zip(obs, '0123')}
+                ords.update({"N":".", "-":"."})
                 for taxon in range(cnts.shape[1]):
                     base1, base2 = DUCT[seq[taxon][site]]
                     cnts[site][taxon] = "{}/{}:{}".format(\
@@ -1300,70 +1296,70 @@ vecviewgeno = np.vectorize(viewgeno)
 
 
 
-## Utility subfunctions
-def count_shared_polymorphisms(seqs):
-    """ 
-    Count the number of shared polymorphic sites at every base in a locus. If 
-    base contains too may shared polymorphisms (paramsdict[max_shared_Hs_locus])
-    then we'll throw out the whole locus.
-    Input is a list of sequences, output is a list of ints representing counts
-    of shared polyorphisms per base
-    """
-    ## Transpose the list of seqs, so we now have a list of bases at each locus.
-    ## Stacks of sequences should always be the same length, but if they aren't
-    ## we'll protect by filling with N's, rather than truncating, which is what
-    ## zip() would do.
-    ## Makes a list of counters for each stack of bases of this locus
-    stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
+# ## Utility subfunctions
+# def count_shared_polymorphisms(seqs):
+#     """ 
+#     Count the number of shared polymorphic sites at every base in a locus. If 
+#     base contains too may shared polymorphisms (paramsdict[max_shared_Hs_locus])
+#     then we'll throw out the whole locus.
+#     Input is a list of sequences, output is a list of ints representing counts
+#     of shared polyorphisms per base
+#     """
+#     ## Transpose the list of seqs, so we now have a list of bases at each locus.
+#     ## Stacks of sequences should always be the same length, but if they aren't
+#     ## we'll protect by filling with N's, rather than truncating, which is what
+#     ## zip() would do.
+#     ## Makes a list of counters for each stack of bases of this locus
+#     stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
 
-    ## This is maybe 20% too clever, but i wanted to do it with list 
-    ## comprehension, so here we are. Read this as "At each base get the max 
-    ## number of counts of any ambiguity code". Below y.items is a counter for 
-    ## each position, and x[0] is the counter key, x[1] is the count for that 
-    ## key. Another stupid thing is that max() in python 2.7 doesn't handle 
-    ## empty lists, so there's this trick max(mylist or [0]), empty list 
-    ## evaluates as false, so it effectively defaults max({}) = 0.
-    max_counts = [max([x[1] for x in y.items() if x[0] in "RYSWKM"] or [0]) \
-                  for y in stacks]
+#     ## This is maybe 20% too clever, but i wanted to do it with list 
+#     ## comprehension, so here we are. Read this as "At each base get the max 
+#     ## number of counts of any ambiguity code". Below y.items is a counter for 
+#     ## each position, and x[0] is the counter key, x[1] is the count for that 
+#     ## key. Another stupid thing is that max() in python 2.7 doesn't handle 
+#     ## empty lists, so there's this trick max(mylist or [0]), empty list 
+#     ## evaluates as false, so it effectively defaults max({}) = 0.
+#     max_counts = [max([x[1] for x in y.items() if x[0] in "RYSWKM"] or [0]) \
+#                   for y in stacks]
 
-    return max_counts
+#     return max_counts
 
 
 
-def count_snps(seqs):
-    """ Finds * and - snps to create snp string for .loci file """
-    ## As long as we're ripping through looking for snps, keep track of the snp
-    ## array to output to the .loci file
-    snpsite = [" "]*len(seqs[0])
+# def count_snps(seqs):
+#     """ Finds * and - snps to create snp string for .loci file """
+#     ## As long as we're ripping through looking for snps, keep track of the snp
+#     ## array to output to the .loci file
+#     snpsite = [" "]*len(seqs[0])
 
-    ## Transpose to make stacks per base, same as count_shared_polymorphisms
-    ## so see that function for more explicit documentation.
-    stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
+#     ## Transpose to make stacks per base, same as count_shared_polymorphisms
+#     ## so see that function for more explicit documentation.
+#     stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
 
-    ## At each stack, if the length of the counter is > 1 then its a snp
-    for i, stack in enumerate(stacks):
-        if len(stack) > 1:
-            LOGGER.debug("Got a snp {}".format(stack))
-            ## Count the number of keys that occur once = autapomorphies
-            autapomorphies = stack.values().count(1)
+#     ## At each stack, if the length of the counter is > 1 then its a snp
+#     for i, stack in enumerate(stacks):
+#         if len(stack) > 1:
+#             LOGGER.debug("Got a snp {}".format(stack))
+#             ## Count the number of keys that occur once = autapomorphies
+#             autapomorphies = stack.values().count(1)
 
-            LOGGER.debug("Autapomorphies - {}".format(autapomorphies))
-            ## If the number of autapomorphies is one less than the total len
-            ## of the counter then this is still a parsimony uninformative site.                
-            if autapomorphies == (len(stack) - 1):
-                snpsite[i] = "-"
-            ## If not then it is a parsimony informative site
-            else:
-                snpsite[i] = "*"
+#             LOGGER.debug("Autapomorphies - {}".format(autapomorphies))
+#             ## If the number of autapomorphies is one less than the total len
+#             ## of the counter then this is still a parsimony uninformative site.                
+#             if autapomorphies == (len(stack) - 1):
+#                 snpsite[i] = "-"
+#             ## If not then it is a parsimony informative site
+#             else:
+#                 snpsite[i] = "*"
 
-    ## When done, rip through the snpsite string and count snp markers "*" & "-"
-    nsnps = sum(1 for x in snpsite if x in "*-")
+#     ## When done, rip through the snpsite string and count snp markers "*" & "-"
+#     nsnps = sum(1 for x in snpsite if x in "*-")
 
-    ## Just return the snpsite line
-    snps = ("//", "".join(snpsite)+"|")
-    #seqs.append(("//", "".join(snpsite)+"|"))
+#     ## Just return the snpsite line
+#     snps = ("//", "".join(snpsite)+"|")
+#     #seqs.append(("//", "".join(snpsite)+"|"))
 
-    return nsnps, snps
+#     return nsnps, snps
 
 
 
