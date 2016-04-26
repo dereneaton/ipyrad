@@ -640,7 +640,7 @@ def run(data, preview, ipyclient):
 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(totaljobs, min(totaljobs, done), 
-               ' sorting reads  | {}'.format(elapsed))
+               ' sorting reads     | {}'.format(elapsed))
 
     ## dictionary to store asyncresults for barmatch jobs
     filesort = {}
@@ -679,7 +679,7 @@ def run(data, preview, ipyclient):
         while 1:
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(totaljobs, done, 
-               ' sorting reads  | {}'.format(elapsed))
+               ' sorting reads     | {}'.format(elapsed))
 
             ## if engines are available add jobs to fill up engines
             ready = [i.ready() for i in filesort[filenum]]
@@ -741,7 +741,7 @@ def run(data, preview, ipyclient):
         ipyclient.wait()
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(20, 20, 
-        ' sorting reads  | {}'.format(elapsed))
+        ' sorting reads     | {}'.format(elapsed))
         if data._headers:
             print("")
 
@@ -750,7 +750,7 @@ def run(data, preview, ipyclient):
     total = int(filenum*len(data.barcodes))
     done = 0
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(total, done, ' writing files  | {}'.format(elapsed))
+    progressbar(total, done, ' writing files     | {}'.format(elapsed))
 
     colls = []
     for fnum in range(filenum):
@@ -766,7 +766,7 @@ def run(data, preview, ipyclient):
     while 1:
         done = sum([i.ready() for i in colls])
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(total, done, ' writing files  | {}'.format(elapsed))
+        progressbar(total, done, ' writing files     | {}'.format(elapsed))
         if done == total:
             break
         else:
@@ -774,7 +774,7 @@ def run(data, preview, ipyclient):
 
     ## final prog
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 20, ' writing files  | {}'.format(elapsed))
+    progressbar(20, 20, ' writing files     | {}'.format(elapsed))
     if data._headers:
         print("")
 
