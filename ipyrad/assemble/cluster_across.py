@@ -144,14 +144,14 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 fwait = sum([jobs[i].ready() for i in jobs])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " aligning clusters 2/3  | {}".format(elapsed))
+                            " aligning clusters 2/4  | {}".format(elapsed))
                 ## got to next print row when done
                 sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " aligning clusters 2/3  | {}".format(elapsed))
+                progressbar(20, 20, " aligning clusters 2/4  | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -310,7 +310,7 @@ def cluster(data, noreverse, ipyclient):
         #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
         #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
         #elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 1, " clustering across 1/3  | {}".format('running...'))
+        progressbar(100, 1, " clustering across 1/4  | {}".format('running...'))
         subprocess.check_call(cmd, shell=True, 
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
@@ -324,7 +324,7 @@ def cluster(data, noreverse, ipyclient):
 
     ## progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " clustering across 1/3  | {}".format(elapsed))
+    progressbar(100, 100, " clustering across 1/4  | {}".format(elapsed))
     print("")
 
 
