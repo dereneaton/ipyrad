@@ -23,7 +23,7 @@ import time
 import datetime
 
 from collections import Counter
-from ipyparallel import Dependency
+from ipyparallel import Dependency, RemoteError
 from refmap import *
 from util import * 
 
@@ -505,19 +505,15 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## the samples. This is very fast operation.
     if "reference" in data.paramsdict["assembly_method"]:
         samples = [refmap_init([data, s]) for s in samples]
-            
-    ## A list of all the asyncresults objects we generate. We'll set
-    ## a task after all jobs are spawned to track whether or not 
-    ## any failed and act accordingly
-    all_async_obj = []
+
 
     ## FUNC 1: derep ---------------------------------------------------
     res_derep = {}
+    done_derep = 0
     for sample in samples:
         args = [data, sample]
         res_derep[sample] = lbview.apply(derep_concat_split, args)
 
-    all_async_obj.extend(res_derep.values())
 
     ## FUNC 3: mapreads ----------------------------------------------------
     ## Submit samples to reference map else null
@@ -536,8 +532,9 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             res_ref[sample] = lbview.apply(mcfunc, args)
     ## test just up to this point [comment this out when done]
     #[res_ref[i].get() for i in res_ref]
+    #for i in res_ref:
+    #    print(res_ref[i].metadata.status)
     #return 1
-    all_async_obj.extend(res_ref.values())
 
 
     ## FUNC 4: clustering ---------------------------------------------------
@@ -555,8 +552,9 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             res_clust[sample] = lbview.apply(mcfunc, args)
     ## test just up to this point [comment this out when done]
     #[res_clust[i].get() for i in res_clust]
+    #for i in res_clust:
+    #    print(res_clust[i].metadata.status)
     #return 1
-    all_async_obj.extend(res_clust.values())
 
 
     ## FUNC 5: reference cleanup -------------------------------------------
@@ -576,7 +574,6 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## test just up to this point [comment this out when done]
     #[res_clean[i].get() for i in res_clean]
     #return 1
-    all_async_obj.extend(res_clean.values())
 
 
     ## FUNC 6: split up clusters into chunks -------------------------------
@@ -593,7 +590,6 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## test just up to this point [comment this out when done]
     #[res_chunk[i].get() for i in res_chunk]
     #return 1
-    all_async_obj.extend(res_chunk.values())
 
 
     ## FUNC 7: align chunks -------------------------------------------------
@@ -608,7 +604,6 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## test just up to this point [comment this out when done]
     align_asyncs = list(itertools.chain(*res_align.values()))
     #[i.get() for i in align_asyncs]
-    all_async_obj.extend(align_asyncs)
 
     ## FUNC 6: concat chunks -------------------------------------------------
     res_concat = {}
@@ -621,17 +616,6 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             res_concat[sample] = lbview.apply(reconcat, [data, sample])
     ## test just up to this point [comment this out when done]
     #[res_concat[i].get() for i in res_concat]
-    all_async_obj.extend(res_concat.values())
-
-    ## Create a job to keep an eye on the threads spawned for this task
-    ## if one dies then error out and report
-
-    all_msg_ids = list(itertools.chain(*[i.msg_ids for i in all_async_obj]))
-    #print(all_msg_ids)
-    check_deps = Dependency(all_msg_ids, failure=True, success=True)
-    #check_deps = Dependency(all_msg_ids, failure=False, success=True)
-    with lbview.temp_flags(after=check_deps):
-        all_check = lbview.apply(cleanup_and_die, [i.error for i in all_async_obj])
 
 
     ## wait func
@@ -640,6 +624,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
         res = lbview.apply(time.sleep, 0.1)    
 
     ## print progress bars
+    all_derep = len(res_derep)
     clusttotal = len(res_clust)
     all_refmap = len(res_ref)
     all_aligns = list(itertools.chain(*res_align.values()))
@@ -647,7 +632,23 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
     while 1:
         if not res.ready():
-            if not done_ref:
+            if not done_derep:
+                ## prints a progress bar
+                fderep = sum([res_derep[i].ready() for i in res_derep])
+                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+                progressbar(all_derep, fderep,
+                            " dereplicating     | {}".format(elapsed))
+                ## go to next print row when done
+                if fderep == all_derep:
+                    done_derep = 1
+                    print("")
+                    try:
+                        failed_samples = check_results(res_derep)
+                    except IPyradError as inst:
+                        print("All samples failed dereplicating. - {}".format(inst))
+                        raise
+
+            elif not done_ref:
                 ## prints a progress bar
                 fref = sum([res_ref[i].ready() for i in res_ref])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))                
@@ -657,6 +658,16 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 if fref == all_refmap:
                     done_ref = 1
                     print("")
+                
+                    ## When all refmap results are done check them.
+                    ## If all samples failed this step check_results raises
+                    ## an IPyradError, otherwise it returns a dict of failed
+                    ## samples and error messages
+                    try:
+                        failed_samples = check_results(res_ref)
+                    except IPyradError as inst:
+                        print("All samples failed read mapping - {}".format(inst))
+                        raise
 
             elif not done_clust:
                 ## prints a progress bar
@@ -668,6 +679,11 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 if fclust == clusttotal:
                     done_clust = 1
                     print("")
+                    try:
+                        failed_samples = check_results(res_clust)
+                    except IPyradError as inst:
+                        print("All samples failed clustering - {}".format(inst))
+                        raise
 
             else:
                 falign = sum([i.ready() for i in all_aligns])
@@ -684,18 +700,19 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 " aligning clusters | {}".format(elapsed))
             if data._headers:
                 print("")
+
+            try:
+                failed_samples = check_results(res_clust)
+            except IPyradError as inst:
+                print("All samples failed aligning - {}".format(inst))
+                raise
+
             ## store returned badalign values from muscle_align
             for sample in samples:
                 badaligns = sum([i.get() for i in res_align[sample]])
                 sample.stats_dfs.s3.filtered_bad_align = badaligns
             break
 
-## This is for checking results for the old way of error handling, 
-## delete when the new way works.
-#    for i in all_async_obj:
-#        if not i.metadata.error == None:
-#            print(i, i.metadata)
-#    print(all_check.metadata)
 
     ## Cleanup -------------------------------------------------------
     for sample in samples:
@@ -703,6 +720,32 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
     data_cleanup(data)
 
+
+def check_results(async_results):
+    """
+    Check the output from each step. If all samples fail then raise an
+    IPyradError. If only some samples fail try to print helpful messages.
+    """
+    errors = {}
+    for sample, result in async_results.iteritems():
+        try:
+            result.get()
+        except RemoteError as inst:
+            errors[sample] = str(inst)
+            LOGGER.warn(inst)
+
+    ## if all samples fail then raise an error
+    if len(errors) == len(async_results):
+        if all([x == "None" for x in errors.values()]):
+            msg = "All samples failed this stage because all samples"\
+                    + " failed some previous stage."
+        else:
+            msg = "\n".join([x.metadata.error for x in errors])
+        raise IPyradError("All samples failed this stage:\n"+msg)
+
+    if errors:
+        print("  Samples failed this step:"+" ".join(errors.keys()))
+    return errors.keys()
 
 
 def jobs_cleanup(data, samples, preview):
@@ -1008,6 +1051,7 @@ def clust_and_build(args):
     """
     ## parse args
     data, sample, noreverse, nthreads = args
+    LOGGER.debug("Entering clust_and_build - {}".format(sample))
 
     ## cluster derep fasta files in vsearch 
     cluster(data, sample, noreverse, nthreads)
