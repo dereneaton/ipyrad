@@ -661,42 +661,43 @@ def detect_cpus():
 from threading import Thread
 from Queue import Queue, Empty
 
+
 class NonBlockingStreamReader:
-
     def __init__(self, stream):
-        '''
-        stream: the stream to read from.
-                Usually a process' stdout or stderr.
-        '''
+        """ stream: Usually a process' stdout or stderr. """
+        self._stream = stream
+        self._queue = Queue()
 
-        self._s = stream
-        self._q = Queue()
-
-        def _populateQueue(stream, queue):
-            '''
-            Collect lines from 'stream' and put them in 'quque'.
-            '''
-
+        def _populate_queue(stream, queue):
+            """ Collect lines from 'stream' and put them in 'queue' """
             while True:
                 line = stream.readline()
                 if line:
                     queue.put(line)
                 else:
-                    raise UnexpectedEndOfStream
+                    break
+                    #raise UnexpectedEndOfStream
 
-        self._t = Thread(target = _populateQueue,
-                args = (self._s, self._q))
-        self._t.daemon = True
-        self._t.start() #start collecting lines from the stream
 
-    def readline(self, timeout = None):
+        self._thread = Thread(target=_populate_queue,
+                                args=(self._stream, self._queue))
+        self._thread.daemon = True
+        self._thread.start() 
+
+
+    def readline(self, timeout=None):
         try:
-            return self._q.get(block = timeout is not None,
-                    timeout = timeout)
+            dat = self._queue.get(block=timeout is not None, timeout=timeout)
+            if "Clustering" in dat:
+                percent = dat.strip().split()[1][:-1]
+                return int(percent)
+
         except Empty:
             return None
 
-class UnexpectedEndOfStream(Exception): pass
+
+class UnexpectedEndOfStream(Exception): 
+    pass
 
 
 

@@ -219,13 +219,14 @@ def build(data, samples, indeltups, clustbits):
         maxlen *= 2
 
     ## INIT INDEL ARRAY
-    ## build an indel array for ALL loci in cat.clust.gz
+    ## build an indel array for ALL loci in cat.clust.gz, chunked in a way 
+    ## so that you can pull out data for just one sample at a time.
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     io5 = h5py.File(ipath, 'w')
     iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
                               dtype=np.bool, 
-                              chunks=(1, data.nloci, maxlen))
-                              #, compression="gzip")
+                              chunks=(1, data.nloci, maxlen), 
+                              compression="gzip")
 
     ## enter all tmpindel arrays into full indel array
     for tup in indeltups:
@@ -255,63 +256,100 @@ def cluster(data, noreverse):
 
     ## parameters that vary by datatype 
     ## (too low of cov values yield too many poor alignments)
+    strand = "plus"
+    cov = ".90"
     if data.paramsdict["datatype"] == "gbs":
-        reverse = " -strand both "
-        cov = " -query_cov .60 "
+        strand = "both"
+        cov = ".60 "
     elif data.paramsdict["datatype"] == "pairgbs":
-        reverse = " -strand both "
-        cov = " -query_cov .90 "
-    else:
-        reverse = " -leftjust "
-        cov = " -query_cov .90 "
+        strand = "both"
+        cov = ".90 "
 
     ## override reverse clustering option
     if noreverse:
-        reverse = " -leftjust "
+        strand = "plus"
         print(noreverse, "not performing reverse complement clustering")
 
     ## get call string. Thread=0 means all. 
     ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
-    cmd = ip.bins.vsearch+\
-        " -cluster_smallmem "+cathaplos \
-       +reverse \
-       +cov \
-       +" -id "+str(data.paramsdict["clust_threshold"]) \
-       +" -userout "+uhaplos \
-       +" -notmatched "+hhaplos \
-       +" -userfields query+target+qstrand" \
-       +" -maxaccepts 1" \
-       +" -maxrejects 0" \
-       +" -minsl 0.5" \
-       +" -fasta_width 0" \
-       +" -threads 0" \
-       +" -fulldp " \
-       +" -usersort " \
-       +" -quiet"
+    # cmd = ip.bins.vsearch+\
+    #     " -cluster_smallmem "+cathaplos \
+    #    +reverse \
+    #    +cov \
+    #    +" -id "+str(data.paramsdict["clust_threshold"]) \
+    #    +" -userout "+uhaplos \
+    #    +" -notmatched "+hhaplos \
+    #    +" -userfields query+target+qstrand" \
+    #    +" -maxaccepts 1" \
+    #    +" -maxrejects 0" \
+    #    +" -minsl 0.5" \
+    #    +" -fasta_width 0" \
+    #    +" -threads 0" \
+    #    +" -fulldp " \
+    #    +" -usersort " \
+    #    +" -quiet"
+
+    cmd = [ip.bins.vsearch, 
+           "-cluster_smallmem", cathaplos, 
+           "-strand", strand,
+           "-query_cov", cov, 
+           "-id", str(data.paramsdict["clust_threshold"]), 
+           "-userout", uhaplos, 
+           "-notmatched", hhaplos, 
+           "-userfields", "query+target+qstrand", 
+           "-maxaccepts", "1", 
+           "-maxrejects", "0",
+           "-minsl", "0.5", 
+           "-fasta_width", "0",
+           "-threads", "0", 
+           "-fulldp", 
+           "-usersort", 
+           "-log", ".vsearch_tmpfile"]
+
 
     try:
         LOGGER.debug(cmd)
-        #proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,            
-        #                             stdout=subprocess.PIPE)
-        ## fork to non-blocking stream so we can read the output
-        start = time.time()
 
-        # nbsr = NonBlockingStreamReader(proc.stdout)
-        # #proc.stdin.write(cmd)
-        # ## parse stdout as it comes in
-        # while 1:
-        #     output = nbsr.readline(0.1)
-        #     print(output)
-        #     if not output:
+        subprocess.Popen(cmd, stderr=subprocess.STDOUT, 
+                              stdout=subprocess.PIPE)
+        #proc.communicate()
+        #proc = subprocess.Popen(cmd)
+
+        while 1:
+            try:
+                with open('.vsearch_tmpfile', 'r') as indat:
+                    clusts = [i for i in indat if "Clusters:" in i]
+                    print(int(clusts.split()[1]))
+            except IOError:
+                pass
+            time.sleep(1)
+
+
+
+        ## fork to non-blocking stream so we can read the output
+        #start = time.time()
+        #nbsr = NonBlockingStreamReader(proc.stdout)
+        ## parse stdout as it comes in
+        #while 1:
+        #    try:
+        #         output = nbsr.readline(0.5)
+        #         if output:
+        #             elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        #             progressbar(100, output, 
+        #                 " clustering across 1/3  | {}".format(elapsed))
+        #     except Exception:
         #         break
-        #     print(output)
-        #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 1, " clustering across 1/3  | {}".format(elapsed))
-        subprocess.check_call(cmd, shell=True, 
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
+        #     if output == 100:
+
+        #         break
+        #     else:
+        #         time.sleep(1)
+
+        #elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        #progressbar(100, 1, " clustering across 1/3  | {}".format(elapsed))
+        # subprocess.check_call(cmd, shell=True, 
+        #                            stderr=subprocess.STDOUT,
+        #                            stdout=subprocess.PIPE)
         ## change to subprocess.call and parse the PIPE while it streams in
         ## to create a progress bar. 
         ## ...
@@ -321,9 +359,9 @@ def cluster(data, noreverse):
         Error in vsearch: \n{}\n{}""".format(inst, subprocess.STDOUT))
 
     ## progress bar
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " clustering across 1/3  | {}".format(elapsed))
-    print("")
+    #elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    #progressbar(100, 100, " clustering across 1/3  | {}".format(elapsed))
+    #print("")
 
 
 
