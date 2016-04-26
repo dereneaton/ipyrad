@@ -40,6 +40,8 @@ def muscle_align_across(args):
     """
     ## parse args, names are used to order arrays by taxon names
     data, samples, chunk = args
+    ## ensure sorted order
+    samples.sort(key=lambda x: x.name)
     snames = [sample.name for sample in samples]
 
     ## data are already chunked, read in the whole thing
@@ -219,18 +221,25 @@ def build(data, samples, indeltups, clustbits):
         maxlen *= 2
 
     ## INIT INDEL ARRAY
-    ## build an indel array for ALL loci in cat.clust.gz
+    ## build an indel array for ALL loci in cat.clust.gz, 
+    ## chunked so that individual samples can be pulled out
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     io5 = h5py.File(ipath, 'w')
     iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
-                              dtype=np.bool, 
-                              chunks=(1, data.nloci, maxlen))
-                              #, compression="gzip")
+                              dtype=np.bool,
+                              chunks=(1, data.nloci, maxlen),
+                              compression="gzip")
+
+    ## again make sure names are ordered right
+    samples.sort(key=lambda x: x.name)
 
     ## enter all tmpindel arrays into full indel array
     for tup in indeltups:
+        LOGGER.info('indeltups: %s, %s, %s', tup[0], tup[1].shape, tup[1].sum())
         start = int(tup[0].rsplit("_", 1)[1])
-        iset[:, start:start+tup[2], :] = tup[1]
+        for sidx, _ in enumerate(samples):
+            LOGGER.info("tups are ordered, right? %s %s", sidx, _)
+            iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
     io5.close()
 
     ## concatenate finished seq clusters into a tmp file 
@@ -242,7 +251,7 @@ def build(data, samples, indeltups, clustbits):
 
 
 
-
+## Really want to figure out how to add a progress bar to this...
 def cluster(data, noreverse, ipyclient):
     """ 
     Calls vsearch for clustering across samples. 
@@ -256,39 +265,38 @@ def cluster(data, noreverse, ipyclient):
 
     ## parameters that vary by datatype 
     ## (too low of cov values yield too many poor alignments)
+    strand = "plus"
+    cov = ".90"
     if data.paramsdict["datatype"] == "gbs":
-        reverse = " -strand both "
-        cov = " -query_cov .60 "
+        strand = "both"
+        cov = ".60 "
     elif data.paramsdict["datatype"] == "pairgbs":
-        reverse = " -strand both "
-        cov = " -query_cov .90 "
-    else:
-        reverse = " -leftjust "
-        cov = " -query_cov .90 "
+        reverse = "both "
+        cov = ".90 "
+
+    ## get call string. Thread=0 means all. 
+    ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
+    cmd = [ip.bins.vsearch, 
+           "-cluster_smallmem", cathaplos, 
+           "-strand", strand, 
+           "-query_cov", cov, 
+           "-id", str(data.paramsdict["clust_threshold"]), 
+           "-userout", uhaplos, 
+           "-notmatched", hhaplos, 
+           "-userfields", "query+target+qstrand", 
+           "-maxaccepts", "1", 
+           "-maxrejects", "0", 
+           "-minsl", "0.5", 
+           "-fasta_width", "0", 
+           "-threads", "0", 
+           "-fulldp", 
+           "-usersort", 
+           "-log", logfile]
 
     ## override reverse clustering option
     if noreverse:
         reverse = " -leftjust "
         print(noreverse, "not performing reverse complement clustering")
-
-    ## get call string. Thread=0 means all. 
-    ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
-    cmd = ip.bins.vsearch+\
-        " -cluster_smallmem "+cathaplos \
-       +reverse \
-       +cov \
-       +" -id "+str(data.paramsdict["clust_threshold"]) \
-       +" -userout "+uhaplos \
-       +" -notmatched "+hhaplos \
-       +" -userfields query+target+qstrand" \
-       +" -maxaccepts 1" \
-       +" -maxrejects 0" \
-       +" -minsl 0.5" \
-       +" -fasta_width 0" \
-       +" -threads 0" \
-       +" -fulldp " \
-       +" -usersort " \
-       +" -log "+logfile
 
     try:
         LOGGER.debug(cmd)
@@ -310,10 +318,15 @@ def cluster(data, noreverse, ipyclient):
         #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
         #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
         #elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 1, " clustering across 1/4  | {}".format('running...'))
-        subprocess.check_call(cmd, shell=True, 
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
+        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+        acc = []
+        for readit in iter(lambda: proc.stderr.read(1), ''):
+            if readit == '\r':
+                print("".join(acc))
+                acc = []
+            else:
+                acc.append(readit)
+        #progressbar(100, 1, " clustering across 1/4  | {}".format('running...'))        
         ## change to subprocess.call and parse the PIPE while it streams in
         ## to create a progress bar. 
         ## ...
@@ -331,7 +344,7 @@ def cluster(data, noreverse, ipyclient):
 
 
 def build_h5_array(data, samples, ipyclient):
-    """ build full catgs file """
+    """ build full catgs file with imputed indels. """
     ## catg array of prefiltered loci (4-dimensional) aye-aye!
     ## this can be multiprocessed!! just sum arrays at the end
     ## but one big array will overload memory, so need to be done in slices
@@ -339,12 +352,12 @@ def build_h5_array(data, samples, ipyclient):
     ## sort to ensure samples will be in alphabetical order, tho they should be.
     samples.sort(key=lambda x: x.name)
 
-    ## initialize an hdf5 array of the super catg matrix with dims
+    ## get maxlen dim
     maxlen = data._hackersonly["max_fragment_length"]
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
-    ## open h5 handle
+    ## open new h5 handle
     data.database = os.path.join(data.dirs.consens, data.name+".hdf5")
     io5 = h5py.File(data.database, 'w')
 
@@ -515,16 +528,18 @@ def insert_and_cleanup(data, sname):
     io5 = h5py.File(data.database, 'r+')
     catg = io5["catgs"]
     sidx = list(catg.attrs["samples"]).index(sname)
+    LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
 
     ## get individual h5 saved in locus order and with filters
     smp5 = os.path.join(data.dirs.consens, sname+".tmp.h5")
     ind5 = h5py.File(smp5, 'r')
     icatg = ind5["icatg"]
+    #LOGGER.info("%s sidx: %s", sname, sidx, icatg[])    
 
     ## FILL SUPERCATG -- catg is chunked by nchunk loci
     chunk = catg.attrs["chunksize"]
     for chu in xrange(0, catg.shape[0], chunk):
-        catg[chu:chu+chunk, sidx, ...] = icatg[chu:chu+chunk]
+        catg[chu:chu+chunk, sidx, ...] += icatg[chu:chu+chunk]
 
     ## put in loci that were filtered b/c of dups [0] or inds [1]
     ## this is not chunked in any way, and so needs to be changed if we 
@@ -543,7 +558,7 @@ def insert_and_cleanup(data, sname):
 
 
 
-
+## This is where indels are imputed
 def singlecat(args):
     """ 
     Orders catg data for each sample into the final locus order. This allows
@@ -567,11 +582,6 @@ def singlecat(args):
     ## get number of clusters
     nloci = sum(1 for _ in udic.groups.iterkeys())
 
-    ## get indel locations for this sample
-    ipath = os.path.join(data.dirs.consens, data.name+".indels")
-    with h5py.File(ipath, 'r') as indh5:
-        indels = indh5["indels"][sidx, :, :]
-
     ## get maxlen
     maxlen = data._hackersonly["max_fragment_length"]
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
@@ -581,7 +591,6 @@ def singlecat(args):
     ## create an h5 array for storing catg tmp for this sample
     ## size has nloci from utemp, maxlen from hackersdict
     smpio = os.path.join(data.dirs.consens, sample.name+".tmp.h5")
-    ## if h5 for this samples exists delete it.
     if os.path.exists(smpio):
         os.remove(smpio)
     smp5 = h5py.File(smpio, 'w')
@@ -631,16 +640,17 @@ def singlecat(args):
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
     LOGGER.debug("starting seedmatching")
     for iloc in seedmatch2:
-        try:
-            sfill = udic.groups.keys()[iloc].split("_")[-1]
-            icatg[iloc] = catarr[sfill, :, :]
-        except IndexError:
-            LOGGER.error("""
-                sample %s, 
-                no seedmatch at iloc %s, 
-                """)
+        sfill = udic.groups.keys()[iloc].split("_")[-1]
+        icatg[iloc] = catarr[sfill, :, :]
+
     ## close the old hdf5 connections
     old_h5.close()
+
+    ## get indel locations for this sample
+    ipath = os.path.join(data.dirs.consens, data.name+".indels")
+    with h5py.File(ipath, 'r') as indh5:
+        indels = indh5["indels"][sidx, :, :]
+    LOGGER.info("loading indels for %s %s, %s", sample.name, sidx, np.sum(indels[:10]))
 
     ## insert indels into new_h5 (icatg array) which now has loci in the same
     ## order as the final clusters from the utemp file
@@ -679,9 +689,11 @@ def singlecat(args):
 
 
 def fill_superseqs(data, samples):
-    """ fills the superseqs array with seq data from cat.clust """
+    """ 
+    Fills the superseqs array with seq data from cat.clust 
+    """
 
-    ## load super
+    ## load super to get edges
     io5 = h5py.File(data.database, 'r+')
     superseqs = io5["seqs"]
     edges = io5["edges"]
@@ -766,10 +778,12 @@ def fill_superseqs(data, samples):
 
 
 def build_reads_file(data):
-    """ reconstitutes clusters from .utemp and htemp files and writes them 
+    """ 
+    Reconstitutes clusters from .utemp and htemp files and writes them 
     to chunked files for aligning in muscle. Return a dictionary with 
     seed:hits info from utemp file.
     """
+
     LOGGER.info("building reads file -- loading utemp file into mem")
     ## read in cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -847,7 +861,7 @@ def build_reads_file(data):
     return clustbits
 
 
-
+## This is slow currently, high memory, and has no progress bar...
 def build_input_file(data, samples, outgroups, randomseed):
     """ 
     Make a concatenated consens files to input to vsearch. 
@@ -915,7 +929,11 @@ def build_input_file(data, samples, outgroups, randomseed):
 
 
 def run(data, samples, noreverse, force, randomseed, ipyclient):
-    """ subselect and pass args for across-sample clustering """
+    """ 
+    Master function to run :
+     1. build input file, 2. cluster, 3. split clusters into bits, 
+     4. align bits, 5. build h5 array. 
+    """
 
     ## clean the slate
     if os.path.exists(data.database):
