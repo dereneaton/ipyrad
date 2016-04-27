@@ -730,7 +730,7 @@ def check_results(async_results):
     for sample, result in async_results.iteritems():
         try:
             result.get()
-        except RemoteError as inst:
+        except Exception as inst:
             errors[sample] = str(inst)
             LOGGER.warn(inst)
 
