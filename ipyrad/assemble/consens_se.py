@@ -694,8 +694,8 @@ def run(data, samples, force, ipyclient):
                     "(max alleles = {})".\
                     format(data.paramsdict["max_alleles_consens"]))
         print(u"""\
-  Mean error  [{:.5f} \u00B1 {:.5f}]
-  Mean hetero [{:.5f} \u00B1 {:.5f}]"""\
+  Mean error  [{:.5f} sd={:.5f}]
+  Mean hetero [{:.5f} sd={:.5f}]"""\
   .format(data.stats.error_est.mean(), data.stats.error_est.std(), 
           data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
