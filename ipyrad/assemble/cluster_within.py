@@ -702,10 +702,10 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 print("")
 
             try:
-                failed_samples = check_results(res_clust)
+                failed_samples = check_results_alignment(res_align)
             except IPyradError as inst:
                 print("All samples failed aligning - {}".format(inst))
-                raise
+                raise IPyradError("Failed during alignment.")
 
             ## store returned badalign values from muscle_align
             for sample in samples:
@@ -720,11 +720,41 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
     data_cleanup(data)
 
+def check_results_alignment(async_results):
+    """
+    Since the alignment step forks a bunch more processes the results
+    are a little different. The input for this function is a dict containing:
+    {sample_name:[ipyparallel.asyncResult()]}. Just iterate through the list
+    and call check_results() to do the real work for us.
+    """
+    failed_chunks = {}
+    failed_samples = []
+    errors = []
+    for sample, result in async_results.iteritems():
+        failed_chunks[sample] = []
+        for r in result:
+            try:
+                failed_chunks[sample].append(check_results({sample:r}))
+            except Exception as inst:
+                errors.append((sample, inst))
+
+        ## if the len of the failed chunks list is the same as the
+        ## len of the incoming list from async_results, then all
+        ## chunks failed, so add this samp to failed_samples
+        if len(failed_chunks[sample]) == len(async_results[sample]):
+            failed_samples.append(sample)
+
+    if len(failed_samples) == len(async_results):
+        raise IPyradError("All samples failed alignment\n".format(errors))
+
+    return failed_samples
 
 def check_results(async_results):
     """
     Check the output from each step. If all samples fail then raise an
     IPyradError. If only some samples fail try to print helpful messages.
+    The argument for this function is a dictionary containing:
+    {sample_name:ipyparallel.asyncResult()}
     """
     errors = {}
     for sample, result in async_results.iteritems():
@@ -742,7 +772,7 @@ def check_results(async_results):
         else:
             ## Fetch the actual error message
             msg = "\n".join([x for x in errors.values()])
-        raise IPyradError("All samples failed this stage:\n"+msg)
+        raise IPyradError("All samples failed:\n"+msg)
 
     if errors:
         print("  Samples failed this step:"+" ".join(errors.keys()))
@@ -865,7 +895,7 @@ def cluster(data, sample, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
     values were chosen based on experience, but could be edited by users """
     ## get files
-    if "reference" in data.params_dict["assembly_method"]:
+    if "reference" in data.paramsdict["assembly_method"]:
         derephandle = os.path.join(data.dirs.edits, sample.name+"refmap_derep.fastq")
     else:
         derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
