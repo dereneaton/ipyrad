@@ -540,7 +540,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## FUNC 4: clustering ---------------------------------------------------
     mcfunc = null_func
     done_clust = 1
-    if data.paramsdict["assembly_method"] in ["denovo", "denovo+reference"]: 
+    if data.paramsdict["assembly_method"] != "reference":
         done_clust = 0
         mcfunc = clust_and_build
     ## require that the sample successfully finished previous step
@@ -740,7 +740,8 @@ def check_results(async_results):
             msg = "All samples failed this stage because all samples"\
                     + " failed some previous stage."
         else:
-            msg = "\n".join([x.metadata.error for x in errors])
+            ## Fetch the actual error message
+            msg = "\n".join([x for x in errors.values()])
         raise IPyradError("All samples failed this stage:\n"+msg)
 
     if errors:
@@ -864,7 +865,10 @@ def cluster(data, sample, noreverse, nthreads):
     """ calls vsearch for clustering. cov varies by data type, 
     values were chosen based on experience, but could be edited by users """
     ## get files
-    derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+    if "reference" in data.params_dict["assembly_method"]:
+        derephandle = os.path.join(data.dirs.edits, sample.name+"refmap_derep.fastq")
+    else:
+        derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
@@ -1034,7 +1038,10 @@ def derep_concat_split(args):
         ## in the refmap pipeline, trying to generalize.
         LOGGER.debug("Merging pairs - %s", sample.files)
         merge = 1
-        if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]:
+        ## If doing any kind of reference mapping do not merge
+        ## only concatenate so the reads can be split later and mapped
+        ## separately. 
+        if "reference" in data.paramsdict["assembly_method"]:
             merge = 0
         sample = merge_pairs(data, sample, merge)
         sample.files.edits = [(sample.files.merged, )]
