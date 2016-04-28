@@ -706,7 +706,8 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
             try:
                 failed_samples = check_results_alignment(res_align)
-                print("Samples failed the aligning step: {}".format(failed_samples))
+                if failed_samples:
+                    print("Samples failed the aligning step: {}".format(failed_samples))
             except IPyradError as inst:
                 print("All samples failed aligning - {}".format(inst))
                 raise IPyradError("Failed during alignment.")
