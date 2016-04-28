@@ -267,6 +267,8 @@ def mapreads(args):
             #TODO: Fix PE so it actually merges
             unmapped_merged_handle = "wat"
         else:
+            LOGGER.debug("Renaming unmapped reads file from {} to {}"\
+                        .format(outfiles[0], unmapped_merged_handle))
             os.rename(outfiles[0], unmapped_merged_handle)
 
 
