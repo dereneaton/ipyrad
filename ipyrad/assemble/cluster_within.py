@@ -703,12 +703,16 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
             try:
                 failed_samples = check_results_alignment(res_align)
+                print("Samples failed the aligning step: {}".format(failed_samples))
             except IPyradError as inst:
                 print("All samples failed aligning - {}".format(inst))
                 raise IPyradError("Failed during alignment.")
 
             ## store returned badalign values from muscle_align
             for sample in samples:
+                ## Helpful debug for seeing which samples had bad alignments
+                #for i in res_align[sample]:
+                #    print(sample, i.get())
                 badaligns = sum([i.get() for i in res_align[sample]])
                 sample.stats_dfs.s3.filtered_bad_align = badaligns
             break
@@ -729,23 +733,23 @@ def check_results_alignment(async_results):
     """
     failed_chunks = {}
     failed_samples = []
-    errors = []
+    errors = {}
     for sample, result in async_results.iteritems():
         failed_chunks[sample] = []
+        errors[sample] = []
         for r in result:
             try:
                 failed_chunks[sample].append(check_results({sample:r}))
             except Exception as inst:
-                errors.append((sample, inst))
+                errors[sample].append(inst)
 
-        ## if the len of the failed chunks list is the same as the
-        ## len of the incoming list from async_results, then all
-        ## chunks failed, so add this samp to failed_samples
-        if len(failed_chunks[sample]) == len(async_results[sample]):
+        ## If the length of the errors list for this sample == the length
+        ## of the expected results then all chunks failed
+        if len(errors[sample]) == len(result):
             failed_samples.append(sample)
 
     if len(failed_samples) == len(async_results):
-        raise IPyradError("All samples failed alignment\n".format(errors))
+        raise IPyradError("All samples failed alignment\n{}".format(errors.values()))
 
     return failed_samples
 
@@ -896,11 +900,18 @@ def cluster(data, sample, noreverse, nthreads):
     values were chosen based on experience, but could be edited by users """
     ## get files
     if "reference" in data.paramsdict["assembly_method"]:
-        derephandle = os.path.join(data.dirs.edits, sample.name+"refmap_derep.fastq")
+        derephandle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
     else:
         derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+
+    if not os.path.isfile(derephandle):
+        LOGGER.warn("Bad derephandle - {}".format(derephandle))
+        ##TODO: This call to raise will throw a bunch of ImpossibleDependency errors
+        ##and then hang the cluster wtf????
+        #raise IPyradError("Input file for clustering doesn't exist - {}"\
+        #                .format(derephandle))    
 
     ## datatype specific optimization
     ## minsl: the percentage of the seed that must be matched
