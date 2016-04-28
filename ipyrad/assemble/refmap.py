@@ -334,7 +334,7 @@ def get_overlapping_reads(args):
 
     ## Set the write mode for opening clusters file.
     ## 1) if "reference" then only keep refmapped, so use 'wb' to overwrite 
-    ## 2) if "reference+denovo" then 'ab' adds to end of denovo clust file
+    ## 2) if "denovo+reference" then 'ab' adds to end of denovo clust file
     if data.paramsdict["assembly_method"] == "denovo+reference":
         write_flag = 'ab'
     else:
