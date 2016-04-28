@@ -129,20 +129,25 @@ def mapreads(args):
     ## * mapped_bamhandle - bam file with only successfully mapped reads
     ##    In the case of paired end, we only consider pairs where both
     ##    reads map successfully
-    ## * unmapped_fastq_handle - The final output file of this function
-    ##    writes out unmapped reads to the 'edits' directory as .fq
-    ##    which is what downstream analysis expects
+    ## * unmapped_fastq_handle - Samtools writes out unmapped R1/R2
+    ##    reads to the 'edits' directory as .fq. Downstream expects
+    ##    these reads to be merged.
+    ## * unmapped_fastq_merged - the final merged unmapped file that lives here:
+    ##    os.path.join(data.dirs.edits, sample.name+"_refmap_derep.fastq")
     sam = os.path.join(data.dirs.refmapping, sample.name+".sam")
     unmapped_bam = sample.files.unmapped_reads = \
                 os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
     mapped_bam = sample.files.mapped_reads = \
                 os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     sorted_mapped_bam = sample.files["mapped_reads"]
-    unmapped_fastq_r1 = sample.files.refmap_edits[0][0]
 
+    unmapped_fastq_r1 = sample.files.refmap_edits[0][0]
     ## If PE set the output file path for R2
     if 'pair' in data.paramsdict["datatype"]:
         unmapped_fastq_r2 = sample.files.refmap_edits[0][1]
+
+    ## Final output files is merged derep'd refmap'd reads
+    unmapped_merged_handle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
 
     ## get smalt call string
     ##  -f sam       : Output as sam format, tried :clip: to hard mask output 
@@ -255,6 +260,16 @@ def mapreads(args):
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
 
+        ## Finally, merge the unmapped reads, which is what cluster()
+        ## expects. If SE, just rename the outfile. In the end
+        ## <sample>-refmap_derep.fq will be the final output
+        if 'pair' in data.paramsdict["datatype"]:
+            #TODO: Fix PE so it actually merges
+            unmapped_merged_handle = "wat"
+        else:
+            os.rename(outfiles[0], unmapped_merged_handle)
+
+
     except subprocess.CalledProcessError as inst:
         ## Handle error outside try statement
         LOGGER.error(inst)
@@ -318,13 +333,18 @@ def get_overlapping_reads(args):
     ## Set the write mode for opening clusters file.
     ## 1) if "reference" then only keep refmapped, so use 'wb' to overwrite 
     ## 2) if "reference+denovo" then 'ab' adds to end of denovo clust file
-    if data.paramsdict["assembly_method"] == "reference+denovo":
+    if data.paramsdict["assembly_method"] == "denovo+reference":
         write_flag = 'ab'
     else:
         write_flag = 'wb'
     sample.files.clusters = os.path.join(
                                 data.dirs.clusts, sample.name+".clust.gz")
     outfile = gzip.open(sample.files.clusters, write_flag)
+
+    ## If we are appending reference reads to the denovo then you need to 
+    ## prepend the first stack with a //\n// separator
+    if data.paramsdict["assembly_method"] == "denovo+reference":
+        outfile.write("\n//\n//\n")
 
     # Wrap this in a try so we can clean up if it fails.
     try:
@@ -585,7 +605,6 @@ def refmap_init(args):
     #LOGGER.info("after %s", sample.files.refmap_edits)
 
     return sample
-
 
 
 def refmap_stats(data, sample):
