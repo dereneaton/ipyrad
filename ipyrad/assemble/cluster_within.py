@@ -538,6 +538,9 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
 
     ## FUNC 4: clustering ---------------------------------------------------
+    ## Cluster reads for all assembly methods except 'reference' since
+    ## the refmapping clusters them for us and we don't care about the reads
+    ## that don't map.
     mcfunc = null_func
     done_clust = 1
     if data.paramsdict["assembly_method"] != "reference":
@@ -703,7 +706,8 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
             try:
                 failed_samples = check_results_alignment(res_align)
-                print("Samples failed the aligning step: {}".format(failed_samples))
+                if failed_samples:
+                    print("Samples failed the aligning step: {}".format(failed_samples))
             except IPyradError as inst:
                 print("All samples failed aligning - {}".format(inst))
                 raise IPyradError("Failed during alignment.")
