@@ -271,7 +271,7 @@ def cluster(data, noreverse, ipyclient):
         strand = "both"
         cov = ".60 "
     elif data.paramsdict["datatype"] == "pairgbs":
-        reverse = "both "
+        strand = "both "
         cov = ".90 "
 
     ## get call string. Thread=0 means all. 
@@ -295,11 +295,11 @@ def cluster(data, noreverse, ipyclient):
 
     ## override reverse clustering option
     if noreverse:
-        reverse = " -leftjust "
+        ##strand = " -leftjust "
         print(noreverse, "not performing reverse complement clustering")
 
     try:
-        LOGGER.debug(cmd)
+        LOGGER.info(cmd)
         #ipyclient[:].apply(subprocess.call, cmd)
         #proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,            
         #                             stdout=subprocess.PIPE)
@@ -318,14 +318,18 @@ def cluster(data, noreverse, ipyclient):
         #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
         #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
         #elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
-        acc = []
-        for readit in iter(lambda: proc.stderr.read(1), ''):
-            if readit == '\r':
-                print("".join(acc))
-                acc = []
-            else:
-                acc.append(readit)
+        # print(" ".join(cmd))
+        # proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+        # proc.wait()
+        # acc = []
+        proc = subprocess.check_call(" ".join(cmd), shell=True, stderr=subprocess.PIPE)
+        #proc.communicate()
+        # for readit in iter(lambda: proc.stderr.read(1), ''):
+        #     if readit == '\r':
+        #         print("".join(acc))
+        #         acc = []
+        #     else:
+        #         acc.append(readit)
         #progressbar(100, 1, " clustering across 1/4  | {}".format('running...'))        
         ## change to subprocess.call and parse the PIPE while it streams in
         ## to create a progress bar. 
