@@ -39,6 +39,8 @@ def sample_cleanup(data, sample):
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
 
+    ## number of merged reads is updated dynamically
+    ## TODO: this won't capture merged reads that are merged during refmap
     if 'pair' in data.paramsdict["datatype"]:
         sample.files.merged = os.path.join(data.dirs.edits,
                                            sample.name+"_merged_.fastq")
@@ -541,7 +543,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     if "reference" in data.paramsdict["assembly_method"]:
         steps["mapreads"] =         {"printstr": "mapping          ",\
                                     "function":mapreads, "extra_args":[noreverse, 1]}
-    if data.paramsdict != "reference":
+    if data.paramsdict["assembly_method"] != "reference":
         steps["clust_and_build"] =  {"printstr": "clustering       ",\
                                     "function":clust_and_build, "extra_args":[noreverse, 1]}
     if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
