@@ -281,8 +281,11 @@ def mapreads(args):
         ## expects. If SE, just rename the outfile. In the end
         ## <sample>-refmap_derep.fq will be the final output
         if 'pair' in data.paramsdict["datatype"]:
-            #TODO: Fix PE so it actually merges
-            unmapped_merged_handle = "wat"
+            LOGGER.info("Merging unmapped reads {} {}".format(outfiles[0],
+                                                              outfiles[1]))
+            ## merge_pairs wants the files to merge in this stupid format,
+            ## also the '1' at the end means "really merge" don't just join w/ nnnn
+            merge_pairs(data, [(outfiles[0], outfiles[1])], unmapped_merged_handle, 1)
         else:
             LOGGER.debug("Renaming unmapped reads file from {} to {}"\
                         .format(outfiles[0], unmapped_merged_handle))
@@ -326,8 +329,8 @@ def ref_muscle_chunker(args):
         #    LOGGER.info("region %s", region)
 
     else:
-        LOGGER.info("No reads mapped to reference sequence.")
-
+        msg = "No reads mapped to reference sequence - {}".format(sample.name)
+        LOGGER.warn(msg)
 
 
 def get_overlapping_reads(args):
@@ -378,7 +381,8 @@ def get_overlapping_reads(args):
 
             chrom, region_start, region_end = line.strip().split()[0:3]
 
-            # Here aligned seqs is a list of files 1 for SE or 2 for PE
+
+            ## bam_region_to_fasta returns a chunk of fasta sequence
             args = [data, sample, chrom, region_start, region_end]
             clust = bam_region_to_fasta(*args)
 
@@ -395,9 +399,9 @@ def get_overlapping_reads(args):
                 ## files list as an argument because we're reusing this code 
                 ## in the refmap pipeline, trying to generalize.
                 LOGGER.debug("Merging pairs - %s", sample.files)
-                mergefile, nmerged = refmap_merge_pair(data, sample, clust)
+                #nmerged = refmap_merge_pair(data, , 1)
                 
-                ## Update the total number of merged pairs
+                ## Update the total number of mered pairs
                 reads_merged += nmerged
                 #sample.stats.reads_merged += nmerged
                 sample.merged = 1
@@ -458,8 +462,6 @@ def split_merged_reads(sample_fastq, input_reads):
     """
     R1_file = sample_fastq[0]
     R2_file = sample_fastq[1]
-    R1_file = "/tmp/R1.tmp"
-    R2_file = "/tmp/R2.tmp"
     R1 = open(R1_file, 'w')
     R2 = open(R2_file, 'w')
 
