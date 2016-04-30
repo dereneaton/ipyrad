@@ -115,13 +115,9 @@ def mapreads(args):
     ## at the end of apply_jobs in cluster_within.
     #sample_fastq = [sample.files.edits[0][0]]
 
-    ## split back into separate reads if paired, else input derep r1s
-    if 'pair' in data.paramsdict["datatype"]:
-        ## TODO: func to split?
-        sample_fastq = [20, 20]
-    else:
-        sample_fastq = [os.path.join(
-                            data.dirs.edits, sample.name+"_derep.fastq")]
+    ## This is the (perhaps merged) input reads file from upstream with the
+    ## derep'd reads ready for mapping
+    input_reads = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
     ## Files we'll use during reference sequence mapping
     ## * samhandle - Raw output from smalt reference mapping
@@ -141,12 +137,32 @@ def mapreads(args):
                 os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
     sorted_mapped_bam = sample.files["mapped_reads"]
 
+    ## These are the file(s) that samtools bam2fq will write out
+    ## which are then subsequently merged. These files won't be used
+    ## after the merging
     unmapped_fastq_r1 = sample.files.refmap_edits[0][0]
     ## If PE set the output file path for R2
     if 'pair' in data.paramsdict["datatype"]:
         unmapped_fastq_r2 = sample.files.refmap_edits[0][1]
 
+    ## Input files initially passed to smalt for read mapping. If doing
+    ## SE then you're good to go, just use the derep fastq from upstream.
+    ## If doing PE you have to read in the derep file and split it back
+    ## into two file R1, and R1. Since we need a file to actually
+    ## write to for these, and since we don't need to keep them around
+    ## we'll use the refmap_edits files to tem hold the split reads
+    ## pre-mapping. This will obviously get written over when samtools
+    ## dumps the unmapped reads, but it doesn't matter.
+    if 'pair' in data.paramsdict["datatype"]:
+        ## TODO: func to split?
+        sample_fastq = [sample.files.refmap_edits[0][0],\
+                        sample.files.refmap_edits[0][1]]
+        split_merged_reads(sample_fastq, input_reads)
+    else:
+        sample_fastq = [input_reads]
+
     ## Final output files is merged derep'd refmap'd reads
+    ## This will be the only file for unmapped reads used downstream
     unmapped_merged_handle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
 
     ## get smalt call string
@@ -179,6 +195,7 @@ def mapreads(args):
             " -o " + sam +\
             " " + data.paramsdict['reference_sequence'] +\
             " " + " ".join(sample_fastq)
+        LOGGER.debug(cmd)
         subprocess.check_call(cmd, shell=True,
                                    stderr=subprocess.STDOUT,
                                    stdout=subprocess.PIPE)
@@ -208,7 +225,7 @@ def mapreads(args):
                 " -U " + unmapped_bam+\
                 " " + sam+\
                 " > " + mapped_bam
-        #LOGGER.info("%s", cmd)
+        LOGGER.info("%s", cmd)
         subprocess.call(cmd, shell=True,
                              stderr=subprocess.STDOUT,
                              stdout=subprocess.PIPE)
@@ -432,6 +449,33 @@ def get_overlapping_reads(args):
         #             os.remove(j[1])
 
 
+def split_merged_reads(sample_fastq, input_reads):
+    """
+    Reads in the merged derep file from upstream and splits
+    back into two files for R1 and R2. Arguments are:
+        - sample_fastq: a list of the two file paths to write out
+        - input_reads: the path to the input merged reads
+    """
+    R1_file = sample_fastq[0]
+    R2_file = sample_fastq[1]
+    R1_file = "/tmp/R1.tmp"
+    R2_file = "/tmp/R2.tmp"
+    R1 = open(R1_file, 'w')
+    R2 = open(R2_file, 'w')
+
+    with open(input_reads, 'r') as infile: 
+        ## Read in the infile two lines at a time, seq name and sequence
+        duo = itertools.izip(*[iter(infile)]*2)
+        while 1:
+            try:
+                itera = duo.next()
+            except StopIteration:
+                break
+            ## R1 needs a newline, but R2 inherits it from the original file
+            R1.write(itera[0]+itera[1].split("nnnn")[0]+"\n")
+            R2.write(itera[0]+itera[1].split("nnnn")[1])
+    R1.close()
+    R2.close()
 
 def refmap_merge_pair(data, sample, aligned_seqs):
     """

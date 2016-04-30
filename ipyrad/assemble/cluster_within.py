@@ -883,12 +883,11 @@ def cluster(data, sample, noreverse, nthreads):
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
+    ## If derep file doesn't exist then bail out
     if not os.path.isfile(derephandle):
         LOGGER.warn("Bad derephandle - {}".format(derephandle))
-        ##TODO: This call to raise will throw a bunch of ImpossibleDependency errors
-        ##and then hang the cluster wtf????
-        #raise IPyradError("Input file for clustering doesn't exist - {}"\
-        #                .format(derephandle))    
+        raise IPyradError("Input file for clustering doesn't exist - {}"\
+                        .format(derephandle))    
 
     ## datatype specific optimization
     ## minsl: the percentage of the seed that must be matched
