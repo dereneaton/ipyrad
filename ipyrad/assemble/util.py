@@ -244,6 +244,10 @@ def merge_pairs(data, files_to_merge, merged_file, merge):
             raise IPyradWarningExit("    Attempting to merge file that "\
                                         "doesn't exist - {}.".format(f))
 
+    ## If it already exists, clean up the old merged file
+    if os.path.exists(merged_file):
+        os.remove(merged_file)
+
     ## if merge then catch nonmerged in a separate file
     if merge:
         nonmerged1 = tempfile.NamedTemporaryFile(mode='wb', 
