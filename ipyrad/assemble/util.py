@@ -224,27 +224,40 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, sample, merge):
+def merge_pairs(data, files_to_merge, merged_file, merge):
     """ 
     Merge PE reads. Takes in a tuple of unmerged files and returns the file 
     name of the merged/combined PE reads and the number of reads that were 
     merged (overlapping). If merge==0 then only concat pairs, no merging.
+
+    If merge==1 merge_pairs() will return the number of pairs successfully
+    merged, if merge==0 it will return -1.
     """
     LOGGER.debug("Entering merge_pairs()")
 
-    ## tempnames for merge files
-    sample.files.merged = os.path.join(data.dirs.edits,
-                                       sample.name+"_merged_.fastq")
+    ## Return the number of merged pairs
+    nmerged = -1
+
+    ## Check input files
+    for f in files_to_merge[0]:
+        if not os.path.exists(f):
+            raise IPyradWarningExit("    Attempting to merge file that "\
+                                        "doesn't exist - {}.".format(f))
+
     ## if merge then catch nonmerged in a separate file
     if merge:
-        sample.files.nonmerged1 = os.path.join(data.dirs.edits,
-                                           sample.name+"_nonmerged_R1_.fastq")
-        sample.files.nonmerged2 = os.path.join(data.dirs.edits,
-                                           sample.name+"_nonmerged_R2_.fastq")
+        nonmerged1 = tempfile.NamedTemporaryFile(mode='wb', 
+                                                dir=data.dirs.edits,
+                                                suffix="_nonmerged_R1_.fastq").name
+        nonmerged2 = tempfile.NamedTemporaryFile(mode='wb', 
+                                                dir=data.dirs.edits,
+                                                suffix="_nonmerged_R2_.fastq").name
     ## if not merging then the nonmerged reads will come from the normal edits
     else:
-        sample.files.nonmerged1 = sample.files.edits[0][0]
-        sample.files.nonmerged2 = sample.files.edits[0][1]
+        nonmerged1 = files_to_merge[0][0]
+        nonmerged2 = files_to_merge[0][1]
+
+    print("nonmerged 1/2 - {} / {}".format(nonmerged1, nonmerged2))
 
     ## get the maxn and minlen values
     try:
@@ -253,18 +266,14 @@ def merge_pairs(data, sample, merge):
         maxn = data.paramsdict['max_low_qual_bases']
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
-    ## check for paired file
-    if not os.path.exists(sample.files.edits[0][1]):
-        raise IPyradWarningExit("    No paired read file (_R2_ file) found.")
-
-    ## do vsearch merging if merging
+    ## If we are actually mergeing and not just joining then do vsearch
     if merge:
         cmd = ipyrad.bins.vsearch \
-          +" --fastq_mergepairs "+sample.files.edits[0][0] \
-          +" --reverse "+sample.files.edits[0][1] \
-          +" --fastqout "+sample.files.merged \
-          +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
-          +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
+          +" --fastq_mergepairs "+files_to_merge[0][0] \
+          +" --reverse "+files_to_merge[0][1] \
+          +" --fastqout "+merged_file \
+          +" --fastqout_notmerged_fwd "+nonmerged1 \
+          +" --fastqout_notmerged_rev "+nonmerged2 \
           +" --fasta_width 0 " \
           +" --fastq_allowmergestagger " \
           +" --fastq_minmergelen "+minlen \
@@ -283,17 +292,16 @@ def merge_pairs(data, sample, merge):
             IPyradWarningExit("  Error in merging pairs: \n({}).".format(inst))
 
         ## record how many read pairs were merged
-        with open(sample.files.merged, 'r') as tmpf:
-            sample.stats.reads_merged = len(tmpf.readlines()) // 4
-        LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
+        with open(merged_file, 'r') as tmpf:
+            nmerged = len(tmpf.readlines()) // 4
 
     ## Combine the unmerged pairs and append to the merge file
-    with open(sample.files.merged, 'ab') as combout:
+    with open(merged_file, 'ab') as combout:
         ## read in paired end read files"
         ## create iterators to sample 4 lines at a time
-        fr1 = open(sample.files.nonmerged1, 'rb')
+        fr1 = open(nonmerged1, 'rb')
         quart1 = itertools.izip(*[iter(fr1)]*4)
-        fr2 = open(sample.files.nonmerged2, 'rb')
+        fr2 = open(nonmerged2, 'rb')
         quart2 = itertools.izip(*[iter(fr2)]*4)
         quarts = itertools.izip(quart1, quart2)
 
@@ -329,10 +337,10 @@ def merge_pairs(data, sample, merge):
 
     ## if merged then delete the nonmerge tmp files
     if merge:
-        os.remove(sample.files.nonmerged1)
-        os.remove(sample.files.nonmerged2)
+        os.remove(nonmerged1)
+        os.remove(nonmerged2)
 
-    return sample
+    return nmerged
 
 
 

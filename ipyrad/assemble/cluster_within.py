@@ -1053,14 +1053,19 @@ def derep_concat_split(args):
         ## pairs into one merged file. merge_pairs takes the unmerged
         ## files list as an argument because we're reusing this code 
         ## in the refmap pipeline, trying to generalize.
-        LOGGER.debug("Merging pairs - %s", sample.files)
+        LOGGER.debug("Merging pairs - %s", sample.files.edits)
         merge = 1
         ## If doing any kind of reference mapping do not merge
         ## only concatenate so the reads can be split later and mapped
         ## separately. 
         if "reference" in data.paramsdict["assembly_method"]:
             merge = 0
-        sample = merge_pairs(data, sample, merge)
+        sample.files.merged = os.path.join(data.dirs.edits,
+                                        sample.name+"_merged_.fastq")
+        sample.stats.reads_merged = merge_pairs(data, sample.files.edits, 
+                                            sample.files.merged, merge)
+        LOGGER.info("Merged pairs - {} - {}".format(sample.name, \
+                                                sample.stats.reads_merged))
         sample.files.edits = [(sample.files.merged, )]
         LOGGER.debug("Merged file - {}".format(sample.files.merged))
 
