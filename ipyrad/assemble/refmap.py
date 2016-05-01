@@ -284,8 +284,10 @@ def mapreads(args):
             LOGGER.info("Merging unmapped reads {} {}".format(outfiles[0],
                                                               outfiles[1]))
             ## merge_pairs wants the files to merge in this stupid format,
-            ## also the '1' at the end means "really merge" don't just join w/ nnnn
-            merge_pairs(data, [(outfiles[0], outfiles[1])], unmapped_merged_handle, 1)
+            ## also the first '1' at the end means revcomp R2, and the
+            ## second 1 means"really merge" don't just join w/ nnnn
+            merge_pairs(data, [(outfiles[0], outfiles[1])],\
+                        unmapped_merged_handle, 1, 1)
         else:
             LOGGER.debug("Renaming unmapped reads file from {} to {}"\
                         .format(outfiles[0], unmapped_merged_handle))
@@ -592,7 +594,9 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
             LOGGER.info(cmd)
             try:
                 subprocess.check_output(cmd, shell=True)
-                nmerged = merge_pairs(data, [(R1, R2)], merged, 1)
+                ## merge the pairs. 0 means don't revcomp bcz samtools already
+                ## did it for us. 1 means "actually merge".
+                nmerged = merge_pairs(data, [(R1, R2)], merged,0, 1)
 
                 infile = open(merged)
                 quatro = itertools.izip(*[iter(infile)]*4)

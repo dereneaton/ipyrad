@@ -224,7 +224,7 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, files_to_merge, merged_file, merge):
+def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
     """ 
     Merge PE reads. Takes in a tuple of unmerged files and the file to merge
     to and returns the file the number of reads that were 
@@ -232,6 +232,9 @@ def merge_pairs(data, files_to_merge, merged_file, merge):
 
     If merge==1 merge_pairs() will return the number of pairs successfully
     merged, if merge==0 it will return -1.
+
+    revcomp indicates whether or not to reverse complement R2 during the
+    merge.
     """
     LOGGER.debug("Entering merge_pairs()")
 
@@ -319,17 +322,27 @@ def merge_pairs(data, files_to_merge, merged_file, merge):
                 read1s, read2s = quarts.next()
             except StopIteration:
                 break
-            writing.append("\n".join([
-                            read1s[0].strip(),
-                            read1s[1].strip()+\
-                                "nnnn"+\
-                                #read2s[1].strip(),
-                                comp(read2s[1].strip())[::-1],
-                            read1s[2].strip(),
-                            read1s[3].strip()+\
-                                "nnnn"+\
-                                #read2s[3].strip()]
-                                read2s[3].strip()[::-1]]
+            if revcomp:
+                writing.append("\n".join([
+                                read1s[0].strip(),
+                                read1s[1].strip()+\
+                                    "nnnn"+\
+                                    comp(read2s[1].strip())[::-1],
+                                read1s[2].strip(),
+                                read1s[3].strip()+\
+                                    "nnnn"+\
+                                    read2s[3].strip()[::-1]]
+                            ))
+            else:
+                writing.append("\n".join([
+                                read1s[0].strip(),
+                                read1s[1].strip()+\
+                                    "nnnn"+\
+                                    read2s[1].strip(),
+                                read1s[2].strip(),
+                                read1s[3].strip()+\
+                                    "nnnn"+\
+                                    read2s[3].strip()]
                             ))
             counts += 1
             if not counts % 1000:

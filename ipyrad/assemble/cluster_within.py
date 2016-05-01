@@ -1057,17 +1057,19 @@ def derep_concat_split(args):
         ## in the refmap pipeline, trying to generalize.
         LOGGER.debug("Merging pairs - %s", sample.files.edits)
         merge = 1
+        revcomp = 1
         ## If doing any kind of reference mapping do not merge
         ## only concatenate so the reads can be split later and mapped
         ## separately. 
         if "reference" in data.paramsdict["assembly_method"]:
             merge = 0
+            revcomp = 0
         sample.files.merged = os.path.join(data.dirs.edits,
                                         sample.name+"_merged_.fastq")
         sample.stats.reads_merged = merge_pairs(data, sample.files.edits, 
-                                            sample.files.merged, merge)
+                                        sample.files.merged, revcomp, merge)
         LOGGER.info("Merged pairs - {} - {}".format(sample.name, \
-                                                sample.stats.reads_merged))
+                                        sample.stats.reads_merged))
         sample.files.edits = [(sample.files.merged, )]
         LOGGER.debug("Merged file - {}".format(sample.files.merged))
 
