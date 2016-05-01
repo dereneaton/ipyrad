@@ -392,28 +392,6 @@ def get_overlapping_reads(args):
             if not clust:
                 continue
 
-            ## merge fastq pairs
-            if 'pair' in data.paramsdict['datatype']:
-                ## merge pairs that overlap and combine non-overlapping
-                ## pairs into one merged file. merge_pairs takes the unmerged
-                ## files list as an argument because we're reusing this code 
-                ## in the refmap pipeline, trying to generalize.
-                LOGGER.debug("Merging pairs - %s", sample.files)
-                #nmerged = refmap_merge_pair(data, , 1)
-                
-                ## Update the total number of mered pairs
-                reads_merged += nmerged
-                #sample.stats.reads_merged += nmerged
-                sample.merged = 1
-                clust = mergefile
-
-            ## just focus here for now...
-            else:
-                ## If SE we don't need to merge, and the overlapped fasta are 
-                ## just the first element of the list returned above
-                #LOGGER.info(clust)
-                pass
-
             ## Derep_fasta_files are merged for PE
             #derep_fasta_files.append(derep_fasta)
             locus_list.append(clust)
@@ -478,18 +456,6 @@ def split_merged_reads(sample_fastq, input_reads):
             R2.write(itera[0]+itera[1].split("nnnn")[1])
     R1.close()
     R2.close()
-
-def refmap_merge_pair(data, sample, aligned_seqs):
-    """
-    This formats the data for the call to util/merge_pairs().
-    merge_pairs() arguments and expectations changed enough to where
-    it would be painful to perform these gymanstics in get_aligned_reads.
-    This util function is a workaround.
-    """
-    sample.files.edits = [(aligned_seqs[0], aligned_seqs[1])]
-    sample = merge_pairs(data, sample)
-    return sample.files.merged, sample.stats.reads_merged
-    
 
 
 def bedtools_merge(data, sample):
@@ -580,56 +546,109 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
     This is removed post-alignment. 
     """
 
-    #LOGGER.info("Grabbing bam_region_to_fasta: %s %s %s %s", 
-    #            sample.name, chrom, region_start, region_end)
+    LOGGER.info("Grabbing bam_region_to_fasta: %s %s %s %s", 
+                sample.name, chrom, region_start, region_end)
 
     try:
         ## Make the samtools view command output bam in the region of interest
         bamf = os.path.join(data.dirs.refmapping, sample.name+"-mapped.bam")
-        view_cmd = ipyrad.bins.samtools+\
-                   " view "+\
-                   bamf+\
-                   " {}:{}-{}".format(chrom, region_start, region_end)
 
         view_ref = ipyrad.bins.samtools+\
                 " faidx "+\
                 data.paramsdict["reference_sequence"]+\
                 " {}:{}-{}".format(chrom, str(int(region_start)+1), region_end)
 
-        ## Set output files and flags for PE/SE
-        # outfiles = [tmp_outfile+"R1.fq"]
-        # if 'pair' in data.paramsdict["datatype"]:
-        #     outfiles.append(tmp_outfile+"R2.fq")
-        #     outflags = " -1 " + outfiles[0]+\
-        #                " -2 " + outfiles[1]
-        # else:
-        #     outflags = " -0 " + outfiles[0]
-        #bam2fq_cmd = ipyrad.bins.samtools+\
-        #    " bam2fq " + outflags + " - "
-        #cmd = " | ".join((view_cmd, bam2fq_cmd))
-
+        ## Reach out and grap the reference sequence that overlaps this region
+        ## we'll paste this in at the top of each stack to aid alignment
         ref = subprocess.check_output(view_ref, shell=True)
-        sam = subprocess.check_output(view_cmd, shell=True)
-
         ## parse sam to fasta. Save ref location to name
         name, seq = ref.strip().split("\n", 1)
         seq = "".join(seq.split("\n"))
         fasta = [name[1:]+"_REF;+"+"\n"+seq]
 
-        ## do not join seqs that 
-        for idx, line in enumerate(sam.strip().split("\n")):
-            bits = line.split("\t")
-            ## get orientation from bits (TODO)
-            orient = "+"
-            note = orient#+str(idx+1)
-            fasta.append(bits[0]+note+"\n"+bits[9])
+        ## if PE then you have to merge the reads here
+        if "pair" in data.paramsdict["datatype"]:
+            ## TODO: Can we include the reference sequence in the PE clust.gz?
+            ## if it's longer than the merged pairs it makes hella indels
+            ## Drop the reference sequence for now...
+            fasta = []
+
+            ## Set output files and flags for PE/SE
+            ## Create temporary files for R1, R2 and merged
+            prefix = os.path.join(data.dirs.refmapping, sample.name \
+                            + chrom + region_start + region_end)
+            R1 = prefix+"-R1"
+            R2 = prefix+"-R2"
+            merged = prefix+"-merged"
+            outflags = " -1 " + R1 +\
+                        " -2 " + R2
+            pe_view_cmd = ipyrad.bins.samtools + \
+                    " view -b "+\
+                    bamf + \
+                    " {}:{}-{}".format(chrom, region_start, region_end)
+            bam2fq_cmd = ipyrad.bins.samtools+" bam2fq " + outflags + " - "
+            cmd = " | ".join((pe_view_cmd, bam2fq_cmd))
+
+            LOGGER.info(cmd)
+            try:
+                subprocess.check_output(cmd, shell=True)
+                nmerged = merge_pairs(data, [(R1, R2)], merged, 1)
+
+                infile = open(merged)
+                quatro = itertools.izip(*[iter(infile)]*4)
+                while 1:
+                    try:
+                        itera = quatro.next()
+                    except StopIteration:
+                        break
+                    ## TODO: figure out a real way to get orientation for PE
+                    orient = "+"
+                    label = itera[0].split(";")[0] + ";" + "{}:{}-{}".format(\
+                            chrom, str(int(region_start)+1), region_end) \
+                            + ";" + itera[0].split(";")[1] + ";" + orient
+                    fasta.append(label+"\n"+itera[1].strip())
+            except Exception as inst:
+                LOGGER.error("Exception in bam_region_to_fasta doing PE - {}".format(inst))
+                raise
+            ## always clean up the temp files
+            finally:
+                files = []
+                #files = [R1, R2, merged]
+                for f in files:
+                    if os.path.exists(f):
+                        os.remove(f)
+        else:
+            ## Kind of dumb to do PE and SE so different, but this
+            ## is probably faster for SE since you don't have to
+            ## write to a bunch of files
+            se_view_cmd = ipyrad.bins.samtools+\
+                        " view "+\
+                        bamf+\
+                        " {}:{}-{}".format(chrom, region_start, region_end)
+            sam = subprocess.check_output(se_view_cmd, shell=True)
+
+            ## do not join seqs that 
+            for idx, line in enumerate(sam.strip().split("\n")):
+                bits = line.split("\t")
+
+                ## Read in the 2nd field (FLAGS), convert to binary
+                ## and test if the 7th bit is set which indicates revcomp
+                orient = "+"
+                if int('{0:012b}'.format(int(bits[1]))[7]):
+                    orient = "-"
+                ## Rip insert the mapping position between the seq label and
+                ## the vsearch derep size
+                label = bits[0].split(";")[0] + ";" + "{}:{}-{}".format(chrom, \
+                        str(int(region_start)+1), region_end) + ";" + \
+                        bits[0].split(";")[1] + ";"
+
+                fasta.append(label+orient+"\n"+bits[9])
 
         return "\n".join(fasta)
 
-    except Exception:
+    except Exception as inst:
+        LOGGER.error("Caught exception in bam_region_to_fasta - {}".format(inst))
         raise
-
-
 
 
 def refmap_init(args):
