@@ -226,8 +226,8 @@ def fullcomp(seq):
 
 def merge_pairs(data, files_to_merge, merged_file, merge):
     """ 
-    Merge PE reads. Takes in a tuple of unmerged files and returns the file 
-    name of the merged/combined PE reads and the number of reads that were 
+    Merge PE reads. Takes in a tuple of unmerged files and the file to merge
+    to and returns the file the number of reads that were 
     merged (overlapping). If merge==0 then only concat pairs, no merging.
 
     If merge==1 merge_pairs() will return the number of pairs successfully
