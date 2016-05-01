@@ -39,6 +39,8 @@ def sample_cleanup(data, sample):
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
 
+    ## number of merged reads is updated dynamically
+    ## TODO: this won't capture merged reads that are merged during refmap
     if 'pair' in data.paramsdict["datatype"]:
         sample.files.merged = os.path.join(data.dirs.edits,
                                            sample.name+"_merged_.fastq")
@@ -463,7 +465,7 @@ def setup_dirs(data):
     tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
-
+    return tmpdir
 
 
 def null_func(args):
@@ -486,10 +488,73 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     :param preview: run preview
     :param align_only: skips clustering/mapping and aligns existing files
 
+    ## This is all the internal documentation from the prior version of
+    ## this function which I copied here but haven't updated much.
+    Step 1: Derep and concat
+    Step 2: mapreads ----------------------------------------------------
+     Submit samples to reference map else null
+    Step 3: clustering ---------------------------------------------------
+     Cluster reads for all assembly methods except 'reference' since
+     the refmapping clusters them for us and we don't care about the reads
+     that don't map.
+    Step 4: reference cleanup -------------------------------------------
+     Pull in alignments from mapped bam files and write them to the clust.gz 
+     to fold them back into the pipeline. If we are doing "denovo" then 
+     don't call this, but less obvious, "denovo-reference" intentionally 
+     doesn't call this to effectively discard reference mapped reads.
+    Step 5: split up clusters into chunks -------------------------------
+    Step 6: align chunks -------------------------------------------------
+    Step 7: concat chunks -------------------------------------------------
+
     :returns: None
     """
-    ## make directories
-    setup_dirs(data)
+    ## make directories. tmpdir is returned because muscle_align
+    ## and muscle_chunk both rely on it
+    tmpdir = setup_dirs(data)
+
+    ## Create an ordered dict to aggregate info for each step. This dict must be ordered
+    ## because the order determins both the order of the jobs that get spawned as well
+    ## as the order of printing of progress bars. The contents of this dict will 
+    ## eventually include:
+    ##  printstr - the pretty printing string to make the progress bar look nice.
+    ##  function - the function to all inside apply()
+    ##  extra_args - Any extra args for the above function beyond [data, sample]
+    ##               which get passed to all functions
+    ##  read_flag - The asyncResult object for the monitor task that is dependent
+    ##              on all the other tasks for this step completing. Use this
+    ##              to determine when all the tasks for this step are done. derp.
+    ##  async_results - A dict of samples and their corresponding asyncresults
+    ##              objects for the call to the function at this step.
+    ## "muscle_align" as has an additional record called `all_aligns` that is just
+    ##              a giant list of all the asyncresults for all the samples.
+    ##
+    ## I made the spacing goofy to make it easier to see that all the printstr
+    ## values are all the same length.
+    ##
+    ## Also, in order to control which steps run you simply don't add the steps
+    ## you don't want to run to this dict. Since all dependencies are created
+    ## relative to the members of the extant dict, the steps in the rocess are
+    ## agnostic about which step preceded it, so adding/removing steps is super easy.
+    ## All the logic for controlling which steps run for the various assembly
+    ## methods is right here!
+    steps = collections.OrderedDict()
+    steps["derep_concat_split"] =   {"printstr": "dereplicating    ",\
+                                    "function":derep_concat_split, "extra_args":[]}
+    if "reference" in data.paramsdict["assembly_method"]:
+        steps["mapreads"] =         {"printstr": "mapping          ",\
+                                    "function":mapreads, "extra_args":[noreverse, 1]}
+    if data.paramsdict["assembly_method"] != "reference":
+        steps["clust_and_build"] =  {"printstr": "clustering       ",\
+                                    "function":clust_and_build, "extra_args":[noreverse, 1]}
+    if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
+        steps["ref_muscle_chunker"] = {"printstr": "finalize mapping ",\
+                                    "function":ref_muscle_chunker, "extra_args":[]}
+    steps["muscle_chunker"] =       {"printstr": "chunking         ",\
+                                    "function":muscle_chunker, "extra_args":[tmpdir]}
+    steps["muscle_align"] =         {"printstr": "aligning         ",\
+                                    "function":muscle_align, "extra_args":[]}
+    steps["reconcat"] =             {"printstr": "concatenating    ",\
+                                    "function":reconcat, "extra_args":[]}
 
     ## Create threaded_view of engines by grouping only ids that are threaded
     hostdict = get_threaded_view(ipyclient)
@@ -500,232 +565,141 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
 
     ## A single load-balanced view for FUNCs 3-4
     lbview = ipyclient.load_balanced_view()
+    first_dependency = lbview.apply(os.getpid)
+    while not first_dependency.ready():
+        time.sleep(1)
 
     ## If doing reference sequence mapping in any fashion then init
-    ## the samples. This is very fast operation.
+    ## the samples. This is a very fast operation.
     if "reference" in data.paramsdict["assembly_method"]:
         samples = [refmap_init([data, s]) for s in samples]
 
+    ## Now iterate through the ordered dictionary of steps and create the tasks.
+    ## Roughly:
+    ##  - Create the dependencies. In all cases except the first step, the task 
+    ##      for the current sample is dependent on the state of the task for that
+    ##      sample from the prefious step. For the first step you just use a dummy
+    ##      dependency.
+    ##  - Apply the function for the current step for each sample, pulling in any
+    ##      extra args from the steps dictionary. Store the async_result for each
+    ##      sample in the steps dict. In the case of the "muscle_align" step we
+    ##      also store one giant list of all the async results because it's
+    ##      convenient not to have to keep recreating it downstream. 
+    ##
+    ## There are only a very few # of difference in the process for each step.
+    ## "muscle_align" is significantly different so it gets its own block, as well
+    ## "reconcat" is a little different because the dependencies are weird.
+    for i, step in enumerate(steps):
+        stepdict = steps[step]
 
-    ## FUNC 1: derep ---------------------------------------------------
-    res_derep = {}
-    done_derep = 0
-    for sample in samples:
-        args = [data, sample]
-        res_derep[sample] = lbview.apply(derep_concat_split, args)
-
-
-    ## FUNC 3: mapreads ----------------------------------------------------
-    ## Submit samples to reference map else null
-    res_ref = {}
-    mcfunc = null_func
-    done_ref = 1
-    if "reference" in data.paramsdict["assembly_method"]:
-        done_ref = 0
-        mcfunc = mapreads
-    for sample in samples:
-        ## Create a depedency for each sample. To run, the result from the
-        ## previous step must not have failed.
-        check_deps = Dependency(res_derep[sample], failure=False, success=True)
-        args = [data, sample, noreverse, 1]
-        with lbview.temp_flags(after=check_deps):
-            res_ref[sample] = lbview.apply(mcfunc, args)
-    ## test just up to this point [comment this out when done]
-    #[res_ref[i].get() for i in res_ref]
-    #for i in res_ref:
-    #    print(res_ref[i].metadata.status)
-    #return 1
-
-
-    ## FUNC 4: clustering ---------------------------------------------------
-    ## Cluster reads for all assembly methods except 'reference' since
-    ## the refmapping clusters them for us and we don't care about the reads
-    ## that don't map.
-    mcfunc = null_func
-    done_clust = 1
-    if data.paramsdict["assembly_method"] != "reference":
-        done_clust = 0
-        mcfunc = clust_and_build
-    ## require that the sample successfully finished previous step
-    res_clust = {}
-    for sample in samples:
-        check_deps = Dependency(res_ref[sample], failure=False, success=True)
-        args = [data, sample, noreverse, 1] 
-        with lbview.temp_flags(after=check_deps):
-            res_clust[sample] = lbview.apply(mcfunc, args)
-    ## test just up to this point [comment this out when done]
-    #[res_clust[i].get() for i in res_clust]
-    #for i in res_clust:
-    #    print(res_clust[i].metadata.status)
-    #return 1
-
-
-    ## FUNC 5: reference cleanup -------------------------------------------
-    ## Pull in alignments from mapped bam files and write them to the clust.gz 
-    ## to fold them back into the pipeline. If we are doing "denovo" then 
-    ## don't call this, but less obvious, "denovo-reference" intentionally 
-    ## doesn't call this to effectively discard reference mapped reads.
-    mcfunc = null_func
-    if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
-        mcfunc = ref_muscle_chunker
-    ## requires sample to have finished the previous step before running
-    res_clean = {}
-    for sample in samples:
-        check_deps = Dependency(res_clust[sample], failure=False, success=True)
-        with lbview.temp_flags(after=check_deps):
-            res_clean[sample] = lbview.apply(mcfunc, [data, sample])
-    ## test just up to this point [comment this out when done]
-    #[res_clean[i].get() for i in res_clean]
-    #return 1
-
-
-    ## FUNC 6: split up clusters into chunks -------------------------------
-    #mcfunc = null_func
-    #if data.paramsdict["assembly_method"] in ["denovo", "denovo+reference"]: 
-    mcfunc = muscle_chunker
-    res_chunk = {}
-    tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')    
-    for sample in samples:
-        check_deps = Dependency(res_clean[sample], failure=False, success=True)
-        with lbview.temp_flags(after=check_deps):
-            args = [data, sample, tmpdir]
-            res_chunk[sample] = lbview.apply(mcfunc, args)
-    ## test just up to this point [comment this out when done]
-    #[res_chunk[i].get() for i in res_chunk]
-    #return 1
-
-
-    ## FUNC 7: align chunks -------------------------------------------------
-    res_align = {sample:[] for sample in samples}
-    for sample in samples:
-        ## get all chunks for this sample
-        check_deps = Dependency(res_chunk[sample], failure=False, success=True)
-        with lbview.temp_flags(after=check_deps):
-            for i in range(10):
-                chunk = os.path.join(tmpdir, sample.name+"_chunk_{}.ali".format(i))
-                res_align[sample].append(lbview.apply(muscle_align, [data, chunk]))
-    ## test just up to this point [comment this out when done]
-    align_asyncs = list(itertools.chain(*res_align.values()))
-    #[i.get() for i in align_asyncs]
-
-    ## FUNC 6: concat chunks -------------------------------------------------
-    res_concat = {}
-    for sample in samples:
-        #LOGGER.info('resalign[sample] %s', res_align[sample])
-        tmpids = list(itertools.chain(*[i.msg_ids for i in res_align[sample]]))
-        check_deps = Dependency(tmpids, failure=False, success=True)
-        #LOGGER.info('tmpids %s', tmpids)
-        with lbview.temp_flags(after=check_deps):
-            res_concat[sample] = lbview.apply(reconcat, [data, sample])
-    ## test just up to this point [comment this out when done]
-    #[res_concat[i].get() for i in res_concat]
-
-
-    ## wait func
-    tmpids = list(itertools.chain(*[i.msg_ids for i in res_concat.values()]))
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1)    
-
-    ## print progress bars
-    all_derep = len(res_derep)
-    clusttotal = len(res_clust)
-    all_refmap = len(res_ref)
-    all_aligns = list(itertools.chain(*res_align.values()))
-    aligntotal = len(all_aligns)
-
-    while 1:
-        if not res.ready():
-            if not done_derep:
-                ## prints a progress bar
-                fderep = sum([res_derep[i].ready() for i in res_derep])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(all_derep, fderep,
-                            " dereplicating     | {}".format(elapsed))
-                ## go to next print row when done
-                if fderep == all_derep:
-                    done_derep = 1
-                    print("")
-                    try:
-                        failed_samples = check_results(res_derep)
-                    except IPyradError as inst:
-                        print("All samples failed dereplicating. - {}".format(inst))
-                        raise
-
-            elif not done_ref:
-                ## prints a progress bar
-                fref = sum([res_ref[i].ready() for i in res_ref])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))                
-                progressbar(all_refmap, fref, 
-                            " mapping reads     | {}".format(elapsed))
-                ## go to next print row when done
-                if fref == all_refmap:
-                    done_ref = 1
-                    print("")
-                
-                    ## When all refmap results are done check them.
-                    ## If all samples failed this step check_results raises
-                    ## an IPyradError, otherwise it returns a dict of failed
-                    ## samples and error messages
-                    try:
-                        failed_samples = check_results(res_ref)
-                    except IPyradError as inst:
-                        print("All samples failed read mapping - {}".format(inst))
-                        raise
-
-            elif not done_clust:
-                ## prints a progress bar
-                fclust = sum([res_clust[i].ready() for i in res_clust])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(clusttotal, fclust, 
-                            " clustering reads  | {}".format(elapsed))
-                ## go to next print row when done
-                if fclust == clusttotal:
-                    done_clust = 1
-                    print("")
-                    try:
-                        failed_samples = check_results(res_clust)
-                    except IPyradError as inst:
-                        print("All samples failed clustering - {}".format(inst))
-                        raise
-
+        stepdict["async_results"] = {}
+        for sample in samples:
+            ######################
+            ## Set up dependencies
+            ######################
+            if i == 0:
+                check_deps = first_dependency
             else:
-                falign = sum([i.ready() for i in all_aligns])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(aligntotal, falign, 
-                    " aligning clusters | {}".format(elapsed))
+                laststep = steps.items()[i-1][1]
+                if step == "reconcat":
+                    tmpids = list(itertools.chain(*[j.msg_ids for j in laststep["async_results"][sample]]))
+                else:
+                    tmpids = laststep["async_results"][sample]
+                check_deps = Dependency(tmpids, failure=False, success=True)
+            with lbview.temp_flags(after=check_deps):
+                #######################################################
+                ## Call apply with our functions and args for this step
+                #######################################################
+                if step == "muscle_align":
+                    stepdict["async_results"][sample] = []
+                    for j in range(10):
+                        chunk = os.path.join(tmpdir, sample.name+"_chunk_{}.ali".format(j))
+                        stepdict["async_results"][sample].append(lbview.apply(muscle_align, [data, chunk]))
+                    all_aligns = list(itertools.chain(*stepdict["async_results"].values()))
+                    stepdict["all_aligns"] = all_aligns
+                else:
+                        args = [data, sample]
+                        args.extend(stepdict["extra_args"])
+                        stepdict["async_results"][sample] = lbview.apply(stepdict["function"], args)
+
+        ## Each step has one job that gets created after all other jobs are created
+        ## This job is dependent on all the other child jobs for this step and we'll use it
+        ## as the `ready_flag` to indicate when this step has entirely completed.
+        if step == "muscle_align":
+            tmpids = stepdict["all_aligns"]
+        else:
+            tmpids = [i for i in stepdict["async_results"].values()]
+        with lbview.temp_flags(after=tmpids):
+            stepdict["ready_flag"] = lbview.apply(time.sleep, 1)    
+
+    ## Create one final task that sits at the back of the queue. Basically this is
+    ## now only being used to keep track of elapsed time, we do not rely
+    ## on the state of this job for anything else.
+    tmpids = list(itertools.chain(*[i.msg_ids for i in steps["reconcat"]["async_results"].values()]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1) 
+
+        ## If you want to test out any individual step synchronously then uncomment
+        ## this block, it will wait for all samples to finish that step before
+        ## proceding. This can be helpful for debugging.
+#       try:
+#           [step["async_results"][i].get() for i in step["async_results"]]
+#       except Exception as inst:
+#           print(inst)
+#       for i in step["async_results"]:
+#           print(step["async_results"][i].metadata.status)
+#       return 1
+
+    ## All ipclient jobs have now been created, so now we watch the results pile up
+    ## Here we go through each step in order, check the ready_flag. If our current
+    ## state is not ready then we update the progress bar. If the current state
+    ## _is_ ready, then we finalize the progress bar and check the results.
+    elapsed = "0:00:00"
+    for step,vals in steps.iteritems():
+        async_results = vals["async_results"]
+        while not vals["ready_flag"].ready():
+            ## prints a progress bar
+            if step == "muscle_align":
+                ## This is a little hackish. You have to divide by 10
+                ## because there are ten muscle calls per sample.
+                finished = sum([i.ready() for i in vals["all_aligns"]])/10
+            else:
+                finished = sum([async_results[i].ready() for i in async_results])
+            elapsed = datetime.timedelta(seconds=int(res.elapsed))
+            #print(finished)
+            progressbar(len(vals["async_results"]), finished,
+                " {}     | {}".format(vals["printstr"], elapsed))
             sys.stdout.flush()
             time.sleep(1)
 
-        else:
-            ## print final progress bar
-            elapsed = datetime.timedelta(seconds=int(res.elapsed))                            
-            progressbar(20, 20,
-                " aligning clusters | {}".format(elapsed))
-            if data._headers:
-                print("")
+        ## Print the finished progress bar for this step and go to the next line
+        progressbar(100, 100,
+            " {}     | {}".format(vals["printstr"], elapsed))
+        print("")
 
-            try:
-                failed_samples = check_results_alignment(res_align)
-                print("Samples failed the aligning step: {}".format(failed_samples))
-            except IPyradError as inst:
-                print("All samples failed aligning - {}".format(inst))
-                raise IPyradError("Failed during alignment.")
-
-            ## store returned badalign values from muscle_align
-            for sample in samples:
-                ## Helpful debug for seeing which samples had bad alignments
-                #for i in res_align[sample]:
-                #    print(sample, i.get())
-                badaligns = sum([i.get() for i in res_align[sample]])
-                sample.stats_dfs.s3.filtered_bad_align = badaligns
-            break
-
+        ## Check the results to see if any/all samples failed.
+        try:
+            if step == "muscle_align":
+                failed_samples = check_results_alignment(async_results)
+            else:
+                failed_samples = check_results(async_results)
+            if failed_samples:
+                print(failed_samples)
+        except IPyradError as inst:
+            print("All samples failed {} - {}".format(step, inst))
+            sys.exit()
 
     ## Cleanup -------------------------------------------------------
     for sample in samples:
         sample_cleanup(data, sample)
+        ## Helpful debug for seeing which samples had bad alignments
+        #for i in steps["muscle_align"][sample]:
+        #    print(sample, i.get())
+        badaligns = sum([i.get() for i in steps["muscle_align"]["async_results"][sample]])
+        sample.stats_dfs.s3.filtered_bad_align = badaligns
 
     data_cleanup(data)
+
 
 def check_results_alignment(async_results):
     """
@@ -763,6 +737,8 @@ def check_results(async_results):
     The argument for this function is a dictionary containing:
     {sample_name:ipyparallel.asyncResult()}
     """
+#    for i in async_results:
+#        print(i, async_results[i].ready(), async_results[i].error)
     errors = {}
     for sample, result in async_results.iteritems():
         try:
@@ -909,12 +885,11 @@ def cluster(data, sample, noreverse, nthreads):
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
+    ## If derep file doesn't exist then bail out
     if not os.path.isfile(derephandle):
         LOGGER.warn("Bad derephandle - {}".format(derephandle))
-        ##TODO: This call to raise will throw a bunch of ImpossibleDependency errors
-        ##and then hang the cluster wtf????
-        #raise IPyradError("Input file for clustering doesn't exist - {}"\
-        #                .format(derephandle))    
+        raise IPyradError("Input file for clustering doesn't exist - {}"\
+                        .format(derephandle))    
 
     ## datatype specific optimization
     ## minsl: the percentage of the seed that must be matched
@@ -1080,14 +1055,19 @@ def derep_concat_split(args):
         ## pairs into one merged file. merge_pairs takes the unmerged
         ## files list as an argument because we're reusing this code 
         ## in the refmap pipeline, trying to generalize.
-        LOGGER.debug("Merging pairs - %s", sample.files)
+        LOGGER.debug("Merging pairs - %s", sample.files.edits)
         merge = 1
         ## If doing any kind of reference mapping do not merge
         ## only concatenate so the reads can be split later and mapped
         ## separately. 
         if "reference" in data.paramsdict["assembly_method"]:
             merge = 0
-        sample = merge_pairs(data, sample, merge)
+        sample.files.merged = os.path.join(data.dirs.edits,
+                                        sample.name+"_merged_.fastq")
+        sample.stats.reads_merged = merge_pairs(data, sample.files.edits, 
+                                            sample.files.merged, merge)
+        LOGGER.info("Merged pairs - {} - {}".format(sample.name, \
+                                                sample.stats.reads_merged))
         sample.files.edits = [(sample.files.merged, )]
         LOGGER.debug("Merged file - {}".format(sample.files.merged))
 
