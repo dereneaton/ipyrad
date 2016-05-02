@@ -146,14 +146,14 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 fwait = sum([jobs[i].ready() for i in jobs])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " aligning clusters 2/5  | {}".format(elapsed))
+                            " aligning clusters  | {}".format(elapsed))
                 ## got to next print row when done
                 sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " aligning clusters 2/5  | {}".format(elapsed))
+                progressbar(20, 20, " aligning clusters  | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -269,10 +269,10 @@ def cluster(data, noreverse, ipyclient):
     cov = ".90"
     if data.paramsdict["datatype"] == "gbs":
         strand = "both"
-        cov = ".60 "
+        cov = ".60"
     elif data.paramsdict["datatype"] == "pairgbs":
         strand = "both "
-        cov = ".90 "
+        cov = ".90"
 
     ## get call string. Thread=0 means all. 
     ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
@@ -305,6 +305,7 @@ def cluster(data, noreverse, ipyclient):
         (dog, owner) = pty.openpty()
         proc = subprocess.Popen(cmd, stdout=owner, stderr=owner, 
                                      close_fds=True)
+        done = 0
         while 1:
             dat = os.read(dog, 4096)
             if "Clustering" in dat:
@@ -316,10 +317,10 @@ def cluster(data, noreverse, ipyclient):
                         break
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(100, done, 
-                    " clustering across 2/5  | {}".format(elapsed))
+                    " clustering across  | {}".format(elapsed))
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
-                    " clustering across 2/5  | {}".format(elapsed))
+                    " clustering across  | {}".format(elapsed))
         ## ensure it in finished
         proc.wait()
 
@@ -329,7 +330,7 @@ def cluster(data, noreverse, ipyclient):
 
     ## progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " clustering across 2/5  | {}".format(elapsed))
+    progressbar(100, 100, " clustering across  | {}".format(elapsed))
     if data._headers:
         print("")
     data.stats_files.s6 = logfile
@@ -459,12 +460,12 @@ def multicat(data, samples, ipyclient):
                 fwait = sum([i.ready() for i in jobs.values()])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " ordering clusters 4/5  | {}".format(elapsed))
+                            " ordering clusters  | {}".format(elapsed))
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " ordering clusters 4/5  | {}".format(elapsed))
+                progressbar(20, 20, " ordering clusters  | {}".format(elapsed))
                 if data._headers:
                     print("")
                 break
@@ -474,7 +475,7 @@ def multicat(data, samples, ipyclient):
     
     finally:
         elapsed = datetime.timedelta(seconds=int(res.elapsed))
-        progressbar(20, 0, " building database 5/5  | {}".format(elapsed))
+        progressbar(20, 0, " building database  | {}".format(elapsed))
         start = time.time()
         done = 0
 
@@ -488,7 +489,7 @@ def multicat(data, samples, ipyclient):
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(len(jobs), done, 
-                    " building database 5/5  | {}".format(elapsed))
+                    " building database  | {}".format(elapsed))
                 done += 1
 
             ## if not done do nothing, if failure print error
@@ -501,7 +502,7 @@ def multicat(data, samples, ipyclient):
                 error: %s""", meta.stdout, meta.stderr, meta.error)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(jobs), done, 
-        " building database 5/5  | {}".format(elapsed))
+        " building database  | {}".format(elapsed))
         if data._headers:
             print("")
 
