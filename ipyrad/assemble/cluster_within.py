@@ -15,6 +15,7 @@ from __future__ import print_function
 import os
 import sys
 import gzip
+import glob
 import itertools
 import subprocess
 import numpy as np
@@ -22,7 +23,7 @@ import ipyrad
 import time
 import datetime
 
-from collections import Counter
+from collections import Counter, OrderedDict
 from ipyparallel import Dependency, RemoteError
 from refmap import *
 from util import * 
@@ -537,7 +538,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## agnostic about which step preceded it, so adding/removing steps is super easy.
     ## All the logic for controlling which steps run for the various assembly
     ## methods is right here!
-    steps = collections.OrderedDict()
+    steps = OrderedDict()
     steps["derep_concat_split"] =   {"printstr": "dereplicating    ",\
                                     "function":derep_concat_split, "extra_args":[]}
     if "reference" in data.paramsdict["assembly_method"]:
@@ -618,9 +619,9 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                     all_aligns = list(itertools.chain(*stepdict["async_results"].values()))
                     stepdict["all_aligns"] = all_aligns
                 else:
-                        args = [data, sample]
-                        args.extend(stepdict["extra_args"])
-                        stepdict["async_results"][sample] = lbview.apply(stepdict["function"], args)
+                    args = [data, sample]
+                    args.extend(stepdict["extra_args"])
+                    stepdict["async_results"][sample] = lbview.apply(stepdict["function"], args)
 
         ## Each step has one job that gets created after all other jobs are created
         ## This job is dependent on all the other child jobs for this step and we'll use it
@@ -655,7 +656,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## state is not ready then we update the progress bar. If the current state
     ## _is_ ready, then we finalize the progress bar and check the results.
     elapsed = "0:00:00"
-    for step,vals in steps.iteritems():
+    for step, vals in steps.iteritems():
         async_results = vals["async_results"]
         while not vals["ready_flag"].ready():
             ## prints a progress bar
@@ -701,6 +702,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     data_cleanup(data)
 
 
+
 def check_results_alignment(async_results):
     """
     Since the alignment step forks a bunch more processes the results
@@ -729,6 +731,8 @@ def check_results_alignment(async_results):
         raise IPyradError("All samples failed alignment\n{}".format(errors.values()))
 
     return failed_samples
+
+
 
 def check_results(async_results):
     """
@@ -760,6 +764,7 @@ def check_results(async_results):
     if errors:
         print("  Samples failed this step:"+" ".join(errors.keys()))
     return errors.keys()
+
 
 
 def jobs_cleanup(data, samples, preview):
@@ -1057,17 +1062,17 @@ def derep_concat_split(args):
         ## in the refmap pipeline, trying to generalize.
         LOGGER.debug("Merging pairs - %s", sample.files.edits)
         merge = 1
-        revcomp = 1
+        rcomp = 1
         ## If doing any kind of reference mapping do not merge
         ## only concatenate so the reads can be split later and mapped
         ## separately. 
         if "reference" in data.paramsdict["assembly_method"]:
             merge = 0
-            revcomp = 0
+            rcomp = 0
         sample.files.merged = os.path.join(data.dirs.edits,
                                         sample.name+"_merged_.fastq")
         sample.stats.reads_merged = merge_pairs(data, sample.files.edits, 
-                                        sample.files.merged, revcomp, merge)
+                                        sample.files.merged, rcomp, merge)
         LOGGER.info("Merged pairs - {} - {}".format(sample.name, \
                                         sample.stats.reads_merged))
         sample.files.edits = [(sample.files.merged, )]
