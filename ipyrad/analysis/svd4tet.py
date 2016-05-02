@@ -35,14 +35,19 @@ from fractions import Fraction
 from numba import jit
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
-from collections import Counter, OrderedDict
+#from collections import Counter, OrderedDict
 
-## extra dependency that we cannot yet install ourselves using conda 
+## extra dependency 
 try:
     import ete3
 except ImportError:
-    IPyradWarningExit("  svd4tet requires the dependency `ete3`. You can install"+
-                      "  it with the command `conda install -c etetoolkit ete3`")
+    try:
+        import ete2 as ete3
+    except ImportError:
+        raise IPyradWarningExit("""
+    svd4tet requires the dependency `ete3`. You can install
+    it with the command `conda install -c etetoolkit ete3`
+    """)
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -817,7 +822,7 @@ PIECOLORS = ['#a6cee3',
              '#1f78b4']
 
 def layout(node):
-    """ layout for ete2 tree plotting fig """
+    """ layout for ete3 tree plotting fig """
     if node.is_leaf():
         nameF = ete3.TextFace(node.name, tight_text=False, 
                                          fgcolor="#262626", fsize=8)
@@ -830,13 +835,13 @@ def layout(node):
             node.img_style["shape"] = 'square'
             node.img_style["fgcolor"] = "#262626"   
             if "quartets_total" in node.features:
-                ete3.add_face_to_node(ete2.PieChartFace(
+                ete3.add_face_to_node(ete3.PieChartFace(
                                     percents=[float(node.quartets_sampled_prop), 
                                     100-float(node.quartets_sampled_prop)],
                                     width=15, height=15, colors=PIECOLORS),
                                     node, column=0, position="float-behind")  
             if "bootstrap" in node.features:
-                ete3.add_face_to_node(ete2.AttrFace(
+                ete3.add_face_to_node(ete3.AttrFace(
                                   "bootstrap", fsize=7, fgcolor='red'),
                                   node, column=0, position="branch-top")  
         else:
@@ -849,7 +854,7 @@ def layout(node):
 
 
 def quickfig(input_tre, outname):
-    """ make a quick ete2 fig. Plots total quartets """
+    """ make a quick ete3 fig. Plots total quartets """
     ts = ete3.TreeStyle()
     ts.layout_fn = layout
     ts.show_leaf_name = False
