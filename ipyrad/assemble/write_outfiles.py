@@ -67,7 +67,7 @@ def run(data, samples, force, ipyclient):
     LOGGER.info("Writing .loci file")
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(20, 0, 
-        " building output files    | {}".format(elapsed))
+        " writing outfiles   | {}".format(elapsed))
     samplecounts, locuscounts, keep = make_loci(data, samples)
 
     ## Write stats file output
@@ -971,13 +971,13 @@ def make_outfiles(data, samples, keep, output_formats, ipyclient):
         if not all(readies):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(readies), sum(readies), 
-                " building output files    | {}".format(elapsed))
+                " writing outfiles   | {}".format(elapsed))
             time.sleep(1)
         else:
             break
     ## final progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))            
-    progressbar(20, 20, " building output files    | {}".format(elapsed))        
+    progressbar(20, 20, " writing outfiles   | {}".format(elapsed))        
     if data._headers:
         print("")
 
