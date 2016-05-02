@@ -11,10 +11,10 @@ from __future__ import print_function
 
 import os
 import sys
+import pty
 import gzip
 import h5py
 import time
-import random
 import shutil
 import datetime
 import itertools
@@ -146,14 +146,14 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 fwait = sum([jobs[i].ready() for i in jobs])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " aligning clusters 2/4  | {}".format(elapsed))
+                            " aligning clusters 2/5  | {}".format(elapsed))
                 ## got to next print row when done
                 sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " aligning clusters 2/4  | {}".format(elapsed))
+                progressbar(20, 20, " aligning clusters 2/5  | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -300,40 +300,28 @@ def cluster(data, noreverse, ipyclient):
 
     try:
         LOGGER.info(cmd)
-        #ipyclient[:].apply(subprocess.call, cmd)
-        #proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,            
-        #                             stdout=subprocess.PIPE)
-        ## fork to non-blocking stream so we can read the output
         start = time.time()
-
-        # nbsr = NonBlockingStreamReader(proc.stdout)
-        # #proc.stdin.write(cmd)
-        # ## parse stdout as it comes in
-        # while 1:
-        #     output = nbsr.readline(0.1)
-        #     print(output)
-        #     if not output:
-        #         break
-        #     print(output)
-        #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        #     progressbar(100, 5, " clustering across 1/3  | {}".format(elapsed))
-        #elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        # print(" ".join(cmd))
-        # proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
-        # proc.wait()
-        # acc = []
-        proc = subprocess.check_call(" ".join(cmd), shell=True, stderr=subprocess.PIPE)
-        #proc.communicate()
-        # for readit in iter(lambda: proc.stderr.read(1), ''):
-        #     if readit == '\r':
-        #         print("".join(acc))
-        #         acc = []
-        #     else:
-        #         acc.append(readit)
-        #progressbar(100, 1, " clustering across 1/4  | {}".format('running...'))        
-        ## change to subprocess.call and parse the PIPE while it streams in
-        ## to create a progress bar. 
-        ## ...
+        
+        (dog, owner) = pty.openpty()
+        proc = subprocess.Popen(cmd, stdout=owner, stderr=owner, 
+                                     close_fds=True)
+        while 1:
+            dat = os.read(dog, 4096)
+            if "Clustering" in dat:
+                try:
+                    done = int(dat.split()[-1][:-1])
+                ## raises a value error when it gets to the end
+                except ValueError:
+                    if done > 99:
+                        break
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(100, done, 
+                    " clustering across 2/5  | {}".format(elapsed))
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(100, 100, 
+                    " clustering across 2/5  | {}".format(elapsed))
+        ## ensure it in finished
+        proc.wait()
 
     except subprocess.CalledProcessError as inst:
         raise IPyradWarningExit("""
@@ -341,8 +329,10 @@ def cluster(data, noreverse, ipyclient):
 
     ## progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " clustering across 1/4  | {}".format(elapsed))
-    print("")
+    progressbar(100, 100, " clustering across 2/5  | {}".format(elapsed))
+    if data._headers:
+        print("")
+    data.stats_files.s6 = logfile
 
 
 
@@ -431,10 +421,10 @@ def build_h5_array(data, samples, ipyclient):
         sample.stats.state = 6
 
     ## write database as stats output?
-    data.stats_files.s6 = "[this step has no stats ouput]"
+    #data.stats_files.s6 = "[this step has no stats ouput]"
 
 
-
+## TODO: can we skip singlecats if they find indels?
 def multicat(data, samples, ipyclient):
     """
     Runs singlecat for each sample.
@@ -469,14 +459,12 @@ def multicat(data, samples, ipyclient):
                 fwait = sum([i.ready() for i in jobs.values()])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " ordering clusters 3/4  | {}".format(elapsed))
-                ## got to next print row when done
-                #sys.stdout.flush()
+                            " ordering clusters 4/5  | {}".format(elapsed))
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " ordering clusters 3/4  | {}".format(elapsed))
+                progressbar(20, 20, " ordering clusters 4/5  | {}".format(elapsed))
                 if data._headers:
                     print("")
                 break
@@ -486,7 +474,7 @@ def multicat(data, samples, ipyclient):
     
     finally:
         elapsed = datetime.timedelta(seconds=int(res.elapsed))
-        progressbar(20, 0, " building database 4/4  | {}".format(elapsed))
+        progressbar(20, 0, " building database 5/5  | {}".format(elapsed))
         start = time.time()
         done = 0
 
@@ -500,7 +488,7 @@ def multicat(data, samples, ipyclient):
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(len(jobs), done, 
-                    " building database 4/4  | {}".format(elapsed))
+                    " building database 5/5  | {}".format(elapsed))
                 done += 1
 
             ## if not done do nothing, if failure print error
@@ -513,7 +501,7 @@ def multicat(data, samples, ipyclient):
                 error: %s""", meta.stdout, meta.stderr, meta.error)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(jobs), done, 
-        " building database 4/4  | {}".format(elapsed))
+        " building database 5/5  | {}".format(elapsed))
         if data._headers:
             print("")
 
@@ -891,26 +879,37 @@ def build_input_file(data, samples, outgroups, randomseed):
     with open(allcons, 'wb') as consout:
         for qhandle in conshandles:
             with gzip.open(qhandle, 'r') as tmpin:
-                data = tmpin.readlines()
-                names = iter(data[::2])
-                seqs = iter(data[1::2])
+                dat = tmpin.readlines()
+                names = iter(dat[::2])
+                seqs = iter(dat[1::2])
                 consout.write("".join(printstr.format(i.strip(), j) \
                               for i, j in zip(names, seqs)))
 
     start = time.time()
     LOGGER.info("sorting sequences into len classes")
-    ## created version with haplos that is also shuffled within seqlen classes
-    random.seed(randomseed)
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 1, 
+        " concat/shuf input  | {}".format(elapsed))
+
     ## read back in cons as a data frame
     consdat = pd.read_table(allcons, delim_whitespace=1, header=None)
     ## make a new column with seqlens and then groupby seqlens
     consdat[2] = pd.Series([len(i) for i in consdat[1]], index=consdat.index)
     lengroups = consdat.groupby(by=2)
     lenclasses = sorted(set(consdat[2]), reverse=True)
+    nclasses = len(lenclasses)
+    done = 0
 
+    np.random.seed(randomseed)
     LOGGER.info("shuffling sequences within len classes & sampling alleles")
+
     ## write all cons in pandas readable format
     for lenc in lenclasses:
+        done += 1
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(nclasses, done,  
+        " concat/shuf input  | {}".format(elapsed))
+
         group = lengroups.get_group(lenc)
         ## shuffle the subgroup
         shuf = group.reindex(np.random.permutation(group.index))
@@ -928,6 +927,12 @@ def build_input_file(data, samples, outgroups, randomseed):
         ## write final chunk
         allhaps.write("\n".join(writinghaplos)+"\n")
     allhaps.close()
+
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 20,
+        " concat/shuf input  | {}".format(elapsed))
+    if data._headers:
+        print("")
     LOGGER.info("sort/shuf/samp took %s seconds", int(time.time()-start))
 
 
