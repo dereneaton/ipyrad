@@ -708,7 +708,7 @@ def run(data, samples, force, ipyclient):
 
     ## first progress bar 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-    progressbar(10, 0, " consensus calling | {}".format(elapsed))
+    progressbar(10, 0, " consensus calling   | {}".format(elapsed))
 
     ## send off jobs to be processed
     njobs = 0
@@ -719,7 +719,7 @@ def run(data, samples, force, ipyclient):
 
         ## print progress post-slice
         elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-        progressbar(10, 0, " consensus calling | {}".format(elapsed))
+        progressbar(10, 0, " consensus calling   | {}".format(elapsed))
 
     ## create a waiting object
     tmpids = lbview.history
@@ -739,7 +739,7 @@ def run(data, samples, force, ipyclient):
                 ## print progress bars while we wait
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(njobs, nfinished,
-                    " consensus calling  | {}".format(elapsed))
+                    " consensus calling    | {}".format(elapsed))
 
             else:
                 break
@@ -766,7 +766,7 @@ def run(data, samples, force, ipyclient):
         for tmpchunk in tmpcons:
             os.remove(tmpchunk)
 
-        progressbar(20, 20, " consensus calling | {}".format(elapsed))            
+        progressbar(20, 20, " consensus calling   | {}".format(elapsed))            
         if data._headers:
             print("")
 
