@@ -641,7 +641,13 @@ class Assembly(object):
             self = paramschecker(self, param, newvalue)
 
         except Exception as inst:
-            raise IPyradWarningExit("""
+            if ip.__interactive__:
+                raise IPyradError("""
+    Error setting parameter {}: 
+    Exception: {}. 
+    You entered: {}""".format(param, inst, newvalue))
+            else:
+                raise IPyradWarningExit("""
     Error setting parameter {}: {}. 
     You entered: {}""".format(param, inst, newvalue))
 
@@ -1118,7 +1124,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         if self._headers:
-            print("  Step7: Filter and write output files for {} Samples.".\
+            print("  Step7: Filter and write output files for {} Samples".\
                   format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
@@ -1142,7 +1148,8 @@ class Assembly(object):
     """.format(self.database))
 
         if not force:
-            if os.path.exists(self.dirs.outfiles):
+            if os.path.exists(
+                os.path.join(self.dirs.project, self.name+"_outfiles")):
                 raise IPyradWarningExit("""
     Output files already created for this Assembly in:
     {} 
@@ -1825,12 +1832,12 @@ def paramschecker(self, param, newvalue):
         else:
             #newvalue = newvalue.replace(",", "")
             #requested_formats = "".join([i[0] for i in newvalue.split()])
-            requested_formats = [i[0] for i in \
+            requested_formats = [i for i in \
                                  newvalue.replace(" ", "").split(",")]
         
             ## Exit if requested formats are bad
             for form in requested_formats:
-                if form not in [i[0] for i in output_formats]:
+                if form not in [i for i in output_formats]:
                     raise IPyradWarningExit("""
     File format [{}] not recognized, must be one of: {}.
     """.format(form, output_formats))
