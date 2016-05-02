@@ -694,8 +694,8 @@ def run(data, samples, force, ipyclient):
                     "(max alleles = {})".\
                     format(data.paramsdict["max_alleles_consens"]))
         print(u"""\
-  Mean error  [{:.5f} \u00B1 {:.5f}]
-  Mean hetero [{:.5f} \u00B1 {:.5f}]"""\
+  Mean error  [{:.5f} sd={:.5f}]
+  Mean hetero [{:.5f} sd={:.5f}]"""\
   .format(data.stats.error_est.mean(), data.stats.error_est.std(), 
           data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
@@ -708,7 +708,7 @@ def run(data, samples, force, ipyclient):
 
     ## first progress bar 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-    progressbar(10, 0, " consensus calling | {}".format(elapsed))
+    progressbar(10, 0, " consensus calling   | {}".format(elapsed))
 
     ## send off jobs to be processed
     njobs = 0
@@ -719,7 +719,7 @@ def run(data, samples, force, ipyclient):
 
         ## print progress post-slice
         elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-        progressbar(10, 0, " consensus calling | {}".format(elapsed))
+        progressbar(10, 0, " consensus calling   | {}".format(elapsed))
 
     ## create a waiting object
     tmpids = lbview.history
@@ -739,7 +739,7 @@ def run(data, samples, force, ipyclient):
                 ## print progress bars while we wait
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(njobs, nfinished,
-                    " consensus calling  | {}".format(elapsed))
+                    " consensus calling    | {}".format(elapsed))
 
             else:
                 break
@@ -760,13 +760,13 @@ def run(data, samples, force, ipyclient):
 
     finally:
         ## if process failed at any point delete tmp files
-        tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-        tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-        for tmpchunk in tmpcons+tmpcats:
-            if os.path.exists(tmpchunk):
-                os.remove(tmpchunk)
+        tmpcons = glob.glob(os.path.join(data.dirs.clusts, "tmp_*.[0-9]*"))
+        tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+        tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+        for tmpchunk in tmpcons:
+            os.remove(tmpchunk)
 
-        progressbar(20, 20, " consensus calling | {}".format(elapsed))            
+        progressbar(20, 20, " consensus calling   | {}".format(elapsed))            
         if data._headers:
             print("")
 

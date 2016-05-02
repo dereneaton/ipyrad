@@ -10,13 +10,10 @@ parts of the pipeline
 from __future__ import print_function
 import os
 import sys
-import glob
-import gzip
 import socket
 import tempfile
 import itertools
 import subprocess
-import collections
 import ipyrad 
 from collections import defaultdict
 
@@ -156,17 +153,17 @@ def splitalleles(consensus):
     ## store two alleles, allele1 will start with bigbase
     allele1 = list(consensus)
     allele2 = list(consensus)
-    hidx = [i for (i, j) in enumerate(consensus) if j in list("RKSWYM")]
+    hidx = [i for (i, j) in enumerate(consensus) if j in "RKSWYMrkswym"]
 
     ## do remaining h sites
     for idx in hidx:
         hsite = consensus[idx]
-        if hsite.isupper:
-            allele1[idx] = PRIORITY.get(hsite)
-            allele2[idx] = MINOR.get(hsite)
+        if hsite.isupper():
+            allele1[idx] = PRIORITY[hsite]
+            allele2[idx] = MINOR[hsite]
         else:
-            allele1[idx] = MINOR.get(hsite)
-            allele2[idx] = PRIORITY.get(hsite)
+            allele1[idx] = MINOR[hsite.upper()]
+            allele2[idx] = PRIORITY[hsite.upper()]
 
     ## convert back to strings
     allele1 = "".join(allele1)
@@ -224,27 +221,47 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, sample, merge):
+def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
     """ 
-    Merge PE reads. Takes in a tuple of unmerged files and returns the file 
-    name of the merged/combined PE reads and the number of reads that were 
+    Merge PE reads. Takes in a tuple of unmerged files and the file to merge
+    to and returns the file the number of reads that were 
     merged (overlapping). If merge==0 then only concat pairs, no merging.
+
+    If merge==1 merge_pairs() will return the number of pairs successfully
+    merged, if merge==0 it will return -1.
+
+    revcomp indicates whether or not to reverse complement R2 during the
+    merge.
     """
     LOGGER.debug("Entering merge_pairs()")
 
-    ## tempnames for merge files
-    sample.files.merged = os.path.join(data.dirs.edits,
-                                       sample.name+"_merged_.fastq")
+    ## Return the number of merged pairs
+    nmerged = -1
+
+    ## Check input files
+    for f in files_to_merge[0]:
+        if not os.path.exists(f):
+            raise IPyradWarningExit("    Attempting to merge file that "\
+                                        "doesn't exist - {}.".format(f))
+
+    ## If it already exists, clean up the old merged file
+    if os.path.exists(merged_file):
+        os.remove(merged_file)
+
     ## if merge then catch nonmerged in a separate file
     if merge:
-        sample.files.nonmerged1 = os.path.join(data.dirs.edits,
-                                           sample.name+"_nonmerged_R1_.fastq")
-        sample.files.nonmerged2 = os.path.join(data.dirs.edits,
-                                           sample.name+"_nonmerged_R2_.fastq")
+        nonmerged1 = tempfile.NamedTemporaryFile(mode='wb', 
+                                                dir=data.dirs.edits,
+                                                suffix="_nonmerged_R1_.fastq").name
+        nonmerged2 = tempfile.NamedTemporaryFile(mode='wb', 
+                                                dir=data.dirs.edits,
+                                                suffix="_nonmerged_R2_.fastq").name
     ## if not merging then the nonmerged reads will come from the normal edits
     else:
-        sample.files.nonmerged1 = sample.files.edits[0][0]
-        sample.files.nonmerged2 = sample.files.edits[0][1]
+        nonmerged1 = files_to_merge[0][0]
+        nonmerged2 = files_to_merge[0][1]
+
+    print("nonmerged 1/2 - {} / {}".format(nonmerged1, nonmerged2))
 
     ## get the maxn and minlen values
     try:
@@ -253,18 +270,14 @@ def merge_pairs(data, sample, merge):
         maxn = data.paramsdict['max_low_qual_bases']
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
-    ## check for paired file
-    if not os.path.exists(sample.files.edits[0][1]):
-        raise IPyradWarningExit("    No paired read file (_R2_ file) found.")
-
-    ## do vsearch merging if merging
+    ## If we are actually mergeing and not just joining then do vsearch
     if merge:
         cmd = ipyrad.bins.vsearch \
-          +" --fastq_mergepairs "+sample.files.edits[0][0] \
-          +" --reverse "+sample.files.edits[0][1] \
-          +" --fastqout "+sample.files.merged \
-          +" --fastqout_notmerged_fwd "+sample.files.nonmerged1 \
-          +" --fastqout_notmerged_rev "+sample.files.nonmerged2 \
+          +" --fastq_mergepairs "+files_to_merge[0][0] \
+          +" --reverse "+files_to_merge[0][1] \
+          +" --fastqout "+merged_file \
+          +" --fastqout_notmerged_fwd "+nonmerged1 \
+          +" --fastqout_notmerged_rev "+nonmerged2 \
           +" --fasta_width 0 " \
           +" --fastq_allowmergestagger " \
           +" --fastq_minmergelen "+minlen \
@@ -283,17 +296,16 @@ def merge_pairs(data, sample, merge):
             IPyradWarningExit("  Error in merging pairs: \n({}).".format(inst))
 
         ## record how many read pairs were merged
-        with open(sample.files.merged, 'r') as tmpf:
-            sample.stats.reads_merged = len(tmpf.readlines()) // 4
-        LOGGER.info("Merged pairs - %d", sample.stats.reads_merged)
+        with open(merged_file, 'r') as tmpf:
+            nmerged = len(tmpf.readlines()) // 4
 
     ## Combine the unmerged pairs and append to the merge file
-    with open(sample.files.merged, 'ab') as combout:
+    with open(merged_file, 'ab') as combout:
         ## read in paired end read files"
         ## create iterators to sample 4 lines at a time
-        fr1 = open(sample.files.nonmerged1, 'rb')
+        fr1 = open(nonmerged1, 'rb')
         quart1 = itertools.izip(*[iter(fr1)]*4)
-        fr2 = open(sample.files.nonmerged2, 'rb')
+        fr2 = open(nonmerged2, 'rb')
         quart2 = itertools.izip(*[iter(fr2)]*4)
         quarts = itertools.izip(quart1, quart2)
 
@@ -307,17 +319,27 @@ def merge_pairs(data, sample, merge):
                 read1s, read2s = quarts.next()
             except StopIteration:
                 break
-            writing.append("\n".join([
-                            read1s[0].strip(),
-                            read1s[1].strip()+\
-                                "nnnn"+\
-                                #read2s[1].strip(),
-                                comp(read2s[1].strip())[::-1],
-                            read1s[2].strip(),
-                            read1s[3].strip()+\
-                                "nnnn"+\
-                                #read2s[3].strip()]
-                                read2s[3].strip()[::-1]]
+            if revcomp:
+                writing.append("\n".join([
+                                read1s[0].strip(),
+                                read1s[1].strip()+\
+                                    "nnnn"+\
+                                    comp(read2s[1].strip())[::-1],
+                                read1s[2].strip(),
+                                read1s[3].strip()+\
+                                    "nnnn"+\
+                                    read2s[3].strip()[::-1]]
+                            ))
+            else:
+                writing.append("\n".join([
+                                read1s[0].strip(),
+                                read1s[1].strip()+\
+                                    "nnnn"+\
+                                    read2s[1].strip(),
+                                read1s[2].strip(),
+                                read1s[3].strip()+\
+                                    "nnnn"+\
+                                    read2s[3].strip()]
                             ))
             counts += 1
             if not counts % 1000:
@@ -329,10 +351,10 @@ def merge_pairs(data, sample, merge):
 
     ## if merged then delete the nonmerge tmp files
     if merge:
-        os.remove(sample.files.nonmerged1)
-        os.remove(sample.files.nonmerged2)
+        os.remove(nonmerged1)
+        os.remove(nonmerged2)
 
-    return sample
+    return nmerged
 
 
 
@@ -477,70 +499,6 @@ def unstruct(amb):
 
 
 
-# def preview_truncate_fq(data, sample_fastq, nlines=None):
-#     """ 
-#     If we are running in preview mode, truncate the input fq.gz file so it'll 
-#     run quicker, just so we can see if it works. Input is tuple of the file
-#     names of the sample fq, and the # of lines to truncate to. Function 
-#     returns a list of one tuple of 1 or 2 elements depending on whether 
-#     you're doing paired or single end. The elements are paths to a temp files 
-#     of the sample fq truncated to some much smaller size.
-#     """
-
-#     ## Return a list of filenames
-#     truncated_fq = []
-
-#     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
-#     ## do not need to worry about multiple appended fastq files b/c preview
-#     ## mode will only want to sample from one file pair.
-#     for read in sample_fastq[0]:
-
-#         ## If the R2 is empty then exit the loop
-#         if not read:
-#             continue
-#         try:
-#             if read.endswith(".gz"):
-#                 infile = gzip.open(os.path.realpath(read), 'rb')
-#             else:
-#                 infile = open(os.path.realpath(read), 'rb')
-
-#             ## slice from data some multiple of 4 lines, no need to worry
-#             ## about truncate length being longer than the file this way.
-#             quarts = itertools.islice(infile, nlines*4)
-
-#             ## write to a tmp file in the same place zcat_make_tmps would write
-#             with tempfile.NamedTemporaryFile('w+b', delete=False,
-#                           dir=data.dirs.fastqs,
-#                           prefix="preview_tmp_", 
-#                           suffix=".fq") as tmp_fq:
-#                 tmp_fq.write("".join(quarts))
-#             ## save file name and close input
-#             truncated_fq.append(tmp_fq.name)
-#             infile.close()
-
-#         except KeyboardInterrupt as holdup:
-#             LOGGER.info("""
-#     Caught keyboard interrupt during preview mode. Cleaning up preview files.
-#             """)
-#             ## clean up preview files
-#             try:
-#                 truncated_fq.append(tmp_fq.name)
-#                 for truncfile in truncated_fq:
-#                     if os.path.exists(truncfile):
-#                         os.remove(truncfile)
-#             except OSError as inst:
-#                 LOGGER.debug("Error cleaning up truncated fq files: {}"\
-#                              .format(inst))
-#             finally:
-#                 ## re-raise the keyboard interrupt after cleaning up
-#                 raise holdup
-
-#         except Exception as inst:
-#             LOGGER.debug("Some other stupid error - {}".format(inst))
-
-#     return [tuple(truncated_fq)]
-
-
 
 def clustdealer(pairdealer, optim):
     """ return optim clusters given iterators, and whether it got all or not"""
@@ -652,53 +610,6 @@ def detect_cpus():
         if ncpus > 0:
             return ncpus
     return 1 # Default
-
-
-#############################################################
-## code from below to read streaming stdout from subprocess
-## http://eyalarubas.com/python-subproc-nonblock.html
-#############################################################
-from threading import Thread
-from Queue import Queue, Empty
-
-
-class NonBlockingStreamReader:
-    def __init__(self, stream):
-        """ stream: Usually a process' stdout or stderr. """
-        self._stream = stream
-        self._queue = Queue()
-
-        def _populate_queue(stream, queue):
-            """ Collect lines from 'stream' and put them in 'queue' """
-            while True:
-                line = stream.readline()
-                if line:
-                    queue.put(line)
-                else:
-                    break
-                    #raise UnexpectedEndOfStream
-
-
-        self._thread = Thread(target=_populate_queue,
-                                args=(self._stream, self._queue))
-        self._thread.daemon = True
-        self._thread.start() 
-
-
-    def readline(self, timeout=None):
-        try:
-            dat = self._queue.get(block=timeout is not None, timeout=timeout)
-            if "Clustering" in dat:
-                percent = dat.strip().split()[1][:-1]
-                return int(percent)
-
-        except Empty:
-            return None
-
-
-class UnexpectedEndOfStream(Exception): 
-    pass
-
 
 
 

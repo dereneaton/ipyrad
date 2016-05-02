@@ -11,10 +11,10 @@ from __future__ import print_function
 
 import os
 import sys
+import pty
 import gzip
 import h5py
 import time
-import random
 import shutil
 import datetime
 import itertools
@@ -40,6 +40,8 @@ def muscle_align_across(args):
     """
     ## parse args, names are used to order arrays by taxon names
     data, samples, chunk = args
+    ## ensure sorted order
+    samples.sort(key=lambda x: x.name)
     snames = [sample.name for sample in samples]
 
     ## data are already chunked, read in the whole thing
@@ -144,14 +146,14 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 fwait = sum([jobs[i].ready() for i in jobs])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " aligning clusters 2/4  | {}".format(elapsed))
+                            " aligning clusters  | {}".format(elapsed))
                 ## got to next print row when done
                 sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " aligning clusters 2/4  | {}".format(elapsed))
+                progressbar(20, 20, " aligning clusters  | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -219,19 +221,25 @@ def build(data, samples, indeltups, clustbits):
         maxlen *= 2
 
     ## INIT INDEL ARRAY
-    ## build an indel array for ALL loci in cat.clust.gz, chunked in a way 
-    ## so that you can pull out data for just one sample at a time.
+    ## build an indel array for ALL loci in cat.clust.gz, 
+    ## chunked so that individual samples can be pulled out
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     io5 = h5py.File(ipath, 'w')
     iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
-                              dtype=np.bool, 
-                              chunks=(1, data.nloci, maxlen), 
+                              dtype=np.bool,
+                              chunks=(1, data.nloci, maxlen),
                               compression="gzip")
+
+    ## again make sure names are ordered right
+    samples.sort(key=lambda x: x.name)
 
     ## enter all tmpindel arrays into full indel array
     for tup in indeltups:
+        LOGGER.info('indeltups: %s, %s, %s', tup[0], tup[1].shape, tup[1].sum())
         start = int(tup[0].rsplit("_", 1)[1])
-        iset[:, start:start+tup[2], :] = tup[1]
+        for sidx, _ in enumerate(samples):
+            LOGGER.info("tups are ordered, right? %s %s", sidx, _)
+            iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
     io5.close()
 
     ## concatenate finished seq clusters into a tmp file 
@@ -243,7 +251,7 @@ def build(data, samples, indeltups, clustbits):
 
 
 
-
+## Really want to figure out how to add a progress bar to this...
 def cluster(data, noreverse, ipyclient):
     """ 
     Calls vsearch for clustering across samples. 
@@ -262,60 +270,77 @@ def cluster(data, noreverse, ipyclient):
     cov = ".90"
     if data.paramsdict["datatype"] == "gbs":
         strand = "both"
-        cov = ".60 "
+        cov = ".60"
     elif data.paramsdict["datatype"] == "pairgbs":
-        strand = "both"
-        cov = ".90 "
+        strand = "both "
+        cov = ".90"
 
-    ## override reverse clustering option
-    if noreverse:
-        strand = "plus"
-        print(noreverse, "not performing reverse complement clustering")
-
-
+    ## get call string. Thread=0 means all. 
+    ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
     cmd = [ip.bins.vsearch, 
            "-cluster_smallmem", cathaplos, 
-           "-strand", strand,
+           "-strand", strand, 
            "-query_cov", cov, 
            "-id", str(data.paramsdict["clust_threshold"]), 
            "-userout", uhaplos, 
            "-notmatched", hhaplos, 
            "-userfields", "query+target+qstrand", 
            "-maxaccepts", "1", 
-           "-maxrejects", "0",
+           "-maxrejects", "0", 
            "-minsl", "0.5", 
-           "-fasta_width", "0",
+           "-fasta_width", "0", 
            "-threads", "0", 
            "-fulldp", 
            "-usersort", 
            "-log", logfile]
 
+    ## override reverse clustering option
+    if noreverse:
+        ##strand = " -leftjust "
+        print(noreverse, "not performing reverse complement clustering")
 
     try:
+        LOGGER.info(cmd)
         start = time.time()
-        LOGGER.debug(cmd)
-        #ipyclient[:].apply(subprocess.call, cmd)
-        #proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,            
-        #                             stdout=subprocess.PIPE)
-        #elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 1, " clustering across 1/4  | {}".format('running...'))
-        subprocess.check_call(cmd, shell=True, 
-                                   stderr=subprocess.STDOUT,
-                                   stdout=subprocess.PIPE)
+        
+        (dog, owner) = pty.openpty()
+        proc = subprocess.Popen(cmd, stdout=owner, stderr=owner, 
+                                     close_fds=True)
+        done = 0
+        while 1:
+            dat = os.read(dog, 4096)
+            if "Clustering" in dat:
+                try:
+                    done = int(dat.split()[-1][:-1])
+                ## raises a value error when it gets to the end
+                except ValueError:
+                    if done > 99:
+                        break
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(100, done, 
+                    " clustering across  | {}".format(elapsed))
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(100, 100, 
+                    " clustering across  | {}".format(elapsed))
+        ## ensure it in finished
+        proc.wait()
 
     except subprocess.CalledProcessError as inst:
         raise IPyradWarningExit("""
         Error in vsearch: \n{}\n{}""".format(inst, subprocess.STDOUT))
 
     finally:
+        ## progress bar
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 100, " clustering across 1/4  | {}".format(elapsed))
-        print("")
+        progressbar(100, 100, " clustering across  | {}".format(elapsed))
+        if data._headers:
+            print("")
+        data.stats_files.s6 = logfile
 
 
 
 def build_h5_array(data, samples, ipyclient):
-    """ build full catgs file """
+    """ build full catgs file with imputed indels. """
     ## catg array of prefiltered loci (4-dimensional) aye-aye!
     ## this can be multiprocessed!! just sum arrays at the end
     ## but one big array will overload memory, so need to be done in slices
@@ -323,12 +348,12 @@ def build_h5_array(data, samples, ipyclient):
     ## sort to ensure samples will be in alphabetical order, tho they should be.
     samples.sort(key=lambda x: x.name)
 
-    ## initialize an hdf5 array of the super catg matrix with dims
+    ## get maxlen dim
     maxlen = data._hackersonly["max_fragment_length"]
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
-    ## open h5 handle
+    ## open new h5 handle
     data.database = os.path.join(data.dirs.consens, data.name+".hdf5")
     io5 = h5py.File(data.database, 'w')
 
@@ -401,7 +426,7 @@ def build_h5_array(data, samples, ipyclient):
     #data.stats_files.s6 = "[this step has no stats ouput]"
 
 
-
+## TODO: can we skip singlecats if they find indels?
 def multicat(data, samples, ipyclient):
     """
     Runs singlecat for each sample.
@@ -436,14 +461,12 @@ def multicat(data, samples, ipyclient):
                 fwait = sum([i.ready() for i in jobs.values()])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " ordering clusters 3/4  | {}".format(elapsed))
-                ## got to next print row when done
-                #sys.stdout.flush()
+                            " ordering clusters  | {}".format(elapsed))
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " ordering clusters 3/4  | {}".format(elapsed))
+                progressbar(20, 20, " ordering clusters  | {}".format(elapsed))
                 if data._headers:
                     print("")
                 break
@@ -453,7 +476,7 @@ def multicat(data, samples, ipyclient):
     
     finally:
         elapsed = datetime.timedelta(seconds=int(res.elapsed))
-        progressbar(20, 0, " building database 4/4  | {}".format(elapsed))
+        progressbar(20, 0, " building database  | {}".format(elapsed))
         start = time.time()
         done = 0
 
@@ -467,7 +490,7 @@ def multicat(data, samples, ipyclient):
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(len(jobs), done, 
-                    " building database 4/4  | {}".format(elapsed))
+                    " building database  | {}".format(elapsed))
                 done += 1
 
             ## if not done do nothing, if failure print error
@@ -480,7 +503,7 @@ def multicat(data, samples, ipyclient):
                 error: %s""", meta.stdout, meta.stderr, meta.error)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(jobs), done, 
-        " building database 4/4  | {}".format(elapsed))
+        " building database  | {}".format(elapsed))
         if data._headers:
             print("")
 
@@ -499,16 +522,18 @@ def insert_and_cleanup(data, sname):
     io5 = h5py.File(data.database, 'r+')
     catg = io5["catgs"]
     sidx = list(catg.attrs["samples"]).index(sname)
+    LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
 
     ## get individual h5 saved in locus order and with filters
     smp5 = os.path.join(data.dirs.consens, sname+".tmp.h5")
     ind5 = h5py.File(smp5, 'r')
     icatg = ind5["icatg"]
+    #LOGGER.info("%s sidx: %s", sname, sidx, icatg[])    
 
     ## FILL SUPERCATG -- catg is chunked by nchunk loci
     chunk = catg.attrs["chunksize"]
     for chu in xrange(0, catg.shape[0], chunk):
-        catg[chu:chu+chunk, sidx, ...] = icatg[chu:chu+chunk]
+        catg[chu:chu+chunk, sidx, ...] += icatg[chu:chu+chunk]
 
     ## put in loci that were filtered b/c of dups [0] or inds [1]
     ## this is not chunked in any way, and so needs to be changed if we 
@@ -527,7 +552,7 @@ def insert_and_cleanup(data, sname):
 
 
 
-
+## This is where indels are imputed
 def singlecat(args):
     """ 
     Orders catg data for each sample into the final locus order. This allows
@@ -551,11 +576,6 @@ def singlecat(args):
     ## get number of clusters
     nloci = sum(1 for _ in udic.groups.iterkeys())
 
-    ## get indel locations for this sample
-    ipath = os.path.join(data.dirs.consens, data.name+".indels")
-    with h5py.File(ipath, 'r') as indh5:
-        indels = indh5["indels"][sidx, :, :]
-
     ## get maxlen
     maxlen = data._hackersonly["max_fragment_length"]
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
@@ -565,7 +585,6 @@ def singlecat(args):
     ## create an h5 array for storing catg tmp for this sample
     ## size has nloci from utemp, maxlen from hackersdict
     smpio = os.path.join(data.dirs.consens, sample.name+".tmp.h5")
-    ## if h5 for this samples exists delete it.
     if os.path.exists(smpio):
         os.remove(smpio)
     smp5 = h5py.File(smpio, 'w')
@@ -615,16 +634,17 @@ def singlecat(args):
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
     LOGGER.debug("starting seedmatching")
     for iloc in seedmatch2:
-        try:
-            sfill = udic.groups.keys()[iloc].split("_")[-1]
-            icatg[iloc] = catarr[sfill, :, :]
-        except IndexError:
-            LOGGER.error("""
-                sample %s, 
-                no seedmatch at iloc %s, 
-                """)
+        sfill = udic.groups.keys()[iloc].split("_")[-1]
+        icatg[iloc] = catarr[sfill, :, :]
+
     ## close the old hdf5 connections
     old_h5.close()
+
+    ## get indel locations for this sample
+    ipath = os.path.join(data.dirs.consens, data.name+".indels")
+    with h5py.File(ipath, 'r') as indh5:
+        indels = indh5["indels"][sidx, :, :]
+    LOGGER.info("loading indels for %s %s, %s", sample.name, sidx, np.sum(indels[:10]))
 
     ## insert indels into new_h5 (icatg array) which now has loci in the same
     ## order as the final clusters from the utemp file
@@ -663,9 +683,11 @@ def singlecat(args):
 
 
 def fill_superseqs(data, samples):
-    """ fills the superseqs array with seq data from cat.clust """
+    """ 
+    Fills the superseqs array with seq data from cat.clust 
+    """
 
-    ## load super
+    ## load super to get edges
     io5 = h5py.File(data.database, 'r+')
     superseqs = io5["seqs"]
     edges = io5["edges"]
@@ -750,10 +772,12 @@ def fill_superseqs(data, samples):
 
 
 def build_reads_file(data):
-    """ reconstitutes clusters from .utemp and htemp files and writes them 
+    """ 
+    Reconstitutes clusters from .utemp and htemp files and writes them 
     to chunked files for aligning in muscle. Return a dictionary with 
     seed:hits info from utemp file.
     """
+
     LOGGER.info("building reads file -- loading utemp file into mem")
     ## read in cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -831,7 +855,7 @@ def build_reads_file(data):
     return clustbits
 
 
-
+## This is slow currently, high memory, and has no progress bar...
 def build_input_file(data, samples, outgroups, randomseed):
     """ 
     Make a concatenated consens files to input to vsearch. 
@@ -857,26 +881,37 @@ def build_input_file(data, samples, outgroups, randomseed):
     with open(allcons, 'wb') as consout:
         for qhandle in conshandles:
             with gzip.open(qhandle, 'r') as tmpin:
-                data = tmpin.readlines()
-                names = iter(data[::2])
-                seqs = iter(data[1::2])
+                dat = tmpin.readlines()
+                names = iter(dat[::2])
+                seqs = iter(dat[1::2])
                 consout.write("".join(printstr.format(i.strip(), j) \
                               for i, j in zip(names, seqs)))
 
     start = time.time()
     LOGGER.info("sorting sequences into len classes")
-    ## created version with haplos that is also shuffled within seqlen classes
-    random.seed(randomseed)
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 1, 
+        " concat/shuf input  | {}".format(elapsed))
+
     ## read back in cons as a data frame
     consdat = pd.read_table(allcons, delim_whitespace=1, header=None)
     ## make a new column with seqlens and then groupby seqlens
     consdat[2] = pd.Series([len(i) for i in consdat[1]], index=consdat.index)
     lengroups = consdat.groupby(by=2)
     lenclasses = sorted(set(consdat[2]), reverse=True)
+    nclasses = len(lenclasses)
+    done = 0
 
+    np.random.seed(randomseed)
     LOGGER.info("shuffling sequences within len classes & sampling alleles")
+
     ## write all cons in pandas readable format
     for lenc in lenclasses:
+        done += 1
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(nclasses, done,  
+        " concat/shuf input  | {}".format(elapsed))
+
         group = lengroups.get_group(lenc)
         ## shuffle the subgroup
         shuf = group.reindex(np.random.permutation(group.index))
@@ -894,12 +929,22 @@ def build_input_file(data, samples, outgroups, randomseed):
         ## write final chunk
         allhaps.write("\n".join(writinghaplos)+"\n")
     allhaps.close()
+
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 20,
+        " concat/shuf input  | {}".format(elapsed))
+    if data._headers:
+        print("")
     LOGGER.info("sort/shuf/samp took %s seconds", int(time.time()-start))
 
 
 
 def run(data, samples, noreverse, force, randomseed, ipyclient):
-    """ subselect and pass args for across-sample clustering """
+    """ 
+    Master function to run :
+     1. build input file, 2. cluster, 3. split clusters into bits, 
+     4. align bits, 5. build h5 array. 
+    """
 
     ## clean the slate
     if os.path.exists(data.database):
