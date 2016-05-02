@@ -262,7 +262,6 @@ def cluster(data, noreverse, ipyclient):
     uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
     hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
     logfile = os.path.join(data.dirs.consens, "s6_cluster_stats.txt")
-    data.statsfiles.s6 = logfile
 
     ## parameters that vary by datatype 
     ## (too low of cov values yield too many poor alignments)
