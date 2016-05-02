@@ -348,14 +348,14 @@ def submit(data, submitted_args, ipyclient):
                 fwait = sum([jobs[i].ready() for i in jobs])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " inferring [H, E]     | {}".format(elapsed))
+                            " inferring [H, E]      | {}".format(elapsed))
                 ## got to next print row when done
                 sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " inferring [H, E]     | {}".format(elapsed))
+                progressbar(20, 20, " inferring [H, E]      | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
