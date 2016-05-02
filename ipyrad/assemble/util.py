@@ -613,6 +613,3 @@ def detect_cpus():
 
 
 
-
-
-
