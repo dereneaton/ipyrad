@@ -17,9 +17,10 @@ from __future__ import print_function
 
 import pandas as pd
 import numpy as np
-import itertools
+import datetime
 import shutil
 import time
+import glob
 import h5py
 import os
 from collections import Counter, OrderedDict
@@ -35,8 +36,11 @@ LOGGER = logging.getLogger(__name__)
 ## referenced by assembly.py and also paramsinfo. Easier to have it
 ## centralized. LOCI and VCF are default. Some others are created as 
 ## dependencies of others.
-OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
-                  'str', 'geno', 'treemix', 'migrate', 'gphocs']
+
+#OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
+#                  'str', 'geno', 'treemix', 'migrate', 'gphocs']
+OUTPUT_FORMATS = ['phy', 'nex', 'snps', 'usnps', 'str', 'geno']
+
 
 
 def run(data, samples, force, ipyclient):
@@ -59,7 +63,11 @@ def run(data, samples, force, ipyclient):
     ## with 'samples' taken into account. Now we create the loci file (default)
     ## output and get some data back for building the stats file
     ## 'keep' has the non-filtered loci idxs. 
+    start = time.time()
     LOGGER.info("Writing .loci file")
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 0, 
+        " building output files    | {}".format(elapsed))
     samplecounts, locuscounts, keep = make_loci(data, samples)
 
     ## Write stats file output
@@ -67,22 +75,24 @@ def run(data, samples, force, ipyclient):
     make_stats(data, samples, samplecounts, locuscounts)
 
     ## OPTIONAL OUTPUTS
-    ## select the output formats. Should we allow some kind of fuzzy matching?
+    ## grab from params as a string, if commas then split to a list
+    ## phy, nex, str
     output_formats = data.paramsdict["output_formats"]
+    if "," in output_formats:
+        output_formats = [i.strip() for i in output_formats.split(",")]
     if "*" in output_formats:
         output_formats = OUTPUT_FORMATS
 
-    ## Three types of vcf:
-    ##   + TODO: Full data included filtered loci with filter flags
-    ##   + TODO: Full data - filtered loci
-    ##   + Just SNPs
+    ## not included in *
     if 'vcf' in output_formats:
         LOGGER.info("Writing .vcf file")        
+        if data._headers:
+            print("  building vcf ")
         make_vcf(data, samples, keep)
 
     ## make other array-based formats
     LOGGER.info("Writing other formats")
-    make_outfiles(data, samples, keep, output_formats)
+    make_outfiles(data, samples, keep, output_formats, ipyclient)
 
     ## print friendly message
     shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
@@ -268,16 +278,29 @@ def filter_all_clusters(data, samples, ipyclient):
         ## be loaded on the remote Engine. 
 
         ## create job queue
-        submitted_args = []
+        start = time.time()
+        results = [] #submitted_args = []
         submitted = 0
         while submitted < nloci:
             hslice = np.array([submitted, submitted+optim])
-            submitted_args.append([data, sidx, hslice])
+            async = lbview.apply(filter_stacks, [data, sidx, hslice])
+            results.append(async)
+            #submitted_args.append([data, sidx, hslice])
             submitted += optim
 
         ## run filter_stacks on all chunks
-        results = lbview.map_async(filter_stacks, submitted_args)
-        results.get()
+        while 1:
+            readies = [i.ready() for i in results]
+            if not all(readies):
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(len(readies), sum(readies), 
+                    " filtering loci           | {}".format(elapsed))
+                time.sleep(1)
+            else:
+                break
+        progressbar(20, 20, " filtering loci           | {}".format(elapsed))        
+        if data._headers:
+            print("")
 
         ## get all the saved tmp arrays for each slice
         tmpsnp = glob.glob(os.path.join(chunkdir, "snpf.*.npy"))
@@ -425,7 +448,7 @@ def make_loci(data, samples):
         for iloc in keep:
             edg = aedge[iloc]
             args = [iloc, pnames, snppad, edg, aseqs, asnps, 
-                    smask, samplecov, locuscov]
+                    smask, samplecov, locuscov, start]
             if edg[4]:
                 outstr, samplecov, locuscov = enter_pairs(*args)
                 store.append(outstr)
@@ -450,7 +473,7 @@ def make_loci(data, samples):
 
 
 def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, 
-                smask, samplecov, locuscov):
+                smask, samplecov, locuscov, start):
     """ enters funcs for pairs """
     seq1 = aseqs[iloc, :, edg[0]:edg[1]]
     seq2 = aseqs[iloc, :, edg[2]+edg[4]+4:edg[3]+edg[4]]
@@ -481,14 +504,14 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps,
                  "*" if snp2[i, 1] else \
                  " " for i in range(len(snp2))]
     outstr += "\n" + snppad + "".join(snpstring1)+\
-              "    "+"".join(snpstring2)+"|"
+              "    "+"".join(snpstring2)+"|{}|".format(iloc+start)
 
     return outstr, samplecov, locuscov
 
 
 
 def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps, 
-                  smask, samplecov, locuscov):
+                  smask, samplecov, locuscov, start):
     """ enter funcs for SE or merged data """
     ## grab all seqs between edges
     seq = aseqs[iloc, :, edg[0]:edg[1]]
@@ -513,7 +536,7 @@ def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps,
     snpstring = ["-" if snp[i, 0] else \
                  "*" if snp[i, 1] else \
                  " " for i in range(len(snp))]
-    outstr += "\n" + snppad + "".join(snpstring) + "|{}|".format(iloc)
+    outstr += "\n" + snppad + "".join(snpstring) + "|{}|".format(iloc+start)
 
     return outstr, samplecov, locuscov
 
@@ -867,7 +890,7 @@ def filter_maxhet(data, superseqs, edges):
 
 
 
-def make_outfiles(data, samples, keep, output_formats):
+def make_outfiles(data, samples, keep, output_formats, ipyclient):
     """
     Get desired formats from paramsdict and write files to outfiles 
     directory.
@@ -897,33 +920,71 @@ def make_outfiles(data, samples, keep, output_formats):
     arrs = make_arrays(data, sidx, optim, nloci, keep, inh5)
     seqarr, snparr, bisarr, _ = arrs
 
+    ## send off outputs as parallel jobs
+    lbview = ipyclient.load_balanced_view()
+    start = time.time()
+    results = []
+
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "phy" in output_formats:
-        write_phy(data, seqarr, sidx, pnames)
+        async = lbview.apply(write_phy, *[data, seqarr, sidx, pnames])
+        results.append(async)
+        #write_phy(data, seqarr, sidx, pnames)
 
     ## other outputs
     ## nexus format includes ... additional information ({}.nex)
     if 'nexus' in output_formats:
-        write_nex(data, seqarr, sidx, pnames)
+        async = lbview.apply(write_nex, *[data, seqarr, sidx, pnames])
+        results.append(async)
+        #write_nex(data, seqarr, sidx, pnames)
 
     ## snps is actually all snps written in phylip format ({}.snps.phy)
     if 'snps' in output_formats:
-        write_snps(data, snparr, sidx, pnames)
+        async = lbview.apply(write_snps, *[data, snparr, sidx, pnames])
+        results.append(async)
+        #write_snps(data, snparr, sidx, pnames)
 
     ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
     if 'usnps' in output_formats:
-        write_usnps(data, bisarr, sidx, pnames)
+        async = lbview.apply(write_usnps, *[data, bisarr, sidx, pnames])
+        results.append(async)
+        #write_usnps(data, bisarr, sidx, pnames)
 
     ## str and ustr are for structure analyses. A fairly outdated format, six
     ## columns of empty space. Full and subsample included ({}.str, {}.u.str)
     if 'str' in output_formats:
-        write_str(data, snparr, bisarr, sidx, pnames)
+        async = lbview.apply(write_str, *[data, snparr, bisarr, sidx, pnames])
+        results.append(async)
+        #write_str(data, snparr, bisarr, sidx, pnames)
 
     ## geno output is for admixture and other software. We include all SNPs, 
     ## but also a .map file which has "distances" between SNPs.
     ## ({}.geno, {}.map)
     if 'geno' in output_formats:
-        write_geno(data, snparr, bisarr, sidx, pnames)
+        async = lbview.apply(write_geno, *[data, snparr, bisarr, sidx, pnames])
+        results.append(async)
+        #write_geno(data, snparr, bisarr, sidx, pnames)
+
+    ## run filter_stacks on all chunks
+    while 1:
+        readies = [i.ready() for i in results]
+        if not all(readies):
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(readies), sum(readies), 
+                " building output files    | {}".format(elapsed))
+            time.sleep(1)
+        else:
+            break
+    ## final progress bar
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))            
+    progressbar(20, 20, " building output files    | {}".format(elapsed))        
+    if data._headers:
+        print("")
+
+    ## check for errors
+    for async in results:
+        if not async.completed:
+            print(async.metadata.error)
 
     ## close h5 handle
     inh5.close()
@@ -1026,7 +1087,6 @@ def write_phy(data, seqarr, sidx, pnames):
         ## write data rows
         for idx, name in enumerate(pnames):
             out.write("{}{}\n".format(name, "".join(seqarr[sidx][idx, :])))
-
 
 
 ## TODO:
@@ -1293,73 +1353,6 @@ def viewgeno(site, reso):
 ## vectorize the viewgeno func. 
 ## basically just makes it run as a for loop
 vecviewgeno = np.vectorize(viewgeno)
-
-
-
-# ## Utility subfunctions
-# def count_shared_polymorphisms(seqs):
-#     """ 
-#     Count the number of shared polymorphic sites at every base in a locus. If 
-#     base contains too may shared polymorphisms (paramsdict[max_shared_Hs_locus])
-#     then we'll throw out the whole locus.
-#     Input is a list of sequences, output is a list of ints representing counts
-#     of shared polyorphisms per base
-#     """
-#     ## Transpose the list of seqs, so we now have a list of bases at each locus.
-#     ## Stacks of sequences should always be the same length, but if they aren't
-#     ## we'll protect by filling with N's, rather than truncating, which is what
-#     ## zip() would do.
-#     ## Makes a list of counters for each stack of bases of this locus
-#     stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
-
-#     ## This is maybe 20% too clever, but i wanted to do it with list 
-#     ## comprehension, so here we are. Read this as "At each base get the max 
-#     ## number of counts of any ambiguity code". Below y.items is a counter for 
-#     ## each position, and x[0] is the counter key, x[1] is the count for that 
-#     ## key. Another stupid thing is that max() in python 2.7 doesn't handle 
-#     ## empty lists, so there's this trick max(mylist or [0]), empty list 
-#     ## evaluates as false, so it effectively defaults max({}) = 0.
-#     max_counts = [max([x[1] for x in y.items() if x[0] in "RYSWKM"] or [0]) \
-#                   for y in stacks]
-
-#     return max_counts
-
-
-
-# def count_snps(seqs):
-#     """ Finds * and - snps to create snp string for .loci file """
-#     ## As long as we're ripping through looking for snps, keep track of the snp
-#     ## array to output to the .loci file
-#     snpsite = [" "]*len(seqs[0])
-
-#     ## Transpose to make stacks per base, same as count_shared_polymorphisms
-#     ## so see that function for more explicit documentation.
-#     stacks = [Counter(i) for i in itertools.izip_longest(*seqs, fillvalue="N")]
-
-#     ## At each stack, if the length of the counter is > 1 then its a snp
-#     for i, stack in enumerate(stacks):
-#         if len(stack) > 1:
-#             LOGGER.debug("Got a snp {}".format(stack))
-#             ## Count the number of keys that occur once = autapomorphies
-#             autapomorphies = stack.values().count(1)
-
-#             LOGGER.debug("Autapomorphies - {}".format(autapomorphies))
-#             ## If the number of autapomorphies is one less than the total len
-#             ## of the counter then this is still a parsimony uninformative site.                
-#             if autapomorphies == (len(stack) - 1):
-#                 snpsite[i] = "-"
-#             ## If not then it is a parsimony informative site
-#             else:
-#                 snpsite[i] = "*"
-
-#     ## When done, rip through the snpsite string and count snp markers "*" & "-"
-#     nsnps = sum(1 for x in snpsite if x in "*-")
-
-#     ## Just return the snpsite line
-#     snps = ("//", "".join(snpsite)+"|")
-#     #seqs.append(("//", "".join(snpsite)+"|"))
-
-#     return nsnps, snps
 
 
 
