@@ -10,13 +10,10 @@ parts of the pipeline
 from __future__ import print_function
 import os
 import sys
-import glob
-import gzip
 import socket
 import tempfile
 import itertools
 import subprocess
-import collections
 import ipyrad 
 from collections import defaultdict
 
@@ -156,17 +153,17 @@ def splitalleles(consensus):
     ## store two alleles, allele1 will start with bigbase
     allele1 = list(consensus)
     allele2 = list(consensus)
-    hidx = [i for (i, j) in enumerate(consensus) if j in list("RKSWYM")]
+    hidx = [i for (i, j) in enumerate(consensus) if j in "RKSWYMrkswym"]
 
     ## do remaining h sites
     for idx in hidx:
         hsite = consensus[idx]
-        if hsite.isupper:
-            allele1[idx] = PRIORITY.get(hsite)
-            allele2[idx] = MINOR.get(hsite)
+        if hsite.isupper():
+            allele1[idx] = PRIORITY[hsite]
+            allele2[idx] = MINOR[hsite]
         else:
-            allele1[idx] = MINOR.get(hsite)
-            allele2[idx] = PRIORITY.get(hsite)
+            allele1[idx] = MINOR[hsite.upper()]
+            allele2[idx] = PRIORITY[hsite.upper()]
 
     ## convert back to strings
     allele1 = "".join(allele1)
@@ -502,70 +499,6 @@ def unstruct(amb):
 
 
 
-# def preview_truncate_fq(data, sample_fastq, nlines=None):
-#     """ 
-#     If we are running in preview mode, truncate the input fq.gz file so it'll 
-#     run quicker, just so we can see if it works. Input is tuple of the file
-#     names of the sample fq, and the # of lines to truncate to. Function 
-#     returns a list of one tuple of 1 or 2 elements depending on whether 
-#     you're doing paired or single end. The elements are paths to a temp files 
-#     of the sample fq truncated to some much smaller size.
-#     """
-
-#     ## Return a list of filenames
-#     truncated_fq = []
-
-#     ## grab rawdata tuple pair from fastqs list [(x_R1_*, x_R2_*),]
-#     ## do not need to worry about multiple appended fastq files b/c preview
-#     ## mode will only want to sample from one file pair.
-#     for read in sample_fastq[0]:
-
-#         ## If the R2 is empty then exit the loop
-#         if not read:
-#             continue
-#         try:
-#             if read.endswith(".gz"):
-#                 infile = gzip.open(os.path.realpath(read), 'rb')
-#             else:
-#                 infile = open(os.path.realpath(read), 'rb')
-
-#             ## slice from data some multiple of 4 lines, no need to worry
-#             ## about truncate length being longer than the file this way.
-#             quarts = itertools.islice(infile, nlines*4)
-
-#             ## write to a tmp file in the same place zcat_make_tmps would write
-#             with tempfile.NamedTemporaryFile('w+b', delete=False,
-#                           dir=data.dirs.fastqs,
-#                           prefix="preview_tmp_", 
-#                           suffix=".fq") as tmp_fq:
-#                 tmp_fq.write("".join(quarts))
-#             ## save file name and close input
-#             truncated_fq.append(tmp_fq.name)
-#             infile.close()
-
-#         except KeyboardInterrupt as holdup:
-#             LOGGER.info("""
-#     Caught keyboard interrupt during preview mode. Cleaning up preview files.
-#             """)
-#             ## clean up preview files
-#             try:
-#                 truncated_fq.append(tmp_fq.name)
-#                 for truncfile in truncated_fq:
-#                     if os.path.exists(truncfile):
-#                         os.remove(truncfile)
-#             except OSError as inst:
-#                 LOGGER.debug("Error cleaning up truncated fq files: {}"\
-#                              .format(inst))
-#             finally:
-#                 ## re-raise the keyboard interrupt after cleaning up
-#                 raise holdup
-
-#         except Exception as inst:
-#             LOGGER.debug("Some other stupid error - {}".format(inst))
-
-#     return [tuple(truncated_fq)]
-
-
 
 def clustdealer(pairdealer, optim):
     """ return optim clusters given iterators, and whether it got all or not"""
@@ -679,49 +612,6 @@ def detect_cpus():
     return 1 # Default
 
 
-#############################################################
-## code from below to read streaming stdout from subprocess
-## http://eyalarubas.com/python-subproc-nonblock.html
-#############################################################
-from threading import Thread
-from Queue import Queue, Empty
-
-class NonBlockingStreamReader:
-
-    def __init__(self, stream):
-        '''
-        stream: the stream to read from.
-                Usually a process' stdout or stderr.
-        '''
-
-        self._s = stream
-        self._q = Queue()
-
-        def _populateQueue(stream, queue):
-            '''
-            Collect lines from 'stream' and put them in 'quque'.
-            '''
-
-            while True:
-                line = stream.readline()
-                if line:
-                    queue.put(line)
-                else:
-                    raise UnexpectedEndOfStream
-
-        self._t = Thread(target = _populateQueue,
-                args = (self._s, self._q))
-        self._t.daemon = True
-        self._t.start() #start collecting lines from the stream
-
-    def readline(self, timeout = None):
-        try:
-            return self._q.get(block = timeout is not None,
-                    timeout = timeout)
-        except Empty:
-            return None
-
-class UnexpectedEndOfStream(Exception): pass
 
 
 
