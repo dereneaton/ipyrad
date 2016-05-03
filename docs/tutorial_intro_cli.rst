@@ -8,36 +8,27 @@
 Introductory tutorial - CLI
 ============================
 
-This is the full tutorial for the command line interface for ipyrad. In this
-tutorial we'll walk through the entire assembly and analysis process. This is 
-meant as a broad introduction to familiarize users with the general workflow,
-and some of the parameters and terminology. For simplicity we'll use 
-single-end RAD-Seq as the example data, but the core concepts will apply
-to assembly of other data types (GBS and paired-end). 
-
-If you are new to RADseq analyses, this tutorial will provide a simple overview 
-of how to execute ipyrad, what the data files look like, how to check that 
-your analysis is working, and what the final output formats will be. You can 
-follow along by copy/pasting the code-blocks into a command line terminal. 
-
-
-Getting Started
-~~~~~~~~~~~~~~~
+This is the full introductory tutorial for the command line interface to ipyrad. 
+Here we will walk through an entire assembly and analysis process. The goal is
+to familiarize you with the general workflow, terminology, data files, and 
+parameter settings in ipyrad. For simplicity we'll use single-end RAD-Seq 
+as the example data, but the core concepts apply to assembly of other data 
+types as well (e.g., GBS and paired-end). Follow along by copy/pasting the 
+code-blocks into a command line terminal. 
 
 .. note:: 
 
     If you haven't already installed ipyrad go here first: 
     :ref:`Installation <installation>`
 
-We provide a small sample data set to be used for this tutorial.
-Full data sets usually take several hours to several days to complete, 
-whereas this simulated data set can completed in just a few minutes. 
 
 Getting the data
 ~~~~~~~~~~~~~~~~~
-First download and extract a set of example data from the web using the command 
-below. This will create a directory called ``ipsimdata/`` in your current directory
-containing a number of test data sets. 
+We provide a small example data set for this tutorial that can be assembled 
+in just a few minutes on a typical laptop computer. To get the example data 
+set download it as an archived tar ball and extract it using the commands 
+below. This will create a new directory called ``ipsimdata/`` in your current 
+directory. 
 
 .. code-block:: bash
 
@@ -46,22 +37,19 @@ containing a number of test data sets.
     tar -xvzf ipsimdata.tar.gz
 
 
-Use the command ls to look inside this directory, like below. You'll see that
-it contains many different files which are represent different test datasets
-for learning about different types of analyses with ipyrad. 
+Use the command `ls` to look inside this directory. You'll see that
+it contains many different files representing different test data sets. 
 
 .. code-block:: bash
 
-    ## the command ls shows you the files inside a directory (folder)
+    ## the command ls shows you the files inside a directory 
     ls ipsimdata/
 
 For this introductory tutorial we will use just the following two files from 
-this directory, which are similar to the types of files you are likely to have
-when you begin an analysis. Use a text editor, or the unix command 'less' to 
-look at each file to see what it contains.
+this directory. 
 
-    - ``sim_rad_test_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
-    - ``sim_rad_test_barcodes.txt`` - Mapping of barcodes to sample IDs
+    - ``rad_example_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
+    - ``rad_example_barcodes.txt`` - Mapping of barcodes to sample IDs
 
 
 Create a new parameters file
