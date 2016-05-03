@@ -173,8 +173,8 @@ class Assembly(object):
                        ("max_Ns_consens", (5, 5)), 
                        ("max_Hs_consens", (8, 8)), 
                        ("min_samples_locus", 4), 
-                       ("max_SNPs_locus", (100, 100)), 
-                       ("max_Indels_locus", (5, 99)), 
+                       ("max_SNPs_locus", (50, 50)), 
+                       ("max_Indels_locus", (8, 8)), 
                        ("max_shared_Hs_locus", .25), 
                        ("edit_cutsites", (0, 0)),
                        ("trim_overhang", (1, 2, 2, 1)),                        
@@ -1354,6 +1354,9 @@ class Assembly(object):
             if isinstance(steps, int):
                 steps = str(steps)
             steps = list(steps)
+        ## print a header in inside API
+        if ip.__interactive__:
+            print("\n  Assembly: {}".format(self.name))
 
         if '1' in steps:
             self.step1(preview=preview)
