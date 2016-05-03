@@ -757,15 +757,18 @@ class Assembly(object):
             ## wait for at least 1 engine to connect
             for _ in range(nwait):
                 try:
-                    ## using this wrap to avoid ipyparallel print to stdout
+                    ## using this wrap to avoid ipyparallel's ugly warnings
                     ## save orig stdout
-                    save_stdout = sys.stdout           
+                    save_stdout = sys.stdout 
+                    save_stderr = sys.stderr
                     ## file-like obj to catch stdout
-                    sys.stdout = cStringIO.StringIO()  
+                    sys.stdout = cStringIO.StringIO()
+                    sys.stderr = cStringIO.StringIO()                    
                     ## run func with stdout hidden
                     ipyclient = ipp.Client(**args)
                     ## resets stdout
                     sys.stdout = save_stdout
+                    sys.stderr = save_stderr
                     break
 
                 except IOError as inst:
@@ -823,11 +826,10 @@ class Assembly(object):
         except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
             ## raise by ipyparallel if no connection file is found for 30 sec.
             msg = """
-    Check to ensure ipcluster is started. When using the API you must start
-    ipcluster outside of IPython/Jupyter to launch parallel engines using
-    either `ipcluster start`, or in the Clusters tab in a Jupyter notebook.
-    (See Docs)
-            """
+    No Engines found... ensure ipcluster is running (see API docs for details).
+    When using the API you must start an ipyparallel instance using either 
+    `ipcluster start` from a terminal, or the Clusters tab in a Jupyter notebook.
+    """
             if not ip.__interactive__:
                 msg = """
     There was a problem connecting to parallel engines. See Docs for advice.

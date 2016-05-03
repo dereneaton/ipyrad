@@ -733,7 +733,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(0))
     progressbar(len(subsamples), 0, 
-               " processing reads  | {}".format(elapsed))            
+               " processing reads      | {}".format(elapsed))            
 
     ## save sliced asyncs
     sliced = {i.name:[] for i in subsamples}    
@@ -755,13 +755,13 @@ def run(data, samples, nreplace, force, preview, ipyclient):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             if tots != done:
                 progressbar(tots, done,
-                           " processing reads  | {}".format(elapsed))            
+                           " processing reads      | {}".format(elapsed))            
                 time.sleep(1)
             else:
                 progressbar(tots, done,
-                           " processing reads  | {}".format(elapsed))
-                if data._headers:
-                    print("")
+                           " processing reads      | {}".format(elapsed))
+                #if data._headers:
+                print("")
                 break
 
     except (KeyboardInterrupt, SystemExit):
