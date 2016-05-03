@@ -32,8 +32,8 @@ in your current directory.
 .. code-block:: bash
 
     ## The curl command needs a capital O, not a zero
-    curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
-    tar -xvzf ipsimdata.tar.gz
+    >>> curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
+    >>> tar -xvzf ipsimdata.tar.gz
 
 
 Use the command `ls` to look inside this directory. You'll see that
@@ -45,26 +45,26 @@ it contains many different files representing different test data sets.
     >>> ls -l ipsimdata/
 
 .. parsed-literal::
--rw-rw-r-- 1 deren deren    144 May  3 15:56 gbs_example_barcodes.txt
--rw-rw-r-- 1 deren deren  26792 May  3 15:58 gbs_example_genome.fa
--rw-rw-r-- 1 deren deren 840593 May  3 15:57 gbs_example_R1_.fastq.gz
--rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_example_barcodes.txt
--rw-rw-r-- 1 deren deren 840599 May  3 15:57 pairddrad_example_R1_.fastq.gz
--rw-rw-r-- 1 deren deren 849834 May  3 15:57 pairddrad_example_R2_.fastq.gz
--rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_wmerge_example_barcodes.txt
--rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairddrad_wmerge_example_genome.fa
--rw-rw-r-- 1 deren deren 838658 May  3 15:57 pairddrad_wmerge_example_R1_.fastq.gz
--rw-rw-r-- 1 deren deren 847002 May  3 15:57 pairddrad_wmerge_example_R2_.fastq.gz
--rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_example_barcodes.txt
--rw-rw-r-- 1 deren deren 840597 May  3 15:57 pairgbs_example_R1_.fastq.gz
--rw-rw-r-- 1 deren deren 847587 May  3 15:57 pairgbs_example_R2_.fastq.gz
--rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_wmerge_example_barcodes.txt
--rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairgbs_wmerge_example_genome.fa
--rw-rw-r-- 1 deren deren 838656 May  3 15:57 pairgbs_wmerge_example_R1_.fastq.gz
--rw-rw-r-- 1 deren deren 844596 May  3 15:57 pairgbs_wmerge_example_R2_.fastq.gz
--rw-rw-r-- 1 deren deren    144 May  3 15:56 rad_example_barcodes.txt
--rw-rw-r-- 1 deren deren  26792 May  3 15:58 rad_example_genome.fa
--rw-rw-r-- 1 deren deren 840593 May  3 15:56 rad_example_R1_.fastq.gz
+    -rw-rw-r-- 1 deren deren    144 May  3 15:56 gbs_example_barcodes.txt
+    -rw-rw-r-- 1 deren deren  26792 May  3 15:58 gbs_example_genome.fa
+    -rw-rw-r-- 1 deren deren 840593 May  3 15:57 gbs_example_R1_.fastq.gz
+    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_example_barcodes.txt
+    -rw-rw-r-- 1 deren deren 840599 May  3 15:57 pairddrad_example_R1_.fastq.gz
+    -rw-rw-r-- 1 deren deren 849834 May  3 15:57 pairddrad_example_R2_.fastq.gz
+    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_wmerge_example_barcodes.txt
+    -rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairddrad_wmerge_example_genome.fa
+    -rw-rw-r-- 1 deren deren 838658 May  3 15:57 pairddrad_wmerge_example_R1_.fastq.gz
+    -rw-rw-r-- 1 deren deren 847002 May  3 15:57 pairddrad_wmerge_example_R2_.fastq.gz
+    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_example_barcodes.txt
+    -rw-rw-r-- 1 deren deren 840597 May  3 15:57 pairgbs_example_R1_.fastq.gz
+    -rw-rw-r-- 1 deren deren 847587 May  3 15:57 pairgbs_example_R2_.fastq.gz
+    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_wmerge_example_barcodes.txt
+    -rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairgbs_wmerge_example_genome.fa
+    -rw-rw-r-- 1 deren deren 838656 May  3 15:57 pairgbs_wmerge_example_R1_.fastq.gz
+    -rw-rw-r-- 1 deren deren 844596 May  3 15:57 pairgbs_wmerge_example_R2_.fastq.gz
+    -rw-rw-r-- 1 deren deren    144 May  3 15:56 rad_example_barcodes.txt
+    -rw-rw-r-- 1 deren deren  26792 May  3 15:58 rad_example_genome.fa
+    -rw-rw-r-- 1 deren deren 840593 May  3 15:56 rad_example_R1_.fastq.gz
 
 
 For this introductory tutorial we will use just two files from 
@@ -85,13 +85,11 @@ more informative, like the name of your organism. We will refer to this as
 the "assembly_name". 
 
 .. code-block:: bash
-
     >>> ipyrad -n iptest
 
 
 .. parsed-literal::
-    New file `params-iptest.txt` created in /home/deren/Documents/ipyrad/tests
-
+    New file params-iptest.txt created in /home/deren/Documents/ipyrad/tests
 
 
 This will create a file in the current directory called ``params-iptest.txt``.
@@ -101,43 +99,42 @@ purpose. Take a look at it by using the unix command 'cat' (or you can
 use any text editor you like).
 
 .. code-block:: bash
-
-    cat params-iptest.txt
+    >>> cat params-iptest.txt
 
 
 .. parsed-literal::
------- ipyrad params file (v.0.2.0)---------------------------------------------
-iptest                         ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
-./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
-                               ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
-                               ## [3] [barcodes_path]: Location of barcodes file
-                               ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
-denovo                         ## [5] [assembly_method]: Assembly method (denovo, reference, denovo+reference, denovo-reference)
-                               ## [6] [reference_sequence]: Location of reference sequence file
-rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
-TGCAG,                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
-5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
-33                             ## [10] [phred_Qscore_offset]: phred Q score offset (only alternative=64)
-6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
-6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
-10000                          ## [13] [maxdepth]: Max cluster depth within samples
-0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
-1                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
-0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
-35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
-2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
-5, 5                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus (R1, R2)
-8, 8                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus (R1, R2)
-4                              ## [21] [min_samples_locus]: Min # samples per locus for output
-50, 50                         ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
-8, 8                           ## [23] [max_Indels_locus]: Max # of indels per locus (R1, R2)
-0.25                           ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
-0, 0                           ## [25] [edit_cutsites]: Edit cut-sites (R1, R2) (see docs)
-1, 2, 2, 1                     ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
-*                              ## [27] [output_formats]: Output formats (see docs)
-                               ## [28] [pop_assign_file]: Path to population assignment file
-                               ## [29] [excludes]: Samples to be excluded from final output files
-                               ## [30] [outgroups]: Outgroup individuals. Excluded from final output
+    ------ ipyrad params file (v.0.2.0)---------------------------------------------
+    iptest                         ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
+    ./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
+                                   ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+                                   ## [3] [barcodes_path]: Location of barcodes file
+                                   ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
+    denovo                         ## [5] [assembly_method]: Assembly method (denovo, reference, denovo+reference, denovo-reference)
+                                   ## [6] [reference_sequence]: Location of reference sequence file
+    rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
+    TGCAG,                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
+    5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
+    33                             ## [10] [phred_Qscore_offset]: phred Q score offset (only alternative=64)
+    6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
+    6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
+    10000                          ## [13] [maxdepth]: Max cluster depth within samples
+    0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+    1                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
+    0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
+    35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
+    2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
+    5, 5                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus (R1, R2)
+    8, 8                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus (R1, R2)
+    4                              ## [21] [min_samples_locus]: Min # samples per locus for output
+    50, 50                         ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
+    8, 8                           ## [23] [max_Indels_locus]: Max # of indels per locus (R1, R2)
+    0.25                           ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
+    0, 0                           ## [25] [edit_cutsites]: Edit cut-sites (R1, R2) (see docs)
+    1, 2, 2, 1                     ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
+    *                              ## [27] [output_formats]: Output formats (see docs)
+                                   ## [28] [pop_assign_file]: Path to population assignment file
+                                   ## [29] [excludes]: Samples to be excluded from final output files
+                                   ## [30] [outgroups]: Outgroup individuals. Excluded from final output
 
 
 In general the default parameter values are sensible, and we won't 
