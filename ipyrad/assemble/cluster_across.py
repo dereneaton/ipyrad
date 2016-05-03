@@ -321,6 +321,10 @@ def cluster(data, noreverse, ipyclient):
                     elapsed = datetime.timedelta(seconds=int(time.time()-start))
                     progressbar(100, done, 
                         " clustering across     | {}".format(elapsed))
+            else:
+                ## if process is done, break.
+                if not proc.poll():
+                    break
 
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
@@ -494,7 +498,7 @@ def multicat(data, samples, ipyclient):
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(len(jobs), done, 
-                    " building database  | {}".format(elapsed))
+                    " building database     | {}".format(elapsed))
                 done += 1
 
             ## if not done do nothing, if failure print error
