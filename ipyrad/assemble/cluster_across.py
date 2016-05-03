@@ -238,7 +238,6 @@ def build(data, samples, indeltups, clustbits):
         LOGGER.info('indeltups: %s, %s, %s', tup[0], tup[1].shape, tup[1].sum())
         start = int(tup[0].rsplit("_", 1)[1])
         for sidx, _ in enumerate(samples):
-            LOGGER.info("tups are ordered, right? %s %s", sidx, _)
             iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
     io5.close()
 
@@ -262,7 +261,6 @@ def cluster(data, noreverse, ipyclient):
     uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
     hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
     logfile = os.path.join(data.dirs.consens, "s6_cluster_stats.txt")
-    data.statsfiles.s6 = logfile
 
     ## parameters that vary by datatype 
     ## (too low of cov values yield too many poor alignments)
@@ -312,10 +310,12 @@ def cluster(data, noreverse, ipyclient):
             if "Clustering" in dat:
                 try:
                     done = int(dat.split()[-1][:-1])
-                ## raises a value error when it gets to the end
+                ## may raise value error when it gets to the end
                 except ValueError:
-                    if done > 99:
-                        break
+                    pass
+                ## break when done
+                if done == 100:
+                    break
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(100, done, 
                     " clustering across  | {}".format(elapsed))
