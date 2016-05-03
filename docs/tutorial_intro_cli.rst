@@ -9,26 +9,25 @@ Introductory tutorial - CLI
 ============================
 
 This is the full introductory tutorial for the command line interface to ipyrad. 
-Here we will walk through an entire assembly and analysis process. The goal is
-to familiarize you with the general workflow, terminology, data files, and 
-parameter settings in ipyrad. For simplicity we'll use single-end RAD-Seq 
-as the example data, but the core concepts apply to assembly of other data 
-types as well (e.g., GBS and paired-end). Follow along by copy/pasting the 
+Here we will walk through an entire assembly process. The goal is
+to become familiarized with the general workflow, terminology, data files, and 
+parameter settings in ipyrad. We will use a single-end RAD-seq data set
+as an example, but the core concepts apply to other data types as well 
+(e.g., GBS and paired-end). Follow along by copy/pasting the 
 code-blocks into a command line terminal. 
 
 .. note:: 
 
-    If you haven't already installed ipyrad go here first: 
+    If you haven't yet installed ipyrad go here first: 
     :ref:`Installation <installation>`
 
 
 Getting the data
 ~~~~~~~~~~~~~~~~~
-We provide a small example data set for this tutorial that can be assembled 
-in just a few minutes on a typical laptop computer. To get the example data 
-set, download it as an archived tar ball and extract it using the commands 
-below. This will create a new directory called ``ipsimdata/`` in your current 
-directory. 
+The example data set for this tutorial can be assembled in just a few minutes 
+on a typical laptop computer. Use the commands below to download and extract
+the data. This will create a new directory called ``ipsimdata/`` located 
+in your current directory. 
 
 .. code-block:: bash
 
@@ -39,17 +38,17 @@ directory.
 
 Use the command `ls` to look inside this directory. You'll see that
 it contains many different files representing different test data sets. 
+For this introductory tutorial we will use just the following two files from 
+this directory. 
 
 .. code-block:: bash
 
     ## the command ls shows you the files inside a directory 
     ls ipsimdata/
 
-For this introductory tutorial we will use just the following two files from 
-this directory. 
 
     - ``rad_example_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
-    - ``rad_example_barcodes.txt`` - Mapping of barcodes to sample IDs
+    - ``rad_example_barcodes.txt`` - Table matching barcodes to sample IDs
 
 
 Create a new parameters file
@@ -64,13 +63,18 @@ the "assembly_name".
 
 .. code-block:: bash
 
-    ipyrad -n iptest
+    >>> ipyrad -n iptest
+
+
+.. parsed-literal::
+
+    New file `params-iptest.txt` created in /home/deren/Documents/ipyrad/tests
 
 
 This will create a file in the current directory called ``params-iptest.txt``.
 The params file lists on each line one parameter followed by a ## mark, 
 then the name of the parameter, and then a short description of its 
-purpose. Lets take a look at it by using the unix command 'cat' (or you can
+purpose. Take a look at it by using the unix command 'cat' (or you can
 use any text editor you like).
 
 .. code-block:: bash
@@ -79,47 +83,50 @@ use any text editor you like).
 
 
 .. parsed-literal::
-    ------ ipyrad params file (v.0.1.72)--------------------------------------------
-    iptest                        ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
-    ./                            ## [1] [project_dir]: Project dir (made in curdir if not present)
-                                  ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
-                                  ## [3] [barcodes_path]: Location of barcodes file
-                                  ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
-    denovo                        ## [5] [assembly_method]: Assembly method (denovo, reference, denovo+reference, denovo-reference)
-                                  ## [6] [reference_sequence]: Location of reference sequence file
-    rad                           ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
-    TGCAG,                        ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
-    5                             ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
-    33                            ## [10] [phred_Qscore_offset]: phred Q score offset (only alternative=64)
-    6                             ## [11] [mindepth_statistical]: Min depth for statistical base calling
-    6                             ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
-    1000                          ## [13] [maxdepth]: Max cluster depth within samples
-    0.85                          ## [14] [clust_threshold]: Clustering threshold for de novo assembly
-    1                             ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
-    0                             ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
-    35                            ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
-    2                             ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
-    5, 5                          ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus (R1, R2)
-    8, 8                          ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus (R1, R2)
-    4                             ## [21] [min_samples_locus]: Min # samples per locus for output
-    100, 100                      ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
-    5, 99                         ## [23] [max_Indels_locus]: Max # of indels per locus (R1, R2)
-    0.25                          ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
-    0, 0                          ## [25] [edit_cutsites]: Edit cut-sites (R1, R2) (see docs)
-    1, 2, 2, 1                    ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
-    *                             ## [27] [output_formats]: Output formats (see docs)
-                                  ## [28] [pop_assign_file]: Path to population assignment file
-                                  ## [29] [excludes]: Samples to be excluded from final output files
-                                  ## [30] [outgroups]: Outgroup individuals. Excluded from final output files
+
+------ ipyrad params file (v.0.2.0)---------------------------------------------
+iptest                         ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
+./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
+                               ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+                               ## [3] [barcodes_path]: Location of barcodes file
+                               ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
+denovo                         ## [5] [assembly_method]: Assembly method (denovo, reference, denovo+reference, denovo-reference)
+                               ## [6] [reference_sequence]: Location of reference sequence file
+rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
+TGCAG,                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
+5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
+33                             ## [10] [phred_Qscore_offset]: phred Q score offset (only alternative=64)
+6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
+6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
+10000                          ## [13] [maxdepth]: Max cluster depth within samples
+0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+1                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
+0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
+35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
+2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
+5, 5                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus (R1, R2)
+8, 8                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus (R1, R2)
+4                              ## [21] [min_samples_locus]: Min # samples per locus for output
+50, 50                         ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
+8, 8                           ## [23] [max_Indels_locus]: Max # of indels per locus (R1, R2)
+0.25                           ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
+0, 0                           ## [25] [edit_cutsites]: Edit cut-sites (R1, R2) (see docs)
+1, 2, 2, 1                     ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
+*                              ## [27] [output_formats]: Output formats (see docs)
+                               ## [28] [pop_assign_file]: Path to population assignment file
+                               ## [29] [excludes]: Samples to be excluded from final output files
+                               ## [30] [outgroups]: Outgroup individuals. Excluded from final output
 
 
 In general the default parameter values are sensible, and we won't 
 mess with them for now, but there are a few parameters we *must* change. 
-We need to set the path to the raw data we 
-want to analyse, and we need to set the path to the barcodes file.
+We need to set the path to the raw data we want to analyse, and we need 
+to set the path to the barcodes file.
 
 In your favorite text editor open ``params-iptest.txt`` and change these two lines
-to look like this, and then save it:
+to look like this, and then save it. Be careful of typos, if you enter the path
+incorrectly ipyrad will raise an error and tell you that it can't find your 
+data files:
 
 .. parsed-literal::
     ./ipsimdata/sim_rad_test_R1_.fastq.gz       ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
