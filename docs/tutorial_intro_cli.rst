@@ -47,6 +47,8 @@ this directory.
     ls ipsimdata/
 
 
+
+
     - ``rad_example_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
     - ``rad_example_barcodes.txt`` - Table matching barcodes to sample IDs
 
@@ -67,8 +69,8 @@ the "assembly_name".
 
 
 .. parsed-literal::
-
     New file `params-iptest.txt` created in /home/deren/Documents/ipyrad/tests
+
 
 
 This will create a file in the current directory called ``params-iptest.txt``.
