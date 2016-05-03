@@ -67,7 +67,7 @@ def run(data, samples, force, ipyclient):
     LOGGER.info("Writing .loci file")
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(20, 0, 
-        " writing outfiles   | {}".format(elapsed))
+        " writing outfiles      | {}".format(elapsed))
     samplecounts, locuscounts, keep = make_loci(data, samples)
 
     ## Write stats file output
@@ -294,13 +294,13 @@ def filter_all_clusters(data, samples, ipyclient):
             if not all(readies):
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(len(readies), sum(readies), 
-                    " filtering loci           | {}".format(elapsed))
+                    " filtering loci        | {}".format(elapsed))
                 time.sleep(1)
             else:
                 break
-        progressbar(20, 20, " filtering loci           | {}".format(elapsed))        
-        if data._headers:
-            print("")
+        progressbar(20, 20, " filtering loci        | {}".format(elapsed))        
+        #if data._headers:
+        print("")
 
         ## get all the saved tmp arrays for each slice
         tmpsnp = glob.glob(os.path.join(chunkdir, "snpf.*.npy"))
@@ -503,8 +503,13 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps,
     snpstring2 = ["-" if snp2[i, 0] else \
                  "*" if snp2[i, 1] else \
                  " " for i in range(len(snp2))]
+
+    #npis = str(snpstring1+snpstring2).count("*")
+    #nvars = str(snpstring1+snpstring2).count("-") + npis
     outstr += "\n" + snppad + "".join(snpstring1)+\
               "    "+"".join(snpstring2)+"|{}|".format(iloc+start)
+              #"|LOCID={},DBID={},NVAR={},NPIS={}|"\
+              #.format(1+iloc+start, iloc, nvars, npis)
 
     return outstr, samplecov, locuscov
 
@@ -971,15 +976,15 @@ def make_outfiles(data, samples, keep, output_formats, ipyclient):
         if not all(readies):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(readies), sum(readies), 
-                " writing outfiles   | {}".format(elapsed))
+                " writing outfiles      | {}".format(elapsed))
             time.sleep(1)
         else:
             break
     ## final progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))            
-    progressbar(20, 20, " writing outfiles   | {}".format(elapsed))        
-    if data._headers:
-        print("")
+    progressbar(20, 20, " writing outfiles      | {}".format(elapsed))        
+    #if data._headers:
+    print("")
 
     ## check for errors
     for async in results:

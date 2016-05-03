@@ -335,6 +335,7 @@ def ref_muscle_chunker(args):
         LOGGER.warn(msg)
 
 
+
 def get_overlapping_reads(args):
     """
     Pull aligned reads out of sorted mapped bam files and append them to the 
@@ -433,6 +434,7 @@ def get_overlapping_reads(args):
         #             os.remove(j[1])
 
 
+
 def split_merged_reads(sample_fastq, input_reads):
     """
     Reads in the merged derep file from upstream and splits
@@ -458,6 +460,7 @@ def split_merged_reads(sample_fastq, input_reads):
             R2.write(itera[0]+itera[1].split("nnnn")[1])
     R1.close()
     R2.close()
+
 
 
 def bedtools_merge(data, sample):
@@ -655,6 +658,7 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
         raise
 
 
+
 def refmap_init(args):
     """
     Set the mapped and unmapped reads files for this sample
@@ -676,6 +680,7 @@ def refmap_init(args):
     #LOGGER.info("after %s", sample.files.refmap_edits)
 
     return sample
+
 
 
 def refmap_stats(data, sample):

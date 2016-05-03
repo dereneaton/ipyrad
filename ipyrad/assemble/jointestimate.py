@@ -355,7 +355,8 @@ def submit(data, submitted_args, ipyclient):
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " inferring [H, E]      | {}".format(elapsed))
+                progressbar(20, 20, 
+                            " inferring [H, E]      | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -364,8 +365,8 @@ def submit(data, submitted_args, ipyclient):
         
     finally:
         ## print clear
-        if data._headers:
-            print("")
+        #if data._headers:
+        print("")
         ## clean up jobs
         for sname in jobs:
 
