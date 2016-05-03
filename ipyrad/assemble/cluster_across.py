@@ -146,14 +146,15 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 fwait = sum([jobs[i].ready() for i in jobs])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " aligning clusters  | {}".format(elapsed))
+                            " aligning clusters     | {}".format(elapsed))
                 ## got to next print row when done
                 sys.stdout.flush()
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " aligning clusters  | {}".format(elapsed))
+                progressbar(20, 20, 
+                    " aligning clusters     | {}".format(elapsed))
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -203,8 +204,8 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 ## kill the run if you can't remove this directory.
                 LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
 
-    if data._headers:
-        print("")
+    #if data._headers:
+    print("")
 
 
 
@@ -271,7 +272,7 @@ def cluster(data, noreverse, ipyclient):
         strand = "both"
         cov = ".60"
     elif data.paramsdict["datatype"] == "pairgbs":
-        strand = "both "
+        strand = "both"
         cov = ".90"
 
     ## get call string. Thread=0 means all. 
@@ -313,14 +314,18 @@ def cluster(data, noreverse, ipyclient):
                     done = int(dat.split()[-1][:-1])
                 ## raises a value error when it gets to the end
                 except ValueError:
-                    if done > 99:
-                        break
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(100, done, 
-                    " clustering across  | {}".format(elapsed))
+                    pass
+                ## break if done
+                if done == 100:
+                    break
+                else:
+                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                    progressbar(100, done, 
+                        " clustering across     | {}".format(elapsed))
+
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
-                    " clustering across  | {}".format(elapsed))
+                    " clustering across     | {}".format(elapsed))
         ## ensure it in finished
         proc.wait()
 
@@ -331,9 +336,9 @@ def cluster(data, noreverse, ipyclient):
     finally:
         ## progress bar
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 100, " clustering across  | {}".format(elapsed))
-        if data._headers:
-            print("")
+        progressbar(100, 100, " clustering across     | {}".format(elapsed))
+        #if data._headers:
+        print("")
         data.stats_files.s6 = logfile
 
 
@@ -460,14 +465,15 @@ def multicat(data, samples, ipyclient):
                 fwait = sum([i.ready() for i in jobs.values()])
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
                 progressbar(allwait, fwait, 
-                            " ordering clusters  | {}".format(elapsed))
+                            " ordering clusters     | {}".format(elapsed))
                 time.sleep(1)
             else:
                 ## print final statement
                 elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, " ordering clusters  | {}".format(elapsed))
-                if data._headers:
-                    print("")
+                progressbar(20, 20, 
+                    " ordering clusters     | {}".format(elapsed))
+                #if data._headers:
+                print("")
                 break
 
     except (KeyboardInterrupt, SystemExit):
@@ -475,7 +481,7 @@ def multicat(data, samples, ipyclient):
     
     finally:
         elapsed = datetime.timedelta(seconds=int(res.elapsed))
-        progressbar(20, 0, " building database  | {}".format(elapsed))
+        progressbar(20, 0, " building database     | {}".format(elapsed))
         start = time.time()
         done = 0
 
@@ -502,9 +508,9 @@ def multicat(data, samples, ipyclient):
                 error: %s""", meta.stdout, meta.stderr, meta.error)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(jobs), done, 
-        " building database  | {}".format(elapsed))
-        if data._headers:
-            print("")
+        " building database     | {}".format(elapsed))
+        #if data._headers:
+        print("")
 
     ## remove indels array
     os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
@@ -909,7 +915,7 @@ def build_input_file(data, samples, outgroups, randomseed):
         done += 1
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(nclasses, done,  
-        " concat/shuf input  | {}".format(elapsed))
+        " concat/shuf input     | {}".format(elapsed))
 
         group = lengroups.get_group(lenc)
         ## shuffle the subgroup
@@ -931,9 +937,9 @@ def build_input_file(data, samples, outgroups, randomseed):
 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(20, 20,
-        " concat/shuf input  | {}".format(elapsed))
-    if data._headers:
-        print("")
+        " concat/shuf input     | {}".format(elapsed))
+    #if data._headers:
+    print("")
     LOGGER.info("sort/shuf/samp took %s seconds", int(time.time()-start))
 
 
