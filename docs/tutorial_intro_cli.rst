@@ -38,19 +38,40 @@ in your current directory.
 
 Use the command `ls` to look inside this directory. You'll see that
 it contains many different files representing different test data sets. 
-For this introductory tutorial we will use just the following two files from 
-this directory. 
 
 .. code-block:: bash
-
     ## the command ls shows you the files inside a directory 
-    ls ipsimdata/
+    ## the -l flag shows it as a list.
+    >>> ls -l ipsimdata/
+
+.. parsed-literal::
+-rw-rw-r-- 1 deren deren    144 May  3 15:56 gbs_example_barcodes.txt
+-rw-rw-r-- 1 deren deren  26792 May  3 15:58 gbs_example_genome.fa
+-rw-rw-r-- 1 deren deren 840593 May  3 15:57 gbs_example_R1_.fastq.gz
+-rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_example_barcodes.txt
+-rw-rw-r-- 1 deren deren 840599 May  3 15:57 pairddrad_example_R1_.fastq.gz
+-rw-rw-r-- 1 deren deren 849834 May  3 15:57 pairddrad_example_R2_.fastq.gz
+-rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_wmerge_example_barcodes.txt
+-rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairddrad_wmerge_example_genome.fa
+-rw-rw-r-- 1 deren deren 838658 May  3 15:57 pairddrad_wmerge_example_R1_.fastq.gz
+-rw-rw-r-- 1 deren deren 847002 May  3 15:57 pairddrad_wmerge_example_R2_.fastq.gz
+-rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_example_barcodes.txt
+-rw-rw-r-- 1 deren deren 840597 May  3 15:57 pairgbs_example_R1_.fastq.gz
+-rw-rw-r-- 1 deren deren 847587 May  3 15:57 pairgbs_example_R2_.fastq.gz
+-rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_wmerge_example_barcodes.txt
+-rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairgbs_wmerge_example_genome.fa
+-rw-rw-r-- 1 deren deren 838656 May  3 15:57 pairgbs_wmerge_example_R1_.fastq.gz
+-rw-rw-r-- 1 deren deren 844596 May  3 15:57 pairgbs_wmerge_example_R2_.fastq.gz
+-rw-rw-r-- 1 deren deren    144 May  3 15:56 rad_example_barcodes.txt
+-rw-rw-r-- 1 deren deren  26792 May  3 15:58 rad_example_genome.fa
+-rw-rw-r-- 1 deren deren 840593 May  3 15:56 rad_example_R1_.fastq.gz
 
 
-
-
-    - ``rad_example_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
-    - ``rad_example_barcodes.txt`` - Table matching barcodes to sample IDs
+For this introductory tutorial we will use just two files from 
+this directory. The file ``rad_example_R1_.fastq.gz`` contains Illumina 
+fastQ formatted reads and is gzip compressed. This is a typical format for raw 
+data. The other file, ``rad_example_barcodes.txt``, is a tab-separated table 
+matching barcodes to sample IDs. 
 
 
 Create a new parameters file
@@ -85,7 +106,6 @@ use any text editor you like).
 
 
 .. parsed-literal::
-
 ------ ipyrad params file (v.0.2.0)---------------------------------------------
 iptest                         ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
 ./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
