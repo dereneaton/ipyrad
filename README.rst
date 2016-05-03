@@ -13,7 +13,7 @@ Tutorials
 Documentation is in the works_. There you can find installation instructions, 
 example tutorials, and a full user guide. Much more on the way.
 
-.. _works: http://ipyrad.readthedocs.org/en/latest/
+.. _works: http://ipyrad.readthedocs.io
 
 
 Installation
