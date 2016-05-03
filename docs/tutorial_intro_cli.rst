@@ -75,8 +75,57 @@ data. The other file, ``rad_example_barcodes.txt``, is a tab-separated table
 matching barcodes to sample IDs. 
 
 
-Create a new parameters file
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Input data format
+~~~~~~~~~~~~~~~~~
+Before we get started let's take a look at what the raw data looks like.
+
+Your input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
+``.fq.gz``, or ``.fastq.gz``. Your data could be split among multiple files, or all 
+within a single file. The file/s may be compressed with gzip so 
+that they have a .gz ending, but they do not need to be. The location of 
+these files should be entered on line 2 of the params file. Below are 
+the first three reads in the example file.
+
+.. code-block:: bash
+
+    ## For your personal edification here is what this is doing:
+    ##  gzip -c: Tells gzip to unzip the file and write the contents to the screen
+    ##  head -n 12: Grabs the first 12 lines of the fastq file. 
+
+    >>> gunzip -c ./ipsimdata/sim_rad_test_R1_.fastq.gz | head -n 12 
+
+
+And here's the output:
+
+.. parsed-literal::
+    @lane1_fakedata0_R1_0 1:N:0:
+    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
+    +
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    @lane1_fakedata0_R1_1 1:N:0:
+    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
+    +
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    @lane1_fakedata0_R1_2 1:N:0:
+    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
+    +
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
+
+Each read takes four lines. The first is the name of the read (its 
+location on the plate). The second line contains the sequence data. 
+The third line is a spacer. And the fourth line the quality scores 
+for the base calls. In this case arbitrarily high since the data 
+were simulated.
+
+These are 100 bp single-end reads prepared as RADseq. The first 
+six bases form the barcode and the next five bases (TGCAG) the 
+restriction site overhang. All following bases make up the sequence 
+data.
+
+
+Create a new ipyrad params file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ipyrad uses a simple text file to hold all the parameters for a given assembly. 
 Start by creating a new params file with the ``-n`` flag. This flag
 requires you to pass in a name for your assembly. In the example we use 
@@ -155,53 +204,6 @@ data files:
     ./ipsimdata/sim_rad_test_barcodes.txt       ## [3] [barcodes_path]: Location of barcodes file
 
 
-Input data format
-~~~~~~~~~~~~~~~~~
-Before we get started let's take a look at what the raw data looks like.
-
-Your input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
-``.fq.gz``, or ``.fastq.gz``. Your data could be split among multiple files, or all 
-within a single file. The file/s may be compressed with gzip so 
-that they have a .gz ending, but they do not need to be. The location of 
-these files should be entered on line 2 of the params file. Below are 
-the first three reads in the example file.
-
-.. code-block:: bash
-
-    ## For your personal edification here is what this is doing:
-    ##  gzip -c: Tells gzip to unzip the file and write the contents to the screen
-    ##  head -n 12: Grabs the first 12 lines of the fastq file. 
-
-    gunzip -c ./ipsimdata/sim_rad_test_R1_.fastq.gz | head -n 12 
-
-
-And here's the output:
-
-.. parsed-literal::
-    @lane1_fakedata0_R1_0 1:N:0:
-    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
-    +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-    @lane1_fakedata0_R1_1 1:N:0:
-    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
-    +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-    @lane1_fakedata0_R1_2 1:N:0:
-    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
-    +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-
-
-Each read takes four lines. The first is the name of the read (its 
-location on the plate). The second line contains the sequence data. 
-The third line is a spacer. And the fourth line the quality scores 
-for the base calls. In this case arbitrarily high since the data 
-were simulated.
-
-These are 100 bp single-end reads prepared as RADseq. The first 
-six bases form the barcode and the next five bases (TGCAG) the 
-restriction site overhang. All following bases make up the sequence 
-data.
 
 Step 1: Demultiplex the raw data files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
