@@ -240,8 +240,8 @@ def parse_command_line():
         help="Set of assembly steps to perform, e.g., -s 123 (Default=None)")
 
     parser.add_argument("-c", metavar="cores", dest="cores",
-        type=int, default=4,
-        help="number of CPU cores to use (Default=4)")
+        type=int, default=0,
+        help="number of CPU cores to use (Default=0=All)")
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
