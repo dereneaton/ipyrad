@@ -15,8 +15,8 @@ requirements:
     - h5py
     - ipyparallel >=5.0.1
     - ipython ==4.0.0
-    - jupyter
     - jupyter_client
+    - jupyter
     - mpi4py
     - nbconvert
     - numba
@@ -32,8 +32,8 @@ requirements:
     - scipy 
     - h5py
     - numba
-    - jupyter
     - jupyter_client
+    - jupyter
     - sphinx
     - pandas
     - mpi4py

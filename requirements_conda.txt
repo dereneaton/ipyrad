@@ -3,8 +3,8 @@ h5py
 ipython
 ipyparallel>=5.0.1
 ipykernel
-jupyter
 jupyter_client
+jupyter
 mpi4py
 nbconvert
 numpy>=1.9
