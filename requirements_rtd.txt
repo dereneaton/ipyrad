@@ -12,4 +12,3 @@ ipython
 ipyparallel
 ipykernel
 jupyter
-jupyter-client
