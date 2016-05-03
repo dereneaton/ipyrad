@@ -41,7 +41,7 @@ class module_proxy(object):
             return module_proxy()
 
 
-MODULES = ["numpy", "scipy", "pandas", "dill", "h5py", "mpi4py"]
+MODULES = ["numpy", "scipy", "pandas", "h5py", "mpi4py"]
 for module_name in MODULES:
     sys.modules[module_name] = module_proxy()
 

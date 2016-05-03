@@ -10,4 +10,3 @@ scipy>0.10
 numpy>=1.9
 pandas>=0.16
 h5py
-psutil

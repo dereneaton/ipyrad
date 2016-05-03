@@ -54,11 +54,11 @@ this directory.
 
 Create a new parameters file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-ipyrad uses a text file to hold all the parameters for a given assembly. 
-Start by creating a new parameters file with the ``-n`` flag. This flag
+ipyrad uses a simple text file to hold all the parameters for a given assembly. 
+Start by creating a new params file with the ``-n`` flag. This flag
 requires you to pass in a name for your assembly. In the example we use 
 ``iptest`` but the name can be anything at all. Once you start 
-analysing your own data you might call your parameters file something 
+analysing your own data you might call your params file something 
 more informative, like the name of your organism. We will refer to this as 
 the "assembly_name". 
 
