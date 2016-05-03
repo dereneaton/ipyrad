@@ -39,7 +39,8 @@ in your current directory.
 Use the command `ls` to look inside this directory. You'll see that
 it contains many different files representing different test data sets. 
 
-.. code-block:: bash
+.. code-block:: bash  
+
     ## the command ls shows you the files inside a directory 
     ## the -l flag shows it as a list.
     >>> ls -l ipsimdata/
@@ -84,7 +85,8 @@ analysing your own data you might call your params file something
 more informative, like the name of your organism. We will refer to this as 
 the "assembly_name". 
 
-.. code-block:: bash
+.. code-block:: bash  
+
     >>> ipyrad -n iptest
 
 
@@ -98,7 +100,8 @@ then the name of the parameter, and then a short description of its
 purpose. Take a look at it by using the unix command 'cat' (or you can
 use any text editor you like).
 
-.. code-block:: bash
+.. code-block:: bash  
+
     >>> cat params-iptest.txt
 
 
