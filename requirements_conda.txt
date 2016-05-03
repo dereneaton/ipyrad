@@ -1,5 +1,4 @@
 cython
-dill
 h5py
 ipython
 ipyparallel>=5.0.1
@@ -10,8 +9,6 @@ mpi4py
 nbconvert
 numpy>=1.9
 pandas>=0.16
-pip
-psutil
+pip>=8.1
 scipy>0.10
 sphinx
-

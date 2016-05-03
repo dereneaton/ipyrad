@@ -18,6 +18,7 @@ from collections import OrderedDict
 # pylint: disable=W0212
 # pylint: disable=W0142
 
+
 def load_assembly(assemblyname, quiet=False):
     """ loads an ipython dill pickled Assembly object """
 

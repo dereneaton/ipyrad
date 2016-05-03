@@ -26,7 +26,7 @@ Getting the data
 ~~~~~~~~~~~~~~~~~
 We provide a small example data set for this tutorial that can be assembled 
 in just a few minutes on a typical laptop computer. To get the example data 
-set download it as an archived tar ball and extract it using the commands 
+set, download it as an archived tar ball and extract it using the commands 
 below. This will create a new directory called ``ipsimdata/`` in your current 
 directory. 
 

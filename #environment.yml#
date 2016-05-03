@@ -1,9 +1,10 @@
-name: ipyrad
+1;3409;0cname: ipyrad
 channels:
 - ipyrad
 dependencies:
 - python=2.7
-- pip>=8.1
+- pip>8.0
+- dill>0.2
 - cython
 - ipython>=4.0
 - ipyparallel>=5.0.1
@@ -12,4 +13,5 @@ dependencies:
 - pandas
 - h5py
 - mpi4py
+- psutil
 - sphinx>1.2
