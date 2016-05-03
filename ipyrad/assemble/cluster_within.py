@@ -311,8 +311,6 @@ def parsemuscle(out):
 
 
 
-
-
 def muscle_call(data, names, seqs):
     """ 
     Makes subprocess call to muscle. A little faster than before. 
@@ -469,6 +467,7 @@ def setup_dirs(data):
     return tmpdir
 
 
+
 def null_func(args):
     """ 
     Takes a list of args and prints them to the logger. Used as a null func
@@ -534,7 +533,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ##
     ## Also, in order to control which steps run you simply don't add the steps
     ## you don't want to run to this dict. Since all dependencies are created
-    ## relative to the members of the extant dict, the steps in the rocess are
+    ## relative to the members of the extant dict, the steps in the process are
     ## agnostic about which step preceded it, so adding/removing steps is super easy.
     ## All the logic for controlling which steps run for the various assembly
     ## methods is right here!
@@ -649,26 +648,29 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## Create one final task that sits at the back of the queue. Basically this is
     ## now only being used to keep track of elapsed time, we do not rely
     ## on the state of this job for anything else.
-    tmpids = list(itertools.chain(*[i.msg_ids for i in steps["reconcat"]["async_results"].values()]))
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1) 
+    # tmpids = list(itertools.chain(*[i.msg_ids for i in \
+    #               steps["reconcat"]["async_results"].values()]))
+    # with lbview.temp_flags(after=tmpids):
+    #     res = lbview.apply(time.sleep, 0.1) 
 
         ## If you want to test out any individual step synchronously then uncomment
         ## this block, it will wait for all samples to finish that step before
         ## proceding. This can be helpful for debugging.
-#       try:
-#           [step["async_results"][i].get() for i in step["async_results"]]
-#       except Exception as inst:
-#           print(inst)
-#       for i in step["async_results"]:
-#           print(step["async_results"][i].metadata.status)
-#       return 1
+    #       try:
+    #           [step["async_results"][i].get() for i in step["async_results"]]
+    #       except Exception as inst:
+    #           print(inst)
+    #       for i in step["async_results"]:
+    #           print(step["async_results"][i].metadata.status)
+    #       return 1
 
     ## All ipclient jobs have now been created, so now we watch the results pile up
     ## Here we go through each step in order, check the ready_flag. If our current
     ## state is not ready then we update the progress bar. If the current state
     ## _is_ ready, then we finalize the progress bar and check the results.
-    elapsed = "0:00:00"
+
+    #elapsed = "0:00:00"
+    start = time.time()
     for step, vals in steps.iteritems():
         async_results = vals["async_results"]
         while not vals["ready_flag"].ready():
@@ -679,17 +681,18 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 finished = sum([i.ready() for i in vals["all_aligns"]])/10
             else:
                 finished = sum([async_results[i].ready() for i in async_results])
-            elapsed = datetime.timedelta(seconds=int(res.elapsed))
-            #print(finished)
+            ## print progress
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(vals["async_results"]), finished,
                 " {}     | {}".format(vals["printstr"], elapsed))
-            sys.stdout.flush()
             time.sleep(1)
 
         ## Print the finished progress bar for this step and go to the next line
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100,
             " {}     | {}".format(vals["printstr"], elapsed))
         print("")
+        start = time.time()
 
         ## Check the results to see if any/all samples failed.
         try:
@@ -709,7 +712,8 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
         ## Helpful debug for seeing which samples had bad alignments
         #for i in steps["muscle_align"][sample]:
         #    print(sample, i.get())
-        badaligns = sum([i.get() for i in steps["muscle_align"]["async_results"][sample]])
+        badaligns = sum([i.get() for i in \
+                        steps["muscle_align"]["async_results"][sample]])
         sample.stats_dfs.s3.filtered_bad_align = badaligns
 
     data_cleanup(data)
@@ -754,8 +758,6 @@ def check_results(async_results):
     The argument for this function is a dictionary containing:
     {sample_name:ipyparallel.asyncResult()}
     """
-#    for i in async_results:
-#        print(i, async_results[i].ready(), async_results[i].error)
     errors = {}
     for sample, result in async_results.iteritems():
         try:
