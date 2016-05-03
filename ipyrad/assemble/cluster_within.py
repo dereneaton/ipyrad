@@ -539,23 +539,36 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## All the logic for controlling which steps run for the various assembly
     ## methods is right here!
     steps = OrderedDict()
-    steps["derep_concat_split"] =   {"printstr": "dereplicating    ",\
-                                    "function":derep_concat_split, "extra_args":[]}
+    steps["derep_concat_split"] = {"printstr": "dereplicating    ",
+                                   "function":derep_concat_split, 
+                                   "extra_args":[]}
+
     if "reference" in data.paramsdict["assembly_method"]:
-        steps["mapreads"] =         {"printstr": "mapping          ",\
-                                    "function":mapreads, "extra_args":[noreverse, 1]}
+        steps["mapreads"] = {"printstr": "mapping          ",
+                             "function":mapreads, 
+                             "extra_args":[noreverse, 1]}
+
     if data.paramsdict["assembly_method"] != "reference":
-        steps["clust_and_build"] =  {"printstr": "clustering       ",\
-                                    "function":clust_and_build, "extra_args":[noreverse, 1]}
+        steps["clust_and_build"] = {"printstr": "clustering       ",
+                                    "function":clust_and_build, 
+                                    "extra_args":[noreverse, 1]}
+
     if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
-        steps["ref_muscle_chunker"] = {"printstr": "finalize mapping ",\
-                                    "function":ref_muscle_chunker, "extra_args":[]}
-    steps["muscle_chunker"] =       {"printstr": "chunking         ",\
-                                    "function":muscle_chunker, "extra_args":[tmpdir]}
-    steps["muscle_align"] =         {"printstr": "aligning         ",\
-                                    "function":muscle_align, "extra_args":[]}
-    steps["reconcat"] =             {"printstr": "concatenating    ",\
-                                    "function":reconcat, "extra_args":[]}
+        steps["ref_muscle_chunker"] = {"printstr": "finalize mapping ",
+                                    "function":ref_muscle_chunker, 
+                                    "extra_args":[]}
+
+    steps["muscle_chunker"] = {"printstr": "chunking         ",
+                               "function":muscle_chunker, 
+                               "extra_args":[tmpdir]}
+
+    steps["muscle_align"] = {"printstr": "aligning         ",
+                             "function":muscle_align, 
+                             "extra_args":[]}
+
+    steps["reconcat"] = {"printstr": "concatenating    ",
+                         "function":reconcat, 
+                         "extra_args":[]}
 
     ## Create threaded_view of engines by grouping only ids that are threaded
     hostdict = get_threaded_view(ipyclient)

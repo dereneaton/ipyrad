@@ -183,6 +183,8 @@ def save_json(data):
 
     ## save to file
     assemblypath = os.path.join(data.dirs.project, data.name+".json")
+    if not os.path.exists(data.dirs.project):
+        os.mkdir(data.dirs.project)
     
     ## protect save from interruption
     done = 0
