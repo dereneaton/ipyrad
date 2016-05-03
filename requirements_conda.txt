@@ -4,6 +4,7 @@ ipython
 ipyparallel>=5.0.1
 ipykernel
 jupyter
+jupyter_client
 mpi4py
 nbconvert
 numpy>=1.9
