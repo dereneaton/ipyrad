@@ -737,7 +737,7 @@ def fill_superseqs(data, samples):
             ## fill in the separator if it exists
             separator = np.where(np.all(seqs == "n", axis=0))[0]
             if np.any(separator):
-                chunkedge[iloc] = separator.min()
+                chunkedge[iloc-cloc:iloc] = separator.min()
 
             ## fill in the hits
             #indices = range(len(snames))
