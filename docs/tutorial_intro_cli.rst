@@ -42,41 +42,20 @@ it contains many different files representing different test data sets.
 .. code-block:: bash  
 
     ## the command ls shows you the files inside a directory 
-    ## the -l flag shows it as a list.
-    >>> ls -l ipsimdata/
-
-.. parsed-literal::
-    -rw-rw-r-- 1 deren deren    144 May  3 15:56 gbs_example_barcodes.txt
-    -rw-rw-r-- 1 deren deren  26792 May  3 15:58 gbs_example_genome.fa
-    -rw-rw-r-- 1 deren deren 840593 May  3 15:57 gbs_example_R1_.fastq.gz
-    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_example_barcodes.txt
-    -rw-rw-r-- 1 deren deren 840599 May  3 15:57 pairddrad_example_R1_.fastq.gz
-    -rw-rw-r-- 1 deren deren 849834 May  3 15:57 pairddrad_example_R2_.fastq.gz
-    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairddrad_wmerge_example_barcodes.txt
-    -rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairddrad_wmerge_example_genome.fa
-    -rw-rw-r-- 1 deren deren 838658 May  3 15:57 pairddrad_wmerge_example_R1_.fastq.gz
-    -rw-rw-r-- 1 deren deren 847002 May  3 15:57 pairddrad_wmerge_example_R2_.fastq.gz
-    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_example_barcodes.txt
-    -rw-rw-r-- 1 deren deren 840597 May  3 15:57 pairgbs_example_R1_.fastq.gz
-    -rw-rw-r-- 1 deren deren 847587 May  3 15:57 pairgbs_example_R2_.fastq.gz
-    -rw-rw-r-- 1 deren deren    144 May  3 15:57 pairgbs_wmerge_example_barcodes.txt
-    -rw-rw-r-- 1 deren deren  36958 May  3 15:58 pairgbs_wmerge_example_genome.fa
-    -rw-rw-r-- 1 deren deren 838656 May  3 15:57 pairgbs_wmerge_example_R1_.fastq.gz
-    -rw-rw-r-- 1 deren deren 844596 May  3 15:57 pairgbs_wmerge_example_R2_.fastq.gz
-    -rw-rw-r-- 1 deren deren    144 May  3 15:56 rad_example_barcodes.txt
-    -rw-rw-r-- 1 deren deren  26792 May  3 15:58 rad_example_genome.fa
-    -rw-rw-r-- 1 deren deren 840593 May  3 15:56 rad_example_R1_.fastq.gz
+    >>> ls ipsimdata/
 
 
 .. parsed-literal::
-    gbs_example_barcodes.txt               pairddrad_wmerge_example_genome.fa     pairgbs_wmerge_example_genome.fa
-    gbs_example_genome.fa                  pairddrad_wmerge_example_R1_.fastq.gz  pairgbs_wmerge_example_R1_.fastq.gz
-    gbs_example_R1_.fastq.gz               pairddrad_wmerge_example_R2_.fastq.gz  pairgbs_wmerge_example_R2_.fastq.gz
-    pairddrad_example_barcodes.txt         pairgbs_example_barcodes.txt           rad_example_barcodes.txt
-    pairddrad_example_R1_.fastq.gz         pairgbs_example_R1_.fastq.gz           rad_example_genome.fa
-    pairddrad_example_R2_.fastq.gz         pairgbs_example_R2_.fastq.gz           rad_example_R1_.fastq.gz
-    pairddrad_wmerge_example_barcodes.txt  pairgbs_wmerge_example_barcodes.txt
-    
+    gbs_example_barcodes.txt               pairgbs_example_barcodes.txt
+    gbs_example_genome.fa                  pairgbs_example_R1_.fastq.gz
+    gbs_example_R1_.fastq.gz               pairgbs_example_R2_.fastq.gz
+    pairddrad_example_barcodes.txt         pairgbs_wmerge_example_barcodes.txt
+    pairddrad_example_R1_.fastq.gz         pairgbs_wmerge_example_genome.fa
+    pairddrad_example_R2_.fastq.gz         pairgbs_wmerge_example_R1_.fastq.gz
+    pairddrad_wmerge_example_barcodes.txt  pairgbs_wmerge_example_R2_.fastq.gz
+    pairddrad_wmerge_example_genome.fa     rad_example_barcodes.txt
+    pairddrad_wmerge_example_R1_.fastq.gz  rad_example_genome.fa
+    pairddrad_wmerge_example_R2_.fastq.gz  rad_example_R1_.fastq.gz
 
 
 For this introductory tutorial we will use just two files from 
