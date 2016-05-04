@@ -75,16 +75,18 @@ data. The other file, ``rad_example_barcodes.txt``, is a tab-separated table
 matching barcodes to sample IDs. 
 
 
-Input data format
-~~~~~~~~~~~~~~~~~
-Before we get started let's take a look at what the raw data looks like.
-
-Your input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
-``.fq.gz``, or ``.fastq.gz``. Your data could be split among multiple files, or all 
-within a single file. The file/s may be compressed with gzip so 
-that they have a .gz ending, but they do not need to be. The location of 
-these files should be entered on line 2 of the params file. Below are 
-the first three reads in the example file.
+Input files
+~~~~~~~~~~~
+Before we get started let's take a look at what the raw data looks like. Your 
+input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
+``.fq.gz``, or ``.fastq.gz``. It can be split among multiple files, or all 
+within a single file. In this tutorial the data are not yet demultiplexed 
+(sorted into separate files for each sample), and so we will start by demultiplexing
+the data files. For this, we enter the location of our fastQ data files 
+on line 2 of the params file ('raw_fastq_path'). If the data were already 
+demultiplexed we would instead enter the location of the data files on line 
+4 of the params file ("sorted_fastq_path"). 
+Below are the first three reads in the example file.
 
 .. code-block:: bash
 
@@ -118,21 +120,43 @@ The third line is a spacer. And the fourth line the quality scores
 for the base calls. In this case arbitrarily high since the data 
 were simulated.
 
-These are 100 bp single-end reads prepared as RADseq. The first 
-six bases form the barcode and the next five bases (TGCAG) the 
+These are 100 bp single-end reads prepared as RAD-seq. The first 
+six bases form the barcode (TTTTAA) and the next five bases (TGCAG) the 
 restriction site overhang. All following bases make up the sequence 
 data.
 
+Lets also take a look at the barcodes file for the simulated data. You'll 
+see sample names (left) and their barcodes (right) each on a 
+separate line with a tab between them.
 
-Create a new ipyrad params file
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: bash
+
+    >>> cat ./ipsimdata/sim_rad_test_barcodes.txt
+
+.. parsed-literal::
+    1A_0    CATCAT
+    1B_0    AGTGAT
+    1C_0    ATGGTA
+    1D_0    GTGGGA
+    2E_0    AGGGAA
+    2F_0    AAAGTG
+    2G_0    GATATA
+    2H_0    GAGGAG
+    3I_0    GGGATT
+    3J_0    TAATTA
+    3K_0    TGAGGG
+    3L_0    ATATTA
+
+
+
+Create an ipyrad params file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ipyrad uses a simple text file to hold all the parameters for a given assembly. 
-Start by creating a new params file with the ``-n`` flag. This flag
-requires you to pass in a name for your assembly. In the example we use 
-``iptest`` but the name can be anything at all. Once you start 
-analysing your own data you might call your params file something 
-more informative, like the name of your organism. We will refer to this as 
-the "assembly_name". 
+Start by creating a new params file using the ``-n`` flag, followed
+by a name for your assembly. In the example we use the name ``iptest``, 
+but the name can be anything at all. Once you start analysing your own data 
+you might call your params file something more informative, like the name 
+of your organism. We will refer to this as the "assembly_name". 
 
 .. code-block:: bash  
 
@@ -200,54 +224,34 @@ incorrectly ipyrad will raise an error and tell you that it can't find your
 data files:
 
 .. parsed-literal::
-    ./ipsimdata/sim_rad_test_R1_.fastq.gz       ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
-    ./ipsimdata/sim_rad_test_barcodes.txt       ## [3] [barcodes_path]: Location of barcodes file
-
+    ./ipsimdata/rad_example_R1_.fastq.gz       ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+    ./ipsimdata/rad_example_barcodes.txt       ## [3] [barcodes_path]: Location of barcodes file
 
 
 Step 1: Demultiplex the raw data files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Now we will start assembling the data with ipyrad. 
 Step 1 reads in the barcodes file and the raw data. It scans through
 the raw data and sorts each read based on the mapping of samples to 
 barcodes. At the end of this step we'll have a new directory in our project_dir
 called ``iptest_fastqs/``. Inside this directory will be individual
 fastq.gz files for each sample.
 
-**NB:** You'll notice the name of this output directory bears a strong
-resemblence to the name of the assembly we chose at the time
-of the params file creation. Assembling rad-seq type sequence
-data requires a lot of different steps, and these steps generate a 
-_LOT_ of intermediary files. ipyrad organizes these files into 
-directories, and it prepends the name of your assembly to each
-directory with data that belongs to it. One result of this is that
-you can have multiple assemblies of the same raw data with different
-parameter settings and you don't have to manage all the files
-yourself! (See :ref:`Branching assemblies <advanced_CLI>` for more
-info). Another result is that **you should not rename or move any
-of the directories inside your project directory**, unless you know
-what you're doing or you don't mind if your assembly breaks. 
+.. note:: 
 
-Lets take a look at the barcodes file for the simulated data. You'll 
-see sample names (left) and their barcodes (right) each on a 
-separate line with a tab between them.
-
-.. code-block:: bash
-
-    cat ./ipsimdata/sim_rad_test_barcodes.txt
-
-.. parsed-literal::
-    1A_0    CATCAT
-    1B_0    AGTGAT
-    1C_0    ATGGTA
-    1D_0    GTGGGA
-    2E_0    AGGGAA
-    2F_0    AAAGTG
-    2G_0    GATATA
-    2H_0    GAGGAG
-    3I_0    GGGATT
-    3J_0    TAATTA
-    3K_0    TGAGGG
-    3L_0    ATATTA
+    You'll notice the name of this output directory bears a strong
+    resemblence to the name of the assembly we chose at the time
+    of the params file creation. Assembling rad-seq type sequence
+    data requires a lot of different steps, and these steps generate a 
+    **lot** of intermediary files. ipyrad organizes these files into 
+    directories, and it prepends the name of your assembly to each
+    directory with data that belongs to it. One result of this is that
+    you can have multiple assemblies of the same raw data with different
+    parameter settings and you don't have to manage all the files
+    yourself! (See :ref:`Branching assemblies <tutorial_advanced_CLI>` for more
+    info). Another result is that **you should not rename or move any
+    of the directories inside your project directory**, unless you know
+    what you're doing or you don't mind if your assembly breaks. 
 
 Now lets run step 1! For the simulated data this will take < 1 minute.
 
