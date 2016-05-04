@@ -460,19 +460,25 @@ Now lets run step 3:
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -s 3
+    >>> ipyrad -p params-iptest.txt -s 3
 
 .. parsed-literal::
+  --------------------------------------------------
+   ipyrad [v.0.2.0]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   loading Assembly: iptest
+   from saved path: ~/Documents/ipyrad/tests/iptest.json
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step3: Clustering/Mapping reads
+   [####################] 100%  dereplicating         | 0:00:01 
+   [####################] 100%  clustering            | 0:00:03 
+   [####################] 100%  chunking              | 0:00:00 
+   [####################] 100%  aligning              | 0:00:44 
+   [####################] 100%  concatenating         | 0:00:00 
+   Saving Assembly.
 
-    --------------------------------------------------
-     ipyrad [v.0.1.73]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
-     ipyparallel setup: Local connection to 4 Engines
-
-     Step3: Clustering/Mapping reads
-       Saving Assembly.
 
 Again we can examine the results. The stats output tells you how many clusters 
 were found, and the number of clusters that pass the mindepth thresholds. 
@@ -483,26 +489,25 @@ all mostly due to sequencing error.
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -r
+    >>> ipyrad -p params-iptest.txt -r
 
 .. parsed-literal:: 
-
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      3      20099           20099            1000              1000
-    1B_0      3      19977           19977            1000              1000
-    1C_0      3      20114           20114            1000              1000
-    1D_0      3      19895           19895            1000              1000
-    2E_0      3      19928           19928            1000              1000
-    2F_0      3      19934           19934            1000              1000
-    2G_0      3      20026           20026            1000              1000
-    2H_0      3      19936           19936            1000              1000
-    3I_0      3      20084           20084            1000              1000
-    3J_0      3      20011           20011            1000              1000
-    3K_0      3      20117           20117            1000              1000
-    3L_0      3      19901           19901            1000              1000
-
+    1A_0      3      20144           20144            1000              1000
+    1B_0      3      20024           20024            1000              1000
+    1C_0      3      20055           20055            1000              1000
+    1D_0      3      19927           19927            1000              1000
+    2E_0      3      19936           19936            1000              1000
+    2F_0      3      20094           20094            1000              1000
+    2G_0      3      19930           19930            1000              1000
+    2H_0      3      20048           20048            1000              1000
+    3I_0      3      19952           19952            1000              1000
+    3J_0      3      20164           20164            1000              1000
+    3K_0      3      19993           19993            1000              1000
+    3L_0      3      20035           20035            1000              1000
+    
 
     Full stats files
     ------------------------------------------------
