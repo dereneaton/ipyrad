@@ -329,8 +329,6 @@ def cluster(data, noreverse, ipyclient):
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
                     " clustering across     | {}".format(elapsed))
-        ## ensure it in finished
-        proc.wait()
 
     except subprocess.CalledProcessError as inst:
         raise IPyradWarningExit("""
@@ -431,6 +429,7 @@ def build_h5_array(data, samples, ipyclient):
 
     ## write database as stats output?
     #data.stats_files.s6 = "[this step has no stats ouput]"
+
 
 
 ## TODO: can we skip singlecats if they find indels?
@@ -704,6 +703,7 @@ def fill_superseqs(data, samples):
     snames = [i.name for i in samples]
     ## get maxlen again
     maxlen = data._hackersonly["max_fragment_length"]
+    ## TODO: maybe not 2X here, but just add the max-indels len
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
@@ -727,7 +727,17 @@ def fill_superseqs(data, samples):
             raise IPyradError("clustfile formatting error in %s", chunk)    
         if done:
             break
-        ## input array must be this shape
+
+        ## if chunk is full put into superseqs and reset counter
+        if cloc == chunksize:
+            superseqs[iloc-cloc:iloc] = chunkseqs
+            edges[iloc-cloc:iloc, 4] = chunkedge
+            ## reset chunkseqs, chunkedge, cloc
+            cloc = 0
+            chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
+            chunkedge = np.zeros((chunksize), dtype=np.uint16)
+
+        ## get seq and split it
         if chunk:
             fill = np.zeros((len(samples), maxlen), dtype="|S1")
             fill.fill("N")
@@ -737,26 +747,16 @@ def fill_superseqs(data, samples):
             ## fill in the separator if it exists
             separator = np.where(np.all(seqs == "n", axis=0))[0]
             if np.any(separator):
-                chunkedge[iloc-cloc:iloc] = separator.min()
+                chunkedge[cloc] = separator.min()
 
             ## fill in the hits
-            #indices = range(len(snames))
             shlen = seqs.shape[1]
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq
 
-        ## if chunk is full put into superseqs
-        if cloc == chunksize:
-            superseqs[iloc-cloc:iloc] = chunkseqs
-            edges[iloc-cloc:iloc, 4] = chunkedge
-            ## reset chunkseqs
-            cloc = 0
-            chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
-            chunkedge = np.zeros((chunksize), dtype=np.uint16)
-
-        ## PUT seqs INTO local ARRAY 
-        chunkseqs[cloc] = fill
+            ## PUT seqs INTO local ARRAY 
+            chunkseqs[cloc] = fill
 
         ## increase counters
         cloc += 1
@@ -778,7 +778,7 @@ def fill_superseqs(data, samples):
     clusters.close()
 
 
-
+## TODO: This could use a progress bar, and to be parallelized, maybe.
 def build_reads_file(data):
     """ 
     Reconstitutes clusters from .utemp and htemp files and writes them 

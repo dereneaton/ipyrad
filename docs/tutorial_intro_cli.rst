@@ -735,69 +735,32 @@ same locus, based on sequence similarity.
     >>> ipyrad -p params-iptest.txt -s 6
 
 .. parsed-literal::
+  --------------------------------------------------
+   ipyrad [v.0.2.0]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   loading Assembly: iptest
+   from saved path: ~/Documents/ipyrad/tests/iptest.json
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step6: Clustering across 12 samples at 0.85 similarity
+   [####################] 100%  concat/shuf input     | 0:00:00 
+   [####################] 100%  clustering across     | 0:00:00 
+   [####################] 100%  aligning clusters     | 0:00:08 
+   [####################] 100%  ordering clusters     | 0:00:16 
+   [####################] 100%  building database     | 0:00:07 
+   Saving Assembly.
 
-    --------------------------------------------------
-     ipyrad [v.0.1.73]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
-     ipyparallel setup: Local connection to 4 Engines
 
-     Step6: Clustering across 12 samples at 0.85 similarity
+This step differs from previous steps in that we are no longer applying a
+function to each Sample individually, but instead we apply it to all
+Samples collectively. Our end result is a map telling us which loci cluster 
+together from which Samples. This output is stored as an HDF5 data base 
+(``iptest_test.hdf5``), which is not easily human readable. It contains 
+the clustered sequence data, depth information, phased alleles, and 
+other metadata. If you really want to see the contents of the data base
+see the h5py_ cookbook recipe. 
 
-This step differs from previous steps in that we are no longer applying the
-steps to each Sample individually, but instead we are applying a function
-to all of the Samples collectively. Our end result is that we now have a 
-map telling us which loci cluster together from which Samples. This step 
-does not produce a stats output. It might be more enlightening to consider 
-the output of step 6 by examining the file that contains the aligned 
-reads clustered across samples:
-
-.. code-block:: bash
-
-    gunzip -c iptest_consens/iptest_catclust.gz | head -n 30 | less
-
-The final output of step 6 is a file in ``iptest_consens/`` called 
-``iptest_catclust.gz``. There is actually also a database file called
-``iptest_test.hdf5`` which records not only the clustered sequences but also
-information about read depths at each site, but that file is not 
-human-readable. The file ``iptest_catclust.gz`` on the other hand provides 
-a good sanity check for examining the aligned reads across all samples. 
-Executing the above command you'll see the output below which 
-shows all the reads that align at one particular locus. You'll see the 
-sample name of each read followed by the sequence of the read at that locus
-for that sample. If you wish to examine more loci you can increase the number
-of lines you want to view by increasing the value you pass to ``head`` in
-the above command (e.g. ``... | head -n 300 | less``
-
-.. parsed-literal::
-
-    1C_0_691
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGAGTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    3L_0_597
-    TGCAGGGTGGGTKGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTGTAATCGAGTATTAGCGCGGAAGC
-    2E_0_339
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    2F_0_994
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    3K_0_941
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    1B_0_543
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    3J_0_357
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    2H_0_106
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    3I_0_202
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTACTAGCGCGGAAGC
-    2G_0_575
-    TGCAGSGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGKTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    1D_0_744
-    TGCAGGGTGGGTGGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    1A_0_502
-    TGCAGGGTGGGTTGTGTTATTTAACATCCAATGCTTAAAGTTTCGATTAGGGGCCTGTTACCGTAGAGTTTTAATCGAGTATTAGCGCGGAAGC
-    //
-    //
 
 Step 7: Filter and write output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -812,7 +775,7 @@ After running step 7 like so:
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -s 7
+    >>> ipyrad -p params-iptest.txt -s 7
 
 A new directory is created called ``iptest_outfiles``. This directory contains
 all the output files specified in the params file. The default is to 
@@ -823,5 +786,12 @@ these files as you wish.
 Congratulations! You've completed your first toy assembly. Now you can try applying
 what you've learned to assemble your own real data. Please consult the docs for many
 of the more powerful features of ipyrad including reference sequence mapping, 
-assembly branching, and post-processing analysis including svdquartets and 
-many population genetic summary statistics.
+assembly branching, and post-processing analysis. 
+
+
+Final stats file
+~~~~~~~~~~~~~~~~
+
+
+Output files
+~~~~~~~~~~~~
