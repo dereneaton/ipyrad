@@ -777,21 +777,144 @@ After running step 7 like so:
 
     >>> ipyrad -p params-iptest.txt -s 7
 
+
+.. parsed-literal::
+  Step7: Filter and write output files for 12 Samples
+  [####################] 100%  filtering loci        | 0:00:04 
+  [####################] 100%  writing outfiles      | 0:00:01 
+  Outfiles written to: ~/Documents/ipyrad/tests/iptest_outfiles
+  Saving Assembly.
+
+
 A new directory is created called ``iptest_outfiles``. This directory contains
 all the output files specified in the params file. The default is to 
-create all supported output files which include 
-.phy, .nex, .geno, .str, as well as many others (forthcoming). Explore each of
-these files as you wish.
-
-Congratulations! You've completed your first toy assembly. Now you can try applying
-what you've learned to assemble your own real data. Please consult the docs for many
-of the more powerful features of ipyrad including reference sequence mapping, 
-assembly branching, and post-processing analysis. 
-
+create all supported output files which include .phy, .nex, .geno, .str, as well
+as many others (forthcoming). Explore some of these files below.
 
 Final stats file
 ~~~~~~~~~~~~~~~~
+The final stats output file contains a large number of statistics telling you 
+why some loci were filtered from the data set, how many loci were recovered
+per sample, how many loci were shared among some number of samples, and how 
+much variation is present in the data. Check out the results file.
+
+.. code-block:: bash
+
+    >>> cat iptest_outfiles/iptest_stats.txt
+
+.. parsed-literal::
+  ## The number of loci caught by each filter.
+  ## ipyrad API location: [assembly].statsfiles.s7_filters
+  
+                             locus_filtering
+  total_prefiltered_loci                1000
+  filtered_by_rm_duplicates                0
+  filtered_by_max_indels                   0
+  filtered_by_max_snps                     0
+  filtered_by_max_hetero                   0
+  filtered_by_min_sample                   0
+  filtered_by_edge_trim                    0
+  total_filtered_loci                   1000
+  
+  
+  ## The number of loci recovered for each Sample.
+  ## ipyrad API location: [assembly].stats_dfs.s7_samples
+  
+        sample_coverage
+  1A_0             1000
+  1B_0             1000
+  1C_0             1000
+  1D_0             1000
+  2E_0             1000
+  2F_0             1000
+  2G_0             1000
+  2H_0             1000
+  3I_0             1000
+  3J_0             1000
+  3K_0             1000
+  3L_0             1000
+  
+  
+  ## The number of loci for which N taxa have data.
+  ## ipyrad API location: [assembly].stats_dfs.s7_loci
+  
+      locus_coverage  sum_coverage
+  1              NaN             0
+  2              NaN             0
+  3              NaN             0
+  4                0             0
+  5                0             0
+  6                0             0
+  7                0             0
+  8                0             0
+  9                0             0
+  10               0             0
+  11               0             0
+  12            1000          1000
+  
+  
+  ## The distribution of SNPs (var and pis) across loci.
+  ## var = all variable sites (pis + autapomorphies)
+  ## pis = parsimony informative site (minor allele in >1 sample)
+  ## ipyrad API location: [assembly].stats_dfs.s7_snps
+  
+      var  sum_var  pis  sum_pis
+  0    12        0  301        0
+  1    50       50  375      375
+  2    95      240  199      773
+  3   178      774   90     1043
+  4   185     1514   29     1159
+  5   180     2414    6     1189
+  6   134     3218    0     1189
+  7    73     3729    0     1189
+  8    52     4145    0     1189
+  9    25     4370    0     1189
+  10   13     4500    0     1189
+  11    0     4500    0     1189
+  12    2     4524    0     1189
+  13    1     4537    0     1189
 
 
-Output files
-~~~~~~~~~~~~
+Check out the .loci output. Many more output formats are available. See 
+the section on output formats for more information. 
+
+.. code-block:: bash
+    >>> less iptest_outfiles/iptest.loci
+
+.. parsed-literal::
+  1A_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  1B_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  1C_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATACCCGGTAGACATC
+  1D_0     GGTGGGCAGTAGTCTCKCGGATGATCTAGAAACTTCATACGTTGTATAAGTGKAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  2E_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  2F_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  2G_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  2H_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTCTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  3I_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGRGGATACCCTGGGCATCCCCGGTAGACATC
+  3J_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  3K_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGRATACCCTGGGCATCCCCGGTAGACATC
+  3L_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
+  //                       -                          -        -     - -             -             |0|
+  1A_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  1B_0     CAATTTAAACATGGCCTGTTTTGGGCC-CTTAAACAGCCATCA-TACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGT-GA
+  1C_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCAAAATAAGAGTCGA
+  1D_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAACCAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  2E_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGGTGCGGAGCCACGGAGACTGCAAGTCACAATAAGACTCGA
+  2F_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGARCCACGGAGACTGCAAGTCACAATAAGACTCGA
+  2G_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  2H_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  3I_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  3J_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  3K_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  3L_0     CAATTTAAACATGGCCTGTTTTGGGCCTCTTAAACAGCCATCACTACGCTGCGGAGCCACGGAGACTGCAAGTCACAATAAGAGTCGA
+  //                                        -              -      -                   -       *    |1|
+
+
+
+Congratulations! You’ve completed your first toy assembly. Now you can try 
+applying what you’ve learned to assemble your own real data. Please consult 
+the docs for many of the more powerful features of ipyrad including reference 
+sequence mapping, assembly branching, and post-processing analysis.
+
+
+
