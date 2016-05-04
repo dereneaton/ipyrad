@@ -253,40 +253,40 @@ fastq.gz files for each sample.
     of the directories inside your project directory**, unless you know
     what you're doing or you don't mind if your assembly breaks. 
 
-Now lets run step 1! For the simulated data this will take < 1 minute.
+Now lets run step 1! For the simulated data this will take just a few seconds.
 
 .. code-block:: bash
 
     ## -p indicates the params file we wish to use
     ## -s indicates the step to run (in this case 1)
-    ipyrad -p params-iptest.txt -s 1
+    >>> ipyrad -p params-iptest.txt -s 1
 
 .. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.1.72]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  New Assembly: iptest
-  ipyparallel setup: Local connection to 4 Engines
+  --------------------------------------------------
+   ipyrad [v.0.2.0]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   New Assembly: iptest
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step1: Demultiplexing fastq data to Samples
+   [####################] 100%  sorting reads         | 0:00:04 
+   [####################] 100%  writing files         | 0:00:00 
+   Saving Assembly.
 
-  Step1: Demultiplexing fastq data to Samples.
-    Saving Assembly.
 
-There are 4 main parts to this step:
-    - Create a new assembly. Since this is our first time running any 
-      steps we need to initialize our assembly.
-    - Start the parallel cluster. ipyrad uses a parallelization library called 
-      ipyparallel. Every time we start a step we fire up the parallel clients. 
-      This makes your assemblies go **smokin'** fast.
-    - Actually do the demuliplexing.
-    - Save the state of the assembly.
+There are 4 main parts to this step: (1) It creates a new Assembly called iptest, 
+since this is our first time running any steps for the named assembly. (2) It 
+launches a number of parallel Engines, by default this is the number of available
+CPUs on your machine. (3) It sorts the files and writes the outputs, as shown
+in the progress bars. (4) It saves the Assembly. 
 
 Have a look at the results of this step in the ``iptest_fastqs/``
 output directory:
 
 .. code-block:: bash
 
-   ls iptest_fastqs 
+   >>> ls iptest_fastqs 
 
 .. parsed-literal::
     1A_0_R1_.fastq.gz        1D_0_R1_.fastq.gz        2G_0_R1_.fastq.gz        3J_0_R1_.fastq.gz        s1_demultiplex_stats.txt
