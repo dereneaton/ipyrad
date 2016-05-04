@@ -661,19 +661,21 @@ to be the real haplotypes at each locus within each sample.
     >>> ipyrad -p params-iptest.txt -s 5
 
 .. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.2.0]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  loading Assembly: iptest
+  from saved path: ~/Documents/ipyrad/tests/iptest.json
+  ipyparallel setup: Local connection to 4 Engines
 
-    --------------------------------------------------
-     ipyrad [v.0.1.73]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
-     ipyparallel setup: Local connection to 4 Engines
+  Step5: Consensus base calling 
+  Diploid calls with paralog filter [max alleles = 2]
+  Mean error  [0.00074 sd=0.00002]
+  Mean hetero [0.00191 sd=0.00015]
+  [####################] 100%  consensus calling     | 0:00:28 
+  Saving Assembly.
 
-     Step5: Consensus base calling 
-       Diploid base calls and paralog filter (max haplos = 2)
-       error rate (mean, std):  0.00075, 0.00002
-       heterozyg. (mean, std):  0.00198, 0.00018
-       Saving Assembly.
 
 Again we can ask for the results:
 
@@ -688,38 +690,37 @@ reads are filtered out of the data set. If not data were filtered, then the
 number of reads_consens should be equal to the number of clusters_hidepth.
 
 .. parsed-literal::
-
     Summary stats of Assembly iptest
-        ------------------------------------------------
-              state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      5      20099           20099            1000              1000
-    1B_0      5      19977           19977            1000              1000
-    1C_0      5      20114           20114            1000              1000
-    1D_0      5      19895           19895            1000              1000
-    2E_0      5      19928           19928            1000              1000
-    2F_0      5      19934           19934            1000              1000
-    2G_0      5      20026           20026            1000              1000
-    2H_0      5      19936           19936            1000              1000
-    3I_0      5      20084           20084            1000              1000
-    3J_0      5      20011           20011            1000              1000
-    3K_0      5      20117           20117            1000              1000
-    3L_0      5      19901           19901            1000              1000
-
-          hetero_est  error_est  reads_consens
-    1A_0    0.002223   0.000756           1000
-    1B_0    0.001910   0.000775           1000
-    1C_0    0.002260   0.000751           1000
-    1D_0    0.001876   0.000731           1000
-    2E_0    0.001809   0.000770           1000
-    2F_0    0.002103   0.000725           1000
-    2G_0    0.001910   0.000707           1000
-    2H_0    0.002215   0.000755           1000
-    3I_0    0.001877   0.000784           1000
-    3J_0    0.001698   0.000741           1000
-    3K_0    0.001821   0.000767           1000
-    3L_0    0.002003   0.000755           1000
-
-
+    ------------------------------------------------
+          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
+    1A_0      5      20144           20144            1000              1000
+    1B_0      5      20024           20024            1000              1000
+    1C_0      5      20055           20055            1000              1000
+    1D_0      5      19927           19927            1000              1000
+    2E_0      5      19936           19936            1000              1000
+    2F_0      5      20094           20094            1000              1000
+    2G_0      5      19930           19930            1000              1000
+    2H_0      5      20048           20048            1000              1000
+    3I_0      5      19952           19952            1000              1000
+    3J_0      5      20164           20164            1000              1000
+    3K_0      5      19993           19993            1000              1000
+    3L_0      5      20035           20035            1000              1000
+    
+          hetero_est  error_est  reads_consens  
+    1A_0    0.001866   0.000739           1000  
+    1B_0    0.001988   0.000728           1000  
+    1C_0    0.001833   0.000733           1000  
+    1D_0    0.001719   0.000752           1000  
+    2E_0    0.002034   0.000726           1000  
+    2F_0    0.001866   0.000748           1000  
+    2G_0    0.001899   0.000733           1000  
+    2H_0    0.002261   0.000767           1000  
+    3I_0    0.001886   0.000776           1000  
+    3J_0    0.001718   0.000764           1000  
+    3K_0    0.002046   0.000744           1000  
+    3L_0    0.001796   0.000719           1000  
+    
+    
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
