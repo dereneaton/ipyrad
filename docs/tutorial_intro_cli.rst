@@ -276,10 +276,10 @@ Now lets run step 1! For the simulated data this will take just a few seconds.
 
 
 There are 4 main parts to this step: (1) It creates a new Assembly called iptest, 
-since this is our first time running any steps for the named assembly. (2) It 
+since this is our first time running any steps for the named assembly; (2) It 
 launches a number of parallel Engines, by default this is the number of available
-CPUs on your machine. (3) It sorts the files and writes the outputs, as shown
-in the progress bars. (4) It saves the Assembly. 
+CPUs on your machine; (3) It performs the step functions, in this case it sorts
+the data and writes the outputs; and (4) It saves the Assembly. 
 
 Have a look at the results of this step in the ``iptest_fastqs/``
 output directory:
@@ -293,21 +293,18 @@ output directory:
     1B_0_R1_.fastq.gz        2E_0_R1_.fastq.gz        2H_0_R1_.fastq.gz        3K_0_R1_.fastq.gz
     1C_0_R1_.fastq.gz        2F_0_R1_.fastq.gz        3I_0_R1_.fastq.gz        3L_0_R1_.fastq.gz
 
-A more informative metric of success might be the number
-of raw reads demultiplexed for each sample. Fortunately 
-ipyrad tracks the state of all your steps in your current 
-assembly, so at any time you can ask for results by 
+A more informative metric of success might be the number of raw reads 
+demultiplexed for each sample. Fortunately ipyrad tracks the state of all your 
+steps in your current assembly, so at any time you can ask for results by 
 invoking the ``-r`` flag.
 
 .. code-block:: bash
 
-    ## -r fetches informative results from currently 
-    ##      executed steps
-    ipyrad -p params-iptest.txt -r
+    ## -r fetches informative results from currently executed steps
+    >>> ipyrad -p params-iptest.txt -r
 
 
 .. parsed-literal::
-
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw
