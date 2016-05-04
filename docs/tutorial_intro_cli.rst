@@ -395,18 +395,18 @@ handy stats tracked for this assembly.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered
-    1A_0      2      20144           20180
-    1B_0      2      20024           20060
-    1C_0      2      20055           20100
-    1D_0      2      19927           19990
-    2E_0      2      19936           19990
-    2F_0      2      20094           20130
+    1A_0      2      20144           20144
+    1B_0      2      20024           20024
+    1C_0      2      20055           20055
+    1D_0      2      19927           19927
+    2E_0      2      19936           19936
+    2F_0      2      20094           20094
     2G_0      2      19930           19930
-    2H_0      2      20048           20120
-    3I_0      2      19952           19970
-    3J_0      2      20164           20200
-    3K_0      2      19993           20020
-    3L_0      2      20035           20080
+    2H_0      2      20048           20048
+    3I_0      2      19952           19952
+    3J_0      2      20164           20164
+    3K_0      2      19993           19993
+    3L_0      2      20035           20035
     
     
     Full stats files
@@ -415,7 +415,7 @@ handy stats tracked for this assembly.
     step 2: ./iptest_edits/s2_rawedit_stats.txt
     step 3: None
     step 4: None
-    step 5: None
+    step 5: None    
     step 6: None
     step 7: None
 
@@ -430,7 +430,7 @@ Step 3: clustering within-samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Step 3 de-replicates and then clusters reads within each sample 
 by the set clustering threshold and then writes the clusters to new 
-files in a directory called ``iptest_clust_0.85``. Intuitively
+files in a directory called ``iptest_clust_0.85/``. Intuitively
 we are trying to identify all the reads that map to the same locus
 within each sample. The clustering threshold specifies the minimum 
 percentage of sequence similarity below which we will consider two 
