@@ -68,6 +68,17 @@ it contains many different files representing different test data sets.
     -rw-rw-r-- 1 deren deren 840593 May  3 15:56 rad_example_R1_.fastq.gz
 
 
+.. parsed-literal::
+    gbs_example_barcodes.txt               pairddrad_wmerge_example_genome.fa     pairgbs_wmerge_example_genome.fa
+    gbs_example_genome.fa                  pairddrad_wmerge_example_R1_.fastq.gz  pairgbs_wmerge_example_R1_.fastq.gz
+    gbs_example_R1_.fastq.gz               pairddrad_wmerge_example_R2_.fastq.gz  pairgbs_wmerge_example_R2_.fastq.gz
+    pairddrad_example_barcodes.txt         pairgbs_example_barcodes.txt           rad_example_barcodes.txt
+    pairddrad_example_R1_.fastq.gz         pairgbs_example_R1_.fastq.gz           rad_example_genome.fa
+    pairddrad_example_R2_.fastq.gz         pairgbs_example_R2_.fastq.gz           rad_example_R1_.fastq.gz
+    pairddrad_wmerge_example_barcodes.txt  pairgbs_wmerge_example_barcodes.txt
+    
+
+
 For this introductory tutorial we will use just two files from 
 this directory. The file ``rad_example_R1_.fastq.gz`` contains Illumina 
 fastQ formatted reads and is gzip compressed. This is a typical format for raw 
@@ -681,7 +692,7 @@ Again we can ask for the results:
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -r
+    >>> ipyrad -p params-iptest.txt -r
 
 And here the important information is the number of ``reads_consens``. This is 
 the number of "good" reads within each sample that we'll send on to the next step.
@@ -742,7 +753,7 @@ same locus, based on sequence similarity.
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -s 6
+    >>> ipyrad -p params-iptest.txt -s 6
 
 .. parsed-literal::
 
