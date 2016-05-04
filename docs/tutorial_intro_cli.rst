@@ -658,7 +658,7 @@ to be the real haplotypes at each locus within each sample.
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -s 5
+    >>> ipyrad -p params-iptest.txt -s 5
 
 .. parsed-literal::
 
