@@ -27,7 +27,7 @@ produced by each step of an assembly. To learn the basics, this is the best
 place to start. 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    tutorial_intro_cli.rst
 
@@ -60,6 +60,7 @@ Eaton and Ree (2013).
 
     pedicularis_cli.rst
 
+
 .. _other tutorials:
 Other tutorials
 ----------------
@@ -71,6 +72,5 @@ and ABBA-BABA tests for introgression.
 .. toctree::
     :maxdepth: 1
 
-    pedicularis_cli.rst
     pedicularis_api.rst
     viburnum.rst

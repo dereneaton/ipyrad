@@ -445,11 +445,11 @@ you set for the ``clust_threshold`` parameter in the params file.
 You can see the default value is 0.85, so our default directory is 
 named accordingly. This value dictates the percentage of sequence
 similarity that reads must have in order to be considered reads
-at the same locus. You'll more than likely want to experiment
-with this value, but 0.85 is a reliable default, balancing
+at the same locus. You may want to experiment
+with this value, but 0.85-0.90 is a fairly reliable range, balancing
 over-splitting of loci vs over-lumping. Don't mess with this
 until you feel comfortable with the overall workflow, and also
-until you've learned about :ref:`Branching assemblies <tutorial_advanced_cli>`.
+until you've learned about :ref:`Branching assemblies <branching_workflow>`.
 
 Later you will learn how to incorporate information from a reference 
 genome (if you have one) to improve clustering at this step. For now, bide your
@@ -483,9 +483,9 @@ Now lets run step 3:
 Again we can examine the results. The stats output tells you how many clusters 
 were found, and the number of clusters that pass the mindepth thresholds. 
 We'll go into more detail about mindepth settings in some of the advanced tutorials
-but for now all you need to know is that by default step 3 will filter out clusters
-that only have a handful of reads on the assumption that these are probably
-all mostly due to sequencing error.
+but the important thing to know is that by default step 3 will filter out clusters
+that only have a handful of reads since we have little power to make confident
+base calls in low depth clusters. 
 
 .. code-block:: bash
 
@@ -520,7 +520,7 @@ all mostly due to sequencing error.
     step 7: None
 
 
-The aligned clusters (stacks) found during this step are now located in 
+The aligned clusters found during this step are now located in 
 ``./iptest_clust_0.85/``. You can get a feel for what this looks like
 by examining a portion of one of the files using the command below.
 
@@ -531,20 +531,19 @@ by examining a portion of one of the files using the command below.
     ## you're interested in what more of the loci look like
     ## you can increase the number of lines you ask head for,
     ## e.g. ... | head -n 100
-    gunzip -c iptest_clust_0.85/1A_0.clustS.gz | head -n 28
+    >>> gunzip -c iptest_clust_0.85/1A_0.clustS.gz | head -n 28
 
 Reads that are sufficiently similar (based on the above sequence similarity 
 threshold) are grouped together in clusters separated by "//". For the first
 cluster below there is clearly one allele (homozygote) and one read with a 
-(simulated) sequencing error. For the second cluster it seems there are two alleles 
+(simulated) sequencing error. This is apparent in the 'size=' field of the two
+reads for this cluster. For the second cluster it seems there are two alleles 
 (heterozygote), and a read with a sequencing error. For the third 
 cluster it's a bit harder to say. Is this a homozygote with lots of sequencing
-errors, or a heterozygote with few reads for one of the alleles?
-
-Thankfully, untangling this mess is what step 4 is all about.
+errors, or a heterozygote with few reads for one of the alleles? Thankfully,
+untangling this mess is what steps 4 and 5 are all about.
 
 .. parsed-literal::
-
     >1A_0_1164_r1;size=16;*0
     TGCAGCTATTGCGACAAAAACACGACGGCTTCCGTGGGCACTAGCGTAATTCGCTGAGCCGGCGTAACAGAAGGAGTGCACTGCCACGTGCCCG
     >1A_0_1174_r1;size=1;+1
@@ -572,73 +571,73 @@ Thankfully, untangling this mess is what step 4 is all about.
 
 Step 4: Joint estimation of heterozygosity and error rate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Jointly estimate sequencing error rate and heterozygosity to help us figure
-out which reads are "real" and which are sequencing error. We need to know
+Jointly estimate sequencing error rate and heterozygosity to disentangle
+which reads are "real" and which are sequencing error. We need to know
 which reads are "real" because in diploid organisms there are a maximum of 2
 alleles at any given locus. If we look at the raw data and there are 5 or 
 ten different "alleles", and 2 of them are very high frequency, and the rest 
 are singletons then this gives us evidence that the 2 high frequency alleles 
-are good reads and the rest are probably not. 
-This step is pretty straightforward, and pretty fast. Run it thusly:
+are good reads and the rest are probably not. This step is pretty 
+straightforward, and pretty fast. Run it thusly:
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -s 4
+    >>> ipyrad -p params-iptest.txt -s 4
 
 .. parsed-literal::
+  --------------------------------------------------
+   ipyrad [v.0.2.0]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   loading Assembly: iptest
+   from saved path: ~/Documents/ipyrad/tests/iptest.json
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step4: Joint estimation of error rate and heterozygosity
+   [####################] 100%  inferring [H, E]      | 0:01:09 
+   Saving Assembly.
 
-    --------------------------------------------------
-     ipyrad [v.0.1.73]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
-     ipyparallel setup: Local connection to 4 Engines
-    --------------------------------------------------
 
-     Step4: Joint estimation of error rate and heterozygosity
-       Saving Assembly.
-
-In terms of results, there isn't as much to look at as in previous steps, though
-you can invoke the ``-r`` flag to see the estimated heterozygosity and error
-rate per sample.
+This step does not produce new output files, only a stats file with the 
+estimated heterozygosity and error rate parameters. 
+You can also invoke the ``-r`` flag to see the estimated values.
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -r
+    >>> ipyrad -p params-iptest.txt -r
 
 .. parsed-literal::
-
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      4      20099           20099            1000              1000
-    1B_0      4      19977           19977            1000              1000
-    1C_0      4      20114           20114            1000              1000
-    1D_0      4      19895           19895            1000              1000
-    2E_0      4      19928           19928            1000              1000
-    2F_0      4      19934           19934            1000              1000
-    2G_0      4      20026           20026            1000              1000
-    2H_0      4      19936           19936            1000              1000
-    3I_0      4      20084           20084            1000              1000
-    3J_0      4      20011           20011            1000              1000
-    3K_0      4      20117           20117            1000              1000
-    3L_0      4      19901           19901            1000              1000
-
+          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth  \
+    1A_0      4      20144           20144            1000              1000   
+    1B_0      4      20024           20024            1000              1000   
+    1C_0      4      20055           20055            1000              1000   
+     D_0      4      19927           19927            1000              1000   
+    2E_0      4      19936           19936            1000              1000   
+    2F_0      4      20094           20094            1000              1000   
+    2G_0      4      19930           19930            1000              1000   
+    2H_0      4      20048           20048            1000              1000   
+    3I_0      4      19952           19952            1000              1000   
+    3J_0      4      20164           20164            1000              1000   
+    3K_0      4      19993           19993            1000              1000   
+    3L_0      4      20035           20035            1000              1000   
+    
           hetero_est  error_est  
-    1A_0    0.002223   0.000756  
-    1B_0    0.001910   0.000775  
-    1C_0    0.002260   0.000751  
-    1D_0    0.001876   0.000731  
-    2E_0    0.001809   0.000770  
-    2F_0    0.002103   0.000725  
-    2G_0    0.001910   0.000707  
-    2H_0    0.002215   0.000755  
-    3I_0    0.001877   0.000784  
-    3J_0    0.001698   0.000741  
-    3K_0    0.001821   0.000767  
-    3L_0    0.002003   0.000755  
-
-
+    1A_0    0.001866   0.000739  
+    1B_0    0.001988   0.000728  
+    1C_0    0.001833   0.000733  
+    1D_0    0.001719   0.000752  
+    2E_0    0.002034   0.000726  
+    2F_0    0.001866   0.000748  
+    2G_0    0.001899   0.000733  
+    2H_0    0.002261   0.000767  
+    3I_0    0.001886   0.000776  
+    3J_0    0.001718   0.000764  
+    3K_0    0.002046   0.000744  
+    3L_0    0.001796   0.000719  
+    
+    
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
@@ -648,6 +647,7 @@ rate per sample.
     step 5: None
     step 6: None
     step 7: None
+
 
 
 Step 5: Consensus base calls
