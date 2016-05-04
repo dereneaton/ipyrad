@@ -13,7 +13,6 @@ import time
 import shutil
 import datetime
 import itertools
-import numpy as np
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.util import *
 from collections import defaultdict, Counter
@@ -39,11 +38,11 @@ def combinefiles(filepath):
 
 
 
-def findbcode(cut, longbar, read1):
+def findbcode(cutters, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
-    search = read1[1][:int(longbar[0]+len(cut)+1)]
-    barcode = search.rsplit(cut, 1)[0]
+    search = read1[1][:int(longbar[0]+len(cutters[0])+1)]
+    barcode = search.rsplit(cutters[0], 1)[0]
     return barcode 
 
 
@@ -209,6 +208,7 @@ def barmatch(args):
     else:
         def getbarcode(cutters, read1, longbar):
             """ finds barcode for variable barcode lengths"""
+            LOGGER.info('cutters = %s, longbar=%s, read1=%s', cutters, longbar, read1)
             return findbcode(cutters, longbar, read1)
 
     ## go until end of the file
