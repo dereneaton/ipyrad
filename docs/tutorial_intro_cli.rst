@@ -308,20 +308,20 @@ invoking the ``-r`` flag.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw
-    1A_0      1      20099
-    1B_0      1      19977
-    1C_0      1      20114
-    1D_0      1      19895
-    2E_0      1      19928
-    2F_0      1      19934
-    2G_0      1      20026
-    2H_0      1      19936
-    3I_0      1      20084
-    3J_0      1      20011
-    3K_0      1      20117
-    3L_0      1      19901
-
-
+    1A_0      1      20144
+    1B_0      1      20024
+    1C_0      1      20055
+    1D_0      1      19927
+    2E_0      1      19936
+    2F_0      1      20094
+    2G_0      1      19930
+    2H_0      1      20048
+    3I_0      1      19952
+    3J_0      1      20164
+    3K_0      1      19993
+    3L_0      1      20035
+    
+    
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
@@ -339,10 +339,11 @@ creates for each step. For instance to see full stats for step 1:
 
 .. code-block:: bash
 
-    cat ./iptest_fastqs/s1_demultiplex_stats.txt
+    >>> cat ./iptest_fastqs/s1_demultiplex_stats.txt
 
 And you'll see a ton of fun stuff I won't copy here in the interest
-of conserving space. Please go look for yourself if you're interested.
+of conserving space (you'll see more still on real empirical data versus 
+the simulated data here). Please go look for yourself if you're interested.
 
 
 Step 2: Filter reads
@@ -356,18 +357,21 @@ base calls. The filtered files are written to a new directory called
 
 .. code-block:: bash
 
-    ipyrad -p params-iptest.txt -s 2
+    >>> ipyrad -p params-iptest.txt -s 2
 
 .. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.1.72]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  loading Assembly: iptest [~/Documents/ipyrad/tests/iptest.json]
-  ipyparallel setup: Local connection to 4 Engines
+  --------------------------------------------------
+   ipyrad [v.0.2.0]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   loading Assembly: iptest
+   from saved path: ~/Documents/ipyrad/tests/iptest.json
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step2: Filtering reads 
+   [####################] 100%  processing reads      | 0:00:33 
+   Saving Assembly.
 
-  Step2: Filtering reads 
-    Saving Assembly.
 
 Again, you can look at the results output by this step and also some 
 handy stats tracked for this assembly.
@@ -375,7 +379,7 @@ handy stats tracked for this assembly.
 .. code-block:: bash
 
     ## View the output of step 2
-    ls iptest_edits/
+    >>> ls iptest_edits/
 
 .. parsed-literal::                                                                                                                                  
     1A_0_R1_.fastq       1C_0_R1_.fastq       2E_0_R1_.fastq       2G_0_R1_.fastq       3I_0_R1_.fastq       3K_0_R1_.fastq       s2_rawedit_stats.txt
@@ -385,27 +389,26 @@ handy stats tracked for this assembly.
 
     ## Get current stats including # raw reads and # reads
     ## after filtering.
-    ipyrad -p params-iptest.txt -r
+    >>> ipyrad -p params-iptest.txt -r
 
 .. parsed-literal::
-
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered
-    1A_0      2      20099           20099
-    1B_0      2      19977           19977
-    1C_0      2      20114           20114
-    1D_0      2      19895           19895
-    2E_0      2      19928           19928
-    2F_0      2      19934           19934
-    2G_0      2      20026           20026
-    2H_0      2      19936           19936
-    3I_0      2      20084           20084
-    3J_0      2      20011           20011
-    3K_0      2      20117           20117
-    3L_0      2      19901           19901
-
-
+    1A_0      2      20144           20180
+    1B_0      2      20024           20060
+    1C_0      2      20055           20100
+    1D_0      2      19927           19990
+    2E_0      2      19936           19990
+    2F_0      2      20094           20130
+    2G_0      2      19930           19930
+    2H_0      2      20048           20120
+    3I_0      2      19952           19970
+    3J_0      2      20164           20200
+    3K_0      2      19993           20020
+    3L_0      2      20035           20080
+    
+    
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
@@ -420,8 +423,7 @@ handy stats tracked for this assembly.
 You might also take a gander at the filtered reads:
 
 .. parsed-literal::
-
-    head -n 12 ./iptest_edits/1A_0_R1_.fastq
+    >>> head -n 12 ./iptest_edits/1A_0_R1_.fastq
 
 
 Step 3: clustering within-samples
@@ -438,7 +440,6 @@ The true name of this output directory will be dictated by the value
 you set for the ``clust_threshold`` parameter in the params file. 
 
 .. parsed-literal::
-
     0.85             ## [14] [clust_threshold]: proportion identical for clustering
 
 You can see the default value is 0.85, so our default directory is 
