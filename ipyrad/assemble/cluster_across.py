@@ -322,9 +322,13 @@ def cluster(data, noreverse, ipyclient):
                     progressbar(100, done, 
                         " clustering across     | {}".format(elapsed))
             else:
-                ## if process is done, break.
+                ## if process is done, break. this is a backup catcher
                 if not proc.poll():
                     break
+                else:
+                    print('in poll')
+        ## another catcher to let vsearch cleanup after clustering is done
+        proc.wait()
 
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
