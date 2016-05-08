@@ -12,6 +12,7 @@ initfile = "ipyrad/__init__.py"
 version_git = sys.argv[1]
 print("Setting new version to - {}".format(version_git))
 
+
 # Write version to ipyrad/__init__.py
 # Also set default __loglevel__ to ERROR so we don't check in
 # DEBUG by accident.
