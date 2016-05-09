@@ -209,6 +209,7 @@ at the default of 6) and simply discard most of our data. I know, how about
 we create a branch so that we can do both!
 
 .. code:: bash
+
     ## create a lowdepth branch
     ipyrad -p params-sub4.txt -b sub4-lowdepth.
 
