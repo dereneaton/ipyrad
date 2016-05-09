@@ -70,7 +70,7 @@ When the data path is with the "sorted_fastq_path" as opposed to the "raw_data_p
 step1 has a different functionality. Instead of demultiplexing the data it simply
 counts the number of reads for each sample and parses the file names to extract
 names for the Samples. For example, the file 29154_superba.fastq.gz will be 
-assigned to a sample named "29154_superba". Here we run step1 (-s 1) and 
+assigned to a Sample named "29154_superba". Here we run step1 (-s 1) and 
 ask ipyrad to print the results when it is finished (-r). 
 
 .. code:: bash
@@ -148,15 +148,37 @@ no matter what you do, ipyrad will never delete or modify your original fastq fi
     >>> ipyrad -p params-sub4.txt -r
 
 .. parsed-literal::
+  Summary stats of Assembly sub4
+  ------------------------------------------------
+                          state  reads_raw
+  39618_rex                   1     822263
+  40578_rex                   1    1707942
+  41478_cyathophylloides      1    2199740
+  41954_cyathophylloides      1    2199613 
 
 
+.. code:: bash
 
-testing out a few different parameters quickly, without
-having to run the analysis on the full extent of your data. This can be done 
-in two ways, first by 
+    ## run step2 in preview mode
+    >>> ipyrad -p params-sub4.txt -s 2 --preview
 
 
-several hours depending on how
+.. parsed-literal::
+  --------------------------------------------------
+   ipyrad [v.0.2.5]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   loading Assembly: base
+   from saved path: ~/Downloads/pedicularis/base.json
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step2: Filtering reads 
+   Running preview mode: subselecting maximum of 100000 reads per sample    
+   [####################] 100%  processing reads      | 0:02:48 
+   Saving Assembly.
+
+
+several hours depending on how ...
 many processors are available. Using four cores it can finish about 1.5
 hours if we subsample the data set using the --preview method in ipyrad.
 If run during step2 this function subsamples 100K reads from each
