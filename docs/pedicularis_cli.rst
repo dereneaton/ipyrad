@@ -78,7 +78,7 @@ ask ipyrad to print the results when it is finished (-r).
     >>> ipyrad -p params-base.txt -s 1 -r
 
 
-.. parsed-literal::
+.. parsed-literal::  
   --------------------------------------------------
    ipyrad [v.0.2.5]
    Interactive assembly and analysis of RADseq data
@@ -93,7 +93,6 @@ ask ipyrad to print the results when it is finished (-r).
      13 fastq files linked to 13 new Samples.
    Saving Assembly.
 
-.. parsed-literal::
   Summary stats of Assembly base
   ------------------------------------------------
                           state  reads_raw
