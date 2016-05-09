@@ -19,12 +19,12 @@ from **Eaton and Ree (2013)** for our example.
 
 Download the empirical example data set (*Pedicularis*)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-These data are hosted online at the NCBI sequence read archive (SRA) under 
+These data are archived on the NCBI sequence read archive (SRA) under 
 accession id SRP021469. For convenience, I also host the data at a 
 publicly available Dropbox link which is a bit easier to access. 
-If you haven't already, run the code below to download and decompress the 
-fastq data files, which will save into a directory called 
-``example_empirical_data/``. The compressed file size is approximately 1.1GB.
+Run the code below to download and decompress the fastq data files, 
+which will save them into a directory called ``example_empirical_data/``. 
+The compressed file size is approximately 1.1GB.
 
 .. code:: bash
 
