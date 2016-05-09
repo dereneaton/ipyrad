@@ -50,7 +50,12 @@ def sample_cleanup(data, sample):
             sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
     ## get depth stats
-    infile = gzip.open(sample.files.clusters)
+    try:
+        infile = gzip.open(sample.files.clusters)
+    except IOError as inst:
+        msg = "No cluster file found for sample - {}".format(sample.name)
+        LOGGER.warn(msg)
+        raise IPyradError(msg)
     duo = itertools.izip(*[iter(infile)]*2)
     depth = []
     maxlen = 0
@@ -701,20 +706,26 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             else:
                 failed_samples = check_results(async_results)
             if failed_samples:
-                print(failed_samples)
+                print("  Samples failed this step - {}".format(\
+                                [x.name for x in failed_samples]))
         except IPyradError as inst:
             print("All samples failed {} - {}".format(step, inst))
             sys.exit()
 
     ## Cleanup -------------------------------------------------------
     for sample in samples:
-        sample_cleanup(data, sample)
-        ## Helpful debug for seeing which samples had bad alignments
-        #for i in steps["muscle_align"][sample]:
-        #    print(sample, i.get())
-        badaligns = sum([i.get() for i in \
-                        steps["muscle_align"]["async_results"][sample]])
-        sample.stats_dfs.s3.filtered_bad_align = badaligns
+        try:
+            sample_cleanup(data, sample)
+            ## Helpful debug for seeing which samples had bad alignments
+            #for i in steps["muscle_align"][sample]:
+            #    print(sample, i.get())
+            badaligns = sum([i.get() for i in \
+                            steps["muscle_align"]["async_results"][sample]])
+            sample.stats_dfs.s3.filtered_bad_align = badaligns
+        except IPyradError as inst:
+            ## Sample failed cleanup because it failed some earlier step
+            ## Already reported the failure and logged the event, so ignore
+            pass
 
     data_cleanup(data)
 
@@ -777,7 +788,8 @@ def check_results(async_results):
         raise IPyradError("All samples failed:\n"+msg)
 
     if errors:
-        print("  Samples failed this step:"+" ".join(errors.keys()))
+        print("  Samples failed this step:"+" ".join(\
+                                        [x.name for x in errors.keys()]))
     return errors.keys()
 
 
