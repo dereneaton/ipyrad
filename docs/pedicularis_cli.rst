@@ -6,15 +6,15 @@
 
 Empirical example (*Pedicularis*) - CLI
 ========================================
-For this tutorial we will assemble a single-end RAD-seq data set of
-13 individuals from the *Cyathophora* clade of the angiosperm genus 
+This tutorial is a bit less didactic and meant more to show an example of 
+expected run times and statistics for an empirical assembly. The data set
+is composed of single-end reads for a RAD-seq library prepared with the PstI
+enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
 *Pedicularis*, originally published by **Eaton and Ree (2013)** 
 (:ref:`link to open access article 
-<eaton_and_ree>`). All of the code 
-on this page uses the CLI, and thus should be executed in a terminal. 
+<eaton_and_ree>`). 
 
-
-Download the fastq files
+Download the fastQ files
 ~~~~~~~~~~~~~~~~~~~~~~~~
 The data are hosted online at the NCBI sequence read archive (SRA) under 
 accession id SRP021469. For convenience, I've also hosted the data at a 
@@ -22,67 +22,56 @@ publicly available dropbox link which we will use to download the data here,
 since it's a bit easier. Run the code below to download and decompress 
 the fastq files. They will be saved in a directory called 
 ``example_empirical_data/`` in your current directory. 
-The total size is approximately 1.1GB.
+The compressed data size is approximately 1.1GB.
 
 .. code:: bash
 
     ## curl grabs the data from a public dropbox url
     ## the curl command uses an upper-case o argument, not a zero.
-    curl -LskO https://dl.dropboxusercontent.com/u/2538935/example_empirical_rad.tar.gz
+    >>> curl -LskO https://dl.dropboxusercontent.com/u/2538935/example_empirical_rad.tar.gz
     
     ## the tar command decompresses the data directory
-    tar -xvzf example_empirical_rad.tar.gz
+    >>> tar -xvzf example_empirical_rad.tar.gz
 
 
 Starting an ipyrad analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Start by using the ``-n`` argument to ipyrad followed by a name
-for your assembly. This creates a parameter input file (params-name.txt) 
-which includes the Assembly name. I'll use the name ``base`` to start, 
-to indicate that this is the base assembly from which we will later 
-create new branches.
+As usual, start with the ``-n`` argument to create a new named Assembly. 
+I use the name ``base`` to indicate that this is the base assembly from 
+which we will later create several branches.
 
 .. code:: bash
-
-    ipyrad -n "base"
-
+    >>> ipyrad -n "base"
 
 .. parsed-literal::
-
     New file 'params-base.txt' created in /home/deren/Downloads
-
 
 
 Edit the params file
 ~~~~~~~~~~~~~~~~~~~~
+The data are already demultiplexed so we are going to set the 
+**sorted\_fastq\_path** to tell ipyrad the location of the fastq
+data files. I'm also setting the **project\_dir** to "pedicularis" -- 
+the name of the study system. In this tutorial we will create several 
+different assemblies of this data set under several different parameter 
+settings. Each will have a different assembly_name, and all of them will 
+end up in the pedicularis/ directory. All other parameters are left at 
+their default values for now.
 
-The data are already demultiplexed so we are going to
-set the **sorted\_fastq\_path** to tell it the location of the fastq
-data files. I also change the **project\_dir** to "pedicularis". In 
-this tutorial we will create several differnt assemblies of this 
-data set under several different parameter settings. Each will have a 
-different assembly_name, and all of them will end up in the pedicularis/
-directory. All other parameters are left at their default values for now.
-
-.. code:: bash
-
+.. parsed-literal::
     ## use your text editor to set the following params:
     ## for #4, use a wildcard (*) to select all 13 gzipped files.
-
     pedicularis                    ## [1] [project_dir] ...
     example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
 
 
-Run step1 to load in the fastq data files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Assemble the data set
+~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: bash
-
     ## Now run step 1 of the assembly 
     ## the -p flag tells ipyrad which assembly to use (params-base.txt)
-    ## the -s flag tells ipyrad which step to run (1)
-    
-    ipyrad -p params-base.txt -s 1 
+    >>> ipyrad -p params-base.txt -s 12
 
 
 .. parsed-literal::

@@ -212,6 +212,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
 def build(data, samples, indeltups, clustbits):
     """ 
     Builds the indels array and catclust.gz file from the aligned clusters.
+    Both are tmpfiles used for filling the supercatg and superseqs arrays.
     """
     ## sort into input order by chunk names
     indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
@@ -307,7 +308,7 @@ def cluster(data, noreverse, ipyclient):
                                      close_fds=True)
         done = 0
         while 1:
-            dat = os.read(dog, 4096)
+            dat = os.read(dog, 80192)
             if "Clustering" in dat:
                 try:
                     done = int(dat.split()[-1][:-1])
@@ -315,17 +316,17 @@ def cluster(data, noreverse, ipyclient):
                 except ValueError:
                     pass
                 ## break if done
-                if done == 100:
-                    break
-                else:
-                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                    progressbar(100, done, 
-                        " clustering across     | {}".format(elapsed))
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(100, done, 
+                    " clustering across     | {}".format(elapsed))
+            ## catches end chunk of printing if clustering went really fast
+            elif "Clusters:" in dat:
+                LOGGER.info("Found 'Clusters:', and broke loop")
+                break
             else:
-                ## if process is done, break.
-                if not proc.poll():
-                    break
-
+                time.sleep(0.1)
+        ## another catcher to let vsearch cleanup after clustering is done
+        proc.wait()
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
                     " clustering across     | {}".format(elapsed))
@@ -359,13 +360,19 @@ def build_h5_array(data, samples, ipyclient):
         maxlen *= 2
 
     ## open new h5 handle
-    data.database = os.path.join(data.dirs.consens, data.name+".hdf5")
-    io5 = h5py.File(data.database, 'w')
+    data.clust_database = os.path.join(
+                                    data.dirs.consens, data.name+".clust.hdf5")
+    io5 = h5py.File(data.clust_database, 'w')
 
     ## choose chunk optim size
-    chunks = data.nloci
-    if data.nloci > 10000:
+    #chunks = data.nloci
+    chunks = 100
+    if data.nloci > 5000:
         chunks = 1000
+    ### Warning: for some reason increasing the chunk size to 5000 
+    ### caused enormous problems in step7. Not sure why. hdf5 inflate error. 
+    #if data.nloci > 100000:
+    #    chunks = 5000        
 
     ## INIT FULL CATG ARRAY
     ## store catgs with a .10 loci chunk size
@@ -386,33 +393,14 @@ def build_h5_array(data, samples, ipyclient):
     superseqs.attrs["chunksize"] = chunks
     superseqs.attrs["samples"] = [i.name for i in samples]
 
-
-    ## INIT FULL SNPS ARRAY
-    ## array for snp string, 2 cols, - and *
-    snps = io5.create_dataset("snps", (data.nloci, maxlen, 2), 
-                              dtype=np.bool,
-                              chunks=(chunks, maxlen, 2), 
-                              compression='gzip')
-    snps.attrs["chunksize"] = chunks
-    snps.attrs["names"] = ["-", "*"]
-
-
-    ## INIT FULL FILTERS ARRAY
-    ## array for filters that will be applied in step7
-    filters = io5.create_dataset("filters", (data.nloci, 6), 
-                                 dtype=np.bool)
-    filters.attrs["filters"] = ["duplicates", "max_indels", "max_snps", 
-                                "max_hets", "min_samps", "bad_edges"]
-
-
-    ## INIT FULL EDGE ARRAY
-    ## array for edgetrimming 
-    edges = io5.create_dataset("edges", (data.nloci, 5), 
-                               dtype=np.uint16,
-                               chunks=(chunks, 5), 
-                               compression="gzip")
-    edges.attrs["chunksize"] = chunks
-    edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
+    ## allele count storage
+    alleles = io5.create_dataset("alleles", (data.nloci, ), dtype=np.uint16)
+    ## array for filter that will be applied in step7
+    dfilters = io5.create_dataset("duplicates", (data.nloci, ), dtype=np.bool)
+    ## array for filter that will be applied in step7
+    ifilters = io5.create_dataset("indels", (data.nloci, ), dtype=np.uint16)
+    ## array for pair splits locations
+    splits = io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
 
     ## close the big boy
     io5.close()
@@ -427,12 +415,9 @@ def build_h5_array(data, samples, ipyclient):
     for sample in samples:
         sample.stats.state = 6
 
-    ## write database as stats output?
-    #data.stats_files.s6 = "[this step has no stats ouput]"
 
 
-
-## TODO: can we skip singlecats if they find indels?
+## TODO: if we wanted to skip depths (and singlecats) can we if there's indels?
 def multicat(data, samples, ipyclient):
     """
     Runs singlecat for each sample.
@@ -482,9 +467,9 @@ def multicat(data, samples, ipyclient):
         print('\n  Interrupted! Cleaning up... ')
     
     finally:
-        elapsed = datetime.timedelta(seconds=int(res.elapsed))
-        progressbar(20, 0, " building database     | {}".format(elapsed))
         start = time.time()
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(20, 0, " building database     | {}".format(elapsed))
         done = 0
 
         for sname in jobs:
@@ -492,7 +477,7 @@ def multicat(data, samples, ipyclient):
             meta = jobs[sname].metadata
 
             ## do this if success
-            if meta.completed:
+            if jobs[sname].successful():
                 ## get the results
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -524,9 +509,11 @@ def insert_and_cleanup(data, sname):
     Result is a sample name returned by singlecat. This function loads 
     three tmp arrays saved by singlecat: dupfilter, indfilter, and indels, 
     and inserts them into the superfilters array and the catg array. 
+    It is NOT run in parallel, but rather, sequentially, on purpose.
+    If this is changed then the way the filters are filled needs to change.
     """
     ## grab supercatg from super and get index of this sample
-    io5 = h5py.File(data.database, 'r+')
+    io5 = h5py.File(data.clust_database, 'r+')
     catg = io5["catgs"]
     sidx = list(catg.attrs["samples"]).index(sname)
     LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
@@ -542,12 +529,18 @@ def insert_and_cleanup(data, sname):
     for chu in xrange(0, catg.shape[0], chunk):
         catg[chu:chu+chunk, sidx, ...] += icatg[chu:chu+chunk]
 
+    ## TODO: FILL allelic information here.
+
     ## put in loci that were filtered b/c of dups [0] or inds [1]
     ## this is not chunked in any way, and so needs to be changed if we 
     ## later decide to have multiple samples write to the disk at once.
-    filters = io5["filters"]
-    filters[:, 0] += ind5["dupfilter"][:]
-    filters[:, 1] += ind5["indfilter"][:]
+    dfilters = io5["duplicates"]
+    dfilters[:] += ind5["dfilter"][:]
+
+    ## read in the existing indels counter, line it up with this samples 
+    ## indels per loc, and get the max at each locus.
+    ifilters = io5["indels"]
+    ifilters[:] = np.array([ifilters[:], ind5["ifilter"][:]]).max(axis=0)
 
     ## close h5s
     io5.close()
@@ -567,7 +560,6 @@ def singlecat(args):
     the same order as the indels array, so indels are inserted from the indel
     array that is passed in. 
     """
-    #LOGGER.debug("singlecat: %s", sample.name)
     ## parse args
     data, sample, sidx = args
 
@@ -595,17 +587,19 @@ def singlecat(args):
     if os.path.exists(smpio):
         os.remove(smpio)
     smp5 = h5py.File(smpio, 'w')
-    icatg = smp5.create_dataset('icatg', (nloci, maxlen, 4), 
-                                dtype=np.uint32)
+    icatg = smp5.create_dataset('icatg', (nloci, maxlen, 4), dtype=np.uint32)
+                                
+    ## TODO: add allelic count array here
 
-    ## LOAD IN STEP5 CATG ARRAY
+
     ## get catg from step5 for this sample, the shape is (nconsens, maxlen)
     old_h5 = h5py.File(sample.files.database, 'r')
     catarr = old_h5["catg"][:]
+    ## TODO: get s5 allele count here
 
-    ## filters to fill while filling catg array
-    dupfilter = np.zeros(nloci, dtype=np.bool)
-    indfilter = np.zeros(nloci, dtype=np.bool)
+    ## local filters to fill while filling catg array
+    dfilter = np.zeros(nloci, dtype=np.bool)
+    ifilter = np.zeros(nloci, dtype=np.uint16)
 
     ## create a local array to fill until writing to disk for write efficiency
     local = np.zeros((1000, maxlen, 4), dtype=np.uint32)
@@ -614,7 +608,7 @@ def singlecat(args):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
 
-        ## write to disk after 10000 writes
+        ## write to disk after 1000 writes
         if not iloc % 1000:
             icatg[start:iloc] = local[:]
             ## reset
@@ -630,7 +624,7 @@ def singlecat(args):
             #icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
         elif ask.shape[0] > 1:
             ## store that this cluster failed b/c it had duplicate samples. 
-            dupfilter[iloc] = True
+            dfilter[iloc] = True
 
     ## write the leftover chunk 
     icatg[start:iloc] = local[:icatg[start:iloc].shape[0]]
@@ -639,18 +633,28 @@ def singlecat(args):
     ## slower than the local setting
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
-    LOGGER.debug("starting seedmatching")
+    LOGGER.info("seedmatching")
     for iloc in seedmatch2:
         sfill = udic.groups.keys()[iloc].split("_")[-1]
         icatg[iloc] = catarr[sfill, :, :]
+    LOGGER.info("done seedmatching")
 
     ## close the old hdf5 connections
     old_h5.close()
 
     ## get indel locations for this sample
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
+    indh5 = h5py.File(ipath, 'r')
+
+    LOGGER.info("""
+        sidx %s,
+        indh5["indels"].shape %s,
+        indh5["indels"][sidx, :, :].shape %s
+        """, sidx, indh5["indels"].shape, indh5["indels"][sidx, :, :].shape)
+
     with h5py.File(ipath, 'r') as indh5:
         indels = indh5["indels"][sidx, :, :]
+
     LOGGER.info("loading indels for %s %s, %s", sample.name, sidx, np.sum(indels[:10]))
 
     ## insert indels into new_h5 (icatg array) which now has loci in the same
@@ -658,15 +662,10 @@ def singlecat(args):
     for iloc in xrange(icatg.shape[0]):
         ## indels locations
         indidx = np.where(indels[iloc, :])[0]
+        #LOGGER.info("indidx %s, len %s", indidx.shape, len(indidx))
         if np.any(indidx):
-            ### apply indel filter 
-            if "pair" in data.paramsdict["datatype"]:
-                ## get lenght of locus 
-                if len(indidx) > sum(data.paramsdict["max_Indels_locus"]):
-                    indfilter[iloc] = True
-            else:
-                if len(indidx) > data.paramsdict["max_Indels_locus"][0]:
-                    indfilter[iloc] = True
+            ## store number of indels for this sample at this locus
+            ifilter[iloc] = len(indidx)
 
             ## insert indels into catg array
             newrows = icatg[iloc].shape[0] + len(indidx)
@@ -679,8 +678,8 @@ def singlecat(args):
             icatg[iloc] = newfill[:icatg[iloc].shape[0]]
 
     ## put filteres into h5 object
-    smp5.create_dataset("indfilter", data=indfilter)
-    smp5.create_dataset("dupfilter", data=dupfilter)
+    smp5.create_dataset("ifilter", data=ifilter)
+    smp5.create_dataset("dfilter", data=dfilter)
     ## close the new h5 that was written to
     smp5.close()
 
@@ -692,18 +691,18 @@ def singlecat(args):
 def fill_superseqs(data, samples):
     """ 
     Fills the superseqs array with seq data from cat.clust 
+    and fill the edges array with information about paired split locations.
     """
 
     ## load super to get edges
-    io5 = h5py.File(data.database, 'r+')
+    io5 = h5py.File(data.clust_database, 'r+')
     superseqs = io5["seqs"]
-    edges = io5["edges"]
+    splits = io5["splits"]
 
     ## samples are already sorted
     snames = [i.name for i in samples]
     ## get maxlen again
     maxlen = data._hackersonly["max_fragment_length"]
-    ## TODO: maybe not 2X here, but just add the max-indels len
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
 
@@ -731,7 +730,7 @@ def fill_superseqs(data, samples):
         ## if chunk is full put into superseqs and reset counter
         if cloc == chunksize:
             superseqs[iloc-cloc:iloc] = chunkseqs
-            edges[iloc-cloc:iloc, 4] = chunkedge
+            splits[iloc-cloc:iloc] = chunkedge
             ## reset chunkseqs, chunkedge, cloc
             cloc = 0
             chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
@@ -764,18 +763,17 @@ def fill_superseqs(data, samples):
 
     ## write final leftover chunk
     superseqs[iloc-cloc:,] = chunkseqs[:cloc]
-    edges[iloc-cloc:, 4] = chunkedge[:cloc]
+    splits[iloc-cloc:] = chunkedge[:cloc]
 
     ## close super
     io5.close()
 
     ## edges is filled with splits for paired data.
     LOGGER.info("done filling superseqs")
-    #LOGGER.info('edges preview %s', edges[:10])
-    #LOGGER.info('edges preview %s', edges[-10:])
 
     ## close handle
     clusters.close()
+
 
 
 ## TODO: This could use a progress bar, and to be parallelized, maybe.
@@ -863,7 +861,8 @@ def build_reads_file(data):
     return clustbits
 
 
-## This is slow currently, high memory, and has no progress bar...
+
+## This is slow currently, high memory, 
 def build_input_file(data, samples, outgroups, randomseed):
     """ 
     Make a concatenated consens files to input to vsearch. 
@@ -899,7 +898,7 @@ def build_input_file(data, samples, outgroups, randomseed):
     LOGGER.info("sorting sequences into len classes")
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(100, 1, 
-        " concat/shuf input  | {}".format(elapsed))
+        " concat/shuf input     | {}".format(elapsed))
 
     ## read back in cons as a data frame
     consdat = pd.read_table(allcons, delim_whitespace=1, header=None)
@@ -955,8 +954,8 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     """
 
     ## clean the slate
-    if os.path.exists(data.database):
-        os.remove(data.database)
+    if os.path.exists(data.clust_database):
+        os.remove(data.clust_database)
 
     ## make file with all samples reads, allow priority to shunt outgroups
     ## to the end of the file
@@ -979,10 +978,12 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## builds the final HDF5 array which includes three main keys
     ## /catg -- contains all indiv catgs and has indels inserted
     ##   .attr['samples'] = [samples]
-    ## /filters -- empty for now, will be filled in step 7
+    ## /filters -- filled for dups, left empty for others until step 7.
     ##   .attr['filters'] = [f1, f2, f3, f4, f5]
     ## /seqs -- contains the clustered sequence data as string arrays
     ##   .attr['samples'] = [samples]
+    ## /edges -- gets the paired split locations for now.
+    ## /snps  -- left empty for now
     LOGGER.info("building full database")    
     ## calls singlecat func inside
     build_h5_array(data, samples, ipyclient)

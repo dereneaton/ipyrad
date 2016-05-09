@@ -5,7 +5,6 @@
 from __future__ import print_function
 
 import os
-import dill
 import time
 import json
 import pandas as pd
@@ -17,50 +16,6 @@ from collections import OrderedDict
 
 # pylint: disable=W0212
 # pylint: disable=W0142
-
-
-def load_assembly(assemblyname, quiet=False):
-    """ loads an ipython dill pickled Assembly object """
-
-    ## flexible name entry
-    locations = [assemblyname]
-    locations.append(assemblyname+".assembly")
-
-    ## does Assembly saved obj exist?
-    for name in locations:
-        try:
-            ## load in the Assembly object
-            with open(name, "rb") as pickin:
-                data = dill.load(pickin)
-
-            ## will raise Attribute error if not loaded
-
-            ## create shorter print name if in user path
-            name = name.replace(os.path.expanduser("~"), "~")
-            
-            ## print msg
-            if not quiet:
-                print("  loading Assembly: {} [{}]".format(data.name, name))
-
-            ## Test if our assembly is currently up to date
-            ## How to deal with assembly objects falling out of synch with the 
-            ## currently assembly params in the code. If forceupdate is on
-            ## then update the loaded assembly to the current version. If 
-            ## forceupdate is not on, then test to check if the loaded
-            ## assembly is current. If it is then fine, if not bail out with
-            ## a hopefully useful error message.
-            if test_assembly(data):
-                print("  Attempting to update assembly to newest version.")
-                data = update_assembly(data)
-
-        except (IOError, AttributeError):
-            pass
-
-    try:
-        return data
-    except UnboundLocalError:
-        raise AssertionError("Attempting to load assembly. File not found: {}"\
-                             .format(assemblyname))
 
 
 
@@ -160,6 +115,7 @@ def save_json(data):
         ("samples", data.__dict__["samples"].keys()),
         ("populations", data.__dict__["populations"]),
         ("database", data.__dict__["database"]),
+        ("clust_database", data.__dict__["clust_database"]),        
         ("outfiles", data.__dict__["outfiles"]),
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),
