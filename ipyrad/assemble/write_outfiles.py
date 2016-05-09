@@ -17,10 +17,12 @@ from __future__ import print_function
 
 import pandas as pd
 import numpy as np
+import itertools
 import datetime
 import shutil
 import time
 import glob
+import gzip
 import h5py
 import os
 from collections import Counter, OrderedDict
@@ -39,7 +41,8 @@ LOGGER = logging.getLogger(__name__)
 
 #OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
 #                  'str', 'geno', 'treemix', 'migrate', 'gphocs']
-OUTPUT_FORMATS = ['phy', 'nex', 'snps', 'usnps', 'str', 'geno']
+
+OUTPUT_FORMATS = ['phy', 'nex', 'snps', 'usnps', 'str', 'geno', 'vcf']
 
 
 
@@ -49,50 +52,41 @@ def run(data, samples, force, ipyclient):
     directory, then create the requested outfiles. Excluded samples are already
     removed from samples.
     """
+
     ## prepare dirs
     data.dirs.outfiles = os.path.join(data.dirs.project, data.name+"_outfiles")
     if not os.path.exists(data.dirs.outfiles):
         os.mkdir(data.dirs.outfiles)
 
+    ## make the snps/filters data base, fills the dups and inds filters
+    ## and fills the splits locations
+    data.database = os.path.join(data.dirs.outfiles, data.name+".hdf5")
+    init_arrays(data)
+
     ## Apply filters to supercatg and superhdf5 with selected samples
     ## and fill the filters and edge arrays.
-    LOGGER.info("Applying filters")
     filter_all_clusters(data, samples, ipyclient)
 
     ## Everything needed is in the now filled h5 database. Filters were applied
     ## with 'samples' taken into account. Now we create the loci file (default)
-    ## output and get some data back for building the stats file
-    ## 'keep' has the non-filtered loci idxs. 
-    start = time.time()
-    LOGGER.info("Writing .loci file")
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, 
-        " writing outfiles      | {}".format(elapsed))
-    samplecounts, locuscounts, keep = make_loci(data, samples)
+    ## output and build a stats file. 
+    data.outfiles.loci = os.path.join(data.dirs.outfiles, data.name+".loci")
+    make_loci_and_stats(data, samples, ipyclient)
 
-    ## Write stats file output
-    LOGGER.info("Writing stats output")
-    make_stats(data, samples, samplecounts, locuscounts)
-
-    ## OPTIONAL OUTPUTS
-    ## grab from params as a string, if commas then split to a list
-    ## phy, nex, str
+    ## OPTIONAL OUTPUTS -- grab from params as a string, if commas then split 
+    ## to a list, e.g., [phy, nex, str]. 
     output_formats = data.paramsdict["output_formats"]
     if "," in output_formats:
         output_formats = [i.strip() for i in output_formats.split(",")]
     if "*" in output_formats:
         output_formats = OUTPUT_FORMATS
 
-    ## not included in *
+    ## held separate from *output_formats cuz it's big and parallelized 
     if 'vcf' in output_formats:
-        LOGGER.info("Writing .vcf file")        
-        if data._headers:
-            print("  building vcf ")
-        make_vcf(data, samples, keep)
+        make_vcf(data, samples, ipyclient)
 
-    ## make other array-based formats
-    LOGGER.info("Writing other formats")
-    make_outfiles(data, samples, keep, output_formats, ipyclient)
+    ## make other array-based formats, recalcs keeps and arrays
+    make_outfiles(data, samples, output_formats, ipyclient)
 
     ## print friendly message
     shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
@@ -103,10 +97,12 @@ def run(data, samples, force, ipyclient):
 def make_stats(data, samples, samplecounts, locuscounts):
     """ write the output stats file and save to Assembly obj."""
     ## load the h5 database
-    inh5 = h5py.File(data.database, 'r')
-    anames = inh5["seqs"].attrs["samples"]
-    nloci = inh5["seqs"].shape[0]
-    optim = inh5["seqs"].attrs["chunksize"]#    optim = 1000
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r')    
+    ## get meta info 
+    anames = io5["seqs"].attrs["samples"]
+    nloci = io5["seqs"].shape[0]
+    optim = io5["seqs"].attrs["chunksize"]
 
     ## open the out handle. This will have three data frames saved to it. 
     ## locus_filtering, sample_coverages, and snp_distributions
@@ -122,30 +118,32 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #snpcounts = Counter()
     piscounts = Counter()
     varcounts = Counter()
-    for i in range(50):
+    for i in range(200):
         piscounts[i] = 0
         varcounts[i] = 0
+
     #bisnps = Counter()
     while start < nloci:
         hslice = [start, start+optim]
         ## load each array
-        afilt = inh5["filters"][hslice[0]:hslice[1], ]
-        asnps = inh5["snps"][hslice[0]:hslice[1], ]
+        afilt = co5["filters"][hslice[0]:hslice[1], ]
+        asnps = co5["snps"][hslice[0]:hslice[1], ]
 
         ## get subarray results from filter array
-        # "max_indels", "max_snps", "max_hets", "min_samps", "bad_edges"
-        #print('afilt - ', afilt)
+        # max_indels, max_snps, max_hets, min_samps, bad_edges, max_alleles
         filters += afilt.sum(axis=0)
-        #print('filters - ', filters)
         passed += np.sum(afilt.sum(axis=1) == 0)
 
+        ## get filter to count snps for only passed loci
+        ## should we filter by all vars, or just by pis? doing all var now.
+        apply_filter = afilt.sum(axis=1).astype(np.bool)
+
         ## get snps counts
-        snplocs = asnps[:].sum(axis=1)
+        snplocs = asnps[~apply_filter, :].sum(axis=1)
         varlocs = snplocs.sum(axis=1)
         varcounts.update(Counter(varlocs))
         #snpcounts.update(Counter(snplocs[:, 0]))
         piscounts.update(Counter(snplocs[:, 1]))
-        ## bisnps TODO snpcols[2]
 
         ## increase counter to advance through h5 database
         start += optim
@@ -160,7 +158,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
         "filtered_by_max_snps",
         "filtered_by_max_hetero",
         "filtered_by_min_sample",
-        "filtered_by_edge_trim",
+        "filtered_by_max_alleles",
         "total_filtered_loci"])
 
     print("\n\n## The number of loci caught by each filter."+\
@@ -201,6 +199,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     data.stats_dfs.s7_loci = pd.concat([locdat, locsums], axis=1)
     data.stats_dfs.s7_loci.to_string(buf=outstats)
 
+
     #########################################################################
     ## get stats for SNP_distribution    
     smax = max([i+1 for i in varcounts if varcounts[i]])
@@ -228,7 +227,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ## close it
     outstats.close()
-    inh5.close()
+    io5.close()
+    co5.close()
 
 
 
@@ -250,18 +250,18 @@ def filter_all_clusters(data, samples, ipyclient):
     Open the HDF5 array with seqs, catg, and filter data. Fill the remaining
     filters. 
     """
-    LOGGER.debug("in filter_all_clusters")
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
 
     ## get chunk size from the HD5 array and close
-    with h5py.File(data.database, 'r') as inh5:
-        ## the size of chunks for reading/writing
-        optim = inh5["seqs"].attrs["chunksize"]
-        ## the samples in the database in their locus order
-        dbsamples = inh5["seqs"].attrs["samples"]
-        ## the total number of loci        
-        nloci = inh5["seqs"].shape[0]
+    io5 = h5py.File(data.clust_database, 'r')
+    ## the size of chunks for reading/writing
+    optim = io5["seqs"].attrs["chunksize"]
+    ## the samples in the database in their locus order
+    dbsamples = io5["seqs"].attrs["samples"]
+    ## the total number of loci        
+    nloci = io5["seqs"].shape[0]
+    io5.close()
 
     ## make a tmp directory for saving chunked arrays to
     chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
@@ -271,21 +271,20 @@ def filter_all_clusters(data, samples, ipyclient):
     ## get the indices of the samples that we are going to include
     sidx = select_samples(dbsamples, samples)
 
-    ## Split dataset into chunks
+    ## Put inside a try statement so we can delete tmpchunks 
     try:
         ## load a list of args to send to Engines. Each arg contains the index
-        ## to sample 1000 loci from catg, seqs, filters &or edges, which will
+        ## to sample optim loci from catg, seqs, filters &or edges, which will
         ## be loaded on the remote Engine. 
 
         ## create job queue
         start = time.time()
-        results = [] #submitted_args = []
+        results = [] 
         submitted = 0
         while submitted < nloci:
             hslice = np.array([submitted, submitted+optim])
             async = lbview.apply(filter_stacks, [data, sidx, hslice])
             results.append(async)
-            #submitted_args.append([data, sidx, hslice])
             submitted += optim
 
         ## run filter_stacks on all chunks
@@ -299,8 +298,9 @@ def filter_all_clusters(data, samples, ipyclient):
             else:
                 break
         progressbar(20, 20, " filtering loci        | {}".format(elapsed))        
-        #if data._headers:
         print("")
+
+        [i.get() for i in results]
 
         ## get all the saved tmp arrays for each slice
         tmpsnp = glob.glob(os.path.join(chunkdir, "snpf.*.npy"))
@@ -315,25 +315,24 @@ def filter_all_clusters(data, samples, ipyclient):
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
-        ## load the full filter array who's order is
-        ## ["duplicates", "max_indels", 
-        ## "max_snps", "max_hets", "min_samps", "bad_edges"]
-        inh5 = h5py.File(data.database, 'r+')
-        superfilter = inh5["filters"]
-
-        ## iterate across filter types
-        for fidx, ftype in zip(range(2, 6), arrdict.keys()):
+        ## re-load the full filter array who's order is
+        ## ["duplicates", "max_indels", "max_snps", "max_hets", "min_samps", "max_alleles"]
+        io5 = h5py.File(data.database, 'r+')
+        superfilter = np.zeros(io5["filters"].shape, io5["filters"].dtype)
+        ## iterate across filter types (dups & indels are already filled)
+        ## we have [4,4] b/c minf and edgf both write to minf
+        for fidx, ftype in zip([2, 3, 4, 4], arrdict.keys()):
             ## fill in the edgefilters
             for ffile in arrdict[ftype]:
                 ## grab a file and get it's slice            
                 hslice = int(ffile.split(".")[-2])
                 ## load in the array
                 arr = np.load(ffile)
-                ## store slice into full array
-                superfilter[hslice:hslice+optim, fidx] = arr
+                ## store slice into full array (we use += here because the minf
+                ## and edgf arrays both write to the same filter). 
+                superfilter[hslice:hslice+optim, fidx] += arr
+        io5["filters"][:] = superfilter
         del arr
-        ## finished filling filter array
-        #LOGGER.info('superfilter[:10] : %s', superfilter[:10])        
 
         ## store the other arrayed values (edges, snps)
         edgarrs = glob.glob(os.path.join(chunkdir, "edgearr.*.npy"))
@@ -343,22 +342,22 @@ def filter_all_clusters(data, samples, ipyclient):
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
-
-        ## fill the edge array 
-        superedge = inh5['edges']
+        ## fill the edge array, splits are already in there.
+        superedge = np.zeros(io5['edges'].shape, io5['edges'].dtype) 
         for ffile in arrdict['edges']:
             ## grab a file and get it's slice            
             hslice = int(ffile.split(".")[-2])
             ## load in the array w/ shape (hslice, 5)
             arr = np.load(ffile)
             ## store slice into full array
-            superedge[hslice:hslice+optim, 0:4, ] = arr
-        del arr
-        ## finished with superedge
-        #LOGGER.info('superedge[:10] : %s', superedge[:10])
+            LOGGER.info("arr is %s", arr.shape)
+            LOGGER.info("superedge is %s", superedge.shape)            
+            superedge[hslice:hslice+optim, :] = arr
+        io5["edges"][:, :] = superedge
+        del arr, superedge
 
         ## fill the snps array. shape= (nloci, maxlen, 2)
-        supersnps = inh5['snps']
+        supersnps = np.zeros(io5['snps'].shape, io5['snps'].dtype)
         for ffile in arrdict['snps']:
             ## grab a file and get it's slice            
             hslice = int(ffile.split(".")[-2])
@@ -366,13 +365,11 @@ def filter_all_clusters(data, samples, ipyclient):
             arr = np.load(ffile)
             ## store slice into full array
             supersnps[hslice:hslice+optim, :, :] = arr
+        io5["snps"][:] = supersnps            
         del arr
-        ## finished with superedge
-        #LOGGER.info('supersnps[:10] : %s', supersnps[:10])
-
 
     finally:
-        ## clean up the tmp files/dirs
+        ## clean up the tmp files/dirs even if we failed.
         try:
             LOGGER.info("finished filtering")
             shutil.rmtree(chunkdir)
@@ -396,101 +393,174 @@ def padnames(names):
 
 
 
-## incorportatig samples...
-def make_loci(data, samples):
+## incorporating samples...
+def make_loci_and_stats(data, samples, ipyclient):
     """ 
-    Makes the .loci file from h5 data base. Iterates by 1000 loci at a 
+    Makes the .loci file from h5 data base. Iterates by optim loci at a 
     time and write to file. 
     """
+    ## start vcf progress bar
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 0, 
+        " building loci/stats   | {}".format(elapsed))
 
-    ## load the h5 database
-    inh5 = h5py.File(data.database, 'r')
+    ## get some db info
+    io5 = h5py.File(data.clust_database, 'r')
+    ## will iterate optim loci at a time
+    optim = io5["seqs"].attrs["chunksize"]
+    nloci = io5["seqs"].shape[0]
+    anames = io5["seqs"].attrs["samples"]
 
-    ## open the out handle
-    data.outfiles.loci = os.path.join(data.dirs.outfiles, data.name+".loci")
-    locifile = open(data.outfiles.loci, 'w')
-
-    ## iterate 1000 loci at a time
-    #optim = 1000
-    optim = inh5["seqs"].attrs["chunksize"]    
-    nloci = inh5["seqs"].shape[0]
-
-    ## get sidx of samples
-    anames = inh5["seqs"].attrs["samples"]
     ## get name and snp padding
     pnames, snppad = padnames(anames)
     snames = [i.name for i in samples]
     smask = np.array([i not in snames for i in anames])
 
     ## keep track of how many loci from each sample pass all filters
-    samplecov = np.zeros(len(anames), dtype=int)
+    samplecov = np.zeros(len(anames), dtype=np.int32)
     locuscov = Counter()
+
     ## set initial value to zero for all values above min_samples_locus
     for cov in range(data.paramsdict["min_samples_locus"], len(anames)+1):
         locuscov[cov] = 0
 
-    ## apply all filters and write loci data
-    start = 0
-    while start < nloci:
-        hslice = [start, start+optim]
-        afilt = inh5["filters"][hslice[0]:hslice[1], ]
-        aedge = inh5["edges"][hslice[0]:hslice[1], ]
-        aseqs = inh5["seqs"][hslice[0]:hslice[1], ]
-        asnps = inh5["snps"][hslice[0]:hslice[1], ]
+    ## client for sending jobs to parallel engines
+    lbview = ipyclient.load_balanced_view()
 
-        ## which loci passed all filters
-        keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+    ## send jobs in chunks
+    loci_asyncs = []
+    for istart in xrange(0, nloci, optim):
+        args = [data, optim, pnames, snppad, smask, istart, samplecov, locuscov]
+        loci_asyncs.append(lbview.apply(locichunk, args))
 
-        ## store until printing
-        store = []
+    ### FOR DEBUGGING
+    # ipyclient.wait()
+    # for job in loci_asyncs:
+    #     if not job.successful():
+    #         print(job.metadata)
 
-        ## write loci that passed after trimming edges, then write snp string
-        for iloc in keep:
-            edg = aedge[iloc]
-            args = [iloc, pnames, snppad, edg, aseqs, asnps, 
-                    smask, samplecov, locuscov, start]
-            if edg[4]:
-                outstr, samplecov, locuscov = enter_pairs(*args)
-                store.append(outstr)
-            else:
-                outstr, samplecov, locuscov = enter_singles(*args)
-                store.append(outstr)
+    ## just a waiting function for chunks to finish
+    tmpids = list(itertools.chain(*[i.msg_ids for i in loci_asyncs]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(time.sleep, 0.1)
 
-        ## write to file and clear store
-        locifile.write("\n".join(store) + "\n")
-        store = []
+    while 1:
+        done = [i.ready() for i in loci_asyncs]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(done), sum(done),
+            " building loci/stats   | {}".format(elapsed))
+        if not res.completed:
+            time.sleep(1)
+        else:
+            print("")   
+            break            
+
+    ## check for errors
+    for job in loci_asyncs:
+        if not job.successful():
+            print(job.metadata)
+
+    ## concat and cleanup
+    results = [i.get() for i in loci_asyncs]
+    ## update dictionaries
+    for chunk in results:
+        samplecov += chunk[0]
+        locuscov.update(chunk[1])
+
+    ## get all chunk files
+    tmploci = glob.glob(data.outfiles.loci+".[0-9]*")
+    ## sort by start value
+    tmploci.sort(key=lambda x: int(x.split(".")[-1]))
+    ## write tmpchunks to locus file
+    with open(data.outfiles.loci, 'w') as locifile:
+        for tmploc in tmploci:
+            with open(tmploc, 'r') as inloc:
+                locifile.write(inloc.read())
+            os.remove(tmploc)
+
+    ## make stats file from data
+    make_stats(data, samples, samplecov, locuscov)
+    io5.close()
+
+
+
+def locichunk(args):
+    """ 
+    Function from make_loci to apply to chunks. smask is sample mask. 
+    """
+    ## parse args
+    data, optim, pnames, snppad, smask, start, samplecov, locuscov = args
+
+    ## this slice 
+    hslice = [start, start+optim]
+
+    ## get filter db info
+    co5 = h5py.File(data.database, 'r')
+    afilt = co5["filters"][hslice[0]:hslice[1], ]
+    aedge = co5["edges"][hslice[0]:hslice[1], ]
+    asnps = co5["snps"][hslice[0]:hslice[1], ]
+
+    ## get seqs db 
+    io5 = h5py.File(data.clust_database, 'r')
+    aseqs = io5["seqs"][hslice[0]:hslice[1], ]
+
+    ## which loci passed all filters
+    #LOGGER.info("edgfilt is %s", aedge.sum())
+    keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+    #LOGGER.info("keep is %s", keep.sum())
+    ## store until printing
+    store = []
+
+    ## write loci that passed after trimming edges, then write snp string
+    for iloc in keep:
+        edg = aedge[iloc]
+        args = [iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locuscov, start]
+        if edg[4]:
+            outstr, samplecov, locuscov = enter_pairs(*args)
+            store.append(outstr)
+        else:
+            outstr, samplecov, locuscov = enter_singles(*args)
+            store.append(outstr)
+
+    ## write to file and clear store
+    tmpo = os.path.join(data.dirs.outfiles, data.name+".loci.{}".format(start))
+    with open(tmpo, 'w') as tmpout:
+        tmpout.write("\n".join(store) + "\n")
     
-        ## increase the counter
-        start += optim
-
-    ## close handle
-    locifile.close()
-    inh5.close()
+    ## close handles
+    io5.close()
+    co5.close()    
 
     ## return sample counter
-    return samplecov, locuscov, keep
+    return samplecov, locuscov, start
 
 
 
-def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, 
-                smask, samplecov, locuscov, start):
+def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locuscov, start):
     """ enters funcs for pairs """
-    seq1 = aseqs[iloc, :, edg[0]:edg[1]]
-    seq2 = aseqs[iloc, :, edg[2]+edg[4]+4:edg[3]+edg[4]]
+
     ## snps was created using only the selected samples.
-    snp1 = asnps[iloc, edg[0]:edg[1], ]
-    snp2 = asnps[iloc, edg[2]+edg[4]+4:edg[3]+edg[4], ]    
+    seq1 = aseqs[iloc, :, edg[0]:edg[1]+1]
+    snp1 = asnps[iloc, edg[0]:edg[1]+1, ]
+
+    seq2 = aseqs[iloc, :, edg[2]+1:edg[3]+1]
+    snp2 = asnps[iloc, edg[2]+1:edg[3]+1, ]    
+
     ## remove rows with all Ns, seq has only selected samples
     nalln = np.all(seq1 == "N", axis=1)
+
     ## make mask of removed rows and excluded samples. Use the inverse
     ## of this to save the coverage for samples
     nsidx = nalln + smask
-    samplecov += np.invert(nsidx).astype(int)
+    samplecov = samplecov + np.invert(nsidx).astype(int)
     locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
+
     ## select the remaining names in order
     seq1 = seq1[~nsidx, ]
     seq2 = seq2[~nsidx, ]    
     names = pnames[~nsidx]
+
     ## save string for printing, excluding names not in samples
     outstr = "\n".join(\
         [name + s1.tostring()+"nnnn"+s2.tostring() for name, s1, s2 in \
@@ -515,20 +585,26 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps,
 
 
 
-def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps, 
-                  smask, samplecov, locuscov, start):
+def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locuscov, start):
     """ enter funcs for SE or merged data """
+
     ## grab all seqs between edges
-    seq = aseqs[iloc, :, edg[0]:edg[1]]
-    ## snps was created using only the selected samples.
-    snp = asnps[iloc, edg[0]:edg[1], ]
+    seq = aseqs[iloc, :, edg[0]:edg[1]+1]
+    ## snps was created using only the selected samples, and is edge masked. 
+    ## The mask is for counting snps quickly, but trimming is still needed here
+    ## to make the snps line up with the seqs in the snp string. 
+    snp = asnps[iloc, edg[0]:edg[1]+1, ]
+
     ## remove rows with all Ns, seq has only selected samples
     nalln = np.all(seq == "N", axis=1)
+
     ## make mask of removed rows and excluded samples. Use the inverse
     ## of this to save the coverage for samples
     nsidx = nalln + smask
-    samplecov += np.invert(nsidx).astype(int)
-    locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
+    samplecov = samplecov + np.invert(nsidx).astype(np.int32)
+    idx = np.sum(np.invert(nsidx).astype(np.int32))
+    locuscov[idx] += 1
+
     ## select the remaining names in order
     seq = seq[~nsidx, ]
     names = pnames[~nsidx]
@@ -542,8 +618,63 @@ def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps,
                  "*" if snp[i, 1] else \
                  " " for i in range(len(snp))]
     outstr += "\n" + snppad + "".join(snpstring) + "|{}|".format(iloc+start)
-
+    #LOGGER.info("outstr %s", outstr)
     return outstr, samplecov, locuscov
+
+
+
+def init_arrays(data):
+    """ 
+    Create database file for storing final filtered snps data as hdf5 array.
+    """
+
+    ## get stats from step6 h5 and create new h5
+    co5 = h5py.File(data.clust_database, 'r')
+    io5 = h5py.File(data.database, 'w')
+
+    ## get maxlen and chunk len
+    maxlen = data._hackersonly["max_fragment_length"]
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
+        maxlen *= 2
+    chunks = co5["seqs"].attrs["chunksize"]
+    nloci = co5["seqs"].shape[0]
+
+    ## make array for snp string, 2 cols, - and *
+    snps = io5.create_dataset("snps", (nloci, maxlen, 2), 
+                              dtype=np.bool,
+                              chunks=(chunks, maxlen, 2), 
+                              compression='gzip')
+    snps.attrs["chunksize"] = chunks
+    snps.attrs["names"] = ["-", "*"]
+
+    ## array for filters that will be applied in step7
+    filters = io5.create_dataset("filters", (nloci, 6), dtype=np.bool)
+    filters.attrs["filters"] = ["duplicates", "max_indels", 
+                                "max_snps", "max_hets", 
+                                "min_samps", "max_allele"]
+
+    ## array for edgetrimming 
+    edges = io5.create_dataset("edges", (nloci, 5), 
+                               dtype=np.uint16,
+                               chunks=(chunks, 5), 
+                               compression="gzip")
+    edges.attrs["chunksize"] = chunks
+    edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
+
+    ## xfer data from clustdb to finaldb
+    edges[:, 4] = co5["splits"][:]
+    filters[:, 0] = co5["duplicates"][:]
+    
+    ## apply indel filter 
+    if "pair" in data.paramsdict["datatype"]:
+        ## get lenght of locus 
+        maxinds = sum(data.paramsdict["max_Indels_locus"])
+    else:
+        maxinds = data.paramsdict["max_Indels_locus"][0]
+    filters[:, 1] = co5["indels"][:] > maxinds
+
+    io5.close()
+    co5.close()
 
 
 
@@ -560,74 +691,64 @@ def filter_stacks(args):
     """
     data, sidx, hslice = args
 
-    try:
-        ioh5 = h5py.File(data.database, 'r')
-        ## get a chunk (hslice) of loci for the selected samples (sidx)
-        superseqs = ioh5["seqs"][hslice[0]:hslice[1], sidx,]
-        LOGGER.info('logging from engine: %s', superseqs.shape)
+    ## open h5 handles
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r+')
+    ## get a chunk (hslice) of loci for the selected samples (sidx)
+    superseqs = io5["seqs"][hslice[0]:hslice[1], sidx,]
 
-        ## get first index of splits for paired reads. Only need this until 
-        ## get_edges gets the edges and then these are stored together
-        splits = ioh5["edges"][hslice[0]:hslice[1], 4]
-        #LOGGER.info('splits preview %s', splits[:10])
-        #LOGGER.info('splits preview %s', splits[-10:])        
+    ## duplicate filter is already filled
+    ## indels filter is already filled
 
-        ## get edges of superseqs, since edges should be trimmed off before
-        ## counting hets and snps. Technically, this could edge trim clusters
-        ## to the point that they are below the minlen, and so this also 
-        ## constitutes a filter, though one that is uncommon. For this reason
-        ## we have a filter also called edgfilter.
-        LOGGER.debug("getting edges")
-        edgfilter, edgearr = get_edges(data, superseqs, splits)
-        del splits
-        LOGGER.debug("edgfilter %s", edgfilter[:5])
-        ## duplicates are already filtered during step6.
+    ## fill edge filter
+    ## get edges of superseqs and supercats, since edges need to be trimmed 
+    ## before counting hets and snps. Technically, this could edge trim 
+    ## clusters to the point that they are below the minlen, and so this 
+    ## also constitutes a filter, though one that is uncommon. For this 
+    ## reason we have another filter called edgfilter.
+    splits = co5["edges"][hslice[0]:hslice[1], 4]
+    edgfilter, edgearr = get_edges(data, superseqs, splits)
+    del splits
 
-        ## minsamp coverages filtered from superseqs
-        minfilter = filter_minsamp(data, superseqs)
-        #LOGGER.debug("minfilter %s", minfilter[:5])
+    ## minsamp coverages filtered from superseqs
+    minfilter = filter_minsamp(data, superseqs)
 
-        ## maxhets per site column from superseqs after trimming edges
-        hetfilter = filter_maxhet(data, superseqs, edgearr)
+    ## maxhets per site column from superseqs after trimming edges
+    hetfilter = filter_maxhet(data, superseqs, edgearr)
 
-        ## Build the .loci snpstring as an array (snps) 
-        ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
-        snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
+    ## Build the .loci snpstring as an array (snps) 
+    ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
+    snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
 
-        ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
-        chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
+    ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
+    chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
 
-        handle = os.path.join(chunkdir, "edgf.{}.npy".format(hslice[0]))
-        with open(handle, 'w') as out:
-            np.save(out, edgfilter)
+    handle = os.path.join(chunkdir, "edgf.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, edgfilter)
 
-        handle = os.path.join(chunkdir, "minf.{}.npy".format(hslice[0]))
-        with open(handle, 'w') as out:
-            np.save(out, minfilter)
+    handle = os.path.join(chunkdir, "minf.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, minfilter)
 
-        handle = os.path.join(chunkdir, "hetf.{}.npy".format(hslice[0]))
-        with open(handle, 'w') as out:
-            np.save(out, hetfilter)
+    handle = os.path.join(chunkdir, "hetf.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, hetfilter)
 
-        handle = os.path.join(chunkdir, "snpf.{}.npy".format(hslice[0]))
-        with open(handle, 'w') as out:
-            np.save(out, snpfilter)
+    handle = os.path.join(chunkdir, "snpf.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, snpfilter)
 
-        handle = os.path.join(chunkdir, "snpsarr.{}.npy".format(hslice[0]))
-        with open(handle, 'w') as out:
-            np.save(out, snpsarr)
+    handle = os.path.join(chunkdir, "snpsarr.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, snpsarr)
 
-        handle = os.path.join(chunkdir, "edgearr.{}.npy".format(hslice[0]))
-        with open(handle, 'w') as out:
-            np.save(out, edgearr)
+    handle = os.path.join(chunkdir, "edgearr.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, edgearr)
 
-    except Exception as inst:
-        ## Do something real here
-        LOGGER.warn(inst)
-        raise
-
-    finally:
-        pass
+    io5.close()
+    co5.close()
 
 
 
@@ -639,52 +760,35 @@ def get_edges(data, superseqs, splits):
     site if it present.
     """
     ## the filtering arg and parse it into minsamp numbers
-    edgetuple = data.paramsdict["trim_overhang"]
+    edgetrims = np.array(data.paramsdict["trim_overhang"])
     minsamp = data.paramsdict["min_samples_locus"]
-    allsamp = superseqs.shape[1]
     cut1, cut2 = data.paramsdict["restriction_overhang"]        
 
     ## a local array for storing edge trims
-    edges = np.zeros((superseqs.shape[0], 4), dtype=np.int16)
-    ## a local array for storing edge filtered loci
+    edges = np.zeros((superseqs.shape[0], 5), dtype=np.int16)
+    ## a local array for storing edge filtered loci, these are stored 
+    ## eventually as minsamp excludes.
     edgefilter = np.zeros((superseqs.shape[0],), dtype=np.bool)
 
-    ## X means trim this number bases from the edge of all reads.
-    ## 4s mean no missing data (superseqs.shape[0])
-    ##    -- raise warning if minsamp < 4    
-    ## 3s mean trim cut sites and overhangs til there is data for >= minsamp.
-    ## 2s mean trim cut sites and overhangs til there is data for >= 4 samples.
-    ##    -- raise warning if minsamp < 4
-    ## 1s mean trim cut sites only.
-    ## 0s mean no edge trimming at all, not even cut sites.
-    ## TODO: more testing on this with pairddrad.
+    ## TRIM GUIDE. The cut site is always trimmed. Number if what else gets it.
+    ## If negative, then N bases are trimmed from that edge.
+    ## If zero: no additional trimming.
+    ## If positive: N is the minimum number of samples with data to trim to.
+    ## default is (4, *, *, 4)
+    ## A * value means no missing data (overhang) at edges.
+    edgetrims[edgetrims == "*"] = minsamp
+    edgetrims = edgetrims.astype(np.int)
 
-    ## get edges for overhang trimming first, and trim cut sites at end
-    ## use .get so that if not in 2,3,4 it returns None
-    edgedict = {0: 1,
-                1: 1,
-                2: 4,
-                3: minsamp,
-                4: allsamp}
-    edgemins = [edgedict.get(i) for i in edgetuple]
-
-    #LOGGER.info("edgemins %s", edgemins)
-    #LOGGER.info("splits %s", splits)
-
-    ## convert all - to N to make this easier
+    ## convert all - to N to make this easier, (only affects local copy)
     superseqs[superseqs == "-"] = "N"
-    ## the background fill of superseqs should be N instead of "", then this 
-    ## wouldn't be necessary...
-    ## superseqs[superseqs == ""] = "N"
 
     ## trim overhanging edges
     ## get the number not Ns in each site, 
     ccx = np.sum(superseqs != "N", axis=1)
-    #LOGGER.debug("ccx %s", ccx)
-    #LOGGER.debug("splits %s", splits)
+
     for idx, split in enumerate(splits):
         if split:
-            r1s = ccx[idx, :split]
+            r1s = ccx[idx, :split+1]    ## TODO: +1 here?
             r2s = ccx[idx, split+4:]
         else:
             r1s = ccx[idx, :]
@@ -693,44 +797,55 @@ def get_edges(data, superseqs, splits):
         
         ## if edge trim fails then locus is filtered
         try:
-            edge0 = max(0, np.where(r1s >= edgemins[0])[0].min())
-            edge1 = np.where(r1s >= edgemins[1])[0].max()
+            if edgetrims[0] > 0:
+                edge0 = max(0, np.where(r1s >= edgetrims[0])[0].min())
+            elif edgetrims[0]:
+                edge0 = -1 * edgetrims[0]
         except ValueError:
-            #edgefilter[idx] = True
-            LOGGER.debug("edge filtered")
+            edgefilter[idx] = True
+
+        try:
+            if edgetrims[1] > 0:
+                edge1 = np.where(r1s >= edgetrims[1])[0].max()
+            elif edgetrims[1]:
+                edge1 = np.where(r1s > 0)[0].max() - edgetrims[1]
+        except ValueError:
+            edgefilter[idx] = True
             edge1 = np.where(r1s >= 1)[0].max()
-            #LOGGER.debug("Xccx %s", ccx[idx])            
-            #LOGGER.debug("Xsplit %s", split)
-            #LOGGER.debug("Xr1s %s", r1s)
 
+        ## get edges for overhang trimming first, and trim cut sites at end
         ## filter cut1
-        if edgetuple[0]:
-            edge0 = edge0+len(cut1)
-        else:
-            assert edge0 < edge1             
-
-        LOGGER.debug("edges r1 (%s, %s)", edge0, edge1)
+        edge0 = edge0+len(cut1)
+        assert edge0 < edge1             
 
         ## if split then do the second reads separate
         if split:
+            LOGGER.info("split is %s, r2s is %s ", split, r2s)            
             try:
-                edge2 = np.where(r2s >= edgemins[2])[0].min()
-                edge3 = np.where(r2s >= edgemins[3])[0].max()
+                if edgetrims[2] > 0:
+                    edge2 = split+4+np.where(r2s >= edgetrims[2])[0].min()
+                    LOGGER.info("EdgE2 is %s", edge2)
+                elif edgetrims[2]:
+                    edge2 = split+4+np.where(r2s >= edgetrims[2])[0].min()+(-1*edgetrims[2])
             except ValueError:
-                #edgefilter[idx] = True
+                edgefilter[idx] = True
                 edge2 = edge1 + 4
-                edge3 = np.where(r2s >= 1)[0].max()
+
+            try:
+                if edgetrims[3] > 0:
+                    edge3 = split+4+np.where(r2s >= edgetrims[3])[0].max()
+                elif edgetrims[3]:
+                    edge3 = split+4+np.where(r2s >= edgetrims[3])[0].max() + edgetrims[3]
+            except ValueError:
+                edgefilter[idx] = True                
+                edge3 = np.where(r2s >= 1)[0].max()+1
 
             ## filter cut2
-            if edgetuple[3]:
-                edge3 = edge3-len(cut2)
-            else:
-                assert edge2 < edge3
-
-        #LOGGER.debug("edges r2 (%s, %s)", edge2, edge3)
+            edge3 = edge3-len(cut2)
+            assert edge2 < edge3
 
         ## store edges
-        edges[idx] = np.array([edge0, edge1, edge2, edge3])
+        edges[idx] = np.array([edge0, edge1, edge2, edge3, split])
 
     return edgefilter, edges
 
@@ -829,11 +944,13 @@ def filter_maxsnp(data, superseqs, edges):
     """ 
     Filter max # of SNPs per locus. Do R1 and R2 separately if PE. 
     Also generate the snpsite line for the .loci format and save in the snp arr
+    This uses the edge filters that have been built based on trimming, and 
+    saves the snps array with edges filtered. **Loci are not yet filtered.**
     """
 
     maxs1, maxs2 = data.paramsdict["max_SNPs_locus"]
 
-    ## an empty array to fill with failed loci
+    ## an empty array to count with failed loci
     snpfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
     snpsarr = np.zeros((superseqs.shape[0], superseqs.shape[2], 2), 
                        dtype=np.bool)
@@ -844,21 +961,46 @@ def filter_maxsnp(data, superseqs, edges):
     snpsarr[:, :, 0] = snps == "-"
     snpsarr[:, :, 1] = snps == "*"
 
-    ## count how many snps are within the edges and fill snpfilt
-    for idx, edg in enumerate(edges):
-        nsnps = snpsarr[idx, edg[0]:edg[1]].sum(axis=1).sum()
-        if nsnps > maxs1:
-            snpfilt[idx] = True
+    ## mask edge filtered sites and fill maxsnps filter
+    if not "pair" in data.paramsdict["datatype"]:
+        for iloc in xrange(snps.shape[0]):
+            edg0, edg1 = edges[iloc, :2]
+            mask = np.invert([i in range(edg0, edg1) for i \
+                                                  in np.arange(snps.shape[1])])
+            ## apply mask
+            snpsarr[iloc, mask, :] = False
+            ## count nsnps
+            nsnps = snpsarr[iloc, ].sum(axis=1).sum()
+            if nsnps > maxs1:
+                snpfilt[iloc] = True
 
     ## do something much slower for paired data, iterating over each locus and 
     ## splitting r1s from r2s and treating each separately.
-    if "pair" in data.paramsdict["datatype"]:
+    else:
         for idx, edg in enumerate(edges):
-            nsnps = snpsarr[idx, edg[2]:edg[3]].sum(axis=1).sum()
-            if nsnps > maxs2:
+            edg0, edg1, edg2, edg3, split = edg
+
+            mask1 = np.invert([i in range(edg0, edg1) for i \
+                                        in np.arange(split+1)])
+            mask2 = np.invert([i in range(edg2, edg3) for i \
+                                        in np.arange(split, snps.shape[1])])
+            ## apply masks
+            snpsarr[idx, mask1, :] = False
+            snpsarr[idx, mask2, :] = False
+            ## count snps, apply filter to each side separately
+            nsnps1 = snpsarr[idx, :split+1].sum(axis=1).sum()
+            if nsnps1 > maxs1:
+                snpfilt[idx] = True
+            nsnps2 = snpsarr[idx, split:].sum(axis=1).sum()
+            if nsnps2 > maxs2:
                 snpfilt[idx] = True
 
     ## return snpsarr and snpfilter
+    LOGGER.info("""
+        snpfilt.shape, %s, 
+        snpfilt.sum() %s, 
+        snpsarr.shape %s, 
+        snpsarr.sum() %s""", snpfilt.shape, snpfilt.sum(), snpsarr.shape, snpsarr.sum())
     return snpfilt, snpsarr
 
 
@@ -895,21 +1037,22 @@ def filter_maxhet(data, superseqs, edges):
 
 
 
-def make_outfiles(data, samples, keep, output_formats, ipyclient):
+def make_outfiles(data, samples, output_formats, ipyclient):
     """
     Get desired formats from paramsdict and write files to outfiles 
     directory.
     """
 
     ## load the h5 database
-    inh5 = h5py.File(data.database, 'r')
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r')    
 
     ## will iterate optim loci at a time
-    optim = inh5["seqs"].attrs["chunksize"]
-    nloci = inh5["seqs"].shape[0]
+    optim = io5["seqs"].attrs["chunksize"]
+    nloci = io5["seqs"].shape[0]
 
     ## get name and snp padding
-    anames = inh5["seqs"].attrs["samples"]
+    anames = io5["seqs"].attrs["samples"]
     snames = [i.name for i in samples]
     names = [i for i in anames if i in snames]
     pnames, _ = padnames(names)
@@ -922,13 +1065,14 @@ def make_outfiles(data, samples, keep, output_formats, ipyclient):
     #sindx = [list(anames).index(i) for i in snames]
 
     ## build arrays and outputs from arrays
-    arrs = make_arrays(data, sidx, optim, nloci, keep, inh5)
+    arrs = make_arrays(data, sidx, optim, nloci, io5, co5)
     seqarr, snparr, bisarr, _ = arrs
 
     ## send off outputs as parallel jobs
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     results = []
+
 
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "phy" in output_formats:
@@ -980,6 +1124,7 @@ def make_outfiles(data, samples, keep, output_formats, ipyclient):
             time.sleep(1)
         else:
             break
+
     ## final progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))            
     progressbar(20, 20, " writing outfiles      | {}".format(elapsed))        
@@ -992,20 +1137,22 @@ def make_outfiles(data, samples, keep, output_formats, ipyclient):
             print(async.metadata.error)
 
     ## close h5 handle
-    inh5.close()
+    io5.close()
 
 
 
-
-def make_arrays(data, sidx, optim, nloci, keep, inh5):
+def make_arrays(data, sidx, optim, nloci, io5, co5):
     """ 
-    Writes loci and VCF formats and builds and returns arrays for contructing
-    all other output types if specified. 
+    Builds arrays for seq, snp, and bis data after applying locus filters, 
+    and edge filteres for the seq data. These arrays are used to build outs. 
     """
 
     ## make empty arrays for filling
     maxlen = data._hackersonly["max_fragment_length"]
-    maxsnp = inh5["snps"][:].sum()
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
+        maxlen *= 2
+
+    maxsnp = co5["snps"][:].sum()
 
     ## shape of arrays is sidx, we will subsample h5 w/ sidx to match
     seqarr = np.zeros((sum(sidx), maxlen*nloci), dtype="S1")
@@ -1018,38 +1165,50 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
     snpleft = 0
     bis = 0
 
-    #LOGGER.info("starting to build phy")
+    ## edge filter has already been applied to snps, but has not yet been 
+    ## applied to seqs. The locus filters have not been applied to either yet.
     while start < nloci:
         hslice = [start, start+optim]
-        afilt = inh5["filters"][hslice[0]:hslice[1], ...]
-        aedge = inh5["edges"][hslice[0]:hslice[1], ...]
-        aseqs = inh5["seqs"][hslice[0]:hslice[1], sidx, ...]
-        asnps = inh5["snps"][hslice[0]:hslice[1], ...]
+        afilt = co5["filters"][hslice[0]:hslice[1], ...]
+        aedge = co5["edges"][hslice[0]:hslice[1], ...]
+        asnps = co5["snps"][hslice[0]:hslice[1], ...]
+        aseqs = io5["seqs"][hslice[0]:hslice[1], sidx, ...]
 
         ## which loci passed all filters
         keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+        LOGGER.info("edges.shape %s", aedge.shape)
 
         ## write loci that passed after trimming edges, then write snp string
         for iloc in keep:
+            ## grab r1 seqs between edges
             edg = aedge[iloc]
-            ## grab all seqs between edges
-            seq = aseqs[iloc, :, edg[0]:edg[1]]
+            LOGGER.info("edg %s", edg)
 
-            ## grab SNPs from seqs which is sidx subsampled
-            ## and built after filters are applied, so subsampling
-            ## does not get SNPs wrong.
+            ## grab SNPs from seqs already sidx subsampled and edg masked. 
+            ## needs to be done here before seqs are edgetrimmed. 
             getsnps = asnps[iloc].sum(axis=1).astype(np.bool)
             snps = aseqs[iloc, :, getsnps].T
 
-            ## remove cols that are all N-
+            ## trim edges and split from seqs and concatenate for pairs. 
+            ## this seq array will be the phy output. 
+            if "pair" in data.paramsdict["datatype"]:
+                seq = aseqs[iloc, :, edg[0]:edg[1]+1]
+            else:
+                seq = np.concatenate([aseqs[iloc, :, edg[0]:edg[1]+1],
+                                      aseqs[iloc, :, edg[2]:edg[3]+1]], axis=1)
+            LOGGER.info("seq %s", seq.shape)
+
+            ## remove cols from seq (phy) array that are all N-
             lcopy = seq
             lcopy[lcopy == "-"] = "N"
             bcols = np.all(lcopy == "N", axis=0)
             seq = seq[:, ~bcols]
 
-            ## put into large array
+            ## TODO: save partition length
+            #LOGGER.info("%s -- %s", seqleft, seqleft+seq.shape[1])
+
+            ## put into large array TODO does this need a +1?
             seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
-            #print(seqarr[:, seqleft:seqleft+10])
             seqleft += seq.shape[1]
 
             ## subsample all SNPs into an array
@@ -1065,7 +1224,6 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
         ## increase the counter
         start += optim
 
-    #LOGGER.info("done building phy... ")
     ## trim trailing edges b/c we made the array bigger than needed.
     ridx = np.all(seqarr == "", axis=0)    
     seqarr = seqarr[:, ~ridx]
@@ -1073,7 +1231,6 @@ def make_arrays(data, sidx, optim, nloci, keep, inh5):
     snparr = snparr[:, ~ridx]
     ridx = np.all(bisarr == "", axis=0)
     bisarr = bisarr[:, ~ridx]
-    #LOGGER.info("done trimming phy... ")
 
     ## return these three arrays which are pretty small
     ## catg array gets to be pretty huge, so we return only 
@@ -1165,7 +1322,6 @@ def write_str(data, snparr, bisarr, sidx, pnames):
 
 
 
-
 def write_geno(data, snparr, bisarr, sidx, inh5):
     ## Write GENO format
     data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
@@ -1215,139 +1371,203 @@ def write_geno(data, snparr, bisarr, sidx, inh5):
 
 
 
-def make_vcf(data, samples, inh5):
+def make_vcf(data, samples, ipyclient):
     """ 
-    Write the SNPs-only VCF output 
+    Write the full VCF for loci passing filtering. Other vcf formats are 
+    possible, like SNPs-only, or with filtered loci included but the filter
+    explicitly labeled. These are not yet supported, however.
     """
+    ## start vcf progress bar
+    start = time.time()
+    LOGGER.info("Writing .vcf file")
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 0, 
+        " building vcf file     | {}".format(elapsed))
 
-    ## load the h5 database
-    inh5 = h5py.File(data.database, 'r')
+    ## create output, gzip it to be disk friendly
+    data.outfiles.vcf = os.path.join(data.dirs.outfiles, data.name+".vcf.gz")
 
-    ## create outputs
-    #data.outfiles.vcf = os.path.join(data.dirs.outfiles, 
-    #                                    data.name+".snps.vcf")
-    data.outfiles.vcf = os.path.join(data.dirs.outfiles, 
-                                        data.name+".vcf")
+    ## get some db info
+    io5 = h5py.File(data.clust_database, 'r')
 
     ## will iterate optim loci at a time
-    maxlen = data._hackersonly["max_fragment_length"]
-    optim = inh5["seqs"].attrs["chunksize"]
-    nloci = inh5["seqs"].shape[0]
+    optim = io5["seqs"].attrs["chunksize"]
+    nloci = io5["seqs"].shape[0]
 
     ## get name and snp padding
-    anames = inh5["seqs"].attrs["samples"]
+    anames = io5["seqs"].attrs["samples"]
     snames = [i.name for i in samples]
     names = [i for i in anames if i in snames]
-
-    ## write headers
-    vout = open(data.outfiles.vcf, 'w')
-    vcfheader(data, names, vout)
 
     ## get names index
     sidx = np.array([i in snames for i in anames])
 
-    ## apply all filters and write loci data
-    start = 0
-    seqleft = 0
-    snpleft = 0
+    ## client for sending jobs to parallel engines
+    lbview = ipyclient.load_balanced_view()
+
+    ## send jobs in chunks
+    vcf_asyncs = []
+    for istart in xrange(0, nloci, optim):
+        args = [data, optim, sidx, istart]
+        vcf_asyncs.append(lbview.apply(vcfchunk, args))
+
+    ## after all chunks are finished sort them, concatenate, and gzip
+    tmpids = list(itertools.chain(*[i.msg_ids for i in vcf_asyncs]))
+    with lbview.temp_flags(after=tmpids):
+        res = lbview.apply(concat_vcf, *[data, names])
+
+    while 1:
+        if not res.completed:
+            done = [i.ready() for i in vcf_asyncs]
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(done), sum(done),
+                " building vcf file     | {}".format(elapsed))
+            time.sleep(1)
+        else:
+            break
+    [i.get() for i in vcf_asyncs]
+    ## final progress bar
+    progressbar(20, 20,
+            " building vcf file     | {}".format(elapsed))
+    print("")   
+
+    io5.close()
+
+
+
+def concat_vcf(data, names):
+    """ 
+    Sorts, concatenates, and gzips VCF chunks. Also cleans up chunks.
+    """
+    ## open handle and write headers
+    vout = gzip.open(data.outfiles.vcf, 'w')
+    vcfheader(data, names, vout)
+
+    ## get vcf chunks
+    vcfins = glob.glob(data.outfiles.vcf+".[0-9]*")
+
+    ## sort
+    vcfins.sort(key=lambda x: int(x.split(".")[-1]))
+
+    ## concatenate
+    for vcfin in vcfins:
+        with open(vcfin, 'r') as vin:
+            vout.write(vin.read())
+        os.remove(vcfin)
+
+
+
+def vcfchunk(args):
+    """ 
+    Function called within make_vcf to run chunks on separate engines. 
+    """
+
+    ## parse args
+    data, optim, sidx, start = args
+
+    ## load the h5 database
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r')    
 
     ## empty array to be filled before writing 
     ## will not actually be optim*maxlen, extra needs to be trimmed
+    maxlen = data._hackersonly["max_fragment_length"]    
+    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
+        maxlen *= 2
+
     gstr = np.zeros((optim*maxlen, 9+sum(sidx)), dtype="S20")
 
-    #LOGGER.info("starting to build phy")
-    while start < nloci:
-        hslice = [start, start+optim]
-        afilt = inh5["filters"][hslice[0]:hslice[1], ]
-        aedge = inh5["edges"][hslice[0]:hslice[1], ]
-        aseqs = inh5["seqs"][hslice[0]:hslice[1], sidx, ]
-        acatg = inh5["catgs"][hslice[0]:hslice[1], sidx, ]
+    ## get data sliced (optim chunks at a time)
+    hslice = [start, start+optim]
+    afilt = co5["filters"][hslice[0]:hslice[1], ]
+    aedge = co5["edges"][hslice[0]:hslice[1], ]
+    aseqs = io5["seqs"][hslice[0]:hslice[1], sidx, ]
+    acatg = io5["catgs"][hslice[0]:hslice[1], sidx, ]
 
-        ## which loci passed all filters
-        keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+    ## which loci passed all filters
+    keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+    seqleft = 0
+    LOGGER.info("KEEP %s", keep.shape)
+    ## write loci that passed after trimming edges, then write snp string
+    for iloc in keep:
+        edg = aedge[iloc]
+        ## grab all seqs between edges
+        seq = aseqs[iloc, :, edg[0]:edg[1]]
+        catg = acatg[iloc, :, edg[0]:edg[1]]
 
-        ## write loci that passed after trimming edges, then write snp string
-        for iloc in keep:
-            edg = aedge[iloc]
-            ## grab all seqs between edges
-            seq = aseqs[iloc, :, edg[0]:edg[1]]
-            catg = acatg[iloc, :, edg[0]:edg[1]]
+        ## ----  build string array ---- 
+        ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
+        gstr[seqleft:seqleft+seq.shape[1], 0] = "RAD_{}_".format(start+iloc)
+        ## fill (POS) position
+        gstr[seqleft:seqleft+seq.shape[1], 1] = range(seq.shape[1])
+        ## fill (ID) what is this? missing value is .
+        gstr[seqleft:seqleft+seq.shape[1], 2] = "."
+        ## get reference seq and put it in 
+        seqref = np.apply_along_axis(fakeref, 0, seq)
+        gstr[seqleft:seqleft+seq.shape[1], 3] = seqref
 
-            ## ----  build string array ---- 
-            ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
-            gstr[seqleft:seqleft+seq.shape[1], 0] = "RAD_{}_".format(iloc)
-            ## fill (POS) position
-            gstr[seqleft:seqleft+seq.shape[1], 1] = range(seq.shape[1])
-            ## fill (ID) what is this? missing value is .
-            gstr[seqleft:seqleft+seq.shape[1], 2] = "."
-            ## fill (REF) must be ACGTN, TODO: indels gets complicated
-            ## get reference seq and put it in 
-            seqref = np.apply_along_axis(fakeref, 0, seq)
-            gstr[seqleft:seqleft+seq.shape[1], 3] = seqref
-            ## get alt alleles and put them in 
-            coma1 = np.zeros(seqref.shape, dtype="S1")
-            coma2 = np.zeros(seqref.shape, dtype="S1")
-            seqa = np.apply_along_axis(fakeref, 0, seq, *[1])
-            seqb = np.char.array(np.apply_along_axis(fakeref, 0, seq, *[2]))
-            seqc = np.char.array(np.apply_along_axis(fakeref, 0, seq, *[3]))
-            coma1[seqb != ""] = ","
-            coma2[seqc != ""] = ","
-
-            seqr = np.char.array(seqa) + np.char.array(coma1) + \
-                   np.char.array(seqb) + np.char.array(coma2) + \
+        ## get alt alleles and put them in 
+        coma1 = np.zeros(seqref.shape, dtype="S1")
+        coma2 = np.zeros(seqref.shape, dtype="S1")
+        seqa = np.apply_along_axis(fakeref, 0, seq, *[1])
+        seqb = np.char.array(np.apply_along_axis(fakeref, 0, seq, *[2]))
+        seqc = np.char.array(np.apply_along_axis(fakeref, 0, seq, *[3]))
+        coma1[seqb != ""] = ","
+        coma2[seqc != ""] = ","
+        seqr = np.char.array(seqa) + np.char.array(coma1) + \
+               np.char.array(seqb) + np.char.array(coma2) + \
                    np.char.array(seqc)
-            ## fill ALT allele
-            gstr[seqleft:seqleft+seq.shape[1], 4] = seqr
 
-            ## add qual [just 0.95 for now]
-            gstr[seqleft:seqleft+seq.shape[1], 5] = '13'
+        ## fill ALT allele
+        gstr[seqleft:seqleft+seq.shape[1], 4] = seqr
 
-            ## add filter (only PASS for now)
-            gstr[seqleft:seqleft+seq.shape[1], 6] = "PASS"
+        ## add qual [just 0.95 for now]
+        gstr[seqleft:seqleft+seq.shape[1], 5] = '13'
 
-            ## add info (just NS and DP)
-            info = np.zeros(catg.shape[1], dtype="S20")
-            nons = np.sum(np.sum(catg, axis=2) != 0, axis=0)            
-            sums = np.sum(np.sum(catg, axis=2), axis=0)
-            for i in xrange(catg.shape[1]):
-                info[i] = "NS={};DP={}".format(nons[i], sums[i])
-            gstr[seqleft:seqleft+seq.shape[1], 7] = info
+        ## add filter (only PASS for now)
+        gstr[seqleft:seqleft+seq.shape[1], 6] = "PASS"
 
-            ## add format string
-            gstr[seqleft:seqleft+seq.shape[1], 8] = "GT:CATG"
+        ## add info (just NS and DP)
+        info = np.zeros(catg.shape[1], dtype="S20")
+        nons = np.sum(np.sum(catg, axis=2) != 0, axis=0)            
+        sums = np.sum(np.sum(catg, axis=2), axis=0)
+        for i in xrange(catg.shape[1]):
+            info[i] = "NS={};DP={}".format(nons[i], sums[i])
+        gstr[seqleft:seqleft+seq.shape[1], 7] = info
 
-            ## ----  build counts array ----
-            cnts = np.zeros((catg.shape[1], catg.shape[0]), dtype="S20")
-            carr = catg.astype("S20")
+        ## add format string
+        gstr[seqleft:seqleft+seq.shape[1], 8] = "GT:CATG"
 
-            for site in xrange(cnts.shape[0]):
-                obs = seqref[site]+seqr[site].replace(",", "")
-                ords = {i:j for (i, j) in zip(obs, '0123')}
-                ords.update({"N":".", "-":"."})
-                for taxon in range(cnts.shape[1]):
-                    base1, base2 = DUCT[seq[taxon][site]]
-                    cnts[site][taxon] = "{}/{}:{}".format(\
-                    ords[base1],
-                    ords[base2],
-                    ",".join(carr[taxon][site].tolist())
-                    )
-            gstr[seqleft:seqleft+seq.shape[1], 9:] = cnts
+        ## ----  build counts array ----
+        cnts = np.zeros((catg.shape[1], catg.shape[0]), dtype="S20")
+        carr = catg.astype("S20")
 
+        for site in xrange(cnts.shape[0]):
+            obs = seqref[site]+seqr[site].replace(",", "")
+            ords = {i:j for (i, j) in zip(obs, '0123')}
+            ords.update({"N":".", "-":"."})
+            for taxon in range(cnts.shape[1]):
+                base1, base2 = DUCT[seq[taxon][site]]
+                cnts[site][taxon] = "{}/{}:{}".format(\
+                ords[base1],
+                ords[base2],
+                ",".join(carr[taxon][site].tolist())
+                )
+        gstr[seqleft:seqleft+seq.shape[1], 9:] = cnts
 
-            ## advance counter
-            seqleft += seq.shape[1]
+        ## advance counter
+        seqleft += seq.shape[1]
 
-        #pd.DataFrame(gstr)to_string(buf=vout)
+    ## trim off empty rows if they exist
+    empties = np.all(gstr == "", axis=1)
+    gstr = gstr[~empties]
+
+    ## append to vcf output file
+    with open(data.outfiles.vcf+".{}".format(start), 'w') as vout:
         np.savetxt(vout, gstr, delimiter="\t", fmt="%s")
-        ## write locus chunk to file and clear
-        ## ...
 
-        ## 
-        start += optim
-
-    vout.close()        
-    inh5.close()
-
+    io5.close()
+    co5.close()
 
 
 def viewgeno(site, reso):
@@ -1355,6 +1575,8 @@ def viewgeno(site, reso):
     Get resolution. Only 1 or 0 allowed. Used for geno
     """
     return VIEW[site][reso]
+
+
 ## vectorize the viewgeno func. 
 ## basically just makes it run as a for loop
 vecviewgeno = np.vectorize(viewgeno)
