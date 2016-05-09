@@ -47,16 +47,15 @@ which we will later create several branches.
     New file 'params-base.txt' created in /home/deren/Downloads
 
 
-Edit the params file
-~~~~~~~~~~~~~~~~~~~~
+Set up the params file
+~~~~~~~~~~~~~~~~~~~~~~
 The data come to us already demultiplexed so we are going to simply set the 
-**sorted\_fastq\_path** to tell ipyrad the location of the fastq
-data files. I'm also setting the **project\_dir** to "pedicularis" -- 
-the name of our study organism. In this tutorial we will create several 
-different assemblies under range of parameter settings, and each will 
-have a different assembly_name, but all will be collected into the
-"pedicularis/" directory. We will leave the other parameters at 
-their default values for now.
+**sorted\_fastq\_path** to tell ipyrad the location of our fastq
+data files, and also set the **project\_dir**. For the latter let's the 
+name of our study organism, "pedicularis". 
+Because we're going to create several different assemblies in this tutorial
+using a "project_dir/" will allow us to group them all together in a shared
+directory. For now, we'll leave the remaining parameters at their default values.
 
 .. parsed-literal::
     ## use your text editor to set the following params:
@@ -75,10 +74,10 @@ assigned to a sample named "29154_superba". Here we run step1 (-s 1) and
 ask ipyrad to print the results when it is finished (-r). 
 
 .. code:: bash
-    >>> ipyrad -p params-base.txt -s 1 -r
+    >>> ipyrad -p params-base.txt -s 1 -r  
 
 
-.. parsed-literal::  
+.. parsed-literal:: 
   --------------------------------------------------
    ipyrad [v.0.2.5]
    Interactive assembly and analysis of RADseq data
