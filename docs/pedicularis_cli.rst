@@ -124,34 +124,33 @@ a subset of reads to use for the analysis.
 .. note::
     Importantly, no matter what you do in ipyrad, it will never delete or 
     modify your original fastq data files. Assembly objects simply store
-    information about Samples, and Samples simply contain statisics about 
-    data files. Thus, while discarding Samples from an Assembly will discard
-    their stored information from an Assembly, it does not delete any data files.
-    Nevertheless, to always retain Sample information it is good idea to create
-    a new Assembly branch before discarding Samples, as shown below. 
+    information about Samples, and Samples simply contain statistics about 
+    data files. Samples can be discarded from an Assembly, in which case the
+    Assembly loses some information, however, this does not delete any data files. 
+    Nevertheless, to retain Sample information ipyrad only allows Samples to be 
+    discarded during branching, so that Sample information is always retained 
+    in the parent branch. See the example below.
 
 
 **Subselecting samples**:
-To do this we will create a new branch called "sub4", and then discard 
-all but four Samples from our Assembly using the discard (-d) flag followed
-by a list of Sample names. This does NOT delete any files, but simply removes
-the Sample objects information from the "sub4" Assembly (the information that 
-was copied to it from "base" when we branched). If you accidentally dropped 
-a Sample you didn't intend to you could re-create "sub4" by simply branching 
-"base" again, or if you had discarded a sample from "base" you didn't intend to
-you could simply run step1 again to reload the data. 
-
+We can subselect Samples by creating a new branch called "sub4", and passing 
+the the branch argument a list of Sample names in addition to the new branch 
+name. **This does NOT delete any files** (see above), but simply copies
+a subset of information from "base" to the new assembly "sub4".
+If you accidentally discarded the wrong Sample could re-create "sub4" by 
+simply branching "base" again with a different list of Samples. 
 
 .. code:: bash
 
-    ## create new branch of base Assembly named sub4
-    >>> ipyrad -p params-base.txt -b sub4
+    ## Create new branch of base Assembly named sub4 and pass it
+    ## the names of four Samples (if no names it keeps all Samples)
+    >>> ipyrad -p params-base.txt -b sub4 29154_superba, 30556_thamno, \
+                                          30686_cyathophylla, 32082_przewalskii
 
-    ## discard Samples from sub4 (does NOT delete any files)
-    >>> ipyrad -p params-sub4.txt -d 29154_superba, 30556_thamno, \
-                                     30686_cyathophylla, 32082_przewalskii, \
-                                     33413_thamno, 33588_przewalskii, \
-                                     35236_rex, 35855_rex, 38362_rex
+
+.. parsed-literal::
+    New branch 
+
 
     ## print stats for sub4 to confirm that Samples were discarded
     >>> ipyrad -p params-sub4.txt -r
