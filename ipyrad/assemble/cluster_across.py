@@ -308,7 +308,7 @@ def cluster(data, noreverse, ipyclient):
                                      close_fds=True)
         done = 0
         while 1:
-            dat = os.read(dog, 4096)
+            dat = os.read(dog, 80192)
             if "Clustering" in dat:
                 try:
                     done = int(dat.split()[-1][:-1])
@@ -316,20 +316,17 @@ def cluster(data, noreverse, ipyclient):
                 except ValueError:
                     pass
                 ## break if done
-                if done == 100:
-                    break
-                else:
-                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                    progressbar(100, done, 
-                        " clustering across     | {}".format(elapsed))
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(100, done, 
+                    " clustering across     | {}".format(elapsed))
             ## catches end chunk of printing if clustering went really fast
             elif "Clusters:" in dat:
+                LOGGER.info("Found 'Clusters:', and broke loop")
                 break
             else:
-                time.sleep(0.5)
+                time.sleep(0.1)
         ## another catcher to let vsearch cleanup after clustering is done
         proc.wait()
-
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
                     " clustering across     | {}".format(elapsed))

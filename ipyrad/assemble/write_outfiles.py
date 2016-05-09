@@ -796,6 +796,9 @@ def get_edges(data, superseqs, splits):
             r2s = ccx[idx, split+4:]
         else:
             r1s = ccx[idx, :]
+        ## if * then set edgetrims to number of samples w/ data.
+        
+
         ## set default values
         edge0 = edge1 = edge2 = edge3 = 0
         
@@ -836,7 +839,6 @@ def get_edges(data, superseqs, splits):
             try:
                 if edgetrims[3] > 0:
                     edge3 = split+4+(np.where(r2s >= edgetrims[3])[0].max())
-                    LOGGER.info("%s %s %s LOCUS %s", r2s, edgetrims[3], edge3, idx)
                 elif edgetrims[3]:
                     edge3 = split+4+(np.where(r2s >= edgetrims[3])[0]).max() + edgetrims[3]
             except ValueError:
