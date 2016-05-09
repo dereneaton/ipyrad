@@ -88,7 +88,7 @@ ask ipyrad to print the results when it is finished (-r).
    Step1: Linking sorted fastq data to Samples
      Linking to demultiplexed fastq files in:
        /home/deren/Downloads/example_empirical_rad/*.gz
-     13 new Samples created in `base`.
+     13 new Samples created in 'base'.
      13 fastq files linked to 13 new Samples.
    Saving Assembly.
 
@@ -108,6 +108,7 @@ ask ipyrad to print the results when it is finished (-r).
   40578_rex                   1    1707942
   41478_cyathophylloides      1    2199740
   41954_cyathophylloides      1    2199613
+
 
 
 Preview mode - A useful trick for testing
