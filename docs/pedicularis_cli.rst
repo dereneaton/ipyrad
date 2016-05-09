@@ -6,13 +6,13 @@
 
 Empirical example (*Pedicularis*) - CLI
 ========================================
-This tutorial is a bit less didactic and meant more to show an example of 
-expected run times and statistics for an empirical assembly. The data set
-is composed of single-end reads for a RAD-seq library prepared with the PstI
-enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
+This tutorial is a bit less didactic and more of an example from which you 
+can gain an expectation for run times and statistics from an empirical assembly. 
+The data set is composed of single-end reads for a RAD-seq library prepared with 
+the PstI enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
 *Pedicularis*, originally published by **Eaton and Ree (2013)** 
-(:ref:`link to open access article 
-<eaton_and_ree>`). 
+(:ref:`link to open access article <eaton_and_ree>`). 
+
 
 Download the fastQ files
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -36,7 +36,7 @@ The compressed data size is approximately 1.1GB.
 
 Starting an ipyrad analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-As usual, start with the ``-n`` argument to create a new named Assembly. 
+As usual, let's start with the ``-n`` argument to create a new named Assembly. 
 I use the name ``base`` to indicate that this is the base assembly from 
 which we will later create several branches.
 
@@ -49,93 +49,115 @@ which we will later create several branches.
 
 Edit the params file
 ~~~~~~~~~~~~~~~~~~~~
-The data are already demultiplexed so we are going to set the 
+The data come to us already demultiplexed so we are going to simply set the 
 **sorted\_fastq\_path** to tell ipyrad the location of the fastq
 data files. I'm also setting the **project\_dir** to "pedicularis" -- 
-the name of the study system. In this tutorial we will create several 
-different assemblies of this data set under several different parameter 
-settings. Each will have a different assembly_name, and all of them will 
-end up in the pedicularis/ directory. All other parameters are left at 
+the name of our study organism. In this tutorial we will create several 
+different assemblies under range of parameter settings, and each will 
+have a different assembly_name, but all will be collected into the
+"pedicularis/" directory. We will leave the other parameters at 
 their default values for now.
 
 .. parsed-literal::
     ## use your text editor to set the following params:
-    ## for #4, use a wildcard (*) to select all 13 gzipped files.
+    ## for #4, the wildcard (*) tells it to select all files ending in .gz
     pedicularis                    ## [1] [project_dir] ...
     example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
 
 
-Assemble the data set
-~~~~~~~~~~~~~~~~~~~~~
+Load the fastq Sample data
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+When the data path is with the "sorted_fastq_path" as opposed to the "raw_data_path"
+step1 has a different functionality. Instead of demultiplexing the data it simply
+counts the number of reads for each sample and parses the file names to extract
+names for the Samples. For example, the file 29154_superba.fastq.gz will be 
+assigned to a sample named "29154_superba". Here we run step1 (-s 1) and 
+ask ipyrad to print the results when it is finished (-r). 
 
 .. code:: bash
-    ## Now run step 1 of the assembly 
-    ## the -p flag tells ipyrad which assembly to use (params-base.txt)
-    >>> ipyrad -p params-base.txt -s 12
+    >>> ipyrad -p params-base.txt -s 1 -r
 
 
 .. parsed-literal::
+  --------------------------------------------------
+   ipyrad [v.0.2.5]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   New Assembly: base
+   ipyparallel setup: Local connection to 4 Engines
 
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    ---------------------------------------------------
-     New Assembly: base
-     ipyparallel setup: Local connection to 4 Engines
+   Step1: Linking sorted fastq data to Samples
+     Linking to demultiplexed fastq files in:
+       /home/deren/Downloads/example_empirical_rad/*.gz
+     13 new Samples created in `base`.
+     13 fastq files linked to 13 new Samples.
+   Saving Assembly.
 
-     Step1: Linking sorted fastq data to Samples
+.. parsed-literal::
+  Summary stats of Assembly base
+  ------------------------------------------------
+                          state  reads_raw
+  29154_superba               1     696994
+  30556_thamno                1    1452316
+  30686_cyathophylla          1    1253109
+  32082_przewalskii           1     964244
+  33413_thamno                1     636625
+  33588_przewalskii           1    1002923
+  35236_rex                   1    1803858
+  35855_rex                   1    1409843
+  38362_rex                   1    1391175
+  39618_rex                   1     822263
+  40578_rex                   1    1707942
+  41478_cyathophylloides      1    2199740
+  41954_cyathophylloides      1    2199613
 
-       Linking to demultiplexed fastq files in:
-         /home/deren/Downloads/example_empirical_rad/*.gz
-       13 new samples created in 'base'
-       13 fastq files linked to 13 new Samples.
-       Saving Assembly
 
-
-We can use the -r flag to see the results
+Preview mode - A useful trick for testing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Assembling this complete data set takes about 3 hours on a 4-core laptop, which
+all things considered is really not bad. However, for very large data sets you
+may be interested in running a quick analysis on just a subset of your data to 
+make it run much faster. This could allow you to see the affect of many 
+different parameter settings on your results before running the big shebang. 
+This can be done in two ways: first, by selecting a subset of samples to run 
+your analysis on, and second, by selecting a subset of reads to use for the analysis. 
+
+**Subselecting samples**
+To do this we will create a new branch called "sub4", and then discard 
+all but four Samples from our Assembly using the discard (-d) flag followed
+by a list of Sample names. This does NOT delete any files, but simply removes
+the Sample objects information from the "sub4" Assembly (the information that 
+was copied to it from "base" when we branched). If you accidentally dropped 
+a Sample you didn't intend to you could re-create "sub4" by simply branching 
+"base" again, or if you had discarded a sample from "base" you didn't intend to
+you could simply run step1 again to reload the data. Importantly, 
+no matter what you do, ipyrad will never delete or modify your original fastq files. 
+
 
 .. code:: bash
 
-    ipyrad -p params-base.txt -r
+    ## create new branch of base Assembly
+    >>> ipyrad -p params-base.txt -b sub4
 
+    ## discard Samples from this Assembly (does NOT delete any files)
+    >>> ipyrad -p params-sub4.txt -d 29154_superba, 30556_thamno, \
+                                     30686_cyathophylla, 32082_przewalskii, \
+                                     33413_thamno, 33588_przewalskii, \
+                                     35236_rex, 35855_rex, 38362_rex
+
+    ## print stats again to confirm that Samples were discarded
+    >>> ipyrad -p params-sub4.txt -r
 
 .. parsed-literal::
 
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw
-    29154_superba               1     696994
-    30556_thamno                1    1452316
-    30686_cyathophylla          1    1253109
-    32082_przewalskii           1     964244
-    33413_thamno                1     636625
-    33588_przewalskii           1    1002923
-    35236_rex                   1    1803858
-    35855_rex                   1    1409843
-    38362_rex                   1    1391175
-    39618_rex                   1     822263
-    40578_rex                   1    1707942
-    41478_cyathophylloides      1    2199740
-    41954_cyathophylloides      1    2199613
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: None
-    step 3: None
-    step 4: None
-    step 5: None
-    step 6: None
-    step 7: None
-    
 
 
-Next we run step2 to filter the data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+testing out a few different parameters quickly, without
+having to run the analysis on the full extent of your data. This can be done 
+in two ways, first by 
 
-Assembling this complete data set takes several hours depending on how
+
+several hours depending on how
 many processors are available. Using four cores it can finish about 1.5
 hours if we subsample the data set using the --preview method in ipyrad.
 If run during step2 this function subsamples 100K reads from each
