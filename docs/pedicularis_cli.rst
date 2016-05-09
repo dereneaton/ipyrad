@@ -56,10 +56,10 @@ and also set a **project\_dir**, which will group all of our analyses into
 a single directory. For the latter I use the name of our study organism, "pedicularis". 
 
 .. parsed-literal::
-    ## use your text editor to set the following params:
-    ## for #4, the wildcard (*) tells it to select all files ending in .gz
-    pedicularis                    ## [1] [project_dir] ...
-    example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
+    ## Use your text editor to enter the following values:
+    ## The wildcard (*) tells ipyrad to select all files ending in .gz
+    pedicularis                       ## [1] [project_dir] ...
+    example_empirical_rad/*.gz        ## [4] [sorted_fastq_path] ...
 
 For now we'll leave the remaining parameters at their default values.
 
@@ -232,14 +232,17 @@ we create a branch so that we can do both!
     ## create a lowdepth branch
     ipyrad -p params-sub4.txt -b sub4-lowdepth.
 
-    ## set lower depth parameter for sub4-lowdepth. 
-    ipyrad -p params-sub4-lowdepth.txt -u 10 2
-
 
 .. parsed-literal::
-    
     ... output here
-    
+
+
+Use a text editor to enter the following new **mindepth_majrule** value 
+in the file ``params-sub4-lowdepth.txt``:
+
+.. parsed-literal::
+    ## 2                  ## [mindepth_majrule] ...
+
 
 Steps 4-5 (joint estimation of error rate & heterozygosity)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
