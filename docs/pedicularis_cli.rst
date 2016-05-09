@@ -36,8 +36,8 @@ The compressed file size is approximately 1.1GB.
     >>> tar -xvzf example_empirical_rad.tar.gz
 
 
-Starting an ipyrad analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Setup a base params file
+~~~~~~~~~~~~~~~~~~~~~~~~
 We start by using the ``-n`` argument to create a new named Assembly. 
 I use the name ``base`` to indicate that this is the base assembly from 
 which we will later create several branches.
@@ -49,13 +49,10 @@ which we will later create several branches.
     New file 'params-base.txt' created in /home/deren/Downloads
 
 
-Set up the params file
-~~~~~~~~~~~~~~~~~~~~~~
 The data come to us already demultiplexed so we are going to simply set the 
 **sorted\_fastq\_path** to tell ipyrad the location of the data files, 
-and also set the **project\_dir**. For the latter let's use the 
-name of our study organism, "pedicularis". 
-
+and also set a **project\_dir**, which will group all of our analyses into 
+a single directory. For the latter I use the name of our study organism, "pedicularis". 
 
 .. parsed-literal::
     ## use your text editor to set the following params:
@@ -63,7 +60,7 @@ name of our study organism, "pedicularis".
     pedicularis                    ## [1] [project_dir] ...
     example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
 
-For now let's leave the remaining parameters at their default values.
+For now we'll leave the remaining parameters at their default values.
 
 
 Load the fastq Sample data
