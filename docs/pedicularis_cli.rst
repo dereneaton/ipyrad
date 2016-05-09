@@ -5,13 +5,16 @@
 
 
 Sub-sampling data sets
-=============================
-In this tutorial I show is a bit less didactic and more of an example from which you 
-can gain an expectation for run times and statistics from an empirical assembly. 
-The data set is composed of single-end reads for a RAD-seq library prepared with 
-the PstI enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
-*Pedicularis*, originally published by **Eaton and Ree (2013)** 
-(:ref:`link to open access article <eaton_and_ree>`). 
+=======================
+In this tutorial I show how to subsample both the number of taxa in an Assembly,
+and the amount of sequence data. Again we use the 13 taxa *Pedicularis*
+from **Eaton and Ree (2013)** for our example. 
+
+..  use an empirical data set for the example. 
+.. The data set is composed of single-end reads for a RAD-seq library prepared with 
+.. the PstI enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
+.. *Pedicularis*, originally published by 
+.. (:ref:`link to open access article <eaton_and_ree>`). 
 
 
 Download the empirical example data set (*Pedicularis*)
