@@ -7,7 +7,7 @@
 Sub-sampling data sets
 =======================
 In this tutorial I show how to subsample both the number of taxa in an Assembly,
-and the amount of sequence data. Again we use the 13 taxa *Pedicularis*
+and the amount of sequence data. Again we use the 13 taxa *Pedicularis* data set
 from **Eaton and Ree (2013)** for our example. 
 
 ..  use an empirical data set for the example. 
@@ -20,11 +20,11 @@ from **Eaton and Ree (2013)** for our example.
 Download the empirical example data set (*Pedicularis*)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 These data are hosted online at the NCBI sequence read archive (SRA) under 
-accession id SRP021469. For convenience, I've also hosted the data at a 
-publicly available Dropbox link which we will use instead since it's a bit easier. 
-Run the code below to download and decompress the fastq data files, which 
-will be saved into a directory called ``example_empirical_data/``. 
-The compressed file size is approximately 1.1GB.
+accession id SRP021469. For convenience, I also host the data at a 
+publicly available Dropbox link which is a bit easier to access. 
+If you haven't already, run the code below to download and decompress the 
+fastq data files, which will save into a directory called 
+``example_empirical_data/``. The compressed file size is approximately 1.1GB.
 
 .. code:: bash
 
