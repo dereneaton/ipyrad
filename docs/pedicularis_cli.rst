@@ -52,13 +52,15 @@ The data come to us already demultiplexed so we are going to simply set the
 **sorted\_fastq\_path** to tell ipyrad the location of the data files, 
 and also set the **project\_dir**. For the latter let's use the 
 name of our study organism, "pedicularis". 
-For now let's leave the remaining parameters at their default values.
+
 
 .. parsed-literal::
     ## use your text editor to set the following params:
     ## for #4, the wildcard (*) tells it to select all files ending in .gz
     pedicularis                    ## [1] [project_dir] ...
     example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
+
+For now let's leave the remaining parameters at their default values.
 
 
 Load the fastq Sample data
