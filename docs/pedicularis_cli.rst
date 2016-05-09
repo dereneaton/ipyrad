@@ -66,7 +66,7 @@ directory. For now, we'll leave the remaining parameters at their default values
 
 Load the fastq Sample data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-When the data path is with the "sorted_fastq_path" as opposed to the "raw_data_path"
+When the data path is with the **sorted_fastq_path** as opposed to the **raw_data_path**
 step1 has a different functionality. Instead of demultiplexing the data it simply
 counts the number of reads for each sample and parses the file names to extract
 names for the Samples. For example, the file 29154_superba.fastq.gz will be 
@@ -121,7 +121,7 @@ different parameter settings on your results before running the big shebang.
 This can be done in two ways: first, by selecting a subset of samples to run 
 your analysis on, and second, by selecting a subset of reads to use for the analysis. 
 
-**Subselecting samples**
+**Subselecting samples**:
 To do this we will create a new branch called "sub4", and then discard 
 all but four Samples from our Assembly using the discard (-d) flag followed
 by a list of Sample names. This does NOT delete any files, but simply removes
@@ -147,6 +147,7 @@ no matter what you do, ipyrad will never delete or modify your original fastq fi
     ## print stats again to confirm that Samples were discarded
     >>> ipyrad -p params-sub4.txt -r
 
+
 .. parsed-literal::
   Summary stats of Assembly sub4
   ------------------------------------------------
@@ -157,8 +158,13 @@ no matter what you do, ipyrad will never delete or modify your original fastq fi
   41954_cyathophylloides      1    2199613 
 
 
-.. code:: bash
+**Subsampling data**:
+The special flag --preview can be called during step2 to subsample a specific
+number of reads per Sample. The default is 100K reads, which in this case 
+is about 5-10% of the total. This will make our analysis run very fast downstream. 
 
+
+.. code:: bash
     ## run step2 in preview mode
     >>> ipyrad -p params-sub4.txt -s 2 --preview
 
@@ -178,214 +184,48 @@ no matter what you do, ipyrad will never delete or modify your original fastq fi
    Saving Assembly.
 
 
-several hours depending on how ...
-many processors are available. Using four cores it can finish about 1.5
-hours if we subsample the data set using the --preview method in ipyrad.
-If run during step2 this function subsamples 100K reads from each
-sample. As you can see above, this is only about 5-10% of the total
-reads. Run the assembly step and then use the -r flag to see the results.
-
-
-.. code:: bash
-
-    ipyrad -p params-base.txt -s 2 --preview
-    ipyrad -p params-base.txt -r
-
-
-.. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: base [~/Downloads/pedicularis/base.json]
-     ipyparallel setup: Local connection to 4 Engines
-    
-     Step2: Filtering reads 
-       Running preview mode: subselecting maximum of 100000 reads per sample    
-       Saving Assembly.
-
-
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw  reads_filtered
-    29154_superba               2     696994           92448
-    30556_thamno                2    1452316           93666
-    30686_cyathophylla          2    1253109           89122
-    32082_przewalskii           2     964244           92016
-    33413_thamno                2     636625           89428
-    33588_przewalskii           2    1002923           92418
-    35236_rex                   2    1803858           92807
-    35855_rex                   2    1409843           92883
-    38362_rex                   2    1391175           93363
-    39618_rex                   2     822263           92096
-    40578_rex                   2    1707942           93386
-    41478_cyathophylloides      2    2199740           93846
-    41954_cyathophylloides      2    2199613           91756
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: ./pedicularis/base_edits/s2_rawedit_stats.txt
-    step 3: None
-    step 4: None
-    step 5: None
-    step 6: None
-    step 7: None
-    
-    
-
-
 Run step 3 (clustering and aligning)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 This is generally one of the longest running steps, depending on how
 many unique clusters (loci) there are in each sample. Using more
 processors will allow it run much faster. On my laptop with 4 cores this
 step finishes in approximately 30 minutes. From the results you can see
 that there are many clusters found in each sample (clusters\_total), but
-many fewer (~2%) that were recovered at high depth (clusters\_hidepth).
+very few are recovered at high depth (clusters\_hidepth).
 The coverage would of course be much better if we did not subsample the
-data set in step2 using --preview mode.
+data set in step2. Also, this data set has fairly low coverage to begin with. 
+We can either lower the mindepth setting to allow us to use more of this low
+depth data, or we can decide to go ahead with our mindepth setting (currently
+at the default of 6) and simply discard most of our data. I know, how about 
+we create a branch so that we can do both!
 
 .. code:: bash
+    ## create a lowdepth branch
+    ipyrad -p params-sub4.txt -b sub4-lowdepth.
 
-    ipyrad -p params-base.txt -s 3
-    ipyrad -p params-base.txt -r
+    ## set lower depth parameter for sub4-lowdepth. 
+    ipyrad -p params-sub4-lowdepth.txt -u 10 2
 
 
 .. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: base [~/Downloads/pedicularis/base.json]
-     ipyparallel setup: Local connection to 4 Engines
-   
-     Step3: Clustering/Mapping reads
-       Saving Assembly.
-
     
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total  
-    29154_superba               3     696994           92448           45531  
-    30556_thamno                3    1452316           93666           45745  
-    30686_cyathophylla          3    1253109           89122           50306  
-    32082_przewalskii           3     964244           92016           44242  
-    33413_thamno                3     636625           89428           52053  
-    33588_przewalskii           3    1002923           92418           46674  
-    35236_rex                   3    1803858           92807           57801  
-    35855_rex                   3    1409843           92883           45139  
-    38362_rex                   3    1391175           93363           41580  
-    39618_rex                   3     822263           92096           47295  
-    40578_rex                   3    1707942           93386           45295  
-    41478_cyathophylloides      3    2199740           93846           41965  
-    41954_cyathophylloides      3    2199613           91756           47735  
-
-                            clusters_hidepth  
-    29154_superba                        978  
-    30556_thamno                         987  
-    30686_cyathophylla                   757  
-    32082_przewalskii                    686  
-    33413_thamno                         728  
-    33588_przewalskii                    904  
-    35236_rex                            767  
-    35855_rex                           1106  
-    38362_rex                           1140  
-    39618_rex                           1258  
-    40578_rex                            832  
-    41478_cyathophylloides               992  
-    41954_cyathophylloides              1307  
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: ./pedicularis/base_edits/s2_rawedit_stats.txt
-    step 3: ./pedicularis/base_clust_0.85/s3_cluster_stats.txt
-    step 4: None
-    step 5: None
-    step 6: None
-    step 7: None
-    
+    ... output here
     
 
-
-Run Step 4 (joint estimation of error rate & heterozygosity)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This step runs pretty fast. It should finish in about 10 minutes. As you
-can see in the results the error rate is about 10X the heterozygosity
+Steps 4-5 (joint estimation of error rate & heterozygosity)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As you can see in the results the error rate is about 10X the heterozygosity
 estimate. The latter does not vary significantly across samples. With
 data of greater depth the estimates will be more accurate.
 
 .. code:: bash
-
-    ipyrad -p params-base.txt -s 4 
-    ipyrad -p params-base.txt -r
+    ipyrad -p params-sub4.txt          -s 45 -r 
+    ipyrad -p params-sub4-lowdepth.txt -s 45 -r
 
 
 .. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: base [~/Downloads/pedicularis/base.json]
-     ipyparallel setup: Local connection to 4 Engines
-  
-     Step4: Joint estimation of error rate and heterozygosity
-       Saving Assembly.
+    ... add output here
     
-    
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total
-    29154_superba               4     696994           92448           45531
-    30556_thamno                4    1452316           93666           45745
-    30686_cyathophylla          4    1253109           89122           50306
-    32082_przewalskii           4     964244           92016           44242
-    33413_thamno                4     636625           89428           52053
-    33588_przewalskii           4    1002923           92418           46674
-    35236_rex                   4    1803858           92807           57801
-    35855_rex                   4    1409843           92883           45139
-    38362_rex                   4    1391175           93363           41580
-    39618_rex                   4     822263           92096           47295
-    40578_rex                   4    1707942           93386           45295
-    41478_cyathophylloides      4    2199740           93846           41965
-    41954_cyathophylloides      4    2199613           91756           47735
-    
-                            clusters_hidepth  hetero_est  error_est  
-    29154_superba                        978    0.038530   0.006630  
-    30556_thamno                         987    0.038266   0.006009  
-    30686_cyathophylla                   757    0.044680   0.004627  
-    32082_przewalskii                    686    0.046796   0.007077  
-    33413_thamno                         728    0.041466   0.004528  
-    33588_przewalskii                    904    0.041445   0.011253  
-    35236_rex                            767    0.042423   0.005119  
-    35855_rex                           1106    0.035123   0.012086  
-    38362_rex                           1140    0.041206   0.004702  
-    39618_rex                           1258    0.040696   0.009077  
-    40578_rex                            832    0.045177   0.002789  
-    41478_cyathophylloides               992    0.041085   0.004468  
-    41954_cyathophylloides              1307    0.032387   0.013090  
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: ./pedicularis/base_edits/s2_rawedit_stats.txt
-    step 3: ./pedicularis/base_clust_0.85/s3_cluster_stats.txt
-    step 4: ./pedicularis/base_clust_0.85/s4_joint_estimate.txt
-    step 5: None
-    step 6: None
-    step 7: None
-    
-    
-
 
 Run step 5 (consensus base calls)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
