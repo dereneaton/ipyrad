@@ -160,6 +160,7 @@ def save_json(data):
         ("samples", data.__dict__["samples"].keys()),
         ("populations", data.__dict__["populations"]),
         ("database", data.__dict__["database"]),
+        ("clust_database", data.__dict__["clust_database"]),        
         ("outfiles", data.__dict__["outfiles"]),
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),

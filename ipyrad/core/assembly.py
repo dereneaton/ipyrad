@@ -147,6 +147,7 @@ class Assembly(object):
         self.outfiles = ObjDict()
 
         ## storing supercatg file
+        self.clust_database = ""
         self.database = ""
 
         ## the default params dict
@@ -1103,14 +1104,11 @@ class Assembly(object):
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 6 for i in csamples]):
-                print("""
+                print("""\
     Skipping: All {} selected Samples already clustered.
-    (can overwrite with force argument)
+    (can overwrite with force argument)\
     """.format(len(samples)))
                 return 
-
-        ## attach filename for all reads database
-        self.database = os.path.join(self.dirs.consens, self.name+".hdf5")
 
         ## run if this point is reached. We no longer check for existing 
         ## h5 file, since checking Sample states should suffice.
@@ -1131,7 +1129,7 @@ class Assembly(object):
 
         ## Check if all/none of the samples are in the self.database
         try:
-            with h5py.File(self.database, 'r') as ioh5:
+            with h5py.File(self.clust_database, 'r') as ioh5:
                 dbset = set(ioh5["seqs"].attrs['samples'])
                 iset = set([i.name for i in samples])
                 diff = iset.difference(dbset)
@@ -1522,9 +1520,12 @@ def bufcountlines(filename, gzipped):
     return nlines
 
 
+
 def tuplecheck(newvalue, dtype=str):
-    """ Takes a string argument and returns value as a tuple. 
-    Needed for paramfile conversion from CLI to set_params args """
+    """ 
+    Takes a string argument and returns value as a tuple. 
+    Needed for paramfile conversion from CLI to set_params args 
+    """
 
     if isinstance(newvalue, list):
         newvalue = tuple(newvalue)
@@ -1817,9 +1818,9 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['edit_cutsites'] = newvalue
 
     elif param == 'trim_overhang':
-        newvalue = tuplecheck(newvalue, int)
+        newvalue = tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), \
-        "trim_overhang should be a tuple e.g., (1, 2, 2, 1)"
+        "trim_overhang should be a tuple e.g., (4, *, *, 4)"
         self.paramsdict['trim_overhang'] = newvalue
 
 
