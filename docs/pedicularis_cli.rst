@@ -65,15 +65,14 @@ For now we'll leave the remaining parameters at their default values.
 
 Load the fastq Sample data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-When the data location is entered as a **sorted_fastq_path** as opposed to a 
-**raw_data_path** step1 does not demultiplex the data, but rather it simply
-simply counts the number of reads for each sample and parses the file names to 
-extract names for the Samples. For example, the file 29154_superba.fastq.gz will 
-be assigned to a Sample named "29154_superba". Now let's run step 1 (-s 1) and 
-ask ipyrad to print the results when it is finished (-r). 
+When the data location is entered as a **sorted_fastq_path** step 1 
+simply counts the number of reads for each Sample and parses the file names to 
+extract names for each Sample. For example, the file ``29154_superba.fastq.gz`` 
+will be assigned to Sample ``29154_superba``. Now, run step 1 (-s 1) and 
+tell ipyrad to print the results when it is finished (-r). 
 
 .. code:: bash
-    >>> ipyrad -p params-base.txt -s 1 -r  
+    >>> ipyrad -p params-base.txt -s 1 -r
 
 
 .. parsed-literal:: 
