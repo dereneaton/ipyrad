@@ -4,9 +4,9 @@
 .. _pedicularis_cli:
 
 
-Empirical example (*Pedicularis*) - CLI
-========================================
-This tutorial is a bit less didactic and more of an example from which you 
+Sub-sampling data sets
+=============================
+In this tutorial I show is a bit less didactic and more of an example from which you 
 can gain an expectation for run times and statistics from an empirical assembly. 
 The data set is composed of single-end reads for a RAD-seq library prepared with 
 the PstI enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
@@ -14,15 +14,14 @@ the PstI enzyme for 13 individuals from the *Cyathophora* clade of the angiosper
 (:ref:`link to open access article <eaton_and_ree>`). 
 
 
-Download the fastQ files
-~~~~~~~~~~~~~~~~~~~~~~~~
-The data are hosted online at the NCBI sequence read archive (SRA) under 
+Download the empirical example data set (*Pedicularis*)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+These data are hosted online at the NCBI sequence read archive (SRA) under 
 accession id SRP021469. For convenience, I've also hosted the data at a 
-publicly available dropbox link which we will use to download the data here, 
-since it's a bit easier. Run the code below to download and decompress 
-the fastq files. They will be saved in a directory called 
-``example_empirical_data/`` in your current directory. 
-The compressed data size is approximately 1.1GB.
+publicly available Dropbox link which we will use instead since it's a bit easier. 
+Run the code below to download and decompress the fastq data files, which 
+will be saved into a directory called ``example_empirical_data/``. 
+The compressed file size is approximately 1.1GB.
 
 .. code:: bash
 
@@ -36,7 +35,7 @@ The compressed data size is approximately 1.1GB.
 
 Starting an ipyrad analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-As usual, let's start with the ``-n`` argument to create a new named Assembly. 
+We start by using the ``-n`` argument to create a new named Assembly. 
 I use the name ``base`` to indicate that this is the base assembly from 
 which we will later create several branches.
 
@@ -50,13 +49,10 @@ which we will later create several branches.
 Set up the params file
 ~~~~~~~~~~~~~~~~~~~~~~
 The data come to us already demultiplexed so we are going to simply set the 
-**sorted\_fastq\_path** to tell ipyrad the location of our fastq
-data files, and also set the **project\_dir**. For the latter let's use the 
-name of our study organism, "pedicularis". Because we're going to create several 
-different assemblies the "project_dir/" will group them together conveniently
-into a single shared directory. 
+**sorted\_fastq\_path** to tell ipyrad the location of the data files, 
+and also set the **project\_dir**. For the latter let's use the 
+name of our study organism, "pedicularis". 
 For now let's leave the remaining parameters at their default values.
-
 
 .. parsed-literal::
     ## use your text editor to set the following params:
@@ -68,11 +64,10 @@ For now let's leave the remaining parameters at their default values.
 Load the fastq Sample data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 When the data location is entered as a **sorted_fastq_path** as opposed to a 
-**raw_data_path**, step1 has a different functionality. Instead of 
-demultiplexing the data it simply counts the number of reads for each 
-sample and uses the file names to extract names for the Samples. 
-For example, the file 29154_superba.fastq.gz will be 
-assigned to a Sample named "29154_superba". Here we run step1 (-s 1) and 
+**raw_data_path** step1 does not demultiplex the data, but rather it simply
+simply counts the number of reads for each sample and parses the file names to 
+extract names for the Samples. For example, the file 29154_superba.fastq.gz will 
+be assigned to a Sample named "29154_superba". Now let's run step 1 (-s 1) and 
 ask ipyrad to print the results when it is finished (-r). 
 
 .. code:: bash
@@ -112,16 +107,26 @@ ask ipyrad to print the results when it is finished (-r).
   41954_cyathophylloides      1    2199613
 
 
+Sub-sampling methods
+~~~~~~~~~~~~~~~~~~~~~
+Assembling this full data set takes around 3 hours on a 4-core laptop, which
+is actually pretty fast. However, for very large data sets you may be interested in 
+running a faster analysis on just a subset of your data so that you can more 
+easily explore the affect of many different parameter settings on your results 
+before running your full data set. This can be done in two ways: first, by 
+selecting a subset of samples to run your analysis on, and second, by selecting
+a subset of reads to use for the analysis. 
 
-Preview mode - A useful trick for testing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Assembling this complete data set takes about 3 hours on a 4-core laptop, which
-all things considered is really not bad. However, for very large data sets you
-may be interested in running a quick analysis on just a subset of your data to 
-make it run much faster. This could allow you to see the affect of many 
-different parameter settings on your results before running the big shebang. 
-This can be done in two ways: first, by selecting a subset of samples to run 
-your analysis on, and second, by selecting a subset of reads to use for the analysis. 
+
+.. note::
+    Importantly, no matter what you do in ipyrad, it will never delete or 
+    modify your original fastq data files. Assembly objects simply store
+    information about Samples, and Samples simply contain statisics about 
+    data files. Thus, while discarding Samples from an Assembly will discard
+    their stored information from an Assembly, it does not delete any data files.
+    Nevertheless, to always retain Sample information it is good idea to create
+    a new Assembly branch before discarding Samples, as shown below. 
+
 
 **Subselecting samples**:
 To do this we will create a new branch called "sub4", and then discard 
@@ -131,8 +136,7 @@ the Sample objects information from the "sub4" Assembly (the information that
 was copied to it from "base" when we branched). If you accidentally dropped 
 a Sample you didn't intend to you could re-create "sub4" by simply branching 
 "base" again, or if you had discarded a sample from "base" you didn't intend to
-you could simply run step1 again to reload the data. Importantly, 
-no matter what you do, ipyrad will never delete or modify your original fastq files. 
+you could simply run step1 again to reload the data. 
 
 
 .. code:: bash
