@@ -144,8 +144,8 @@ simply branching "base" again with a different list of Samples.
 
     ## Create new branch of base Assembly named sub4 and pass it
     ## the names of four Samples (if no names it keeps all Samples)
-    >>> ipyrad -p params-base.txt -b sub4 29154_superba, 30556_thamno, \
-                                          30686_cyathophylla, 32082_przewalskii
+    >>> ipyrad -p params-base.txt -b sub4  29154_superba, 30556_thamno, \
+                                           30686_cyathophylla, 32082_przewalskii
 
 
 .. parsed-literal::
@@ -231,9 +231,34 @@ we create a branch so that we can do both!
     ## create a lowdepth branch
     >>> ipyrad -p params-sub4.txt -b sub4-lowdepth.
 
+.. parsed-literal::
+  loading Assembly: base
+  from saved path: ~/Downloads/pedicularis/base.json
+  Creating a branch of assembly base called sub4
+  Writing new params file to params-sub4.txt
+
+
+.. code:: bash
+
+    ## create a lowdepth branch
+    >>> ipyrad -p params-base.txt -s 3
 
 .. parsed-literal::
-    ... output here
+   --------------------------------------------------
+    ipyrad [v.0.2.5]
+    Interactive assembly and analysis of RADseq data
+   --------------------------------------------------
+    loading Assembly: base
+    from saved path: ~/Downloads/pedicularis/base.json
+    ipyparallel setup: Local connection to 4 Engines
+  
+    Step3: Clustering/Mapping reads
+    [####################] 100%  dereplicating         | 0:00:01 
+    [####################] 100%  clustering            | 0:01:01 
+    [####################] 100%  chunking              | 0:00:00 
+    [####################] 100%  aligning              | 0:25:44 
+    [####################] 100%  concatenating         | 0:00:05 
+    Saving Assembly.
 
 
 Use a text editor to enter the following new **mindepth_majrule** value 
