@@ -43,6 +43,7 @@ I use the name ``base`` to indicate that this is the base assembly from
 which we will later create several branches.
 
 .. code:: bash
+
     >>> ipyrad -n "base"
 
 .. parsed-literal::
@@ -72,6 +73,7 @@ will be assigned to Sample ``29154_superba``. Now, run step 1 (-s 1) and
 tell ipyrad to print the results when it is finished (-r). 
 
 .. code:: bash
+
     >>> ipyrad -p params-base.txt -s 1 -r
 
 
@@ -142,16 +144,16 @@ you could simply run step1 again to reload the data.
 
 .. code:: bash
 
-    ## create new branch of base Assembly
+    ## create new branch of base Assembly named sub4
     >>> ipyrad -p params-base.txt -b sub4
 
-    ## discard Samples from this Assembly (does NOT delete any files)
+    ## discard Samples from sub4 (does NOT delete any files)
     >>> ipyrad -p params-sub4.txt -d 29154_superba, 30556_thamno, \
                                      30686_cyathophylla, 32082_przewalskii, \
                                      33413_thamno, 33588_przewalskii, \
                                      35236_rex, 35855_rex, 38362_rex
 
-    ## print stats again to confirm that Samples were discarded
+    ## print stats for sub4 to confirm that Samples were discarded
     >>> ipyrad -p params-sub4.txt -r
 
 
@@ -166,12 +168,12 @@ you could simply run step1 again to reload the data.
 
 
 **Subsampling data**:
-The special flag --preview can be called during step2 to subsample a specific
+A special flag (--preview) can be called during step2 to subsample a specific
 number of reads per Sample. The default is 100K reads, which in this case 
 is about 5-10% of the total. This will make our analysis run very fast downstream. 
 
-
 .. code:: bash
+
     ## run step2 in preview mode
     >>> ipyrad -p params-sub4.txt -s 2 --preview
 
