@@ -230,7 +230,7 @@ we create a branch so that we can do both!
 .. code:: bash
 
     ## create a lowdepth branch
-    ipyrad -p params-sub4.txt -b sub4-lowdepth.
+    >>> ipyrad -p params-sub4.txt -b sub4-lowdepth.
 
 
 .. parsed-literal::
@@ -251,8 +251,9 @@ estimate. The latter does not vary significantly across samples. With
 data of greater depth the estimates will be more accurate.
 
 .. code:: bash
-    ipyrad -p params-sub4.txt          -s 45 -r 
-    ipyrad -p params-sub4-lowdepth.txt -s 45 -r
+
+    >>> ipyrad -p params-sub4.txt          -s 45 -r 
+    >>> ipyrad -p params-sub4-lowdepth.txt -s 45 -r
 
 
 .. parsed-literal::
