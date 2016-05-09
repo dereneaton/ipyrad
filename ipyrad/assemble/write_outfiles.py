@@ -515,6 +515,7 @@ def locichunk(args):
     ## write loci that passed after trimming edges, then write snp string
     for iloc in keep:
         edg = aedge[iloc]
+        LOGGER.info("!!!!!! edg %s", edg)
         args = [iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locuscov, start]
         if edg[4]:
             outstr, samplecov, locuscov = enter_pairs(*args)
@@ -541,11 +542,13 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locus
     """ enters funcs for pairs """
 
     ## snps was created using only the selected samples.
+    LOGGER.info("edges in pairs %s", edg)
     seq1 = aseqs[iloc, :, edg[0]:edg[1]+1]
     snp1 = asnps[iloc, edg[0]:edg[1]+1, ]
 
-    seq2 = aseqs[iloc, :, edg[2]+1:edg[3]+1]
-    snp2 = asnps[iloc, edg[2]+1:edg[3]+1, ]    
+    ## the 2nd read edges are +5 for the spacer
+    seq2 = aseqs[iloc, :, edg[2]:edg[3]+5]
+    snp2 = asnps[iloc, edg[2]:edg[3]+5, ]
 
     ## remove rows with all Ns, seq has only selected samples
     nalln = np.all(seq1 == "N", axis=1)
@@ -554,11 +557,12 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locus
     ## of this to save the coverage for samples
     nsidx = nalln + smask
     samplecov = samplecov + np.invert(nsidx).astype(int)
-    locuscov[np.sum(np.invert(nsidx).astype(int))] += 1
+    idx = np.sum(np.invert(nsidx).astype(np.int32))
+    locuscov[idx] += 1
 
     ## select the remaining names in order
     seq1 = seq1[~nsidx, ]
-    seq2 = seq2[~nsidx, ]    
+    seq2 = seq2[~nsidx, ]
     names = pnames[~nsidx]
 
     ## save string for printing, excluding names not in samples
@@ -788,7 +792,7 @@ def get_edges(data, superseqs, splits):
 
     for idx, split in enumerate(splits):
         if split:
-            r1s = ccx[idx, :split+1]    ## TODO: +1 here?
+            r1s = ccx[idx, :split+1]
             r2s = ccx[idx, split+4:]
         else:
             r1s = ccx[idx, :]
@@ -820,25 +824,24 @@ def get_edges(data, superseqs, splits):
 
         ## if split then do the second reads separate
         if split:
-            LOGGER.info("split is %s, r2s is %s ", split, r2s)            
             try:
                 if edgetrims[2] > 0:
-                    edge2 = split+4+np.where(r2s >= edgetrims[2])[0].min()
-                    LOGGER.info("EdgE2 is %s", edge2)
+                    edge2 = split+4+(np.where(r2s >= edgetrims[2])[0]).min()
                 elif edgetrims[2]:
-                    edge2 = split+4+np.where(r2s >= edgetrims[2])[0].min()+(-1*edgetrims[2])
+                    edge2 = split+4+(np.where(r2s >= edgetrims[2])[0]).min()+(-1*edgetrims[2])
             except ValueError:
                 edgefilter[idx] = True
                 edge2 = edge1 + 4
 
             try:
                 if edgetrims[3] > 0:
-                    edge3 = split+4+np.where(r2s >= edgetrims[3])[0].max()
+                    edge3 = split+4+(np.where(r2s >= edgetrims[3])[0].max())
+                    LOGGER.info("%s %s %s LOCUS %s", r2s, edgetrims[3], edge3, idx)
                 elif edgetrims[3]:
-                    edge3 = split+4+np.where(r2s >= edgetrims[3])[0].max() + edgetrims[3]
+                    edge3 = split+4+(np.where(r2s >= edgetrims[3])[0]).max() + edgetrims[3]
             except ValueError:
                 edgefilter[idx] = True                
-                edge3 = np.where(r2s >= 1)[0].max()+1
+                edge3 = np.where(r2s >= 1)[0].max()
 
             ## filter cut2
             edge3 = edge3-len(cut2)
@@ -957,6 +960,7 @@ def filter_maxsnp(data, superseqs, edges):
 
     ## get the per site snp string (snps) shape=(chunk, maxlen)
     snps = np.apply_along_axis(ucount, 1, superseqs)
+    LOGGER.info("this is snps %s", snps)
     ## fill snps array
     snpsarr[:, :, 0] = snps == "-"
     snpsarr[:, :, 1] = snps == "*"
@@ -980,13 +984,14 @@ def filter_maxsnp(data, superseqs, edges):
         for idx, edg in enumerate(edges):
             edg0, edg1, edg2, edg3, split = edg
 
-            mask1 = np.invert([i in range(edg0, edg1) for i \
-                                        in np.arange(split+1)])
-            mask2 = np.invert([i in range(edg2, edg3) for i \
-                                        in np.arange(split, snps.shape[1])])
+            mask1 = np.invert([i in range(edg0, edg1+1) for i \
+                                    in np.arange(split)])
+            mask2 = np.invert([i in range(edg2+5, edg3+5) for i \
+                                    in np.arange(split, snpsarr.shape[1])])
+            mask = np.concatenate([mask1, mask2])
+
             ## apply masks
-            snpsarr[idx, mask1, :] = False
-            snpsarr[idx, mask2, :] = False
+            snpsarr[idx, mask, :] = False
             ## count snps, apply filter to each side separately
             nsnps1 = snpsarr[idx, :split+1].sum(axis=1).sum()
             if nsnps1 > maxs1:
@@ -1176,13 +1181,13 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
 
         ## which loci passed all filters
         keep = np.where(np.sum(afilt, axis=1) == 0)[0]
-        LOGGER.info("edges.shape %s", aedge.shape)
+        #LOGGER.info("edges.shape %s", aedge.shape)
 
         ## write loci that passed after trimming edges, then write snp string
         for iloc in keep:
             ## grab r1 seqs between edges
             edg = aedge[iloc]
-            LOGGER.info("edg %s", edg)
+            #LOGGER.info("edg %s", edg)
 
             ## grab SNPs from seqs already sidx subsampled and edg masked. 
             ## needs to be done here before seqs are edgetrimmed. 
@@ -1191,12 +1196,12 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
 
             ## trim edges and split from seqs and concatenate for pairs. 
             ## this seq array will be the phy output. 
-            if "pair" in data.paramsdict["datatype"]:
+            if not "pair" in data.paramsdict["datatype"]:
                 seq = aseqs[iloc, :, edg[0]:edg[1]+1]
             else:
                 seq = np.concatenate([aseqs[iloc, :, edg[0]:edg[1]+1],
                                       aseqs[iloc, :, edg[2]:edg[3]+1]], axis=1)
-            LOGGER.info("seq %s", seq.shape)
+            #LOGGER.info("seq %s", seq.shape)
 
             ## remove cols from seq (phy) array that are all N-
             lcopy = seq
@@ -1207,7 +1212,7 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
             ## TODO: save partition length
             #LOGGER.info("%s -- %s", seqleft, seqleft+seq.shape[1])
 
-            ## put into large array TODO does this need a +1?
+            ## put into large array
             seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
             seqleft += seq.shape[1]
 
