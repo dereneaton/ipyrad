@@ -51,11 +51,12 @@ Set up the params file
 ~~~~~~~~~~~~~~~~~~~~~~
 The data come to us already demultiplexed so we are going to simply set the 
 **sorted\_fastq\_path** to tell ipyrad the location of our fastq
-data files, and also set the **project\_dir**. For the latter let's the 
-name of our study organism, "pedicularis". 
-Because we're going to create several different assemblies in this tutorial
-using a "project_dir/" will allow us to group them all together in a shared
-directory. For now, we'll leave the remaining parameters at their default values.
+data files, and also set the **project\_dir**. For the latter let's use the 
+name of our study organism, "pedicularis". Because we're going to create several 
+different assemblies the "project_dir/" will group them together conveniently
+into a single shared directory. 
+For now let's leave the remaining parameters at their default values.
+
 
 .. parsed-literal::
     ## use your text editor to set the following params:
@@ -66,10 +67,11 @@ directory. For now, we'll leave the remaining parameters at their default values
 
 Load the fastq Sample data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-When the data path is with the **sorted_fastq_path** as opposed to the **raw_data_path**
-step1 has a different functionality. Instead of demultiplexing the data it simply
-counts the number of reads for each sample and parses the file names to extract
-names for the Samples. For example, the file 29154_superba.fastq.gz will be 
+When the data location is entered as a **sorted_fastq_path** as opposed to a 
+**raw_data_path**, step1 has a different functionality. Instead of 
+demultiplexing the data it simply counts the number of reads for each 
+sample and uses the file names to extract names for the Samples. 
+For example, the file 29154_superba.fastq.gz will be 
 assigned to a Sample named "29154_superba". Here we run step1 (-s 1) and 
 ask ipyrad to print the results when it is finished (-r). 
 
