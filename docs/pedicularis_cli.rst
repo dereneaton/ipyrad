@@ -175,7 +175,7 @@ is about 5-10% of the total. This will make our analysis run very fast downstrea
 .. code:: bash
 
     ## run step2 in preview mode
-    >>> ipyrad -p params-sub4.txt -s 2 --preview
+    >>> ipyrad -p params-sub4.txt -s 2 --preview -r
 
 
 .. parsed-literal::
@@ -191,6 +191,25 @@ is about 5-10% of the total. This will make our analysis run very fast downstrea
    Running preview mode: subselecting maximum of 100000 reads per sample    
    [####################] 100%  processing reads      | 0:02:48 
    Saving Assembly.
+
+
+    Summary stats of Assembly base
+    ------------------------------------------------
+                            state  reads_raw  reads_filtered
+    29154_superba               2     696994           92448
+    30556_thamno                2    1452316           93666
+    30686_cyathophylla          2    1253109           89122
+    32082_przewalskii           2     964244           92016
+    33413_thamno                2     636625           89428
+    33588_przewalskii           2    1002923           92418
+    35236_rex                   2    1803858           92807
+    35855_rex                   2    1409843           92883
+    38362_rex                   2    1391175           93363
+    39618_rex                   2     822263           92096
+    40578_rex                   2    1707942           93386
+    41478_cyathophylloides      2    2199740           93846
+    41954_cyathophylloides      2    2199613           91756
+
 
 
 Run step 3 (clustering and aligning)
