@@ -4,25 +4,27 @@
 .. _pedicularis_cli:
 
 
-Empirical example (*Pedicularis*) - CLI
-========================================
-This tutorial is a bit less didactic and meant more to show an example of 
-expected run times and statistics for an empirical assembly. The data set
-is composed of single-end reads for a RAD-seq library prepared with the PstI
-enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
-*Pedicularis*, originally published by **Eaton and Ree (2013)** 
-(:ref:`link to open access article 
-<eaton_and_ree>`). 
+Sub-sampling data sets
+=======================
+In this tutorial I show how to subsample both the number of taxa in an Assembly,
+and the amount of sequence data. Again we use the 13 taxa *Pedicularis* data set
+from **Eaton and Ree (2013)** for our example. 
 
-Download the fastQ files
-~~~~~~~~~~~~~~~~~~~~~~~~
-The data are hosted online at the NCBI sequence read archive (SRA) under 
-accession id SRP021469. For convenience, I've also hosted the data at a 
-publicly available dropbox link which we will use to download the data here, 
-since it's a bit easier. Run the code below to download and decompress 
-the fastq files. They will be saved in a directory called 
-``example_empirical_data/`` in your current directory. 
-The compressed data size is approximately 1.1GB.
+..  use an empirical data set for the example. 
+.. The data set is composed of single-end reads for a RAD-seq library prepared with 
+.. the PstI enzyme for 13 individuals from the *Cyathophora* clade of the angiosperm genus
+.. *Pedicularis*, originally published by 
+.. (:ref:`link to open access article <eaton_and_ree>`). 
+
+
+Download the empirical example data set (*Pedicularis*)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+These data are archived on the NCBI sequence read archive (SRA) under 
+accession id SRP021469. For convenience, I also host the data at a 
+publicly available Dropbox link which is a bit easier to access. 
+Run the code below to download and decompress the fastq data files, 
+which will save them into a directory called ``example_empirical_data/``. 
+The compressed file size is approximately 1.1GB.
 
 .. code:: bash
 
@@ -34,133 +36,160 @@ The compressed data size is approximately 1.1GB.
     >>> tar -xvzf example_empirical_rad.tar.gz
 
 
-Starting an ipyrad analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-As usual, start with the ``-n`` argument to create a new named Assembly. 
+Setup a base params file
+~~~~~~~~~~~~~~~~~~~~~~~~
+We start by using the ``-n`` argument to create a new named Assembly. 
 I use the name ``base`` to indicate that this is the base assembly from 
 which we will later create several branches.
 
 .. code:: bash
+
     >>> ipyrad -n "base"
 
 .. parsed-literal::
     New file 'params-base.txt' created in /home/deren/Downloads
 
 
-Edit the params file
-~~~~~~~~~~~~~~~~~~~~
-The data are already demultiplexed so we are going to set the 
-**sorted\_fastq\_path** to tell ipyrad the location of the fastq
-data files. I'm also setting the **project\_dir** to "pedicularis" -- 
-the name of the study system. In this tutorial we will create several 
-different assemblies of this data set under several different parameter 
-settings. Each will have a different assembly_name, and all of them will 
-end up in the pedicularis/ directory. All other parameters are left at 
-their default values for now.
+The data come to us already demultiplexed so we are going to simply set the 
+**sorted\_fastq\_path** to tell ipyrad the location of the data files, 
+and also set a **project\_dir**, which will group all of our analyses into 
+a single directory. For the latter I use the name of our study organism, "pedicularis". 
 
 .. parsed-literal::
-    ## use your text editor to set the following params:
-    ## for #4, use a wildcard (*) to select all 13 gzipped files.
-    pedicularis                    ## [1] [project_dir] ...
-    example_empirical_rad/*.gz     ## [4] [sorted_fastq_path] ...
+    ## Use your text editor to enter the following values:
+    ## The wildcard (*) tells ipyrad to select all files ending in .gz
+    pedicularis                       ## [1] [project_dir] ...
+    example_empirical_rad/*.gz        ## [4] [sorted_fastq_path] ...
+
+For now we'll leave the remaining parameters at their default values.
 
 
-Assemble the data set
+Load the fastq Sample data
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+When the data location is entered as a **sorted_fastq_path** step 1 
+simply counts the number of reads for each Sample and parses the file names to 
+extract names for each Sample. For example, the file ``29154_superba.fastq.gz`` 
+will be assigned to Sample ``29154_superba``. Now, run step 1 (-s 1) and 
+tell ipyrad to print the results when it is finished (-r). 
+
+.. code:: bash
+
+    >>> ipyrad -p params-base.txt -s 1 -r
+
+
+.. parsed-literal:: 
+  --------------------------------------------------
+   ipyrad [v.0.2.5]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   New Assembly: base
+   ipyparallel setup: Local connection to 4 Engines
+
+   Step1: Linking sorted fastq data to Samples
+     Linking to demultiplexed fastq files in:
+       /home/deren/Downloads/example_empirical_rad/*.gz
+     13 new Samples created in 'base'.
+     13 fastq files linked to 13 new Samples.
+   Saving Assembly.
+
+  Summary stats of Assembly base
+  ------------------------------------------------
+                          state  reads_raw
+  29154_superba               1     696994
+  30556_thamno                1    1452316
+  30686_cyathophylla          1    1253109
+  32082_przewalskii           1     964244
+  33413_thamno                1     636625
+  33588_przewalskii           1    1002923
+  35236_rex                   1    1803858
+  35855_rex                   1    1409843
+  38362_rex                   1    1391175
+  39618_rex                   1     822263
+  40578_rex                   1    1707942
+  41478_cyathophylloides      1    2199740
+  41954_cyathophylloides      1    2199613
+
+
+Sub-sampling methods
 ~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: bash
-    ## Now run step 1 of the assembly 
-    ## the -p flag tells ipyrad which assembly to use (params-base.txt)
-    >>> ipyrad -p params-base.txt -s 12
-
-
-.. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    ---------------------------------------------------
-     New Assembly: base
-     ipyparallel setup: Local connection to 4 Engines
-
-     Step1: Linking sorted fastq data to Samples
-
-       Linking to demultiplexed fastq files in:
-         /home/deren/Downloads/example_empirical_rad/*.gz
-       13 new samples created in 'base'
-       13 fastq files linked to 13 new Samples.
-       Saving Assembly
+Assembling this full data set takes around 3 hours on a 4-core laptop, which
+is actually pretty fast. However, for very large data sets you may be interested in 
+running a faster analysis on just a subset of your data so that you can more 
+easily explore the affect of many different parameter settings on your results 
+before running your full data set. This can be done in two ways: first, by 
+selecting a subset of samples to run your analysis on, and second, by selecting
+a subset of reads to use for the analysis. 
 
 
-We can use the -r flag to see the results
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: bash
-
-    ipyrad -p params-base.txt -r
-
-
-.. parsed-literal::
-
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw
-    29154_superba               1     696994
-    30556_thamno                1    1452316
-    30686_cyathophylla          1    1253109
-    32082_przewalskii           1     964244
-    33413_thamno                1     636625
-    33588_przewalskii           1    1002923
-    35236_rex                   1    1803858
-    35855_rex                   1    1409843
-    38362_rex                   1    1391175
-    39618_rex                   1     822263
-    40578_rex                   1    1707942
-    41478_cyathophylloides      1    2199740
-    41954_cyathophylloides      1    2199613
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: None
-    step 3: None
-    step 4: None
-    step 5: None
-    step 6: None
-    step 7: None
-    
+.. note::
+    Importantly, no matter what you do in ipyrad, it will never delete or 
+    modify your original fastq data files. Assembly objects simply store
+    information about Samples, and Samples simply contain statistics about 
+    data files. Samples can be discarded from an Assembly, in which case the
+    Assembly loses some information, however, this does not delete any data files. 
+    Nevertheless, to retain Sample information ipyrad only allows Samples to be 
+    discarded during branching, so that Sample information is always retained 
+    in the parent branch. See the example below.
 
 
-Next we run step2 to filter the data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Assembling this complete data set takes several hours depending on how
-many processors are available. Using four cores it can finish about 1.5
-hours if we subsample the data set using the --preview method in ipyrad.
-If run during step2 this function subsamples 100K reads from each
-sample. As you can see above, this is only about 5-10% of the total
-reads. Run the assembly step and then use the -r flag to see the results.
-
+**Subselecting samples**:
+We can subselect Samples by creating a new branch called "sub4", and passing 
+the the branch argument a list of Sample names in addition to the new branch 
+name. **This does NOT delete any files** (see above), but simply copies
+a subset of information from "base" to the new assembly "sub4".
+If you accidentally discarded the wrong Sample could re-create "sub4" by 
+simply branching "base" again with a different list of Samples. 
 
 .. code:: bash
 
-    ipyrad -p params-base.txt -s 2 --preview
-    ipyrad -p params-base.txt -r
+    ## Create new branch of base Assembly named sub4 and pass it
+    ## the names of four Samples (if no names it keeps all Samples)
+    >>> ipyrad -p params-base.txt -b sub4  29154_superba, 30556_thamno, \
+                                           30686_cyathophylla, 32082_przewalskii
 
 
 .. parsed-literal::
+    New branch 
 
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: base [~/Downloads/pedicularis/base.json]
-     ipyparallel setup: Local connection to 4 Engines
-    
-     Step2: Filtering reads 
-       Running preview mode: subselecting maximum of 100000 reads per sample    
-       Saving Assembly.
+
+    ## print stats for sub4 to confirm that Samples were discarded
+    >>> ipyrad -p params-sub4.txt -r
+
+
+.. parsed-literal::
+  Summary stats of Assembly sub4
+  ------------------------------------------------
+                          state  reads_raw
+  39618_rex                   1     822263
+  40578_rex                   1    1707942
+  41478_cyathophylloides      1    2199740
+  41954_cyathophylloides      1    2199613 
+
+
+**Subsampling data**:
+A special flag (--preview) can be called during step2 to subsample a specific
+number of reads per Sample. The default is 100K reads, which in this case 
+is about 5-10% of the total. This will make our analysis run very fast downstream. 
+
+.. code:: bash
+
+    ## run step2 in preview mode
+    >>> ipyrad -p params-sub4.txt -s 2 --preview -r
+
+
+.. parsed-literal::
+  --------------------------------------------------
+   ipyrad [v.0.2.5]
+   Interactive assembly and analysis of RADseq data
+  --------------------------------------------------
+   loading Assembly: base
+   from saved path: ~/Downloads/pedicularis/base.json
+   ipyparallel setup: Local connection to 4 Engines
+ 
+   Step2: Filtering reads 
+   Running preview mode: subselecting maximum of 100000 reads per sample    
+   [####################] 100%  processing reads      | 0:02:48 
+   Saving Assembly.
 
 
     Summary stats of Assembly base
@@ -179,170 +208,81 @@ reads. Run the assembly step and then use the -r flag to see the results.
     40578_rex                   2    1707942           93386
     41478_cyathophylloides      2    2199740           93846
     41954_cyathophylloides      2    2199613           91756
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: ./pedicularis/base_edits/s2_rawedit_stats.txt
-    step 3: None
-    step 4: None
-    step 5: None
-    step 6: None
-    step 7: None
-    
-    
+
 
 
 Run step 3 (clustering and aligning)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 This is generally one of the longest running steps, depending on how
 many unique clusters (loci) there are in each sample. Using more
 processors will allow it run much faster. On my laptop with 4 cores this
 step finishes in approximately 30 minutes. From the results you can see
 that there are many clusters found in each sample (clusters\_total), but
-many fewer (~2%) that were recovered at high depth (clusters\_hidepth).
+very few are recovered at high depth (clusters\_hidepth).
 The coverage would of course be much better if we did not subsample the
-data set in step2 using --preview mode.
+data set in step2. Also, this data set has fairly low coverage to begin with. 
+We can either lower the mindepth setting to allow us to use more of this low
+depth data, or we can decide to go ahead with our mindepth setting (currently
+at the default of 6) and simply discard most of our data. I know, how about 
+we create a branch so that we can do both!
 
 .. code:: bash
 
-    ipyrad -p params-base.txt -s 3
-    ipyrad -p params-base.txt -r
-
+    ## create a lowdepth branch
+    >>> ipyrad -p params-sub4.txt -b sub4-lowdepth.
 
 .. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: base [~/Downloads/pedicularis/base.json]
-     ipyparallel setup: Local connection to 4 Engines
-   
-     Step3: Clustering/Mapping reads
-       Saving Assembly.
-
-    
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total  
-    29154_superba               3     696994           92448           45531  
-    30556_thamno                3    1452316           93666           45745  
-    30686_cyathophylla          3    1253109           89122           50306  
-    32082_przewalskii           3     964244           92016           44242  
-    33413_thamno                3     636625           89428           52053  
-    33588_przewalskii           3    1002923           92418           46674  
-    35236_rex                   3    1803858           92807           57801  
-    35855_rex                   3    1409843           92883           45139  
-    38362_rex                   3    1391175           93363           41580  
-    39618_rex                   3     822263           92096           47295  
-    40578_rex                   3    1707942           93386           45295  
-    41478_cyathophylloides      3    2199740           93846           41965  
-    41954_cyathophylloides      3    2199613           91756           47735  
-
-                            clusters_hidepth  
-    29154_superba                        978  
-    30556_thamno                         987  
-    30686_cyathophylla                   757  
-    32082_przewalskii                    686  
-    33413_thamno                         728  
-    33588_przewalskii                    904  
-    35236_rex                            767  
-    35855_rex                           1106  
-    38362_rex                           1140  
-    39618_rex                           1258  
-    40578_rex                            832  
-    41478_cyathophylloides               992  
-    41954_cyathophylloides              1307  
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: ./pedicularis/base_edits/s2_rawedit_stats.txt
-    step 3: ./pedicularis/base_clust_0.85/s3_cluster_stats.txt
-    step 4: None
-    step 5: None
-    step 6: None
-    step 7: None
-    
-    
+  loading Assembly: base
+  from saved path: ~/Downloads/pedicularis/base.json
+  Creating a branch of assembly base called sub4
+  Writing new params file to params-sub4.txt
 
 
-Run Step 4 (joint estimation of error rate & heterozygosity)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code:: bash
 
-This step runs pretty fast. It should finish in about 10 minutes. As you
-can see in the results the error rate is about 10X the heterozygosity
+    ## create a lowdepth branch
+    >>> ipyrad -p params-base.txt -s 3
+
+.. parsed-literal::
+   --------------------------------------------------
+    ipyrad [v.0.2.5]
+    Interactive assembly and analysis of RADseq data
+   --------------------------------------------------
+    loading Assembly: base
+    from saved path: ~/Downloads/pedicularis/base.json
+    ipyparallel setup: Local connection to 4 Engines
+  
+    Step3: Clustering/Mapping reads
+    [####################] 100%  dereplicating         | 0:00:01 
+    [####################] 100%  clustering            | 0:01:01 
+    [####################] 100%  chunking              | 0:00:00 
+    [####################] 100%  aligning              | 0:25:44 
+    [####################] 100%  concatenating         | 0:00:05 
+    Saving Assembly.
+
+
+Use a text editor to enter the following new **mindepth_majrule** value 
+in the file ``params-sub4-lowdepth.txt``:
+
+.. parsed-literal::
+    ## 2                  ## [mindepth_majrule] ...
+
+
+Steps 4-5 (joint estimation of error rate & heterozygosity)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As you can see in the results the error rate is about 10X the heterozygosity
 estimate. The latter does not vary significantly across samples. With
 data of greater depth the estimates will be more accurate.
 
 .. code:: bash
 
-    ipyrad -p params-base.txt -s 4 
-    ipyrad -p params-base.txt -r
+    >>> ipyrad -p params-sub4.txt          -s 45 -r 
+    >>> ipyrad -p params-sub4-lowdepth.txt -s 45 -r
 
 
 .. parsed-literal::
-
-    --------------------------------------------------
-     ipyrad [v.0.1.70]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: base [~/Downloads/pedicularis/base.json]
-     ipyparallel setup: Local connection to 4 Engines
-  
-     Step4: Joint estimation of error rate and heterozygosity
-       Saving Assembly.
+    ... add output here
     
-    
-    Summary stats of Assembly base
-    ------------------------------------------------
-                            state  reads_raw  reads_filtered  clusters_total
-    29154_superba               4     696994           92448           45531
-    30556_thamno                4    1452316           93666           45745
-    30686_cyathophylla          4    1253109           89122           50306
-    32082_przewalskii           4     964244           92016           44242
-    33413_thamno                4     636625           89428           52053
-    33588_przewalskii           4    1002923           92418           46674
-    35236_rex                   4    1803858           92807           57801
-    35855_rex                   4    1409843           92883           45139
-    38362_rex                   4    1391175           93363           41580
-    39618_rex                   4     822263           92096           47295
-    40578_rex                   4    1707942           93386           45295
-    41478_cyathophylloides      4    2199740           93846           41965
-    41954_cyathophylloides      4    2199613           91756           47735
-    
-                            clusters_hidepth  hetero_est  error_est  
-    29154_superba                        978    0.038530   0.006630  
-    30556_thamno                         987    0.038266   0.006009  
-    30686_cyathophylla                   757    0.044680   0.004627  
-    32082_przewalskii                    686    0.046796   0.007077  
-    33413_thamno                         728    0.041466   0.004528  
-    33588_przewalskii                    904    0.041445   0.011253  
-    35236_rex                            767    0.042423   0.005119  
-    35855_rex                           1106    0.035123   0.012086  
-    38362_rex                           1140    0.041206   0.004702  
-    39618_rex                           1258    0.040696   0.009077  
-    40578_rex                            832    0.045177   0.002789  
-    41478_cyathophylloides               992    0.041085   0.004468  
-    41954_cyathophylloides              1307    0.032387   0.013090  
-    
-    
-    Full stats files
-    ------------------------------------------------
-    step 1: None
-    step 2: ./pedicularis/base_edits/s2_rawedit_stats.txt
-    step 3: ./pedicularis/base_clust_0.85/s3_cluster_stats.txt
-    step 4: ./pedicularis/base_clust_0.85/s4_joint_estimate.txt
-    step 5: None
-    step 6: None
-    step 7: None
-    
-    
-
 
 Run step 5 (consensus base calls)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
