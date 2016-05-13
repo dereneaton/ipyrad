@@ -178,7 +178,7 @@ class Assembly(object):
                        ("max_Indels_locus", (8, 8)), 
                        ("max_shared_Hs_locus", .25), 
                        ("edit_cutsites", (0, 0)),
-                       ("trim_overhang", (1, 2, 2, 1)),                        
+                       ("trim_overhang", (4, 4, 4, 4)),                        
                        ("output_formats", "*"),
                        ("pop_assign_file", ""),
                        ("excludes", ""),
