@@ -672,9 +672,9 @@ class Assembly(object):
         ## If not forcing, test for file and bail out if it exists
         if not force:
             if os.path.isfile(outfile):
-                raise IPyradError("""
-    File exists: {}
-    Use force argument to overwrite.
+                raise IPyradWarningExit("""
+  **Aborting** File exists: {}
+  Use force argument to overwrite.
     """.format(outfile))
 
         with open(outfile, 'w') as paramsfile:
@@ -704,7 +704,7 @@ class Assembly(object):
 
 
 
-    def branch(self, newname):
+    def branch(self, newname, subsamples=[]):
         """ Returns a copy of the Assembly object. Does not allow Assembly 
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
@@ -719,9 +719,21 @@ class Assembly(object):
             newobj.name = newname
             newobj.paramsdict["assembly_name"] = newname
 
-            ## create copies of each Sample obj
-            for sample in self.samples:
-                newobj.samples[sample] = copy.deepcopy(self.samples[sample])
+            ## create copies of each subsampled Sample obj
+            if subsamples:
+                for sname in subsamples:
+                    if sname in self.samples:
+                        newobj.samples[sname] = copy.deepcopy(self.samples[sname])
+                    else:
+                        print("  Sample name not found: {}".format(sname))
+                ## reload sample dict w/o non subsamples
+                newobj.samples = {name:sample for name, sample in \
+                           self.samples.items() if name in subsamples}
+
+            ## create copies of each subsampled Sample obj
+            else:
+                for sample in self.samples:
+                    newobj.samples[sample] = copy.deepcopy(self.samples[sample])
 
             ## save json of new obj and return object
             newobj.save()

@@ -96,15 +96,21 @@ def showstats(parsedict):
 
 
 def branch_assembly(args, parsedict):
-    """ Load the passed in assembly and create a branch. Copy it
-        to a new assembly, and also write out the appropriate params.txt
+    """ 
+    Load the passed in assembly and create a branch. Copy it
+    to a new assembly, and also write out the appropriate params.txt
     """
     ## Get the current assembly
+    bargs = args.branch
+    if len(bargs) > 1:
+        subsamples = bargs[1:]
+    else:
+        subsamples = []
     data = getassembly(args, parsedict)
-    new_data = data.branch(args.branch)
+    new_data = data.branch(bargs[0], subsamples)
 
-    print("  Creating a branch of assembly {} called {}".\
-        format(data.name, new_data.name))
+    print("  Creating a new branch called '{}' with {} Samples".\
+        format(new_data.name, len(new_data.samples)))
 
     print("  Writing new params file to {}"\
           .format("params-"+new_data.name+".txt"))
@@ -135,9 +141,8 @@ def getassembly(args, parsedict):
         os.mkdir(project_dir)
 
     try:
-
         ## If 1 and force then go ahead and create a new assembly
-        if '1' in args.steps and args.force:
+        if ('1' in args.steps) and args.force:
             data = ip.Assembly(assembly_name)
         else:
             data = ip.load_json(assembly_file)
@@ -182,22 +187,20 @@ def parse_command_line():
     ipyrad -p params-data.txt -s 4567    ## run steps 4-7 of assembly.
     ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
-  * Preview mode:
-    ipyrad -p params-data.txt -s --preview    ## Run fast preview mode for testing
-
-  * HPC parallelization
-    ipyrad -p params-data.txt -s 3 --MPI      ## access cores across multiple nodes
+  * HPC parallelization across multiple nodes
+    ipyrad -p params-data.txt -s 3 --MPI    
 
   * Results summary quick view
-    ipyrad -p params-data.txt -r         ## print summary stats to screen for 'data'
+    ipyrad -p params-data.txt -r 
 
-  * Run quietly
-    ipyrad -p params.txt -q              ## Run quietly, do not write output to std out
+  * Branch Assembly
+    ipyrad -p params-data.txt -b newdata  
 
-  * Branch assembly
-    ipyrad -p params-data.txt -b newdata  ## Create new branch of Assembly 'data' 
-                                          ## called 'newdata', which inherits 
-                                          ## stats/files from 'data'.
+  * Branch subset to Samples to a new Assembly
+    ipyrad -p params-data.txt -b newdata sample_1 sample2 sample3 sample4
+
+  * Preview mode (subsamples data)
+    ipyrad -p params-data.txt -s --preview  
 
   * Get parameter info
     ipyrad -i                             ## Get a list of parameter names
@@ -232,7 +235,7 @@ def parse_command_line():
         help="path to params file for Assembly: params-{assembly_name}.txt")
 
     parser.add_argument('-b', metavar='branch', dest="branch",
-        type=str, default=None,
+        type=str, default=None, nargs="*",
         help="create a new branch of the Assembly as params-{branch}.txt")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
@@ -288,7 +291,7 @@ def main():
             print(inst)
             sys.exit(2)
 
-        print("\n    New file `params-{}.txt` created in {}\n".\
+        print("\n    New file 'params-{}.txt' created in {}\n".\
                format(args.new, os.path.realpath(os.path.curdir)))
         sys.exit(2)
 
