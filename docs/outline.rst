@@ -96,11 +96,16 @@ demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_f
 otherwise, it simply reads the data for each Sample. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step1: :ref:`*assembly_name<assembly_name>`, 
-:ref:`*project_dir<project_dir>`, :ref:`raw_fastq_path<raw_fastq_path>`,
-:ref:`barcodes_path<barcodes_path>`, :ref:`sorted_fastq_path<sorted_fastq_path>`,
-:ref:`*datatype<datatype>`, :ref:`restriction_overhang<restriction_overhang>`, 
-:ref:`max_barcode_mismatch<max_barcode_mismatch>`. 
+used or required (\*) for step1: 
+* :ref:`*assembly_name<assembly_name>`  
+* :ref:`*project_dir<project_dir>`  
+* :ref:`raw_fastq_path<raw_fastq_path>`  
+* :ref:`barcodes_path<barcodes_path>`  
+* :ref:`sorted_fastq_path<sorted_fastq_path>`  
+* :ref:`*datatype<datatype>`  
+* :ref:`restriction_overhang<restriction_overhang>`  
+* :ref:`max_barcode_mismatch<max_barcode_mismatch>`  
+
 
 
 2. Filtering / Editing reads
