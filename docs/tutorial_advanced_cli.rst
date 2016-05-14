@@ -138,10 +138,21 @@ files in the ``iptutorial/`` directory.
 
 
 .. parsed-literal::
-    Step1: Demultiplexing fastq data to Samples.
-      Saving Assembly.
-    Step2: Filtering reads 
-      Saving Assembly.
+ --------------------------------------------------
+  ipyrad [v.0.2.6]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  New Assembly: cli
+  ipyparallel setup: Local connection to 4 Engines
+
+  Step1: Demultiplexing fastq data to Samples
+  [####################] 100%  sorting reads         | 0:00:05 
+  [####################] 100%  writing files         | 0:00:00 
+  Saving Assembly.
+
+  Step2: Filtering reads 
+  [####################] 100%  processing reads      | 0:00:32 
+  Saving Assembly.
 
 
 Inside ``iptutorial`` you'll see that ipyrad_ has created two subdirectories 
@@ -183,8 +194,8 @@ and add the reference sequence file.
 And make the following edits to ``params-data2.txt``:
 
 .. parsed-literal::
-    ## reference                               ## [5] [assembly_method] ...
-    ## ./ipsimdata/sim_mt_genome.fa            ## [6] [reference_sequence] ...
+    reference                               ## [5] [assembly_method] ...
+    ./ipsimdata/sim_mt_genome.fa            ## [6] [reference_sequence] ...
 
 
 Now we can run steps 3-7 on these two assemblies each using their own params 
