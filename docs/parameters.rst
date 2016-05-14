@@ -36,19 +36,17 @@ Example: new Assemblies are created with the -n or -b options to ipyrad:
 .. code-block:: bash
 
     >>> ipyrad -n data1                       ## create a new assembly named data1
-    >>> ipyrad -p params-data1.txt -b data2   ## create new assembly named data2
+    >>> ipyrad -p params-data1.txt -b data2   ## create a branch assembly named data2
 
 
 .. _project_dir:
 
 1. Project dir
 --------------
-The Project directory is the location where a group of Assemblies which share
-data files will be saved. This can be either a name or a path. If it is a path
-then the a new directory will be created at the given path if it does not already
-exist. If a name is entered then a new directory with that name will be created in the
-current directory if it does not already exist. A good name for Project_dir will
-generally be the name of the organism being studied.
+A project directory can be used to group together multiple related Assemblies. 
+A new directory will be created at the given path if it does not already exist. 
+A good name for Project_dir will generally be the name of the organism being studied.
+The project dir path should not be changed after an analysis is initiated. 
 
 Affected steps: 1-7  
 
@@ -73,7 +71,7 @@ To select multiple files, or all files in a directory, use a wildcard character 
 
 Affected steps = ``1``. Example entries into params.txt:  
 
-.. code-block:: python
+.. code-block:: bash
 
     /home/deren/ipyrad/tests/data/*.fastq.gz  ## [2] select all gzip data files
     ~/ipyrad/tests/data/*.fastq.gz            ## [2] select all gzip data files
