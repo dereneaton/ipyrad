@@ -4,16 +4,13 @@
 
 Assembly Parameters
 ====================
-
-ipyrad_ performs a series of :ref:`7 steps <7_steps>` 
-to assemble RAD-seq data sets by sorting
-filtering, clustering, and formatting the data into output files. During each 
-step a number of parameters are used which affect how that step is performed. 
-The defaults that we chose are fairly reasonable values for most assemblies, 
-however, you will always need to modify at least a few of them (for example, to 
-indicate the location of your data), and often times you will want to modify 
-many of the parameters. The ability to easily assemble your data set under a range
-of parameter settings is one of the main features of ipyrad_. 
+The parameters contained in a params file affect the actions that are performed
+during each step of an ipyrad assembly. The defaults that we chose are fairly 
+reasonable values for most assemblies, however, you will always need to modify 
+at least a few of them (for example, to indicate the location of your data), 
+and often times you will want to modify many of the parameters. 
+The ability to easily assemble your data set under a range of parameter 
+settings is one of the main features of ipyrad_. 
 
 Below is an explanation of each parameter setting, the steps of the assembly 
 that it effects, and example entries for the parameter into a params.txt file.
@@ -30,17 +27,15 @@ combinations I usually either name them consecutively (e.g., data1, data2), or
 with names indicating their parameter combinations (e.g., data_clust90, 
 data_clust85). The Assembly name cannot be changed after an Assembly is created
 with the ``-n`` flag, but a new Assembly with a different name can be created 
-by copying (branching) the Assembly 
-(see :ref:`branching workflow<branching_workflow>`).
+by branching the Assembly (see :ref:`branching workflow<branching_workflow>`).
 
 Affected steps: 1-7  
 
-Example entries into params.txt:  
+Example: new Assemblies are created with the -n or -b options to ipyrad:
 
 .. code-block:: python
-
-    data1                      ## [0] name the Assembly data1
-    clust90_minsamp4           ## [0] name based on some param settings
+    >>> ipyrad -n data1                       ## create a new assembly named data1
+    >>> ipyrad -p params-data1.txt -b data2   ## create new assembly named data2
 
 
 .. _project_dir:
