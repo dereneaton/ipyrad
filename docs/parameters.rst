@@ -33,7 +33,8 @@ Affected steps: 1-7
 
 Example: new Assemblies are created with the -n or -b options to ipyrad:
 
-.. code-block:: python
+.. code-block:: bash
+
     >>> ipyrad -n data1                       ## create a new assembly named data1
     >>> ipyrad -p params-data1.txt -b data2   ## create new assembly named data2
 
@@ -53,7 +54,7 @@ Affected steps: 1-7
 
 Example entries into params.txt:  
 
-.. code-block:: python
+.. code-block:: bash
 
     /home/deren/ipyrad/tests/finches   ## [1] create/use project dir called finches
     finches                            ## [1] create/use project dir called finches
