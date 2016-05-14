@@ -23,6 +23,20 @@ analyses.
 
 .. image:: images/steps.png
 
+The code to run a basic workflow is quite simple:
+
+.. code-block:: bash
+    
+    ## create an initial Assembly params file
+    >>> ipyrad -n data1 
+
+    ## fill in the params file with your text editor
+    ## ...
+
+    ## run steps 1-7 with the params file
+    >>> ipyrad -p params-data1.txt -s 1234567
+
+
 
 .. _branching_workflow:
 Branching workflow
@@ -41,6 +55,32 @@ branching events along each branch. You can find more branching examples in the
 :ref:`cookbook<cookbook>` sections. 
 
 .. image:: images/steps_branching.png
+
+
+The code to run a branching workflow is only a bit more complex than the basic
+workflow:
+
+.. code-block:: bash
+    
+    ## create an initial Assembly params file
+    >>> ipyrad -n data1 
+
+    ## edit the params file for data1 with your text editor
+    ## ...
+
+    ## run steps 1-2 with the params file
+    >>> ipyrad -p params-data1.txt -s 12
+
+    ## if create a branch before step3
+    >>> ipyrad -p params-data1.txt -b data2
+
+    ## edit the params file for data2 using a text editor
+    ## ...
+
+    ## run steps 3-7 for both assemblies
+    ipyrad -p params-data1.txt -s 34567
+    ipyrad -p params-data2.txt -s 34567
+
 
 
 .. _seven_steps:
