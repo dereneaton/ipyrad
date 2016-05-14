@@ -3,7 +3,7 @@
 
 .. _files:
 
-Fastq data files
+Input data files
 ================
 ipyrad_ can be used to assemble any type of data that is generated using a 
 restriction digest method (RAD, ddRAD, GBS) or related amplification-based 
@@ -39,8 +39,8 @@ individual, or for using multiple barcodes file.
 
 
 .. _file_names:
-Input file names
------------------
+File names
+-----------
 If your data are being demultiplexing then Sample names will be extracted from
 the :ref:`barcodes files<barcodes_file>`, as shown below. 
 If your data are already sorted among Samples (demultiplexed) then
