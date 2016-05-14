@@ -24,6 +24,24 @@ analyses.
 .. image:: images/steps.png
 
 
+.. _branching_workflow:
+Branching workflow
+-------------------
+A more effective way to use ipyrad_, however, is to create branching
+assemblies in which multiple data sets are assembled under different parameter 
+settings. The schematic below shows how to branch an example where an assembly 
+is branched at step3. The new branch will inherit file paths and statistics 
+from the first Assembly, but can then apply different parameters going forward.
+Branching does not create hard copies of existing data files, and so it not 
+an "expensive" action to take in terms of disk space or time. It should be used 
+quite liberally whenever applying a new set of parameters. 
+You could envision many data sets generated this way by having successive 
+branching events along each branch. You can find more branching examples in the 
+:ref:`advanced tutorial<tutorial_advanced_cli>` and 
+:ref:`cookbook<cookbook>` sections. 
+
+.. image:: images/steps_branching.png
+
 
 .. _seven_steps:
 
@@ -184,24 +202,7 @@ used or required (\*) for step7:
 * :ref:`outgroups<outgroups>`
 
 
-.. _branching_workflow:
 
-Branching workflow
--------------------
-
-A more efficient and effective way to use ipyrad_ is to create branching
-assemblies in which multiple final data sets are assembled from the same
-shared data by applying different parameter settings to them during different
-steps of the assembly. The schematic and code example below shows how to branch
-an assembly called 'data1' to create a new assembly 'data2' which inherits the 
-files and statistics from data1, but then applies a different clustering 
-threshold going forward for steps 3-7. You can envision many data sets generated
-this way by having successive branching events along each branch. 
-You can find more branching examples in the 
-:ref:`advanced tutorial<tutorial_advanced_cli>` and 
-:ref:`cookbook<cookbook>` sections. 
-
-.. image:: images/steps_branching.png
 
 
 **Example CLI branching workflow**
