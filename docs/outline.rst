@@ -62,7 +62,7 @@ workflow:
 
 .. code-block:: bash
     
-    ## create an initial Assembly params file
+    ## create an initial Assembly and params file, here called 'data1'
     >>> ipyrad -n data1 
 
     ## edit the params file for data1 with your text editor
@@ -71,15 +71,15 @@ workflow:
     ## run steps 1-2 with the params file
     >>> ipyrad -p params-data1.txt -s 12
 
-    ## if create a branch before step3
+    ## create a new branch of 'data1' before step3, here called 'data2'.
     >>> ipyrad -p params-data1.txt -b data2
 
     ## edit the params file for data2 using a text editor
     ## ...
 
     ## run steps 3-7 for both assemblies
-    ipyrad -p params-data1.txt -s 34567
-    ipyrad -p params-data2.txt -s 34567
+    >>> ipyrad -p params-data1.txt -s 34567
+    >>> ipyrad -p params-data2.txt -s 34567
 
 
 
