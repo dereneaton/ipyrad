@@ -49,8 +49,6 @@ from the first Assembly, but can then apply different parameters going forward.
 Branching does not create hard copies of existing data files, and so it not 
 an "expensive" action to take in terms of disk space or time. It should be used 
 quite liberally whenever applying a new set of parameters. 
-You could envision many data sets generated this way by having successive 
-branching events along each branch. 
 
 .. image:: images/steps_branching.png
 
