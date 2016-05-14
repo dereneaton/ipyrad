@@ -338,19 +338,19 @@ to see how this process looks
 when you run it on a relatively quick set of real data. 
 
 
-Writing ipyrad scripts
-~~~~~~~~~~~~~~~~~~~~~~
-From the code above you may have noticed that the only thing stopping you from
-being able to write one long script that creates a whole range of assemblies is 
-when you have to edit the new params files by hand. We've purposefully avoided 
-creating an ipyrad command to change parameters on the fly, since this would 
-make it so that the params file are not a good record of the parameter set used
-throughout an entire assembly. 
+.. Writing ipyrad scripts
+.. ~~~~~~~~~~~~~~~~~~~~~~
+.. From the code above you may have noticed that the only thing stopping you from
+.. being able to write one long script that creates a whole range of assemblies is 
+.. when you have to edit the new params files by hand. We've purposefully avoided 
+.. creating an ipyrad command to change parameters on the fly, since this would 
+.. make it so that the params file are not a good record of the parameter set used
+.. throughout an entire assembly. 
 
-However, if you're a very programmatic type of person who would prefer that 
-all of your branching and parameter changing could take place within a single
-script you'll want to check out the :ref:`ipyrad API<API>`, which provides a 
-more elegant pure Python way to edit parameters in your code while 
-assembling data. 
+.. However, if you're a very programmatic type of person who would prefer that 
+.. all of your branching and parameter changing could take place within a single
+.. script you'll want to check out the :ref:`ipyrad API<API>`, which provides a 
+.. more elegant pure Python way to edit parameters in your code while 
+.. assembling data. 
 
 
