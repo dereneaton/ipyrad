@@ -50,15 +50,15 @@ Branching does not create hard copies of existing data files, and so it not
 an "expensive" action to take in terms of disk space or time. It should be used 
 quite liberally whenever applying a new set of parameters. 
 You could envision many data sets generated this way by having successive 
-branching events along each branch. You can find more branching examples in the 
-:ref:`advanced tutorial<tutorial_advanced_cli>` and 
-:ref:`cookbook<cookbook>` sections. 
+branching events along each branch. 
 
 .. image:: images/steps_branching.png
 
 
 The code to run a branching workflow is only a bit more complex than the basic
-workflow:
+workflow. You can find more branching examples in the 
+:ref:`advanced tutorial<tutorial_advanced_cli>` and 
+:ref:`cookbook<cookbook>` sections. 
 
 .. code-block:: bash
     
