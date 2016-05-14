@@ -5,10 +5,8 @@
 
 Assembly Outline
 ================
-
-The typical workflow to move from fastQ formatted input data to assembled 
-comparative data sets in ipyrad_ involves 
-:ref:`seven sequential steps <seven_steps>`. 
+The typical workflow to move from fastq formatted input data to assembled 
+output files in ipyrad_ involves :ref:`seven sequential steps <seven_steps>`. 
 The reason it is separated into distinct steps is to create a modular 
 workflow that can be easily restarted if it is interrupted, and can be easily
 :ref:`branched<branching_workflow>` at different points to create 
@@ -17,9 +15,11 @@ assemblies under different combinations of parameter settings.
 
 Basic workflow
 ---------------
-The basic workflow involves assembling a data set through the `seven steps`_ 
-sequentially under a single set of parameters defined in the 
-:ref:`parameter settings<parameters>`. These steps are described below.
+The simplest use of ipyrad is to assemble a data set under a single set of 
+parameters defined in a params file. Step 1 assigns data to each of the Samples, 
+Steps 2-5 process data for each Sample, Step 6 identifies homology between 
+different Samples, and Step 7 filters these data and formats them for downstream
+analyses. 
 
 .. image:: images/steps.png
 
