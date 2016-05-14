@@ -69,7 +69,7 @@ a path for raw data files then you should also have a path to a
 :ref:`barcodes file<barcodes file>` for parameter #3 (`barcodes path`_). 
 To select multiple files, or all files in a directory, use a wildcard character (*).
 
-Affected steps = ``1``. Example entries into params.txt:  
+Affected steps = 1. Example entries into params.txt:  
 
 .. code-block:: bash
 
@@ -87,7 +87,7 @@ for demuliplexing, and can also be used in step2 to improve the detection of
 adapter/primer sequences that should be filtered out. If your data are already
 demultiplexed the barcodes path can be left blank. 
 
-Affected steps = ``1, 2``. Example entries into params.txt:  
+Affected steps = 1-2. Example entries into params.txt:  
 
 .. code-block:: python
 
@@ -104,7 +104,7 @@ demultiplexed then this is the location that will be used in step 1 to load
 the data into ipyrad. A wildcard character can be used to select multiple 
 files in directory. 
 
-Affected steps = ``1``. Example entries into params.txt:  
+Affected steps = 1. Example entries into params.txt:  
 
 .. code-block:: python
 
@@ -122,7 +122,7 @@ denovo, reference, denovo+reference, and denovo-reference.
 The latter three all require a reference sequence file (param #6) in fasta 
 format. See the :ref:`tutorials` for an example. 
 
-Affected steps: ``3, 6``. Example entries into params.txt:  
+Affected steps: 3, 6. Example entries into params.txt:  
 
 .. code-block:: python
 
