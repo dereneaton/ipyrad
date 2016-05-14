@@ -5,17 +5,90 @@
 
 Input data/files
 =================
-ipyrad_ can be used to assemble any kind of data that is generated using a 
-restriction digest method (RAD, ddRAD) or related amplification-based 
-process (e.g., NextRAD, RApture). 
+ipyrad_ can be used to assemble any type of data that is generated using a 
+restriction digest method (RAD, ddRAD, GBS) or related amplification-based 
+process (e.g., NextRAD, RApture), both of which yield data that is anchored
+on at least one side so that reads are expected to align fairly closely. 
+ipyrad is not intended for constructing long contigs from many partially 
+overlapping (i.e., shotgun) sequences, however, ipyrad can accomodate paired-end
+data with or without merged reads, and works with reads of various lengths, so 
+that older data can be easily combined with new data of different lengths. 
 
-The :ref:`input files<input_files>` can be sorted among Samples 
-(demultiplexed) before starting to use ipyrad, or ipyrad can be used 
-to demultiplex the data based on a 
-`barcodes file`_. Examples of both are available in the 
-:ref:`tutorials<tutorials>`. 
-ipyrad aims to be very flexible in allowing assembly of reads of various
-lengths so that new data can be easily combined with older data. 
+Depending on how and where your sequence data were generated you may receive the
+data in one giant file, or in many smaller files. The files may contain data
+from all of your individuals mixed up together, in which case they need
+to be demultiplexed based on barcodes or indices; or the data may 
+already be demultiplexed, in which case each of your data files corresponds to 
+a different Sample. 
+
+
+__`multiplexed (raw) sequence files`__
+If your data are not yet sorted among individuals/samples then you will need 
+to have their barcode information organized into a 
+:ref:`barcodes file<barcodes_file>`. Sample names are taken from the barcodes 
+file. The raw data file(s) should be entered in the ``raw_fastq_path`` parameter
+of the params file. 
+
+demultiplexed (sorted) sequence files
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If your data are already sorted then you simply have to enter the path to the 
+data files in the ``sorted_fastq_path`` parameter.
+The :ref:`cookbook recipes <cookbook_recipes>` section provides more complex
+methods for combining data from multiple sequencing runs into the same 
+individual, or for using multiple barcodes file.
+
+
+.. note:: 
+
+    It's worth paying careful attention to file names before starting
+    an analysis since these names, and any included typos, will be perpetuated 
+    through all the resulting data files. Do not include spaces in file names.
+
+
+.. _file_names:
+Input file names
+-----------------
+If your data are not yet demultiplexed then Sample names will come from the 
+:ref:`barcodes files<barcodes_file>`, as shown below. 
+Otherwise, if data files are already sorted among Samples (demultiplexed) 
+then Sample names will be extracted from the file names. 
+The file names should not have any spaces in them. 
+If you are using a paired-end data type then the rules for file names are a bit 
+more strict than for single-end data. Every read1 file must contain the string 
+``_R1_`` in it, and every R2 file must match exactly to the name of the R1 file
+except that it has ``_R2_``. See the tutorials for an example. 
+
+
+
+.. _barcodes_file:
+
+Barcodes file
+--------------
+The barcodes file is a simple table linking barcodes to samples. 
+Barcodes can be of varying lengths. 
+Each line should have one name and then one barcode, separated by a tab or 
+space. The names that you enter in the barcodes file are the names 
+that will end up in your output files, so it is useful to check for 
+typos or other errors, or to shorten the names as you see fit before 
+running step1. Do not include any spaces in Sample names. 
+
+.. parsed-literal:: 
+    sample1     ACAGG
+    sample2     ATTCA  
+    sample3     CGGCATA  
+    sample4     AAGAACA  
+
+
+.. _params_file:
+Params file
+------------
+The parameter input file, which typically includes ``params.txt`` in its name, 
+can be created with the ``-n`` option from the ipyrad command line. This file 
+lists all of the :ref:`parameter settings<paramater settings>` 
+necessary to complete an assembly. 
+A description of how to create and use a parmas file can be found in the 
+:ref:`introductory tutorial<tutorial_intro_cli>`. 
+
 
 
 .. _data_types:
@@ -90,85 +163,3 @@ e.g., genotyping-by-sequencing, EZ-RAD, (w/ paired-end sequencing)
 This category is for a special class of reads sequenced fragments generated using
 a type IIb restriction enzyme. The reads are usually very short in length, and 
 are treated slightly differently in steps 2 and 7. 
-
-
-
-.. _input_files:
-
-FASTQ input files
-------------------
-Depending on how and where your sequence data are generated you may receive the
-data in a single giant file, or in many smaller files. The files may contain data
-from all of your individuals mixed up together, in which case the data need
-to be demultiplexed based on their barcodes or index; or your data may 
-already be demultiplexed, in which case each of your data files corresponds to 
-a different sample. 
-
-
-multiplexed (raw) sequence files  
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-If your data are not yet sorted among individuals/samples then you will need 
-to have their barcode information organized into a 
-:ref:`barcodes file<barcodes_file>`. Sample names are taken from the barcodes 
-file. The raw data file(s) should be entered in the ``raw_fastq_path`` parameter.
-
-
-demultiplexed (sorted) sequence files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-If your data are already sorted then you simply have to enter the path to the 
-data files in the ``sorted_fastq_path`` parameter.
-The :ref:`cookbook recipes <cookbook_recipes>` section provides more complex
-methods for combining data from multiple sequencing runs into the same 
-individual, or for using multiple barcodes file.
-
-
-.. note:: 
-
-    It's worth paying careful attention to file names before starting
-    an analysis since these names, and any included typos, will be perpetuated 
-    through all the resulting data files. Do not include spaces in file names.
-
-
-.. _file_names:
-Input file names
------------------
-If your data are not yet demultiplexed then Sample names will come from the 
-:ref:`barcodes files<barcodes_file>`, as shown below. 
-Otherwise, if data files are already sorted among Samples (demultiplexed) 
-then Sample names will be extracted from the file names. 
-The file names should not have any spaces in them. 
-If you are using a paired-end data type then the rules for file names are a bit 
-more strict than for single-end data. Every read1 file must contain the string 
-``_R1_`` in it, and every R2 file must match exactly to the name of the R1 file
-except that it has ``_R2_``. See the tutorials for an example. 
-
-
-
-.. _barcodes_file:
-
-Barcodes file
---------------
-The barcodes file is a simple table linking barcodes to samples. 
-Barcodes can be of varying lengths. 
-Each line should have one name and then one barcode, separated by a tab or 
-space. The names that you enter in the barcodes file are the names 
-that will end up in your output files, so it is useful to check for 
-typos or other errors, or to shorten the names as you see fit before 
-running step1. Do not include any spaces in Sample names. 
-
-.. parsed-literal:: 
-    sample1     ACAGG
-    sample2     ATTCA  
-    sample3     CGGCATA  
-    sample4     AAGAACA  
-
-
-.. _params_file:
-Params file
-------------
-The parameter input file, which typically includes ``params.txt`` in its name, 
-can be created with the ``-n`` option from the ipyrad command line. This file 
-lists all of the :ref:`parameter settings<paramater settings>` 
-necessary to complete an assembly. 
-A description of how to create and use a parmas file can be found in the 
-:ref:`introductory tutorial<tutorial_intro_cli>`. 
