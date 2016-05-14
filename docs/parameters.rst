@@ -66,7 +66,7 @@ This is a path to the location of raw (non-demultiplexed) fastq data files. If
 your data are already demultiplexed then this should be left blank. The input
 files can be gzip compressed (i.e., have name-endings with .gz). If you enter
 a path for raw data files then you should also have a path to a 
-:ref:`barcodes file<barcodes file>` for parameter #3 (`barcodes path`_). 
+:ref:`barcodes file<barcodes file>` for parameter #3 (barcodes_path_). 
 To select multiple files, or all files in a directory, use a wildcard character (*).
 
 Affected steps = 1. Example entries into params.txt:  
