@@ -11,10 +11,11 @@ process (e.g., NextRAD, RApture), both of which yield data that is anchored
 on at least one side so that reads are expected to align fairly closely. 
 ipyrad is not intended for constructing long contigs from many partially 
 overlapping (i.e., shotgun) sequences, however, ipyrad can accomodate paired-end
-data with or without merged reads, and works with reads of various lengths, so 
-that older data can be easily combined with new data of different lengths. 
+reads and includes methods for detecting and merging overlaps, and ipyrad
+can combine reads of various lengths, so that older data is easily combined 
+with newer data of different lengths. 
 
-Depending on how and where your sequence data were generated you may receive the
+Depending how and where your sequence data were generated you may receive the
 data in one giant file, or in many smaller files. The files may contain data
 from all of your individuals mixed up together, in which case they need
 to be demultiplexed based on barcodes or indices; or the data may 
@@ -22,16 +23,15 @@ already be demultiplexed, in which case each of your data files corresponds to
 a different Sample. 
 
 
-__`multiplexed (raw) sequence files`__
-If your data are not yet sorted among individuals/samples then you will need 
-to have their barcode information organized into a 
-:ref:`barcodes file<barcodes_file>`. Sample names are taken from the barcodes 
+**multiplexed (raw) sequence files** -- If your data are not yet sorted 
+among individuals/samples then you will need to have their barcode 
+information organized into a :ref:`barcodes file<barcodes_file>`. 
+Sample names are taken from the barcodes 
 file. The raw data file(s) should be entered in the ``raw_fastq_path`` parameter
 of the params file. 
 
-demultiplexed (sorted) sequence files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-If your data are already sorted then you simply have to enter the path to the 
+**demultiplexed (sorted) sequence files** -- If your data are already sorted 
+then you simply have to enter the path to the 
 data files in the ``sorted_fastq_path`` parameter.
 The :ref:`cookbook recipes <cookbook_recipes>` section provides more complex
 methods for combining data from multiple sequencing runs into the same 
