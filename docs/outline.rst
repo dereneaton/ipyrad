@@ -90,26 +90,17 @@ Seven Steps
 
 1. Demultiplexing / Loading fastq files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Step 1 involves loading sequence data into a named :ref:`Assembly<Assembly>` and
-sorting the sequences among a number of :ref:`Samples<Samples>` (individuals). 
-If the data are not yet demultiplexed then step 1 uses information from a 
-:ref:`barcodes file<barcodes_file>` to assign sequences to Samples. If the data 
-are already demultiplexed then step 1 simply reads the data in to count how 
-many reads are assigned to each Sample. Currently we do not yet support 
-demultiplexing of combinatorial barcodes (multiple barcodes per individual). 
+Step 1 loads sequence data into a named :ref:`Assembly<Assembly>` and assigns
+reads to :ref:`Samples<Samples>` (individuals). If the data are not yet 
+demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_file>`, 
+otherwise, it simply reads the data for each Sample. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step1:   
-
-
-* :ref:`*assembly_name<assembly_name>`  
-* :ref:`*project_dir<project_dir>`  
-* :ref:`raw_fastq_path<raw_fastq_path>`  
-* :ref:`barcodes_path<barcodes_path>`  
-* :ref:`sorted_fastq_path<sorted_fastq_path>`  
-* :ref:`*datatype<datatype>`  
-* :ref:`restriction_overhang<restriction_overhang>`  
-* :ref:`max_barcode_mismatch<max_barcode_mismatch>`  
+used or required (\*) for step1: :ref:`*assembly_name<assembly_name>`, 
+:ref:`*project_dir<project_dir>`, :ref:`raw_fastq_path<raw_fastq_path>`,
+:ref:`barcodes_path<barcodes_path>`, :ref:`sorted_fastq_path<sorted_fastq_path>`,
+:ref:`*datatype<datatype>`, :ref:`restriction_overhang<restriction_overhang>`, 
+:ref:`max_barcode_mismatch<max_barcode_mismatch>`. 
 
 
 2. Filtering / Editing reads
