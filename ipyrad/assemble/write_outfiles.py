@@ -543,7 +543,7 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locus
     """ enters funcs for pairs """
 
     ## snps was created using only the selected samples.
-    #LOGGER.info("edges in pairs %s", edg)
+    LOGGER.info("edges in enter_pairs %s", edg)
     seq1 = aseqs[iloc, :, edg[0]:edg[1]+1]
     snp1 = asnps[iloc, edg[0]:edg[1]+1, ]
 
@@ -557,8 +557,11 @@ def enter_pairs(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, locus
     ## make mask of removed rows and excluded samples. Use the inverse
     ## of this to save the coverage for samples
     nsidx = nalln + smask
-    samplecov = samplecov + np.invert(nsidx).astype(int)
+    LOGGER.info("nsidx %s, nalln %s, smask %s", nsidx, nalln, smask)
+    samplecov = samplecov + np.invert(nsidx).astype(np.int32)
+    LOGGER.info("samplecov %s", samplecov)
     idx = np.sum(np.invert(nsidx).astype(np.int32))
+    LOGGER.info("idx %s", idx)    
     locuscov[idx] += 1
 
     ## select the remaining names in order
@@ -717,7 +720,7 @@ def filter_stacks(args):
     splits = co5["edges"][hslice[0]:hslice[1], 4]
     edgfilter, edgearr = get_edges(data, superseqs, splits)
     del splits
-    LOGGER.info("edgarr = %s", edgearr)
+    LOGGER.info("edgarr returned = %s", edgearr)
 
     ## minsamp coverages filtered from superseqs
     minfilter = filter_minsamp(data, superseqs)
@@ -725,10 +728,15 @@ def filter_stacks(args):
     ## maxhets per site column from superseqs after trimming edges
     hetfilter = filter_maxhet(data, superseqs, edgearr)
 
+    LOGGER.info("edg %s", edgfilter.sum())
+    LOGGER.info("min %s", minfilter.sum())
+    LOGGER.info("het %s", hetfilter.sum())
     ## Build the .loci snpstring as an array (snps) 
     ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
     snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
-    #LOGGER.info("snpsarr = %s", snpsarr)
+
+    LOGGER.info("snp %s", snpfilter.sum())
+    LOGGER.info("snpsarr = %s", snpsarr)
 
     ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
     chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
@@ -815,6 +823,7 @@ def get_edges(data, superseqs, splits):
             elif edgetrims[0] < 0:
                 edge0 = max(0, np.where(r1s >= 0)[0].min()) - edgetrims[0]
         except ValueError:
+            edge0 = 0
             edgefilter[idx] = True
 
         try:
@@ -827,7 +836,11 @@ def get_edges(data, superseqs, splits):
             edge1 = np.where(r1s >= 1)[0].max()
 
         ## sanity check
-        assert edge0 < edge1             
+        if edge0 > edge1:
+            LOGGER.info("mindepth/edge %s, %s %s", idx, edge0, edge1)
+            edgefilter[idx] = True
+            edge1 = edge0 + 1
+
 
         ## if split then do the second reads separate
         if split:
@@ -860,11 +873,15 @@ def get_edges(data, superseqs, splits):
 
             except ValueError:
                 edgefilter[idx] = True                
-                edge3 = np.where(r2s >= 1)[0].max()
+                edge3 = edge2 + 1 #np.where(r2s >= 1)[0].max()
 
-            LOGGER.info(edge2, edge3)
+            #LOGGER.info('what are these: %s %s', edge2, edge3)
             ## sanity check
-            assert edge2 < edge3
+            if edge2 > edge3:
+                LOGGER.info("mindepth/edge %s, %s %s", idx, edge2, edge3)
+                edgefilter[idx] = True
+                edge3 = edge2 + 1
+
 
         ## store edges
         edges[idx] = np.array([edge0, edge1, edge2, edge3, split])
@@ -984,25 +1001,21 @@ def filter_maxsnp(data, superseqs, edges):
     snpsarr[:, :, 1] = snps == "*"
 
     ## mask edge filtered sites and fill maxsnps filter
-    if not "pair" in data.paramsdict["datatype"]:
-        for iloc in xrange(snps.shape[0]):
-            edg0, edg1 = edges[iloc, :2]
+    ## check for split for single vs paired loci
+    for idx, edge in enumerate(edges):
+        edg0, edg1, edg2, edg3, split = edge
+        if not split:
             mask = np.invert([i for i in np.arange(snps.shape[1]) \
                                     if i in range(edg0, edg1+1)])
-
             ## apply mask
-            snpsarr[iloc, mask, :] = False
+            snpsarr[idx, mask, :] = False
             ## count nsnps
-            nsnps = snpsarr[iloc, ].sum(axis=1).sum()
+            nsnps = snpsarr[idx, ].sum(axis=1).sum()
             if nsnps > maxs1:
-                snpfilt[iloc] = True
+                snpfilt[idx] = True
 
-    ## do something much slower for paired data, iterating over each locus and 
-    ## splitting r1s from r2s and treating each separately.
-    else:
-        for idx, edg in enumerate(edges):
-            edg0, edg1, edg2, edg3, split = edg
-
+        ## splitting r1s from r2s and treating each separately.
+        else:
             mask1 = np.invert([i in range(edg0, edg1+1) for i in \
                                np.arange(split)])
                                      
@@ -1011,7 +1024,7 @@ def filter_maxsnp(data, superseqs, edges):
                                np.arange(split, snpsarr.shape[1])])
 
             mask = np.concatenate([mask1, mask2])
-            LOGGER.info('edges %s', edg)
+            LOGGER.info('edges %s', edge)
             LOGGER.info('mask %s', np.where(mask))
             LOGGER.info('snpsarr %s', snpsarr.sum())
 
