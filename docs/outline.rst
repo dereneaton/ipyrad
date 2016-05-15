@@ -30,10 +30,10 @@ The code to run a basic workflow is quite simple:
     ## create an initial Assembly params file
     >>> ipyrad -n data1 
 
-    ## fill in the params file with your text editor
-    ## ...
+    ## fill in the new params file with your text editor
+    ## ... editing params-data1.txt
 
-    ## run steps 1-7 with the params file
+    ## run steps 1-7 with the params file for this Assembly
     >>> ipyrad -p params-data1.txt -s 1234567
 
 
@@ -43,11 +43,11 @@ Branching workflow
 -------------------
 A more effective way to use ipyrad_, however, is to create branching
 assemblies in which multiple data sets are assembled under different parameter 
-settings. The schematic below shows how to branch an example where an assembly 
+settings. The schematic below shows an example where an assembly 
 is branched at step3. The new branch will inherit file paths and statistics 
 from the first Assembly, but can then apply different parameters going forward.
 Branching does not create hard copies of existing data files, and so it not 
-an "expensive" action to take in terms of disk space or time. It should be used 
+an "expensive" action in terms of disk space or time. We suggest it be used 
 quite liberally whenever applying a new set of parameters. 
 
 .. image:: images/steps_branching.png
@@ -64,7 +64,7 @@ workflow. You can find more branching examples in the
     >>> ipyrad -n data1 
 
     ## edit the params file for data1 with your text editor
-    ## ...
+    ## ... editing params-data1.txt
 
     ## run steps 1-2 with the params file
     >>> ipyrad -p params-data1.txt -s 12
@@ -73,7 +73,7 @@ workflow. You can find more branching examples in the
     >>> ipyrad -p params-data1.txt -b data2
 
     ## edit the params file for data2 using a text editor
-    ## ...
+    ## ... editing params-data2.txt
 
     ## run steps 3-7 for both assemblies
     >>> ipyrad -p params-data1.txt -s 34567
@@ -94,7 +94,8 @@ demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_f
 otherwise, it simply reads the data for each Sample. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step1: 
+used or required (\*) for step1:  
+
 * :ref:`*assembly_name<assembly_name>`  
 * :ref:`*project_dir<project_dir>`  
 * :ref:`raw_fastq_path<raw_fastq_path>`  

@@ -10,46 +10,51 @@ restriction digest method (RAD, ddRAD, GBS) or related amplification-based
 process (e.g., NextRAD, RApture), both of which yield data that is anchored
 on at least one side so that reads are expected to align fairly closely. 
 ipyrad is not intended for constructing long contigs from many partially 
-overlapping (i.e., shotgun) sequences, however, ipyrad can accomodate paired-end
-reads and includes methods for detecting and merging overlaps, and ipyrad
-can combine reads of various lengths, so that older data is easily combined 
+overlapping (i.e., shotgun) sequences. It can, however, accomodate paired-end
+reads, and has methods for detecting and merging overlaps. ipyrad can also
+combine reads of various lengths, so that older data is easily combined 
 with newer data of different lengths. 
 
-Depending how and where your sequence data were generated you may receive the
-data in one giant file, or in many smaller files. The files may contain data
-from all of your individuals mixed up together, in which case they need
-to be demultiplexed based on barcodes or indices; or the data may 
-already be demultiplexed, in which case each of your data files corresponds to 
-a different Sample. 
+Depending how and where your sequence data were generated you may receive 
+data as one giant file, or in many smaller files. The files may contain data
+from all of your individuals mixed up together, or as separate files for each 
+Sample. If they are mixed up then the data need to be demultiplexed based on 
+barcodes or indices. Input files to ipyrad can be either demultiplexed or not:
 
 **multiplexed (raw) sequence files** -- If your data are not yet sorted 
-among individuals/samples then you will need to have their barcode 
+among individuals/samples then you will need to have barcode 
 information organized into a :ref:`barcodes file<barcodes_file>`. 
-Sample names are taken from the barcodes 
-file. The raw data file(s) should be entered in the ``raw_fastq_path`` parameter
-of the params file. 
+Sample names are taken from the barcodes file. 
+The raw data file path(s) will need to be entered in the 
+``raw_fastq_path`` parameter of the params file. 
 
 **demultiplexed (sorted) sequence files** -- If your data are already sorted 
-then you simply have to enter the path to the 
-data files in the ``sorted_fastq_path`` parameter.
-The :ref:`cookbook recipes <cookbook_recipes>` section provides more complex
-methods for combining data from multiple sequencing runs into the same 
-individual, or for using multiple barcodes file.
+then you simply have to enter the path to the data files in the 
+``sorted_fastq_path`` parameter. The :ref:`cookbook recipes <cookbook_recipes>`
+section provides more complex methods for combining data from multiple 
+sequencing runs into the same individual, or for using multiple barcodes file.
 
+
+Should you pre-filter data?
+---------------------------
+ipyrad has methods for filtering based on Q-scores, and for detecting and 
+removing barcodes+adapters. For paired-end data ipyrad uses vsearch to test
+for merged reads following the similar protocol as the program PEAR. The 
+merged and non-merged reads are combined into a single downstream analysis. 
 
 
 .. _file_names:
 File names
 -----------
-If your data are being demultiplexing then Sample names will be extracted from
-the :ref:`barcodes files<barcodes_file>`, as shown below. 
-If your data are already sorted among Samples (demultiplexed) then
-Sample names will be extracted from the file names directly. The convention for 
-file names is slightly more strict for paired-end data, where we need to be 
-able to identify which R1 and R2 files go together.  For this, we require that
-every read1 file must contain the string ``_R1_`` (*with underscores before
-and after*), and every R2 file must match exactly the name of the R1 file
-except that it has ``_R2_``. See the tutorials for an example. 
+If demultiplexing, then Sample names will be extracted from
+the :ref:`barcodes files<barcodes_file>`. Whereas if your data are already 
+sorted demultiplexed then Sample names are extracted from the file names 
+directly. Do not include spaces in file names. For paired-end data we need
+to be able to identify which R1 and R2 files go together, and so we require that
+every read1 file name contains the string ``_R1_`` (*with underscores before
+and after*), and every R2 file name must match exactly the R1 file
+except that it has ``_R2_`` in place of ``_R1_``. 
+See the example data for an example. 
 
 .. note:: 
 
