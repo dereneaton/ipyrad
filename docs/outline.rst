@@ -157,7 +157,7 @@ used or required (\*) for step3:
 4. Joint estimation of heterozygosity and error rate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step4 jointly estimates sequencing error rate and heterozygosity based on counts
-of site patterns across clustered reads using the ML equation from Lynch (20XX).
+of site patterns across clustered reads. 
 These estimates are used in step5 for consensus base calling. If the 
 max_alleles_consens is set to 1 (haploid) then heterozygosity is fixed to 0 and 
 only error rate is estimated. For all other settings of max_alleles_consens 
@@ -176,12 +176,13 @@ used or required (\*) for step4:
 5. Consensus base calling and filtering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step5 estimates consensus allele sequences from clustered reads given the estimated
-parameters from step4 and a binomial model. Those which have less than the 
-minimum coverage, more than the maximum number of undetermined sites, 
-more than the maximum number of heterozygous sites, 
-or more than the allowed number of alleles, are discarded. 
-In diploid data if two alleles are present the phase of heterozygous sites are 
-retained in the consensus sequences.
+parameters from step4 and a binomial model. Several filters can be applied at this
+stage to remove clusters with the aim of improving across-sample clustering, 
+and speed. This includes minimum depth of coverage, maximum number of 
+undetermined sites (Ns), and maximum number of heterozygous sites. 
+The number of alleles at each locus is recorded, but a filter for max_alleles
+is not applied until step7. Read depth information is also stored at this step
+for the VCF output in step7. 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step5:  

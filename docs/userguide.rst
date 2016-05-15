@@ -11,7 +11,8 @@ Tutorials
 
 The ipyrad_ command line interface (CLI_) is accessed through a terminal. Use 
 the -help (-h) flag to print a help screen with a description of the main 
-arguments to the CLI. 
+arguments to the CLI. Detailed instructions are available through the tutorials
+below. 
 
 .. code-block:: bash
 
@@ -19,12 +20,11 @@ arguments to the CLI.
 
 
 .. _introductory_tutorial:
-Introductory tutorial 
-----------------------
-An example run through of a simulated single-end RAD-seq data set 
-with a detailed description of input files, and the outputs and statistics
-produced by each step of an assembly. To learn the basics, this is the best 
-place to start. 
+Introductory tutorial
+---------------------
+To learn the basics this is the best place to start. We run through an example
+simulated single-end RAD-seq data set to give detailed descriptions of files 
+and statistics produced by each step of an assembly. 
 
 .. toctree::
    :maxdepth: 1
@@ -33,12 +33,11 @@ place to start.
 
 
 .. _advanced_tutorial:
-Advanced tutorial 
+Advanced tutorials
 ----------------------
-An example run through of a simulated single-end RAD-seq data set 
-with a detailed description of advanced methods for assembly, including 
-branching methods for assembling data sets under a range of parameter settings, 
-and an example of both denovo and reference assembly methods. 
+An introduction to advanced methods in ipyrad, including branching methods 
+for assembling data sets under a range of parameter settings, and an example of 
+both denovo and reference assembly methods. 
 
 .. toctree::
    :maxdepth: 1

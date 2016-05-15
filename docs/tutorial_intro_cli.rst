@@ -8,8 +8,8 @@
 Introductory tutorial - CLI
 ============================
 
-This is the full introductory tutorial for the command line interface to ipyrad. 
-Here we will walk through an entire assembly process. The goal is
+This is the full introductory tutorial for the command line interface (CLI) 
+to ipyrad. Here we will walk through an entire assembly process. The goal is
 to become familiarized with the general workflow, terminology, data files, and 
 parameter settings in ipyrad. We will use a single-end RAD-seq data set
 as an example, but the core concepts apply to other data types as well 

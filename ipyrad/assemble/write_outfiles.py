@@ -1032,7 +1032,7 @@ def filter_maxsnp(data, superseqs, edges):
             snpsarr[idx, mask, :] = False
             LOGGER.info('masked %s', snpsarr.sum())
 
-            ## count snps, apply filter to each side separately
+            ## count snps, array is already masked
             nsnps1 = snpsarr[idx, :split+1].sum(axis=1).sum()
             if nsnps1 > maxs1:
                 snpfilt[idx] = True
@@ -1100,6 +1100,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## get names boolean
     sidx = np.array([i in snames for i in anames])
     assert len(pnames) == sum(sidx)
+
     ## get names index in order of pnames
     #sindx = [list(anames).index(i) for i in snames]
 
@@ -1528,12 +1529,13 @@ def vcfchunk(args):
     keep = np.where(np.sum(afilt, axis=1) == 0)[0]
     seqleft = 0
     LOGGER.info("KEEP %s", keep.shape)
+
     ## write loci that passed after trimming edges, then write snp string
     for iloc in keep:
         edg = aedge[iloc]
         ## grab all seqs between edges
-        seq = aseqs[iloc, :, edg[0]:edg[1]]
-        catg = acatg[iloc, :, edg[0]:edg[1]]
+        seq = aseqs[iloc, :, edg[0]:edg[1]+1]
+        catg = acatg[iloc, :, edg[0]:edg[1]+1]
 
         ## ----  build string array ---- 
         ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
