@@ -6,6 +6,12 @@ Release Notes
 =============
 
 
+
+0.2.6
+-----
+- Fix to SNP masking in the h5 data base so that stats counts match the number of snps in the output files. 
+
+
 0.1.39
 ------
 - Still in development

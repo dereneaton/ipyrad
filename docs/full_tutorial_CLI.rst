@@ -40,8 +40,8 @@ First make a new directory and fetch & extract the test data.
 
 You should now see a folder in your current directory called ``data``. This 
 directory contains two files we'll be using:
-    - ``sim_rad_test_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
-    - ``sim_rad_test_barcodes.txt`` - Mapping of barcodes to sample IDs
+    - ``rad_example_R1_.fastq.gz`` - Illumina fastQ formatted reads (gzip compressed)
+    - ``rad_example_barcodes.txt`` - Mapping of barcodes to sample IDs
 
 It also contains many other simulated datasets, as well as a simulated 
 reference genome, so you can experiment with other datatypes after you get
@@ -111,8 +111,8 @@ In your favorite text editor open ``params-ipyrad-test.txt`` and change these tw
 to look like this, and then save it:
 
 .. parsed-literal::
-    ./data/sim_rad_test_R1_.fastq.gz         ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
-    ./data/sim_rad_test_barcodes.txt         ## [3] [barcodes_path]: Location of barcodes file
+    ./data/rad_example_R1_.fastq.gz         ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+    ./data/rad_example_barcodes.txt         ## [3] [barcodes_path]: Location of barcodes file
 
 Once we start running the analysis this will create a new directory to hold
 all the output for this assembly. By default this creates a new directory
@@ -151,7 +151,7 @@ the first three reads in the example file.
     ##      we don't really need to see the whole sequence we're just trying
     ##      to get an idea.
 
-    gzip -c ./data/sim_rad_test_R1_.fastq.gz | head -n 12 | cut -c 1-90
+    gzip -c ./data/rad_example_R1_.fastq.gz | head -n 12 | cut -c 1-90
 
 And here's the output:
 
@@ -209,7 +209,7 @@ separate line with a tab between them.
 
 .. code-block:: bash
 
-    cat ./data/sim_rad_test_barcodes.txt
+    cat ./data/rad_example_barcodes.txt
 
 .. parsed-literal::
     1A_0    CATCAT

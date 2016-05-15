@@ -5,10 +5,8 @@
 
 Assembly Outline
 ================
-
-The typical workflow to move from fastQ formatted input data to assembled 
-comparative data sets in ipyrad_ involves 
-:ref:`seven sequential steps <seven_steps>`. 
+The typical workflow to move from fastq formatted input data to assembled 
+output files in ipyrad_ involves :ref:`seven sequential steps <seven_steps>`. 
 The reason it is separated into distinct steps is to create a modular 
 workflow that can be easily restarted if it is interrupted, and can be easily
 :ref:`branched<branching_workflow>` at different points to create 
@@ -17,11 +15,69 @@ assemblies under different combinations of parameter settings.
 
 Basic workflow
 ---------------
-The basic workflow involves assembling a data set through the `seven steps`_ 
-sequentially under a single set of parameters defined in the 
-:ref:`parameter settings<parameters>`. These steps are described below.
+The simplest use of ipyrad is to assemble a data set under a single set of 
+parameters defined in a params file. Step 1 assigns data to each of the Samples, 
+Steps 2-5 process data for each Sample, Step 6 identifies homology between 
+different Samples, and Step 7 filters these data and formats them for downstream
+analyses. 
 
 .. image:: images/steps.png
+
+The code to run a basic workflow is quite simple:
+
+.. code-block:: bash
+    
+    ## create an initial Assembly params file
+    >>> ipyrad -n data1 
+
+    ## fill in the new params file with your text editor
+    ## ... editing params-data1.txt
+
+    ## run steps 1-7 with the params file for this Assembly
+    >>> ipyrad -p params-data1.txt -s 1234567
+
+
+
+.. _branching_workflow:
+Branching workflow
+-------------------
+A more effective way to use ipyrad_, however, is to create branching
+assemblies in which multiple data sets are assembled under different parameter 
+settings. The schematic below shows an example where an assembly 
+is branched at step3. The new branch will inherit file paths and statistics 
+from the first Assembly, but can then apply different parameters going forward.
+Branching does not create hard copies of existing data files, and so it not 
+an "expensive" action in terms of disk space or time. We suggest it be used 
+quite liberally whenever applying a new set of parameters. 
+
+.. image:: images/steps_branching.png
+
+
+The code to run a branching workflow is only a bit more complex than the basic
+workflow. You can find more branching examples in the 
+:ref:`advanced tutorial<tutorial_advanced_cli>` and 
+:ref:`cookbook<cookbook>` sections. 
+
+.. code-block:: bash
+    
+    ## create an initial Assembly and params file, here called 'data1'
+    >>> ipyrad -n data1 
+
+    ## edit the params file for data1 with your text editor
+    ## ... editing params-data1.txt
+
+    ## run steps 1-2 with the params file
+    >>> ipyrad -p params-data1.txt -s 12
+
+    ## create a new branch of 'data1' before step3, here called 'data2'.
+    >>> ipyrad -p params-data1.txt -b data2
+
+    ## edit the params file for data2 using a text editor
+    ## ... editing params-data2.txt
+
+    ## run steps 3-7 for both assemblies
+    >>> ipyrad -p params-data1.txt -s 34567
+    >>> ipyrad -p params-data2.txt -s 34567
 
 
 
@@ -32,17 +88,13 @@ Seven Steps
 
 1. Demultiplexing / Loading fastq files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Step 1 involves loading sequence data into a named :ref:`Assembly<Assembly>` and
-sorting the sequences among a number of :ref:`Samples<Samples>` (individuals). 
-If the data are not yet demultiplexed then step 1 uses information from a 
-:ref:`barcodes file<barcodes_file>` to assign sequences to Samples. If the data 
-are already demultiplexed then step 1 simply reads the data in to count how 
-many reads are assigned to each Sample. Currently we do not yet support 
-demultiplexing of combinatorial barcodes (multiple barcodes per individual). 
+Step 1 loads sequence data into a named :ref:`Assembly<Assembly>` and assigns
+reads to :ref:`Samples<Samples>` (individuals). If the data are not yet 
+demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_file>`, 
+otherwise, it simply reads the data for each Sample. 
 
 The following :ref:`parameters<parameters>` are *potentially*
-used or required (\*) for step1:   
-
+used or required (\*) for step1:  
 
 * :ref:`*assembly_name<assembly_name>`  
 * :ref:`*project_dir<project_dir>`  
@@ -52,6 +104,7 @@ used or required (\*) for step1:
 * :ref:`*datatype<datatype>`  
 * :ref:`restriction_overhang<restriction_overhang>`  
 * :ref:`max_barcode_mismatch<max_barcode_mismatch>`  
+
 
 
 2. Filtering / Editing reads
@@ -104,7 +157,7 @@ used or required (\*) for step3:
 4. Joint estimation of heterozygosity and error rate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step4 jointly estimates sequencing error rate and heterozygosity based on counts
-of site patterns across clustered reads using the ML equation from Lynch (20XX).
+of site patterns across clustered reads. 
 These estimates are used in step5 for consensus base calling. If the 
 max_alleles_consens is set to 1 (haploid) then heterozygosity is fixed to 0 and 
 only error rate is estimated. For all other settings of max_alleles_consens 
@@ -123,12 +176,13 @@ used or required (\*) for step4:
 5. Consensus base calling and filtering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step5 estimates consensus allele sequences from clustered reads given the estimated
-parameters from step4 and a binomial model. Those which have less than the 
-minimum coverage, more than the maximum number of undetermined sites, 
-more than the maximum number of heterozygous sites, 
-or more than the allowed number of alleles, are discarded. 
-In diploid data if two alleles are present the phase of heterozygous sites are 
-retained in the consensus sequences.
+parameters from step4 and a binomial model. Several filters can be applied at this
+stage to remove clusters with the aim of improving across-sample clustering, 
+and speed. This includes minimum depth of coverage, maximum number of 
+undetermined sites (Ns), and maximum number of heterozygous sites. 
+The number of alleles at each locus is recorded, but a filter for max_alleles
+is not applied until step7. Read depth information is also stored at this step
+for the VCF output in step7. 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step5:  
@@ -184,24 +238,7 @@ used or required (\*) for step7:
 * :ref:`outgroups<outgroups>`
 
 
-.. _branching_workflow:
 
-Branching workflow
--------------------
-
-A more efficient and effective way to use ipyrad_ is to create branching
-assemblies in which multiple final data sets are assembled from the same
-shared data by applying different parameter settings to them during different
-steps of the assembly. The schematic and code example below shows how to branch
-an assembly called 'data1' to create a new assembly 'data2' which inherits the 
-files and statistics from data1, but then applies a different clustering 
-threshold going forward for steps 3-7. You can envision many data sets generated
-this way by having successive branching events along each branch. 
-You can find more branching examples in the 
-:ref:`advanced tutorial<tutorial_advanced_cli>` and 
-:ref:`cookbook<cookbook>` sections. 
-
-.. image:: images/steps_branching.png
 
 
 **Example CLI branching workflow**

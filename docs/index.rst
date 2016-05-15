@@ -41,13 +41,13 @@ Documentation
    userguide.rst
    notebooks.rst
    tutorials.rst
-   API.rst
    analysis.rst
    citing.rst
    releasenotes.rst
    support.rst
    license.rst
 
+.. API.rst
 
 Indices and tables
 ==================

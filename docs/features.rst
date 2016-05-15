@@ -22,9 +22,8 @@ How is it different from pyrad?
 ipyrad_ is a complete re-write of pyrad_ with an expanded focus on speed and 
 flexibility. While we continue in the minimalist :ref:`ethos<ethos>` of pyrad_, 
 which emphasized a simple installation procedure and ease-of-use, ipyrad_ offers
-many new features, particularly through its Python :ref:`API<API>`. 
-We also continue to support the command line interface :ref:`CLI<CLI>` 
-that will be familiar to pyrad_ users.
+many new features, and is now easily extensible to new data types and models 
+through its Python :ref:`API<API>`. 
 
 
 Major New Features in ipyrad

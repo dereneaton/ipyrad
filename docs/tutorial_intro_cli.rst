@@ -8,8 +8,8 @@
 Introductory tutorial - CLI
 ============================
 
-This is the full introductory tutorial for the command line interface to ipyrad. 
-Here we will walk through an entire assembly process. The goal is
+This is the full introductory tutorial for the command line interface (CLI) 
+to ipyrad. Here we will walk through an entire assembly process. The goal is
 to become familiarized with the general workflow, terminology, data files, and 
 parameter settings in ipyrad. We will use a single-end RAD-seq data set
 as an example, but the core concepts apply to other data types as well 
@@ -84,7 +84,7 @@ Below are the first three reads in the example file.
     ##  gzip -c: Tells gzip to unzip the file and write the contents to the screen
     ##  head -n 12: Grabs the first 12 lines of the fastq file. 
 
-    >>> gunzip -c ./ipsimdata/sim_rad_test_R1_.fastq.gz | head -n 12 
+    >>> gunzip -c ./ipsimdata/rad_example_R1_.fastq.gz | head -n 12 
 
 
 And here's the output:
@@ -121,7 +121,7 @@ separate line with a tab between them.
 
 .. code-block:: bash
 
-    >>> cat ./ipsimdata/sim_rad_test_barcodes.txt
+    >>> cat ./ipsimdata/rad_example_barcodes.txt
 
 .. parsed-literal::
     1A_0    CATCAT

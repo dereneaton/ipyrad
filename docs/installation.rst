@@ -28,6 +28,17 @@ First, let's download the conda_ installer. There are separate installers for
 Linux and Mac, so follow the instructions below for the appropriate system.
 If you are working on an :ref:`HPC<HPC_installation>` cluster it is most likely
 a Linux machine. 
+During installation you will be asked whether it can append the newly created 
+miniconda/ (or anaconda/) directory to your $PATH, say **yes**. What this does
+is add a line to your **~/.bashrc** (or **~/.bash_profile on Mac) 
+file so that the anaconda directory becomes the default location to search 
+for Python modules, and also so that it can find executables in this 
+directory. If you find that setting this path 
+interferes with any of your other software you can always comment out the appended
+line from **~/.bashrc**. However, the whole point of conda_ is to create 
+unique environments in which software packages are protected from conflicting
+with each other, so if you run into problems it can likely be fixed by 
+learning more about conda_. 
 
 
 Mac install of conda
@@ -79,16 +90,6 @@ Linux install of conda
     conda info
 
 
-During installation conda_ will ask if it can append the newly created 
-miniconda/ (or anaconda/) directory to your $PATH, say yes. What this does
-is add a line to your **~/.bashrc** file so that the anaconda directory becomes 
-the default location to search for Python and Python modules, and also so that 
-it can find executables in this directory. If you find that setting this path 
-interferes with any of your other software you can always comment out the appended
-line from **~/.bashrc**. However, the whole point of conda_ is to create 
-unique environments in which software packages are protected from conflicting
-with each other, so if you run into problems it can likely be fixed using conda_. 
-
 
 ipyrad install
 --------------
@@ -109,7 +110,7 @@ commands:
 
 .. code-block:: bash  
 
-    conda install -c ipyrad ipyrad=0.1.60    ## install specific version
+    conda install -c ipyrad ipyrad=0.2.6     ## install specific version
     conda update -c ipyrad ipyrad            ## update to the latest
 
 
@@ -120,13 +121,14 @@ commands:
 
 HPC installation
 -----------------
-
 If you're working on an :ref:`HPC <HPC_installation>` system you can install 
 conda_ into a locally owned directory (e.g., /home/user) without need for 
 administrative privileges. This is useful because it then allows you to install 
 and access ipyrad_ and all its dependencies (other Python modules and 
 executables) locally, without needing to load them from the system-wide 
-software. 
+software. One drawback, however, is that there is sometimes a slight delay 
+the first time ipyrad is called since the system has to search a large shared 
+disk space to find your local conda directory. 
 
 
 Included dependencies
@@ -144,7 +146,6 @@ The conda_ installation will install the following required dependencies:
 * jupyter -- Creating reproducible notebooks  
 * Cython -- C bindings for Python  
 * H5py -- Database and HDF5 headers  
-* Dill -- Store pickle objects of complex Classes   
 * Toyplot -- Plotting 
 
 

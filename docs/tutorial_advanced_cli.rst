@@ -94,23 +94,22 @@ the code below into a terminal. This will create a new directory called
 .. code:: bash
 
     ## The curl command needs a capital O, not a zero.
-    curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
-    tar -xvzf ipsimdata.tar.gz
+    >>> curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
+    >>> tar -xvzf ipsimdata.tar.gz
 
 
 If you look in the ``ipsimdata/`` directory you'll see there are a number of example
-data sets. For this tutorial we'll be using one called ``sim_rad_test``. Let's 
+data sets. For this tutorial we'll be using the ``rad_example`` data. Let's 
 start by creating a new Assembly, and then we'll edit the params file to 
 tell it how to find the input data files for this data set.
 
 .. code:: bash
 
     ## creates a new Assembly named data1
-    ipyrad -n data1
+    >>> ipyrad -n data1
 
 
 .. parsed-literal::
-
     New file params-data1.txt created in /home/deren/Documents/ipyrad
 
 
@@ -123,11 +122,10 @@ default values for now. This tells ipyrad that we are going to use the name
 that the input data and barcodes file are located in ``ipsimdata/``.
 
 .. parsed-literal::
-
     ## enter these lines into the params-data1.txt file
     ./iptutorial                              ## [1] [project_dir] ...
-    ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
-    ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
+    ./ipsimdata/rad_example_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
+    ./ipsimdata/rad_example_barcodes.txt     ## [3] [barcodes_path] ...
 
 
 Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
@@ -136,15 +134,25 @@ files in the ``iptutorial/`` directory.
 
 .. code:: bash 
 
-    ipyrad -p params-data1.txt -s 12
+    >>> ipyrad -p params-data1.txt -s 12
 
 
 .. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.2.6]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  New Assembly: cli
+  ipyparallel setup: Local connection to 4 Engines
 
-    Step1: Demultiplexing fastq data to Samples.
-      Saving Assembly.
-    Step2: Filtering reads 
-      Saving Assembly.
+  Step1: Demultiplexing fastq data to Samples
+  [####################] 100%  sorting reads         | 0:00:05 
+  [####################] 100%  writing files         | 0:00:00 
+  Saving Assembly.
+
+  Step2: Filtering reads 
+  [####################] 100%  processing reads      | 0:00:32 
+  Saving Assembly.
 
 
 Inside ``iptutorial`` you'll see that ipyrad_ has created two subdirectories 
@@ -158,10 +166,9 @@ since editing it by hand could cause errors in your assembly.
 
 .. code:: bash
 
-    ls ./iptutorial
+    >>> ls ./iptutorial
 
 .. parsed-literal::
-
     data1_edits/   data1_fastqs/   data1.json
 
 
@@ -178,71 +185,75 @@ and add the reference sequence file.
 .. code:: bash
 
     ## create a new branch of the Assembly iptest1
-    ipyrad -p params-data1.txt -b data2
+    >>> ipyrad -p params-data1.txt -b data2
     
 .. parsed-literal::
-
     New file params-data2.txt created in /home/deren/Documents/ipyrad
 
 
 And make the following edits to ``params-data2.txt``:
 
 .. parsed-literal::
-
-    ## reference                               ## [5] [assembly_method] ...
-    ## ./ipsimdata/sim_mt_genome.fa            ## [6] [reference_sequence] ...
+    reference                               ## [5] [assembly_method] ...
+    ./ipsimdata/rad_example_genome.fa            ## [6] [reference_sequence] ...
 
 
 Now we can run steps 3-7 on these two assemblies each using their own params 
 file and each will create its own output files and saved results. 
 
 .. code:: bash
-   
+
    ## assemble the first data set denovo
-   ipyrad -p params-data1.txt -s 34567
+   >>> ipyrad -p params-data1.txt -s 34567
 
    ## assemble the second data set using reference mapping
-   ipyrad -p params-data2.txt -s 34567
+   >>> ipyrad -p params-data2.txt -s 34567
 
 
 .. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.2.6]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  loading Assembly: data1
+  from saved path: ~/Documents/ipyrad/tests/data1/data1.json
+  ipyparallel setup: Local connection to 4 Engines
 
-    --------------------------------------------------
-     ipyrad [v.0.1.73]
-     Interactive assembly and analysis of RADseq data
-    --------------------------------------------------
-     loading Assembly: data1 [/home/deren/Documents/ipyrad/data1.json]
-     ipyparallel setup: Local connection to 4 Engines
+  Step3: Clustering/Mapping reads
+  [####################] 100%  dereplicating         | 0:00:00 
+  [####################] 100%  clustering            | 0:00:03 
+  [####################] 100%  chunking              | 0:00:00 
+  [####################] 100%  aligning              | 0:00:32 
+  [####################] 100%  concatenating         | 0:00:00 
+  Saving Assembly.
 
-     Step3: Clustering/Mapping reads
-       Saving Assembly.
-     Step4: Joint estimation of error rate and heterozygosity
-       Saving Assembly.   
-     Step5: Consensus base calling
-       Diploid base calls and paralog filter (max haplos = 2)
-       error rate (mean, std):  0.00075, 0.00002
-       heterozyg. (mean, std):  0.00196, 0.00018
-       Saving Assembly.
-     Step6: Clustering across 12 samples at 0.85 similarity
-       Saving Assembly.
-     Step7: Filtering and creating output files 
-       Saving Assembly.
+  Step4: Joint estimation of error rate and heterozygosity
+  [####################] 100%  inferring [H, E]      | 0:00:48 
+  Saving Assembly.
 
-     loading Assembly: data2 [/home/deren/Documents/ipyrad/data2.json]
+  Step5: Consensus base calling 
+  Mean error  [0.00074 sd=0.00002]
+  Mean hetero [0.00191 sd=0.00015]
+  [####################] 100%  consensus calling     | 0:00:23 
+  Saving Assembly.
 
-     Step3: Clustering/Mapping reads
-       Saving Assembly.
-     Step4: Joint estimation of error rate and heterozygosity
-       Saving Assembly.   
-     Step5: Consensus base calling
-       Diploid base calls and paralog filter (max haplos = 2)
-       error rate (mean, std):  0.00075, 0.00002
-       heterozyg. (mean, std):  0.00196, 0.00018
-       Saving Assembly.
-     Step6: Clustering across 12 samples at 0.85 similarity
-       Saving Assembly.
-     Step7: Filtering and creating output files 
-       Saving Assembly.
+  Step6: Clustering across 12 samples at 0.85 similarity
+  [####################] 100%  concat/shuf input     | 0:00:00 
+  [####################] 100%  clustering across     | 0:00:00 
+  [####################] 100%  aligning clusters     | 0:00:06 
+  [####################] 100%  ordering clusters     | 0:00:12 
+  [####################] 100%  building database     | 0:00:05 
+  Saving Assembly.
+
+  Step7: Filter and write output files for 12 Samples
+  [####################] 100%  filtering loci        | 0:00:02 
+  [####################] 100%  building loci/stats   | 0:00:01 
+  [####################] 100%  building vcf file     | 0:00:07 
+  [####################] 100%  writing outfiles      | 0:00:01 
+  Outfiles written to: ~/Documents/ipyrad/tests/data1/data1_outfiles
+  Saving Assembly.
+
+  ... [further output excluded]
 
 
 Now let's suppose we're interested in the effect of missing data on our assemblies
@@ -261,22 +272,22 @@ branch and then run step7 on each of these assemblies with a new setting of 8 or
 .. code:: bash
    
    ## branch data1 to make min8 and min12 data sets
-   ipyrad -p params-data1.txt -b data1-min8
-   ipyrad -p params-data1.txt -b data1-min12
+   >>> ipyrad -p params-data1.txt -b data1-min8
+   >>> ipyrad -p params-data1.txt -b data1-min12
 
    ## use a text editor to set min_samples_locus to the new value (4 or 8) in each
 
    ## branch data2 to make min8 and min12 data sets
-   ipyrad -p params-data2.txt -b data2-min8
-   ipyrad -p params-data2.txt -b data2-min12
+   >>> ipyrad -p params-data2.txt -b data2-min8
+   >>> ipyrad -p params-data2.txt -b data2-min12
 
    ## use a text editor to set min_samples_locus to the new value in each
 
    ## run step7 on using the new min_samples_locus settings
-   ipyrad -p params-data1-min8.txt -s 7
-   ipyrad -p params-data1-min12.txt -s 7
-   ipyrad -p params-data2-min8.txt -s 7
-   ipyrad -p params-data2-min12.txt -s 7
+   >>> ipyrad -p params-data1-min8.txt -s 7
+   >>> ipyrad -p params-data1-min12.txt -s 7
+   >>> ipyrad -p params-data2-min8.txt -s 7
+   >>> ipyrad -p params-data2-min12.txt -s 7
 
 
 Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
@@ -288,12 +299,11 @@ assembly has its own ``outfiles/`` directory with the results of step7.
 .. code:: bash
 
    ## use ls -l to view inside the project directory as a list
-   ls -l iptutorial/
+   >>> ls -l iptutorial/
 
 I show the file tree structure a bit more clearly below:
 
 .. parsed-literal::  
-
    iptutorial/
        data1.json
        data1_fastqs/
@@ -328,19 +338,19 @@ to see how this process looks
 when you run it on a relatively quick set of real data. 
 
 
-Writing ipyrad scripts
-~~~~~~~~~~~~~~~~~~~~~~
-From the code above you may have noticed that the only thing stopping you from
-being able to write one long script that creates a whole range of assemblies is 
-when you have to edit the new params files by hand. We've purposefully avoided 
-creating an ipyrad command to change parameters on the fly, since this would 
-make it so that the params file are not a good record of the parameter set used
-throughout an entire assembly. 
+.. Writing ipyrad scripts
+.. ~~~~~~~~~~~~~~~~~~~~~~
+.. From the code above you may have noticed that the only thing stopping you from
+.. being able to write one long script that creates a whole range of assemblies is 
+.. when you have to edit the new params files by hand. We've purposefully avoided 
+.. creating an ipyrad command to change parameters on the fly, since this would 
+.. make it so that the params file are not a good record of the parameter set used
+.. throughout an entire assembly. 
 
-However, if you're a very programmatic type of person who would prefer that 
-all of your branching and parameter changing could take place within a single
-script you'll want to check out the :ref:`ipyrad API<API>`, which provides a 
-more elegant pure Python way to edit parameters in your code while 
-assembling data. 
+.. However, if you're a very programmatic type of person who would prefer that 
+.. all of your branching and parameter changing could take place within a single
+.. script you'll want to check out the :ref:`ipyrad API<API>`, which provides a 
+.. more elegant pure Python way to edit parameters in your code while 
+.. assembling data. 
 
 
