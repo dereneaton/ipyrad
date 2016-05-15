@@ -273,14 +273,16 @@ The threshold at which a base call is considered a low quality base call
 during step 2 filtering is determined by the `phred_Qscore_offset`. The 
 default offset is 33, which is equivalent to a minimum qscore of 20. Some 
 older data use a qscore offset of 64. You can toggle the offset number 
-to change the threshold for low qual bases.
+to change the threshold for low qual bases. For example, reducing the 
+offset to 26 is equivalent to a minimum qscore of 13, which is
+approximately 95% probability of a correct base call.
 
 Affected steps = 2. Example entries to params.txt:
 
 .. parsed-literal::
 
     33                 ## [10] default offset of 33, converts to min score=20
-    23                 ## [10] offset reduced by 10, converts to min score=30
+    43                 ## [10] offset increased by 10, converts to min score=30
     64                 ## [10] offset used by older data, converts to min score=20.
 
 
