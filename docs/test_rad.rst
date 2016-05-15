@@ -61,8 +61,8 @@ function ``set_params()`` that can be used to modify parameters.
 
     ## modify parameters for this Assembly object
     data1.set_params(1, "./test_rad")
-    data1.set_params(2, "./data/sim_rad_test_R1_.fastq.gz")
-    data1.set_params(3, "./data/sim_rad_test_barcodes.txt")
+    data1.set_params(2, "./data/rad_example_R1_.fastq.gz")
+    data1.set_params(3, "./data/rad_example_barcodes.txt")
     #data1.set_params(2, "~/Dropbox/UO_C353_1.fastq.part-aa.gz")
     #data1.set_params(3, "/home/deren/Dropbox/Viburnum_revised.barcodes")
     data1.set_params(7, 3)
@@ -75,8 +75,8 @@ function ``set_params()`` that can be used to modify parameters.
 .. parsed-literal::
 
       1   project_dir                   ./test_rad                                   
-      2   raw_fastq_path                ./data/sim_rad_test_R1_.fastq.gz             
-      3   barcodes_path                 ./data/sim_rad_test_barcodes.txt             
+      2   raw_fastq_path                ./data/rad_example_R1_.fastq.gz             
+      3   barcodes_path                 ./data/rad_example_barcodes.txt             
       4   sorted_fastq_path                                                          
       5   restriction_overhang          ('TGCAG', '')                                
       6   max_low_qual_bases            5                                            

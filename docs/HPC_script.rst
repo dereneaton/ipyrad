@@ -62,8 +62,8 @@ Engines from ipcluster. In this case, 32. You can
 
     ## Fill params. Set the location of your files here.
     data.set_params("project_dir", "test")
-    data.set_params("raw_fastq_path", "iptest/sim_rad1_R1_.fastq.gz")
-    data.set_params("barcodes_path", "iptest/sim_rad1_barcodes.txt")
+    data.set_params("raw_fastq_path", "iptest/rad_example_.fastq.gz")
+    data.set_params("barcodes_path", "iptest/rad_example_barcodes.txt")
 
     ## set subsampling for step 2
     data._hackersonly["preview_step2"] = 2000

@@ -99,7 +99,7 @@ the code below into a terminal. This will create a new directory called
 
 
 If you look in the ``ipsimdata/`` directory you'll see there are a number of example
-data sets. For this tutorial we'll be using one called ``sim_rad_test``. Let's 
+data sets. For this tutorial we'll be using the ``rad_example`` data. Let's 
 start by creating a new Assembly, and then we'll edit the params file to 
 tell it how to find the input data files for this data set.
 
@@ -124,8 +124,8 @@ that the input data and barcodes file are located in ``ipsimdata/``.
 .. parsed-literal::
     ## enter these lines into the params-data1.txt file
     ./iptutorial                              ## [1] [project_dir] ...
-    ./ipsimdata/sim_rad_test_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
-    ./ipsimdata/sim_rad_test_barcodes.txt     ## [3] [barcodes_path] ...
+    ./ipsimdata/rad_example_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
+    ./ipsimdata/rad_example_barcodes.txt     ## [3] [barcodes_path] ...
 
 
 Now we're ready to start the assembly. Let's begin by running just steps 1 and 2
@@ -195,7 +195,7 @@ And make the following edits to ``params-data2.txt``:
 
 .. parsed-literal::
     reference                               ## [5] [assembly_method] ...
-    ./ipsimdata/sim_mt_genome.fa            ## [6] [reference_sequence] ...
+    ./ipsimdata/rad_example_genome.fa            ## [6] [reference_sequence] ...
 
 
 Now we can run steps 3-7 on these two assemblies each using their own params 

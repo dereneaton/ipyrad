@@ -75,7 +75,7 @@ Affected steps = 1. Example entries into params.txt:
 
     /home/deren/ipyrad/tests/data/*.fastq.gz  ## [2] select all gzip data files
     ~/ipyrad/tests/data/*.fastq.gz            ## [2] select all gzip data files
-    ./data/sim_rad*.fastq.gz                  ## [2] select files w/ `sim_rad` in name
+    ./ipsimdata/rad_example*.fastq.gz                  ## [2] select files w/ `rad_example` in name
 
 
 .. _barcodes_path:
@@ -91,8 +91,8 @@ Affected steps = 1-2. Example entries into params.txt:
 
 .. code-block:: python
 
-    /home/deren/ipyrad/tests/data/sim_barcodes.txt  ## [3] select barcode file
-    ~/tests/data/sim_barcodes.txt                   ## [3] select barcode file
+    /home/deren/ipyrad/tests/ipsimdata/rad_example_barcodes.txt  ## [3] select barcode file
+    ./ipsimdata/rad_example_barcodes.txt                   ## [3] select barcode file
 
 
 .. _sorted_fastq_path:
@@ -108,9 +108,9 @@ Affected steps = 1. Example entries into params.txt:
 
 .. code-block:: python
 
-    /home/deren/ipyrad/tests/data/*.fastq.gz  ## [4] select all gzip data files
-    ~/ipyrad/tests/data/*.fastq               ## [4] select all fastq data files
-    ./data/sim_rad*.fastq.gz                  ## [4] select files w/ `sim_rad` in name
+    /home/deren/ipyrad/tests/ipsimdata/*.fastq.gz  ## [4] select all gzip data files
+    ~/ipyrad/tests/ipsimdata/*.fastq               ## [4] select all fastq data files
+    ./ipsimdata/rad_example*.fastq.gz                  ## [4] select files w/ `rad_example` in name
 
 
 .. _assembly_method:
@@ -143,7 +143,7 @@ or for other uses as well.
 
 .. code-block:: python
 
-    ~/ipyrad/tests/data/sim_mt_genome.fasta   ## [6] select fasta file
+    ~/ipyrad/tests/ipsimdata/rad_example_genome.fa   ## [6] select fasta file
     ./data/finch_full_genome.fasta            ## [6] select fasta file
 
 
