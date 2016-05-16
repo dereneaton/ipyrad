@@ -67,21 +67,21 @@ can imagine how this would be useful for removing contaminants, plastome data,
 symbiont-host data, or coding/non-coding regions.  
 
 
-Running ipyrad CLI on a cluster
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-As explained in the :ref:`installation<installation>` section, ipyrad_ is very 
-easy to use on an HPC cluster because as long as it is installed using conda_ it
-does not require the user to load any external modules or software. 
-Really, there is only **one** extra argument that you need to remember
-to use which is the ``--MPI`` argument. This ensures that processing cores which
-are split across different nodes of a cluster can all see the same data. Using 
-ipyrad_ with the --MPI flag on an HPC machine should allow users to split jobs
-across dozens or hundreds of cores to assemble data sets very rapidly. As an 
-example, a large phylogenetic-scale RAD-seq data set analyzed on my desktop 
-computer with 12 cores took ~2 days, while on an HPC system with access to
-48 cores it took only ~12 hours. More detailed speed comparisons are in the 
-works. For most steps of ipyrad the speed improvement is linear with 
-the number of cores. 
+.. Running ipyrad CLI on a cluster
+.. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. As explained in the :ref:`installation<installation>` section, ipyrad_ is very 
+.. easy to use on an HPC cluster because as long as it is installed using conda_ it
+.. does not require the user to load any external modules or software. 
+.. Really, there is only **one** extra argument that you need to remember
+.. to use which is the ``--MPI`` argument. This ensures that processing cores which
+.. are split across different nodes of a cluster can all see the same data. Using 
+.. ipyrad_ with the --MPI flag on an HPC machine should allow users to split jobs
+.. across dozens or hundreds of cores to assemble data sets very rapidly. As an 
+.. example, a large phylogenetic-scale RAD-seq data set analyzed on my desktop 
+.. computer with 12 cores took ~2 days, while on an HPC system with access to
+.. 48 cores it took only ~12 hours. More detailed speed comparisons are in the 
+.. works. For most steps of ipyrad the speed improvement is linear with 
+.. the number of cores. 
 
 
 
@@ -194,8 +194,8 @@ and add the reference sequence file.
 And make the following edits to ``params-data2.txt``:
 
 .. parsed-literal::
-    reference                               ## [5] [assembly_method] ...
-    ./ipsimdata/rad_example_genome.fa            ## [6] [reference_sequence] ...
+    reference                                   ## [5] [assembly_method] ...
+    ./ipsimdata/rad_example_genome.fa           ## [6] [reference_sequence] ...
 
 
 Now we can run steps 3-7 on these two assemblies each using their own params 

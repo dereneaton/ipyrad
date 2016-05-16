@@ -720,7 +720,7 @@ def filter_stacks(args):
     splits = co5["edges"][hslice[0]:hslice[1], 4]
     edgfilter, edgearr = get_edges(data, superseqs, splits)
     del splits
-    LOGGER.info("edgarr returned = %s", edgearr)
+    #LOGGER.info("edgarr returned = %s", edgearr)
 
     ## minsamp coverages filtered from superseqs
     minfilter = filter_minsamp(data, superseqs)
@@ -736,7 +736,8 @@ def filter_stacks(args):
     snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
 
     LOGGER.info("snp %s", snpfilter.sum())
-    LOGGER.info("snpsarr = %s", snpsarr)
+    #LOGGER.info("snpsarr = %s", snpsarr)
+
 
     ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
     chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
@@ -1005,14 +1006,15 @@ def filter_maxsnp(data, superseqs, edges):
     for idx, edge in enumerate(edges):
         edg0, edg1, edg2, edg3, split = edge
         if not split:
-            mask = np.invert([i for i in np.arange(snps.shape[1]) \
-                                    if i in range(edg0, edg1+1)])
+            mask = np.invert([i in range(edg0, edg1+1) for i in \
+                              np.arange(snps.shape[1])])
             ## apply mask
             snpsarr[idx, mask, :] = False
             ## count nsnps
             nsnps = snpsarr[idx, ].sum(axis=1).sum()
             if nsnps > maxs1:
                 snpfilt[idx] = True
+
 
         ## splitting r1s from r2s and treating each separately.
         else:
