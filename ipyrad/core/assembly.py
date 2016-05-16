@@ -1475,6 +1475,7 @@ def expander(namepath):
     return namepath
 
 
+
 def merge(name, assemblies):
     """ Creates and returns a new Assembly object in which 
     samples from two or more Assembly objects with matching names
