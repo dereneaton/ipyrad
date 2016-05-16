@@ -364,6 +364,8 @@ def svdconvert(arr, sidxs):
     ## order smallest to largest
     scores.sort()
     weight = np.float32((scores[2]-scores[0]) / (np.exp(scores[2]-scores[1]) * scores[2]))
+    if np.isnan(weight):
+        weight = 0.01
 
     quartet = sidxs[bsidx]
     return quartet, weight
