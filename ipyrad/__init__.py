@@ -4,7 +4,7 @@
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.2.9"
+__version__ = "0.2.10"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __loglevel__ = "ERROR"
