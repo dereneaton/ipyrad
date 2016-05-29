@@ -371,7 +371,7 @@ def submit(data, submitted_args, ipyclient):
         for sname in jobs:
 
             ## do this if success
-            if jobs[sname].successful():
+            if jobs[sname].completed:#successful():
                 ## get the results
                 hest, eest = jobs[sname].get()
                 cleanup(data, data.samples[sname], hest, eest)
