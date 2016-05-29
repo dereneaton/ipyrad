@@ -487,8 +487,16 @@ class Assembly(object):
             bdf = bdf.dropna()
             ## make sure upper case
             bdf[1] = bdf[1].str.upper()
-            ## set attribute on Assembly object
-            self.barcodes = dict(zip(bdf[0], bdf[1]))
+
+            ## 3rad/seqcap use multiplexed barcodes
+            ## We'll concatenate them with a plus and split them later
+            if self.paramsdict["datatype"] == "3rad":
+                bdf[2] = bdf[2].str.upper()
+                self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+            else:
+                ## set attribute on Assembly object
+                self.barcodes = dict(zip(bdf[0], bdf[1]))
+
         except ValueError:
             msg = "Barcodes file not recognized."
             LOGGER.warn(msg)
@@ -1706,7 +1714,7 @@ def paramschecker(self, param, newvalue):
     elif param == 'datatype':
         ## list of allowed datatypes
         datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
-                     'pairgbs', 'merged', '2brad']
+                     'pairgbs', 'merged', '2brad', '3rad']
         ## raise error if something else
         if str(newvalue) not in datatypes:
             raise IPyradError("""
@@ -1714,6 +1722,13 @@ def paramschecker(self, param, newvalue):
     """.format(newvalue, datatypes))
         else:
             self.paramsdict['datatype'] = str(newvalue)
+            ## link_barcodes is called before datatypes is set
+            ## we need to know the datatype so we can read in
+            ## the multiplexed barcodes for 3rad. This seems
+            ## a little annoying, but it was better than any
+            ## alternatives I could think of.
+            if self.paramsdict['datatype'] == '3rad':
+                self.link_barcodes()
 
     elif param == 'restriction_overhang':
         newvalue = tuplecheck(newvalue, str)                        
