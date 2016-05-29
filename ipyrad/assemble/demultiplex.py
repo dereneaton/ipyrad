@@ -283,7 +283,7 @@ def barmatch(args):
     filestats = [subnum, total, cutfound, matched]
     samplestats = [samplehits, barhits, misses, dbars]
 
-    return filestats, samplestats
+    return (filestats, samplestats), subnum
 
 
 
@@ -584,6 +584,12 @@ def run(data, preview, ipyclient):
     LOGGER.info('ncpus %s', data.cpus)
     LOGGER.info('optim %s', optim)
 
+    ## do we print about pairs for pairddata
+    if 'pair' in data.paramsdict["datatype"]:
+        pair = "s"
+    else:
+        pair = " "
+
     ## Truncate the input fq so it'll run faster. 
     if preview:
         warning = """\
@@ -621,26 +627,16 @@ def run(data, preview, ipyclient):
     ## optim is the number of reads per cpu, if it is too large then we 
     ## load too much into memory. So if optim > 1M then we subsample it
     ## which makes things run just a bit slower
-    multi = 1
     while optim > int(4e6):
         optim //= 10
-        multi *= 10
 
-    nfiles = len(raws)
-    totaljobs = data.cpus + (data.cpus * nfiles * multi)
-    done = 0
-    
     ## ensure optim is divisible by 4
     while optim % 4:
         optim += 1
 
     ### progress
-    LOGGER.info("doing {} chunks [size = {} lines] on {} cpus"\
-                .format(totaljobs, optim, data.cpus))
-
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(totaljobs, min(totaljobs, done), 
-               ' sorting reads         | {}'.format(elapsed))
+    LOGGER.info("chunks size = {} lines, on {} cpus"\
+                .format(optim, data.cpus))
 
     ## dictionary to store asyncresults for barmatch jobs
     filesort = {}
@@ -649,13 +645,17 @@ def run(data, preview, ipyclient):
     ## send slices N at a time
     filenum = 0
     for tups in raws:
+        start = time.time()
+        ## print progress for this file
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(10, 0, 
+        ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))
+
         ## submit some wait jobs to filesort
         filesort.setdefault(filenum, [])                
         collatesubs.setdefault(filenum, [])        
-        for i in range(data.cpus):
-            filesort[filenum].append(lbview.apply(time.sleep, 0.1))
 
-        ## open file handles
+        ## open file handles ##############
         if tups[0].endswith(".gz"):
             io1 = gzip.open(tups[0])
             rawr1 = iter(io1)
@@ -673,90 +673,92 @@ def run(data, preview, ipyclient):
             else:
                 io2 = 0
 
-        ###############################
+        ###############################################################
+        ## send jobs to engines
+        ## maybe add something here to act nicer if all the data is in 
+        ## one super giant file. Lower memory overhaed
+        ###############################################################
+        done = 0
         subnum = 0
         sublist = []        
         while 1:
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(totaljobs, done, 
-               ' sorting reads         | {}'.format(elapsed))
+            dat1 = list(itertools.islice(rawr1, optim))
+            if tups[1]:
+                dat2 = list(itertools.islice(rawr2, optim))
+            else:
+                dat2 = [""]
 
-            ## if engines are available add jobs to fill up engines
-            ready = [i.ready() for i in filesort[filenum]]
+            if dat1:
+                args = [data, filenum, subnum, cutters, longbar,
+                        matchdict, dat1, dat2]
+                async = lbview.apply_async(barmatch, args)
+                filesort[filenum].append(async)
+                subnum += 1
 
-            if any(ready):
-                ## grab a 4K slice
-                dat1 = list(itertools.islice(rawr1, optim))
+            else:
+                ## close files
+                io1.close()
                 if tups[1]:
-                    dat2 = list(itertools.islice(rawr2, optim))
-                else:
-                    dat2 = [""]
+                    io2.close()
+                break
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(subnum, done, 
+            ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))
 
-                ## done collate and quit
-                if not dat1:
-                    if sublist:
-                        ## wait for last jobs to finish (I know, not ideal)
-                        ipyclient.wait()
-                        lbview.apply(collate_subs, [data, filenum, sublist])
-                    ## close files
-                    io1.close()
-                    if tups[1]:
-                        io2.close()
-                    break
 
-                ## if too many subs, collate
-                elif len(sublist) >= 20:
+        #####################################
+        while 1:
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(subnum, done, 
+            ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))
+
+            ## if some are done, ...
+            ready = [i.ready() for i in filesort[filenum]]
+            asyncs = [i for (i, j) in zip(filesort[filenum], ready) if j]
+            for async in asyncs:
+                result = async.result()
+                if result:
+                    statdicts = putstats(result[0], raws[filenum][0], statdicts)
+                    ## purge from memory
+                    ipyclient.purge_local_results(async)
+                    ## save subnum
+                    sublist.append(result[1])
+                    done += 1
+                    filesort[filenum].remove(async)
+        
+                ## inter collate
+                if len(sublist) >= 20:
                     lbview.apply(collate_subs, [data, filenum, sublist])
                     sublist = []
 
-                ## updates stat dicts for finished jobs
-                asyncs = [i for (i, j) in zip(filesort[filenum], ready) if j]
-                for async in asyncs:
-                    result = async.result()
-                    if result:
-                        statdicts = putstats(
-                                        result, raws[filenum][0], statdicts)
-                    ## purge from memory
-                    ipyclient.purge_local_results(async)
+            ## are we done yet?
+            if not filesort[filenum]:
+                break
+            else:
+                time.sleep(0.1)
 
-                ## update dictionary to know about missing asyncs
-                filesort[filenum] = [i for (i, j) in \
-                                     zip(filesort[filenum], ready) if not j]
-
-                ## build a list of args
-                args = [data, filenum, subnum, cutters, longbar,
-                        matchdict, dat1, dat2]
-
-                ## send the list to N engines
-                async = lbview.apply_async(barmatch, args)
-                filesort[filenum].append(async)
-
-                ## advance subs
-                sublist.append(subnum)
-                subnum += 1
-                done += 1
-            time.sleep(0.1)
-        filenum += 1
-        ## collate colls from across files
+        ## final collate
         ipyclient.wait()
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        lbview.apply(collate_subs, [data, filenum, sublist])
+
+        ## collate colls from across files
         progressbar(20, 20, 
-        ' sorting reads         | {}'.format(elapsed))
-        #if data._headers:
+            ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))            
         print("")
+        filenum += 1        
 
-
-    ## collate progress bar
+    ## collate files progress bar
     start = time.time()
     total = int(filenum*len(data.barcodes))
     done = 0
+    ipyclient.wait()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(total, done, ' writing files         | {}'.format(elapsed))
 
     colls = []
     for fnum in range(filenum):
         for async in filesort[fnum]:
-            result = async.get()
+            result, subnum = async.get()
             if result:
                 statdicts = putstats(result, raws[fnum][0], statdicts)
         ## collate across files
