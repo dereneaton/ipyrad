@@ -371,13 +371,8 @@ def submit(data, submitted_args, ipyclient):
         for sname in jobs:
 
             ## do this if success
-<<<<<<< HEAD
-            if jobs[sname].completed:#successful():
-=======
-            ## If you call successful on a job that isn't ready 
-            ## it dies with an assert
+            #if jobs[sname].completed:
             if jobs[sname].ready() and jobs[sname].successful():
->>>>>>> b83664f653b0a1b69021342e59044cb9785a3a0d
                 ## get the results
                 hest, eest = jobs[sname].get()
                 cleanup(data, data.samples[sname], hest, eest)
