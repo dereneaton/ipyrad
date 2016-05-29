@@ -19,6 +19,7 @@ import h5py
 import string
 import cStringIO
 import itertools
+import numpy as np
 import pandas as pd
 import ipyparallel as ipp
 import ipyrad as ip
@@ -224,7 +225,7 @@ class Assembly(object):
         # ensure non h,e columns print as ints
         for column in statdat:
             if column not in ["hetero_est", "error_est"]:
-                statdat[column] = statdat[column].astype(int)
+                statdat[column] = np.nan_to_num(statdat[column]).astype(int)
         return statdat    
 
 
@@ -490,7 +491,7 @@ class Assembly(object):
 
             ## 3rad/seqcap use multiplexed barcodes
             ## We'll concatenate them with a plus and split them later
-            if self.paramsdict["datatype"] == "3rad":
+            if "3rad" in self.paramsdict["datatype"]:
                 bdf[2] = bdf[2].str.upper()
                 self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
             else:
@@ -1714,7 +1715,7 @@ def paramschecker(self, param, newvalue):
     elif param == 'datatype':
         ## list of allowed datatypes
         datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
-                     'pairgbs', 'merged', '2brad', '3rad']
+                     'pairgbs', 'merged', '2brad', 'pair3rad']
         ## raise error if something else
         if str(newvalue) not in datatypes:
             raise IPyradError("""
@@ -1727,7 +1728,7 @@ def paramschecker(self, param, newvalue):
             ## the multiplexed barcodes for 3rad. This seems
             ## a little annoying, but it was better than any
             ## alternatives I could think of.
-            if self.paramsdict['datatype'] == '3rad':
+            if "3rad" in self.paramsdict['datatype']:
                 self.link_barcodes()
 
     elif param == 'restriction_overhang':
