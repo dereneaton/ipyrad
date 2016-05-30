@@ -965,7 +965,7 @@ class Assembly(object):
 
                 ## otherwise do the demultiplexing
                 else:
-                    assemble.demultiplex.run(self, preview, ipyclient)
+                    assemble.demultiplex.run(self, preview, ipyclient, force)
 
         ## Creating new Samples
         else:
@@ -975,7 +975,7 @@ class Assembly(object):
 
             ## otherwise do the demultiplexing
             else:
-                assemble.demultiplex.run(self, preview, ipyclient)
+                assemble.demultiplex.run(self, preview, ipyclient, force)
 
 
 
@@ -1378,7 +1378,7 @@ class Assembly(object):
             print("\n  Assembly: {}".format(self.name))
 
         if '1' in steps:
-            self.step1(preview=preview)
+            self.step1(force=force, preview=preview)
         if '2' in steps:
             self.step2(force=force, preview=preview)
         if '3' in steps:
