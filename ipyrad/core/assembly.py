@@ -1737,8 +1737,12 @@ def paramschecker(self, param, newvalue):
     cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         if len(newvalue) == 1:
             newvalue = (newvalue, "")
-        assert len(newvalue) == 2, """
-    must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
+        ## Handle 3rad datatype with only 3 cutters
+        if len(newvalue) == 3:
+            newvalue = (newvalue[0], newvalue[1], newvalue[2], "")
+        assert len(newvalue) <= 4, """
+    most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
+    For 3rad/seqcap may be up to 4 cut sites."""
         self.paramsdict['restriction_overhang'] = newvalue
 
     elif param == 'max_low_qual_bases':

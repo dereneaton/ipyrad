@@ -41,19 +41,31 @@ def combinefiles(filepath):
 def findbcode(cutters, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
-    search = read1[1][:int(longbar[0]+len(cutters[0])+1)]
-    barcode = search.rsplit(cutters[0], 1)[0]
-    return barcode 
+    for cutter in cutters[0]:
+        ## If the cutter is unambiguous there will only be one.
+        if not cutter:
+            continue
+        search = read1[1][:int(longbar[0]+len(cutter)+1)]
+        barcode = search.rsplit(cutter, 1)
+        if len(barcode) > 1:
+            return barcode[0]
+    ## No cutter found
+    return barcode[0] 
 
 
 def find3radbcode(cutters, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
-    for cutter in ["CTAGA", "CTAGC", "AATTC"]:
-        search = read1[1][:int(longbar[0]+len(cutter)+1)]
-        splitsearch = search.rsplit(cutter, 1)
-        if len(splitsearch) >1:
-            return splitsearch[0]
+    for ambigcuts in cutters:
+        for cutter in ambigcuts:
+            ## If the cutter is unambiguous there will only be one.
+            if not cutter:
+                continue
+            search = read1[1][:int(longbar[0]+len(cutter)+1)]
+            splitsearch = search.rsplit(cutter, 1)
+            if len(splitsearch) > 1:
+                return splitsearch[0]
+    ## No cutter found
     return splitsearch[0] 
 
 
@@ -76,7 +88,7 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
         dat = [perfile[rawstat][i] for i in ["ftotal", "fcutfound", "fmatched"]]
         outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
             format(*[rawstat]+[str(i) for i in dat]))
-        if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+        if 'pair' in data.paramsdict["datatype"]:
             rawstat2 = rawstat.replace("_R1_", "_R2_")
             outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
                 format(*[rawstat2]+[str(i) for i in dat]))
@@ -125,7 +137,7 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
         sample = Sample()
         sample.name = name
         sample.barcode = data.barcodes[name]
-        if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+        if 'pair' in data.paramsdict["datatype"]:
             sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
                                                   name+"_R1_.fastq.gz"),
                                      os.path.join(data.dirs.fastqs,
@@ -182,13 +194,13 @@ def barmatch(args):
         ## get slice of data as a generator
         # tups = rawtuple
         # fr1, fr2, io1, io2 = get_slice(tups, optim, subnum)
-        LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
+        #LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
     
         fr1 = iter(fr1)
         fr2 = iter(fr2)
         # ## create iterators to sample 4 lines at a time
         quart1 = itertools.izip(fr1, fr1, fr1, fr1)
-        if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+        if 'pair' in data.paramsdict["datatype"]:
             quart2 = itertools.izip(fr2, fr2, fr2, fr2)
             quarts = itertools.izip(quart1, quart2)
         else:
@@ -280,7 +292,7 @@ def barmatch(args):
     
                 ## append to dsort
                 dsort1[sname_match].append("".join(read1))
-                if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+                if 'pair' in data.paramsdict["datatype"]:
                     dsort2[sname_match].append("".join(read2))
     
             else:
@@ -298,7 +310,7 @@ def barmatch(args):
             if not total % 10000:
                 ## write the remaining reads to file"
                 writetofile(data, dsort1, 1, filenum, subnum)
-                if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+                if 'pair' in data.paramsdict["datatype"]:
                     writetofile(data, dsort2, 2, filenum, subnum) 
                 ## clear out dsorts
                 for sample in data.barcodes:
@@ -307,7 +319,7 @@ def barmatch(args):
     
         ## write the remaining reads to file"
         writetofile(data, dsort1, 1, filenum, subnum)
-        if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+        if 'pair' in data.paramsdict["datatype"]:
             writetofile(data, dsort2, 2, filenum, subnum)        
     
         ## return stats in saved pickle b/c return_queue is too tiny
@@ -382,7 +394,7 @@ def collate_subs(args):
 
 
         ## do second reads
-        if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+        if 'pair' in data.paramsdict["datatype"]:
             ## get chunks
             chunks = []
             for subnum in sublist:
@@ -425,7 +437,7 @@ def collate_files(args):
             with open(incol, 'r') as tmpin:
                 tmpout.write(tmpin.read())
 
-    if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+    if 'pair' in data.paramsdict["datatype"]:
         ## get chunks
         incols = os.path.join(data.dirs.fastqs, 
                     "tmp_{}_R2_".format(sname), 
@@ -473,7 +485,7 @@ def prechecks(data, preview):
             longbar = (max(barlens), 'diff')
 
         ## For 3rad we need to add the length info for barcodes_R2
-        if data.paramsdict["datatype"] == "3rad":
+        if "3rad" in data.paramsdict["datatype"]:
             barlens = [len(i.split("+")[1]) for i in data.barcodes.values()]
             longbar = (longbar[0], longbar[1], max(barlens))
 
@@ -508,7 +520,7 @@ def prechecks(data, preview):
         os.mkdir(tmpname)
 
     ## gather raw sequence filenames
-    if any(x in data.paramsdict["datatype"] for x in ['pair', '3rad']):
+    if 'pair' in data.paramsdict["datatype"]:
         raws = combinefiles(data.paramsdict["raw_fastq_path"])
     else:
         raws = zip(glob.glob(data.paramsdict["raw_fastq_path"]), iter(int, 1))
@@ -517,7 +529,7 @@ def prechecks(data, preview):
     ## (TGCAG, ) ==> [TGCAG, ]
     ## (TWGC, ) ==> [TAGC, TTGC]
     ## (TWGC, AATT) ==> [TAGC, TTGC]
-    cutters = ambigcutters(data.paramsdict["restriction_overhang"][0])
+    cutters = [ambigcutters(i) for i in data.paramsdict["restriction_overhang"]]
     assert cutters, "Must enter a `restriction_overhang` for demultiplexing."
 
     ## set optim chunk size
@@ -799,6 +811,7 @@ def run(data, preview, ipyclient):
         for async in filesort[fnum]:
             result = async.get()
             if result:
+                LOGGER.info("{}".format(result))
                 statdicts = putstats(result, raws[fnum][0], statdicts)
         ## collate across files
         for sname in data.barcodes:
