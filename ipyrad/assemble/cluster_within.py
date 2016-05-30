@@ -722,7 +722,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             badaligns = sum([i.get() for i in \
                             steps["muscle_align"]["async_results"][sample]])
             sample.stats_dfs.s3.filtered_bad_align = badaligns
-        except IPyradError as inst:
+        except Exception as inst:
             ## Sample failed cleanup because it failed some earlier step
             ## Already reported the failure and logged the event, so ignore
             pass
@@ -1188,7 +1188,7 @@ def run(data, samples, noreverse, force, preview, ipyclient):
         try:
             apply_jobs(*args)
         except Exception as inst:
-            LOGGER.warn(inst)
+            LOGGER.warn("Error in run() - {}".format(inst))
             raise
         finally:
             alignment_cleanup(data)
