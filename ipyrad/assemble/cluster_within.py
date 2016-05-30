@@ -945,6 +945,7 @@ def cluster(data, sample, noreverse, nthreads):
         cov = " -query_cov .90 "
         minsl = " 0.5"
 
+    ## If this value is not null (which is the default) then optionally
     ## override query cov
     if data._hackersonly["query_cov"]:
         cov = " -query_cov "+str(data._hackersonly["query_cov"])
