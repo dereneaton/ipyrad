@@ -409,7 +409,7 @@ def collate_files(args):
 
 
 
-def prechecks(data, preview):
+def prechecks(data, preview, force):
     """ 
     Checks before starting analysis. 
     -----------------------------------
@@ -444,6 +444,9 @@ def prechecks(data, preview):
                         data.paramsdict["project_dir"], data.name+"_fastqs")
     if not os.path.exists(data.paramsdict["project_dir"]):
         os.mkdir(data.paramsdict["project_dir"])
+    if os.path.exists(data.dirs.fastqs) and force:
+        print("  Force flag is set. Overwrite existing demultiplexed fastq.")
+        shutil.rmtree(data.dirs.fastqs)
     if not os.path.exists(data.dirs.fastqs):
         os.mkdir(data.dirs.fastqs)
 
@@ -574,13 +577,13 @@ def estimate_optim(testfile, ncpus):
 
 
 
-def run(data, preview, ipyclient):
+def run(data, preview, ipyclient, force):
     """ 
     Demultiplexes raw fastq files given a barcodes file.
     """
 
     ## checks on data before starting
-    raws, longbar, cutters, optim, matchdict = prechecks(data, preview)
+    raws, longbar, cutters, optim, matchdict = prechecks(data, preview, force)
     LOGGER.info('ncpus %s', data.cpus)
     LOGGER.info('optim %s', optim)
 
