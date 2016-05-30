@@ -41,10 +41,32 @@ def combinefiles(filepath):
 def findbcode(cutters, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
-    search = read1[1][:int(longbar[0]+len(cutters[0])+1)]
-    barcode = search.rsplit(cutters[0], 1)[0]
-    return barcode 
+    for cutter in cutters[0]:
+        ## If the cutter is unambiguous there will only be one.
+        if not cutter:
+            continue
+        search = read1[1][:int(longbar[0]+len(cutter)+1)]
+        barcode = search.rsplit(cutter, 1)
+        if len(barcode) > 1:
+            return barcode[0]
+    ## No cutter found
+    return barcode[0] 
 
+
+def find3radbcode(cutters, longbar, read1):
+    """ find barcode sequence in the beginning of read """
+    ## default barcode string
+    for ambigcuts in cutters:
+        for cutter in ambigcuts:
+            ## If the cutter is unambiguous there will only be one.
+            if not cutter:
+                continue
+            search = read1[1][:int(longbar[0]+len(cutter)+1)]
+            splitsearch = search.rsplit(cutter, 1)
+            if len(splitsearch) > 1:
+                return splitsearch[0]
+    ## No cutter found
+    return splitsearch[0] 
 
 
 def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
@@ -66,7 +88,7 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
         dat = [perfile[rawstat][i] for i in ["ftotal", "fcutfound", "fmatched"]]
         outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
             format(*[rawstat]+[str(i) for i in dat]))
-        if "pair" in data.paramsdict["datatype"]:
+        if 'pair' in data.paramsdict["datatype"]:
             rawstat2 = rawstat.replace("_R1_", "_R2_")
             outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
                 format(*[rawstat2]+[str(i) for i in dat]))
@@ -81,14 +103,14 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
         outfile.write("{:<35}  {:>13}\n".format(name, fsamplehits[name]))
 
     ## spacer, which barcodes were found
-    outfile.write('\n{:<35}  {:>13}{:>13}{:>13}\n'.\
+    outfile.write('\n{:<35}  {:>13} {:>13} {:>13}\n'.\
                   format("sample_name", "true_bar", "obs_bar", "N_records"))
 
     ## write sample results
     for name in names_sorted:
         ## write perfect hit
         hit = data.barcodes[name]
-        outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+        outfile.write('{:<35}  {:>13} {:>13} {:>13}\n'.\
             format(name, hit, hit, fsamplehits[name]))
 
         ## write off-n hits
@@ -99,7 +121,7 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
             for offhit in offkeys[::-1]:
                 ## exclude perfect hit
                 if offhit not in data.barcodes.values():
-                    outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'.\
+                    outfile.write('{:<35}  {:>13} {:>13} {:>13}\n'.\
                         format(name, hit, offhit, fbarhits[offhit]))
 
     ## write misses
@@ -115,7 +137,7 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
         sample = Sample()
         sample.name = name
         sample.barcode = data.barcodes[name]
-        if "pair" in data.paramsdict["datatype"]:
+        if 'pair' in data.paramsdict["datatype"]:
             sample.files.fastqs = [(os.path.join(data.dirs.fastqs,
                                                   name+"_R1_.fastq.gz"),
                                      os.path.join(data.dirs.fastqs,
@@ -147,144 +169,166 @@ def barmatch(args):
     files, after all read files have been split, temp files are collated into 
     .fastq files
     """
-
-    ## read in list of args
-    data, filenum, subnum, cutters, longbar, matchdict, fr1, fr2 = args
-    #LOGGER.info("Entering barmatch - {}.{}".format(filenum, subnum))
-
-    ## counters for total reads, those with cutsite, and those that matched
-    total = 0
-    cutfound = 0
-    matched = 0 
-
-    ## dictionary to sample hits
-    samplehits = {}
-    for sname in data.barcodes:
-        samplehits[sname] = 0
-    ## dict to record matchable barcodes that hit
-    barhits = {}
-    for barc in matchdict:
-        barhits[barc] = 0
-    ## record everything else that is found
-    misses = {}
-    misses['_'] = 0
+    try:
+        ## read in list of args
+        data, filenum, subnum, cutters, longbar, matchdict, fr1, fr2 = args
+        #LOGGER.info("Entering barmatch - {}.{}".format(filenum, subnum))
     
-    ## get slice of data as a generator
-    # tups = rawtuple
-    # fr1, fr2, io1, io2 = get_slice(tups, optim, subnum)
-    LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
-
-    fr1 = iter(fr1)
-    fr2 = iter(fr2)
-    # ## create iterators to sample 4 lines at a time
-    quart1 = itertools.izip(fr1, fr1, fr1, fr1)
-    if 'pair' in data.paramsdict["datatype"]:
-        quart2 = itertools.izip(fr2, fr2, fr2, fr2)
-        quarts = itertools.izip(quart1, quart2)
-    else:
-        quarts = itertools.izip(quart1, iter(int, 1))
-
-
-    ## dictionaries to store first and second reads
-    dsort1 = {} 
-    dsort2 = {} 
-    ## dictionary for all bars matched in sample
-    dbars = {} 
-    for sample in data.barcodes:
-        dsort1[sample] = []
-        dsort2[sample] = []
-        dbars[sample] = set()
-
-    ## get func for finding barcode
-    if longbar[1] == 'same':
-        if data.paramsdict["datatype"] == '2brad':
-            def getbarcode(_, read1, longbar):
-                """ find barcode for 2bRAD data """
-                return read1[1][-longbar[0]:]
+        ## counters for total reads, those with cutsite, and those that matched
+        total = 0
+        cutfound = 0
+        matched = 0 
+    
+        ## dictionary to sample hits
+        samplehits = {}
+        for sname in data.barcodes:
+            samplehits[sname] = 0
+        ## dict to record matchable barcodes that hit
+        barhits = {}
+        for barc in matchdict:
+            barhits[barc] = 0
+        ## record everything else that is found
+        misses = {}
+        misses['_'] = 0
+        
+        ## get slice of data as a generator
+        # tups = rawtuple
+        # fr1, fr2, io1, io2 = get_slice(tups, optim, subnum)
+        #LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
+    
+        fr1 = iter(fr1)
+        fr2 = iter(fr2)
+        # ## create iterators to sample 4 lines at a time
+        quart1 = itertools.izip(fr1, fr1, fr1, fr1)
+        if 'pair' in data.paramsdict["datatype"]:
+            quart2 = itertools.izip(fr2, fr2, fr2, fr2)
+            quarts = itertools.izip(quart1, quart2)
         else:
-            def getbarcode(_, read1, longbar):
-                """ finds barcode for invariable length barcode data """
-                return read1[1][:longbar[0]]
-    else:
-        def getbarcode(cutters, read1, longbar):
-            """ finds barcode for variable barcode lengths"""
-            LOGGER.info('cutters = %s, longbar=%s, read1=%s', cutters, longbar, read1)
-            return findbcode(cutters, longbar, read1)
-
-    ## go until end of the file
-    while 1:
-        try:
-            read1, read2 = quarts.next()
-            read1 = list(read1)
-            total += 1
-        except StopIteration:
-            break
-
-        ## Parse barcode. Uses the parsing function selected above.
-        barcode = getbarcode(cutters, read1, longbar)
-
-        ## find if it matches 
-        sname_match = matchdict.get(barcode)
-
-        if sname_match:
-            ## record who matched
-            dbars[sname_match].add(barcode)
-            matched += 1
-            cutfound += 1
-            samplehits[sname_match] += 1
-            barhits[barcode] += 1
-            if barcode in barhits:
-                barhits[barcode] += 1
-            else:
-                barhits[barcode] = 1
-
-            ## trim off barcode
-            lenbar = len(barcode)
+            quarts = itertools.izip(quart1, iter(int, 1))
+    
+    
+        ## dictionaries to store first and second reads
+        dsort1 = {} 
+        dsort2 = {} 
+        ## dictionary for all bars matched in sample
+        dbars = {} 
+        for sample in data.barcodes:
+            dsort1[sample] = []
+            dsort2[sample] = []
+            dbars[sample] = set()
+    
+        ## get func for finding barcode
+        if longbar[1] == 'same':
             if data.paramsdict["datatype"] == '2brad':
-                read1[1] = read1[1][:-lenbar]
-                read1[3] = read1[3][:-lenbar]
+                def getbarcode(_, read1, longbar):
+                    """ find barcode for 2bRAD data """
+                    return read1[1][-longbar[0]:]
             else:
-                read1[1] = read1[1][lenbar:]
-                read1[3] = read1[3][lenbar:]
-
-            ## append to dsort
-            dsort1[sname_match].append("".join(read1))
-            if 'pair' in data.paramsdict["datatype"]:
-                dsort2[sname_match].append("".join(read2))
-
+                def getbarcode(_, read1, longbar):
+                    """ finds barcode for invariable length barcode data """
+                    return read1[1][:longbar[0]]
         else:
-            ## record whether cut found                
-            if barcode:
-                cutfound += 1
-                if barcode in misses:
-                    misses[barcode] += 1
-                else:
-                    misses[barcode] = 1
+            def getbarcode(cutters, read1, longbar):
+                """ finds barcode for variable barcode lengths"""
+                #LOGGER.info('cutters = %s, longbar=%s, read1=%s', cutters, longbar, read1)
+                return findbcode(cutters, longbar, read1)
+        ## go until end of the file
+        while 1:
+            try:
+                read1, read2 = quarts.next()
+                read1 = list(read1)
+                total += 1
+            except StopIteration:
+                break
+    
+            barcode = ""
+            ## Get barcode_R2 and check for matching sample name
+            if '3rad' in data.paramsdict["datatype"]:
+                ## Here we're just reusing the findbcode function
+                ## for R2, and reconfiguring the longbar tuple to have the
+                ## maxlen for the R2 barcode
+                ## Parse barcode. Use the parsing function selected above.
+                barcode1 = find3radbcode(cutters=cutters, longbar=longbar, read1=read1)
+                barcode2 = find3radbcode(cutters=cutters, longbar=(longbar[2], longbar[1]), read1=read2)
+                barcode = barcode1 + "+" + barcode2
             else:
-                misses["_"] += 1
-
-        ## write out at 10K to keep memory low
-        if not total % 10000:
-            ## write the remaining reads to file"
-            writetofile(data, dsort1, 1, filenum, subnum)
-            if 'pair' in data.paramsdict["datatype"]:
-                writetofile(data, dsort2, 2, filenum, subnum) 
-            ## clear out dsorts
-            for sample in data.barcodes:
-                dsort1[sample] = []
-                dsort2[sample] = []
-
-    ## write the remaining reads to file"
-    writetofile(data, dsort1, 1, filenum, subnum)
-    if 'pair' in data.paramsdict["datatype"]:
-        writetofile(data, dsort2, 2, filenum, subnum)        
-
-    ## return stats in saved pickle b/c return_queue is too tiny
-    filestats = [subnum, total, cutfound, matched]
-    samplestats = [samplehits, barhits, misses, dbars]
-
+                ## Parse barcode. Uses the parsing function selected above.
+                barcode = getbarcode(cutters, read1, longbar)
+   
+            ## find if it matches 
+            sname_match = matchdict.get(barcode)
+    
+            if sname_match:
+                ## record who matched
+                dbars[sname_match].add(barcode)
+                matched += 1
+                cutfound += 1
+                samplehits[sname_match] += 1
+                barhits[barcode] += 1
+                if barcode in barhits:
+                    barhits[barcode] += 1
+                else:
+                    barhits[barcode] = 1
+    
+                ## trim off barcode
+                lenbar = len(barcode)
+                if '3rad' in data.paramsdict["datatype"]:
+                    ## Iff 3rad trim the len of the first barcode
+                    lenbar = len(barcode1)
+    
+                if data.paramsdict["datatype"] == '2brad':
+                    read1[1] = read1[1][:-lenbar]
+                    read1[3] = read1[3][:-lenbar]
+                else:
+                    read1[1] = read1[1][lenbar:]
+                    read1[3] = read1[3][lenbar:]
+    
+                ## Trim barcode off R2 and append. Only 3rad datatype
+                ## pays the cpu cost of splitting R2
+                if '3rad' in data.paramsdict["datatype"]:
+                    read2 = list(read2)
+                    read2[1] = read2[1][len(barcode2):]
+                    read2[3] = read2[3][len(barcode2):]
+    
+                ## append to dsort
+                dsort1[sname_match].append("".join(read1))
+                if 'pair' in data.paramsdict["datatype"]:
+                    dsort2[sname_match].append("".join(read2))
+    
+            else:
+                ## record whether cut found                
+                if barcode:
+                    cutfound += 1
+                    if barcode in misses:
+                        misses[barcode] += 1
+                    else:
+                        misses[barcode] = 1
+                else:
+                    misses["_"] += 1
+    
+            ## write out at 10K to keep memory low
+            if not total % 10000:
+                ## write the remaining reads to file"
+                writetofile(data, dsort1, 1, filenum, subnum)
+                if 'pair' in data.paramsdict["datatype"]:
+                    writetofile(data, dsort2, 2, filenum, subnum) 
+                ## clear out dsorts
+                for sample in data.barcodes:
+                    dsort1[sample] = []
+                    dsort2[sample] = []
+    
+        ## write the remaining reads to file"
+        writetofile(data, dsort1, 1, filenum, subnum)
+        if 'pair' in data.paramsdict["datatype"]:
+            writetofile(data, dsort2, 2, filenum, subnum)        
+    
+        ## return stats in saved pickle b/c return_queue is too tiny
+        filestats = [subnum, total, cutfound, matched]
+        samplestats = [samplehits, barhits, misses, dbars]
+    except Exception as inst:
+        LOGGER.info("Exception in barmatch() - {}".format(inst))
+        raise
     return filestats, samplestats
-
 
 
 def writetofile(data, dsort, read, filenum, subnum):
@@ -350,7 +394,7 @@ def collate_subs(args):
 
 
         ## do second reads
-        if "pair" in data.paramsdict["datatype"]:
+        if 'pair' in data.paramsdict["datatype"]:
             ## get chunks
             chunks = []
             for subnum in sublist:
@@ -393,7 +437,7 @@ def collate_files(args):
             with open(incol, 'r') as tmpin:
                 tmpout.write(tmpin.read())
 
-    if "pair" in data.paramsdict["datatype"]:
+    if 'pair' in data.paramsdict["datatype"]:
         ## get chunks
         incols = os.path.join(data.dirs.fastqs, 
                     "tmp_{}_R2_".format(sname), 
@@ -431,11 +475,20 @@ def prechecks(data, preview, force):
 
     ## find longest barcode
     try:
-        barlens = [len(i) for i in data.barcodes.values()]
+        ## Handle 3rad multiple barcodes, this gets the len
+        ## of the first one. Should be harmless for single
+        ## barcode data
+        barlens = [len(i.split("+")[0]) for i in data.barcodes.values()]
         if len(set(barlens)) == 1:
             longbar = (barlens[0], 'same')
         else:
             longbar = (max(barlens), 'diff')
+
+        ## For 3rad we need to add the length info for barcodes_R2
+        if "3rad" in data.paramsdict["datatype"]:
+            barlens = [len(i.split("+")[1]) for i in data.barcodes.values()]
+            longbar = (longbar[0], longbar[1], max(barlens))
+
     except ValueError:
         raise IPyradWarningExit("    Barcodes file not found.")
 
@@ -470,7 +523,7 @@ def prechecks(data, preview, force):
         os.mkdir(tmpname)
 
     ## gather raw sequence filenames
-    if "pair" in data.paramsdict["datatype"]:
+    if 'pair' in data.paramsdict["datatype"]:
         raws = combinefiles(data.paramsdict["raw_fastq_path"])
     else:
         raws = zip(glob.glob(data.paramsdict["raw_fastq_path"]), iter(int, 1))
@@ -479,7 +532,7 @@ def prechecks(data, preview, force):
     ## (TGCAG, ) ==> [TGCAG, ]
     ## (TWGC, ) ==> [TAGC, TTGC]
     ## (TWGC, AATT) ==> [TAGC, TTGC]
-    cutters = ambigcutters(data.paramsdict["restriction_overhang"][0])
+    cutters = [ambigcutters(i) for i in data.paramsdict["restriction_overhang"]]
     assert cutters, "Must enter a `restriction_overhang` for demultiplexing."
 
     ## set optim chunk size
@@ -761,6 +814,7 @@ def run(data, preview, ipyclient, force):
         for async in filesort[fnum]:
             result = async.get()
             if result:
+                LOGGER.info("{}".format(result))
                 statdicts = putstats(result, raws[fnum][0], statdicts)
         ## collate across files
         for sname in data.barcodes:

@@ -19,6 +19,7 @@ import h5py
 import string
 import cStringIO
 import itertools
+import numpy as np
 import pandas as pd
 import ipyparallel as ipp
 import ipyrad as ip
@@ -224,7 +225,7 @@ class Assembly(object):
         # ensure non h,e columns print as ints
         for column in statdat:
             if column not in ["hetero_est", "error_est"]:
-                statdat[column] = statdat[column].astype(int)
+                statdat[column] = np.nan_to_num(statdat[column]).astype(int)
         return statdat    
 
 
@@ -487,8 +488,16 @@ class Assembly(object):
             bdf = bdf.dropna()
             ## make sure upper case
             bdf[1] = bdf[1].str.upper()
-            ## set attribute on Assembly object
-            self.barcodes = dict(zip(bdf[0], bdf[1]))
+
+            ## 3rad/seqcap use multiplexed barcodes
+            ## We'll concatenate them with a plus and split them later
+            if "3rad" in self.paramsdict["datatype"]:
+                bdf[2] = bdf[2].str.upper()
+                self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+            else:
+                ## set attribute on Assembly object
+                self.barcodes = dict(zip(bdf[0], bdf[1]))
+
         except ValueError:
             msg = "Barcodes file not recognized."
             LOGGER.warn(msg)
@@ -1706,7 +1715,7 @@ def paramschecker(self, param, newvalue):
     elif param == 'datatype':
         ## list of allowed datatypes
         datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
-                     'pairgbs', 'merged', '2brad']
+                     'pairgbs', 'merged', '2brad', 'pair3rad']
         ## raise error if something else
         if str(newvalue) not in datatypes:
             raise IPyradError("""
@@ -1714,6 +1723,13 @@ def paramschecker(self, param, newvalue):
     """.format(newvalue, datatypes))
         else:
             self.paramsdict['datatype'] = str(newvalue)
+            ## link_barcodes is called before datatypes is set
+            ## we need to know the datatype so we can read in
+            ## the multiplexed barcodes for 3rad. This seems
+            ## a little annoying, but it was better than any
+            ## alternatives I could think of.
+            if "3rad" in self.paramsdict['datatype']:
+                self.link_barcodes()
 
     elif param == 'restriction_overhang':
         newvalue = tuplecheck(newvalue, str)                        
@@ -1721,8 +1737,12 @@ def paramschecker(self, param, newvalue):
     cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         if len(newvalue) == 1:
             newvalue = (newvalue, "")
-        assert len(newvalue) == 2, """
-    must enter 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
+        ## Handle 3rad datatype with only 3 cutters
+        if len(newvalue) == 3:
+            newvalue = (newvalue[0], newvalue[1], newvalue[2], "")
+        assert len(newvalue) <= 4, """
+    most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
+    For 3rad/seqcap may be up to 4 cut sites."""
         self.paramsdict['restriction_overhang'] = newvalue
 
     elif param == 'max_low_qual_bases':
