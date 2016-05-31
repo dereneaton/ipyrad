@@ -153,7 +153,7 @@ or for other uses as well.
 ------------
 There are now many forms of restriction-site associated DNA library preparation
 methods and thus many differently named data types. Currently, we categorize 
-these into :ref:`six data types <Supported data types>`. Follow the link
+these into :ref:`six data types <data_types>`. Follow the link
 to deteremine the appropriate category for your data type. 
 
 
