@@ -146,8 +146,7 @@ in length, and are treated slightly differently in steps 2 and 7.
 barcodes. 3Rad/RadCap can use up to **four restriction enzymes**, and also
 uses a suite of custom adapters to control for PCR duplicates. This data is
 always paired end, since one barcode is ligated to each read. PCR clones
-are removed in step 3, after clustering but before alignment. The **pair3rad** 
+are removed in step 3, after merging but before dereplication. The **pair3rad**
 `datatype` is used for both 3Rad and RadCap types because these datatypes
 only differ in how they are generated, not how they are demultiplexed and
-filtered. *This is out of Travis Glenn's lab, the methods are currently
-unpublished.*
+filtered. *See Glenn et al 2016, and Hoffberg et al 2016*
