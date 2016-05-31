@@ -162,19 +162,13 @@ def stackarray(data, sample):
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-    ## max_fragment_length is counted *after* merging, so
-    ## PE and SE both work the same
-    ## array will be (nclusters, readlen, 4)
-#    if "pair" in data.paramsdict["datatype"]:
-#        readlen = 2*data._hackersonly["max_fragment_length"]
-#    else:
     readlen = data._hackersonly["max_fragment_length"]
     dims = (int(sample.stats.clusters_hidepth), readlen, 4)
     stacked = np.zeros(dims, dtype=np.uint32)
     LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
 
     ## don't use sequence edges / restriction overhangs
-    cutlens = [None, None]
+    cutlens = [None, None, None, None]
     for cidx, cut in enumerate(data.paramsdict["restriction_overhang"]):
         if cut:
             cutlens[cidx] = len(cut)
