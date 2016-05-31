@@ -700,6 +700,7 @@ def filter_stacks(args):
     but I felt this design made more sense, and also will easily allow us to
     add more filters in the future.
     """
+    LOGGER.info("Entering filter_stacks")
     data, sidx, hslice = args
 
     ## open h5 handles
@@ -781,7 +782,14 @@ def get_edges(data, superseqs, splits):
     ## the filtering arg and parse it into minsamp numbers
     edgetrims = np.array(data.paramsdict["trim_overhang"])
     minsamp = data.paramsdict["min_samples_locus"]
-    cut1, cut2 = data.paramsdict["restriction_overhang"]
+
+    ## Cuts 3 and 4 are only for 3rad/radcap
+    ## TODO: This is moderately hackish, it's not using cut3/4
+    ## correctly, just assuming the length is the same as cut1/2
+    if "3rad" in data.paramsdict["datatype"]:
+        cut1, cut2, cut3, cut4 = data.paramsdict["restriction_overhang"] 
+    else:
+        cut1, cut2 = data.paramsdict["restriction_overhang"]
 
     ## a local array for storing edge trims
     edges = np.zeros((superseqs.shape[0], 5), dtype=np.int16)
