@@ -872,6 +872,10 @@ def declone_3rad(data, sample):
                 ## Split on +, get [1], split on "_r1 and get [0] for the i5
                 ## prepend "EEEEEEEE" as qscore for the adapters
                 i5 = read[0].split("+")[1].split("_r1")[0]
+
+                ## If any non ACGT in the i5 then drop this sequence
+                if 'N' in i5:
+                    continue
                 writing.append("\n".join([
                                 read[0].strip(),
                                 i5 + read[1].strip(),
