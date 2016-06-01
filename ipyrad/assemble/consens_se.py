@@ -11,7 +11,7 @@ import scipy.stats
 import scipy.misc
 import itertools
 import datetime
-import numpy
+import numpy as np
 import time
 import h5py
 import gzip
@@ -128,12 +128,12 @@ def removerepeats(consens, arrayed):
         edges[1] = -1*(lcons - len(consens))
 
     ## trim same from arrayed
-    consens = numpy.array(list(consens))
+    consens = np.array(list(consens))
     arrayed = arrayed[:, edges[0]:edges[1]]
 
     ## get column counts of Ns and -s
-    ndepths = numpy.sum(arrayed == 'N', axis=0) 
-    idepths = numpy.sum(arrayed == '-', axis=0)
+    ndepths = np.sum(arrayed == 'N', axis=0) 
+    idepths = np.sum(arrayed == '-', axis=0)
 
     ## get proportion of bases that are N- at each site
     nons = ((ndepths + idepths) / float(arrayed.shape[0])) >= 0.75
@@ -178,7 +178,15 @@ def consensus(args):
     maxlen = data._hackersonly["max_fragment_length"]
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
         maxlen *= 2
-    catarr = numpy.zeros([optim, maxlen, 4], dtype='uint32')
+
+    ## write to tmp cons to file to be combined later
+    consenshandle = os.path.join(data.dirs.consens, 
+                                 sample.name+"_tmpcons."+str(tmpnum))
+    ## h5 for data storage
+    io5 = h5py.File(consenshandle.replace("_tmpcons.", "_tmpcats."), 'w')
+    catarr = io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
+    nallel = io5.create_dataset("alls", (optim, ), dtype=np.uint8)
+    #catarr = numpy.zeros([optim, maxlen, 4], dtype='uint32')
 
     ## store data for stats counters
     counters = {"name" : tmpnum,
@@ -187,12 +195,19 @@ def consensus(args):
                 "nconsens" : 0}
     ## store data for what got filtered
     filters = {"depth" : 0,
-               "heteros" : 0,
-               "haplos" : 0,
+               "maxh" : 0,
                "maxn" : 0}
 
     ## store data for writing
     storeseq = {}
+
+    ## set max limits
+    if 'pair' in data.paramsdict["datatype"]:
+        maxhet = sum(data.paramsdict["max_Hs_consens"])
+        maxn = sum(data.paramsdict["max_Ns_consens"])
+    else:
+        maxhet = data.paramsdict["max_Hs_consens"][0]
+        maxn = data.paramsdict["max_Ns_consens"][0]
 
     ## iterate over clusters
     done = 0
@@ -215,11 +230,11 @@ def consensus(args):
 
                 ## get stacks of base counts
                 sseqs = [list(seq) for seq in seqs]
-                arrayed = numpy.concatenate(
+                arrayed = np.concatenate(
                           [[seq]*rep for seq, rep in zip(sseqs, reps)])
 
                 ## get consens call for each site, applies paralog-x-site filter
-                consens = numpy.apply_along_axis(basecall, 0, arrayed, data)
+                consens = np.apply_along_axis(basecall, 0, arrayed, data)
 
                 ## apply a filter to remove low coverage sites/Ns that
                 ## are likely sequence repeat errors. This is only applied to 
@@ -238,40 +253,39 @@ def consensus(args):
                 nheteros = len(hidx)
 
                 ## filter for max number of hetero sites
-                if nfilter2(data, nheteros):
+                if nfilter2(nheteros, maxhet):
                     ## filter for maxN, & minlen 
-                    if nfilter3(data, consens):
-                        ## filter for max alleles and get lower case in consens
-                        consens, passed = nfilter4(data, consens, hidx, arrayed)
-                        if passed:
-                            ## store a reduced array with only CATG
-                            catg = numpy.array(\
-                       [numpy.sum(arrayed == i, axis=0) for i in list("CATG")], 
-                       dtype='uint32').T
-                            catarr[counters["nconsens"]][:catg.shape[0]] = catg
-                            ## store data for tmpchunk
-                            storeseq[counters["name"]] = "".join(list(consens))
-                            counters["name"] += 1
-                            counters["nconsens"] += 1
-                            counters["heteros"] += nheteros                            
-                        else:
-                            #LOGGER.debug("@maxn")
-                            filters['haplos'] += 1
+                    if nfilter3(consens, maxn):
+                        ## get N alleles and get lower case in consens
+                        consens, nhaps = nfilter4(consens, hidx, arrayed)
+
+                        ## store the number of alleles observed
+                        nallel[counters["nconsens"]] = nhaps
+
+                        ## store a reduced array with only CATG
+                        catg = np.array(\
+                            [np.sum(arrayed == i, axis=0)  \
+                            for i in list("CATG")], 
+                            dtype='uint32').T
+                        catarr[counters["nconsens"], :catg.shape[0], :] = catg
+
+                        ## store the seqdata for tmpchunk
+                        storeseq[counters["name"]] = "".join(list(consens))
+                        counters["name"] += 1
+                        counters["nconsens"] += 1
+                        counters["heteros"] += nheteros                            
                     else:
                         #LOGGER.debug("@haplo")
                         filters['maxn'] += 1
                 else:
                     #LOGGER.debug("@hetero")
-                    filters['heteros'] += 1
+                    filters['maxh'] += 1
             else:
                 #LOGGER.debug("@depth")
                 filters['depth'] += 1
     ## close file io
     clusters.close()
 
-    ## write to tmp cons to file to be combined later
-    consenshandle = os.path.join(data.dirs.consens, 
-                                 sample.name+"_tmpcons."+str(tmpnum))
     #LOGGER.info('writing %s', consenshandle)
     #LOGGER.info('passed in this chunk: %s', len(storeseq))
     #LOGGER.info('caught in this chunk: %s', filters)
@@ -281,8 +295,7 @@ def consensus(args):
                                    str(storeseq[key]) for key in storeseq]))
 
     ## save tmp catg array that will be combined into hdf5 later
-    with open(consenshandle.replace("_tmpcons.", "_tmpcats."), 'wb') as dumph:
-        numpy.save(dumph, catarr)
+    io5.close()
 
     ## final counts and return
     counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])        
@@ -301,21 +314,20 @@ def nfilter1(data, reps):
 
 
 
-def nfilter2(data, nheteros):
+def nfilter2(nheteros, maxhet):
     """ applies max heteros in a seq filter """
-    if nheteros <= sum(data.paramsdict["max_Hs_consens"]):
+    if nheteros <= maxhet:
         return 1
     else:
         return 0
 
 
 
-def nfilter3(data, consens):
+def nfilter3(consens, maxn):
     """ applies filter for maxN and hard minlen (32) """
     ## minimum length for clustering in vsearch
     if consens.size >= 32:
-        if consens[consens == "N"].size <= \
-                            sum(data.paramsdict["max_Ns_consens"]):
+        if consens[consens == "N"].size <= maxn:
             return 1
         else:
             return 0
@@ -324,15 +336,11 @@ def nfilter3(data, consens):
 
 
 
-def nfilter4(data, consens, hidx, arrayed):
+def nfilter4(consens, hidx, arrayed):
     """ applies max haplotypes filter returns pass and consens"""
 
-    ## only apply if >1 hetero site
+    ## if less than two Hs then there is only one allele
     if len(hidx) < 2:
-        return consens, 1
-
-    ## only apply if user arg is to apply diploid filter
-    if data.paramsdict["max_alleles_consens"] != 2:
         return consens, 1
 
     ## store base calls for hetero sites
@@ -340,8 +348,8 @@ def nfilter4(data, consens, hidx, arrayed):
 
     ## remove any reads that have N or - base calls at hetero sites
     ## these cannot be used when calling alleles currently.
-    harray = harray[~numpy.any(harray == "-", axis=1)]    
-    harray = harray[~numpy.any(harray == "N", axis=1)]
+    harray = harray[~np.any(harray == "-", axis=1)]    
+    harray = harray[~np.any(harray == "N", axis=1)]
 
     ## get counts of each allele (e.g., AT:2, CG:2)
     ccx = Counter([tuple(i) for i in harray])
@@ -352,7 +360,8 @@ def nfilter4(data, consens, hidx, arrayed):
     ## 2) a third or more unique allele is there but at low frequency
 
     ## remove low freq alleles if more than 2, since they may reflect 
-    ## sequencing errors instead of true heteros
+    ## sequencing errors at hetero sites, making a third allele, or a new 
+    ## allelic combination that is not real.
     if len(ccx) > 2:
         totdepth = harray.shape[0]
         cutoff = max(1, totdepth // 10)
@@ -363,19 +372,22 @@ def nfilter4(data, consens, hidx, arrayed):
     ## how many high depth alleles?
     nalleles = len(alleles)
 
-    ## if 2 alleles then go ahead to find alleles
-    if nalleles > data.paramsdict["max_alleles_consens"]:
-        return consens, 0
+    ## if 2 alleles then save the phase using lowercase coding
+    if nalleles == 2:
+        try:
+            consens = storealleles(consens, hidx, alleles)
+        except (IndexError, KeyError):
+            ## the H sites do not form good alleles
+            LOGGER.info("failed at phasing loc, skipping")
+            LOGGER.info("""
+    consens %s
+    hidx %s
+    alleles %s
+                """, consens, hidx, alleles)
+        return consens, nalleles
+    ## just return the info for later filtering
     else:
-        if nalleles == 2:
-            try:
-                consens = storealleles(consens, hidx, alleles)
-                return consens, 1 
-            except (IndexError, KeyError):
-                ## the H sites do not form good alleles
-                return consens, 0
-        else:
-            return consens, 0            
+        return consens, nalleles
 
 
 
@@ -481,7 +493,9 @@ def basecaller(data, base1, base2, comms):
 
 
 def cleanup(args):
-    """ cleaning up. optim is the size (nloci) of tmp arrays """
+    """ 
+    cleaning up. optim is the size (nloci) of tmp arrays 
+    """
 
     ## parse args list
     data, sample, statsdicts = args
@@ -499,28 +513,31 @@ def cleanup(args):
                         sample.name+"_tmpcats.*"))
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
-    ## get shape info from the first cat, they're all the same size arrays
-    with open(tmpcats[0]) as cat:
-        catg = numpy.load(cat)
-    ## (optim, maxlen, 4)
-    optim, maxlen, _ = catg.shape
+    ## get shape info from the first cat, (optim, maxlen, 4)
+    optim, maxlen, _ = h5py.File(tmpcats[0], 'r')['cats'].shape
 
     ## save as a chunked compressed hdf5 array
     handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
     ioh5 = h5py.File(handle1, 'w')
     nloci = len(tmpcats) * optim
-    dset = ioh5.create_dataset("catg", (nloci, maxlen, 4), 
-                               dtype=numpy.uint32,
+    dcat = ioh5.create_dataset("catg", (nloci, maxlen, 4), 
+                               dtype=np.uint32,
                                chunks=(optim, maxlen, 4),
+                               compression="gzip")
+    dall = ioh5.create_dataset("nalleles", (nloci, ),
+                               dtype=np.uint8,
+                               chunks=(optim, ),
                                compression="gzip")
 
     ## Combine all those tmp cats into the big cat
     start = 0
     for icat in tmpcats:
-        icatg = numpy.load(icat)
+        io5 = h5py.File(icat, 'r')
         end = start + optim        
-        dset[start:end] = icatg
+        dcat[start:end] = io5['cats'][:]
+        dall[start:end] = io5['alls'][:]
         start += optim
+        io5.close()
         os.remove(icat)
     ioh5.close()
 
@@ -532,8 +549,7 @@ def cleanup(args):
                  "heteros": 0, 
                  "nsites": 0}
     xfilters = {"depth": 0, 
-               "heteros": 0,
-               "haplos": 0,
+               "maxh": 0,
                "maxn": 0}
 
     ## merge finished consens stats
@@ -563,7 +579,7 @@ def cleanup(args):
     sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
     sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
     sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
-    sample.stats_dfs.s5.filtered_by_maxH = xfilters['haplos']    
+    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']    
     sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
     sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
     sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
