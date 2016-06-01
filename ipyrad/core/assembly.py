@@ -181,9 +181,9 @@ class Assembly(object):
                        ("trim_overhang", (4, 4, 4, 4)),                        
                        ("output_formats", "*"),
                        ("pop_assign_file", ""),
-                       ("excludes", ""),
-                       ("outgroups", ""),
         ])
+        #               ("excludes", ""),
+        #               ("outgroups", ""),
 
         ## Store data directories for this Assembly. Init with default project
         self.dirs = ObjDict({"project": self.paramsdict["project_dir"],
@@ -679,7 +679,7 @@ class Assembly(object):
 
         with open(outfile, 'w') as paramsfile:
             ## Write the header. Format to 80 columns
-            header = "------ ipyrad params file (v.{})".format(ip.__version__)
+            header = "------- ipyrad params file (v.{})".format(ip.__version__)
             header += ("-"*(80-len(header)))
             paramsfile.write(header)
 
@@ -1181,7 +1181,7 @@ class Assembly(object):
         """
         subsample = []
 
-        ## filter by state and remove excludes
+        ## filter by state 
         for sample in samples:
             if sample.stats.state < mystep - 1:
                 LOGGER.debug("Sample {} not in proper state."\
@@ -1190,6 +1190,7 @@ class Assembly(object):
                 subsample.append(sample)
 
         return subsample
+        
         
 
     def step1(self, force=False, preview=False):
@@ -1386,21 +1387,13 @@ class Assembly(object):
 
 
 def _get_samples(self, samples):
-    """ Internal function. Prelude for each step() to read in perhaps
+    """ 
+    Internal function. Prelude for each step() to read in perhaps
     non empty list of samples to process. Input is a list of sample names,
     output is a list of sample objects."""
     ## if samples not entered use all samples
     if not samples:
         samples = self.samples.keys()
-
-    ## remove samples in excluded_samples
-    if self.paramsdict["excludes"]:
-        for drop in self.paramsdict["excludes"]:
-            if drop in samples:
-                samples.remove(drop)
-            else:
-                print("  The name [{}] does not match".format(drop) +\
-                      " any Sample names and so cannot be excluded.")
 
     ## Be nice and allow user to pass in only one sample as a string, 
     ## rather than a one element list. When you make the string into a list
@@ -1411,7 +1404,7 @@ def _get_samples(self, samples):
 
     ## if sample keys, replace with sample obj
     assert isinstance(samples, list), \
-    "to subselect samples enter as a list, e.g., [A, B]."
+        "to subselect samples enter as a list, e.g., [A, B]."
     newsamples = [self.samples.get(key) for key in samples \
                   if self.samples.get(key)]
     strnewsamples = [i.name for i in newsamples]
@@ -1883,54 +1876,6 @@ def paramschecker(self, param, newvalue):
         else:
             self.paramsdict['pop_assign_file'] = ""
 
-
-    elif param == 'excludes':
-        if isinstance(newvalue, list):
-            newvalue = ",".join(newvalue)
-
-        if newvalue.strip():
-            excluded_individuals = newvalue.replace(" ", "").split(',')
-
-            ## check whether excludes exist in samples
-            exc = set(excluded_individuals)
-            inc = set(self.samples.keys())
-
-            nomatch = exc.difference(inc)
-            if list(nomatch):
-                #raise IPyradWarningExit()
-                LOGGER.warning("""
-    Warning: The following Sample cannot be excluded because it was not found 
-    in the list of existing Samples. Check for typos in Sample names.
-    Bad Sample name(s): {}""".format(list(nomatch)))
-            self.paramsdict['excludes'] = excluded_individuals
-
-        ## else set it as empty
-        else:
-            self.paramsdict['excludes'] = []
-
-
-    elif param == 'outgroups':
-        if isinstance(newvalue, list):
-            newvalue = ",".join(newvalue)
-
-        if newvalue.strip():
-            outgroup_inds = newvalue.replace(" ", "").split(',')
-
-            ## check whether excludes exist in samples
-            exc = set(outgroup_inds)
-            inc = set(self.samples.keys())
-
-            nomatch = exc.difference(inc)
-            if list(nomatch):
-                raise IPyradWarningExit("""
-    Warning: The following Sample cannot be set as an outgroup because it was 
-    not found in the list of existing Samples. Check for typos in Sample names.
-    Bad Sample name(s): {}""".format(list(nomatch)))
-            self.paramsdict['outgroups'] = outgroup_inds
-
-        ## else set it as empty
-        else:
-            self.paramsdict['outgroups'] = []
 
     return self
 
