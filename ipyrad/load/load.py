@@ -202,7 +202,8 @@ def load_json(path, quiet=False):
     ## correct any errors/incompatibilities in the old params file
     oldparams = fullj["assembly"].pop("paramsdict")
     for param, val in oldparams.iteritems():
-        if param != "assembly_name":
+        ## a fix for backward compatibility with deprecated options
+        if param not in ["assembly_name", "excludes", "outgroups"]:
             try:
                 null.set_params(param, val)
             except IPyradWarningExit as inst:
