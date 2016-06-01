@@ -167,6 +167,8 @@ def stackarray(data, sample):
         readlen = 2*data._hackersonly["max_fragment_length"]
     else:
         readlen = data._hackersonly["max_fragment_length"]
+
+    ## TODO: make clusters_hidepth dynamic in case params change
     dims = (int(sample.stats.clusters_hidepth), readlen, 4)
     stacked = np.zeros(dims, dtype=np.uint32)
     LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
@@ -203,8 +205,11 @@ def stackarray(data, sample):
                 reps = [i*2 if j else i for i, j in zip(reps, merged)]
 
             sseqs = [list(seq) for seq in seqs]
-            arrayed = np.concatenate(
+            try:
+                arrayed = np.concatenate(
                       [[seq]*rep for seq, rep in zip(sseqs, reps)])
+            except ValueError:
+                LOGGER.info("sseqs %s, reps %s", "\n".join(["".join(i) for i in sseqs]), reps)
             ## enforce minimum depth for estimates
             if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
                 ## remove edge columns
@@ -237,6 +242,7 @@ def optim(args):
 
     ## get array of all clusters data
     stacked = stackarray(data, sample)
+    LOGGER.info('stack %s', stacked)
 
     ## get base frequencies
     bfreqs = frequencies(stacked)
@@ -259,6 +265,7 @@ def optim(args):
     ## cleanup    
     del rstack
     del tstack
+
 
     ## if data are haploid fix H to 0
     if data.paramsdict["max_alleles_consens"] == 1:
@@ -331,6 +338,7 @@ def submit(data, submitted_args, ipyclient):
     lbview = ipyclient.load_balanced_view()
     jobs = {}
     for args in submitted_args:
+        LOGGER.info("submitting duh %s", args)
         ## stores async results using sample names
         jobs[args[1].name] = lbview.apply(optim, args)
 
