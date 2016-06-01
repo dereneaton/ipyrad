@@ -185,8 +185,8 @@ def muscle_align(args):
                 string1 = muscle_call(data, names[:200], seqs1[:200])
                 string2 = muscle_call(data, names[:200], seqs2[:200])
                 ## resort so they're in same order as original
-                anames, aseqs1 = parsemuscle(string1)
-                anames, aseqs2 = parsemuscle(string2)
+                anames, aseqs1 = parsemuscle(data, string1)
+                anames, aseqs2 = parsemuscle(data, string2)
                 ## get leftlimit of seed, no hits can go left of this 
                 ## this can save pairgbs from garbage
                 idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
@@ -215,7 +215,7 @@ def muscle_align(args):
 
             except IndexError:
                 string1 = muscle_call(data, names[:200], seqs[:200])
-                anames, aseqs = parsemuscle(string1)
+                anames, aseqs = parsemuscle(data, string1)
                 ## Get left and right limits, no hits can go outside of this. 
                 ## This can save gbs overlap data significantly. 
                 if 'gbs' in data.paramsdict['datatype']:
@@ -299,11 +299,27 @@ def muscle_align(args):
 
 
 
-def parsemuscle(out):
-    """ parse muscle string output into two sorted lists. Sorts them first."""
+def parsemuscle(data, out):
+    """ 
+    parse muscle string output into two sorted lists. Sorts them first.
+    """
+    ## remove '>' and split lines
     lines = out[1:].split("\n>")
+    ## grab the names
     names = [line.split("\n", 1)[0] for line in lines]
+    ## grab the seqs
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
+    ## split on the 'T' of the 'TGCAG' anchor for 'rad' data
+    if data.paramsdict["datatype"] == 'rad':
+        maxlen = max([len(i) for i in seqs])
+        seqs = [i.rsplit("T", 1)[0] for i in seqs]
+        ## add spacers back in to right justify
+        for sidx in range(len(seqs)):
+            #OGGER.info("before %s", seqs[sidx])
+            while len(seqs[sidx]) < maxlen:
+                seqs[sidx] += "-"
+                #LOGGER.info("after %s", seqs[sidx])                
+
     tups = zip(names, seqs)
     ## who knew, zip(*) is the inverse of zip
     anames, aseqs = zip(*sorted(tups, 
@@ -323,11 +339,18 @@ def muscle_call(data, names, seqs):
     overload the PIPE buffer.
     """
 
-    ## get input string
-    inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
+    ## make input string
+    ## if RAD data, add TGCAG anchor for right side muscle alignment.
+    if data.paramsdict["datatype"] == 'rad':
+        inputstr = "\n".join([">{}\n{}TGCAG".format(i, j) for i, j in zip(names, seqs)])
+    ## need testing for whether anchor messes up other kinds of data which 
+    ## can have partial overlaps. So not anchoring others for now. 
+    else:
+        inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
     args = [ipyrad.bins.muscle, "-quiet"]
 
-    ## increase gap penalty if reference region is included
+    ## increase gap penalty if reference region is included 
+    ## This could use more testing/refining!
     if "_REF;+0" in names:
         args += ["-gapopen", "-1200"]
 
