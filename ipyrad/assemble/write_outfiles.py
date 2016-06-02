@@ -459,7 +459,7 @@ def make_loci_and_stats(data, samples, ipyclient):
 
     ## check for errors
     for job in loci_asyncs:
-        if not job.successful():
+        if job.ready() and not job.successful():
             print(job.metadata)
 
     ## concat and cleanup
@@ -1080,7 +1080,6 @@ def filter_maxhet(data, superseqs, edges):
         ## fill filter
         if not share <= maxhet:
             hetfilt[idx] = True
-
     LOGGER.info("Filtered max_shared_heterozygosity- {}".format(hetfilt.sum()))
     return hetfilt
 
