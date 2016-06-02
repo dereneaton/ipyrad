@@ -478,8 +478,8 @@ def multicat(data, samples, ipyclient):
             ## grab metadata
             meta = jobs[sname].metadata
 
-            ## do this if success
-            if jobs[sname].successful():
+            ## If you call successful() on a job that isn't ready it'll raise
+            if jobs[sname].ready() and jobs[sname].successful():
                 ## get the results
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
