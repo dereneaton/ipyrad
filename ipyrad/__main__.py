@@ -222,6 +222,9 @@ def parse_command_line():
     parser.add_argument('-q', "--quiet", action='store_true',
         help="do not print to stderror or stdout.")
 
+    parser.add_argument('-d', "--debug", action='store_true',
+        help="print lots more info to ipyrad_log.txt.")
+
     parser.add_argument('-i', metavar="info", dest="info",
         type=str, nargs="?", default=False,
         help="get info about parameters")
@@ -278,6 +281,17 @@ def main():
 
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
+
+    ## Turn the debug output written to ipyrad_log.txt up to 11!
+    if args.debug:
+        print("  Enabling debug mode")
+        logging.getLogger(__name__).setLevel(logging.DEBUG)
+        print("loglevel - {}".format(logging.getLogger(__name__).getEffectiveLevel()))
+        print(logging.handlers)
+        new_handler = logging.FileHandler(ip.__debugfile__)
+        new_handler.setLevel(logging.DEBUG)
+        logging.getLogger(__name__).addHandler(new_handler)
+        print("{} {}".format(__name__, logging.getLogger(__name__)))
 
     ## create new paramsfile if -n
     if args.new:
