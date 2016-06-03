@@ -483,6 +483,7 @@ def multicat(data, samples, ipyclient):
 
             ## do this if success
             if jobs[sname].completed and jobs[sname].successful():
+
                 ## get the results
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))

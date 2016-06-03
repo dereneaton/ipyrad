@@ -628,7 +628,7 @@ class Assembly(object):
 
         ## param 24 can be an int or a float:
         [Assembly].set_params(24, 4)
-        [Assembly].set_params('max_shared_H_locus', 0.25)
+        [Assembly].set_params('max_shared_Hs_locus', 0.25)
             
         """
 
@@ -1808,8 +1808,8 @@ def paramschecker(self, param, newvalue):
     elif param == 'min_samples_locus':
         self.paramsdict['min_samples_locus'] = int(newvalue)
 
-    elif param == 'max_shared_H_locus':
-        self.paramsdict['max_shared_H_locus'] = newvalue
+    elif param == 'max_shared_Hs_locus':
+        self.paramsdict['max_shared_Hs_locus'] = newvalue
 
     elif param == 'max_SNPs_locus':
         newvalue = tuplecheck(newvalue, int)                        
