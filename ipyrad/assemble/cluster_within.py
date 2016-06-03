@@ -446,7 +446,10 @@ def build_clusters(data, sample):
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
         seqslist.append("\n".join(seq))
-    clustfile.write("\n//\n//\n".join(seqslist)+"\n")
+    ## if udic is empty then this writes a blank line to the top of the file
+    ## and messes up writing the final clustS.gz
+    if seqslist:
+        clustfile.write("\n//\n//\n".join(seqslist)+"\n")
 
     ## make Dict. from seeds (_temp files) 
     iotemp = open(htempfile, 'rb')
@@ -745,7 +748,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             badaligns = sum([i.get() for i in \
                             steps["muscle_align"]["async_results"][sample]])
             sample.stats_dfs.s3.filtered_bad_align = badaligns
-        except IPyradError as inst:
+        except Exception as inst:
             ## Sample failed cleanup because it failed some earlier step
             ## Already reported the failure and logged the event, so ignore
             pass
@@ -854,12 +857,137 @@ def jobs_cleanup(data, samples, preview):
                 pass
 
 
+def declone_3rad(data, sample):
+    """ 
+    3rad uses random adapters to identify pcr duplicates. We will
+    remove pcr dupes here. Basically append the radom adapter to
+    each sequence, do a regular old vsearch derep, then trim
+    off the adapter, and push it down the pipeline. This will
+    remove all identical seqs with identical random i5 adapters.
+    """
 
-def derep_and_sort(data, sample):
+    LOGGER.info("Entering declone_3rad - {}".format(sample.name))
+
+    ## Append i5 adapter to the head of each read. Merged file is input, and
+    ## still has fq qual score so also have to append several qscores for the
+    ## adapter bases. Open the merge file, get quarts, go through each read
+    ## and append the necessary stuff.
+
+    adapter_seqs_file = tempfile.NamedTemporaryFile(mode='wb',
+                                        delete=False,
+                                        dir=data.dirs.edits,
+                                        suffix="_append_adapters_.fastq")
+
+    try:
+        with open(sample.files.edits[0][0]) as infile:
+            quarts = itertools.izip(*[iter(infile)]*4)
+    
+            ## a list to store until writing
+            writing = []
+            counts = 0
+    
+            while 1:
+                try:
+                    read = quarts.next()
+                except StopIteration:
+                    break
+    
+                ## Split on +, get [1], split on "_r1 and get [0] for the i5
+                ## prepend "EEEEEEEE" as qscore for the adapters
+                i5 = read[0].split("+")[1].split("_r1")[0]
+
+                ## If any non ACGT in the i5 then drop this sequence
+                if 'N' in i5:
+                    continue
+                writing.append("\n".join([
+                                read[0].strip(),
+                                i5 + read[1].strip(),
+                                read[2].strip(),
+                                "E"*8 + read[3].strip()]
+                            ))
+    
+                ## Write the data in chunks
+                counts += 1
+                if not counts % 1000:
+                    adapter_seqs_file.write("\n".join(writing)+"\n")
+                    writing = []
+            if writing:
+                adapter_seqs_file.write("\n".join(writing))
+                adapter_seqs_file.close()
+    
+        tmp_outfile = tempfile.NamedTemporaryFile(mode='wb',
+                                        delete=False,
+                                        dir=data.dirs.edits,
+                                        suffix="_decloned_w_adapters_.fastq")
+
+        ## Close the tmp file bcz vsearch will write to it by name, then
+        ## we will want to reopen it to read from it.
+        tmp_outfile.close()
+        ## Derep the data (adapters+seq)
+        derep_and_sort(data, sample, adapter_seqs_file.name,\
+                        os.path.join(data.dirs.edits, tmp_outfile.name))
+    
+        ## Remove adapters from head of sequence and write out
+        ## tmp_outfile is now the input file for the next step
+        ## first vsearch derep discards the qscore so we iterate
+        ## by pairs
+        with open(tmp_outfile.name) as infile:
+            with open(os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),\
+                                'wb') as outfile: 
+                duo = itertools.izip(*[iter(infile)]*2)
+    
+                ## a list to store until writing
+                writing = []
+                counts2 = 0
+    
+                while 1:
+                    try:
+                        read = duo.next()
+                    except StopIteration:
+                        break
+    
+                    ## Peel off the adapters. There's probably a faster
+                    ## way of doing this.
+                    writing.append("\n".join([
+                                    read[0].strip(),
+                                    read[1].strip()[8:]]
+                                ))
+    
+                    ## Write the data in chunks
+                    counts2 += 1
+                    if not counts2 % 1000:
+                        outfile.write("\n".join(writing)+"\n")
+                        writing = []
+                if writing:
+                    outfile.write("\n".join(writing))
+                    outfile.close()
+
+        LOGGER.info("Removed pcr duplicates from {} - {}".format(sample.name, counts-counts2))
+
+    except Exception as inst:
+        raise IPyradError("    Caught error while decloning "\
+                                + "3rad data - {}".format(inst))
+
+    finally:
+        ## failed samples will cause tmp file removal to raise.
+        ## just ignore it.
+        try:
+            ## Clean up temp files
+            if os.path.exists(adapter_seqs_file.name):
+                os.remove(adapter_seqs_file.name)
+            if os.path.exists(tmp_outfile.name):
+                os.remove(tmp_outfile.name)
+        except Exception as inst:
+            pass
+
+
+def derep_and_sort(data, sample, infile, outfile):
     """ 
     Dereplicates reads and sorts so reads that were highly replicated are at
     the top, and singletons at bottom, writes output to derep file. Paired
     reads are dereplicated as one concatenated read and later split again. 
+    Updated this function to take infile and outfile to support the double
+    dereplication that we need for 3rad (5/29/15 iao).
     """
 
     LOGGER.info("in the real derep; %s", sample.name)
@@ -871,9 +999,9 @@ def derep_and_sort(data, sample):
 
     ## do dereplication with vsearch
     cmd = ipyrad.bins.vsearch\
-         +" -derep_fulllength "+sample.files.edits[0][0]\
+         +" -derep_fulllength "+infile\
          +reverse \
-         +" -output "+os.path.join(data.dirs.edits, sample.name+"_derep.fastq")\
+         +" -output "+outfile\
          +" -sizeout " \
          +" -threads 1 "\
          +" -fasta_width 0"
@@ -968,6 +1096,7 @@ def cluster(data, sample, noreverse, nthreads):
         cov = " -query_cov .90 "
         minsl = " 0.5"
 
+    ## If this value is not null (which is the default) then optionally
     ## override query cov
     if data._hackersonly["query_cov"]:
         cov = " -query_cov "+str(data._hackersonly["query_cov"])
@@ -1128,8 +1257,20 @@ def derep_concat_split(args):
         sample.files.edits = [(sample.files.merged, )]
         LOGGER.debug("Merged file - {}".format(sample.files.merged))
 
-    ## convert fastq to fasta, then derep and sort reads by their size
-    derep_and_sort(data, sample)
+    ## 3rad uses random adapters to identify pcr duplicates. We will
+    ## remove pcr dupes here. Basically append the radom adapter to
+    ## each sequence, do a regular old vsearch derep, then trim
+    ## off the adapter, and push it down the pipeline. This will
+    ## remove all identical seqs with identical random i5 adapters.
+    if "3rad" in data.paramsdict["datatype"]:
+        declone_3rad(data, sample)
+        derep_and_sort(data, sample,\
+                os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),
+                os.path.join(data.dirs.edits, sample.name+"_derep.fastq"))
+    else:
+        ## convert fastq to fasta, then derep and sort reads by their size
+        derep_and_sort(data, sample, sample.files.edits[0][0],\
+                os.path.join(data.dirs.edits, sample.name+"_derep.fastq"))
     
 
 
@@ -1211,7 +1352,7 @@ def run(data, samples, noreverse, force, preview, ipyclient):
         try:
             apply_jobs(*args)
         except Exception as inst:
-            LOGGER.warn(inst)
+            LOGGER.warn("Error in run() - {}".format(inst))
             raise
         finally:
             alignment_cleanup(data)

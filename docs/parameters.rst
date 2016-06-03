@@ -153,7 +153,7 @@ or for other uses as well.
 ------------
 There are now many forms of restriction-site associated DNA library preparation
 methods and thus many differently named data types. Currently, we categorize 
-these into :ref:`six data types <Supported data types>`. Follow the link
+these into :ref:`six data types <data_types>`. Follow the link
 to deteremine the appropriate category for your data type. 
 
 
@@ -244,6 +244,12 @@ Affected steps = 1,2. Example entries to params.txt file:
     CWGC                      ## [8] single cutter w/ degenerate base
 
 
+NB: 3RAD and SeqCap data can use up to 4 restriction enzymes. If you have this
+kind of data, simply list all the restriction overhangs for all your cutters.
+
+.. code-block:: bash
+
+    CTAGA, CTAGC, AATTC               ## [8] 3rad data (multiple cutters)
 
 
 .. _max_low_qual_bases:

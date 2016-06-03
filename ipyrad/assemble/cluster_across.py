@@ -365,8 +365,9 @@ def build_h5_array(data, samples, ipyclient):
     io5 = h5py.File(data.clust_database, 'w')
 
     ## choose chunk optim size
-    #chunks = data.nloci
-    chunks = data.nloci
+    chunks = 100
+    if data.nloci < 100:
+        chunks = data.nloci
     if data.nloci > 5000:
         chunks = 1000
     ### Warning: for some reason increasing the chunk size to 5000 

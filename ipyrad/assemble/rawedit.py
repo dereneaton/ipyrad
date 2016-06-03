@@ -208,14 +208,18 @@ def adapterfilter(args):
 
     ## not trimmed
     else:
-        sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+"_r1", 
+        adapters = ""
+        ## Preserve adapters for 3rad so we can filter pcr dupes in step 3
+        if "3rad" in data.paramsdict["datatype"]:
+            adapters = "_" + read1[0].tostring().split(":")[-1]
+        sseq1 = "\n".join(["@"+sample.name+"_"+str(point)+adapters+"_r1", 
                            read1[1].tostring(),
                            "+", 
                            #read1[2].tostring(),
                            read1[3].tostring()])
         write1.append(sseq1)
         if len(read2):
-            sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+"_r2", 
+            sseq2 = "\n".join(["@"+sample.name+"_"+str(point)+adapters+"_r2", 
                                read2[1].tostring(),
                                "+",
                                #read2[2].tostring(),
@@ -233,8 +237,13 @@ def rawedit(args):
     data, sample, num, nreplace, optim = args
     point = num*optim
 
-    ## get cut sites 
-    cuts1, cuts2 = [ambigcutters(i) for i in \
+    ## get cut sites
+    ## cuts 3 and 4 are only ever used by 3rad
+    if "3rad" in data.paramsdict["datatype"]:
+        cuts1, cuts2, cuts3, cuts4 = [ambigcutters(i) for i in \
+                    data.paramsdict["restriction_overhang"]]
+    else:
+        cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
 
     ## get data slices as iterators and open file handles
@@ -590,14 +599,19 @@ def sample_cleanup(data, sample, results):
     with open(handle1, 'wb') as out:
         for fname in combs1:
             with open(fname) as infile:
-                out.write(infile.read())
+                ## Don't write blank lines. This can happen if a sample
+                ## has very few reads and the slicing process slices off 
+                ## a blank file for rawedit.
+                out.writelines([i for i in infile.readlines() if i[:-1]])
+                #out.write(infile.read())
             os.remove(fname)
 
     if "pair" in data.paramsdict["datatype"]:
         with open(handle2, 'wb') as out:
             for fname in combs2:
                 with open(fname) as infile:
-                    out.write(infile.read())
+                    out.writelines([i for i in infile.readlines() if i[:-1]])
+                    #out.write(infile.read())
                 os.remove(fname)
 
     ## record results
@@ -653,7 +667,6 @@ def assembly_cleanup(data):
     ## write stats for all samples
     with open(data.stats_files.s2, 'w') as outfile:
         data.stats_dfs.s2.to_string(outfile)
-
 
 
 def run(data, samples, nreplace, force, preview, ipyclient):

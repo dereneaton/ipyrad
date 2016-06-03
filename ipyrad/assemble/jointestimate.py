@@ -174,7 +174,7 @@ def stackarray(data, sample):
     LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
 
     ## don't use sequence edges / restriction overhangs
-    cutlens = [None, None]
+    cutlens = [None, None, None, None]
     for cidx, cut in enumerate(data.paramsdict["restriction_overhang"]):
         if cut:
             cutlens[cidx] = len(cut)
