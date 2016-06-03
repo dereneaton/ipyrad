@@ -246,24 +246,11 @@ def rawedit(args):
         cuts1, cuts2 = [ambigcutters(i) for i in \
                     data.paramsdict["restriction_overhang"]]
 
-
-    #LOGGER.info("cutsites %s %s", cuts1, cuts2)
-    #LOGGER.info([i for i in data.paramsdict["restriction_overhang"]])
-
     ## get data slices as iterators and open file handles
     tups = sample.files.fastqs[0]
     fr1, fr2, io1, io2 = get_slice(tups, optim, num)
-
-    ## make quarts iterator to sample (r1,r2) or (r1, 1)
-    #tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
-    #read1 = os.path.join(tmpdir, "tmp_{}_{}_R1.fastq".format(sample.name, num))
-    #read2 = os.path.join(tmpdir, "tmp_{}_{}_R2.fastq".format(sample.name, num))
-
-    # fr1 = open(read1, 'rb')
-    # quart1 = itertools.izip(*[iter(fr1)]*4)
     quart1 = itertools.izip(fr1, fr1, fr1, fr1)
     if "pair" in data.paramsdict["datatype"]:
-        #fr2 = open(read2, 'rb')
         quart2 = itertools.izip(fr2, fr2, fr2, fr2)
         quarts = itertools.izip(quart1, quart2)
     else:
@@ -693,22 +680,22 @@ def run(data, samples, nreplace, force, preview, ipyclient):
     if not force:
         for sample in samples:
             if sample.stats.state >= 2:
-                print("""
-    Skipping Sample {}; Already filtered. Use force argument to overwrite.""".\
-    format(sample.name))
+                print("""\
+    Skipping Sample {}; Already filtered. Use force argument to overwrite.\
+    """.format(sample.name))
             elif not sample.stats.reads_raw:
-                print("""
-    Skipping Sample {}; No reads found in file {}"""\
-    .format(sample.name, sample.files.fastqs))
+                print("""\
+    Skipping Sample {}; No reads found in file {}\
+    """.format(sample.name, sample.files.fastqs))
             else:
                 subsamples.append(sample)
 
     else:
         for sample in samples:
             if not sample.stats.reads_raw:
-                print("""
-    Skipping Sample {}; No reads found in file {}""".\
-    format(sample.name, sample.files.fastqs))
+                print("""\
+    Skipping Sample {}; No reads found in file {}\
+    """.format(sample.name, sample.files.fastqs))
             else:
                 subsamples.append(sample)
 
@@ -798,7 +785,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
                         for async in sliced[sample.name]:
                             if not async.successful():
                                 print("Error: %s", async.metadata.error)
-        if all([i.successful() for i in asyncs]):
+        if all([i.completed for i in asyncs]):
             ## do final stats and cleanup
             assembly_cleanup(data)
 

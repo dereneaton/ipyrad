@@ -27,9 +27,11 @@ def parse_params(args):
         sys.exit("No params file found")
 
     ## check header: big version changes can be distinguished by the header
-    assert len(plines[0].split()[0]) == 6, \
-    "params file is not compatible with ipyrad v.{}.".format(ip.__version__) \
-    + "Create a new params file with: ipyrad -n"
+    if not len(plines[0].split()[0]) == 7:
+        raise IPyradWarningExit("""
+    Error: file '{}' is not compatible with ipyrad v.{}.
+    Please create an updated params file with the -n argument. 
+    """.format(args.params, ip.__version__))
 
     ## check length
     ## assert len(plines) > 30, "params file error. Format not recognized."

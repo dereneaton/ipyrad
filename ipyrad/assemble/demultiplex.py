@@ -169,166 +169,192 @@ def barmatch(args):
     files, after all read files have been split, temp files are collated into 
     .fastq files
     """
-    try:
-        ## read in list of args
-        data, filenum, subnum, cutters, longbar, matchdict, fr1, fr2 = args
-        #LOGGER.info("Entering barmatch - {}.{}".format(filenum, subnum))
+
+    ## read in list of args
+    data, filenum, subnum, cutters, longbar, matchdict, fr1, fr2 = args
     
-        ## counters for total reads, those with cutsite, and those that matched
-        total = 0
-        cutfound = 0
-        matched = 0 
+    ## counters for total reads, those with cutsite, and those that matched
+    total = 0
+    cutfound = 0
+    matched = 0 
     
-        ## dictionary to sample hits
-        samplehits = {}
-        for sname in data.barcodes:
-            samplehits[sname] = 0
-        ## dict to record matchable barcodes that hit
-        barhits = {}
-        for barc in matchdict:
-            barhits[barc] = 0
-        ## record everything else that is found
-        misses = {}
-        misses['_'] = 0
+    ## dictionary to sample hits
+    samplehits = {}
+    for sname in data.barcodes:
+        samplehits[sname] = 0
+    ## dict to record matchable barcodes that hit
+    barhits = {}
+    for barc in matchdict:
+        barhits[barc] = 0
+    ## record everything else that is found
+    misses = {}
+    misses['_'] = 0
         
-        ## get slice of data as a generator
-        # tups = rawtuple
-        # fr1, fr2, io1, io2 = get_slice(tups, optim, subnum)
-        #LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
+    ## get slice of data as a generator
+    # tups = rawtuple
+    # fr1, fr2, io1, io2 = get_slice(tups, optim, subnum)
+    #LOGGER.info("%s, %s: %s", filenum, subnum, fr1[:4])
     
-        fr1 = iter(fr1)
-        fr2 = iter(fr2)
-        # ## create iterators to sample 4 lines at a time
-        quart1 = itertools.izip(fr1, fr1, fr1, fr1)
-        if 'pair' in data.paramsdict["datatype"]:
-            quart2 = itertools.izip(fr2, fr2, fr2, fr2)
-            quarts = itertools.izip(quart1, quart2)
+    fr1 = iter(fr1)
+    fr2 = iter(fr2)
+    ## create iterators to sample 4 lines at a time
+    quart1 = itertools.izip(fr1, fr1, fr1, fr1)
+    if 'pair' in data.paramsdict["datatype"]:
+        quart2 = itertools.izip(fr2, fr2, fr2, fr2)
+        quarts = itertools.izip(quart1, quart2)
+    else:
+        quarts = itertools.izip(quart1, iter(int, 1))
+    
+    ## dictionaries to store first and second reads
+    dsort1 = {} 
+    dsort2 = {} 
+    ## dictionary for all bars matched in sample
+    dbars = {} 
+    for sample in data.barcodes:
+        dsort1[sample] = []
+        dsort2[sample] = []
+        dbars[sample] = set()
+    
+    ## get func for finding barcode
+    if longbar[1] == 'same':
+        if data.paramsdict["datatype"] == '2brad':
+            def getbarcode(_, read1, longbar):
+                """ find barcode for 2bRAD data """
+                return read1[1][-longbar[0]:]
         else:
-            quarts = itertools.izip(quart1, iter(int, 1))
+            def getbarcode(_, read1, longbar):
+                """ finds barcode for invariable length barcode data """
+                return read1[1][:longbar[0]]
+    else:
+        def getbarcode(cutters, read1, longbar):
+            """ finds barcode for variable barcode lengths"""
+            #LOGGER.info('cutters = %s, longbar=%s, read1=%s', cutters, longbar, read1)
+            return findbcode(cutters, longbar, read1)
+    ## go until end of the file
+    while 1:
+        try:
+            read1, read2 = quarts.next()
+            read1 = list(read1)
+            total += 1
+        except StopIteration:
+            break
     
-    
-        ## dictionaries to store first and second reads
-        dsort1 = {} 
-        dsort2 = {} 
-        ## dictionary for all bars matched in sample
-        dbars = {} 
-        for sample in data.barcodes:
-            dsort1[sample] = []
-            dsort2[sample] = []
-            dbars[sample] = set()
-    
-        ## get func for finding barcode
-        if longbar[1] == 'same':
-            if data.paramsdict["datatype"] == '2brad':
-                def getbarcode(_, read1, longbar):
-                    """ find barcode for 2bRAD data """
-                    return read1[1][-longbar[0]:]
-            else:
-                def getbarcode(_, read1, longbar):
-                    """ finds barcode for invariable length barcode data """
-                    return read1[1][:longbar[0]]
+        barcode = ""
+        ## Get barcode_R2 and check for matching sample name
+        if '3rad' in data.paramsdict["datatype"]:
+            ## Here we're just reusing the findbcode function
+            ## for R2, and reconfiguring the longbar tuple to have the
+            ## maxlen for the R2 barcode
+            ## Parse barcode. Use the parsing function selected above.
+            barcode1 = find3radbcode(cutters=cutters, longbar=longbar, read1=read1)
+            barcode2 = find3radbcode(cutters=cutters, longbar=(longbar[2], longbar[1]), read1=read2)
+            barcode = barcode1 + "+" + barcode2
         else:
-            def getbarcode(cutters, read1, longbar):
-                """ finds barcode for variable barcode lengths"""
-                #LOGGER.info('cutters = %s, longbar=%s, read1=%s', cutters, longbar, read1)
-                return findbcode(cutters, longbar, read1)
-        ## go until end of the file
-        while 1:
-            try:
-                read1, read2 = quarts.next()
-                read1 = list(read1)
-                total += 1
-            except StopIteration:
-                break
-    
-            barcode = ""
-            ## Get barcode_R2 and check for matching sample name
-            if '3rad' in data.paramsdict["datatype"]:
-                ## Here we're just reusing the findbcode function
-                ## for R2, and reconfiguring the longbar tuple to have the
-                ## maxlen for the R2 barcode
-                ## Parse barcode. Use the parsing function selected above.
-                barcode1 = find3radbcode(cutters=cutters, longbar=longbar, read1=read1)
-                barcode2 = find3radbcode(cutters=cutters, longbar=(longbar[2], longbar[1]), read1=read2)
-                barcode = barcode1 + "+" + barcode2
-            else:
-                ## Parse barcode. Uses the parsing function selected above.
-                barcode = getbarcode(cutters, read1, longbar)
+            ## Parse barcode. Uses the parsing function selected above.
+            barcode = getbarcode(cutters, read1, longbar)
    
-            ## find if it matches 
-            sname_match = matchdict.get(barcode)
-    
-            if sname_match:
-                ## record who matched
-                dbars[sname_match].add(barcode)
-                matched += 1
-                cutfound += 1
-                samplehits[sname_match] += 1
+        ## find if it matches 
+        sname_match = matchdict.get(barcode)
+ 
+        if sname_match:
+            ## record who matched
+            dbars[sname_match].add(barcode)
+            matched += 1
+            cutfound += 1
+            samplehits[sname_match] += 1
+            barhits[barcode] += 1
+            if barcode in barhits:
                 barhits[barcode] += 1
-                if barcode in barhits:
-                    barhits[barcode] += 1
-                else:
-                    barhits[barcode] = 1
-    
-                ## trim off barcode
-                lenbar = len(barcode)
-                if '3rad' in data.paramsdict["datatype"]:
-                    ## Iff 3rad trim the len of the first barcode
-                    lenbar = len(barcode1)
-    
-                if data.paramsdict["datatype"] == '2brad':
-                    read1[1] = read1[1][:-lenbar]
-                    read1[3] = read1[3][:-lenbar]
-                else:
-                    read1[1] = read1[1][lenbar:]
-                    read1[3] = read1[3][lenbar:]
-    
-                ## Trim barcode off R2 and append. Only 3rad datatype
-                ## pays the cpu cost of splitting R2
-                if '3rad' in data.paramsdict["datatype"]:
-                    read2 = list(read2)
-                    read2[1] = read2[1][len(barcode2):]
-                    read2[3] = read2[3][len(barcode2):]
-    
-                ## append to dsort
-                dsort1[sname_match].append("".join(read1))
-                if 'pair' in data.paramsdict["datatype"]:
-                    dsort2[sname_match].append("".join(read2))
-    
             else:
-                ## record whether cut found                
-                if barcode:
-                    cutfound += 1
-                    if barcode in misses:
-                        misses[barcode] += 1
-                    else:
-                        misses[barcode] = 1
-                else:
-                    misses["_"] += 1
+                barhits[barcode] = 1
     
-            ## write out at 10K to keep memory low
-            if not total % 10000:
-                ## write the remaining reads to file"
-                writetofile(data, dsort1, 1, filenum, subnum)
-                if 'pair' in data.paramsdict["datatype"]:
-                    writetofile(data, dsort2, 2, filenum, subnum) 
-                ## clear out dsorts
-                for sample in data.barcodes:
-                    dsort1[sample] = []
-                    dsort2[sample] = []
+            ## trim off barcode
+            lenbar = len(barcode)
+            if '3rad' in data.paramsdict["datatype"]:
+                ## Iff 3rad trim the len of the first barcode
+                lenbar = len(barcode1)
     
-        ## write the remaining reads to file"
-        writetofile(data, dsort1, 1, filenum, subnum)
-        if 'pair' in data.paramsdict["datatype"]:
-            writetofile(data, dsort2, 2, filenum, subnum)        
+            if data.paramsdict["datatype"] == '2brad':
+                read1[1] = read1[1][:-lenbar]
+                read1[3] = read1[3][:-lenbar]
+            else:
+                read1[1] = read1[1][lenbar:]
+                read1[3] = read1[3][lenbar:]
     
-        ## return stats in saved pickle b/c return_queue is too tiny
-        filestats = [subnum, total, cutfound, matched]
-        samplestats = [samplehits, barhits, misses, dbars]
-    except Exception as inst:
-        LOGGER.info("Exception in barmatch() - {}".format(inst))
-        raise
-    return filestats, samplestats
+            ## Trim barcode off R2 and append. Only 3rad datatype
+            ## pays the cpu cost of splitting R2
+            if '3rad' in data.paramsdict["datatype"]:
+                read2 = list(read2)
+                read2[1] = read2[1][len(barcode2):]
+                read2[3] = read2[3][len(barcode2):]
+    
+            ## append to dsort
+            dsort1[sname_match].append("".join(read1))
+            if 'pair' in data.paramsdict["datatype"]:
+                dsort2[sname_match].append("".join(read2))
+
+        else:
+            ##<<<<<<< HEAD
+            misses["_"] += 1
+
+        ## write out at 10K to keep memory low
+        if not total % 10000:
+            ## write the remaining reads to file"
+            writetofile(data, dsort1, 1, filenum, subnum)
+            if 'pair' in data.paramsdict["datatype"]:
+                writetofile(data, dsort2, 2, filenum, subnum) 
+            ## clear out dsorts
+            for sample in data.barcodes:
+                dsort1[sample] = []
+                dsort2[sample] = []
+
+    ## write the remaining reads to file
+    writetofile(data, dsort1, 1, filenum, subnum)
+    if 'pair' in data.paramsdict["datatype"]:
+        writetofile(data, dsort2, 2, filenum, subnum)        
+
+    ## return stats in saved pickle b/c return_queue is too tiny
+    filestats = [subnum, total, cutfound, matched]
+    samplestats = [samplehits, barhits, misses, dbars]
+
+    return (filestats, samplestats), subnum
+
+
+##=======
+#                 ## record whether cut found                
+#                 if barcode:
+#                     cutfound += 1
+#                     if barcode in misses:
+#                         misses[barcode] += 1
+#                     else:
+#                         misses[barcode] = 1
+#                 else:
+#                     misses["_"] += 1
+    
+#             ## write out at 10K to keep memory low
+#             if not total % 10000:
+#                 ## write the remaining reads to file"
+#                 writetofile(data, dsort1, 1, filenum, subnum)
+#                 if 'pair' in data.paramsdict["datatype"]:
+#                     writetofile(data, dsort2, 2, filenum, subnum) 
+#                 ## clear out dsorts
+#                 for sample in data.barcodes:
+#                     dsort1[sample] = []
+#                     dsort2[sample] = []
+    
+#         ## write the remaining reads to file"
+#         writetofile(data, dsort1, 1, filenum, subnum)
+#         if 'pair' in data.paramsdict["datatype"]:
+#             writetofile(data, dsort2, 2, filenum, subnum)        
+    
+#         ## return stats in saved pickle b/c return_queue is too tiny
+#         filestats = [subnum, total, cutfound, matched]
+#         samplestats = [samplehits, barhits, misses, dbars]
+#     except Exception as inst:
+#         LOGGER.info("Exception in barmatch() - {}".format(inst))
+#         raise
+#     return filestats, samplestats
+# >>>>>>> aec411003dd3a07e5bb23d3ad22a3ce011f96611
 
 
 def writetofile(data, dsort, read, filenum, subnum):
@@ -640,6 +666,12 @@ def run(data, preview, ipyclient, force):
     LOGGER.info('ncpus %s', data.cpus)
     LOGGER.info('optim %s', optim)
 
+    ## do we print about pairs for pairddata
+    if 'pair' in data.paramsdict["datatype"]:
+        pair = "s"
+    else:
+        pair = " "
+
     ## Truncate the input fq so it'll run faster. 
     if preview:
         warning = """\
@@ -677,26 +709,16 @@ def run(data, preview, ipyclient, force):
     ## optim is the number of reads per cpu, if it is too large then we 
     ## load too much into memory. So if optim > 1M then we subsample it
     ## which makes things run just a bit slower
-    multi = 1
     while optim > int(4e6):
         optim //= 10
-        multi *= 10
 
-    nfiles = len(raws)
-    totaljobs = data.cpus + (data.cpus * nfiles * multi)
-    done = 0
-    
     ## ensure optim is divisible by 4
     while optim % 4:
         optim += 1
 
     ### progress
-    LOGGER.info("doing {} chunks [size = {} lines] on {} cpus"\
-                .format(totaljobs, optim, data.cpus))
-
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(totaljobs, min(totaljobs, done), 
-               ' sorting reads         | {}'.format(elapsed))
+    LOGGER.info("chunks size = {} lines, on {} cpus"\
+                .format(optim, data.cpus))
 
     ## dictionary to store asyncresults for barmatch jobs
     filesort = {}
@@ -705,13 +727,17 @@ def run(data, preview, ipyclient, force):
     ## send slices N at a time
     filenum = 0
     for tups in raws:
+        start = time.time()
+        ## print progress for this file
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(10, 0, 
+        ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))
+
         ## submit some wait jobs to filesort
         filesort.setdefault(filenum, [])                
         collatesubs.setdefault(filenum, [])        
-        for i in range(data.cpus):
-            filesort[filenum].append(lbview.apply(time.sleep, 0.1))
 
-        ## open file handles
+        ## open file handles ##############
         if tups[0].endswith(".gz"):
             io1 = gzip.open(tups[0])
             rawr1 = iter(io1)
@@ -729,90 +755,92 @@ def run(data, preview, ipyclient, force):
             else:
                 io2 = 0
 
-        ###############################
+        ###############################################################
+        ## send jobs to engines
+        ## maybe add something here to act nicer if all the data is in 
+        ## one super giant file. Lower memory overhaed
+        ###############################################################
+        done = 0
         subnum = 0
         sublist = []        
         while 1:
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(totaljobs, done, 
-               ' sorting reads         | {}'.format(elapsed))
+            dat1 = list(itertools.islice(rawr1, optim))
+            if tups[1]:
+                dat2 = list(itertools.islice(rawr2, optim))
+            else:
+                dat2 = [""]
 
-            ## if engines are available add jobs to fill up engines
-            ready = [i.ready() for i in filesort[filenum]]
+            if dat1:
+                args = [data, filenum, subnum, cutters, longbar,
+                        matchdict, dat1, dat2]
+                async = lbview.apply_async(barmatch, args)
+                filesort[filenum].append(async)
+                subnum += 1
 
-            if any(ready):
-                ## grab a 4K slice
-                dat1 = list(itertools.islice(rawr1, optim))
+            else:
+                ## close files
+                io1.close()
                 if tups[1]:
-                    dat2 = list(itertools.islice(rawr2, optim))
-                else:
-                    dat2 = [""]
+                    io2.close()
+                break
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(subnum, done, 
+            ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))
 
-                ## done collate and quit
-                if not dat1:
-                    if sublist:
-                        ## wait for last jobs to finish (I know, not ideal)
-                        ipyclient.wait()
-                        lbview.apply(collate_subs, [data, filenum, sublist])
-                    ## close files
-                    io1.close()
-                    if tups[1]:
-                        io2.close()
-                    break
 
-                ## if too many subs, collate
-                elif len(sublist) >= 20:
+        #####################################
+        while 1:
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(subnum, done, 
+            ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))
+
+            ## if some are done, ...
+            ready = [i.ready() for i in filesort[filenum]]
+            asyncs = [i for (i, j) in zip(filesort[filenum], ready) if j]
+            for async in asyncs:
+                result = async.result()
+                if result:
+                    statdicts = putstats(result[0], raws[filenum][0], statdicts)
+                    ## purge from memory
+                    ipyclient.purge_local_results(async)
+                    ## save subnum
+                    sublist.append(result[1])
+                    done += 1
+                    filesort[filenum].remove(async)
+        
+                ## inter collate
+                if len(sublist) >= 20:
                     lbview.apply(collate_subs, [data, filenum, sublist])
                     sublist = []
 
-                ## updates stat dicts for finished jobs
-                asyncs = [i for (i, j) in zip(filesort[filenum], ready) if j]
-                for async in asyncs:
-                    result = async.result()
-                    if result:
-                        statdicts = putstats(
-                                        result, raws[filenum][0], statdicts)
-                    ## purge from memory
-                    ipyclient.purge_local_results(async)
+            ## are we done yet?
+            if not filesort[filenum]:
+                break
+            else:
+                time.sleep(0.1)
 
-                ## update dictionary to know about missing asyncs
-                filesort[filenum] = [i for (i, j) in \
-                                     zip(filesort[filenum], ready) if not j]
-
-                ## build a list of args
-                args = [data, filenum, subnum, cutters, longbar,
-                        matchdict, dat1, dat2]
-
-                ## send the list to N engines
-                async = lbview.apply_async(barmatch, args)
-                filesort[filenum].append(async)
-
-                ## advance subs
-                sublist.append(subnum)
-                subnum += 1
-                done += 1
-            time.sleep(0.1)
-        filenum += 1
-        ## collate colls from across files
+        ## final collate
         ipyclient.wait()
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        lbview.apply(collate_subs, [data, filenum, sublist])
+
+        ## collate colls from across files
         progressbar(20, 20, 
-        ' sorting reads         | {}'.format(elapsed))
-        #if data._headers:
+            ' sorting file{} {:<8}| {}'.format(pair, filenum, elapsed))            
         print("")
+        filenum += 1        
 
-
-    ## collate progress bar
+    ## collate files progress bar
     start = time.time()
     total = int(filenum*len(data.barcodes))
     done = 0
+    ipyclient.wait()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(total, done, ' writing files         | {}'.format(elapsed))
 
     colls = []
     for fnum in range(filenum):
         for async in filesort[fnum]:
-            result = async.get()
+            result, subnum = async.get()
             if result:
                 LOGGER.info("{}".format(result))
                 statdicts = putstats(result, raws[fnum][0], statdicts)

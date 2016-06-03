@@ -398,8 +398,8 @@ pinfo = OrderedDict([
     (27) output_formats --------------------------------------------------
     Examples:
     ----------------------------------------------------------------------
-    data.set_params(27) = 1
-    data.set_params("output_formats") = 1
+    *                      ## [27] output_formats: * means all formats
+    vcf, phy, nex          ## [27] list subset of formats if you want
     ----------------------------------------------------------------------
     """, "Output formats (see docs)")
 ),
@@ -408,30 +408,10 @@ pinfo = OrderedDict([
     (28) pop_assign_file -------------------------------------------------
     Examples:
     ----------------------------------------------------------------------
-    data.set_params(28) = 1
-    data.set_params("pop_assign_file") = 1
+    ./popfile.txt                               ## [28] pop_assign_file
+    /home/users/Documents/popfile.txt           ## [28] pop_assign_file 
     ----------------------------------------------------------------------
     """, "Path to population assignment file")
-),
-
-("29", ("""
-    (29) excludes --------------------------------------------------------
-    Examples:
-    ----------------------------------------------------------------------
-    data.set_params(29) = 1
-    data.set_params("excludes") = 1
-    ----------------------------------------------------------------------
-    """, "Samples to be excluded from final output files")
-),
-
-("30", ("""
-    (30) outgroups -------------------------------------------------------
-    Examples:
-    ----------------------------------------------------------------------
-    data.set_params(30) = 1
-    data.set_params("outgroups") = 1
-    ----------------------------------------------------------------------
-    """, "Outgroup individuals. Excluded from final output files")
 ),
 
 ])

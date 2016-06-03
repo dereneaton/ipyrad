@@ -79,8 +79,8 @@ def muscle_align_across(args):
 
                 string1 = muscle_call(data, names, seqs1)
                 string2 = muscle_call(data, names, seqs2)
-                anames, aseqs1 = parsemuscle(string1)
-                anames, aseqs2 = parsemuscle(string2)
+                anames, aseqs1 = parsemuscle(data, string1)
+                anames, aseqs2 = parsemuscle(data, string2)
 
                 ## resort so they're in same order
                 aseqs = [i+"nnnn"+j for i, j in zip(aseqs1, aseqs2)]
@@ -93,7 +93,7 @@ def muscle_align_across(args):
 
             except IndexError:
                 string1 = muscle_call(data, names, seqs)
-                anames, aseqs = parsemuscle(string1)
+                anames, aseqs = parsemuscle(data, string1)
                 for i in xrange(len(anames)):
                     stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])                    
                     ## store the indels
@@ -321,7 +321,7 @@ def cluster(data, noreverse, ipyclient):
                     " clustering across     | {}".format(elapsed))
             ## catches end chunk of printing if clustering went really fast
             elif "Clusters:" in dat:
-                LOGGER.info("Found 'Clusters:', and broke loop")
+                LOGGER.info("ended vsearch tracking loop")
                 break
             else:
                 time.sleep(0.1)
@@ -365,7 +365,6 @@ def build_h5_array(data, samples, ipyclient):
     io5 = h5py.File(data.clust_database, 'w')
 
     ## choose chunk optim size
-    #chunks = data.nloci
     chunks = 100
     if data.nloci < 100:
         chunks = data.nloci
@@ -396,18 +395,22 @@ def build_h5_array(data, samples, ipyclient):
     superseqs.attrs["samples"] = [i.name for i in samples]
 
     ## allele count storage
-    alleles = io5.create_dataset("alleles", (data.nloci, ), dtype=np.uint16)
+    io5.create_dataset("nalleles", (data.nloci, len(samples)), 
+                                 dtype=np.uint8,
+                                 chunks=(chunks, len(samples)),
+                                 compression="gzip")
+
     ## array for filter that will be applied in step7
-    dfilters = io5.create_dataset("duplicates", (data.nloci, ), dtype=np.bool)
+    io5.create_dataset("duplicates", (data.nloci, ), dtype=np.bool)
     ## array for filter that will be applied in step7
-    ifilters = io5.create_dataset("indels", (data.nloci, ), dtype=np.uint16)
+    io5.create_dataset("indels", (data.nloci, ), dtype=np.uint16)
     ## array for pair splits locations
-    splits = io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
+    io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
 
     ## close the big boy
     io5.close()
 
-    ## FILL SUPERCATG and fills dupfilter and indfilter
+    ## FILL SUPERCATG and fills dupfilter, indfilter, and nalleles
     multicat(data, samples, ipyclient)
 
     ## FILL SUPERSEQS and fills edges(splits) for paired-end data
@@ -478,8 +481,9 @@ def multicat(data, samples, ipyclient):
             ## grab metadata
             meta = jobs[sname].metadata
 
-            ## If you call successful() on a job that isn't ready it'll raise
-            if jobs[sname].ready() and jobs[sname].successful():
+            ## do this if success
+            if jobs[sname].completed and jobs[sname].successful():
+
                 ## get the results
                 insert_and_cleanup(data, sname)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -517,6 +521,7 @@ def insert_and_cleanup(data, sname):
     ## grab supercatg from super and get index of this sample
     io5 = h5py.File(data.clust_database, 'r+')
     catg = io5["catgs"]
+    nall = io5["nalleles"]
     sidx = list(catg.attrs["samples"]).index(sname)
     LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
 
@@ -524,14 +529,16 @@ def insert_and_cleanup(data, sname):
     smp5 = os.path.join(data.dirs.consens, sname+".tmp.h5")
     ind5 = h5py.File(smp5, 'r')
     icatg = ind5["icatg"]
-    #LOGGER.info("%s sidx: %s", sname, sidx, icatg[])    
+    inall = ind5["inall"]
 
     ## FILL SUPERCATG -- catg is chunked by nchunk loci
     chunk = catg.attrs["chunksize"]
     for chu in xrange(0, catg.shape[0], chunk):
         catg[chu:chu+chunk, sidx, ...] += icatg[chu:chu+chunk]
 
-    ## TODO: FILL allelic information here.
+    ## FILL allelic information here.
+    for chu in xrange(0, catg.shape[0], chunk):
+        nall[chu:chu+chunk, sidx] += inall[chu:chu+chunk]
 
     ## put in loci that were filtered b/c of dups [0] or inds [1]
     ## this is not chunked in any way, and so needs to be changed if we 
@@ -590,46 +597,50 @@ def singlecat(args):
         os.remove(smpio)
     smp5 = h5py.File(smpio, 'w')
     icatg = smp5.create_dataset('icatg', (nloci, maxlen, 4), dtype=np.uint32)
-                                
-    ## TODO: add allelic count array here
+    inall = smp5.create_dataset('inall', (nloci,), dtype=np.uint8)
 
-
-    ## get catg from step5 for this sample, the shape is (nconsens, maxlen)
+    ## get catg and nalleles from step5. the shape of catg: (nconsens, maxlen)
     old_h5 = h5py.File(sample.files.database, 'r')
     catarr = old_h5["catg"][:]
-    ## TODO: get s5 allele count here
+    nall = old_h5["nalleles"][:]
 
     ## local filters to fill while filling catg array
     dfilter = np.zeros(nloci, dtype=np.bool)
     ifilter = np.zeros(nloci, dtype=np.uint16)
 
     ## create a local array to fill until writing to disk for write efficiency
-    local = np.zeros((1000, maxlen, 4), dtype=np.uint32)
-    start = iloc = 0
+    locatg = np.zeros((1000, maxlen, 4), dtype=np.uint32)
+    lonall = np.zeros((1000,), dtype=np.uint8)
+
+    step = iloc = 0
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
 
         ## write to disk after 1000 writes
         if not iloc % 1000:
-            icatg[start:iloc] = local[:]
+            icatg[step:iloc] = locatg[:]
+            inall[step:iloc] = lonall[:]
             ## reset
-            start = iloc
-            local = np.zeros((1000, maxlen, 4), dtype=np.uint32)
+            step = iloc
+            locatg = np.zeros((1000, maxlen, 4), dtype=np.uint32)
+            lonall = np.zeros((1000,), dtype=np.uint8)
 
         ## fill local array one at a time
         if ask.shape[0] == 1: 
             ## if multiple hits of a sample to a locus then it is not added
             ## to the locus, and instead the locus is masked for exclusion
             ## using the filters array.
-            local[iloc-start] = catarr[int(ask[4]), :icatg.shape[1], :]
+            locatg[iloc-step] = catarr[int(ask[4]), :icatg.shape[1], :]
+            lonall[iloc-step] = nall[int(ask[4]),]
             #icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
         elif ask.shape[0] > 1:
             ## store that this cluster failed b/c it had duplicate samples. 
             dfilter[iloc] = True
 
     ## write the leftover chunk 
-    icatg[start:iloc] = local[:icatg[start:iloc].shape[0]]
+    icatg[step:iloc] = locatg[:icatg[step:iloc].shape[0]]
+    inall[step:iloc] = lonall[:inall[step:iloc].shape[0]]    
 
     ## for each locus in which Sample was the seed. This writes quite a bit
     ## slower than the local setting
@@ -637,8 +648,9 @@ def singlecat(args):
     seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
     LOGGER.info("seedmatching")
     for iloc in seedmatch2:
-        sfill = udic.groups.keys()[iloc].split("_")[-1]
+        sfill = int(udic.groups.keys()[iloc].split("_")[-1])
         icatg[iloc] = catarr[sfill, :, :]
+        inall[iloc] = nall[sfill]
     LOGGER.info("done seedmatching")
 
     ## close the old hdf5 connections
