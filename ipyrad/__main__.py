@@ -285,15 +285,14 @@ def main():
     args = parse_command_line()
 
     ## Turn the debug output written to ipyrad_log.txt up to 11!
+    ## Clean up the old one first, it's cleaner to do this here than
+    ## at the end (exceptions, etc)
+    if os.path.exists(ip.__debugflag__):
+        os.remove(ip.__debugflag__)
     if args.debug:
         print("  Enabling debug mode")
-        logging.getLogger(__name__).setLevel(logging.DEBUG)
-        print("loglevel - {}".format(logging.getLogger(__name__).getEffectiveLevel()))
-        print(logging.handlers)
-        new_handler = logging.FileHandler(ip.__debugfile__)
-        new_handler.setLevel(logging.DEBUG)
-        logging.getLogger(__name__).addHandler(new_handler)
-        print("{} {}".format(__name__, logging.getLogger(__name__)))
+        with open(ip.__debugflag__, 'w') as dfile:
+            dfile.write("wat")
 
     ## create new paramsfile if -n
     if args.new:
@@ -385,5 +384,3 @@ def main():
 
 if __name__ == "__main__": 
     main()
-
-
