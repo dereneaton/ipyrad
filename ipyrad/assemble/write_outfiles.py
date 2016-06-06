@@ -156,7 +156,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
         "filtered_by_rm_duplicates",
         "filtered_by_max_indels", 
         "filtered_by_max_snps",
-        "filtered_by_max_hetero",
+        "filtered_by_max_shared_het",
         "filtered_by_min_sample",
         "filtered_by_max_alleles",
         "total_filtered_loci"])
@@ -332,7 +332,7 @@ def filter_all_clusters(data, samples, ipyclient):
                 ## store slice into full array (we use += here because the minf
                 ## and edgf arrays both write to the same filter). 
                 superfilter[hslice:hslice+optim, fidx] += arr
-        io5["filters"][:] = superfilter
+        io5["filters"][:] += superfilter
         del arr
 
         ## store the other arrayed values (edges, snps)
@@ -661,8 +661,8 @@ def init_arrays(data):
     ## array for filters that will be applied in step7
     filters = io5.create_dataset("filters", (nloci, 6), dtype=np.bool)
     filters.attrs["filters"] = ["duplicates", "max_indels", 
-                                "max_snps", "max_hets", 
-                                "min_samps", "max_allele"]
+                                "max_snps", "max_shared_hets", 
+                                "min_samps", "max_alleles"]
 
     ## array for edgetrimming 
     edges = io5.create_dataset("edges", (nloci, 5), 
@@ -891,7 +891,6 @@ def get_edges(data, superseqs, splits):
                 edgefilter[idx] = True
                 edge3 = edge2 + 1
 
-
         ## store edges
         edges[idx] = np.array([edge0, edge1, edge2, edge3, split])
 
@@ -1065,7 +1064,9 @@ def filter_maxhet(data, superseqs, edges):
     ## the filter max
     maxhet = data.paramsdict["max_shared_Hs_locus"]
     if isinstance(maxhet, float):
-        maxhet = superseqs.shape[1]*float(maxhet)
+        maxhet = int(superseqs.shape[1]*float(maxhet))
+    else:
+        maxhet = int(maxhet)
 
     ## an empty array to fill with failed loci
     hetfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
@@ -1078,7 +1079,7 @@ def filter_maxhet(data, superseqs, edges):
             [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=0)\
             .max() for ambig in "RSKYWM"]).max()
         ## fill filter
-        if not share <= maxhet:
+        if share > maxhet:
             hetfilt[idx] = True
     LOGGER.info("Filtered max_shared_heterozygosity- {}".format(hetfilt.sum()))
     return hetfilt
