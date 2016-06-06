@@ -20,8 +20,8 @@ for line in fileinput.input(initfile, inplace=1):
     if line.strip().startswith("__version__"):
         line = "__version__ = \""+version_git+"\""
 
-    if line.strip().startswith("__loglevel__"):
-        line = "__loglevel__ = \"ERROR\""
+    #if line.strip().startswith("__loglevel__"):
+    #    line = "__loglevel__ = \"ERROR\""
 
     print(line.strip("\n"))
 
