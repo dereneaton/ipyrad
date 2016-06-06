@@ -522,7 +522,7 @@ def get_slice(tups, optim, jnum):
         skip += sum(1 for i in itertools.islice(rawr1, int(optim*4)))
         if tups[1]:
             _ = sum(1 for i in itertools.islice(rawr2, int(optim*4)))
-    LOGGER.info("%s. skipped %s lines", jnum, skip)
+    LOGGER.info("%s. jumped forward %s lines", jnum, skip)
 
     ## now return the correct slice as a generator
     dat1 = itertools.islice(rawr1, int(optim*4))
