@@ -10,10 +10,10 @@ __version__ = "0.3.0"
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
 if os.path.exists(__debugflag__):
-__loglevel__ = "ERROR"
+    __loglevel__ = "ERROR"
 else:
-__loglevel__ = "ERROR"
-__debugfile__ = "./ipyrad_log.txt"
+    __loglevel__ = "ERROR"
+    __debugfile__ = "./ipyrad_log.txt"
 
 ## main ip.functions
 from . import load

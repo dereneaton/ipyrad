@@ -295,7 +295,7 @@ def run(data, samples, subsample, force, ipyclient):
 
     # if haploid data
     if data.paramsdict["max_alleles_consens"] == 1:
-        print("Applying haploid-based test (infer E with H fixed to 0).")
+        print("  Applying haploid-based test (infer E with H fixed to 0).")
 
     submitted_args = []
     ## if sample is already done skip
