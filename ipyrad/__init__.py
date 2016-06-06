@@ -1,13 +1,18 @@
 #!/usr/bin/env ipython2
 
 # pylint: disable=C0103
+import os
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
 __version__ = "0.2.11"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
-__loglevel__ = "INFO"
+__debugflag__ = "./.debug"
+if os.path.exists(__debugflag__):
+    __loglevel__ = "DEBUG"
+else:
+    __loglevel__ = "INFO"
 __debugfile__ = "./ipyrad_log.txt"
 
 ## main ip.functions
