@@ -12,9 +12,9 @@ __debugflag__ = "./.debug"
 __debugfile__ = "./ipyrad_log.txt"
 
 if os.path.exists(__debugflag__):
-    __loglevel__ = "INFO"
+__loglevel__ = "ERROR"
 else:
-    __loglevel__ = "ERROR"
+__loglevel__ = "ERROR"
 
 
 ## main ip.functions
