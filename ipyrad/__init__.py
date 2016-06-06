@@ -5,14 +5,14 @@ import os
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.2.11"
+__version__ = "0.3.0"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
 if os.path.exists(__debugflag__):
-    __loglevel__ = "DEBUG"
+__loglevel__ = "ERROR"
 else:
-    __loglevel__ = "INFO"
+__loglevel__ = "ERROR"
 __debugfile__ = "./ipyrad_log.txt"
 
 ## main ip.functions
