@@ -1062,9 +1062,9 @@ def filter_maxhet(data, superseqs, edges):
     to every loc based on coverage... 
     """
     ## the filter max
-    maxhet = data.paramsdict["max_shared_Hs_locus"]
+    maxhet = float(data.paramsdict["max_shared_Hs_locus"])
     if isinstance(maxhet, float):
-        maxhet = int(superseqs.shape[1]*float(maxhet))
+        maxhet = int(superseqs.shape[1]*maxhet)
     else:
         maxhet = int(maxhet)
 
