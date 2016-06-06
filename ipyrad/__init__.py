@@ -5,7 +5,7 @@ import os
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
