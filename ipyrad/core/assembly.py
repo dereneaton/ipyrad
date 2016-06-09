@@ -868,7 +868,7 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             ## abort and allow wrapper to save and close
             LOGGER.info("assembly interrupted by user.")
-            print("  Keyboard Interrupt by user")
+            print("\n  Keyboard Interrupt by user")
             sys.exit(2)
 
         except IPyradWarningExit as inst:
@@ -1480,11 +1480,13 @@ def expander(namepath):
 
 
 def merge(name, assemblies):
-    """ Creates and returns a new Assembly object in which 
+    """ 
+    Creates and returns a new Assembly object in which 
     samples from two or more Assembly objects with matching names
     are 'merged'. Merging does not affect the actual files written
     on disk, but rather creates new Samples that are linked to 
-    multiple data files, and with stats summed. """
+    multiple data files, and with stats summed. 
+    """
 
     ## checks
     assemblies = list(assemblies)

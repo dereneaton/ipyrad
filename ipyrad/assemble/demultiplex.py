@@ -69,6 +69,7 @@ def find3radbcode(cutters, longbar, read1):
     return splitsearch[0] 
 
 
+
 def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
     """
     Write stats and stores to Assembly object.
@@ -303,8 +304,9 @@ def barmatch(args):
             ##<<<<<<< HEAD
             misses["_"] += 1
 
-        ## write out at 10K to keep memory low
-        if not total % 10000:
+        ## write out at 100K to keep memory low. I think we tend to be more 
+        ## IO limited than memory limited... I think.
+        if not total % 100000:
             ## write the remaining reads to file"
             writetofile(data, dsort1, 1, fnum, snum)
             if 'pair' in data.paramsdict["datatype"]:
@@ -536,6 +538,7 @@ def prechecks(data, preview, force):
 
     ## create a tmpdir for chunked big files
     tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks")
+
     ## check for removal, tho it should have been removed 
     if os.path.exists(tmpdir):
         shutil.rmtree(tmpdir)
@@ -746,8 +749,8 @@ def wrapped_run(data, preview, ipyclient, force):
     ## optim is the number of reads per cpu, if it is too large then we 
     ## load too much into memory. So if optim > 1M then we subsample it
     ## which makes things run just a bit slower
-    while optim > int(4e6):
-        optim //= 2
+    #while optim > int(4e6):
+    #    optim //= 2
 
     ## ensure optim is divisible by 4
     while optim % 4:

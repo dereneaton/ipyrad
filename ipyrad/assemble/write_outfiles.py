@@ -423,7 +423,8 @@ def make_loci_and_stats(data, samples, ipyclient):
     locuscov = Counter()
 
     ## set initial value to zero for all values above min_samples_locus
-    for cov in range(data.paramsdict["min_samples_locus"], len(anames)+1):
+    #for cov in range(data.paramsdict["min_samples_locus"], len(anames)+1):
+    for cov in range(len(anames)+1):        
         locuscov[cov] = 0
 
     ## client for sending jobs to parallel engines
