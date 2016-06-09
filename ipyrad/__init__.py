@@ -1,7 +1,7 @@
 #!/usr/bin/env ipython2
 
 # pylint: disable=C0103
-import os
+import os as _os
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
@@ -11,7 +11,7 @@ __version__ = "0.3.2"
 __debugflag__ = "./.debug"
 __debugfile__ = "./ipyrad_log.txt"
 
-if os.path.exists(__debugflag__):
+if _os.path.exists(__debugflag__):
     __loglevel__ = "DEBUG"
 else:
     __loglevel__ = "ERROR"
@@ -40,7 +40,6 @@ import logging as _logging
 import logging.config as _lconfig
 
 ## clear the logfile if it is too big
-import os as _os
 try:
     if _os.path.exists(__debugfile__):
         if _os.path.getsize(__debugfile__) > 5000000:
@@ -50,7 +49,7 @@ try:
 ## in case system doesn't let you use /tmp            
 except (OSError, IOError, ValueError):
     __debugfile__ = "./ipyrad_log.txt"  ##_os.devnull
-    _, __loglevel__ = "null", "ERROR"  ## hack for versioner
+    _, __loglevel__ = "null", "ERROR"   ## hack for versioner
 
 
 _lconfig.dictConfig({
