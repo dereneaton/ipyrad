@@ -301,7 +301,6 @@ def barmatch(args):
                 dsort2[sname_match].append("".join(read2))
 
         else:
-            ##<<<<<<< HEAD
             misses["_"] += 1
 
         ## write out at 100K to keep memory low. I think we tend to be more 
@@ -332,42 +331,6 @@ def barmatch(args):
     return (filestats, samplestats), snum
 
 
-##=======
-#                 ## record whether cut found                
-#                 if barcode:
-#                     cutfound += 1
-#                     if barcode in misses:
-#                         misses[barcode] += 1
-#                     else:
-#                         misses[barcode] = 1
-#                 else:
-#                     misses["_"] += 1
-    
-#             ## write out at 10K to keep memory low
-#             if not total % 10000:
-#                 ## write the remaining reads to file"
-#                 writetofile(data, dsort1, 1, filenum, subnum)
-#                 if 'pair' in data.paramsdict["datatype"]:
-#                     writetofile(data, dsort2, 2, filenum, subnum) 
-#                 ## clear out dsorts
-#                 for sample in data.barcodes:
-#                     dsort1[sample] = []
-#                     dsort2[sample] = []
-    
-#         ## write the remaining reads to file"
-#         writetofile(data, dsort1, 1, filenum, subnum)
-#         if 'pair' in data.paramsdict["datatype"]:
-#             writetofile(data, dsort2, 2, filenum, subnum)        
-    
-#         ## return stats in saved pickle b/c return_queue is too tiny
-#         filestats = [subnum, total, cutfound, matched]
-#         samplestats = [samplehits, barhits, misses, dbars]
-#     except Exception as inst:
-#         LOGGER.info("Exception in barmatch() - {}".format(inst))
-#         raise
-#     return filestats, samplestats
-# >>>>>>> aec411003dd3a07e5bb23d3ad22a3ce011f96611
-
 
 def writetofile(data, dsort, read, filenum, subnum):
     """ writes dsort dict to a tmp file. Used in barmatch. """
@@ -378,13 +341,12 @@ def writetofile(data, dsort, read, filenum, subnum):
 
     for sname in dsort:
         ## skip writing if empty. Write to tmpname
-        #if dsort[sname]:
         tmpdir = os.path.join(data.dirs.fastqs, "tmp_{}_{}_"\
                               .format(sname, rrr))
         handle = os.path.join(tmpdir, "tmp_{}_{}_{}_{}.fastq"\
                               .format(sname, rrr, filenum, subnum))
         with open(handle, 'a') as out:
-            out.write("".join(dsort[sname]))#+"\n")
+            out.write("".join(dsort[sname]))
 
 
 
@@ -425,7 +387,6 @@ def collate_subs(args):
                     tmpout.write(tmpin.read())
                 ## clean up
                 os.remove(inchunk)
-
 
         ## do second reads
         if 'pair' in data.paramsdict["datatype"]:
@@ -524,10 +485,11 @@ def prechecks(data, preview, force):
         raise IPyradWarningExit("    Barcodes file not found.")
 
     ## make sure there is a [workdir] and a [workdir/name_fastqs]
+    project_dir = os.path.realpath(data.paramsdict["project_dir"])
+    if not os.path.exists(project_dir):
+        os.mkdir(project_dir)
     data.dirs.fastqs = os.path.join(
-                        data.paramsdict["project_dir"], data.name+"_fastqs")
-    if not os.path.exists(data.paramsdict["project_dir"]):
-        os.mkdir(data.paramsdict["project_dir"])
+                        project_dir, data.name+"_fastqs")
     if os.path.exists(data.dirs.fastqs) and force:
         print("""\
   Force flag is set. Overwriting existing demultiplexed files previously 
@@ -537,9 +499,7 @@ def prechecks(data, preview, force):
         os.mkdir(data.dirs.fastqs)
 
     ## create a tmpdir for chunked big files
-    tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks")
-
-    ## check for removal, tho it should have been removed 
+    tmpdir = os.path.join(project_dir, "tmp-chunks")
     if os.path.exists(tmpdir):
         shutil.rmtree(tmpdir)
         time.sleep(0.5) ## give it a second to make sure its ready
@@ -786,7 +746,8 @@ def wrapped_run(data, preview, ipyclient, force):
 
         ## send job to split files and wait for it to finish
         spt = lbview.apply(zcat_make_temps, [data, tups, fnum, tmpdir, optim])
-        LOGGER.info("submitted")
+        LOGGER.debug("submitted")
+        LOGGER.info([data, tups, fnum, tmpdir, optim])
 
         while not spt.ready():
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -914,7 +875,6 @@ def putstats(result, handle, statdicts):
 
 
 
-
 def zcat_make_temps(args):
     """ 
     Call bash command 'cat' and 'split' to split large files. The goal
@@ -935,16 +895,13 @@ def zcat_make_temps(args):
     ### The -a flag tells split how long the suffix for each split file
     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
     ### will have 26^4 possible tmp file names.
-    #tmpout = open(os.path.join(tmpdir, "chunk1_"+str(num)+"_"), 'w')
+    tmpdir = os.path.realpath(tmpdir)
     cmd1 = subprocess.Popen(cat + [raws[0]], stdout=subprocess.PIPE)
     cmd2 = subprocess.Popen(["split", "-a", "4", "-l", str(int(optim)),
                              "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")],
                              stdin=cmd1.stdout)
     cmd1.stdout.close()
-    print(cmd2.pid)
     cmd2.wait()
-
-
     chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
     chunks1.sort()
 
@@ -954,9 +911,7 @@ def zcat_make_temps(args):
                              "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")],
                              stdin=cmd1.stdout)
         cmd1.stdout.close()
-        print(cmd2.pid)
         cmd2.wait()
-
         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
     

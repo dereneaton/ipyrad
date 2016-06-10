@@ -187,7 +187,8 @@ class Assembly(object):
         #               ("outgroups", ""),
 
         ## Store data directories for this Assembly. Init with default project
-        self.dirs = ObjDict({"project": self.paramsdict["project_dir"],
+        self.dirs = ObjDict({"project": 
+                              os.path.realpath(self.paramsdict["project_dir"]),
                              "fastqs": "",
                              "edits": "",
                              "clusts": "",

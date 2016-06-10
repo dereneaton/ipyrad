@@ -492,7 +492,8 @@ def setup_dirs(data):
             os.makedirs(data.dirs.refmapping)
 
     ## clust directory
-    tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
+    tmpdir = os.path.join(os.path.realpath(data.dirs.project), 
+                          data.name+'-tmpalign')
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
     return tmpdir
@@ -1173,7 +1174,8 @@ def reconcat(args):
     data, sample = args
 
     ## get chunks
-    tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
+    tmpdir = os.path.join(os.path.realpath(data.dirs.project), 
+                          data.name+'-tmpalign')
     chunks = glob.glob(os.path.join(tmpdir, sample.name+"_chunk_*"))
    
     ## sort by chunk number
@@ -1205,7 +1207,8 @@ def alignment_cleanup(data):
     #         os.remove(fname)
 
     ## remove aligns dir
-    tmpdir = os.path.join(data.dirs.project, data.name+'-tmpalign')
+    tmpdir = os.path.join(os.path.realpath(data.dirs.project), 
+                          data.name+'-tmpalign')
     if os.path.exists(tmpdir):
         try:
             shutil.rmtree(tmpdir)
