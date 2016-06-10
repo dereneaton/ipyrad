@@ -9,6 +9,7 @@ import pkg_resources
 import ipyrad as ip
 import argparse
 import logging
+import atexit
 import sys
 import os
 
@@ -292,8 +293,10 @@ def main():
         os.remove(ip.__debugflag__)
     if args.debug:
         print("  Enabling debug mode")
-        with open(ip.__debugflag__, 'w') as dfile:
-            dfile.write("wat")
+        ip.debug_on()
+        atexit.register(ip.debug_off)        
+        #with open(ip.__debugflag__, 'w') as dfile:
+        #    dfile.write("wat")
 
     ## create new paramsfile if -n
     if args.new:
