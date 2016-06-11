@@ -10,6 +10,7 @@ parts of the pipeline
 from __future__ import print_function
 import os
 import sys
+import glob
 import socket
 import tempfile
 import itertools
@@ -610,6 +611,7 @@ def detect_cpus():
         if ncpus > 0:
             return ncpus
     return 1 # Default
+
 
 
 

@@ -1,21 +1,22 @@
 #!/usr/bin/env ipython2
 
 # pylint: disable=C0103
-import os
+import os as _os
+import atexit
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.3.1"
+__version__ = "0.3.4"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
 __debugfile__ = "./ipyrad_log.txt"
 
-if os.path.exists(__debugflag__):
+## debug is set based on whether the flag exists
+if _os.path.exists(__debugflag__):
     __loglevel__ = "DEBUG"
 else:
     __loglevel__ = "ERROR"
-
 
 ## main ip.functions
 from . import load
@@ -40,20 +41,45 @@ import logging as _logging
 import logging.config as _lconfig
 
 ## clear the logfile if it is too big
-import os as _os
-try:
-    if _os.path.exists(__debugfile__):
-        if _os.path.getsize(__debugfile__) > 5000000:
-            with open(__debugfile__, 'w') as clear:
-                clear.write("file reset")
-
-## in case system doesn't let you use /tmp            
-except (OSError, IOError, ValueError):
-    __debugfile__ = "./ipyrad_log.txt"  ##_os.devnull
-    _, __loglevel__ = "null", "ERROR"  ## hack for versioner
+if _os.path.exists(__debugfile__):
+    if _os.path.getsize(__debugfile__) > 5000000:
+        with open(__debugfile__, 'w') as clear:
+            clear.write("file reset")
 
 
-_lconfig.dictConfig({
+## check that all dependencies exist and are working
+import subprocess as _subprocess
+import sys as _sys
+
+
+## Define the logger and test
+_LOGGER = _logging.getLogger(__name__)
+if __loglevel__ == "DEBUG":
+    _LOGGER.debug("Engine launched: __loglevel__ = %s", __loglevel__)
+else:
+    _LOGGER.info("Engine launched: __loglevel__ = %s", __loglevel__)
+
+
+
+
+def debug_on():
+    """ 
+    Turns on debugging by creating hidden tmp file 
+    This is only run by the __main__ engine. 
+    """
+    ## make tmp file and set loglevel for top-level init
+    with open(__debugflag__, 'w') as dfile:
+        dfile.write("wat")
+    __loglevel__ = "DEBUG"
+    _LOGGER.info("debugging turned on and registered to be turned off at exit")
+    _set_debug_dict()
+
+
+
+def _set_debug_dict():
+    """ set the debug dict """
+
+    _lconfig.dictConfig({
     'version': 1,              
     'disable_existing_loggers': False,  
 
@@ -82,24 +108,18 @@ _lconfig.dictConfig({
             'propogate': True
         }
     }
-})
+    })
 
 
-# Define the logger and test
-_LOGGER = _logging.getLogger(__name__)
-
-## set globals
-if __loglevel__ == "DEBUG":
-    _LOGGER.debug("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
-else:
-    _LOGGER.info("H4CKERZ-mode: __loglevel__ = %s", __loglevel__)
+_set_debug_dict()
 
 
-####################################################################
 
-## check that all dependencies exist and are working
-import subprocess as _subprocess
-import sys as _sys
+def debug_off():
+    """ turns off debugging by removing hidden tmp file """
+    if _os.path.exists(__debugflag__):
+        _os.remove(__debugflag__)
+
 
 def _cmd_exists(cmd):
     """ check if dependency program is there """

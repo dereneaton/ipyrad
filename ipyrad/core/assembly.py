@@ -187,7 +187,8 @@ class Assembly(object):
         #               ("outgroups", ""),
 
         ## Store data directories for this Assembly. Init with default project
-        self.dirs = ObjDict({"project": self.paramsdict["project_dir"],
+        self.dirs = ObjDict({"project": 
+                              os.path.realpath(self.paramsdict["project_dir"]),
                              "fastqs": "",
                              "edits": "",
                              "clusts": "",
@@ -344,7 +345,7 @@ class Assembly(object):
                    format(self.paramsdict["sorted_fastq_path"])
             ## check for simple naming error
             if any(["_R1." in i for i in fastqs]):
-                inst += "\nNames should contain _R1_, not _R1."
+                inst += "\n  Names should contain _R1_, not _R1."
             raise IPyradError(inst)
 
         ## link pairs into tuples        
@@ -868,7 +869,7 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             ## abort and allow wrapper to save and close
             LOGGER.info("assembly interrupted by user.")
-            print("  Keyboard Interrupt by user")
+            print("\n  Keyboard Interrupt by user")
             sys.exit(2)
 
         except IPyradWarningExit as inst:
@@ -897,7 +898,7 @@ class Assembly(object):
         except Exception as inst:
             ## Caught unhandled exception, print and reraise
             LOGGER.error(inst)
-            print("  Caught unknown exception - {}".format(inst))
+            print("\n  Caught unknown exception - {}".format(inst))
             raise  ## uncomment raise to get traceback
 
 
@@ -1439,7 +1440,7 @@ def _name_from_file(fname, splitnames, fields):
     ## allowed extensions
     file_extensions = [".gz", ".fastq", ".fq", ".fasta", 
                        ".clustS", ".consens"]
-    base, ext = os.path.splitext(os.path.basename(fname))
+    base, _ = os.path.splitext(os.path.basename(fname))
 
     ## remove read number from name
     base = base.replace("_R1_.", ".")\
@@ -1447,8 +1448,9 @@ def _name_from_file(fname, splitnames, fields):
                .replace("_R1.", ".")
 
     ## remove extensions
-    while ext in file_extensions:
-        base, ext = os.path.splitext(base)
+    tmpb, tmpext = os.path.splitext(base)
+    while tmpext in file_extensions:
+        base, _ = tmpb, tmpext
 
     if fields:
         namebits = base.split(splitnames)
@@ -1479,11 +1481,13 @@ def expander(namepath):
 
 
 def merge(name, assemblies):
-    """ Creates and returns a new Assembly object in which 
+    """ 
+    Creates and returns a new Assembly object in which 
     samples from two or more Assembly objects with matching names
     are 'merged'. Merging does not affect the actual files written
     on disk, but rather creates new Samples that are linked to 
-    multiple data files, and with stats summed. """
+    multiple data files, and with stats summed. 
+    """
 
     ## checks
     assemblies = list(assemblies)
