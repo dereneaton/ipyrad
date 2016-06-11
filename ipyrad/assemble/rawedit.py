@@ -247,7 +247,10 @@ def rawedit(args):
                     data.paramsdict["restriction_overhang"]]
 
     ## get data slices as iterators and open file handles
-    tups = sample.files.fastqs[0]
+    tups = sample.files.concat[0]
+    ## this spends a lot of time reading passed the point where
+    ## other engines read up to to get to the point where it will start...
+
     fr1, fr2, io1, io2 = get_slice(tups, optim, num)
     quart1 = itertools.izip(fr1, fr1, fr1, fr1)
     if "pair" in data.paramsdict["datatype"]:
@@ -305,24 +308,22 @@ def rawedit(args):
         point += 1
 
     ## close file handles
-    #fr1.close()
     io1.close()
 
     ## write to file
     handle = os.path.join(data.dirs.edits, 
-                          "tmp1_"+sample.name+"_"+str(point)+".fq")
+                    "tmp1_{}_{}.fq".format(sample.name, point))
     with open(handle, 'wb') as out1:
         out1.write("\n".join(write1))
         out1.write("\n")
 
     if "pair" in data.paramsdict["datatype"]:    
-        #fr2.close()
         io2.close()
         handle = os.path.join(data.dirs.edits, 
-                          "tmp2_"+sample.name+"_"+str(point)+".fq")
+                    "tmp2_{}_{}.fq".format(sample.name, point))            
         with open(handle, 'wb') as out2:
             out2.write("\n".join(write2))
-            out2.write("\n")            
+            out2.write("\n")     
 
     ## the number of ...
     return counts
@@ -649,17 +650,6 @@ def sample_cleanup(data, sample, results):
 def assembly_cleanup(data):
     """ cleanup for assembly object """
 
-    ## remove tmpchunks dir
-    # tmpdir = os.path.join(data.dirs.project, data.name+"-tmpchunks")
-    # if os.path.exists(tmpdir):
-    #     try:
-    #         shutil.rmtree(tmpdir)   
-    #     except OSError:
-    #         ## In some instances nfs creates hidden dot files in directories
-    #         ## that claim to be "busy" when you try to remove them. Don't
-    #         ## kill the run if you can't remove this directory.
-    #         LOGGER.warn("Failed to remove tmpdir {}".format(tmpdir))
-
     ## build s2 results data frame
     data.stats_dfs.s2 = data.build_stat("s2")
     data.stats_files.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
@@ -667,6 +657,7 @@ def assembly_cleanup(data):
     ## write stats for all samples
     with open(data.stats_files.s2, 'w') as outfile:
         data.stats_dfs.s2.to_string(outfile)
+
 
 
 def run(data, samples, nreplace, force, preview, ipyclient):
@@ -738,10 +729,30 @@ def run(data, samples, nreplace, force, preview, ipyclient):
 
     ## save sliced asyncs
     sliced = {i.name:[] for i in subsamples}    
+
     ## send jobs to queue to get slices and process them
     for sample in subsamples:
         ## get optim slice size for this sample
-        optim = optims[sample.name]        
+        optim = optims[sample.name]
+        ## if multiple fastq files for this sample, create a tmp concat file
+        if len(sample.files.fastqs) > 1:
+            ## just copy as a temporary placeholder for fastqs
+            conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq")
+            with open(conc1, 'w') as cout1:
+                for tups in sample.files.fastqs:
+                    cout1.write(gzip.open(tups[0]).read())
+            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
+            if os.path.exists(sample.files.fastqs[0][1]):
+                with open(conc2.replace, 'w') as cout2:
+                    for tups in sample.files.fastqs:
+                        cout2.write(gzip.open(tups[1]).read())
+            else:
+                conc2 = 0
+            sample.files.concat = [(conc1, conc2)]
+        else:
+            ## just copy as a temporary placeholder for fastqs
+            sample.files.concat = sample.files.fastqs
+
         for job in range(10):
             args = [data, sample, job, nreplace, optim]
             async = lbview.apply(rawedit, args)
@@ -767,7 +778,7 @@ def run(data, samples, nreplace, force, preview, ipyclient):
 
     except (KeyboardInterrupt, SystemExit):
         print('\n  Interrupted! Cleaning up... ')
-        raise #raise IPyradWarningExit("Keyboard Interrupt")
+        raise 
 
     ## enforced cleanup
     finally:
@@ -788,6 +799,10 @@ def run(data, samples, nreplace, force, preview, ipyclient):
         if all([i.completed for i in asyncs]):
             ## do final stats and cleanup
             assembly_cleanup(data)
+        ## clean up concat files (if any)
+        concats = glob.glob(os.path.join(data.dirs.edits, "*_concat.fq"))
+        for concat in concats:
+            os.remove(concat)
 
 
 

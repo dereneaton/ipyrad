@@ -1508,13 +1508,14 @@ def merge(name, assemblies):
             for sample in iterass.samples:
                 if sample not in merged.samples:
                     merged.samples[sample] = iterass.samples[sample]
-                ## merge stats
-                merged.samples[sample].stats[stat] += \
+                else:
+                    ## merge stats
+                    merged.samples[sample].stats[stat] += \
                                   iterass.samples[sample].stats[stat]
-                ## merge file references
-                for filetype in ["fastq", "edits", "clusters", "consens"]:
-                    merged.samples[sample].files[filetype].append(
-                                  iterass.samples[sample].files[filetype])
+                    ## merge file references
+                    for filetype in ["fastqs", "edits", "clusters", "consens"]:
+                        merged.samples[sample].files[filetype] += \
+                                  iterass.samples[sample].files[filetype]
 
     ## return the new Assembly object
     return merged
