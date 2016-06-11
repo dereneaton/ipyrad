@@ -870,7 +870,7 @@ class Assembly(object):
             ## abort and allow wrapper to save and close
             LOGGER.info("assembly interrupted by user.")
             print("\n  Keyboard Interrupt by user")
-            sys.exit(2)
+            #sys.exit(2)
 
         except IPyradWarningExit as inst:
             ## save inst for raise error after finally statement

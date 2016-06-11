@@ -16,7 +16,7 @@ __debugfile__ = "./ipyrad_log.txt"
 if _os.path.exists(__debugflag__):
     __loglevel__ = "DEBUG"
 else:
-    __loglevel__ = "ERROR"
+    __loglevel__ = "ERROR"#"INFO"
 
 ## main ip.functions
 from . import load
@@ -52,15 +52,6 @@ import subprocess as _subprocess
 import sys as _sys
 
 
-## Define the logger and test
-_LOGGER = _logging.getLogger(__name__)
-if __loglevel__ == "DEBUG":
-    _LOGGER.debug("Engine launched: __loglevel__ = %s", __loglevel__)
-else:
-    _LOGGER.info("Engine launched: __loglevel__ = %s", __loglevel__)
-
-
-
 
 def debug_on():
     """ 
@@ -70,15 +61,13 @@ def debug_on():
     ## make tmp file and set loglevel for top-level init
     with open(__debugflag__, 'w') as dfile:
         dfile.write("wat")
-    __loglevel__ = "DEBUG"
-    _LOGGER.info("debugging turned on and registered to be turned off at exit")
-    _set_debug_dict()
+    __loglevel__ == "INFO"
+    set_config()
 
 
 
-def _set_debug_dict():
-    """ set the debug dict """
-
+def set_config():
+    """ sets the logger config """
     _lconfig.dictConfig({
     'version': 1,              
     'disable_existing_loggers': False,  
@@ -111,7 +100,15 @@ def _set_debug_dict():
     })
 
 
-_set_debug_dict()
+set_config()
+
+
+## Define the logger and test
+_LOGGER = _logging.getLogger(__name__)
+if __loglevel__ == "DEBUG":
+    _LOGGER.debug("Engine init: __loglevel__ = %s", __loglevel__)
+else:
+    _LOGGER.info("Engine init: __loglevel__ = %s", __loglevel__)
 
 
 
@@ -119,6 +116,7 @@ def debug_off():
     """ turns off debugging by removing hidden tmp file """
     if _os.path.exists(__debugflag__):
         _os.remove(__debugflag__)
+
 
 
 def _cmd_exists(cmd):

@@ -25,7 +25,7 @@ def parse_params(args):
         with open(args.params) as paramsin:
             plines = paramsin.readlines()
     except IOError as _:
-        sys.exit("No params file found")
+        sys.exit("  No params file found")
 
     ## check header: big version changes can be distinguished by the header
     if not len(plines[0].split()[0]) == 7:
@@ -291,12 +291,11 @@ def main():
     ## at the end (exceptions, etc)
     if os.path.exists(ip.__debugflag__):
         os.remove(ip.__debugflag__)
+
     if args.debug:
-        print("  Enabling debug mode")
+        print("\n  ** Enabling debug mode ** ")
         ip.debug_on()
         atexit.register(ip.debug_off)        
-        #with open(ip.__debugflag__, 'w') as dfile:
-        #    dfile.write("wat")
 
     ## create new paramsfile if -n
     if args.new:

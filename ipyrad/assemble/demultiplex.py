@@ -172,7 +172,7 @@ def barmatch(args):
     """
 
     ## read in list of args
-    data, chunk, fnum, snum, cutters, longbar, matchdict = args
+    data, fnum, snum, cutters, longbar, matchdict, fr1, fr2 = args
     
     ## counters for total reads, those with cutsite, and those that matched
     total = 0
@@ -191,19 +191,8 @@ def barmatch(args):
     misses = {}
     misses['_'] = 0
 
-    ## create iterators to sample 4 lines at a time        
-    if chunk[0].endswith(".gz"):
-        fr1 = gzip.open(chunk[0])        
-        if 'pair' in data.paramsdict["datatype"]:        
-            fr2 = gzip.open(chunk[1])
-    else:
-        fr1 = open(chunk[0])        
-        if 'pair' in data.paramsdict["datatype"]:        
-            fr2 = open(chunk[1])
     fr1 = iter(fr1)
-    if 'pair' in data.paramsdict["datatype"]:            
-        fr2 = iter(fr2)
-
+    fr2 = iter(fr2)
 
     quart1 = itertools.izip(fr1, fr1, fr1, fr1)
     if 'pair' in data.paramsdict["datatype"]:
@@ -305,7 +294,7 @@ def barmatch(args):
 
         ## write out at 100K to keep memory low. I think we tend to be more 
         ## IO limited than memory limited... I think.
-        if not total % 100000:
+        if not total % 40000:
             ## write the remaining reads to file"
             writetofile(data, dsort1, 1, fnum, snum)
             if 'pair' in data.paramsdict["datatype"]:
@@ -323,10 +312,6 @@ def barmatch(args):
     ## return stats in saved pickle b/c return_queue is too tiny
     filestats = [snum, total, cutfound, matched]
     samplestats = [samplehits, barhits, misses, dbars]
-
-    fr1.close()
-    if 'pair' in data.paramsdict["datatype"]:    
-        fr2.close()
 
     return (filestats, samplestats), snum
 
@@ -355,7 +340,7 @@ def collate_subs(args):
     Collate temp fastq files in tmp-dir into 1 gzipped sample.
     """
     ## parse args
-    data, filenum = args
+    data, filenum, sublist = args
 
     ## output R1 collated file handle
     checkpoint = 0
@@ -370,11 +355,15 @@ def collate_subs(args):
 
     ## sample names are in data.barcodes
     for sname in data.barcodes:
-
         ## get chunks
-        chunks = glob.glob(os.path.join(data.dirs.fastqs, 
+        chunks = []
+        LOGGER.info(sublist)
+        for subnum in sublist:
+            inchunk = os.path.join(data.dirs.fastqs, 
                         "tmp_{}_R1_".format(sname), 
-                        "tmp_{}_R1_*.fastq".format(sname)))
+                        "tmp_{}_R1_{}_{}.fastq".format(sname, filenum, subnum))
+            chunks.append(inchunk)
+
         ## one outfile to write to, 
         out1 = os.path.join(data.dirs.fastqs, 
                     "tmp_{}_R1_".format(sname),             
@@ -383,6 +372,7 @@ def collate_subs(args):
         with open(out1, 'a') as tmpout:
             chunks.sort(key=lambda x: int(x.split("_")[-1][:-6]))
             for inchunk in chunks:
+                LOGGER.info(inchunk)
                 with open(inchunk, 'r') as tmpin:
                     tmpout.write(tmpin.read())
                 ## clean up
@@ -391,9 +381,12 @@ def collate_subs(args):
         ## do second reads
         if 'pair' in data.paramsdict["datatype"]:
             ## get chunks
-            chunks = glob.glob(os.path.join(data.dirs.fastqs, 
+            chunks = []
+            for subnum in sublist:
+                inchunk = os.path.join(data.dirs.fastqs, 
                         "tmp_{}_R2_".format(sname), 
-                        "tmp_{}_R2_*.fastq".format(sname)))
+                        "tmp_{}_R2_{}_{}.fastq".format(sname, filenum, subnum))
+                chunks.append(inchunk)
 
             out2 = os.path.join(data.dirs.fastqs, 
                         "tmp_{}_R2_".format(sname),             
@@ -709,8 +702,10 @@ def wrapped_run(data, preview, ipyclient, force):
     ## optim is the number of reads per cpu, if it is too large then we 
     ## load too much into memory. So if optim > 1M then we subsample it
     ## which makes things run just a bit slower
-    #while optim > int(4e6):
-    #    optim //= 2
+    multi = 1
+    while optim > int(8e6):
+        optim //= 2
+        multi = 2
 
     ## ensure optim is divisible by 4
     while optim % 4:
@@ -744,30 +739,58 @@ def wrapped_run(data, preview, ipyclient, force):
         filesort.setdefault(fnum, [])                
         collatesubs.setdefault(fnum, [])        
 
-        ## send job to split files and wait for it to finish
-        spt = lbview.apply(zcat_make_temps, [data, tups, fnum, tmpdir, optim])
-        LOGGER.debug("submitted")
-        LOGGER.info([data, tups, fnum, tmpdir, optim])
-
-        while not spt.ready():
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 0,             
-                ' sorting file{} {:<8}| {}'.format(pair, fnum, elapsed))
-            time.sleep(0.1)
-
-        if spt.ready() and spt.successful():
-            chunks = spt.result()
-
-        for snum, chunk in enumerate(chunks):
-            args = [data, chunk, fnum, snum, cutters, longbar, matchdict]
-            async = lbview.apply_async(barmatch, args)
-            filesort[fnum].append(async)
+        ## open file handles 
+        if tups[0].endswith(".gz"):
+            io1 = gzip.open(tups[0])
+            rawr1 = iter(io1)
+            if tups[1]:
+                io2 = gzip.open(tups[1])
+                rawr2 = iter(io2)
+            else:
+                io2 = 0
+        else:
+            io1 = open(tups[0])
+            rawr1 = iter(io1)
+            if tups[1]:
+                io2 = open(tups[1])
+                rawr2 = iter(io2)
+            else:
+                io2 = 0
 
         #####################################
+        ## send jobs to engines
+        #####################################
+        done = 0
+        subnum = 0
+        sublist = []
+
+        ## estimate how many chunks will be made from this file
+        estimate = data.cpus * multi
+
         while 1:
+            dat1 = list(itertools.islice(rawr1, optim))
+            if tups[1]:
+                dat2 = list(itertools.islice(rawr2, optim))
+            else:
+                dat2 = [""]
+
+            if dat1:
+                args = [data, fnum, subnum, cutters, longbar, 
+                        matchdict, dat1, dat2]
+                async = lbview.apply(barmatch, args)
+                filesort[fnum].append(async)
+                subnum += 1
+
+            else:
+                ## close files
+                io1.close()
+                if tups[1]:
+                    io2.close()
+                break
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 0,
+            progressbar(estimate*2, min(done, estimate*2),
             ' sorting file{} {:<8}| {}'.format(pair, fnum, elapsed))
+            done += 1
 
             ## if some are done, ...
             ready = [i.ready() for i in filesort[fnum]]
@@ -778,8 +801,39 @@ def wrapped_run(data, preview, ipyclient, force):
                     statdicts = putstats(result[0], raws[fnum][0], statdicts)
                     ## purge from memory
                     ipyclient.purge_local_results(async)
+                    sublist.append(result[1])
+                    done += 1
+                    del filesort[fnum][filesort[fnum].index(async)]
+
+                ## inter collate
+                if len(sublist) >= 20:
+                    lbview.apply(collate_subs, [data, fnum, sublist])
+                    sublist = []
+
+
+        while 1:
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(estimate*2, min(done, estimate*2),
+                ' sorting file{} {:<8}| {}'.format(pair, fnum, elapsed))
+
+            ## if some are done, ...
+            ready = [i.ready() for i in filesort[fnum]]
+            asyncs = [i for (i, j) in zip(filesort[fnum], ready) if j]
+            for async in asyncs:
+                result = async.result()
+                if result:
+                    statdicts = putstats(result[0], raws[fnum][0], statdicts)
+                    ## purge from memory
+                    ipyclient.purge_local_results(async)
+                    sublist.append(result[1])
+                    done += 1
                     filesort[fnum].remove(async)
-        
+                
+                ## inter collate
+                if len(sublist) >= 20:
+                    lbview.apply(collate_subs, [data, fnum, sublist])
+                    sublist = []
+
             ## are we done yet?
             if not filesort[fnum]:
                 break
@@ -788,17 +842,14 @@ def wrapped_run(data, preview, ipyclient, force):
 
         ## final collate
         ipyclient.wait()
-        lbview.apply(collate_subs, [data, fnum])
+        lbview.apply(collate_subs, [data, fnum, sublist])
 
         ## collate colls from across files
         progressbar(20, 20, 
             ' sorting file{} {:<8}| {}'.format(pair, fnum, elapsed))            
         print("")
-
-        ## clear the tmps
-        for tmpfile in glob.glob(os.path.join(tmpdir, "*")):
-            os.remove(tmpfile)
         fnum += 1        
+        
 
     ## collate files progress bar
     start = time.time()
@@ -813,7 +864,7 @@ def wrapped_run(data, preview, ipyclient, force):
         for async in filesort[ftmp]:
             result, _ = async.get()
             if result:
-                LOGGER.info("{}".format(result))
+                LOGGER.info(result)
                 statdicts = putstats(result, raws[ftmp][0], statdicts)
         ## collate across files
         for sname in data.barcodes:
