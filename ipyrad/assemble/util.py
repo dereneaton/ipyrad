@@ -252,11 +252,11 @@ def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
     ## if merge then catch nonmerged in a separate file
     if merge:
         nonmerged1 = tempfile.NamedTemporaryFile(mode='wb', 
-                                                dir=data.dirs.edits,
-                                                suffix="_nonmerged_R1_.fastq").name
+                                            dir=data.dirs.edits,
+                                            suffix="_nonmerged_R1_.fastq").name
         nonmerged2 = tempfile.NamedTemporaryFile(mode='wb', 
-                                                dir=data.dirs.edits,
-                                                suffix="_nonmerged_R2_.fastq").name
+                                            dir=data.dirs.edits,
+                                            suffix="_nonmerged_R2_.fastq").name
     ## if not merging then the nonmerged reads will come from the normal edits
     else:
         nonmerged1 = files_to_merge[0][0]
