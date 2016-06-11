@@ -1062,11 +1062,13 @@ def filter_maxhet(data, superseqs, edges):
     to every loc based on coverage... 
     """
     ## the filter max
+    ## The type of max_shared_Hs_locus is determined and the cast to either
+    ## int or float is made at assembly load time
     maxhet = data.paramsdict["max_shared_Hs_locus"]
     if isinstance(maxhet, float):
-        maxhet = int(superseqs.shape[1]*float(maxhet))
+        maxhet = int(superseqs.shape[1]*maxhet)
     else:
-        maxhet = int(maxhet)
+        maxhet = maxhet
 
     ## an empty array to fill with failed loci
     hetfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
