@@ -120,6 +120,70 @@ def branch_assembly(args, parsedict):
     new_data.write_params("params-"+new_data.name+".txt", force=args.force)
 
 
+def merge_assemblies(args):
+    """ merge all given assemblies into a new assembly. Copies the params
+    from the first passed in extant assembly. this function is called 
+    with the ipyrad -m flag. You must pass it at least 3 values, the first
+    is a new assembly name (a new `param-newname.txt` will be created).
+    The second and third args must be params files for currently existing
+    assemblies. Any args beyond the third must also be params file for
+    extant assemblies.
+    """
+    print("\n  Merging assemblies: {}".format(args.merge[1:]))
+
+    ## Make sure there are the right number of args
+    if len(args.merge) < 3:
+        msg = "\n  Attempting to merge assemblies but wrong number of args. "\
+            + "The format for the merging command is:"\
+            + "\n\n    ipyrad -m new_assembly_name params-1.txt params-2.txt"
+        sys.exit(msg)
+    ## Make sure the first arg isn't a params file, i could see someone
+    ## someone trying this
+    newname = args.merge[0]
+    if os.path.exists(newname) and "params-" in newname:
+        msg = "\n  Looks like you're trying to pass in a params file that "\
+            + "already exists. The first arg\n  for -m should be the name of "\
+            + "the new assembly (this will create a new params file for you)."
+        sys.exit(msg) 
+    ## Make sure first arg will create a param file that doesn't already exist
+    if os.path.exists("params-" + newname + ".txt"):
+        msg = "\n  First argument for ipyrad -m should be the name of the new"\
+            + " assembly. This will create\n  a new params file called params-"\
+            + newname + ".txt, but this file already exists."
+        sys.exit(msg)
+    ## Make sure the rest of the args are params files that already exist
+    assemblies_to_merge = args.merge[1:]
+    for assembly in assemblies_to_merge:
+        if not os.path.exists(assembly):
+            msg = "\n  All arguments after the first for -m need to be params"\
+                + " files for assemblies with\n  samples that are all in state 1."\
+                + " This assembly param file does not exist: " + assembly
+            sys.exit(msg)
+
+    assemblies = []
+    ## Get assemblies for each of the passed in params files.
+    ## We're recycling some of the machinery for loading assemblies here
+    for params_file in args.merge[1:]:
+        args.params = params_file
+        parsedict = parse_params(args)
+        assemblies.append(getassembly(args, parsedict))
+
+    ## Do the merge
+    merged_assembly = ip.merge(newname, assemblies)
+
+    ## Set the values for some params that don't make sense inside
+    ## merged assemblies
+    merged_names = ", ".join([x.name for x in assemblies])
+    merged_assembly.paramsdict["raw_fastq_path"] = "Merged: " + merged_names
+    merged_assembly.paramsdict["barcodes_path"] = "Merged: " + merged_names
+    merged_assembly.paramsdict["sorted_fastq_path"] = "Merged: " + merged_names
+
+    ## Write out the merged assembly params file and report success
+    merged_assembly.write_params("params-{}.txt".format(newname))
+
+    print("\n  Merging succeeded. New params file for merged assembly:")
+    print("\n    params-{}.txt\n".format(newname))
+
 
 def getassembly(args, parsedict):
     """ loads assembly or creates a new one and set its params from 
@@ -177,7 +241,7 @@ def getassembly(args, parsedict):
 
 
 def parse_command_line():
-    """ Parse CLI args. Only three options now. """
+    """ Parse CLI args."""
 
     ## create the parser
     parser = argparse.ArgumentParser(
@@ -187,7 +251,6 @@ def parse_command_line():
     ipyrad -n data                       ## create new file called params-data.txt 
     ipyrad -p params-data.txt            ## run ipyrad with settings in params file
     ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
-    ipyrad -p params-data.txt -s 4567    ## run steps 4-7 of assembly.
     ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
   * HPC parallelization across multiple nodes
@@ -196,20 +259,14 @@ def parse_command_line():
   * Results summary quick view
     ipyrad -p params-data.txt -r 
 
-  * Branch Assembly
+  * Branch/Merging Assemblies
     ipyrad -p params-data.txt -b newdata  
-
-  * Branch subset to Samples to a new Assembly
-    ipyrad -p params-data.txt -b newdata sample_1 sample2 sample3 sample4
+    ipyrad -m newdata params-1.txt params2.txt [params-3.txt, ...]
 
   * Preview mode (subsamples data)
     ipyrad -p params-data.txt -s --preview  
 
-  * Get parameter info
-    ipyrad -i                             ## Get a list of parameter names
-    ipyrad -i 7                           ## Get detailed info about a specific parameter
-
-  * Documentation: http://ipyrad.readthedocs.org/en/latest/
+  * Documentation: http://ipyrad.readthedocs.io
     """)
 
     ## add arguments 
@@ -243,6 +300,10 @@ def parse_command_line():
     parser.add_argument('-b', metavar='branch', dest="branch",
         type=str, default=None, nargs="*",
         help="create a new branch of the Assembly as params-{branch}.txt")
+
+    parser.add_argument('-m', metavar='merge', dest="merge",
+        default=None, nargs="*",
+        help="merge all assemblies provided into a new assembly")
 
     parser.add_argument('-s', metavar="steps", dest="steps",
         type=str, default=None,
@@ -319,14 +380,16 @@ def main():
         if not any([args.branch, args.results, args.steps]):
             print("""
     Must provide action argument along with -p argument for params file. 
-    e.g., ipyrad -p params-test.txt -r      ## shows results
-    e.g., ipyrad -p params-test.txt -s 12   ## runs steps 1 & 2
+    e.g., ipyrad -p params-test.txt -r              ## shows results
+    e.g., ipyrad -p params-test.txt -s 12           ## runs steps 1 & 2
+    e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
     """)
             sys.exit(2)
 
 
-    ## if branching or info do not allow steps in same command, print spacer
-    if any([args.branch, args.info]):        
+    ## if branching, merging, or info do not allow steps in same command
+    ## print spacer
+    if any([args.branch, args.merge, args.info]):        
         args.steps = ""    
         print("")    
 
@@ -343,6 +406,12 @@ def main():
             ip.paramsinfo(int(args.info))
         else:
             ip.paramsinfo()
+        sys.exit(1)
+
+    ## if merging just do the merge and exit
+    elif args.merge:
+        print(header)
+        merge_assemblies(args)
         sys.exit(1)
 
     ## create new Assembly or load existing Assembly, quit if args.results
