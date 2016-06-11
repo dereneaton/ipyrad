@@ -1814,14 +1814,16 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['min_samples_locus'] = int(newvalue)
 
     elif param == 'max_shared_Hs_locus':
-        if newvalue.isdigit():
-            self.paramsdict['max_shared_Hs_locus'] = int(newvalue)
-        else:
-            try:
-                self.paramsdict['max_shared_Hs_locus'] = float(newvalue)
-            except Exception as inst:
-                sys.exit("max_shared_Hs_locs must be int or float, you put: "\
-                        + newvalue)
+        if isinstance(newvalue, str):
+            if newvalue.isdigit():
+                newvalue = int(newvalue)
+            else:
+                try:
+                    newvalue = float(newvalue)
+                except Exception as inst:
+                    sys.exit("max_shared_Hs_locus must be int or float, you put: "\
+                            + newvalue)
+        self.paramsdict['max_shared_Hs_locus'] = newvalue
 
     elif param == 'max_SNPs_locus':
         newvalue = tuplecheck(newvalue, int)                        
