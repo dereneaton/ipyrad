@@ -330,6 +330,17 @@ have the full set of parameters used in each of your assemblies.
 This makes for a good reproducible workflow, and can be referenced later
 as a reminder of the parameters used for each data set. 
 
+Branching with a subset of samples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It's also possible to create a branch with only a subset of samples from
+the original assembly. For example the command below will create a new branch
+called ``newdata`` including only the 4 samples listed.
+
+.. code:: bash
+   
+   ## Branch subset of Samples to a new Assembly.
+   >>> ipyrad -p params-data.txt -b newdata sample1 sample2 sample3 sample4
 
 What's next
 ~~~~~~~~~~~
