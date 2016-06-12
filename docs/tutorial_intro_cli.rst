@@ -36,7 +36,7 @@ in your current directory.
     >>> tar -xvzf ipsimdata.tar.gz
 
 
-Use the command `ls` to look inside this directory. You'll see that
+Use the command ``ls`` to look inside this directory. You'll see that
 it contains many different files representing different test data sets. 
 
 .. code-block:: bash  
@@ -739,6 +739,32 @@ number of reads_consens should be equal to the number of clusters_hidepth.
     step 6: None
     step 7: None
 
+This step creates a new directory called ``./iptest_consens`` to store
+the consensus sequences for each sample. We can use our trusty ``head``
+command to look at the output.
+
+.. code-block:: bash
+
+    >>> gunzip -c iptest_consens/1A_0.consens.gz | head
+
+You can see that all loci within each sample have been reduced to one
+consensus sequence. Heterozygous sites are represented by IUPAC 
+ambiguity codes (find the **K** in sequence ``1A_0_1``), and all other 
+sites are homozygous. 
+
+.. parsed-literal::
+    >1A_0_0
+    TGCAGTATTGGCTGCCCCATCTTACGCTTGGTAATTTTCGCCTTTTCAACTGCATCCGCTAAATCTGCCATCTTTAAGCGTAGTCACTTCCACA
+    >1A_0_1
+    TGCAGCGKTACGCTCCTAGGGAACGTCCACGTCTCGGCAGTCGTCAGGTACTTTTAGCCTCTTGCCGCGCATCTCATGGGAGCAACGTGAGCCT
+    >1A_0_2
+    TGCAGACGGGAAACTTTAAAAAATAAAGCAATTGCTGCCATCTATGGGCGGTTTGAATGGGTTTTTTAGTGCCTCTACTATTAATTATGTGATC
+    >1A_0_3
+    TGCAGAGAGTGAACATCAGAAGACAGGTGGGTAGAAGACGCAACTTAGGACCTAAGGTTCTGGAGCTATTTTAAGTTCGACAGACAGGTCCAGC
+    >1A_0_4
+    TGCAGCGTGCTAAGGTTTGAGACATATAGCGAAGAACCTACGACGGTCGAATCTGACGGCGCTAAGCTGTGTGGACCTTAGTATTAGGCGGAAA
+
+
 
 Step 6: Cluster across samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -780,8 +806,9 @@ other metadata. If you really want to see the contents of the database
 see the h5py_ cookbook recipe. 
 
 There is no simple way to summarize the outcome of step 6, so the output
-of `ipyrad -p params-iptest -r` and the content of the 
-`./iptest_consens/s6_cluster_stats.txt` stats file are uniquely uninteresting.
+of ``ipyrad -p params-iptest -r`` and the content of the 
+``./iptest_consens/s6_cluster_stats.txt`` stats file are uniquely uninteresting.
+
 
 Step 7: Filter and write output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -800,17 +827,28 @@ After running step 7 like so:
 
 
 .. parsed-literal::
+ --------------------------------------------------
+  ipyrad [v.0.3.7]
+  Interactive assembly and analysis of RADseq data
+ --------------------------------------------------
+  loading Assembly: iptest
+  from saved path: ~/Documents/ipyrad/tests/iptest_outfiles
+  ipyparallel setup: Local connection to 1 Engines
+
   Step7: Filter and write output files for 12 Samples
-  [####################] 100%  filtering loci        | 0:00:04 
-  [####################] 100%  writing outfiles      | 0:00:01 
+  [####################] 100%  filtering loci        | 0:00:10 
+  [####################] 100%  building loci/stats   | 0:00:02 
+  [####################] 100%  building vcf file     | 0:00:19 
+  [####################] 100%  writing outfiles      | 0:00:02 
   Outfiles written to: ~/Documents/ipyrad/tests/iptest_outfiles
   Saving Assembly.
 
 
 A new directory is created called ``iptest_outfiles``. This directory contains
 all the output files specified in the params file. The default is to 
-create all supported output files which include .phy, .nex, .geno, .str, as well
-as many others (forthcoming). Explore some of these files below.
+create all supported output files which include PHYLIP(.phy), NEXUS(.nex), 
+EIGENSTRAT's genotype format(.geno), STRUCTURE(.str), as well
+as many others. Explore some of these files below.
 
 Final stats file
 ~~~~~~~~~~~~~~~~
@@ -820,8 +858,13 @@ per sample, how many loci were shared among some number of samples, and how
 much variation is present in the data. Check out the results file.
 
 .. code-block:: bash
-
-    >>> cat iptest_outfiles/iptest_stats.txt
+    ## The `less` command lets you easily view large files
+    ## in the terminal. The stats output is quite long, so if
+    ## you used `cat` here instead of less the results would
+    ## fly off the page. Try it if you don't believe me!
+    ##
+    ## ProTip: To quit out of less push the `q` key.
+    >>> less iptest_outfiles/iptest_stats.txt
 
 .. parsed-literal::
   ## The number of loci caught by each filter.
@@ -832,9 +875,9 @@ much variation is present in the data. Check out the results file.
   filtered_by_rm_duplicates                0
   filtered_by_max_indels                   0
   filtered_by_max_snps                     0
-  filtered_by_max_hetero                   0
+  filtered_by_max_shared_het               0
   filtered_by_min_sample                   0
-  filtered_by_edge_trim                    0
+  filtered_by_max_alleles                  0
   total_filtered_loci                   1000
   
   
@@ -860,9 +903,9 @@ much variation is present in the data. Check out the results file.
   ## ipyrad API location: [assembly].stats_dfs.s7_loci
   
       locus_coverage  sum_coverage
-  1              NaN             0
-  2              NaN             0
-  3              NaN             0
+  1                0             0
+  2                0             0
+  3                0             0
   4                0             0
   5                0             0
   6                0             0
@@ -879,27 +922,33 @@ much variation is present in the data. Check out the results file.
   ## pis = parsimony informative site (minor allele in >1 sample)
   ## ipyrad API location: [assembly].stats_dfs.s7_snps
   
-      var  sum_var  pis  sum_pis
-  0    12        0  301        0
-  1    50       50  375      375
-  2    95      240  199      773
-  3   178      774   90     1043
-  4   185     1514   29     1159
-  5   180     2414    6     1189
-  6   134     3218    0     1189
-  7    73     3729    0     1189
-  8    52     4145    0     1189
-  9    25     4370    0     1189
-  10   13     4500    0     1189
-  11    0     4500    0     1189
-  12    2     4524    0     1189
-  13    1     4537    0     1189
+        var  sum_var  pis  sum_pis
+    0    10        0  306        0
+    1    39       39  376      376
+    2    96      231  211      798
+    3   146      669   77     1029
+    4   213     1521   18     1101
+    5   191     2476   10     1151
+    6   145     3346    2     1163
+    7    67     3815    0     1163
+    8    49     4207    0     1163
+    9    30     4477    0     1163
+    10    6     4537    0     1163
+    11    4     4581    0     1163
+    12    1     4593    0     1163
+    13    2     4619    0     1163
+    14    1     4633    0     1163
 
 
-Check out the .loci output. Many more output formats are available. See 
-the section on output formats for more information. 
+Check out the ``.loci`` output (this is ipyrad native internal format). 
+Each locus is delineated by a pair of forward slashes ``//``. Within each
+locus are all the reads from each sample that clustered together. The line
+containing the ``//`` also indicates the positions of SNPs in the sequence.
+See if you can spot the SNPs in the first locus. Many more output formats 
+are available. See the section on output_formats_ for more information. 
 
 .. code-block:: bash
+
     >>> less iptest_outfiles/iptest.loci
 
 .. parsed-literal::
@@ -932,10 +981,8 @@ the section on output formats for more information.
 
 
 
-Congratulations! You’ve completed your first toy assembly. Now you can try 
-applying what you’ve learned to assemble your own real data. Please consult 
+Congratulations! You've completed your first toy assembly. Now you can try 
+applying what you've learned to assemble your own real data. Please consult 
 the docs for many of the more powerful features of ipyrad including reference 
 sequence mapping, assembly branching, and post-processing analysis.
-
-
 
