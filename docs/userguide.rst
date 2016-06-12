@@ -9,7 +9,7 @@
 Tutorials
 =========
 
-The ipyrad_ command line interface (CLI_) is accessed through a terminal. Use 
+The ipyrad_ command line interface (CLI) is accessed through a terminal. Use 
 the -help (-h) flag to print a help screen with a description of the main 
 arguments to the CLI. Detailed instructions are available through the tutorials
 below. 

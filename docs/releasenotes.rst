@@ -5,7 +5,9 @@
 Release Notes
 =============
 
-
+0.3.5
+-----
+- Added `-m` flag to allow merging assemblies in the CLI
 
 0.2.6
 -----

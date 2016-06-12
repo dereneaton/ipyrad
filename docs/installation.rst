@@ -26,11 +26,11 @@ new packages. We'll use miniconda for the example installation here.
 
 First, let's download the conda_ installer. There are separate installers for 
 Linux and Mac, so follow the instructions below for the appropriate system.
-If you are working on an :ref:`HPC<HPC_installation>` cluster it is most likely
-a Linux machine. 
+If you are working on an :ref:`HPC<HPC_installation>` us the Linux instructions.
+
 During installation you will be asked whether it can append the newly created 
 miniconda/ (or anaconda/) directory to your $PATH, say **yes**. What this does
-is add a line to your **~/.bashrc** (or **~/.bash_profile on Mac) 
+is add a line to your **~/.bashrc** (or **~/.bash_profile on Mac**) 
 file so that the anaconda directory becomes the default location to search 
 for Python modules, and also so that it can find executables in this 
 directory. If you find that setting this path 
@@ -137,25 +137,24 @@ The conda_ installation will install the following required dependencies:
 
 **Python Packages**:  
 
-* Numpy -- Scientific processing  
-* Scipy -- Scientific processing  
-* Pandas -- Used for manipulating data frames  
-* Sphinx -- Used for building documentation  
-* IPython2 -- Interactive version of Python 2.7  
+* Numpy_ -- Scientific processing  
+* Scipy_ -- Scientific processing  
+* Pandas_ -- Used for manipulating data frames  
+* Sphinx_ -- Used for building documentation  
 * ipyparallel_ -- Parallel, threading, MPI support  
-* jupyter -- Creating reproducible notebooks  
-* Cython -- C bindings for Python  
-* H5py -- Database and HDF5 headers  
-* Toyplot -- Plotting 
+* jupyter_ -- Creating reproducible notebooks (IPython) 
+* Cython_ -- C bindings for Python  
+* H5py_ -- Database and HDF5 headers  
+* Toyplot_ -- Plotting 
 
 
 **Executables**:  
 
-* vsearch -- used for de novo clustering
+* vsearch_ -- used for de novo clustering
 * muscle_ -- used for sequence alignment
-* smalt -- used for reference mapping
-* samtools -- used for reference mapping
-* bedtools -- used for reference mapping
-* hdf5 -- used for large array storage/access
-* mpirun, mpiexec -- used for parallelization
+* smalt_ -- used for reference mapping
+* samtools_ -- used for reference mapping
+* bedtools_ -- used for reference mapping
+* hdf5_ -- used for large array storage/access
+* mpich_ -- used for parallelization (mpirun, mpiexec)
 
