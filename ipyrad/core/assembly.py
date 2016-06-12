@@ -1524,6 +1524,7 @@ def merge(name, assemblies):
                                   iterass.samples[sample].files[filetype]
 
     ## return the new Assembly object
+    merged.save()
     return merged
 
 
@@ -1610,8 +1611,11 @@ def paramschecker(self, param, newvalue):
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath
 
+    ## `Merged:` in newvalue for raw_fastq_path indicates that this
+    ## assembly is a merge of several others, so this param has no
+    ## value for this assembly
     elif param == 'raw_fastq_path':
-        if newvalue:
+        if newvalue and not "Merged:" in newvalue:
             fullrawpath = expander(newvalue)
             if os.path.isdir(fullrawpath):
                 raise IPyradWarningExit("""
@@ -1638,9 +1642,12 @@ def paramschecker(self, param, newvalue):
             self.paramsdict['raw_fastq_path'] = ""
 
 
+    ## `Merged:` in newvalue for barcodes_path indicates that this
+    ## assembly is a merge of several others, so this param has no
+    ## value for this assembly
     elif param == 'barcodes_path':
         ## if a value was entered check that it exists
-        if newvalue:
+        if newvalue and not "Merged:" in newvalue:
             fullbarpath = expander(newvalue)
         
             if not os.path.exists(fullbarpath):
@@ -1661,8 +1668,11 @@ def paramschecker(self, param, newvalue):
             self.paramsdict['barcodes_path'] = ""
 
 
+    ## `Merged:` in newvalue for sorted_fastq_path indicates that this
+    ## assembly is a merge of several others, so this param has no
+    ## value for this assembly
     elif param == 'sorted_fastq_path':
-        if newvalue:
+        if newvalue and not "Merged:" in newvalue:
             fullsortedpath = expander(newvalue)
 
             if os.path.isdir(fullsortedpath):
@@ -1820,14 +1830,16 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['min_samples_locus'] = int(newvalue)
 
     elif param == 'max_shared_Hs_locus':
-        if newvalue.isdigit():
-            self.paramsdict['max_shared_Hs_locus'] = int(newvalue)
-        else:
-            try:
-                self.paramsdict['max_shared_Hs_locus'] = float(newvalue)
-            except Exception as inst:
-                sys.exit("max_shared_Hs_locs must be int or float, you put: "\
-                        + newvalue)
+        if isinstance(newvalue, str):
+            if newvalue.isdigit():
+                newvalue = int(newvalue)
+            else:
+                try:
+                    newvalue = float(newvalue)
+                except Exception as inst:
+                    sys.exit("max_shared_Hs_locus must be int or float, you put: "\
+                            + newvalue)
+        self.paramsdict['max_shared_Hs_locus'] = newvalue
 
     elif param == 'max_SNPs_locus':
         newvalue = tuplecheck(newvalue, int)                        

@@ -14,15 +14,9 @@ print("Setting new version to - {}".format(version_git))
 
 
 # Write version to ipyrad/__init__.py
-# Also set default __loglevel__ to ERROR so we don't check in
-# DEBUG by accident.
 for line in fileinput.input(initfile, inplace=1):
     if line.strip().startswith("__version__"):
         line = "__version__ = \""+version_git+"\""
-
-    #if line.strip().startswith("__loglevel__"):
-    #    line = "__loglevel__ = \"ERROR\""
-
     print(line.strip("\n"))
 
 try:
