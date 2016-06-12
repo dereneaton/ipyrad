@@ -58,7 +58,8 @@ number. Example:
     3L_0     ACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATCATAGGGCTCCATATCAAGTGATCAGCTAGGCTTCGAGTCGTAYC
     //               *      -        -               -   *                  -   -                   --|1|
 
-For paired-end data the two linked loci are shown separated by a 'NNNN' separator:
+For paired-end data the two linked loci are shown separated by a 'nnnn' separator, any merged reads
+will of course not contain the 'nnnn'.
 
 .. parsed-literal::
     1A0     GATAGCGGACGAAGCTTCCTGGATCAACATATCCGTTTGACAGTTTATATGTCAACAAGTAAGGAGCTGGACTGGGAGGTGCTATTAnnnnACTCTAAGATACCAAACCCTGTCCCAGCATTACGTCCCTGTATCCGACCT
@@ -91,21 +92,19 @@ For paired-end data the two linked loci are shown separated by a 'NNNN' separato
 
 PHYLIP \*.phy
 ^^^^^^^^^^^^^
-Alternatively, if you want to analyze a data set that was not created in 
-ipyrad_, but using some other software, it can be loaded in from either a 
-.loci or .vcf formatted file. The analysis options are much more limited in 
-this case (e.g., a lot of information needed for plotting is missing).
+This is a phylip formatted data file which contains all of the loci from the .loci 
+file concatenated into a supermatrix, with missing data for any sample filled in 
+with N's. This format is used in RAxML among other phylogenetic programs. The 
+header here indicates there are 12 samples and 89023 bases in the sequence. Because
+of this the output is truncated here for clarity (indicated by the ellipses).
 
+.. parsed-literal::
 
-.. code-block:: python
-
-    ## If your data set was assembled in an old version of pyrad
-    ## the data can be loaded from a .loci file
-    data1 = ip.load.load_loci("testdir/old_assembly.loci")
-
-    ## or, if your data was assembled elsewhere it can be loaded from a vcf
-    data1 = ip.load.load_vcf("testdir/somedata.vcf")
-
+12 89023
+1A_0     GTTATCCGTAGCGATTATCACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
+1B_0     GTTATCCGTAGCGATTATCACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
+1C_0     GTTATCCGTAGCGATTATTACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
+1D_0     GTTATCCGTAGCGATTATCACCTCAGTTAKATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGGCGGACGCAGCTAGTCACAGCTCTGTTACATRCATCTGTCCATACTCCCTGGTTCGTAATCAT...
 
 
 Plotting
