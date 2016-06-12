@@ -1379,20 +1379,26 @@ class Assembly(object):
         if ip.__interactive__:
             print("\n  Assembly: {}".format(self.name))
 
-        if '1' in steps:
-            self.step1(force=force, preview=preview)
-        if '2' in steps:
-            self.step2(force=force, preview=preview)
-        if '3' in steps:
-            self.step3(force=force, preview=preview)
-        if '4' in steps:
-            self.step4(force=force)
-        if '5' in steps:
-            self.step5(force=force)
-        if '6' in steps:
-            self.step6(force=force)            
-        if '7' in steps:
-            self.step7(force=force)
+        try:
+            if '1' in steps:
+                self.step1(force=force, preview=preview)
+            if '2' in steps:
+                self.step2(force=force, preview=preview)
+            if '3' in steps:
+                self.step3(force=force, preview=preview)
+            if '4' in steps:
+                self.step4(force=force)
+            if '5' in steps:
+                self.step5(force=force)
+            if '6' in steps:
+                self.step6(force=force)            
+            if '7' in steps:
+                self.step7(force=force)
+        finally:
+            ## save when finished if running API
+            if ip.__interactive__:
+                self.save()
+
 
 
 
