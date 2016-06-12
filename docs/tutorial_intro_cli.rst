@@ -73,7 +73,8 @@ Input files
     demultiplexed when you received it, we still recommend you complete
     the intro tutorial with the simulated data, but then see 
     advanced_input_datasets_ for specific instructions on how to read
-    in previously demultiplexed samples 
+    in previously demultiplexed samples and how to merge multiple
+    plates of data.
 
 Before we get started let's take a look at what the raw data looks like. Your 
 input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
@@ -262,7 +263,7 @@ Now lets run step 1! For the simulated data this will take just a few seconds.
 
 .. parsed-literal::
   --------------------------------------------------
-   ipyrad [v.0.2.0]
+   ipyrad [v.0.3.7]
    Interactive assembly and analysis of RADseq data
   --------------------------------------------------
    New Assembly: iptest
@@ -307,18 +308,18 @@ invoking the ``-r`` flag.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw
-    1A_0      1      20144
-    1B_0      1      20024
-    1C_0      1      20055
-    1D_0      1      19927
-    2E_0      1      19936
-    2F_0      1      20094
-    2G_0      1      19930
-    2H_0      1      20048
-    3I_0      1      19952
-    3J_0      1      20164
-    3K_0      1      19993
-    3L_0      1      20035
+    1A_0      1      20046
+    1B_0      1      19932
+    1C_0      1      20007
+    1D_0      1      19946
+    2E_0      1      19839
+    2F_0      1      19950
+    2G_0      1      19844
+    2H_0      1      20102
+    3I_0      1      20061
+    3J_0      1      19961
+    3K_0      1      20188
+    3L_0      1      20012
     
     
     Full stats files
@@ -360,7 +361,7 @@ base calls. The filtered files are written to a new directory called
 
 .. parsed-literal::
   --------------------------------------------------
-   ipyrad [v.0.2.0]
+   ipyrad [v.0.3.7]
    Interactive assembly and analysis of RADseq data
   --------------------------------------------------
    loading Assembly: iptest
@@ -394,18 +395,18 @@ handy stats tracked for this assembly.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered
-    1A_0      2      20144           20144
-    1B_0      2      20024           20024
-    1C_0      2      20055           20055
-    1D_0      2      19927           19927
-    2E_0      2      19936           19936
-    2F_0      2      20094           20094
-    2G_0      2      19930           19930
-    2H_0      2      20048           20048
-    3I_0      2      19952           19952
-    3J_0      2      20164           20164
-    3K_0      2      19993           19993
-    3L_0      2      20035           20035
+    1A_0      2      20046           20046
+    1B_0      2      19932           19932
+    1C_0      2      20007           20007
+    1D_0      2      19946           19946
+    2E_0      2      19839           19839
+    2F_0      2      19950           19950
+    2G_0      2      19844           19844
+    2H_0      2      20102           20102
+    3I_0      2      20061           20061
+    3J_0      2      19961           19961
+    3K_0      2      20188           20188
+    3L_0      2      20012           20012
     
     
     Full stats files
@@ -427,6 +428,15 @@ You might also take a gander at the filtered reads:
 
 Step 3: clustering within-samples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note:: 
+    A note on performance expectations. Steps 3 and 6 are the 
+    "clustering" steps. These are by far the most intensive steps
+    and on real data you should expect each of these to take 
+    several days. Here on the toy data it will take minutes.
+    The rest of the steps are quite fast by comparison. See the
+    :ref:`performance expectations <performance>` docs for more specifics.
+
 Step 3 de-replicates and then clusters reads within each sample 
 by the set clustering threshold and then writes the clusters to new 
 files in a directory called ``iptest_clust_0.85/``. Intuitively
@@ -463,7 +473,7 @@ Now lets run step 3:
 
 .. parsed-literal::
   --------------------------------------------------
-   ipyrad [v.0.2.0]
+   ipyrad [v.0.3.7]
    Interactive assembly and analysis of RADseq data
   --------------------------------------------------
    loading Assembly: iptest
@@ -494,19 +504,19 @@ base calls in low depth clusters.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      3      20144           20144            1000              1000
-    1B_0      3      20024           20024            1000              1000
-    1C_0      3      20055           20055            1000              1000
-    1D_0      3      19927           19927            1000              1000
-    2E_0      3      19936           19936            1000              1000
-    2F_0      3      20094           20094            1000              1000
-    2G_0      3      19930           19930            1000              1000
-    2H_0      3      20048           20048            1000              1000
-    3I_0      3      19952           19952            1000              1000
-    3J_0      3      20164           20164            1000              1000
-    3K_0      3      19993           19993            1000              1000
-    3L_0      3      20035           20035            1000              1000
-    
+    1A_0      3      20046           20046            1000              1000
+    1B_0      3      19932           19932            1000              1000
+    1C_0      3      20007           20007            1000              1000
+    1D_0      3      19946           19946            1000              1000
+    2E_0      3      19839           19839            1000              1000
+    2F_0      3      19950           19950            1000              1000
+    2G_0      3      19844           19844            1000              1000
+    2H_0      3      20102           20102            1000              1000
+    3I_0      3      20061           20061            1000              1000
+    3J_0      3      19961           19961            1000              1000
+    3K_0      3      20188           20188            1000              1000
+    3L_0      3      20012           20012            1000              1000
+
 
     Full stats files
     ------------------------------------------------
@@ -570,7 +580,7 @@ untangling this mess is what steps 4 and 5 are all about.
 
 Step 4: Joint estimation of heterozygosity and error rate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Jointly estimate sequencing error rate and heterozygosity to disentangle
+Step 4 jointly estimates sequencing error rate and heterozygosity to disentangle
 which reads are "real" and which are sequencing error. We need to know
 which reads are "real" because in diploid organisms there are a maximum of 2
 alleles at any given locus. If we look at the raw data and there are 5 or 
@@ -585,7 +595,7 @@ straightforward, and pretty fast. Run it thusly:
 
 .. parsed-literal::
   --------------------------------------------------
-   ipyrad [v.0.2.0]
+   ipyrad [v.0.3.7]
    Interactive assembly and analysis of RADseq data
   --------------------------------------------------
    loading Assembly: iptest
@@ -609,32 +619,32 @@ You can also invoke the ``-r`` flag to see the estimated values.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      4      20144           20144            1000              1000
-    1B_0      4      20024           20024            1000              1000
-    1C_0      4      20055           20055            1000              1000
-    1D_0      4      19927           19927            1000              1000
-    2E_0      4      19936           19936            1000              1000
-    2F_0      4      20094           20094            1000              1000
-    2G_0      4      19930           19930            1000              1000
-    2H_0      4      20048           20048            1000              1000
-    3I_0      4      19952           19952            1000              1000
-    3J_0      4      20164           20164            1000              1000
-    3K_0      4      19993           19993            1000              1000
-    3L_0      4      20035           20035            1000              1000
+    1A_0      4      20046           20046            1000              1000   
+    1B_0      4      19932           19932            1000              1000   
+    1C_0      4      20007           20007            1000              1000   
+    1D_0      4      19946           19946            1000              1000   
+    2E_0      4      19839           19839            1000              1000   
+    2F_0      4      19950           19950            1000              1000   
+    2G_0      4      19844           19844            1000              1000   
+    2H_0      4      20102           20102            1000              1000   
+    3I_0      4      20061           20061            1000              1000   
+    3J_0      4      19961           19961            1000              1000   
+    3K_0      4      20188           20188            1000              1000   
+    3L_0      4      20012           20012            1000              1000   
     
           hetero_est  error_est  
-    1A_0    0.001866   0.000739  
-    1B_0    0.001988   0.000728  
-    1C_0    0.001833   0.000733  
-    1D_0    0.001719   0.000752  
-    2E_0    0.002034   0.000726  
-    2F_0    0.001866   0.000748  
-    2G_0    0.001899   0.000733  
-    2H_0    0.002261   0.000767  
-    3I_0    0.001886   0.000776  
-    3J_0    0.001718   0.000764  
-    3K_0    0.002046   0.000744  
-    3L_0    0.001796   0.000719  
+    1A_0    0.002191   0.000772  
+    1B_0    0.001878   0.000757  
+    1C_0    0.002235   0.000716  
+    1D_0    0.001855   0.000742  
+    2E_0    0.001822   0.000753  
+    2F_0    0.002052   0.000791  
+    2G_0    0.001889   0.000794  
+    2H_0    0.002191   0.000734  
+    3I_0    0.001855   0.000748  
+    3J_0    0.001686   0.000791  
+    3K_0    0.001797   0.000739  
+    3L_0    0.002000   0.000752  
     
     
     Full stats files
@@ -661,7 +671,7 @@ to be the real haplotypes at each locus within each sample.
 
 .. parsed-literal::
  --------------------------------------------------
-  ipyrad [v.0.2.0]
+  ipyrad [v.0.3.7]
   Interactive assembly and analysis of RADseq data
  --------------------------------------------------
   loading Assembly: iptest
@@ -669,9 +679,8 @@ to be the real haplotypes at each locus within each sample.
   ipyparallel setup: Local connection to 4 Engines
 
   Step5: Consensus base calling 
-  Diploid calls with paralog filter [max alleles = 2]
-  Mean error  [0.00074 sd=0.00002]
-  Mean hetero [0.00191 sd=0.00015]
+  Mean error  [0.00076 sd=0.00002]
+  Mean hetero [0.00195 sd=0.00018]
   [####################] 100%  consensus calling     | 0:00:28 
   Saving Assembly.
 
@@ -685,39 +694,39 @@ Again we can ask for the results:
 And here the important information is the number of ``reads_consens``. This is 
 the number of "good" reads within each sample that we'll send on to the next step.
 As you'll see in examples with empirical data, this is often a step where many
-reads are filtered out of the data set. If not data were filtered, then the 
+reads are filtered out of the data set. If no reads were filtered, then the 
 number of reads_consens should be equal to the number of clusters_hidepth.
 
 .. parsed-literal::
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      5      20144           20144            1000              1000
-    1B_0      5      20024           20024            1000              1000
-    1C_0      5      20055           20055            1000              1000
-    1D_0      5      19927           19927            1000              1000
-    2E_0      5      19936           19936            1000              1000
-    2F_0      5      20094           20094            1000              1000
-    2G_0      5      19930           19930            1000              1000
-    2H_0      5      20048           20048            1000              1000
-    3I_0      5      19952           19952            1000              1000
-    3J_0      5      20164           20164            1000              1000
-    3K_0      5      19993           19993            1000              1000
-    3L_0      5      20035           20035            1000              1000
+    1A_0      5      20046           20046            1000              1000   
+    1B_0      5      19932           19932            1000              1000   
+    1C_0      5      20007           20007            1000              1000   
+    1D_0      5      19946           19946            1000              1000   
+    2E_0      5      19839           19839            1000              1000   
+    2F_0      5      19950           19950            1000              1000   
+    2G_0      5      19844           19844            1000              1000   
+    2H_0      5      20102           20102            1000              1000   
+    3I_0      5      20061           20061            1000              1000   
+    3J_0      5      19961           19961            1000              1000   
+    3K_0      5      20188           20188            1000              1000   
+    3L_0      5      20012           20012            1000              1000   
     
           hetero_est  error_est  reads_consens  
-    1A_0    0.001866   0.000739           1000  
-    1B_0    0.001988   0.000728           1000  
-    1C_0    0.001833   0.000733           1000  
-    1D_0    0.001719   0.000752           1000  
-    2E_0    0.002034   0.000726           1000  
-    2F_0    0.001866   0.000748           1000  
-    2G_0    0.001899   0.000733           1000  
-    2H_0    0.002261   0.000767           1000  
-    3I_0    0.001886   0.000776           1000  
-    3J_0    0.001718   0.000764           1000  
-    3K_0    0.002046   0.000744           1000  
-    3L_0    0.001796   0.000719           1000  
+    1A_0    0.002191   0.000772           1000  
+    1B_0    0.001878   0.000757           1000  
+    1C_0    0.002235   0.000716           1000  
+    1D_0    0.001855   0.000742           1000  
+    2E_0    0.001822   0.000753           1000  
+    2F_0    0.002052   0.000791           1000  
+    2G_0    0.001889   0.000794           1000  
+    2H_0    0.002191   0.000734           1000  
+    3I_0    0.001855   0.000748           1000  
+    3J_0    0.001686   0.000791           1000  
+    3K_0    0.001797   0.000739           1000  
+    3L_0    0.002000   0.000752           1000 
     
     
     Full stats files
@@ -745,7 +754,7 @@ same locus, based on sequence similarity.
 
 .. parsed-literal::
   --------------------------------------------------
-   ipyrad [v.0.2.0]
+   ipyrad [v.0.3.7]
    Interactive assembly and analysis of RADseq data
   --------------------------------------------------
    loading Assembly: iptest
@@ -764,12 +773,15 @@ same locus, based on sequence similarity.
 This step differs from previous steps in that we are no longer applying a
 function to each Sample individually, but instead we apply it to all
 Samples collectively. Our end result is a map telling us which loci cluster 
-together from which Samples. This output is stored as an HDF5 data base 
+together from which Samples. This output is stored as an HDF5 database 
 (``iptest_test.hdf5``), which is not easily human readable. It contains 
 the clustered sequence data, depth information, phased alleles, and 
-other metadata. If you really want to see the contents of the data base
+other metadata. If you really want to see the contents of the database
 see the h5py_ cookbook recipe. 
 
+There is no simple way to summarize the outcome of step 6, so the output
+of `ipyrad -p params-iptest -r` and the content of the 
+`./iptest_consens/s6_cluster_stats.txt` stats file are uniquely uninteresting.
 
 Step 7: Filter and write output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
