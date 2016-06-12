@@ -67,6 +67,14 @@ matching barcodes to sample IDs.
 
 Input files
 ~~~~~~~~~~~
+
+.. note:: 
+    If you have **multiple plates** of data or if your data was already
+    demultiplexed when you received it, we still recommend you complete
+    the intro tutorial with the simulated data, but then see 
+    advanced_input_datasets_ for specific instructions on how to read
+    in previously demultiplexed samples 
+
 Before we get started let's take a look at what the raw data looks like. Your 
 input data will be in fastQ format, usually ending in ``.fq``, ``.fastq``,
 ``.fq.gz``, or ``.fastq.gz``. It can be split among multiple files, or all 
@@ -90,18 +98,18 @@ Below are the first three reads in the example file.
 And here's the output:
 
 .. parsed-literal::
-    @lane1_fakedata0_R1_0 1:N:0:
-    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
+    @lane1_locus0_2G_0_R1_0 1:N:0:
+    GAGGAGTGCAGCCCCTATGTGTCCGGCACCCCAACGCCTTGGAACTCAGTTAACTGTTCAAGTTGGGCAAGATCAAGTCGTCCCCTTAGCCCCCGCTCCG
     +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-    @lane1_fakedata0_R1_1 1:N:0:
-    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    @lane1_locus0_2G_0_R1_1 1:N:0:
+    GAGGAGTGCAGCCCCTATGTGTCCGGCACCCCAACGCCTTGGAACTCAGTTAACTGTTCAAGTTGGGCAAGATCAAGTCGTCCCCTTAGCCCCCGCTCCG
     +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-    @lane1_fakedata0_R1_2 1:N:0:
-    TTTTAATGCAGTGAGTGGCCATGCAATATATATTTACGGGCGCATAGAGACCCTCAAGACTGCCAACCGGGTGAATCACTATTTGCTTAG
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    @lane1_locus0_2G_0_R1_2 1:N:0:
+    GAGGAGTGCAGCCCCTATGTGTCCGGCACCCCAACGCCTTGGAACTCAGTTAACTGTTCAAGTTGGGCAAGATCAAGTCGTCCCCTTAGCCCCCGCTCCG
     +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
 
 
 Each read takes four lines. The first is the name of the read (its 
@@ -127,16 +135,15 @@ separate line with a tab between them.
     1A_0    CATCAT
     1B_0    AGTGAT
     1C_0    ATGGTA
-    1D_0    GTGGGA
-    2E_0    AGGGAA
-    2F_0    AAAGTG
-    2G_0    GATATA
-    2H_0    GAGGAG
-    3I_0    GGGATT
-    3J_0    TAATTA
-    3K_0    TGAGGG
-    3L_0    ATATTA
-
+    1D_0    GTAGGA
+    2E_0    AAAGTG
+    2F_0    GATATA
+    2G_0    GAGGAG
+    2H_0    GGGATT
+    3I_0    TAATTA
+    3J_0    TGAGGG
+    3K_0    TGTAGT
+    3L_0    GTGTGT
 
 
 Create an ipyrad params file
@@ -169,7 +176,7 @@ use any text editor you like).
 
 
 .. parsed-literal::
-    ------ ipyrad params file (v.0.2.0)---------------------------------------------
+    ------- ipyrad params file (v.0.3.7)---------------------------------------------
     iptest                         ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
     ./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
                                    ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
@@ -199,8 +206,6 @@ use any text editor you like).
     1, 2, 2, 1                     ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
     *                              ## [27] [output_formats]: Output formats (see docs)
                                    ## [28] [pop_assign_file]: Path to population assignment file
-                                   ## [29] [excludes]: Samples to be excluded from final output files
-                                   ## [30] [outgroups]: Outgroup individuals. Excluded from final output
 
 
 In general the default parameter values are sensible, and we won't 
@@ -208,10 +213,12 @@ mess with them for now, but there are a few parameters we *must* change.
 We need to set the path to the raw data we want to analyse, and we need 
 to set the path to the barcodes file.
 
-In your favorite text editor open ``params-iptest.txt`` and change these two lines
-to look like this, and then save it. Be careful of typos, if you enter the path
-incorrectly ipyrad will raise an error and tell you that it can't find your 
-data files:
+In your favorite text editor (`nano` is a popular command line editor for linux,
+for Mac you can use `TextEdit`) open ``params-iptest.txt`` and change these two 
+lines to look like this, and then save it. If you use a GUI editor be sure the file
+saves as plain '.txt', no fancy business (e.g. .docx or .rtf). Also, be careful of 
+typos, if you enter the paths incorrectly ipyrad will raise an error and 
+tell you that it can't find your data files:
 
 .. parsed-literal::
     ./ipsimdata/rad_example_R1_.fastq.gz       ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
@@ -228,6 +235,8 @@ called ``iptest_fastqs/``. Inside this directory will be individual
 fastq.gz files for each sample.
 
 .. note:: 
+    **tldr; Please do not move or rename directories that ipyrad creates
+    or your assembly will break.**
 
     You'll notice the name of this output directory bears a strong
     resemblence to the name of the assembly we chose at the time
