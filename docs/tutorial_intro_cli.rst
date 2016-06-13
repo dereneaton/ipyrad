@@ -432,10 +432,10 @@ Step 3: clustering within-samples
 .. note:: 
     A note on performance expectations. Steps 3 and 6 are the 
     "clustering" steps. These are by far the most intensive steps
-    and on real data you should expect each of these to take 
-    several days. Here on the toy data it will take minutes.
-    The rest of the steps are quite fast by comparison. See the
-    :ref:`performance expectations <performance>` docs for more specifics.
+    and on real data you should expect them to take quite a bit
+    longer than the other steps. Here on the toy data it will take 
+    a few minutes. See the :ref:`performance expectations <performance>`
+    docs for more specifics.
 
 Step 3 de-replicates and then clusters reads within each sample 
 by the set clustering threshold and then writes the clusters to new 
