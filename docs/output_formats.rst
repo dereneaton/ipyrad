@@ -1,6 +1,6 @@
 .. include:: global.rst  
 
-.. _output_formats:
+.. _full_output_formats:
 
 
 Output Formats
