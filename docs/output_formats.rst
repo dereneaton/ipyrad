@@ -19,9 +19,19 @@ run more easily. However, we provide a suite of examples in the form of
 .. note::
 For all paired-end datatypes the output will be very simila
 
+Variant Call Format \*.vcf
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-\*.loci
-^^^^^^
+.. parsed-literal::
+
+    #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  1A_0    1B_0    1C_0    1D_0    2E_0    2F_0    2G_0    2H_0    3I_0    3J_0    3K_0    3L_0
+    RAD_0_  0       .       G       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,0,19    0/0:0,0,0,22    0/0:0,0,0,20    0/0:0,0,0,19    0/0:0,0,0,18    0/0:0,0,0,22    0/0:0,0,0,20    0/0:0,0,0,21    0/0:0,0,0,15    0/0:0,0,0,14    0/0:0,0,0,24    0/0:0,0,0,21
+    RAD_0_  1       .       T       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,19,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,19,0    0/0:0,0,18,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,21,0    0/0:0,0,15,0    0/0:0,0,14,0    0/0:0,0,24,0    0/0:0,0,21,0
+    RAD_0_  2       .       T       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,19,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,19,0    0/0:0,0,18,0    0/0:0,0,22,0    0/0:0,0,19,1    0/0:0,0,21,0    0/0:0,0,15,0    0/0:0,0,14,0    0/0:0,0,24,0    0/0:0,0,21,0
+
+
+ipyrad format \*.loci
+^^^^^^^^^^^^^^^^^^^^^
 This is a custom format that is easy to read, showing each individual locus 
 with variable sites indicated. Custom scripts can easily parse this file for 
 loci containing certain amounts of taxon coverage or variable sites. Also it 
