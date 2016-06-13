@@ -100,85 +100,82 @@ of this the output is truncated here for clarity (indicated by the ellipses).
 
 .. parsed-literal::
 
-12 89023
-1A_0     GTTATCCGTAGCGATTATCACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
-1B_0     GTTATCCGTAGCGATTATCACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
-1C_0     GTTATCCGTAGCGATTATTACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
-1D_0     GTTATCCGTAGCGATTATCACCTCAGTTAKATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGGCGGACGCAGCTAGTCACAGCTCTGTTACATRCATCTGTCCATACTCCCTGGTTCGTAATCAT...
+    12 89023
+    1A_0     GTTATCCGTAGCGATTATCACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
+    1B_0     GTTATCCGTAGCGATTATCACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
+    1C_0     GTTATCCGTAGCGATTATTACCTCAGTAAGATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGTCGGACGCAGCTAGTCACAGCTCTGTTACATGCATCTGTCCATACTCCCTGGTTCGCAATAAT...
+    1D_0     GTTATCCGTAGCGATTATCACCTCAGTTAKATAAACCCATGGATAACGGGGGGGACAGCGCTAGATTGTTGGGGCGGACGCAGCTAGTCACAGCTCTGTTACATRCATCTGTCCATACTCCCTGGTTCGTAATCAT...
 
 
-Plotting
-^^^^^^^^
-.. toctree::
-   :maxdepth: 2
-
-   plotting.rst
-
-
-Introgression analyses
-^^^^^^^^^^^^^^^^^^^^^^
-.. toctree::
-   :maxdepth: 2
-
-   dstats.rst
-
-
-Population genetic analyses
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. toctree::
-   :maxdepth: 2
-
-   popgen.rst
-
-
-SVD4tet -- species tree inference
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Infer species trees from quartets inferred from SNP data. The ipyrad.analysis
-module includes a native implementation of an SVDquartets method similar to 
-the one currently available in Paup*, based on the algorithm described by 
-:ref:`Chiffman and Kubatko (2014)<svdquartets>`. Our implementation 
-differs from theirs in a few ways, with the goal of making it easier
-to sample quartets efficiently over both small and very large trees (>200 tips). 
-The analysis can be massively parallelized using MPI, and it allows checkpointing
-so that analyses can be stopped and restarted at a later time, which should allow
-users to sample all possible quartets within reasonable time limits, 
-even when there are hundreds of millions of possible quartets. If the number 
-becomes too large, however, a random sampling scheme can be employed. 
-
-Other features include: using weighted quartets (see 
-:ref:`Avni et al. 2014<weighted_quartets>`)
-
-
-Instead of the code below and just link to the cookbook recipe for this.
-
-
-First launch parallel engines using ipcluster as described in the 
-`running the ipyrad API in parallel` section. 
-
-
-.. code-block:: python
-
-    import ipyrad as ip
-    import ipyrad.analysis as ipa
-
-    ## load your assembled data set
-    data = ip.load_json("project_dir/my_assembly.json")
-
-    ## start sampling quartets, it will print to screen the 
-    ## number of possible quartets. 
-    ipa.svd4tet(data, useweights=False)
-
-
+\*.snps.phy & \*.u.snps.phy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Additionally we provide a two different PHYLIP formatted version that 
+include only variable sites (SNPs). Paired loci are treated as a single 
+locus, meaning SNPs from the two reads are not separated in this file 
+(they're linked). The ``*.snps.phy`` file contains all SNPs from all
+loci concatenated together, with missing values filled by ``N``'s. The
+``*.u.snps.phy`` contains one SNP sampled from each locus. If multiple 
+SNPs in a locus, SNP sites that contain the least missing data across 
+taxa are sampled, if equal amounts of missing data, they are randomly 
+sampled. The header indicates this file contains 12 samples and 990 
+bases per sample. The output below is truncated for clarity.
 
 .. parsed-literal::
 
-    Running svd4tet on 20 cores. Estimating 495 quartets for 12 Samples. 
+    12 990
+    1A_0     GAATGACATCCTCAAACACCCTGGATACGGACAACGAAATTGCACTCATCAGACAAAGAAATTACWGAGGAACCCATGAGAGACCGCCTYCARYA...
+    1B_0     GAAASRCATACTCAAACACCCTKGATACGGACAACGAAATTGCACTCATCAGACAAAGAAATTACAGAGGAACCCAAGAGAGACCGCCTTCAATA...
 
 
-Progress can be printed to screen, e.g.,
+EIGENSTRAT \*.geno & \*.u.geno
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This is a SNP based format. Each line corresponds to one snp with one column per
+sample. The value in the sample column indicates the number of copies of the 
+reference allele each individual has. 9 indicates missing data. Below you will
+see standard ``.geno`` output from the simulated data, so there are 12
+columns, one per sample. This format is used by EIGENSTRAT, SMARTPCA, and 
+ADMIXTURE, among other programs.
+
+There is an additional ``*.u.geno`` file output that includes only unlinked
+SNPS, with one SNP being randomly chosen per locus and the rest ignored.
 
 .. parsed-literal::
-    
-    1000/2000000 quartets finished.
+
+    222222222220
+    220202222222
+    000222222222
+    222122222222
+    222222222122
+    222022222222
+    222221222222
+    222222222220
+    222200022222
+    222122222222
+
+
+STRUCTURE \*.str & \*.u.str
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This is another SNP based format, that includes either all variable
+sites (``*.str``) or one randomly selected variable site per locus
+(``*.u.str``). These files are suitable input files for the population
+structure analysis program STRUCTURE, as well as a few others. The output
+below is truncated for clarity.
+
+.. parsed-literal::
+
+    1A_0                        3   3   0   2   2   1   2   2   2   2   3   3   0   1   3   1   3   0   ...
+    1A_0                        3   3   0   2   2   1   2   2   2   2   3   3   0   1   3   1   3   0   ...
+    1B_0                        3   3   0   2   2   1   2   2   2   2   3   3   0   1   3   1   3   0   ...
+    1B_0                        3   3   0   2   2   1   2   2   2   2   3   3   0   1   0   1   3   0   ...
+
+
+NEXUS \*.nex
+^^^^^^^^^^^^
+This is a nexus formatted data file which contains all of the loci from the .loci 
+file concatenated into a supermatrix, but printed in an interleaved format, with 
+missing data for any sample filled in with N's, and with data information appended 
+to the beginning. This format is used in BEAST among other phylogenetic programs.
+
+<TODO: Unimplemented>
 
 
