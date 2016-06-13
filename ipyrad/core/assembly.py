@@ -652,13 +652,7 @@ class Assembly(object):
             self = paramschecker(self, param, newvalue)
 
         except Exception as inst:
-            if ip.__interactive__:
-                raise IPyradError("""
-    Error setting parameter {}: 
-    Exception: {}. 
-    You entered: {}""".format(param, inst, newvalue))
-            else:
-                raise IPyradWarningExit("""
+            raise IPyradWarningExit("""
     Error setting parameter {}: {}. 
     You entered: {}""".format(param, inst, newvalue))
 
@@ -1156,7 +1150,7 @@ class Assembly(object):
                 iset = set([i.name for i in samples])
                 diff = iset.difference(dbset)
                 if diff:
-                    raise IPyradError("""
+                    raise IPyradWarningExit("""
     The following Samples do not appear to have been clustered in step6
     (i.e., they are not in {}): 
     Missing: {}
@@ -1175,7 +1169,8 @@ class Assembly(object):
                 raise IPyradWarningExit("""
     Output files already created for this Assembly in:
     {} 
-    To overwrite, rerun using the force argument.""".format(self.dirs.outfiles))
+    To overwrite, rerun using the force argument."""\
+    .format(os.path.join(self.dirs.project, self.name+"_outfiles")))
 
         ## Run step7
         assemble.write_outfiles.run(self, samples, force, ipyclient)
@@ -1379,20 +1374,26 @@ class Assembly(object):
         if ip.__interactive__:
             print("\n  Assembly: {}".format(self.name))
 
-        if '1' in steps:
-            self.step1(force=force, preview=preview)
-        if '2' in steps:
-            self.step2(force=force, preview=preview)
-        if '3' in steps:
-            self.step3(force=force, preview=preview)
-        if '4' in steps:
-            self.step4(force=force)
-        if '5' in steps:
-            self.step5(force=force)
-        if '6' in steps:
-            self.step6(force=force)            
-        if '7' in steps:
-            self.step7(force=force)
+        try:
+            if '1' in steps:
+                self.step1(force=force, preview=preview)
+            if '2' in steps:
+                self.step2(force=force, preview=preview)
+            if '3' in steps:
+                self.step3(force=force, preview=preview)
+            if '4' in steps:
+                self.step4(force=force)
+            if '5' in steps:
+                self.step5(force=force)
+            if '6' in steps:
+                self.step6(force=force)            
+            if '7' in steps:
+                self.step7(force=force)
+        finally:
+            ## save when finished if running API
+            if ip.__interactive__:
+                self.save()
+
 
 
 
