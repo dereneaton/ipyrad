@@ -38,9 +38,15 @@ class IPyradError(Exception):
         Exception.__init__(self, *args, **kwargs)
 
 class IPyradWarningExit(SystemExit):
-    """ Exception handler indicating error in during assembly """
+    """ 
+    Exception handler that does clean exit for CLI, but also prints
+    the traceback and cleaner message for API. 
+    """
     def __init__(self, *args, **kwargs):
-        SystemExit.__init__(self, *args, **kwargs)
+        if ipyrad.__interactive__:
+            raise IPyradError(*args, **kwargs)
+        else:
+            SystemExit.__init__(self, *args, **kwargs)
 
 
 

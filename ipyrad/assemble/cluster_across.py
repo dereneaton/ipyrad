@@ -7,6 +7,7 @@ from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=E1103
 # pylint: disable=W0212
+# pylint: disable=W0142
 # pylint: disable=C0301
 
 import os
@@ -16,6 +17,7 @@ import gzip
 import h5py
 import time
 import shutil
+import random
 import datetime
 import itertools
 import subprocess
@@ -259,7 +261,7 @@ def cluster(data, noreverse, ipyclient):
     """
 
     ## input and output file handles
-    cathaplos = os.path.join(data.dirs.consens, data.name+"_cathaps.tmp")
+    cathaplos = os.path.join(data.dirs.consens, data.name+"_catshuf.tmp")
     uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
     hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
     logfile = os.path.join(data.dirs.consens, "s6_cluster_stats.txt")
@@ -806,15 +808,21 @@ def build_reads_file(data):
     ## load full fasta file into a Dic
     LOGGER.info("loading full _catcons file into memory")
     conshandle = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
-    consdf = pd.read_table(conshandle, delim_whitespace=1, header=None)
+    consdf = pd.read_table(conshandle, delim_whitespace=1, 
+                           header=None, compression='gzip')
     printstring = "{:<%s}    {}" % max([len(i) for i in set(consdf[0])])
-    consdic = consdf.set_index(0)[1].to_dict()
-    del consdf
+    consdic = {i:j for i, j in \
+                    zip(\
+                        itertools.chain(*consdf[::2].values.tolist()), 
+                        itertools.chain(*consdf[1::2].values.tolist())
+                    )
+               }
 
     ## make an tmpout directory and a printstring for writing to file
     tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
     if not os.path.exists(tmpdir):
         os.mkdir(tmpdir)
+
     ## groupby index 1 (seeds) 
     groups = updf.groupby(by=1, sort=False)
 
@@ -879,84 +887,85 @@ def build_reads_file(data):
 ## This is slow currently, high memory, 
 def build_input_file(data, samples, outgroups, randomseed):
     """ 
-    Make a concatenated consens files to input to vsearch. 
+    Make a concatenated consens file with sampled alleles (no RSWYMK/rswymk). 
     Orders reads by length and shuffles randomly within length classes
     """
 
-    ##  make a copy list that will not have outgroups excluded
+    ## get all of the consens handles for samples that have consens reads
     conshandles = list(itertools.chain(*[samp.files.consens \
-                                         for samp in samples]))
-    ## remove outgroup sequences, add back in later to bottom after shuffling
-    ## outgroups could be put to end of sorted list
+                                         for samp in samples if \
+                                         samp.stats.reads_consens]))
     conshandles.sort()
     assert conshandles, "no consensus files found"
-                
-    ## output file for consens seqs from all taxa in consfiles list
+
+    ## concatenate all of the consens files
+    cmd = ['cat'] + glob.glob(os.path.join(data.dirs.consens, '*.consens.gz'))
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
+    with open(allcons, 'w') as output:
+        call = subprocess.Popen(cmd, stdout=output)
+        call.communicate()
+
+    ## a string of sed substitutions for temporarily replacing hetero sites    
+    subs = ["/>/!s/W/A/g", "/>/!s/w/A/g", "/>/!s/R/A/g", "/>/!s/r/A/g", 
+            "/>/!s/M/A/g", "/>/!s/m/A/g", "/>/!s/K/T/g", "/>/!s/k/T/g", 
+            "/>/!s/S/C/g", "/>/!s/s/C/g", "/>/!s/Y/C/g", "/>/!s/y/C/g"]
+    subs = ";".join(subs)
+
+    ## impute pseudo-haplo information to avoid mismatch at hetero sites
+    ## the read data with hetero sites is put back into clustered data later
+    cmd1 = ["gunzip", "-c", allcons]
+    cmd2 = ["sed", subs]
+
+    proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
+    proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
+
     allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
+    proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
+    allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
+    with open(allhaps, 'w') as output:
+        proc2 = proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
+        proc2.communicate()
+    proc1.stdout.close()
 
-    LOGGER.info("concatenating sequences into _catcons.tmp file")
-    ## combine cons files and write as pandas readable format to all file
-    ## this is the file that will be read in later to build clusters
-    printstr = "{:<%s}    {}" % 100   ## max len allowable name
-    with open(allcons, 'wb') as consout:
-        for qhandle in conshandles:
-            with gzip.open(qhandle, 'r') as tmpin:
-                dat = tmpin.readlines()
-                names = iter(dat[::2])
-                seqs = iter(dat[1::2])
-                consout.write("".join(printstr.format(i.strip(), j) \
-                              for i, j in zip(names, seqs)))
+    ## now sort the file using vsearch
+    allsort = allcons.replace("_catcons.tmp", "_catsort.tmp")  
+    cmd1 = ["vsearch", "--sortbylength", allhaps, 
+            "--fasta_width", "0", "--output", allsort]
+    proc1 = subprocess.Popen(cmd1)
+    proc1.communicate()
 
-    start = time.time()
-    LOGGER.info("sorting sequences into len classes")
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 1, 
-        " concat/shuf input     | {}".format(elapsed))
-
-    ## read back in cons as a data frame
-    consdat = pd.read_table(allcons, delim_whitespace=1, header=None)
-    ## make a new column with seqlens and then groupby seqlens
-    consdat[2] = pd.Series([len(i) for i in consdat[1]], index=consdat.index)
-    lengroups = consdat.groupby(by=2)
-    lenclasses = sorted(set(consdat[2]), reverse=True)
-    nclasses = len(lenclasses)
+    ## shuffle sequences within size classes
+    allshuf = allcons.replace("_catcons.tmp", "_catshuf.tmp")      
+    outdat = open(allshuf, 'w')
+    indat = open(allsort, 'r')
+    idat = itertools.izip(iter(indat), iter(indat))
     done = 0
+    while not done:
+        ## grab 2-lines until they become shorter (unless there's only one)
+        chunk = [idat.next()]
+        oldlen = len(chunk[-1][-1])
+        while 1:
+            ## grab the data
+            try:
+                dat = idat.next()
+            except StopIteration:
+                done = 1
+                break
+            if len(dat[-1]) == oldlen:
+                chunk.append(dat)
+            else:
+                ## send the last chunk off to be processed
+                random.shuffle(chunk)
+                outdat.write("".join(itertools.chain(*chunk)))
+                ## start new chunk
+                chunk = [idat.next()]
+                break
+    ## do the last chunk
+    outdat.write("".join(itertools.chain(*chunk)))
+    indat.close()
+    outdat.close()
 
-    np.random.seed(randomseed)
-    LOGGER.info("shuffling sequences within len classes & sampling alleles")
-
-    ## write all cons in pandas readable format
-    for lenc in lenclasses:
-        done += 1
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(nclasses, done,  
-        " concat/shuf input     | {}".format(elapsed))
-
-        group = lengroups.get_group(lenc)
-        ## shuffle the subgroup
-        shuf = group.reindex(np.random.permutation(group.index))
-        ## convert ambiguity codes into a sampled haplotype for any sample
-        ## to use for clustering, but ambiguities are still saved in allcons
-        writinghaplos = []
-        for idx, ind in enumerate(shuf.index):
-            ## append to list
-            writinghaplos.append("\n".join([shuf[0][ind], 
-                                            splitalleles(shuf[1][ind])[0]]))
-            ## write and reset
-            if not idx % 1000:
-                allhaps.write("\n".join(writinghaplos)+"\n")
-                writinghaplos = []
-        ## write final chunk
-        allhaps.write("\n".join(writinghaplos)+"\n")
-    allhaps.close()
-
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 20,
-        " concat/shuf input     | {}".format(elapsed))
-    #if data._headers:
-    print("")
-    LOGGER.info("sort/shuf/samp took %s seconds", int(time.time()-start))
+    sys.exit()
 
 
 
@@ -975,7 +984,24 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## to the end of the file
     outgroups = []
     LOGGER.info("creating input files")
-    build_input_file(data, samples, outgroups, randomseed)
+
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 1, 
+        " concat/shuffle input  | {}".format(elapsed))
+
+    lbview = ipyclient.load_balanced_view()
+    bl = lbview.apply(build_input_file, 
+                      *[data, samples, outgroups, randomseed])
+    while not bl.ready():
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(100, 0, 
+            " concat/shuffle input  | {}".format(elapsed))
+        time.sleep(0.5)
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 100, 
+        " concat/shuffle input  | {}".format(elapsed))
+    print("")
 
     ## call vsearch
     LOGGER.info("clustering")    
