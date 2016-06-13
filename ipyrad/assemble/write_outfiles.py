@@ -308,11 +308,13 @@ def filter_all_clusters(data, samples, ipyclient):
         tmphet = glob.glob(os.path.join(chunkdir, "hetf.*.npy"))
         tmpmin = glob.glob(os.path.join(chunkdir, "minf.*.npy"))
         tmpedg = glob.glob(os.path.join(chunkdir, "edgf.*.npy"))
+        tmppld = glob.glob(os.path.join(chunkdir, "pldf.*.npy"))        
 
         ## sort array files within each group
         arrdict = OrderedDict([
             ('snp', tmpsnp), ('het', tmphet),
-            ('min', tmpmin), ('edg', tmpedg)])
+            ('min', tmpmin), ('edg', tmpedg), 
+            ('pld', tmppld)])
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
@@ -322,7 +324,7 @@ def filter_all_clusters(data, samples, ipyclient):
         superfilter = np.zeros(io5["filters"].shape, io5["filters"].dtype)
         ## iterate across filter types (dups & indels are already filled)
         ## we have [4,4] b/c minf and edgf both write to minf
-        for fidx, ftype in zip([2, 3, 4, 4], arrdict.keys()):
+        for fidx, ftype in zip([2, 3, 4, 4, 5], arrdict.keys()):
             ## fill in the edgefilters
             for ffile in arrdict[ftype]:
                 ## grab a file and get it's slice            
@@ -338,6 +340,7 @@ def filter_all_clusters(data, samples, ipyclient):
         ## store the other arrayed values (edges, snps)
         edgarrs = glob.glob(os.path.join(chunkdir, "edgearr.*.npy"))
         snparrs = glob.glob(os.path.join(chunkdir, "snpsarr.*.npy"))
+      
         ## sort array files within each group
         arrdict = OrderedDict([('edges', edgarrs), ('snps', snparrs)])
         for arrglob in arrdict.values():
@@ -730,16 +733,19 @@ def filter_stacks(args):
     ## maxhets per site column from superseqs after trimming edges
     hetfilter = filter_maxhet(data, superseqs, edgearr)
 
-    LOGGER.info("edg %s", edgfilter.sum())
-    LOGGER.info("min %s", minfilter.sum())
-    LOGGER.info("het %s", hetfilter.sum())
+    ## ploidy filter
+    pldfilter = io5["nalleles"][hslice[0]:hslice[1]].max(axis=1) > \
+                                         data.paramsdict["max_alleles_consens"]
+
     ## Build the .loci snpstring as an array (snps) 
     ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
     snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
 
+    LOGGER.info("edg %s", edgfilter.sum())
+    LOGGER.info("min %s", minfilter.sum())
+    LOGGER.info("het %s", hetfilter.sum())
+    LOGGER.info("pld %s", pldfilter.sum())
     LOGGER.info("snp %s", snpfilter.sum())
-    #LOGGER.info("snpsarr = %s", snpsarr)
-
 
     ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
     chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
@@ -760,6 +766,10 @@ def filter_stacks(args):
     with open(handle, 'w') as out:
         np.save(out, snpfilter)
 
+    handle = os.path.join(chunkdir, "pldf.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, pldfilter)
+
     handle = os.path.join(chunkdir, "snpsarr.{}.npy".format(hslice[0]))
     with open(handle, 'w') as out:
         np.save(out, snpsarr)
@@ -767,6 +777,7 @@ def filter_stacks(args):
     handle = os.path.join(chunkdir, "edgearr.{}.npy".format(hslice[0]))
     with open(handle, 'w') as out:
         np.save(out, edgearr)
+
 
     io5.close()
     co5.close()
