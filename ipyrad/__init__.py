@@ -6,7 +6,7 @@ import atexit
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.3.6"
+__version__ = "0.3.7"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
@@ -61,13 +61,14 @@ def debug_on():
     ## make tmp file and set loglevel for top-level init
     with open(__debugflag__, 'w') as dfile:
         dfile.write("wat")
-    __loglevel__ == "INFO"
-    set_config()
+    __loglevel__ = "DEBUG"
+    _LOGGER.info("debugging turned on and registered to be turned off at exit")
+    _set_debug_dict(__loglevel__)
 
 
+def _set_debug_dict(__loglevel__):
+    """ set the debug dict """
 
-def set_config():
-    """ sets the logger config """
     _lconfig.dictConfig({
     'version': 1,              
     'disable_existing_loggers': False,  
@@ -99,17 +100,7 @@ def set_config():
     }
     })
 
-
-set_config()
-
-
-## Define the logger and test
-_LOGGER = _logging.getLogger(__name__)
-if __loglevel__ == "DEBUG":
-    _LOGGER.debug("Engine init: __loglevel__ = %s", __loglevel__)
-else:
-    _LOGGER.info("Engine init: __loglevel__ = %s", __loglevel__)
-
+_set_debug_dict(__loglevel__)
 
 
 def debug_off():

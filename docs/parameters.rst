@@ -435,8 +435,8 @@ Affected steps = 2. Example entries to params.txt
 -------------------------
 This is the maximum number of unique alleles allowed in consens reads after 
 accounting for sequencing errors. Default=2, which is fitting for diploids. 
-At this setting any cluster which has more than 2 alleles detected will be 
-excluded/filtered out. If set to max_alleles_consens = 1 (haploid) 
+At this setting any locus which has a sample with more than 2 alleles detected 
+will be  excluded/filtered out. If set to max_alleles_consens = 1 (haploid) 
 then error-rate and heterozygosity are estimated with H fixed to 0.0 in step 4, 
 and base calls are made with the estimated error rate, and any consensus reads
 with more than 1 allele present are excluded. 
@@ -444,7 +444,7 @@ If max_alleles_consens is set > 2 then more alleles are allowed, however,
 heterozygous base calls are still made under the assumption of diploidy 
 i.e., hetero allele frequency=50%. 
 
-Affected steps = 4, 5. Example entries to params.txt
+Affected steps = 4, 7. Example entries to params.txt
 
 .. parsed-literal::
 
@@ -599,7 +599,7 @@ Affected steps = 2. Example entries to params.txt
 27. output_formats
 -------------------
 Disk space is cheap, these are quick to make, so by default we make all 
-formats for now. More are coming. See output_formats_ section for 
+formats for now. More are coming. See :ref:`output formats<full_output_formats>` section for 
 descriptions of the available formats. 
 
 Affected steps = 7. Example entries to params.txt
