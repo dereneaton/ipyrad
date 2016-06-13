@@ -63,6 +63,7 @@ for line in fileinput.input(initfile, inplace=1):
 
 
 try:
+    subprocess.call(["git", "add", release_file])
     subprocess.call(["git", "add", initfile])
     subprocess.call(["git", "commit", "-m \"Updating ipyrad/__init__.py to "+\
                     "version - {}".format(version_git)])
