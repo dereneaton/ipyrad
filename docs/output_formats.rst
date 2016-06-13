@@ -5,22 +5,18 @@
 
 Output Formats
 ==============
+By default ipyrad will write out all output formats it is capable of 
+generating. Converting between the various formats is very fast, but
+if you want to save yourself the cpu and disk space, you can enable
+only specific output formats with the ``output_formats`` 
 
-ipyrad_ includes a suite of analysis tools for comparing and visualizing
-the size and completeness of assembled RAD-seq data sets, and also for 
-calculating population-genetic statistics or performing several comparative
-genomic analyses. These tools are in development and will be expanded with time.
-
-The analysis tools are accessed through the ipyrad_ Python API. Thus, a bit of 
-familiarity with Python programming will generally help to make these analyses
-run more easily. However, we provide a suite of examples in the form of 
-:ref:`cookcook recipes<cookbook_recipes>` which should make it easy to use.
-
-.. note::
-For all paired-end datatypes the output will be very simila
-
-Variant Call Format \*.vcf
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Variant Call Format \*.vcf.gz
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+VCF is a standard format for storing and manipulating sequence data. The
+format is too complicated to go into here, but you can see a good explanation
+on the :ref:`1000 Genomes Project<http://www.1000genomes.org/wiki/Analysis/Variant%20Call%20Format/vcf-variant-call-format-version-40>` site.
+The VCF format output by ipyrad includes full genotype information for all
+bases in all loci, including information about genotype quality.
 
 .. parsed-literal::
 
