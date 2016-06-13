@@ -217,7 +217,7 @@ used or required (\*) for step6:
 7. Filtering and formatting output files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step7 applies filters to the final alignments and saves the final data in a 
-number of possible :ref:`output formats<output_formats>`. This step is most 
+number of possible :ref:`output formats<full_output_formats>`. This step is most 
 often repeated at several different settings for the parameter 
 :ref:`min_samples_locus` to create different assemblies with different 
 proportions of missing data (see branching_workflow_). 

@@ -945,7 +945,8 @@ Each locus is delineated by a pair of forward slashes ``//``. Within each
 locus are all the reads from each sample that clustered together. The line
 containing the ``//`` also indicates the positions of SNPs in the sequence.
 See if you can spot the SNPs in the first locus. Many more output formats 
-are available. See the section on output_formats_ for more information. 
+are available. See the section on :ref:`output formats<full_output_formats>` 
+for more information. 
 
 .. code-block:: bash
 

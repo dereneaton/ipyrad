@@ -13,9 +13,9 @@ ipyrad_ is a toolbox for assembly and analysis of RAD-seq type genomic data sets
 Notably, it has four :ref:`assembly methods<assembly_methods>` 
 by which to assemble data: denovo, reference, 
 reference addition, and reference subtraction. Assembled data sets are created
-in variety of output_formats_, facilitating downstream genomic analyses for both 
-population genetic and phylogenetic studies. ipyrad_ also includes methods for 
-visualizing_ and analyzing_ data and results. 
+in variety of :ref:`output formats<full_output_formats>`, facilitating downstream 
+genomic analyses for both population genetic and phylogenetic studies. ipyrad_ 
+also includes methods for visualizing_ and analyzing_ data and results. 
 
 How is it different from pyrad?
 -------------------------------
