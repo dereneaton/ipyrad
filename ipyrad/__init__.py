@@ -6,7 +6,7 @@ import atexit
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.3.6"
+__version__ = "0.3.7"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
@@ -72,11 +72,10 @@ def debug_on():
         dfile.write("wat")
     __loglevel__ = "DEBUG"
     _LOGGER.info("debugging turned on and registered to be turned off at exit")
-    _set_debug_dict()
+    _set_debug_dict(__loglevel__)
 
 
-
-def _set_debug_dict():
+def _set_debug_dict(__loglevel__):
     """ set the debug dict """
 
     _lconfig.dictConfig({
@@ -110,8 +109,7 @@ def _set_debug_dict():
     }
     })
 
-
-_set_debug_dict()
+_set_debug_dict(__loglevel__)
 
 
 

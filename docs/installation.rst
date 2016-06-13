@@ -110,7 +110,7 @@ commands:
 
 .. code-block:: bash  
 
-    conda install -c ipyrad ipyrad=0.2.6     ## install specific version
+    conda install -c ipyrad ipyrad=0.3.5     ## install specific version
     conda update -c ipyrad ipyrad            ## update to the latest
 
 
