@@ -599,7 +599,7 @@ Affected steps = 2. Example entries to params.txt
 27. output_formats
 -------------------
 Disk space is cheap, these are quick to make, so by default we make all 
-formats for now. More are coming. See `output formats<output_formats>` section for 
+formats for now. More are coming. See :ref:`output formats<output_formats>` section for 
 descriptions of the available formats. 
 
 Affected steps = 7. Example entries to params.txt
