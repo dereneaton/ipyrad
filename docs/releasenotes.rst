@@ -5,6 +5,19 @@
 Release Notes
 =============
 
+0.3.10
+------
+- versioner now actually commits the releasenotes.rst
+
+0.3.9
+-----
+- Versioner now updates the docs/releasenotes.rst
+- cosmetic changes
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Eased back on the language in the performance expectations note
+- fixed all links to output formats file
+- blank page for recording different performance expectations
+
 0.3.5
 -----
 - Added `-m` flag to allow merging assemblies in the CLI
