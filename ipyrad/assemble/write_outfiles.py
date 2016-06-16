@@ -778,7 +778,6 @@ def filter_stacks(args):
     with open(handle, 'w') as out:
         np.save(out, edgearr)
 
-
     io5.close()
     co5.close()
 
