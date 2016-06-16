@@ -111,7 +111,17 @@ def muscle_align_across(args):
     with open(chunk, 'wb') as outfile:
         outfile.write("\n//\n//\n".join(out)+"\n")
 
-    return chunk, indels, loc+1
+    ## save indels array to tmp dir
+
+    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
+    ifile = os.path.join(tmpdir, chunk+".h5")
+    LOGGER.info('ifile is %s', ifile)    
+    iofile = h5py.File(ifile, 'w')
+    iofile.create_dataset('indels', data=indels)
+    iofile.close()
+    LOGGER.info(ifile, loc+1)
+
+    return ifile, loc+1
 
 
 
@@ -161,10 +171,13 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
 
         ## build indels array                
         indeltups = []
-        for idx in jobs:
+        keys = jobs.keys()
+        for idx in keys:
             #meta = jobs[idx].metadata
             if jobs[idx].completed and jobs[idx].successful():
                 indeltups.append(jobs[idx].get())
+            del jobs[idx]
+        ## submit to indel entry
         if indeltups:
             build(data, samples, indeltups, clustbits, allwait, fwait, start)
 
@@ -196,8 +209,10 @@ def build(data, samples, indeltups, clustbits, tots, done, oldstart):
     Both are tmpfiles used for filling the supercatg and superseqs arrays.
     NOT currently parallelizable
     """
+
+    LOGGER.info(indeltups)
     ## sort into input order by chunk names
-    indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
+    indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[-1][:-3]))
 
     ## get dims for full indel array
     maxlen = data._hackersonly["max_fragment_length"]
@@ -210,19 +225,26 @@ def build(data, samples, indeltups, clustbits, tots, done, oldstart):
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     io5 = h5py.File(ipath, 'w')
     iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
-                              dtype=np.bool,
-                              chunks=(1, data.nloci, maxlen),
-                              compression="gzip")
+                              dtype=np.bool)
+                              #chunks=(lendata.nloci, maxlen),
+                              #compression="gzip")
 
     ## again make sure names are ordered right
     samples.sort(key=lambda x: x.name)
 
     ## enter all tmpindel arrays into full indel array
     for tup in indeltups:
-        LOGGER.info('indeltups: %s, %s, %s', tup[0], tup[1].shape, tup[1].sum())
-        start = int(tup[0].rsplit("_", 1)[1])
-        for sidx, _ in enumerate(samples):
-            iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
+        #LOGGER.info('indeltups: %s, %s, %s', tup[0], tup[1].shape, tup[1].sum())
+        LOGGER.info('indeltups: %s, %s', tup[0], tup[1])
+        start = int(tup[0].rsplit("_", 1)[-1][:-3])
+        LOGGER.info('start %s', start)
+
+        ioinds = h5py.File(tup[0], 'r')
+        iset[:, start:start+tup[1], :] += ioinds['indels'][:] #tup[1][:, ...]        
+        LOGGER.info('added')
+        ioinds.close()
+        #for sidx, _ in enumerate(samples):
+        #    iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
 
         ## continued progress bar from multi_muscle_align
         done += 1
@@ -239,7 +261,6 @@ def build(data, samples, indeltups, clustbits, tots, done, oldstart):
 
 
 
-## Really want to figure out how to add a progress bar to this...
 def cluster(data, noreverse, ipyclient):
     """ 
     Calls vsearch for clustering across samples. 
@@ -367,7 +388,6 @@ def build_h5_array(data, samples, ipyclient):
     io5 = h5py.File(data.clust_database, 'w')
 
     ## choose chunk optim size
-    LOGGER.info("data.loci is %s", data.nloci)
     chunks = 100
     if data.nloci < 100:
         chunks = data.nloci
@@ -377,7 +397,9 @@ def build_h5_array(data, samples, ipyclient):
         chunks = 2000
     if data.nloci > 500000:
         chunks = 5000
-    LOGGER.info("chunks is %s", chunks)
+    data.chunks = chunks
+    LOGGER.info("data.nloci is %s", data.nloci)
+    LOGGER.info("chunks is %s", data.chunks)
 
     # ## very big data set
     # if (data.nloci > 100000) and len(data.samples.keys()) > 100:
@@ -385,7 +407,7 @@ def build_h5_array(data, samples, ipyclient):
     # ## very very big data set
     # if (data.nloci > 100000) and len(data.samples.keys()) > 200:
     #     chunks = 100
-    data.chunks = chunks
+
 
     ### Warning: for some reason increasing the chunk size to 5000 
     ### caused enormous problems in step7. Not sure why. hdf5 inflate error. 
@@ -896,7 +918,15 @@ def build_reads_file(data, ipyclient):
     groups = updf.groupby(by=1, sort=False)
 
     ## a chunker for writing every N
-    optim = 1000
+    optim = 100
+    if len(groups) < 100:
+        optim = len(groups)
+    if len(groups) > 10000:
+        optim = 1000
+    if len(groups) > 200000:
+        optim = 2000
+    if len(groups) > 500000:
+        optim = 5000
     #if len(groups) > 2000:
     #    optim = len(groups) // 10
 
