@@ -1058,21 +1058,21 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     start = time.time()
     
     # make file with all samples reads    
-    binput = lbview.apply(build_input_file, *[data, samples, randomseed])
-    while not binput.ready():
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 0, 
-            " concat/shuffle input  | {}".format(elapsed))
-        time.sleep(0.5)
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, 
-        " concat/shuffle input  | {}".format(elapsed))
-    print("")
+    # binput = lbview.apply(build_input_file, *[data, samples, randomseed])
+    # while not binput.ready():
+    #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    #     progressbar(100, 0, 
+    #         " concat/shuffle input  | {}".format(elapsed))
+    #     time.sleep(0.5)
+    # elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    # progressbar(100, 100, 
+    #     " concat/shuffle input  | {}".format(elapsed))
+    # print("")
 
-    ## call vsearch
-    #cluster(data, noreverse, ipyclient)
+    # ## call vsearch
+    # #cluster(data, noreverse, ipyclient)
 
-    # # build consens clusters and returns chunk handles to be aligned
+    # # # build consens clusters and returns chunk handles to be aligned
     clustbits, nloci = build_reads_file(data, ipyclient)
     data.nloci = nloci
 
