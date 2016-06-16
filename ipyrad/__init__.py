@@ -52,6 +52,10 @@ import subprocess as _subprocess
 import sys as _sys
 
 
+_LOGGER = _logging.getLogger(__name__)
+if __loglevel__ == "DEBUG":
+    _LOGGER.debug("Engine init")
+
 
 def debug_on():
     """ 
@@ -64,6 +68,7 @@ def debug_on():
     __loglevel__ = "DEBUG"
     _LOGGER.info("debugging turned on and registered to be turned off at exit")
     _set_debug_dict(__loglevel__)
+
 
 
 def _set_debug_dict(__loglevel__):

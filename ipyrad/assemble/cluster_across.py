@@ -337,6 +337,21 @@ def build_h5_array(data, samples, ipyclient):
     ## sort to ensure samples will be in alphabetical order, tho they should be.
     samples.sort(key=lambda x: x.name)
 
+    #############################tempororary
+    uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
+    updf = pd.read_table(uhandle, header=None)
+    ## add name and index columns to dataframe
+    updf.loc[:, 3] = [i.rsplit("_", 1)[0] for i in updf[0]]
+    ## create a column with only consens index
+    updf.loc[:, 4] = [i.rsplit("_", 1)[1] for i in updf[0]]
+    ## group by seed
+    udic = updf.groupby(by=1, sort=True)
+    ## get number of clusters
+    data.nloci = sum(1 for _ in udic.groups.iterkeys())
+    del updf, udic
+    ################################
+
+
     ## get maxlen dim
     maxlen = data._hackersonly["max_fragment_length"]
     if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
@@ -353,8 +368,13 @@ def build_h5_array(data, samples, ipyclient):
         chunks = data.nloci
     if data.nloci > 5000:
         chunks = 1000
-    ### hmm, maybe we need to some kind of memory management here to make
-    ### sure the chunks x nprocessors doesn't overload memory in singlecat...
+    # ## very big data set
+    # if (data.nloci > 100000) and len(data.samples.keys()) > 100:
+    #     chunks = 200
+    # ## very very big data set
+    # if (data.nloci > 100000) and len(data.samples.keys()) > 200:
+    #     chunks = 100
+    data.chunks = chunks
 
     ### Warning: for some reason increasing the chunk size to 5000 
     ### caused enormous problems in step7. Not sure why. hdf5 inflate error. 
@@ -421,78 +441,114 @@ def multicat(data, samples, ipyclient):
     submitted_args = []
     for sidx, sample in enumerate(samples):
         submitted_args.append([data, sample, sidx])
+    sargs = iter(submitted_args)
 
     ## create parallel client
     lbview = ipyclient.load_balanced_view()
 
     ## submit initial nproc jobs
-    LOGGER.info("submitting singlecat jobs")
     jobs = {}
-    for args in submitted_args:
-        jobs[args[1].name] = lbview.apply(singlecat, args)
+    for i in range(data.cpus):
+        try:
+            args = sargs.next()
+            jobs[args[1].name] = lbview.apply(singlecat, args)
+            LOGGER.info("submitting %s to singlecat", args[1].name)
+        except StopIteration:
+            pass
 
     ## set wait job until all finished. 
-    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1)
+    start = time.time()
+    ## create an empty job to queue up cleaning
+    async = lbview.apply(time.sleep, 0.01)
+    cleaning = [async]
 
-    try:
-        allwait = len(jobs)
-        while 1:
-            if not res.ready():
-                fwait = sum([i.ready() for i in jobs.values()])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(allwait, fwait, 
-                            " ordering clusters     | {}".format(elapsed))
-                time.sleep(1)
-            else:
-                ## print final statement
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, 
+    allwait = len(submitted_args)
+    fwait = 0
+    while 1:
+        ## if any jobs have finished then do a process
+        finished = [i.ready() for i in jobs.values()]
+
+        elapsed = datetime.timedelta(seconds=int(time.time() - start))
+        progressbar(allwait, fwait, 
                     " ordering clusters     | {}".format(elapsed))
-                #if data._headers:
-                print("")
-                break
 
-    except (KeyboardInterrupt, SystemExit):
-        print('\n  Interrupted! Cleaning up... ')
-    
-    finally:
-        start = time.time()
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(20, 0, " building database     | {}".format(elapsed))
-        done = 0
+        if any(finished):
+            ## clear job memory
+            snames = jobs.keys()
+            for sname in snames:
+                if jobs[sname].completed and jobs[sname].successful():
+                    fwait += 1
 
-        for sname in jobs:
-            ## grab metadata
-            meta = jobs[sname].metadata
+                    ## submit a clean up job. Can't start til after last one
+                    with lbview.temp_flags(after=cleaning[-1]):
+                        cleaning.append(lbview.apply(insert_and_cleanup, 
+                                                 *[data, sname]))
 
-            ## do this if success
-            if jobs[sname].completed and jobs[sname].successful():
+                    ## purge memory of the old one
+                    del jobs[sname]                    
 
-                ## get the results
-                insert_and_cleanup(data, sname)
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(len(jobs), done, 
-                    " building database     | {}".format(elapsed))
-                done += 1
+                    ## submit a new sample to singlecat
+                    try:
+                        args = sargs.next()
+                        jobs[args[1].name] = lbview.apply(singlecat, args)
+                        LOGGER.info("submitting %s to singlecat", args[1].name)
+                    except StopIteration:
+                        pass
 
-            ## if not done do nothing, if failure print error
-            else:
-                LOGGER.error('  sample %s did not finish', sname)
-                if meta.error:
-                    LOGGER.error("""\
+                else:
+                    meta = jobs[sname].metadata
+                    if meta.error:
+                        LOGGER.error('  sample %s did not finish', sname)
+                        LOGGER.error("""\
                 stdout: %s
                 stderr: %s 
                 error: %s""", meta.stdout, meta.stderr, meta.error)
+                    del jobs[sname]
+
+
+        elif all(finished):
+            break
+
+        else:
+            ## print progress
+            elapsed = datetime.timedelta(seconds=int(time.time() - start))
+            progressbar(allwait, fwait, 
+                        " ordering clusters     | {}".format(elapsed))
+            time.sleep(0.1)
+
+
+    ## print final progress
+    elapsed = datetime.timedelta(seconds=int(time.time() - start))
+    progressbar(20, 20,
+        " ordering clusters     | {}".format(elapsed))
+    print("")
+
+
+    ## check each sample for success and enter into full DB
+    start = time.time()
+    tots = len(cleaning)
+    done = sum([i.ready() for i in cleaning])            
+
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(tots, done, " building database     | {}".format(elapsed))
+
+    while 1:
+        done = sum([i.ready() for i in cleaning])        
+        ## get the results
+        #insert_and_cleanup(data, sample.name)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(jobs), done, 
-        " building database     | {}".format(elapsed))
-        #if data._headers:
-        print("")
+        progressbar(tots, done,
+            " building database     | {}".format(elapsed))
+        if done == tots:
+            break
+        else:
+            time.sleep(0.1)
+    print("")
 
     ## remove indels array
-    os.remove(os.path.join(data.dirs.consens, data.name+".indels"))
+    ifile = os.path.join(data.dirs.consens, data.name+".indels")
+    #if os.path.exists(ifile):
+    #    os.remove(ifile)
 
 
 
@@ -520,7 +576,7 @@ def insert_and_cleanup(data, sname):
     ## FILL SUPERCATG -- catg is chunked by nchunk loci
     chunk = catg.attrs["chunksize"]
     for chu in xrange(0, catg.shape[0], chunk):
-        catg[chu:chu+chunk, sidx, ...] += icatg[chu:chu+chunk]
+        catg[chu:chu+chunk, sidx, ] += icatg[chu:chu+chunk]
 
     ## FILL allelic information here.
     for chu in xrange(0, catg.shape[0], chunk):
@@ -587,30 +643,32 @@ def singlecat(args):
 
     ## get catg and nalleles from step5. the shape of catg: (nconsens, maxlen)
     old_h5 = h5py.File(sample.files.database, 'r')
-    catarr = old_h5["catg"][:]
-    nall = old_h5["nalleles"][:]
+    catarr = old_h5["catg"]    #[:]
+    nall = old_h5["nalleles"]  #[:]
+    chunksize = data.chunks
 
     ## local filters to fill while filling catg array
     dfilter = np.zeros(nloci, dtype=np.bool)
     ifilter = np.zeros(nloci, dtype=np.uint16)
 
     ## create a local array to fill until writing to disk for write efficiency
-    locatg = np.zeros((1000, maxlen, 4), dtype=np.uint32)
-    lonall = np.zeros((1000,), dtype=np.uint8)
+    locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
+    lonall = np.zeros((chunksize,), dtype=np.uint8)
 
+    LOGGER.info("filling catg")
     step = iloc = 0
     for iloc, seed in enumerate(udic.groups.iterkeys()):
         ipdf = udic.get_group(seed)
         ask = ipdf.where(ipdf[3] == sample.name).dropna()
 
         ## write to disk after 1000 writes
-        if not iloc % 1000:
+        if not iloc % chunksize:
             icatg[step:iloc] = locatg[:]
             inall[step:iloc] = lonall[:]
             ## reset
             step = iloc
-            locatg = np.zeros((1000, maxlen, 4), dtype=np.uint32)
-            lonall = np.zeros((1000,), dtype=np.uint8)
+            locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
+            lonall = np.zeros((chunksize,), dtype=np.uint8)
 
         ## fill local array one at a time
         if ask.shape[0] == 1: 
@@ -628,6 +686,12 @@ def singlecat(args):
     icatg[step:iloc] = locatg[:icatg[step:iloc].shape[0]]
     inall[step:iloc] = lonall[:inall[step:iloc].shape[0]]    
 
+    ## store dfilter and clear memory
+    smp5.create_dataset("dfilter", data=dfilter)
+    del locatg
+    del lonall
+
+    LOGGER.info("filling seeds")
     ## for each locus in which Sample was the seed. This writes quite a bit
     ## slower than the local setting
     seedmatch1 = (sample.name in i for i in udic.groups.keys())
@@ -642,21 +706,19 @@ def singlecat(args):
     ## close the old hdf5 connections
     old_h5.close()
 
+    ## clear memory for hit map
+    del udic
+    del updf
+
     ## get indel locations for this sample
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     indh5 = h5py.File(ipath, 'r')
 
-    # LOGGER.info("""
-    #     sidx %s,
-    #     indh5["indels"].shape %s,
-    #     indh5["indels"][sidx, :, :].shape %s
-    #     """, sidx, indh5["indels"].shape, indh5["indels"][sidx, :, :].shape)
-
-    with h5py.File(ipath, 'r') as indh5:
-        indels = indh5["indels"][sidx, :, :]
+    indh5 = h5py.File(ipath, 'r')# as indh5:
+    indels = indh5["indels"][sidx, :, :]
+    #    indels = indh5["indels"][sidx, :, :]
 
     LOGGER.info("loading indels for %s %s, %s", sample.name, sidx, np.sum(indels[:10]))
-
     ## insert indels into new_h5 (icatg array) which now has loci in the same
     ## order as the final clusters from the utemp file
     for iloc in xrange(icatg.shape[0]):
@@ -679,9 +741,13 @@ def singlecat(args):
 
     ## put filteres into h5 object
     smp5.create_dataset("ifilter", data=ifilter)
-    smp5.create_dataset("dfilter", data=dfilter)
+
     ## close the new h5 that was written to
     smp5.close()
+    indh5.close()
+
+    ## clear memory
+    del indels
 
     ## return name for
     return sample.name
@@ -718,7 +784,7 @@ def fill_superseqs(data, samples):
     cloc = 0
     chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
     chunkedge = np.zeros((chunksize), dtype=np.uint16)
-    #LOGGER.info("chunkseqs is %s", chunkseqs.shape)
+
     while 1:
         try:
             done, chunk = clustdealer(pairdealer, 1)
@@ -776,13 +842,22 @@ def fill_superseqs(data, samples):
 
 
 
-## TODO: This could use a progress bar, and to be parallelized, maybe.
-def build_reads_file(data):
+## TODO: This could use to be parallelized...
+def build_reads_file(data, ipyclient):
     """ 
     Reconstitutes clusters from .utemp and htemp files and writes them 
     to chunked files for aligning in muscle. Return a dictionary with 
     seed:hits info from utemp file.
     """
+    ## parallel client
+    ## TODO, THIS CAN BE PARALLELIZED; just split it into chunks of seeds    
+    lbview = ipyclient.load_balanced_view()
+    start = time.time()
+
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 0,
+        " building clusters     | {}".format(elapsed))
+
 
     LOGGER.info("building reads file -- loading utemp file into mem")
     ## read in cluster hits as pandas data frame
@@ -812,8 +887,8 @@ def build_reads_file(data):
 
     ## a chunker for writing every N
     optim = 100
-    if len(groups) > 2000:
-        optim = len(groups) // 10
+    #if len(groups) > 2000:
+    #    optim = len(groups) // 10
 
     ## get seqs back from consdic
     clustbits = []
@@ -821,6 +896,8 @@ def build_reads_file(data):
     loci = 0
 
     LOGGER.info("building reads file -- loading building loci")
+    tots = len(set(updf[1].values))
+
     ## iterate over seeds and add in hits seqs
     for seed in set(updf[1].values):
         ## get dataframe for this locus/group (gdf) 
@@ -844,6 +921,11 @@ def build_reads_file(data):
                         for i, j in zip(names, seqs)]))
         loci += 1
 
+        ## print progress
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(tots, loci,
+            " building clusters     | {}".format(elapsed))
+
         ## if enough loci have finished write to file to clear the mem
         if not loci % optim:
             ## a file to write results to
@@ -860,16 +942,18 @@ def build_reads_file(data):
             tmpout.write("\n//\n//\n".join(locilist)+"\n//\n//\n")
             clustbits.append(handle)
 
-    ## store nloci 
-    data.nloci = loci
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 100, 
+        " building clusters     | {}".format(elapsed))
+    print("")
 
     ## return stuff
-    return clustbits
+    return clustbits, loci
 
 
 
 ## This is slow currently, high memory, 
-def build_input_file(data, samples, outgroups, randomseed):
+def build_input_file(data, samples, randomseed):
     """ 
     Make a concatenated consens file with sampled alleles (no RSWYMK/rswymk). 
     Orders reads by length and shuffles randomly within length classes
@@ -919,17 +1003,20 @@ def build_input_file(data, samples, outgroups, randomseed):
     proc1.communicate()
 
     ## shuffle sequences within size classes
+    random.seed(randomseed)
+
     allshuf = allcons.replace("_catcons.tmp", "_catshuf.tmp")      
     outdat = open(allshuf, 'w')
     indat = open(allsort, 'r')
     idat = itertools.izip(iter(indat), iter(indat))
     done = 0
+
+    chunk = [idat.next()]
     while not done:
         ## grab 2-lines until they become shorter (unless there's only one)
-        chunk = [idat.next()]
         oldlen = len(chunk[-1][-1])
+
         while 1:
-            ## grab the data
             try:
                 dat = idat.next()
             except StopIteration:
@@ -942,14 +1029,16 @@ def build_input_file(data, samples, outgroups, randomseed):
                 random.shuffle(chunk)
                 outdat.write("".join(itertools.chain(*chunk)))
                 ## start new chunk
-                chunk = [idat.next()]
+                chunk = [dat]
                 break
+
     ## do the last chunk
+    random.shuffle(chunk)    
     outdat.write("".join(itertools.chain(*chunk)))
+
     indat.close()
     outdat.close()
 
-    sys.exit()
 
 
 
@@ -964,20 +1053,13 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     if os.path.exists(data.clust_database):
         os.remove(data.clust_database)
 
-    ## make file with all samples reads, allow priority to shunt outgroups
-    ## to the end of the file
-    outgroups = []
-    LOGGER.info("creating input files")
-
-    start = time.time()
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 1, 
-        " concat/shuffle input  | {}".format(elapsed))
-
+    ## parallel
     lbview = ipyclient.load_balanced_view()
-    bl = lbview.apply(build_input_file, 
-                      *[data, samples, outgroups, randomseed])
-    while not bl.ready():
+    start = time.time()
+    
+    # make file with all samples reads    
+    binput = lbview.apply(build_input_file, *[data, samples, randomseed])
+    while not binput.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 0, 
             " concat/shuffle input  | {}".format(elapsed))
@@ -988,12 +1070,11 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     print("")
 
     ## call vsearch
-    LOGGER.info("clustering")    
-    cluster(data, noreverse, ipyclient)
+    #cluster(data, noreverse, ipyclient)
 
-    ## build consens clusters and returns chunk handles to be aligned
-    LOGGER.info("building consens clusters")        
-    clustbits = build_reads_file(data)
+    # # build consens clusters and returns chunk handles to be aligned
+    clustbits, nloci = build_reads_file(data, ipyclient)
+    data.nloci = nloci
 
     ## muscle align the consens reads and creates hdf5 indel array
     LOGGER.info("muscle alignment & building indel database")
