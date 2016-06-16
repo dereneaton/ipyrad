@@ -125,7 +125,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(0, 20, " aligning clusters     | {}".format(elapsed))
+    progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
 
     ## create job queue for clustbits
     submitted_args = []
@@ -137,7 +137,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     for idx, job in enumerate(submitted_args):
         jobs[idx] = lbview.apply(muscle_align_across, job)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(0, 20, " aligning clusters     | {}".format(elapsed))
+        progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
 
     LOGGER.info("submitted %s jobs to muscle_align_across", len(jobs))
     allwait = len(jobs)*2
@@ -367,14 +367,16 @@ def build_h5_array(data, samples, ipyclient):
     io5 = h5py.File(data.clust_database, 'w')
 
     ## choose chunk optim size
-    LOGGER.info("data.loci is %s", data.loci)
-    chunks = 1000
+    LOGGER.info("data.loci is %s", data.nloci)
+    chunks = 100
     if data.nloci < 100:
         chunks = data.nloci
-    if data.nloci > 5000:
+    if data.nloci > 10000:
         chunks = 1000
     if data.nloci > 200000:
         chunks = 2000
+    if data.nloci > 500000:
+        chunks = 5000
     LOGGER.info("chunks is %s", chunks)
 
     # ## very big data set
