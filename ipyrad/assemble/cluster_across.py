@@ -123,6 +123,9 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     ## get client
     LOGGER.info("starting alignments")
     lbview = ipyclient.load_balanced_view()
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(0, 20, " aligning clusters     | {}".format(elapsed))
 
     ## create job queue for clustbits
     submitted_args = []
@@ -133,9 +136,10 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     jobs = {}
     for idx, job in enumerate(submitted_args):
         jobs[idx] = lbview.apply(muscle_align_across, job)
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(0, 20, " aligning clusters     | {}".format(elapsed))
 
-    ## 
-    start = time.time()
+    LOGGER.info("submitted %s jobs to muscle_align_across", len(jobs))
     allwait = len(jobs)*2
 
     try:
@@ -363,11 +367,16 @@ def build_h5_array(data, samples, ipyclient):
     io5 = h5py.File(data.clust_database, 'w')
 
     ## choose chunk optim size
-    chunks = 100
+    LOGGER.info("data.loci is %s", data.loci)
+    chunks = 1000
     if data.nloci < 100:
         chunks = data.nloci
     if data.nloci > 5000:
         chunks = 1000
+    if data.nloci > 200000:
+        chunks = 2000
+    LOGGER.info("chunks is %s", chunks)
+
     # ## very big data set
     # if (data.nloci > 100000) and len(data.samples.keys()) > 100:
     #     chunks = 200
@@ -470,7 +479,7 @@ def multicat(data, samples, ipyclient):
 
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
         progressbar(allwait, fwait, 
-                    " ordering clusters     | {}".format(elapsed))
+                    " indexing clusters     | {}".format(elapsed))
 
         if any(finished):
             ## clear job memory
@@ -513,14 +522,14 @@ def multicat(data, samples, ipyclient):
             ## print progress
             elapsed = datetime.timedelta(seconds=int(time.time() - start))
             progressbar(allwait, fwait, 
-                        " ordering clusters     | {}".format(elapsed))
+                        " indexing clusters     | {}".format(elapsed))
             time.sleep(0.1)
 
 
     ## print final progress
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
     progressbar(20, 20,
-        " ordering clusters     | {}".format(elapsed))
+        " indexing clusters     | {}".format(elapsed))
     print("")
 
 
@@ -858,7 +867,6 @@ def build_reads_file(data, ipyclient):
     progressbar(20, 0,
         " building clusters     | {}".format(elapsed))
 
-
     LOGGER.info("building reads file -- loading utemp file into mem")
     ## read in cluster hits as pandas data frame
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -886,7 +894,7 @@ def build_reads_file(data, ipyclient):
     groups = updf.groupby(by=1, sort=False)
 
     ## a chunker for writing every N
-    optim = 100
+    optim = 1000
     #if len(groups) > 2000:
     #    optim = len(groups) // 10
 
