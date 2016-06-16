@@ -310,15 +310,15 @@ def parsemuscle(data, out):
     ## grab the seqs
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
     ## split on the 'T' of the 'TGCAG' anchor for 'rad' data
-    if data.paramsdict["datatype"] == 'rad':
-        maxlen = max([len(i) for i in seqs])
-        seqs = [i.rsplit("T", 1)[0] for i in seqs]
-        ## add spacers back in to right justify
-        for sidx in range(len(seqs)):
-            #OGGER.info("before %s", seqs[sidx])
-            while len(seqs[sidx]) < maxlen:
-                seqs[sidx] += "-"
-                #LOGGER.info("after %s", seqs[sidx])                
+    #if data.paramsdict["datatype"] == 'rad':
+    #    maxlen = max([len(i) for i in seqs])
+    #    seqs = [i.rsplit("T", 1)[0] for i in seqs]
+    #    ## add spacers back in to right justify
+    #    for sidx in range(len(seqs)):
+    #        #OGGER.info("before %s", seqs[sidx])
+    #        while len(seqs[sidx]) < maxlen:
+    #            seqs[sidx] += "-"
+    #            #LOGGER.info("after %s", seqs[sidx])                
 
     tups = zip(names, seqs)
     ## who knew, zip(*) is the inverse of zip
@@ -341,12 +341,12 @@ def muscle_call(data, names, seqs):
 
     ## make input string
     ## if RAD data, add TGCAG anchor for right side muscle alignment.
-    if data.paramsdict["datatype"] == 'rad':
-        inputstr = "\n".join([">{}\n{}TGCAG".format(i, j) for i, j in zip(names, seqs)])
+    #if data.paramsdict["datatype"] == 'rad':
+    #    inputstr = "\n".join([">{}\n{}TGCAG".format(i, j) for i, j in zip(names, seqs)])
     ## need testing for whether anchor messes up other kinds of data which 
     ## can have partial overlaps. So not anchoring others for now. 
-    else:
-        inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
+    #else:
+    inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
     args = [ipyrad.bins.muscle, "-quiet"]
 
     ## increase gap penalty if reference region is included 

@@ -134,62 +134,37 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     for idx, job in enumerate(submitted_args):
         jobs[idx] = lbview.apply(muscle_align_across, job)
 
-    ## set wait job until all finished. 
-    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1)
+    ## 
+    start = time.time()
+    allwait = len(jobs)*2
 
-    ## wait on results inside try statement. If interrupted we ensure clean up
-    ## and save of finished results
     try:
-        allwait = len(jobs)
+        ## align clusters
         while 1:
-            if not res.ready():
-                fwait = sum([jobs[i].ready() for i in jobs])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
+            finished = [i.ready() for i in jobs.values()]
+            if not all(finished):
+                fwait = sum(finished)
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(allwait, fwait, 
                             " aligning clusters     | {}".format(elapsed))
-                ## got to next print row when done
-                sys.stdout.flush()
-                time.sleep(1)
+                time.sleep(0.1)
             else:
-                ## print final statement
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, 
-                    " aligning clusters     | {}".format(elapsed))
+                fwait = sum(finished)
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(allwait, fwait, 
+                            " aligning clusters     | {}".format(elapsed))
                 break
 
-    except (KeyboardInterrupt, SystemExit):
-        print('\n  Interrupted! Cleaning up... ')
-        raise
-    
-    finally:
-        ## save result tuples into a list
+        ## build indels array                
         indeltups = []
-
-        ## clean up jobs
         for idx in jobs:
-            ## grab metadata
-            meta = jobs[idx].metadata            
-
-            ## do this if success
-            if meta.completed:
-                ## get the results
+            #meta = jobs[idx].metadata
+            if jobs[idx].completed and jobs[idx].successful():
                 indeltups.append(jobs[idx].get())
+        if indeltups:
+            build(data, samples, indeltups, clustbits, allwait, fwait, start)
 
-            ## if not done do nothing, if failure print error
-            else:
-                LOGGER.error('  chunk %s did not finish', idx)
-                if meta.error:
-                    LOGGER.error("""\
-                stdout: %s
-                stderr: %s 
-                error: %s""", meta.stdout, meta.stderr, meta.error)
-
-        ## build indels array and seqs if res finished succesful
-        if res.metadata.completed:
-            build(data, samples, indeltups, clustbits)
-
+    finally:
         ## Do tmp file cleanup
         for path in ["_cathaps.tmp", "_catcons.tmp", ".utemp", ".htemp"]:
             fname = os.path.join(data.dirs.consens, data.name+path)
@@ -211,10 +186,11 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
 
 
 
-def build(data, samples, indeltups, clustbits):
+def build(data, samples, indeltups, clustbits, tots, done, oldstart):
     """ 
     Builds the indels array and catclust.gz file from the aligned clusters.
     Both are tmpfiles used for filling the supercatg and superseqs arrays.
+    NOT currently parallelizable
     """
     ## sort into input order by chunk names
     indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[1]))
@@ -243,6 +219,11 @@ def build(data, samples, indeltups, clustbits):
         start = int(tup[0].rsplit("_", 1)[1])
         for sidx, _ in enumerate(samples):
             iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
+
+        ## continued progress bar from multi_muscle_align
+        done += 1
+        elapsed = datetime.timedelta(seconds=int(time.time()-oldstart))
+        progressbar(tots, done, " aligning clusters     | {}".format(elapsed))
     io5.close()
 
     ## concatenate finished seq clusters into a tmp file 
@@ -372,6 +353,9 @@ def build_h5_array(data, samples, ipyclient):
         chunks = data.nloci
     if data.nloci > 5000:
         chunks = 1000
+    ### hmm, maybe we need to some kind of memory management here to make
+    ### sure the chunks x nprocessors doesn't overload memory in singlecat...
+
     ### Warning: for some reason increasing the chunk size to 5000 
     ### caused enormous problems in step7. Not sure why. hdf5 inflate error. 
     #if data.nloci > 100000:
@@ -662,11 +646,11 @@ def singlecat(args):
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     indh5 = h5py.File(ipath, 'r')
 
-    LOGGER.info("""
-        sidx %s,
-        indh5["indels"].shape %s,
-        indh5["indels"][sidx, :, :].shape %s
-        """, sidx, indh5["indels"].shape, indh5["indels"][sidx, :, :].shape)
+    # LOGGER.info("""
+    #     sidx %s,
+    #     indh5["indels"].shape %s,
+    #     indh5["indels"][sidx, :, :].shape %s
+    #     """, sidx, indh5["indels"].shape, indh5["indels"][sidx, :, :].shape)
 
     with h5py.File(ipath, 'r') as indh5:
         indels = indh5["indels"][sidx, :, :]
