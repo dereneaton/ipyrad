@@ -523,7 +523,7 @@ def get_slice(tups, optim, jnum):
         skip += sum(1 for i in itertools.islice(rawr1, int(optim*4)))
         if tups[1]:
             _ = sum(1 for i in itertools.islice(rawr2, int(optim*4)))
-    LOGGER.info("%s. jumped forward %s lines", jnum, skip)
+    #LOGGER.info("%s. jumped forward %s lines", jnum, skip)
 
     ## now return the correct slice as a generator
     dat1 = itertools.islice(rawr1, int(optim*4))
@@ -741,13 +741,19 @@ def run(data, samples, nreplace, force, preview, ipyclient):
             with open(conc1, 'w') as cout1:
                 for tups in sample.files.fastqs:
                     cout1.write(gzip.open(tups[0]).read())
-            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
-            if os.path.exists(sample.files.fastqs[0][1]):
-                with open(conc2.replace, 'w') as cout2:
-                    for tups in sample.files.fastqs:
-                        cout2.write(gzip.open(tups[1]).read())
-            else:
-                conc2 = 0
+
+            ## Only set conc2 if R2 actually exists
+            conc2 = 0
+            try:
+                if os.path.exists(sample.files.fastqs[0][1]):
+                    conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
+                    with open(conc2.replace, 'w') as cout2:
+                        for tups in sample.files.fastqs:
+                            cout2.write(gzip.open(tups[1]).read())
+            except IndexError as inst:
+                ## if SE then no R2 files
+                pass
+
             sample.files.concat = [(conc1, conc2)]
         else:
             ## just copy as a temporary placeholder for fastqs
