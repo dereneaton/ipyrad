@@ -735,6 +735,8 @@ def run(data, samples, nreplace, force, preview, ipyclient):
         ## get optim slice size for this sample
         optim = optims[sample.name]
         ## if multiple fastq files for this sample, create a tmp concat file
+        ## TODO: This could be parallelized, for merged real data it is
+        ## sssslllloooowwwww
         if len(sample.files.fastqs) > 1:
             ## just copy as a temporary placeholder for fastqs
             conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq")
