@@ -226,7 +226,7 @@ def build(data, samples, indeltups, clustbits, tots, done, oldstart):
     io5 = h5py.File(ipath, 'w')
     iset = io5.create_dataset("indels", (len(samples), data.nloci, maxlen),
                               dtype=np.bool)
-                              #chunks=(lendata.nloci, maxlen),
+                              #chunks=(len(samples), data.nloci/10, maxlen),
                               #compression="gzip")
 
     ## again make sure names are ordered right
@@ -1110,7 +1110,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     print("")
 
     ## call vsearch
-    #cluster(data, noreverse, ipyclient)
+    cluster(data, noreverse, ipyclient)
 
     # # build consens clusters and returns chunk handles to be aligned
     clustbits, nloci = build_reads_file(data, ipyclient)
