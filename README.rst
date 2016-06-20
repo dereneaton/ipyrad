@@ -24,12 +24,6 @@ Join the ipyrad gitter channel and ask a question, request a feature, or flame t
    :alt: Join the chat at https://gitter.im/dereneaton/ipyrad
    :target: https://gitter.im/dereneaton/ipyrad?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
-What's new?
------------
-
-In addition to a command line interface that will be familiar to pyrad users, ipyrad offers an additional way to interact with the data through writing Python scripts that access the ipyrad API. This provides an easier way to construct branching assembly architectures in which data sets are assembled under a number of parameter options. We also include several new analysis 
-tools, including __svd4tet__, a program for fast quartet inference and super-tree 
-construction. 
 
 License
 -------
