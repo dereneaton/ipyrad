@@ -492,7 +492,7 @@ def prechecks(data, preview, force):
         os.mkdir(data.dirs.fastqs)
 
     ## create a tmpdir for chunked big files
-    tmpdir = os.path.join(project_dir, "tmp-chunks")
+    tmpdir = os.path.join(project_dir, "tmp-chunks-"+data.name)
     if os.path.exists(tmpdir):
         shutil.rmtree(tmpdir)
         time.sleep(0.5) ## give it a second to make sure its ready
@@ -633,7 +633,7 @@ def run(data, preview, ipyclient, force):
     carry-through ensures that interrupts raise an error that kills subprocess.
     """
     try:
-        tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks")
+        tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks-"+data.name)
         wrapped_run(data, preview, ipyclient, force)
     except KeyboardInterrupt:
         try:
