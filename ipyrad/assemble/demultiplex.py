@@ -705,7 +705,7 @@ def wrapped_run(data, preview, ipyclient, force):
     multi = 1
     while optim > int(8e6):
         optim //= 2
-        multi = 2
+        multi *= 2
 
     ## ensure optim is divisible by 4
     while optim % 4:
