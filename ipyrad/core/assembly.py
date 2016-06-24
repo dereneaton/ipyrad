@@ -331,12 +331,12 @@ class Assembly(object):
         ## does location exist, if no files selected, try selecting all
         if os.path.isdir(path):
             path += "*"
-
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
+        LOGGER.debug("linking these files:\n{}".format(fastqs))
         fastqs.sort()
 
         ## raise error if no files are found
@@ -391,9 +391,11 @@ class Assembly(object):
             appendinc = 0
             ## remove file extension from name
             sname = _name_from_file(fastqtuple[0], splitnames, fields)
+            LOGGER.debug("Got name {}".format(sname))
 
             if sname not in self.samples:
                 ## create new Sample
+                LOGGER.debug("Creating new sample - ".format(sname))
                 self.samples[sname] = Sample(sname)
                 self.samples[sname].stats.state = 1
                 self.samples[sname].barcode = None 
@@ -412,6 +414,7 @@ class Assembly(object):
                     #          +"cannot append duplicate files to a Sample.\n")
                 elif force:
                     ## overwrite/create new Sample
+                    LOGGER.debug("Overwritting sample - ".format(sname))
                     self.samples[sname] = Sample(sname)
                     self.samples[sname].stats.state = 1
                     self.samples[sname].barcode = None 
@@ -443,6 +446,8 @@ class Assembly(object):
                 for alltuples in self.samples[sname].files.fastqs:
                     nreads += bufcountlines(alltuples[0], gzipped)
                 self.samples[sname].stats.reads_raw = nreads/4
+                LOGGER.debug("Got reads for sample - {} {}".format(sname,\
+                                    self.samples[sname].stats.reads_raw))
                 created += createdinc
                 linked += linkedinc
                 appended += appendinc
@@ -1451,7 +1456,8 @@ def _name_from_file(fname, splitnames, fields):
     ## remove extensions
     tmpb, tmpext = os.path.splitext(base)
     while tmpext in file_extensions:
-        base, _ = tmpb, tmpext
+        tmpb, tmpext = os.path.splitext(tmpb)
+        base = tmpb
 
     if fields:
         namebits = base.split(splitnames)
