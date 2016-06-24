@@ -146,7 +146,7 @@ def merge_assemblies(args):
             + "the new assembly (this will create a new params file for you)."
         sys.exit(msg) 
     ## Make sure first arg will create a param file that doesn't already exist
-    if os.path.exists("params-" + newname + ".txt"):
+    if os.path.exists("params-" + newname + ".txt") and not args.force:
         msg = "\n  First argument for ipyrad -m should be the name of the new"\
             + " assembly. This will create\n  a new params file called params-"\
             + newname + ".txt, but this file already exists."
@@ -179,7 +179,7 @@ def merge_assemblies(args):
     merged_assembly.paramsdict["sorted_fastq_path"] = "Merged: " + merged_names
 
     ## Write out the merged assembly params file and report success
-    merged_assembly.write_params("params-{}.txt".format(newname))
+    merged_assembly.write_params("params-{}.txt".format(newname), force=args.force)
 
     print("\n  Merging succeeded. New params file for merged assembly:")
     print("\n    params-{}.txt\n".format(newname))

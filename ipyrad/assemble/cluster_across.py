@@ -1110,7 +1110,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     print("")
 
     ## call vsearch
-    #cluster(data, noreverse, ipyclient)
+    cluster(data, noreverse, ipyclient)
 
     # # build consens clusters and returns chunk handles to be aligned
     clustbits, nloci = build_reads_file(data, ipyclient)

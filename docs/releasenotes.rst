@@ -5,6 +5,32 @@
 Release Notes
 =============
 
+0.3.11
+------
+- Fixed commented call to cluster(), step 6 is working again
+- Added a check to ensure barcodes contain only IUPAC characters
+- Fixed demultiplex sorting progress bar
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- append data.name to the tmp-chunks directory to prevent users from running multiple step1 and stepping on themselves
+- Update README.rst
+- Added force flag for merging CLI
+- cosmetic changes
+- Bug in rawedit for merged assemblies
+- much faster indel entry in step6
+- chunks size optimization
+- optimizing chunk size step6
+- merge for lowmem fixes to step6
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- decided against right anchoring method from rad muscle alignments. Improved step6 muscle align progress bar
+- reducing memory load in step6
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- debug merge fix
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- improvement to debug flag. Much improved memory handling for demultiplexing
+
 0.3.10
 ------
 - versioner now actually commits the releasenotes.rst
