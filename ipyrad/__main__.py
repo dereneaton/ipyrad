@@ -386,6 +386,14 @@ def main():
     """)
             sys.exit(2)
 
+    if not args.params:
+        if not any([args.branch, args.results, args.steps]):
+            print("""
+    Must provide params file for branching, doing steps or getting results.
+    e.g., ipyrad -p params-test.txt -r              ## shows results
+    e.g., ipyrad -p params-test.txt -s 12           ## runs steps 1 & 2
+    e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
+    """)
 
     ## if branching, merging, or info do not allow steps in same command
     ## print spacer
