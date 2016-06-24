@@ -338,6 +338,7 @@ class Assembly(object):
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
         fastqs.sort()
+        LOGGER.debug("Linking these fastq files:\n".format(fastqs))
 
         ## raise error if no files are found
         if not fastqs:
@@ -489,6 +490,14 @@ class Assembly(object):
             bdf = bdf.dropna()
             ## make sure upper case
             bdf[1] = bdf[1].str.upper()
+
+            if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
+                msg = """
+    One or more barcodes contain invalid IUPAC nucleotide code characters.
+    Barcodes must contain only characters from this list "RKSYWMCATG".
+    Doublecheck your barcodes file is properly formatted."""
+                LOGGER.warn(msg)
+                raise IPyradError(msg)
 
             ## 3rad/seqcap use multiplexed barcodes
             ## We'll concatenate them with a plus and split them later
