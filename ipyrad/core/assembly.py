@@ -722,7 +722,7 @@ class Assembly(object):
 
 
 
-    def branch(self, newname, subsamples=[]):
+    def branch(self, newname, subsamples=[], infile=None):
         """ Returns a copy of the Assembly object. Does not allow Assembly 
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
@@ -736,6 +736,14 @@ class Assembly(object):
             newobj = copy.deepcopy(self)
             newobj.name = newname
             newobj.paramsdict["assembly_name"] = newname
+
+            if subsamples and infile:
+                print("Attempting to branch passing in subsample names "\
+                        "and an input file, ignoring `subsamples` argument")
+
+            if infile:
+                if os.path.exists(infile):
+                    subsamples = _read_sample_names(infile)
 
             ## create copies of each subsampled Sample obj
             if subsamples:
@@ -1484,6 +1492,23 @@ def _name_from_file(fname, splitnames, fields):
     """)
 
     return base
+
+
+def _read_sample_names(fname):
+    """ Read in sample names from a plain text file. This is a convenience
+    function for branching so if you have tons of sample names you can
+    pass in a file rather than having to set all the names at the command
+    line.
+    """
+    try:
+        infile = open(fname, 'r')
+        subsamples = [x.split()[0] for x in infile.readlines()]
+
+    except Exception as inst:
+        print("Failed to read input file with sample names.\n{}".format(inst))
+        raise inst
+
+    return subsamples
 
 
 def expander(namepath):
