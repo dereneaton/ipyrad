@@ -168,7 +168,7 @@ class Assembly(object):
                        ("mindepth_majrule", 6), 
                        ("maxdepth", 10000),
                        ("clust_threshold", .85),
-                       ("max_barcode_mismatch", 1),
+                       ("max_barcode_mismatch", 0),
                        ("filter_adapters", 0), 
                        ("filter_min_trim_len", 35), 
                        ("max_alleles_consens", 2), 
