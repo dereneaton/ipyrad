@@ -560,7 +560,10 @@ def prechecks(data, preview, force):
                         poss.add(tbar1)
                     else:
                         print("""\
-        warning: barcodes {}:{} and {}:{} are within {} base change of each other"""\
+        Note: barcodes {}:{} and {}:{} are within {} base change of each other
+            Ambiguous barcodes that match to both samples will arbitrarily
+            be assigned to the first sample. If you do not like this idea 
+            then lower the value of max_barcode_mismatch and rerun step 1\n"""\
         .format(sname, barc, 
                 matchdict[tbar1], data.barcodes[matchdict[tbar1]],
                 data.paramsdict["max_barcode_mismatch"]))
@@ -580,7 +583,10 @@ def prechecks(data, preview, force):
                                     poss.add(tbar2)
                                 else:
                                     print("""\
-        warning: barcodes {}:{} and {}:{} are within {} base change of each other"""\
+        Note: barcodes {}:{} and {}:{} are within {} base change of each other\
+             Ambiguous barcodes that match to both samples will arbitrarily
+             be assigned to the first sample. If you do not like this idea 
+             then lower the value of max_barcode_mismatch and rerun step 1\n"""\
         .format(sname, barc, 
                             matchdict[tbar2], data.barcodes[matchdict[tbar2]],
                             data.paramsdict["max_barcode_mismatch"]))
