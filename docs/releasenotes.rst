@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.3.12
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fixed infinite while loop inside __name_from_file
+
 0.3.11
 ------
 - Fixed commented call to cluster(), step 6 is working again
