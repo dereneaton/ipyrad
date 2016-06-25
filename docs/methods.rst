@@ -70,7 +70,7 @@ Example CLI combining assembly methods
     ipyrad -p params-coding.txt -s 12
 
     ## create a branch called "noncoding" and edit the newly created file 
-    ## noncoding-params.txt. Set the assembly_method to 'reference_sub'
+    ## noncoding-params.txt. Set the assembly_method to 'denovo-reference'
     ## and leave the transcriptome.fasta file as the 'reference_sequence_path'
     ipyrad -p params-coding.txt -b noncoding
 
@@ -98,10 +98,10 @@ Example Python API combining assembly methods
     data1.run("12")
 
     ## create branch named 'noncoding' which inherits params from 'coding'
-    ## and set the assembly method to reference_sub so that it removes the 
+    ## and set the assembly method to denovo-reference so that it removes the 
     ## reference matched reads.
     data2 = data1.branch("noncoding")
-    data2.set_params("assembly_method", "reference_sub")
+    data2.set_params("assembly_method", "denovo-reference")
 
     ## finish both assemblies
     data1.run("34567")
