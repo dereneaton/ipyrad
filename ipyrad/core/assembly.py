@@ -1295,8 +1295,14 @@ class Assembly(object):
                            [samples, noreverse, force, preview], 45)
 
 
-    def step4(self, samples=None, subsample=None, force=False):
-        """ test """
+    def step4(self, samples=None, subsample=2000, force=False):
+        """ 
+        Joint estimation of error rate and heterozygosity. This uses the 
+        frequency of bases and the frequency of site patterns to estimate
+        parameters. Only the first 'subsample' of high depth clusters are used
+        to improve speed. Default is 2000, but can be modified when run through
+        the API. 
+        """
         self._clientwrapper(self._step4func, [samples, subsample, force], 45)
 
 
