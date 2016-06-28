@@ -1009,6 +1009,7 @@ def build_input_file(data, samples, randomseed):
     ## concatenate all of the consens files
     cmd = ['cat'] + glob.glob(os.path.join(data.dirs.consens, '*.consens.gz'))
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
+    LOGGER.debug(" ".join(cmd))
     with open(allcons, 'w') as output:
         call = subprocess.Popen(cmd, stdout=output)
         call.communicate()
@@ -1028,17 +1029,20 @@ def build_input_file(data, samples, randomseed):
     proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
 
     allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
+    LOGGER.debug(" ".join(cmd1))
     proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
     with open(allhaps, 'w') as output:
-        proc2 = proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
+        LOGGER.debug(" ".join(cmd2))
+        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
         proc2.communicate()
     proc1.stdout.close()
 
     ## now sort the file using vsearch
     allsort = allcons.replace("_catcons.tmp", "_catsort.tmp")  
-    cmd1 = ["vsearch", "--sortbylength", allhaps, 
+    cmd1 = [ipyrad.bins.vsearch, "--sortbylength", allhaps, 
             "--fasta_width", "0", "--output", allsort]
+    LOGGER.debug(" ".join(cmd1))
     proc1 = subprocess.Popen(cmd1)
     proc1.communicate()
 
