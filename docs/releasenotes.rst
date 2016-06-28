@@ -5,6 +5,15 @@
 Release Notes
 =============
 
+0.3.13
+------
+- Replaced direct call to  with ipyrad.bins.vsearch
+- Fixed reference to old style assembly method reference_sub
+- Added ability to optionally pass in a flat file listing subsample names in a column.
+- Set a conditional to make sure params file is passed in if doing -b, -r, or -s
+- Softened the warning about overlapping barcodes, and added a bit more explanation
+- Set default max barcode mismatch to 0
+
 0.3.12
 ------
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
