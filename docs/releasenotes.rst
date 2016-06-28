@@ -5,6 +5,15 @@
 Release Notes
 =============
 
+0.3.14
+------
+- merge conflict fix
+- just cosmetic code cleanup.
+- set subsample to 2000 high depth clusters. Much faster, minimal decrease in accuracy. Slightly faster code in s4.
+- better memory handling. Parallelized better. Starts non-parallel cleanups while singlecats are running = things go faster.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cluster was commented out in s6 for speed testing
+
 0.3.13
 ------
 - Replaced direct call to  with ipyrad.bins.vsearch
