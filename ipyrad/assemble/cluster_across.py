@@ -112,14 +112,12 @@ def muscle_align_across(args):
         outfile.write("\n//\n//\n".join(out)+"\n")
 
     ## save indels array to tmp dir
-
     tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
     ifile = os.path.join(tmpdir, chunk+".h5")
     LOGGER.info('ifile is %s', ifile)    
     iofile = h5py.File(ifile, 'w')
     iofile.create_dataset('indels', data=indels)
     iofile.close()
-    LOGGER.info(ifile, loc+1)
 
     return ifile, loc+1
 
@@ -350,6 +348,8 @@ def cluster(data, noreverse, ipyclient):
         #if data._headers:
         print("")
         data.stats_files.s6 = logfile
+        ## cleanup processes
+        del proc, dog, owner
 
 
 
@@ -470,85 +470,89 @@ def multicat(data, samples, ipyclient):
     ## an open file object (indels). Room for speed improvements, tho.
     """
 
-    ## make a list of jobs
-    submitted_args = []
-    for sidx, sample in enumerate(samples):
-        submitted_args.append([data, sample, sidx])
-    sargs = iter(submitted_args)
-
     ## create parallel client
+    ## it might be a good idea to limit the number of engines here based on 
+    ## some estimate of the individual file sizes, to avoid memory limits.
+    ## TODO: ------
     lbview = ipyclient.load_balanced_view()
 
-    ## submit initial nproc jobs
+    ## make a list of jobs
     jobs = {}
-    for i in range(data.cpus):
-        try:
-            args = sargs.next()
-            jobs[args[1].name] = lbview.apply(singlecat, args)
-            LOGGER.info("submitting %s to singlecat", args[1].name)
-        except StopIteration:
-            pass
+    for sidx, sample in enumerate(samples):
+        jobs[sample.name] = lbview.apply(singlecat, [data, sample, sidx])
+        LOGGER.info("submitting %s to singlecat", sample.name)
 
     ## set wait job until all finished. 
     start = time.time()
+    
     ## create an empty job to queue up cleaning
-    async = lbview.apply(time.sleep, 0.01)
-    cleaning = [async]
+    #async = lbview.apply(time.sleep, 0.01)
+    cleaning = {}
+    last_sample = 0
+    cleaning[last_sample] = lbview.apply(time.sleep, 0.1)
 
-    allwait = len(submitted_args)
+    ## counters for progress bar
+    allwait = len(jobs)
     fwait = 0
+    cwait = 0
+
+    ## loop until finished
     while 1:
         ## if any jobs have finished then do a process
-        finished = [i.ready() for i in jobs.values()]
+        finish_sc = [i.ready() for i in jobs.values()]
+        finish_cl = [i.ready() for i in cleaning.values()]
 
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
         progressbar(allwait, fwait, 
                     " indexing clusters     | {}".format(elapsed))
 
-        if any(finished):
-            ## clear job memory
+        if any(finish_sc):
+            ## clear job memory of finished jobs
             snames = jobs.keys()
+            ## iterate over remaining samples/keys
             for sname in snames:
-                if jobs[sname].completed and jobs[sname].successful():
-                    fwait += 1
+                ## if async not already finished/deleted
+                if jobs[sname].completed:
+                    if jobs[sname].successful():
+                        LOGGER.info("cleanup here %s", cleaning)
+                        ## track finished
+                        fwait += 1
+                        ## purge memory of the old one
+                        del jobs[sname]                    
+                        ## submit a clean up job. Can't start til after last one
+                        with lbview.temp_flags(after=cleaning[last_sample]):
+                            cleaning[sname] = lbview.apply(insert_and_cleanup, 
+                                                           *[data, sname])
+                        LOGGER.info("submitting %s to cleanup", sname)
+                        last_sample = sname
 
-                    ## submit a clean up job. Can't start til after last one
-                    with lbview.temp_flags(after=cleaning[-1]):
-                        cleaning.append(lbview.apply(insert_and_cleanup, 
-                                                 *[data, sname]))
-
-                    ## purge memory of the old one
-                    del jobs[sname]                    
-
-                    ## submit a new sample to singlecat
-                    try:
-                        args = sargs.next()
-                        jobs[args[1].name] = lbview.apply(singlecat, args)
-                        LOGGER.info("submitting %s to singlecat", args[1].name)
-                    except StopIteration:
-                        pass
-
-                else:
-                    meta = jobs[sname].metadata
-                    if meta.error:
-                        LOGGER.error('  sample %s did not finish', sname)
-                        LOGGER.error("""\
+                    else:
+                        ## print error if something went wrong
+                        meta = jobs[sname].metadata
+                        if meta.error:
+                            LOGGER.error('  sample %s did not finish', sname)
+                            LOGGER.error("""\
                 stdout: %s
                 stderr: %s 
                 error: %s""", meta.stdout, meta.stderr, meta.error)
-                    del jobs[sname]
+                        del jobs[sname]
 
+        ## but, while in singlecats loop, remove cleanups as they finish
+        ## to avoid memory from climbing
+        if any(finish_cl):
+            snames = cleaning.keys()
+            ## iterate over remaining samples/keys
+            for sname in snames:
+                if cleaning[sname].completed and cleaning[sname].successful():
+                    cwait += 1
+                    del cleaning[sname]
 
-        elif all(finished):
+        ## if finished with singlecats, move on to next progress bar. 
+        if not jobs.keys():
             break
 
-        else:
-            ## print progress
-            elapsed = datetime.timedelta(seconds=int(time.time() - start))
-            progressbar(allwait, fwait, 
-                        " indexing clusters     | {}".format(elapsed))
-            time.sleep(0.1)
-
+        ## print progress
+        time.sleep(0.1)
 
     ## print final progress
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
@@ -556,23 +560,30 @@ def multicat(data, samples, ipyclient):
         " indexing clusters     | {}".format(elapsed))
     print("")
 
-
     ## check each sample for success and enter into full DB
     start = time.time()
-    tots = len(cleaning)
-    done = sum([i.ready() for i in cleaning])            
-
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(tots, done, " building database     | {}".format(elapsed))
 
     while 1:
-        done = sum([i.ready() for i in cleaning])        
-        ## get the results
-        #insert_and_cleanup(data, sample.name)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(tots, done,
+        progressbar(allwait, max(0, cwait-1),
             " building database     | {}".format(elapsed))
-        if done == tots:
+
+        ## get finished
+        finish_cl = [i.ready() for i in cleaning.values()]
+        if any(finish_cl):
+            snames = cleaning.keys()
+            ## iterate over remaining samples/keys
+            for sname in snames:
+                if cleaning[sname].completed and cleaning[sname].successful():
+                    cwait += 1
+                    del cleaning[sname]
+
+        ## if all finished then quit
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(allwait, max(0, cwait-1),
+            " building database     | {}".format(elapsed))
+
+        if not cleaning.keys():
             break
         else:
             time.sleep(0.1)
@@ -580,8 +591,8 @@ def multicat(data, samples, ipyclient):
 
     ## remove indels array
     ifile = os.path.join(data.dirs.consens, data.name+".indels")
-    #if os.path.exists(ifile):
-    #    os.remove(ifile)
+    if os.path.exists(ifile):
+        os.remove(ifile)
 
 
 
@@ -676,8 +687,8 @@ def singlecat(args):
 
     ## get catg and nalleles from step5. the shape of catg: (nconsens, maxlen)
     old_h5 = h5py.File(sample.files.database, 'r')
-    catarr = old_h5["catg"]    #[:]
-    nall = old_h5["nalleles"]  #[:]
+    catarr = old_h5["catg"][:]
+    nall = old_h5["nalleles"][:]
     chunksize = data.chunks
 
     ## local filters to fill while filling catg array
@@ -688,6 +699,7 @@ def singlecat(args):
     locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
     lonall = np.zeros((chunksize,), dtype=np.uint8)
 
+    ## 
     LOGGER.info("filling catg")
     step = iloc = 0
     for iloc, seed in enumerate(udic.groups.iterkeys()):
@@ -746,12 +758,11 @@ def singlecat(args):
     ## get indel locations for this sample
     ipath = os.path.join(data.dirs.consens, data.name+".indels")
     indh5 = h5py.File(ipath, 'r')
-
-    indh5 = h5py.File(ipath, 'r')# as indh5:
     indels = indh5["indels"][sidx, :, :]
-    #    indels = indh5["indels"][sidx, :, :]
 
-    LOGGER.info("loading indels for %s %s, %s", sample.name, sidx, np.sum(indels[:10]))
+    tmpstart = time.time()
+    LOGGER.info("loading indels for %s %s, %s", 
+                sample.name, sidx, np.sum(indels[:10]))
     ## insert indels into new_h5 (icatg array) which now has loci in the same
     ## order as the final clusters from the utemp file
     for iloc in xrange(icatg.shape[0]):
@@ -771,6 +782,10 @@ def singlecat(args):
             newfill[not_idx, :] = icatg[iloc]
             ## store new data into icatg
             icatg[iloc] = newfill[:icatg[iloc].shape[0]]
+
+    elapsed = datetime.timedelta(seconds=int(time.time()- tmpstart))
+    LOGGER.info("how long to do indels for %s %s", 
+                sample.name, elapsed)
 
     ## put filteres into h5 object
     smp5.create_dataset("ifilter", data=ifilter)
@@ -883,7 +898,8 @@ def build_reads_file(data, ipyclient):
     seed:hits info from utemp file.
     """
     ## parallel client
-    ## TODO, THIS CAN BE PARALLELIZED; just split it into chunks of seeds    
+    ## TODO, THIS CAN BE PARALLELIZED; just split it into chunks of seeds   
+    ## but it's not tooooo slow at the moment. 
     lbview = ipyclient.load_balanced_view()
     start = time.time()
 
@@ -987,6 +1003,9 @@ def build_reads_file(data, ipyclient):
         " building clusters     | {}".format(elapsed))
     print("")
 
+    ## cleanup
+    del consdic, consdf, updf
+
     ## return stuff
     return clustbits, loci
 
@@ -1031,7 +1050,7 @@ def build_input_file(data, samples, randomseed):
     proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
     with open(allhaps, 'w') as output:
-        proc2 = proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
+        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
         proc2.communicate()
     proc1.stdout.close()
 
@@ -1041,6 +1060,7 @@ def build_input_file(data, samples, randomseed):
             "--fasta_width", "0", "--output", allsort]
     proc1 = subprocess.Popen(cmd1)
     proc1.communicate()
+    proc1.stdout.close()
 
     ## shuffle sequences within size classes
     random.seed(randomseed)
