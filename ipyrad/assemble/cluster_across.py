@@ -1053,7 +1053,7 @@ def build_input_file(data, samples, randomseed):
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
     with open(allhaps, 'w') as output:
         LOGGER.debug(" ".join(cmd2))
-        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
+        proc2 = proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
         proc2.communicate()
     proc1.stdout.close()
 
@@ -1064,7 +1064,6 @@ def build_input_file(data, samples, randomseed):
     LOGGER.debug(" ".join(cmd1))
     proc1 = subprocess.Popen(cmd1)
     proc1.communicate()
-    proc1.stdout.close()
 
     ## shuffle sequences within size classes
     random.seed(randomseed)
