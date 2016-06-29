@@ -10,14 +10,14 @@ In this tutorial we demonstrate a denovo assembly for an empirical data set
 to give a general idea of the typical results you might expect to recover 
 and typical run times. This example is run on a 4-core laptop with 8GB RAM, 
 to show that you do not need a super computer to assemble your data. However, 
-using more cores will generally improve the speed of ipyrad approximately 
+using more cores will improve the speed of ipyrad approximately 
 linearly, so if you have access to a large cluster I recommend using it. 
 
 Here we use the 13 taxa *Pedicularis* data set from **Eaton and Ree (2013)**. 
 This data set is composed of single-end 75bp reads for a 
 RAD-seq library prepared with the PstI enzyme for 13 individuals.  
-The original paper is available open-access 
-(:ref:`link to open access article <eaton_and_ree>`). 
+The original paper is available open-access: 
+(:ref:`eaton_and_ree<eaton_and_ree>`). 
 
 
 Download the empirical example data set (*Pedicularis*)
