@@ -100,22 +100,22 @@ tell ipyrad to print the results when it is finished (-r).
     13 fastq files linked to 13 new Samples.
   Saving Assembly.
 
-Summary stats of Assembly base
-------------------------------------------------
-                        state  reads_raw
-29154_superba               1     696994
-30556_thamno                1    1452316
-30686_cyathophylla          1    1253109
-32082_przewalskii           1     964244
-33413_thamno                1     636625
-33588_przewalskii           1    1002923
-35236_rex                   1    1803858
-35855_rex                   1    1409843
-38362_rex                   1    1391175
-39618_rex                   1     822263
-40578_rex                   1    1707942
-41478_cyathophylloides      1    2199740
-41954_cyathophylloides      1    2199613
+  Summary stats of Assembly base
+  ------------------------------------------------
+                          state  reads_raw
+  29154_superba               1     696994
+  30556_thamno                1    1452316
+  30686_cyathophylla          1    1253109
+  32082_przewalskii           1     964244
+  33413_thamno                1     636625
+  33588_przewalskii           1    1002923
+  35236_rex                   1    1803858
+  35855_rex                   1    1409843
+  38362_rex                   1    1391175
+  39618_rex                   1     822263
+  40578_rex                   1    1707942
+  41478_cyathophylloides      1    2199740
+  41954_cyathophylloides      1    2199613
 
 
 Finish the assembly
