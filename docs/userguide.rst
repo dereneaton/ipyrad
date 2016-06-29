@@ -57,6 +57,7 @@ Eaton and Ree (2013).
 .. toctree::
     :maxdepth: 1
 
+    pedicularis_.rst
     pedicularis_cli.rst
 
 
