@@ -143,38 +143,11 @@ access to 24 cores it would take closer to 1 hour.
   ipyparallel setup: Local connection to 4 Engines
 
   Step2: Filtering reads 
-  [####################] 100%  processing reads      | 0:02:48 
-  Saving Assembly.
+  [####################] 100%  processing reads      | 0:37:50 
 
+  Step3: Clustering/Mapping reads
+  [####################] 100%  dereplicating         | 0:00:31 
 
-
-
-
-the ``min_samples_locus``, which is the minimum number of samples that
-must have data at a locus for the locus to be retained in the data set.
-We create a ``min4``, ``min8``, and ``min12`` data sets.
-
-.. code:: bash
-
-    ipyrad -p params-base.txt -b min4
-    ipyrad -p params-base.txt -b min8
-    ipyrad -p params-base.txt -b min12
-
-
-
-.. parsed-literal::
-    
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      Creating a branch of assembly base called min4
-      Writing new params file to params-min4.txt
-    
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      Creating a branch of assembly base called min8
-      Writing new params file to params-min8.txt
-    
-      loading Assembly: base [~/Downloads/pedicularis/base.json]
-      Creating a branch of assembly base called min12
-      Writing new params file to params-min12.txt
 
 
 
