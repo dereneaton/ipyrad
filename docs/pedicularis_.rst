@@ -148,6 +148,8 @@ access to 24 cores it would take closer to 1 hour.
 
   Step3: Clustering/Mapping reads
   [####################] 100%  dereplicating         | 0:00:31 
+  [####################] 100%  clustering            | 0:19:07
+  [####################] 100%  chunking              | 0:00:01 
 
 
 
