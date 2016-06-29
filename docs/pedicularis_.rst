@@ -70,6 +70,7 @@ For now we'll leave the remaining parameters at their default values.
 
 Step 1: Load the fastq data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You always start an ipyrad assembly by running step 1. 
 When the data location is entered as a **sorted_fastq_path** (param 4), as 
 opposed to the **raw_fastq_path** (param 2), step 1 simply counts the 
 number of reads for each Sample and parses the file names to 
@@ -95,7 +96,7 @@ tell ipyrad to print the results when it is finished (-r).
   Step1: Linking sorted fastq data to Samples
     Linking to demultiplexed fastq files in:
       /home/deren/Downloads/example_empirical_rad/*.gz
-    13 new Samples created in `base`.
+    13 new Samples created in base.
     13 fastq files linked to 13 new Samples.
   Saving Assembly.
 
