@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.3.15
+------
+- write nexus format compatible with ape
+- closing pipe was causing a stall in step6
+
 0.3.14
 ------
 - merge conflict fix
