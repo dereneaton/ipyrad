@@ -331,7 +331,7 @@ or more total loci.
   ## head -n 50 prints just the first 50 lines of the file to stdout
   head -n 50 pedicularis/base_outfiles/base.loci
 
-.. parsed-literal::
+.. code:: bash 
   
   30686_cyathophylla         ATGCAGGAG-ATCAAACATA-CGACAAAGAAATAAATTTATTGGATTCGTAGTGGATTTATTCTTTTTT
   32082_przewalskii          ATGCAGGTATWTCMWWCATATCGACAAAGAAATAAAKTTTTTGGATTCGTAGTGGATTTATTCTTYTTT
@@ -343,7 +343,7 @@ or more total loci.
   40578_rex                  ATGCAGGTGTATCAAACATATCGACAAAGAAATAAATTTATTGGATTCGTAGTGGATTTATTCGTTTTT
   41478_cyathophylloides     ATGCAGGAG-AAGAAACATA-CGACAAAGAAATAAATTTATTGGATTCGTAGTGGATTTATTCTTTTTT
   41954_cyathophylloides     ATGCAGGAG-AAGAAACATA-CGACANNGAAATAAATTTATTGGATTCGTAGTGGATTTATTCTTTTTT
-  //                                *\ * -* *---     -              -  *\ *            ---  --   * -   |1|
+  //                                ** -* *---     -              -  *\ *            ---  --   * -   |1|
   29154_superba              GTTCTGGAGTTGTTCAGGGTACTGTTGTGCAGCCATTGCAGCAAATTGAGCCGCAACATCAGCATCAGC
   30686_cyathophylla         GTTCTGGAGTTGTTCAGGGTAGTGTTGTGCAGCCATTGCAGCAAATTGACCCGCAACATCAGCATCAGC
   32082_przewalskii          GTTCTGGAGTTGTTCAGGGTAGTGTTGTGCAGCCATTGCAGCAGATTGAGCCG---CATCAGGATGGTC
