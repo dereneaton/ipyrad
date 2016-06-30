@@ -351,7 +351,7 @@ or more total loci.
   35855_rex                  GTTCTGGGGTTGTTCAAGGTAGTGTTGTGCAACCATTGCAGCAGATTGAGCCGCAACATCAGCATCAGT
   41478_cyathophylloides     GTTCTGGAGTTGTTCAGGGCAGTGTTGTGCAGCCATTGCAGCAAATTGAGCCGCAACATCAGCATCAGC
   41954_cyathophylloides     GTTCTGGAGTTGTTCAGGGCAGTGTTGTGCAGCCATTGCAGCAAATTGAGCCGCAACATCAGCATCAGC
-  //                                -        -  * -         -           *     -            *  *\ *\ *-|4|
+  //                                -        -  * -         -           *     -            *  ***-|4|
   30556_thamno               GTGATCAATAATTCACTTTCCCGCTTCACGCTAACAACACAGACTATTTATACACTTTCCCTTCATGTT
   30686_cyathophylla         GAGATCAATAATTCACTTTCCCGCTTCACGCTAACAACACAGACTGTTTATACACTTTCCCTTCCTGTT
   32082_przewalskii          GTGATCCATTATTCACTTTCCCGCTTCACGCTAACAACACAGACTATTTATACACTTTCCCTTCCTGTT
@@ -382,7 +382,7 @@ or more total loci.
   39618_rex                  AAAACCCAAAGGAAATTGAGGCATTGAATCATGTATCAAGGGAGAAATATTTGTGTGATCACCAAAATA
   41478_cyathophylloides     AAAACCCAAAGGAAATAGAGGCATTGAATCATGTATCAAGGGAGAAATATTTGTTTGATCACCTTGTTT
   41954_cyathophylloides     AAAACCCAAAGGAAATAGAGGCATTGAATCATGTATCAAGGGAGAAATATTTGTTTGATCACCTTGTTT
-  //                                         *                                     *       -*\ *\ *\ * *|18|
+  //                                         *                                     *       -**** *|18|
 
 
 peek at the .phy files
