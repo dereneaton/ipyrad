@@ -354,7 +354,7 @@ def svdconvert(arr, sidxs):
     best = 10000
 
     ## filter the array to remove Ns
-    narr = arr[sidx, :]
+    narr = arr[sidxs, :]
     arr = narr[~np.any(narr == 84, axis=0)]
 
     for sidx in [0, 1, 2]:
@@ -380,7 +380,9 @@ def reduce_arr(arr, map, sidx):
     """ 
     If a map file is provided then the array is reduced 
     to a single unlinked snp from each locus for this quartet.
-    ""
+    """
+    pass
+
 
 
 @jit('u4[:,:](u1[:,:], u2[:])', nopython=True)
@@ -411,6 +413,7 @@ def jseq_to_matrix(arr, sidx):
                [i[3]] += 1
 
     return mat
+
 
 
 def seq_to_matrix(arr, sidx):
