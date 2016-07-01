@@ -26,6 +26,7 @@ import h5py
 import time
 import random
 import ipyrad
+import datetime
 import itertools
 import subprocess
 import numpy as np
@@ -303,7 +304,6 @@ def get_quartets(data, method, nquarts, ipyclient):
 
 
 
-
 def worker(args):
     """ gets data from seq array and puts results into results array """
 
@@ -353,6 +353,10 @@ def svdconvert(arr, sidxs):
     bsidx = 0
     best = 10000
 
+    ## filter the array to remove Ns
+    narr = arr[sidx, :]
+    arr = narr[~np.any(narr == 84, axis=0)]
+
     for sidx in [0, 1, 2]:
         mat = jseq_to_matrix(arr, sidxs[sidx])
         sss = np.linalg.svd(mat, full_matrices=1, compute_uv=0)
@@ -371,6 +375,12 @@ def svdconvert(arr, sidxs):
     return quartet, weight
 
 
+@jit()
+def reduce_arr(arr, map, sidx):
+    """ 
+    If a map file is provided then the array is reduced 
+    to a single unlinked snp from each locus for this quartet.
+    ""
 
 
 @jit('u4[:,:](u1[:,:], u2[:])', nopython=True)
@@ -401,6 +411,17 @@ def jseq_to_matrix(arr, sidx):
                [i[3]] += 1
 
     return mat
+
+
+def seq_to_matrix(arr, sidx):
+    """
+    testing alternative
+    """
+    ## get data for just this quartet
+    narr = arr[sidx, :]
+    narr[:, ~np.any(narr == 84, axis=0)]
+
+
 
 
 
@@ -512,7 +533,6 @@ def insert_to_array(data, result):
     Takes a tmpfile output from finished worker, enters it into the 
     full h5 array, and deletes the tmpfile
     """
-
     out5 = h5py.File(data.svd.h5out, 'r+')
 
     with h5py.File(result) as inh5:
@@ -563,7 +583,6 @@ def svd_obj_init(data, method):
     ## save to object and return
     data.save()
     return data
-
 
 
 
@@ -639,10 +658,9 @@ def svd4tet(data, nboots=100, method="all", nquarts=None, force=False):
 
 
 
-
 def run(data, nboots, method, nquarts, force, ipyclient):
     """ 
-    Run svd4tet inference on a sequence or SNP alignment for all samples 
+    Run svd4tet inference on a sequence or SNP alignment for all samples in
     the Assembly. 
 
     By default the job starts from 0 or where it last left off, unless 
@@ -727,16 +745,20 @@ def run(data, nboots, method, nquarts, force, ipyclient):
                       .format(nquarts))
             data = get_quartets(data, method, nquarts, ipyclient)
 
+
     ## run the full inference 
     if not data.svd.checkpoint_boot:
         print("  inferring {} x 3 quartet trees".format(nquarts))
         inference(data, ipyclient, bidx=0)
     else:
         print("  full inference finished")
-        progressbar(20, 20)
+        elapsed = datetime.timedelta(seconds=int(0)) #time.time()-start))
+        progressbar(20, 20, " | {}".format(elapsed))
+
 
     ## run the bootstrap replicates
     if nboots:
+        start = time.time()
         print("  running {} bootstrap replicates".format(nboots))
     
         ## get current boot
@@ -747,9 +769,11 @@ def run(data, nboots, method, nquarts, force, ipyclient):
                 #LOGGER.info("  new boot array sampled")
                 data.svd.checkpoint_boot = bidx
             ## start boot inference
-            progressbar(nboots, bidx)
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))            
+            progressbar(nboots, bidx, " | {}".format(elapsed))
             inference(data, ipyclient, bidx=True)
-        progressbar(20, 20)
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))            
+        progressbar(20, 20, " | {}".format(elapsed))
 
         ## write outputs with bootstraps
         write_outputs(data, with_boots=1)
@@ -757,7 +781,6 @@ def run(data, nboots, method, nquarts, force, ipyclient):
     else:
         ## write outputs without bootstraps
         write_outputs(data, with_boots=0)
-
 
 
 
@@ -996,7 +1019,7 @@ def write_supports(data, with_boots):
         outtre.write(wtre.write(format=0, features=features))
 
     return otre, wtre
-    
+
 
 
 def inference(data, ipyclient, bidx):
@@ -1012,7 +1035,6 @@ def inference(data, ipyclient, bidx):
 
     ## make a distributor for engines
     lbview = ipyclient.load_balanced_view()
-    #LOGGER.info("sending jobs to %s Engines", len(ipyclient))
 
     ## open a view to the super h5 array
     with h5py.File(data.svd.h5out, 'w') as out5:
@@ -1020,6 +1042,9 @@ def inference(data, ipyclient, bidx):
                             dtype=np.uint16, chunks=(data.svd.chunk, 4))
         out5.create_dataset("weights", (data.svd.nquarts,), 
                             dtype=np.float16, chunks=(data.svd.chunk,))
+
+    ## start progress bar timer
+    start = time.time()
 
     ## submit initial n jobs
     assert len(ipyclient) > 0, "No ipyparallel Engines found"
@@ -1035,9 +1060,11 @@ def inference(data, ipyclient, bidx):
     finished = 0
 
     while res.keys():
-        time.sleep(1)
+        time.sleep(0.1)
         if not bidx:
-            progressbar(njobs, finished)
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(njobs, finished, " | {}".format(elapsed))
+
         for key in keys:
             try:
                 ## query for finished results
@@ -1058,8 +1085,7 @@ def inference(data, ipyclient, bidx):
                         pass
                 ## submit new jobs
                 try:
-                    res[key] = lbview.apply(worker, 
-                                    [data, jobiter.next()])
+                    res[key] = lbview.apply(worker, [data, jobiter.next()])
                     #LOGGER.info("new job added to Engine %s", key)
                 except StopIteration:
                     continue

@@ -931,7 +931,9 @@ class Assembly(object):
                     ## if API, stop jobs and clean queue
                     else:
                         ipyclient.abort()
-                        #ipyclient.purge_everything()
+                        ## clear the memory
+                        ipyclient.purge_everything()
+
                     ipyclient.close()
             ## if exception is close and save, print and ignore
             except Exception as inst2:
