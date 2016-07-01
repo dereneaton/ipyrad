@@ -539,13 +539,12 @@ def multicat(data, samples, ipyclient):
 
         ## but, while in singlecats loop, remove cleanups as they finish
         ## to avoid memory from climbing
-        if any(finish_cl):
-            snames = cleaning.keys()
-            ## iterate over remaining samples/keys
-            for sname in snames:
-                if cleaning[sname].completed and cleaning[sname].successful():
-                    cwait += 1
-                    del cleaning[sname]
+        # if any(finish_cl):
+        #     snames = cleaning.keys()
+        #     ## iterate over remaining samples/keys
+        #     for sname in snames:
+        #         if cleaning[sname].completed and cleaning[sname].successful():
+        #             cwait += 1
 
         ## if finished with singlecats, move on to next progress bar. 
         if not jobs.keys():
@@ -1004,7 +1003,7 @@ def build_reads_file(data, ipyclient):
     print("")
 
     ## cleanup
-    del consdic, consdf, updf
+    #del consdic, consdf, updf
 
     ## return stuff
     return clustbits, loci
