@@ -543,7 +543,11 @@ def multicat(data, samples, ipyclient):
             snames = cleaning.keys()
             ## iterate over remaining samples/keys
             for sname in snames:
-                if cleaning[sname].completed and cleaning[sname].successful():
+                ## Don't clean up the dummy async object because if it gets
+                ## cleaned up before any real samples finish singlecat
+                ## then you get a KeyError. It creates a nasty race condition.
+                if cleaning[sname].completed and cleaning[sname].successful()\
+                        and not sname == 0:
                     cwait += 1
                     del cleaning[sname]
 
@@ -1004,7 +1008,7 @@ def build_reads_file(data, ipyclient):
     print("")
 
     ## cleanup
-    del consdic, consdf, updf
+    #del consdic, consdf, updf
 
     ## return stuff
     return clustbits, loci
@@ -1047,7 +1051,7 @@ def build_input_file(data, samples, randomseed):
     proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
 
-    allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
+    #allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
     LOGGER.debug(" ".join(cmd1))
     proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")

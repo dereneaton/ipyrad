@@ -5,6 +5,33 @@
 Release Notes
 =============
 
+0.3.16
+------
+- tmp fix for svd4tet test function so we can put up this hotfix
+
+0.3.16
+------
+- working on speed improvements for svd4tet. Assembly using purging cleanup when running API.
+- fix for KeyError caused by cleanup finishing before singlecats in step6
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+- update to empirical tutorial
+
 0.3.15
 ------
 - write nexus format compatible with ape

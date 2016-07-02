@@ -260,9 +260,7 @@ class Assembly(object):
 
         Note
         ----
-        link_fastqs() is called automatically during step2() if no Samples
-        are yet present in the Assembly object (data were not demultiplexed
-        in step1(). It looks for demultiplexed data files located in the
+        link_fastqs() is called during step 1 if files are specified in
         `sorted_fastq_path`.
 
         Parameters
@@ -328,9 +326,6 @@ class Assembly(object):
     Linking to demultiplexed fastq files in:
       {}""".format(path))
 
-        ## does location exist, if no files selected, try selecting all
-        if os.path.isdir(path):
-            path += "*"
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
         fastqs = [i for i in fastqs if i.endswith(".gz") \
@@ -360,6 +355,12 @@ class Assembly(object):
                        (len(r1_files) != len(r2_files)):
                     raise IPyradError("""
         Paired file names must be identical except for _R1_ and _R2_.""")
+
+            ## Test R2 files actually exist
+            if not all([os.path.exists(x) for x in r2_files]):
+                    raise IPyradError("""
+        Paired file names must be identical except for _R1_ and _R2_.""")
+
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
         ## data are not paired, create empty tuple pair
@@ -931,7 +932,9 @@ class Assembly(object):
                     ## if API, stop jobs and clean queue
                     else:
                         ipyclient.abort()
-                        #ipyclient.purge_everything()
+                        ## clear the memory
+                        ipyclient.purge_everything()
+
                     ipyclient.close()
             ## if exception is close and save, print and ignore
             except Exception as inst2:
