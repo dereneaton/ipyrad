@@ -294,10 +294,6 @@ def parse_command_line():
     parser.add_argument('-d', "--debug", action='store_true',
         help="print lots more info to ipyrad_log.txt.")
 
-    parser.add_argument('-i', metavar="info", dest="info",
-        type=str, nargs="?", default=False,
-        help="get info about parameters")
-
     parser.add_argument('-n', metavar='new', dest="new", type=str, 
         default=None, 
         help="create new file 'params-{new}.txt' in current directory")
@@ -338,9 +334,9 @@ def parse_command_line():
     ## parse args
     args = parser.parse_args()
 
-    if not any(x in ["params", "new", "info"] for x in vars(args).keys()):
+    if not any(x in ["params", "new"] for x in vars(args).keys()):
         print("Bad arguments: ipyrad command must include at least one of"\
-                +"`-p`, `-n` or `-i`\n")
+                +"`-p` or `-n`\n")
         parser.print_help()
         sys.exit(1)
 
@@ -404,9 +400,9 @@ def main():
     e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
     """)
 
-    ## if branching, merging, or info do not allow steps in same command
+    ## if branching, or merging do not allow steps in same command
     ## print spacer
-    if any([args.branch, args.merge, args.info]):        
+    if any([args.branch, args.merge]):        
         args.steps = ""    
         print("")    
 
@@ -417,16 +413,8 @@ def main():
     "\n  Interactive assembly and analysis of RADseq data"+\
     "\n --------------------------------------------------"
 
-    ## if info print the info and exit        
-    if not args.info == False:
-        if args.info:
-            ip.paramsinfo(int(args.info))
-        else:
-            ip.paramsinfo()
-        sys.exit(1)
-
     ## if merging just do the merge and exit
-    elif args.merge:
+    if args.merge:
         print(header)
         merge_assemblies(args)
         sys.exit(1)
