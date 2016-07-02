@@ -14,7 +14,7 @@ genomic analyses. These tools are in development and will be expanded with time.
 The analysis tools are accessed through the ipyrad_ Python API. Thus, a bit of 
 familiarity with Python programming will generally help to make these analyses
 run more easily. However, we provide a suite of examples in the form of 
-:ref:`cookcook recipes<cookbook_recipes>` which should make it easy to use.
+:ref:`cookbook recipes<cookbook_recipes>` which should make it easy to use.
 
 
 

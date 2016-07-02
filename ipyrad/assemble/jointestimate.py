@@ -37,6 +37,12 @@ def frequencies(stacked):
     return freqs
 
 
+def get_frequencies(stacked):
+    """ return frequency counts """
+    freqs = stacked.sum(axis=0) / np.float32(stacked.sum())
+    return freqs
+
+
 # @jit(['float32[:,:](float32, float32, int16[:,:])'], nopython=True)
 # def jlikelihood1(errors, bfreqs, ustacks):
 #     """Probability homozygous. All numpy and no loop so there was 
@@ -148,15 +154,18 @@ def tablestack(rstack):
     """ makes a count dict of each unique array element """
     ## goes by 10% at a time to minimize memory overhead. 
     ## Check on the last chunk.
-    table = Counter()
-    for i in xrange(0, rstack.shape[0], rstack.shape[0]//10):
-        tmp = Counter([j.tostring() for j in rstack[i:i+rstack.shape[0]//10]])
-        table.update(tmp)
+    # table = Counter()
+    # for i in xrange(0, rstack.shape[0], rstack.shape[0]//10):
+    #     tmp = Counter([j.tostring() for j in rstack[i:i+rstack.shape[0]//10]])
+    #     table.update(tmp)
+    # return table
+    table = Counter([j.tostring() for j in rstack])
+    #LOGGER.info('table %s', table)
     return table
 
 
 
-def stackarray(data, sample):
+def stackarray(data, sample, sub):
     """ makes a list of lists of reads at each site """
     ## get clusters file
     clusters = gzip.open(sample.files.clusters)
@@ -169,7 +178,10 @@ def stackarray(data, sample):
         readlen = data._hackersonly["max_fragment_length"]
 
     ## TODO: make clusters_hidepth dynamic in case params change
-    dims = (int(sample.stats.clusters_hidepth), readlen, 4)
+    if sub:
+        dims = (int(sub), readlen, 4)
+    else:
+        dims = (int(sample.stats.clusters_hidepth), readlen, 4)
     stacked = np.zeros(dims, dtype=np.uint32)
     LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
 
@@ -210,6 +222,7 @@ def stackarray(data, sample):
                       [[seq]*rep for seq, rep in zip(sseqs, reps)])
             except ValueError:
                 LOGGER.info("sseqs %s, reps %s", "\n".join(["".join(i) for i in sseqs]), reps)
+            
             ## enforce minimum depth for estimates
             if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
                 ## remove edge columns
@@ -230,7 +243,17 @@ def stackarray(data, sample):
                 except IndexError:
                     LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
 
-    return stacked
+                ## finish early if subsampling
+                if nclust == sub:
+                    done = 1
+    ## drop the empty rows in case there are fewer loci than the size of array
+    #tots = sum(stacked.sum(axis=1) == 0)
+    #newstack = np.zeros((tots, readlen, 4), dtype=np.uint32)
+    newstack = stacked[stacked.sum(axis=2) > 0]
+    LOGGER.info(newstack)
+    assert np.all(newstack.sum(axis=1) > 0), "not all zeros!"
+
+    return newstack
 
 
 
@@ -238,26 +261,27 @@ def optim(args):
     """ func scipy optimize to find best parameters"""
 
     ## split args
-    data, sample, _ = args
+    data, sample, sub = args
 
     ## get array of all clusters data
-    stacked = stackarray(data, sample)
+    stacked = stackarray(data, sample, sub)
     LOGGER.info('stack %s', stacked)
 
     ## get base frequencies
-    bfreqs = frequencies(stacked)
-    LOGGER.debug(bfreqs)
+    bfreqs = get_frequencies(stacked)
+    #LOGGER.debug(bfreqs)
     if np.isnan(bfreqs).any():
         raise IPyradError("Caught sample with bad stack - {} {}".\
                           format(sample.name, bfreqs))
 
     ## reshape to concatenate all site rows
-    rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
-                             stacked.shape[2])
+    #rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
+    #                         stacked.shape[2])
+    rstack = stacked.astype(np.uint32)
     ## put into array, count array items as Byte strings
     tstack = tablestack(rstack)
-    ## drop emtpy count [0,0,0,0]
-    tstack.pop(np.zeros(4, dtype=np.uint32).tostring())
+    ## drop emtpy count [0,0,0,0] <- no longer needed, since we drop 0s earlier
+    #tstack.pop(np.zeros(4, dtype=np.uint32).tostring())
     ## get keys back as arrays and store vals as separate arrays
     ustacks = np.array([np.fromstring(i, dtype=np.uint32) \
                         for i in tstack.iterkeys()])
@@ -265,7 +289,9 @@ def optim(args):
     ## cleanup    
     del rstack
     del tstack
-
+    LOGGER.info(bfreqs)
+    LOGGER.info(ustacks)
+    LOGGER.info(counts)    
 
     ## if data are haploid fix H to 0
     if data.paramsdict["max_alleles_consens"] == 1:
@@ -278,10 +304,6 @@ def optim(args):
     ## or do joint diploid estimates
     else:
         pstart = np.array([0.01, 0.001], dtype=np.float32)
-        # if NUMBA:
-        #     func = j_diploid_lik
-        # else:
-        #     func = get_diploid_lik
         hetero, errors = scipy.optimize.fmin(get_diploid_lik, pstart,
                                             (bfreqs, ustacks, counts), 
                                              disp=False,
@@ -292,6 +314,10 @@ def optim(args):
 
 def run(data, samples, subsample, force, ipyclient):
     """ calls the main functions """
+
+    ## speed hack == use only the first 2000 high depth clusters for estimation.
+    ## based on testing this appears sufficient for accurate estimates
+    ## the default is set in assembly.py
 
     # if haploid data
     if data.paramsdict["max_alleles_consens"] == 1:
@@ -338,68 +364,72 @@ def submit(data, submitted_args, ipyclient):
     lbview = ipyclient.load_balanced_view()
     jobs = {}
     for args in submitted_args:
-        LOGGER.info("submitting duh %s", args)
+        #LOGGER.info("submitting duh %s", args)
         ## stores async results using sample names
         jobs[args[1].name] = lbview.apply(optim, args)
 
-    ## set wait job until all finished. 
-    tmpids = list(itertools.chain(*[i.msg_ids for i in jobs.values()]))
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1)
+    ## dict to store cleanup jobs
+    start = time.time()
+    fwait = 0
+    error = 0
 
-    ## wait on results inside try statement. If interrupted we ensure clean up
-    ## and save of finished results
+    ## each job is submitted to cleanup as it finishes
+    allwait = len(jobs)
     try:
-        allwait = len(jobs)
         while 1:
-            if not res.ready():
-                fwait = sum([jobs[i].ready() for i in jobs])
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(allwait, fwait, 
-                            " inferring [H, E]      | {}".format(elapsed))
-                ## got to next print row when done
-                sys.stdout.flush()
-                time.sleep(1)
-            else:
-                ## print final statement
-                elapsed = datetime.timedelta(seconds=int(res.elapsed))
-                progressbar(20, 20, 
-                            " inferring [H, E]      | {}".format(elapsed))
+            elapsed = datetime.timedelta(seconds=int(time.time() - start))
+            progressbar(allwait, fwait,
+                    " inferring [H, E]      | {}".format(elapsed))
+ 
+            ## get job keys
+            keys = jobs.keys()
+            for sname in keys:
+                if jobs[sname].ready():
+                    if jobs[sname].successful():
+                        ## get the results
+                        hest, eest = jobs[sname].get()
+                        sample_cleanup(data.samples[sname], hest, eest)
+                        del jobs[sname]
+                        fwait += 1
+
+                    else:
+                        ## grab metadata                
+                        meta = jobs[sname].metadata
+                        ## if not done do nothing, if failure print error
+                        LOGGER.error('  sample %s did not finish', sname)
+                        if meta.error:
+                            LOGGER.error("""\
+                        stdout: %s
+                        stderr: %s 
+                        error: %s""", meta.stdout, meta.stderr, meta.error)
+                        del jobs[sname]
+                        fwait += 1
+
+            ## wait
+            if fwait == allwait:
                 break
-
-    except (KeyboardInterrupt, SystemExit):
-        print('\n  Interrupted! Cleaning up... ')
-        raise
-        
-    finally:
-        ## print clear
-        #if data._headers:
-        print("")
-        ## clean up jobs
-        for sname in jobs:
-
-            ## do this if success
-            #if jobs[sname].completed:
-            if jobs[sname].ready() and jobs[sname].successful():
-                ## get the results
-                hest, eest = jobs[sname].get()
-                cleanup(data, data.samples[sname], hest, eest)
-
             else:
-                ## grab metadata                
-                meta = jobs[sname].metadata
-                ## if not done do nothing, if failure print error
-                LOGGER.error('  sample %s did not finish', sname)
-                if meta.error:
-                    LOGGER.error("""\
-                stdout: %s
-                stderr: %s 
-                error: %s""", meta.stdout, meta.stderr, meta.error)
+                time.sleep(0.5)
+
+        ## print final statement
+        elapsed = datetime.timedelta(seconds=int(time.time() - start))
+        progressbar(20, 20, 
+                " inferring [H, E]      | {}".format(elapsed))
+        print("")
+
+
+    except KeyboardInterrupt as kbt:
+        ## reraise kbt after cleanup
+        error = 1
+
+    finally:
+        assembly_cleanup(data)
+        if error:
+            raise kbt
 
 
 
-
-def cleanup(data, sample, hest, eest):
+def sample_cleanup(sample, hest, eest):
     """ 
     Stores results to the Assembly object, writes to stats file, 
     and cleans up temp files 
@@ -413,6 +443,10 @@ def cleanup(data, sample, hest, eest):
     sample.stats_dfs.s4.hetero_est = hest
     sample.stats_dfs.s4.error_est = eest
 
+
+
+def assembly_cleanup(data):
+    """ cleanup assembly stats """
     ## Assembly assignment
     data.stats_dfs.s4 = data.build_stat("s4")#, dtype=np.float32)
 

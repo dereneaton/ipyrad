@@ -978,10 +978,10 @@ def write_supports(data, with_boots):
 
         ## return as newick string w/ support as edge labels (lengths)
         with open(data.svd.btre, 'w') as outtre:
-            outtre.write(otre.write(format=6))
+            outtre.write(otre.write(format=5))
 
         with open(data.svd.bwtre, 'w') as outtre:
-            outtre.write(wtre.write(format=6))
+            outtre.write(wtre.write(format=5))
 
         features = ["bootstrap", "quartets_total", "quartets_sampled", "quartets_sampled_prop"]            
                     
@@ -990,11 +990,13 @@ def write_supports(data, with_boots):
 
     ## return as NHX format with extra info
     with open(data.svd.nhx, 'w') as outtre:
-        outtre.write(wtre.write(format=9, features=features))
+        outtre.write(wtre.write(format=0, features=features))
 
     with open(data.svd.wnhx, 'w') as outtre:
-        outtre.write(wtre.write(format=9, features=features))
+        outtre.write(wtre.write(format=0, features=features))
 
+    return otre, wtre
+    
 
 
 def inference(data, ipyclient, bidx):

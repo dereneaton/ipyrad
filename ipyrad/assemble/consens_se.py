@@ -701,14 +701,6 @@ def run(data, samples, force, ipyclient):
             sample.stats.error_est = 0.0001
 
     if data._headers:
-        # if data.paramsdict["max_alleles_consens"] == 1:
-        #     print("  Haploid calls with paralog filter [max alleles = 1]")
-        # elif data.paramsdict["max_alleles_consens"] == 2:
-        #     print("  Diploid calls with paralog filter [max alleles = 2]")
-        # elif data.paramsdict["max_alleles_consens"] > 2:
-        #     print("  Diploid base calls with relaxed paralog filter "\
-        #             "(max alleles = {})".\
-        #             format(data.paramsdict["max_alleles_consens"]))
         print(u"""\
   Mean error  [{:.5f} sd={:.5f}]
   Mean hetero [{:.5f} sd={:.5f}]"""\

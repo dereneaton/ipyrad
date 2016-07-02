@@ -105,12 +105,20 @@ def branch_assembly(args, parsedict):
     """
     ## Get the current assembly
     bargs = args.branch
+
     if len(bargs) > 1:
         subsamples = bargs[1:]
     else:
         subsamples = []
+
     data = getassembly(args, parsedict)
-    new_data = data.branch(bargs[0], subsamples)
+
+    ## If the arg after the new param name is a file that exists
+    ## then we'll just use that instead
+    if os.path.exists(bargs[1]):
+        new_data = data.branch(bargs[0], infile=bargs[1])
+    else:
+        new_data = data.branch(bargs[0], subsamples)
 
     print("  Creating a new branch called '{}' with {} Samples".\
         format(new_data.name, len(new_data.samples)))
@@ -118,6 +126,7 @@ def branch_assembly(args, parsedict):
     print("  Writing new params file to {}"\
           .format("params-"+new_data.name+".txt"))
     new_data.write_params("params-"+new_data.name+".txt", force=args.force)
+
 
 
 def merge_assemblies(args):
@@ -146,7 +155,7 @@ def merge_assemblies(args):
             + "the new assembly (this will create a new params file for you)."
         sys.exit(msg) 
     ## Make sure first arg will create a param file that doesn't already exist
-    if os.path.exists("params-" + newname + ".txt"):
+    if os.path.exists("params-" + newname + ".txt") and not args.force:
         msg = "\n  First argument for ipyrad -m should be the name of the new"\
             + " assembly. This will create\n  a new params file called params-"\
             + newname + ".txt, but this file already exists."
@@ -179,7 +188,7 @@ def merge_assemblies(args):
     merged_assembly.paramsdict["sorted_fastq_path"] = "Merged: " + merged_names
 
     ## Write out the merged assembly params file and report success
-    merged_assembly.write_params("params-{}.txt".format(newname))
+    merged_assembly.write_params("params-{}.txt".format(newname), force=args.force)
 
     print("\n  Merging succeeded. New params file for merged assembly:")
     print("\n    params-{}.txt\n".format(newname))
@@ -386,6 +395,14 @@ def main():
     """)
             sys.exit(2)
 
+    if not args.params:
+        if not any([args.branch, args.results, args.steps]):
+            print("""
+    Must provide params file for branching, doing steps or getting results.
+    e.g., ipyrad -p params-test.txt -r              ## shows results
+    e.g., ipyrad -p params-test.txt -s 12           ## runs steps 1 & 2
+    e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
+    """)
 
     ## if branching, merging, or info do not allow steps in same command
     ## print spacer
