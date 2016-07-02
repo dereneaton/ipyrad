@@ -539,12 +539,17 @@ def multicat(data, samples, ipyclient):
 
         ## but, while in singlecats loop, remove cleanups as they finish
         ## to avoid memory from climbing
-        # if any(finish_cl):
-        #     snames = cleaning.keys()
-        #     ## iterate over remaining samples/keys
-        #     for sname in snames:
-        #         if cleaning[sname].completed and cleaning[sname].successful():
-        #             cwait += 1
+        if any(finish_cl):
+            snames = cleaning.keys()
+            ## iterate over remaining samples/keys
+            for sname in snames:
+                ## Don't clean up the dummy async object because if it gets
+                ## cleaned up before any real samples finish singlecat
+                ## then you get a KeyError. It creates a nasty race condition.
+                if cleaning[sname].completed and cleaning[sname].successful()\
+                        and not sname == 0:
+                    cwait += 1
+                    del cleaning[sname]
 
         ## if finished with singlecats, move on to next progress bar. 
         if not jobs.keys():
