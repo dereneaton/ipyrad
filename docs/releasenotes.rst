@@ -5,6 +5,20 @@
 Release Notes
 =============
 
+0.3.17
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- removed the -i flag from __main__
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- fix for branching when no filename is provided
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fix so that step 6 cleans up as jobs finish (don't delete dummy job from cleanup queue)
+- removed a redundant call to open the allhaps file
+- Added a check to ensure R2 files _actually exist. Error out if not. Updated internal doc for link_fastq().
+-  "Updating ipyrad/__init__.py to version - 0.3.16
+- tmp fix for svd4tet test function so we can put up this hotfix
+
 0.3.16
 ------
 - tmp fix for svd4tet test function so we can put up this hotfix
