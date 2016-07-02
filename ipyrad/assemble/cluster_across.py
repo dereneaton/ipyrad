@@ -1046,7 +1046,7 @@ def build_input_file(data, samples, randomseed):
     proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
 
-    allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
+    #allhaps = open(allcons.replace("_catcons.tmp", "_cathaps.tmp"), 'w')
     LOGGER.debug(" ".join(cmd1))
     proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
