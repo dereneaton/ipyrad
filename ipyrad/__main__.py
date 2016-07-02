@@ -104,27 +104,27 @@ def branch_assembly(args, parsedict):
     to a new assembly, and also write out the appropriate params.txt
     """
     ## Get the current assembly
-    bargs = args.branch
-
-    if len(bargs) > 1:
-        subsamples = bargs[1:]
-    else:
-        subsamples = []
-
     data = getassembly(args, parsedict)
 
-    ## If the arg after the new param name is a file that exists
-    ## then we'll just use that instead
-    if os.path.exists(bargs[1]):
-        new_data = data.branch(bargs[0], infile=bargs[1])
+    ## look for subsamples
+    bargs = args.branch
+    if len(bargs) > 1:
+        ## If the arg after the new param name is a file that exists
+        ## then we'll just use that instead
+        if os.path.exists(bargs[1]):
+            new_data = data.branch(bargs[0], infile=bargs[1])
+        else:
+            subsamples = bargs[1:]            
+            new_data = data.branch(bargs[0], subsamples)
     else:
+        subsamples = []
         new_data = data.branch(bargs[0], subsamples)
 
     print("  Creating a new branch called '{}' with {} Samples".\
-        format(new_data.name, len(new_data.samples)))
+             format(new_data.name, len(new_data.samples)))
 
     print("  Writing new params file to {}"\
-          .format("params-"+new_data.name+".txt"))
+            .format("params-"+new_data.name+".txt"))
     new_data.write_params("params-"+new_data.name+".txt", force=args.force)
 
 
