@@ -53,6 +53,7 @@ def findbcode(cutters, longbar, read1):
     return barcode[0] 
 
 
+
 def find3radbcode(cutters, longbar, read1):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
@@ -342,7 +343,7 @@ def collate_subs(args):
     ## parse args
     data, filenum, sublist = args
 
-    ## output R1 collated file handle
+    ## output R1 collated file handle, advances until its at the right number
     checkpoint = 0
     while 1:
         out1 = os.path.join(data.dirs.fastqs, 
@@ -391,6 +392,7 @@ def collate_subs(args):
             out2 = os.path.join(data.dirs.fastqs, 
                         "tmp_{}_R2_".format(sname),             
                         "coll_{}_R2_{}.fastq".format(filenum, checkpoint))
+
             with open(out2, 'a') as tmpout:
                 chunks.sort(key=lambda x: int(x.split("_")[-1][:-6]))
                 for inchunk in chunks:
@@ -429,6 +431,7 @@ def collate_files(args):
                     "coll_{}_R2_*.fastq".format(filenum))
         out2 = os.path.join(data.dirs.fastqs, 
                     "{}_R2_.fastq.gz".format(sname))
+        
         with gzip.open(out2, 'a') as tmpout:
             chunks = glob.glob(incols)
             chunks.sort(key=lambda x: int(x.split("_")[-3]))
