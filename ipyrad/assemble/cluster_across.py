@@ -46,78 +46,84 @@ def muscle_align_across(args):
     samples.sort(key=lambda x: x.name)
     snames = [sample.name for sample in samples]
 
-    ## data are already chunked, read in the whole thing
-    infile = open(chunk, 'rb')
-    clusts = infile.read().split("//\n//\n")[:-1]
-    out = []
+    try:
+        ## data are already chunked, read in the whole thing
+        infile = open(chunk, 'rb')
+        clusts = infile.read().split("//\n//\n")[:-1]
+        out = []
 
-    ## tmparray to store indel information 
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
-    indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool)
+        ## tmparray to store indel information 
+        maxlen = data._hackersonly["max_fragment_length"]
+        if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
+            maxlen *= 2
+        indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool)
 
-    ## iterate over clusters and align
-    loc = 0
-    for loc, clust in enumerate(clusts):
-        stack = []
-        lines = clust.strip().split("\n")
-        names = [i.split()[0][1:] for i in lines]
-        seqs = [i.split()[1] for i in lines]
+        ## iterate over clusters and align
+        loc = 0
+        for loc, clust in enumerate(clusts):
+            stack = []
+            lines = clust.strip().split("\n")
+            names = [i.split()[0][1:] for i in lines]
+            seqs = [i.split()[1] for i in lines]
 
-        ## append counter to end of names b/c muscle doesn't retain order
-        names = [j+";*"+str(i) for i, j in enumerate(names)]
+            ## append counter to end of names b/c muscle doesn't retain order
+            names = [j+";*"+str(i) for i, j in enumerate(names)]
 
-        ## don't bother aligning singletons
-        if len(names) <= 1:
-            if names:
-                stack = [names[0]+"\n"+seqs[0]]
-        else:
-            ## split seqs before align if PE. If 'nnnn' not found (single end 
-            ## or merged reads) then `except` will pass it to SE alignment. 
-            try:
-                seqs1 = [i.split("nnnn")[0] for i in seqs] 
-                seqs2 = [i.split("nnnn")[1] for i in seqs]
+            ## don't bother aligning singletons
+            if len(names) <= 1:
+                if names:
+                    stack = [names[0]+"\n"+seqs[0]]
+            else:
+                ## split seqs before align if PE. If 'nnnn' not found (single end 
+                ## or merged reads) then `except` will pass it to SE alignment. 
+                try:
+                    seqs1 = [i.split("nnnn")[0] for i in seqs] 
+                    seqs2 = [i.split("nnnn")[1] for i in seqs]
 
-                string1 = muscle_call(data, names, seqs1)
-                string2 = muscle_call(data, names, seqs2)
-                anames, aseqs1 = parsemuscle(data, string1)
-                anames, aseqs2 = parsemuscle(data, string2)
+                    string1 = muscle_call(data, names, seqs1)
+                    string2 = muscle_call(data, names, seqs2)
+                    anames, aseqs1 = parsemuscle(data, string1)
+                    anames, aseqs2 = parsemuscle(data, string2)
 
-                ## resort so they're in same order
-                aseqs = [i+"nnnn"+j for i, j in zip(aseqs1, aseqs2)]
-                for i in xrange(len(anames)):
-                    stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
-                    ## store the indels and separator regions as indels
-                    locinds = np.array(list(aseqs[i])) == "-"
-                    sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
-                    indels[sidx, loc, :locinds.shape[0]] = locinds
+                    ## resort so they're in same order
+                    aseqs = [i+"nnnn"+j for i, j in zip(aseqs1, aseqs2)]
+                    for i in xrange(len(anames)):
+                        stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
+                        ## store the indels and separator regions as indels
+                        locinds = np.array(list(aseqs[i])) == "-"
+                        sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
+                        indels[sidx, loc, :locinds.shape[0]] = locinds
 
-            except IndexError:
-                string1 = muscle_call(data, names, seqs)
-                anames, aseqs = parsemuscle(data, string1)
-                for i in xrange(len(anames)):
-                    stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])                    
-                    ## store the indels
-                    locinds = np.array(list(aseqs[i])) == "-"
-                    sidx = snames.index(anames[i].rsplit("_", 1)[0])
-                    indels[sidx, loc, :locinds.shape[0]] = locinds
+                except IndexError:
+                    string1 = muscle_call(data, names, seqs)
+                    anames, aseqs = parsemuscle(data, string1)
+                    for i in xrange(len(anames)):
+                        stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
+                        ## store the indels
+                        locinds = np.array(list(aseqs[i])) == "-"
+                        
+                        sidx = snames.index(anames[i].rsplit("_", 1)[0])
+                        indels[sidx, loc, :locinds.shape[0]] = locinds
 
-        if stack:
-            out.append("\n".join(stack))
+            if stack:
+                out.append("\n".join(stack))
 
-    ## write to file after
-    infile.close()
-    with open(chunk, 'wb') as outfile:
-        outfile.write("\n//\n//\n".join(out)+"\n")
+        ## write to file after
+        infile.close()
+        with open(chunk, 'wb') as outfile:
+            outfile.write("\n//\n//\n".join(out)+"\n")
 
-    ## save indels array to tmp dir
-    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
-    ifile = os.path.join(tmpdir, chunk+".h5")
-    LOGGER.info('ifile is %s', ifile)    
-    iofile = h5py.File(ifile, 'w')
-    iofile.create_dataset('indels', data=indels)
-    iofile.close()
+        ## save indels array to tmp dir
+        tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
+        ifile = os.path.join(tmpdir, chunk+".h5")
+        LOGGER.info('ifile is %s', ifile)
+        iofile = h5py.File(ifile, 'w')
+        iofile.create_dataset('indels', data=indels)
+        iofile.close()
+
+    except Exception as inst:
+        LOGGER.debug("Caught exception in muscle_align_across - {}".format(inst))
+        raise
 
     return ifile, loc+1
 
@@ -171,13 +177,17 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         indeltups = []
         keys = jobs.keys()
         for idx in keys:
-            #meta = jobs[idx].metadata
+            meta = jobs[idx].metadata
+            LOGGER.debug(meta)
             if jobs[idx].completed and jobs[idx].successful():
                 indeltups.append(jobs[idx].get())
             del jobs[idx]
         ## submit to indel entry
         if indeltups:
             build(data, samples, indeltups, clustbits, allwait, fwait, start)
+        else:
+            msg = "\n\n  All samples failed alignment step. Check the log files."
+            raise IPyradError(msg)
 
     finally:
         ## Do tmp file cleanup
@@ -1028,9 +1038,10 @@ def build_input_file(data, samples, randomseed):
                                          samp.stats.reads_consens]))
     conshandles.sort()
     assert conshandles, "no consensus files found"
-
+    
     ## concatenate all of the consens files
-    cmd = ['cat'] + glob.glob(os.path.join(data.dirs.consens, '*.consens.gz'))
+    cmd = ['cat'] + conshandles
+    #cmd = ['cat'] + glob.glob(os.path.join(data.dirs.consens, '*.consens.gz'))
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     LOGGER.debug(" ".join(cmd))
     with open(allcons, 'w') as output:

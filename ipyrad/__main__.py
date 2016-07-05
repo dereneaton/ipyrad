@@ -392,7 +392,7 @@ def main():
             sys.exit(2)
 
     if not args.params:
-        if not any([args.branch, args.results, args.steps]):
+        if any([args.branch, args.results, args.steps]):
             print("""
     Must provide params file for branching, doing steps or getting results.
     e.g., ipyrad -p params-test.txt -r              ## shows results

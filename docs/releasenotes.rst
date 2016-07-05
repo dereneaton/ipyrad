@@ -5,6 +5,13 @@
 Release Notes
 =============
 
+0.3.18
+------
+- Better error handling for alignment step, and now use only the consensus files for the samples being processed (instead of glob'ing every consens.gz in the working directory
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fix a bug that catches when you don't pass in the -p flag for branching
+- cleaning up the releasenotes
+
 0.3.17
 ------
 - removed the -i flag from the command line.
