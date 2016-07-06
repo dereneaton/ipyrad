@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.3.19
+------
+- fix for bug in edge trimming when assembly is branched after s6 clustering, but before s7 filtering
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic code fix
+
 0.3.18
 ------
 - Better error handling for alignment step, and now use only the consensus files for the samples being processed (instead of glob'ing every consens.gz in the working directory
