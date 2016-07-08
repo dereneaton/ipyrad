@@ -14,3 +14,4 @@ dependencies:
 - h5py
 - mpi4py
 - sphinx>1.2
+- numba>=0.27

@@ -5,8 +5,26 @@
 Release Notes
 =============
 
-0.3.16
+0.3.19
 ------
+- fix for bug in edge trimming when assembly is branched after s6 clustering, but before s7 filtering
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic code fix
+
+0.3.18
+------
+- Better error handling for alignment step, and now use only the consensus files for the samples being processed (instead of glob'ing every consens.gz in the working directory
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fix a bug that catches when you don't pass in the -p flag for branching
+- cleaning up the releasenotes
+
+0.3.17
+------
+- removed the -i flag from the command line.
+- fix for branching when no filename is provided.
+- Fix so that step 6 cleans up as jobs finish. This fixes an error raised if a dummy job finishes too quick. 
+- removed a redundant call to open the allhaps file
+- Added a check to ensure R2 files _actually exist. Error out if not. Updated internal doc for link_fastq().
 - tmp fix for svd4tet test function so we can put up this hotfix
 
 0.3.16
@@ -14,28 +32,11 @@ Release Notes
 - working on speed improvements for svd4tet. Assembly using purging cleanup when running API.
 - fix for KeyError caused by cleanup finishing before singlecats in step6
 - update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
-- update to empirical tutorial
 
 0.3.15
 ------
-- write nexus format compatible with ape
-- closing pipe was causing a stall in step6
+- write nexus format compatible with ape in svd4tet outputs.
+- closing pipe was causing a stall in step6.
 
 0.3.14
 ------
@@ -57,7 +58,6 @@ Release Notes
 
 0.3.12
 ------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Fixed infinite while loop inside __name_from_file
 
 0.3.11
@@ -65,7 +65,6 @@ Release Notes
 - Fixed commented call to cluster(), step 6 is working again
 - Added a check to ensure barcodes contain only IUPAC characters
 - Fixed demultiplex sorting progress bar
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - append data.name to the tmp-chunks directory to prevent users from running multiple step1 and stepping on themselves
 - Update README.rst
 - Added force flag for merging CLI
@@ -75,15 +74,9 @@ Release Notes
 - chunks size optimization
 - optimizing chunk size step6
 - merge for lowmem fixes to step6
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - decided against right anchoring method from rad muscle alignments. Improved step6 muscle align progress bar
 - reducing memory load in step6
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - debug merge fix
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - improvement to debug flag. Much improved memory handling for demultiplexing
 
 0.3.10

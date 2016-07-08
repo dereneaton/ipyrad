@@ -122,6 +122,19 @@ def make_stats(data, samples, samplecounts, locuscounts):
         piscounts[i] = 0
         varcounts[i] = 0
 
+
+    applied = pd.Series([0]*8,
+        name="applied_order", 
+        index=[
+        "total_prefiltered_loci", 
+        "filtered_by_rm_duplicates",
+        "filtered_by_max_indels", 
+        "filtered_by_max_snps",
+        "filtered_by_max_shared_het",
+        "filtered_by_min_sample",
+        "filtered_by_max_alleles",
+        "total_filtered_loci"])    
+
     #bisnps = Counter()
     while start < nloci:
         hslice = [start, start+optim]
@@ -132,6 +145,18 @@ def make_stats(data, samples, samplecounts, locuscounts):
         ## get subarray results from filter array
         # max_indels, max_snps, max_hets, min_samps, bad_edges, max_alleles
         filters += afilt.sum(axis=0)
+        applied["filtered_by_rm_duplicates"] += afilt[:, 0].sum()
+        mask = afilt[:, 0].astype(np.bool)
+        applied["filtered_by_max_indels"] += afilt[~mask, 1].sum()
+        mask = afilt[:, 0:2].sum(axis=1).astype(np.bool)
+        applied["filtered_by_max_snps"] += afilt[~mask, 2].sum()
+        mask = afilt[:, 0:3].sum(axis=1).astype(np.bool)
+        applied["filtered_by_max_shared_het"] += afilt[~mask, 3].sum()
+        mask = afilt[:, 0:4].sum(axis=1).astype(np.bool)
+        applied["filtered_by_min_sample"] += afilt[~mask, 4].sum()
+        mask = afilt[:, 0:5].sum(axis=1).astype(np.bool)
+        applied["filtered_by_max_alleles"] += afilt[~mask, 5].sum()
+
         passed += np.sum(afilt.sum(axis=1) == 0)
 
         ## get filter to count snps for only passed loci
@@ -150,7 +175,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ## record filtering of loci from total to final
     filtdat = pd.Series(np.concatenate([[nloci], filters, [passed]]),
-        name="locus_filtering", 
+        name="total_filters", 
         index=[
         "total_prefiltered_loci", 
         "filtered_by_rm_duplicates",
@@ -161,10 +186,32 @@ def make_stats(data, samples, samplecounts, locuscounts):
         "filtered_by_max_alleles",
         "total_filtered_loci"])
 
+
+    retained = pd.Series([0]*8,
+        name="retained_loci", 
+        index=[
+        "total_prefiltered_loci", 
+        "filtered_by_rm_duplicates",
+        "filtered_by_max_indels", 
+        "filtered_by_max_snps",
+        "filtered_by_max_shared_het",
+        "filtered_by_min_sample",
+        "filtered_by_max_alleles",
+        "total_filtered_loci"])
+    retained["total_prefiltered_loci"] = nloci
+    retained["filtered_by_rm_duplicates"] = nloci - applied["filtered_by_rm_duplicates"]
+    retained["filtered_by_max_indels"] = retained["filtered_by_rm_duplicates"] - applied["filtered_by_max_indels"]
+    retained["filtered_by_max_snps"] = retained["filtered_by_max_indels"] - applied["filtered_by_max_snps"]
+    retained["filtered_by_max_shared_het"] = retained["filtered_by_max_snps"] - applied["filtered_by_max_shared_het"]    
+    retained["filtered_by_min_sample"] = retained["filtered_by_max_shared_het"] - applied["filtered_by_min_sample"]        
+    retained["filtered_by_max_alleles"] = retained["filtered_by_min_sample"] - applied["filtered_by_max_alleles"]        
+    retained["total_filtered_loci"] = passed
+
+
     print("\n\n## The number of loci caught by each filter."+\
           "\n## ipyrad API location: [assembly].statsfiles.s7_filters\n", 
           file=outstats)
-    data.stats_dfs.s7_filters = pd.DataFrame(filtdat)
+    data.stats_dfs.s7_filters = pd.DataFrame([filtdat, applied, retained]).T
     data.stats_dfs.s7_filters.to_string(buf=outstats)
 
 
@@ -188,7 +235,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     ########################################################################
     ## get stats for locus coverage
-    lrange = range(1, len(anames)+1)
+    lrange = range(1, len(samples)+1)
     locdat = pd.Series(locuscounts, name="locus_coverage", index=lrange)
     start = data.paramsdict["min_samples_locus"]-1
     locsums = pd.Series({i: np.sum(locdat.values[start:i]) for i in lrange}, 
@@ -270,6 +317,8 @@ def filter_all_clusters(data, samples, ipyclient):
 
     ## get the indices of the samples that we are going to include
     sidx = select_samples(dbsamples, samples)
+    LOGGER.info("samples %s \n, dbsamples %s \n, sidx %s \n", 
+        samples, dbsamples, sidx)
 
     ## Put inside a try statement so we can delete tmpchunks 
     try:
@@ -648,9 +697,7 @@ def init_arrays(data):
     io5 = h5py.File(data.database, 'w')
 
     ## get maxlen and chunk len
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    maxlen = data._hackersonly["max_fragment_length"] + 30
     chunks = co5["seqs"].attrs["chunksize"]
     nloci = co5["seqs"].shape[0]
 
@@ -723,12 +770,15 @@ def filter_stacks(args):
     ## also constitutes a filter, though one that is uncommon. For this 
     ## reason we have another filter called edgfilter.
     splits = co5["edges"][hslice[0]:hslice[1], 4]
+
+
     edgfilter, edgearr = get_edges(data, superseqs, splits)
     del splits
     #LOGGER.info("edgarr returned = %s", edgearr)
 
     ## minsamp coverages filtered from superseqs
     minfilter = filter_minsamp(data, superseqs)
+    #sys.exit(2)
 
     ## maxhets per site column from superseqs after trimming edges
     hetfilter = filter_maxhet(data, superseqs, edgearr)
@@ -809,12 +859,13 @@ def get_edges(data, superseqs, splits):
     edgefilter = np.zeros((superseqs.shape[0],), dtype=np.bool)
 
     ## TRIM GUIDE. The cut site is always trimmed. Number if what else gets it.
+    ## TODO: Not yet fully implemented. 
     ## If negative, then N bases are trimmed from that edge.
     ## If zero: no additional trimming.
     ## If positive: N is the minimum number of samples with data to trim to.
     ## default is (4, *, *, 4)
     ## A * value means no missing data (overhang) at edges.
-    edgetrims[edgetrims == "*"] = minsamp
+    #edgetrims[edgetrims == "*"] = minsamp
     edgetrims = edgetrims.astype(np.int)
 
     ## convert all - to N to make this easier, (only affects local copy)
@@ -853,7 +904,7 @@ def get_edges(data, superseqs, splits):
                 edge1 = np.where(r1s > 0)[0].max() - edgetrims[1]
         except ValueError:
             edgefilter[idx] = True
-            edge1 = np.where(r1s >= 1)[0].max()
+            edge1 = 1 #np.where(r1s >= 1)[0].max()
 
         ## sanity check
         if edge0 > edge1:
@@ -1211,10 +1262,7 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
     """
 
     ## make empty arrays for filling
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
-
+    maxlen = data._hackersonly["max_fragment_length"] + 30
     maxsnp = co5["snps"][:].sum()
 
     ## shape of arrays is sidx, we will subsample h5 w/ sidx to match
@@ -1535,10 +1583,7 @@ def vcfchunk(args):
 
     ## empty array to be filled before writing 
     ## will not actually be optim*maxlen, extra needs to be trimmed
-    maxlen = data._hackersonly["max_fragment_length"]    
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
-
+    maxlen = data._hackersonly["max_fragment_length"] + 30
     gstr = np.zeros((optim*maxlen, 9+sum(sidx)), dtype="S20")
 
     ## get data sliced (optim chunks at a time)

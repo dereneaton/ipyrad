@@ -8,6 +8,7 @@ jupyter
 mpi4py
 nbconvert
 numpy>=1.9
+numba>=0.27
 pandas>=0.16
 pip>=8.1
 scipy>0.10

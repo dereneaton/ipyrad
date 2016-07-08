@@ -343,7 +343,7 @@ def worker(args):
     return tmpchunk
 
 
-
+## TODO; this can now be nopython=True is numba 0.27
 @jit('Tuple((u2[:],f4))(u1[:, :], u2[:, :])')
 def svdconvert(arr, sidxs):
     """ the workhorse """
@@ -359,7 +359,7 @@ def svdconvert(arr, sidxs):
 
     for sidx in [0, 1, 2]:
         mat = jseq_to_matrix(arr, sidxs[sidx])
-        sss = np.linalg.svd(mat, full_matrices=1, compute_uv=0)
+        sss = np.linalg.svd(mat, full_matrices=1)[1]#, compute_uv=0)
         scores[sidx] = np.sqrt(sss[11:].sum())
         if scores[sidx] < best:
             bsidx = sidx

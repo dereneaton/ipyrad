@@ -176,8 +176,8 @@ def consensus(args):
     ## Assembly might be branched and the new one use a lower depth filter.
     #### dimensions: nreads_in_this_chunk, max_read_length, 4 bases
     maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    #if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
+    #    maxlen *= 2
 
     ## write to tmp cons to file to be combined later
     consenshandle = os.path.join(data.dirs.consens, 

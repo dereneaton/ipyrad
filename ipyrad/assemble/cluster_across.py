@@ -16,6 +16,7 @@ import pty
 import gzip
 import h5py
 import time
+import numba
 import shutil
 import random
 import datetime
@@ -46,78 +47,84 @@ def muscle_align_across(args):
     samples.sort(key=lambda x: x.name)
     snames = [sample.name for sample in samples]
 
-    ## data are already chunked, read in the whole thing
-    infile = open(chunk, 'rb')
-    clusts = infile.read().split("//\n//\n")[:-1]
-    out = []
+    try:
+        ## data are already chunked, read in the whole thing
+        infile = open(chunk, 'rb')
+        clusts = infile.read().split("//\n//\n")[:-1]
+        out = []
 
-    ## tmparray to store indel information 
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
-    indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool)
+        ## tmparray to store indel information 
+        maxlen = data._hackersonly["max_fragment_length"] + 30
+        LOGGER.info("maxlen inside muscle_align_across is %s", maxlen)
 
-    ## iterate over clusters and align
-    loc = 0
-    for loc, clust in enumerate(clusts):
-        stack = []
-        lines = clust.strip().split("\n")
-        names = [i.split()[0][1:] for i in lines]
-        seqs = [i.split()[1] for i in lines]
+        indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool)
 
-        ## append counter to end of names b/c muscle doesn't retain order
-        names = [j+";*"+str(i) for i, j in enumerate(names)]
+        ## iterate over clusters and align
+        loc = 0
+        for loc, clust in enumerate(clusts):
+            stack = []
+            lines = clust.strip().split("\n")
+            names = [i.split()[0][1:] for i in lines]
+            seqs = [i.split()[1] for i in lines]
 
-        ## don't bother aligning singletons
-        if len(names) <= 1:
-            if names:
-                stack = [names[0]+"\n"+seqs[0]]
-        else:
-            ## split seqs before align if PE. If 'nnnn' not found (single end 
-            ## or merged reads) then `except` will pass it to SE alignment. 
-            try:
-                seqs1 = [i.split("nnnn")[0] for i in seqs] 
-                seqs2 = [i.split("nnnn")[1] for i in seqs]
+            ## append counter to end of names b/c muscle doesn't retain order
+            names = [j+";*"+str(i) for i, j in enumerate(names)]
 
-                string1 = muscle_call(data, names, seqs1)
-                string2 = muscle_call(data, names, seqs2)
-                anames, aseqs1 = parsemuscle(data, string1)
-                anames, aseqs2 = parsemuscle(data, string2)
+            ## don't bother aligning singletons
+            if len(names) <= 1:
+                if names:
+                    stack = [names[0]+"\n"+seqs[0]]
+            else:
+                ## split seqs before align if PE. If 'nnnn' not found (single end 
+                ## or merged reads) then `except` will pass it to SE alignment. 
+                try:
+                    seqs1 = [i.split("nnnn")[0] for i in seqs] 
+                    seqs2 = [i.split("nnnn")[1] for i in seqs]
 
-                ## resort so they're in same order
-                aseqs = [i+"nnnn"+j for i, j in zip(aseqs1, aseqs2)]
-                for i in xrange(len(anames)):
-                    stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
-                    ## store the indels and separator regions as indels
-                    locinds = np.array(list(aseqs[i])) == "-"
-                    sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
-                    indels[sidx, loc, :locinds.shape[0]] = locinds
+                    string1 = muscle_call(data, names, seqs1)
+                    string2 = muscle_call(data, names, seqs2)
+                    anames, aseqs1 = parsemuscle(data, string1)
+                    anames, aseqs2 = parsemuscle(data, string2)
 
-            except IndexError:
-                string1 = muscle_call(data, names, seqs)
-                anames, aseqs = parsemuscle(data, string1)
-                for i in xrange(len(anames)):
-                    stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])                    
-                    ## store the indels
-                    locinds = np.array(list(aseqs[i])) == "-"
-                    sidx = snames.index(anames[i].rsplit("_", 1)[0])
-                    indels[sidx, loc, :locinds.shape[0]] = locinds
+                    ## resort so they're in same order
+                    aseqs = [i+"nnnn"+j for i, j in zip(aseqs1, aseqs2)]
+                    for i in xrange(len(anames)):
+                        stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
+                        ## store the indels and separator regions as indels
+                        locinds = np.array(list(aseqs[i])) == "-"
+                        sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
+                        indels[sidx, loc, :locinds.shape[0]] = locinds
 
-        if stack:
-            out.append("\n".join(stack))
+                except IndexError:
+                    string1 = muscle_call(data, names, seqs)
+                    anames, aseqs = parsemuscle(data, string1)
+                    for i in xrange(len(anames)):
+                        stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
+                        ## store the indels
+                        locinds = np.array(list(aseqs[i])) == "-"
+                        
+                        sidx = snames.index(anames[i].rsplit("_", 1)[0])
+                        indels[sidx, loc, :locinds.shape[0]] = locinds
 
-    ## write to file after
-    infile.close()
-    with open(chunk, 'wb') as outfile:
-        outfile.write("\n//\n//\n".join(out)+"\n")
+            if stack:
+                out.append("\n".join(stack))
 
-    ## save indels array to tmp dir
-    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
-    ifile = os.path.join(tmpdir, chunk+".h5")
-    LOGGER.info('ifile is %s', ifile)    
-    iofile = h5py.File(ifile, 'w')
-    iofile.create_dataset('indels', data=indels)
-    iofile.close()
+        ## write to file after
+        infile.close()
+        with open(chunk, 'wb') as outfile:
+            outfile.write("\n//\n//\n".join(out)+"\n")
+
+        ## save indels array to tmp dir
+        tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
+        ifile = os.path.join(tmpdir, chunk+".h5")
+        LOGGER.info('ifile is %s', ifile)
+        iofile = h5py.File(ifile, 'w')
+        iofile.create_dataset('indels', data=indels)
+        iofile.close()
+
+    except Exception as inst:
+        LOGGER.debug("Caught exception in muscle_align_across - {}".format(inst))
+        raise
 
     return ifile, loc+1
 
@@ -163,7 +170,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
             else:
                 fwait = sum(finished)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(allwait, fwait, 
+                progressbar(20, 20, 
                             " aligning clusters     | {}".format(elapsed))
                 break
 
@@ -171,13 +178,17 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         indeltups = []
         keys = jobs.keys()
         for idx in keys:
-            #meta = jobs[idx].metadata
+            meta = jobs[idx].metadata
+            LOGGER.debug(meta)
             if jobs[idx].completed and jobs[idx].successful():
                 indeltups.append(jobs[idx].get())
             del jobs[idx]
         ## submit to indel entry
         if indeltups:
             build(data, samples, indeltups, clustbits, allwait, fwait, start)
+        else:
+            msg = "\n\n  All samples failed alignment step. Check the log files."
+            raise IPyradError(msg)
 
     finally:
         ## Do tmp file cleanup
@@ -213,9 +224,8 @@ def build(data, samples, indeltups, clustbits, tots, done, oldstart):
     indeltups.sort(key=lambda x: int(x[0].rsplit("_", 1)[-1][:-3]))
 
     ## get dims for full indel array
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    maxlen = data._hackersonly["max_fragment_length"] + 30
+    LOGGER.info("maxlen inside build is %s", maxlen)
 
     ## INIT INDEL ARRAY
     ## build an indel array for ALL loci in cat.clust.gz, 
@@ -321,16 +331,18 @@ def cluster(data, noreverse, ipyclient):
                 ## may raise value error when it gets to the end
                 except ValueError:
                     pass
-                ## break if done
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(100, done, 
-                    " clustering across     | {}".format(elapsed))
+            ## break if done
             ## catches end chunk of printing if clustering went really fast
             elif "Clusters:" in dat:
                 LOGGER.info("ended vsearch tracking loop")
                 break
             else:
                 time.sleep(0.1)
+            ## print progress
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(100, done, 
+                " clustering across     | {}".format(elapsed))
+
         ## another catcher to let vsearch cleanup after clustering is done
         proc.wait()
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -378,9 +390,8 @@ def build_h5_array(data, samples, ipyclient):
 
 
     ## get maxlen dim
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    maxlen = data._hackersonly["max_fragment_length"] + 30    
+    LOGGER.info("maxlen inside build_h5_array is %s", maxlen)
 
     ## open new h5 handle
     data.clust_database = os.path.join(
@@ -473,7 +484,14 @@ def multicat(data, samples, ipyclient):
     ## create parallel client
     ## it might be a good idea to limit the number of engines here based on 
     ## some estimate of the individual file sizes, to avoid memory limits.
-    ## TODO: ------
+
+    ## read in the biggest individual file (e.g., 4GB), and limit the number
+    ## of concurrent engines so that if N files that big were loaded into
+    ## memory they would not exceed 75% memory. 
+
+    ## but what if we're on multiple machines and each has its own memory?...
+    ## then we need to ask each machine and use the min value
+
     lbview = ipyclient.load_balanced_view()
 
     ## make a list of jobs
@@ -674,10 +692,14 @@ def singlecat(args):
     ## get number of clusters
     nloci = sum(1 for _ in udic.groups.iterkeys())
 
-    ## get maxlen
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    ## set maximum allowable length of clusters. For single end RAD this only
+    ## has to allow for a few extra indels, so 30 should be fine. For GBS, we 
+    ## have to allow for the fact that two clusters could now partially overlap
+    ## which previously did not within samples. Again, 30 is pretty good, but
+    ## we have to set this as a max cut off so anything over this will get 
+    ## trimmed. Fine, it's probably quite rare. 
+    maxlen = data._hackersonly["max_fragment_length"] + 30
+    LOGGER.info("maxlen inside singlecat is %s", maxlen)
 
     ## INIT SINGLE CATG ARRAY
     ## create an h5 array for storing catg tmp for this sample
@@ -699,56 +721,52 @@ def singlecat(args):
     dfilter = np.zeros(nloci, dtype=np.bool)
     ifilter = np.zeros(nloci, dtype=np.uint16)
 
-    ## create a local array to fill until writing to disk for write efficiency
-    locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
-    lonall = np.zeros((chunksize,), dtype=np.uint8)
-
     ## 
     LOGGER.info("filling catg")
-    step = iloc = 0
-    for iloc, seed in enumerate(udic.groups.iterkeys()):
-        ipdf = udic.get_group(seed)
-        ask = ipdf.where(ipdf[3] == sample.name).dropna()
 
-        ## write to disk after 1000 writes
-        if not iloc % chunksize:
-            icatg[step:iloc] = locatg[:]
-            inall[step:iloc] = lonall[:]
-            ## reset
-            step = iloc
-            locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
-            lonall = np.zeros((chunksize,), dtype=np.uint8)
+    ## use numba compiled function to fill arrays
+    ikeys = udic.groups.keys()
+    dfilter = fillcats(sample.name, udic, chunksize, catarr, nall, icatg, inall, dfilter, maxlen)
 
-        ## fill local array one at a time
-        if ask.shape[0] == 1: 
-            ## if multiple hits of a sample to a locus then it is not added
-            ## to the locus, and instead the locus is masked for exclusion
-            ## using the filters array.
-            locatg[iloc-step] = catarr[int(ask[4]), :icatg.shape[1], :]
-            lonall[iloc-step] = nall[int(ask[4]),]
-            #icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
-        elif ask.shape[0] > 1:
-            ## store that this cluster failed b/c it had duplicate samples. 
-            dfilter[iloc] = True
+    # step = iloc = 0
+    # for iloc, seed in enumerate(udic.groups.iterkeys()):
+    #     ipdf = udic.get_group(seed)
+    #     ask = ipdf.where(ipdf[3] == sample.name).dropna()
 
-    ## write the leftover chunk 
-    icatg[step:iloc] = locatg[:icatg[step:iloc].shape[0]]
-    inall[step:iloc] = lonall[:inall[step:iloc].shape[0]]    
+    #     ## write to disk after 1000 writes
+    #     if not iloc % chunksize:
+    #         icatg[step:iloc] = locatg[:]
+    #         inall[step:iloc] = lonall[:]
+    #         ## reset
+    #         step = iloc
+    #         locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
+    #         lonall = np.zeros((chunksize,), dtype=np.uint8)
+
+    #     ## fill local array one at a time
+    #     if ask.shape[0] == 1: 
+    #         ## if multiple hits of a sample to a locus then it is not added
+    #         ## to the locus, and instead the locus is masked for exclusion
+    #         ## using the filters array. Using (+=) instead of just (=) allows
+    #         ## for catarr to be smaller minlen than locatg w/o error
+    #         locatg[iloc-step, :catarr.shape[1]] = catarr[int(ask[4]), :icatg.shape[1], :]
+    #         lonall[iloc-step] = nall[int(ask[4]),]
+    #         #icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
+    #     elif ask.shape[0] > 1:
+    #         ## store that this cluster failed b/c it had duplicate samples. 
+    #         dfilter[iloc] = True
 
     ## store dfilter and clear memory
     smp5.create_dataset("dfilter", data=dfilter)
-    del locatg
-    del lonall
+
 
     LOGGER.info("filling seeds")
-    ## for each locus in which Sample was the seed. This writes quite a bit
-    ## slower than the local setting
-    seedmatch1 = (sample.name in i for i in udic.groups.keys())
-    seedmatch2 = (i for i, j in enumerate(seedmatch1) if j)
-    LOGGER.info("seedmatching")
-    for iloc in seedmatch2:
-        sfill = int(udic.groups.keys()[iloc].split("_")[-1])
-        icatg[iloc] = catarr[sfill, :, :]
+    ## for each locus in which Sample was the seed. 
+    mask = np.array([sample.name in i for i in ikeys])
+    aran = np.arange(len(mask))
+    masked = aran[mask]
+    for iloc in masked:
+        sfill = int(ikeys[iloc].split("_")[-1])
+        icatg[iloc, :catarr.shape[1]] = catarr[sfill, :icatg.shape[1]]
         inall[iloc] = nall[sfill]
     LOGGER.info("done seedmatching")
 
@@ -767,25 +785,33 @@ def singlecat(args):
     tmpstart = time.time()
     LOGGER.info("loading indels for %s %s, %s", 
                 sample.name, sidx, np.sum(indels[:10]))
+
     ## insert indels into new_h5 (icatg array) which now has loci in the same
     ## order as the final clusters from the utemp file
-    for iloc in xrange(icatg.shape[0]):
-        ## indels locations
-        indidx = np.where(indels[iloc, :])[0]
-        #LOGGER.info("indidx %s, len %s", indidx.shape, len(indidx))
-        if np.any(indidx):
-            ## store number of indels for this sample at this locus
-            ifilter[iloc] = len(indidx)
+    # for iloc in xrange(icatg.shape[0]):
+    #     ## indels locations
+    #     indidx = np.where(indels[iloc, :])[0]
+    #     #LOGGER.info("indidx %s, len %s", indidx.shape, len(indidx))
+    #     if np.any(indidx):
+    #         ## store number of indels for this sample at this locus
+    #         ifilter[iloc] = len(indidx)
 
-            ## insert indels into catg array
-            newrows = icatg[iloc].shape[0] + len(indidx)
-            not_idx = np.array([k for k in range(newrows) if k not in indidx])
-            ## create an empty new array with the right dims
-            newfill = np.zeros((newrows, 4), dtype=icatg.dtype)
-            ## fill with the old vals leaving the indels rows blank
-            newfill[not_idx, :] = icatg[iloc]
-            ## store new data into icatg
-            icatg[iloc] = newfill[:icatg[iloc].shape[0]]
+    #         ## insert indels into catg array
+    #         newrows = icatg[iloc].shape[0] + len(indidx)
+    #         not_idx = np.array([k for k in range(newrows) if k not in indidx])
+    #         ## create an empty new array with the right dims
+    #         newfill = np.zeros((newrows, 4), dtype=icatg.dtype)
+    #         ## fill with the old vals leaving the indels rows blank
+    #         newfill[not_idx, :] = icatg[iloc]
+    #         ## store new data into icatg
+    #         icatg[iloc] = newfill[:icatg.shape[1]]
+
+    for iloc in xrange(icatg.shape[0]):
+        indidx, found = where_numba(indels, np.uint32(iloc))
+        if found:
+            ifilter[iloc] = indidx.shape[0]
+            newfill = getfill_numba(np.uint32(indidx), icatg[iloc])
+            icatg[iloc] = newfill[:icatg.shape[1]]
 
     elapsed = datetime.timedelta(seconds=int(time.time()- tmpstart))
     LOGGER.info("how long to do indels for %s %s", 
@@ -806,6 +832,82 @@ def singlecat(args):
 
 
 
+@numba.jit
+def fillcats(name, udic, chunksize, catarr, nall, icatg, inall, dfilter, maxlen):
+    ## create a local array to fill until writing to disk for write efficiency
+    locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
+    lonall = np.zeros((chunksize,), dtype=np.uint8)
+
+    ## go go 
+    step = iloc = 0
+    ikeys = udic.groups.keys()
+    for iloc, seed in enumerate(ikeys):
+        ipdf = udic.get_group(seed)
+        ask = ipdf.where(ipdf[3] == name).dropna()
+
+        ## write to disk after 1000 writes
+        if not iloc % chunksize:
+            icatg[step:iloc] = locatg[:]
+            inall[step:iloc] = lonall[:]
+            ## reset
+            step = iloc
+            locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
+            lonall = np.zeros((chunksize,), dtype=np.uint8)
+
+        ## fill local array one at a time
+        if ask.shape[0] == 1: 
+            ## if multiple hits of a sample to a locus then it is not added
+            ## to the locus, and instead the locus is masked for exclusion
+            ## using the filters array. Using (+=) instead of just (=) allows
+            ## for catarr to be smaller minlen than locatg w/o error
+            locatg[iloc-step, :catarr.shape[1]] = catarr[int(ask[4]), :icatg.shape[1], :]
+            lonall[iloc-step] = nall[int(ask[4]),]
+            #icatg[iloc] = catarr[int(ask[4]), :icatg.shape[1], :]
+        elif ask.shape[0] > 1:
+            ## store that this cluster failed b/c it had duplicate samples. 
+            dfilter[iloc] = True
+
+    ## write the leftover chunk 
+    icatg[step:iloc] = locatg[:icatg[step:iloc].shape[0]]
+    inall[step:iloc] = lonall[:inall[step:iloc].shape[0]]    
+    return dfilter
+
+
+
+@numba.jit(nopython=True)
+def where_numba(indels, iloc):
+    """ numba compiled function for grabbing indel locations. Doesn't really
+    speed up np.where, but is abut 6X faster for np.any. """
+    indidx = np.where(indels[iloc, :])[0]        
+    found = np.any(indidx)
+    return indidx, found
+
+
+
+def getfill_numba(indidx, tmpcatg):
+    """ 
+    Fast array filling function for singlecat. 
+    Cannot be fully numba compiled, but has a compiled subfunction
+    """
+    newrows = np.uint32(tmpcatg.shape[0] + indidx.shape[0])
+    newfill = np.zeros(shape=(newrows, 4), dtype=np.uint32)
+    res = getfill_numba_sub(tmpcatg, indidx, newfill, newrows)
+    return res
+
+
+@numba.jit("u4[:,:](u4[:,:],u4[:],u4[:,:],u4)", nopython=True)
+def getfill_numba_sub(tmpcatg, indidx, newfill, newrows):
+    """ compiled subfunction of getfill_numba """
+    allrows = np.arange(newrows)
+    mask = np.ones(shape=newrows, dtype=np.uint32)
+    for idx in indidx:
+        mask[idx] = 0
+    not_idx = allrows[mask == 1]
+    newfill[not_idx, :] = tmpcatg
+    return tmpcatg
+
+
+
 def fill_superseqs(data, samples):
     """ 
     Fills the superseqs array with seq data from cat.clust 
@@ -820,9 +922,8 @@ def fill_superseqs(data, samples):
     ## samples are already sorted
     snames = [i.name for i in samples]
     ## get maxlen again
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    maxlen = data._hackersonly["max_fragment_length"] + 30
+    LOGGER.info("maxlen inside fill_superseqs is %s", maxlen)
 
     ## data has to be entered in blocks
     infile = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
@@ -1023,14 +1124,17 @@ def build_input_file(data, samples, randomseed):
     """
 
     ## get all of the consens handles for samples that have consens reads
-    conshandles = list(itertools.chain(*[samp.files.consens \
-                                         for samp in samples if \
-                                         samp.stats.reads_consens]))
+    ## this is better than using sample.files.consens for selecting files 
+    ## b/c if they were moved we only have to edit data.dirs.consens 
+    conshandles = [os.path.join(data.dirs.consens, sample.name+".consens.gz") \
+                  for sample in samples if \
+                  sample.stats.reads_consens]
     conshandles.sort()
     assert conshandles, "no consensus files found"
-
+    
     ## concatenate all of the consens files
-    cmd = ['cat'] + glob.glob(os.path.join(data.dirs.consens, '*.consens.gz'))
+    cmd = ['cat'] + conshandles
+    #cmd = ['cat'] + glob.glob(os.path.join(data.dirs.consens, '*.consens.gz'))
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     LOGGER.debug(" ".join(cmd))
     with open(allcons, 'w') as output:
@@ -1105,7 +1209,6 @@ def build_input_file(data, samples, randomseed):
 
     indat.close()
     outdat.close()
-
 
 
 

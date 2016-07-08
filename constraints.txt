@@ -1,3 +1,4 @@
 ipyparallel>=5.0.1
 ipython>=4.0
 pandas>=0.16
+numba>=0.27

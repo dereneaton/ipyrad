@@ -155,7 +155,7 @@ pinfo = OrderedDict([
 
 ("7", ("""
     (7) datatype ---------------------------------------------------------
-    Options: rad, gbs, 2brad, ddrad, pairddrad, pairgbs, merged.
+    Options: rad, gbs, 2brad, ddrad, pairddrad, pairgbs, pair3rad,  merged.
     This parameter affects all steps of assembly (1-7).         
     Examples:
     ----------------------------------------------------------------------
