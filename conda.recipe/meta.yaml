@@ -14,24 +14,24 @@ requirements:
     - cython
     - h5py
     - ipyparallel >=5.0.1
-    - ipython ==4.0.0
+    - ipython >=4.0.0
     - jupyter_client
     - jupyter
     - mpi4py
     - nbconvert
-    - numba
+    - numba >=0.27
     - numpy >=1.7
     - pandas >=0.16
     - scipy
     - sphinx
     - python {{PY_VER}}*,>=2.7
   run:
-    - ipython ==4.0.0
+    - ipython >=4.0.0
     - ipyparallel >=5.0.1
     - cython
     - scipy 
     - h5py
-    - numba
+    - numba >=0.27
     - jupyter_client
     - jupyter
     - sphinx
