@@ -90,10 +90,11 @@ def sample_cleanup(data, sample):
     infile.close()
 
     ## If our longest sequence is longer than the current max_fragment_length
-    ## then update max_fragment_length
-    ## Padding with 4 extra bases to account for pair + sequence separator.
-    if maxlen > data._hackersonly["max_fragment_length"]:
-        data._hackersonly["max_fragment_length"] = maxlen + 4
+    ## then update max_fragment_length. For assurance we require that 
+    ## max len is 4 greater than maxlen, to allow for pair separators.
+    LOGGER.info("max frag len is %s: %s", maxlen, sample.name)    
+    data._hackersonly["max_fragment_length"] = int(maxlen + 4)
+    LOGGER.info("max frag len increased to %s, during sample %s", maxlen, sample.name)
 
     if depth:
         ## make sense of stats
@@ -134,8 +135,8 @@ def sample_cleanup(data, sample):
     ## of the first line, this call makes this assumption.
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
-
-
+    
+    
 
 def muscle_align(args):
     """ aligns reads, does split then aligning for paired reads """
@@ -243,7 +244,7 @@ def muscle_align(args):
                     if idxs:
                         leftlimit = max(0, min(idxs))
                         aseqs = [i[leftlimit:] for i in aseqs]
-                        LOGGER.info('leftlimit %s', leftlimit)
+                        #LOGGER.info('leftlimit %s', leftlimit)
 
                     ## right side filter is the reverse seq that goes the least
                     ## far to the right. 
@@ -752,7 +753,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
         except Exception as inst:
             ## Sample failed cleanup because it failed some earlier step
             ## Already reported the failure and logged the event, so ignore
-            pass
+            LOGGER.info("minor error found - %s", inst)
 
     data_cleanup(data)
 
@@ -980,6 +981,7 @@ def declone_3rad(data, sample):
                 os.remove(tmp_outfile.name)
         except Exception as inst:
             pass
+
 
 
 def derep_and_sort(data, sample, infile, outfile):
