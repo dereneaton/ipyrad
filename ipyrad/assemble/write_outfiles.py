@@ -697,9 +697,7 @@ def init_arrays(data):
     io5 = h5py.File(data.database, 'w')
 
     ## get maxlen and chunk len
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
+    maxlen = data._hackersonly["max_fragment_length"] + 30
     chunks = co5["seqs"].attrs["chunksize"]
     nloci = co5["seqs"].shape[0]
 
@@ -1264,10 +1262,7 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
     """
 
     ## make empty arrays for filling
-    maxlen = data._hackersonly["max_fragment_length"]
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
-
+    maxlen = data._hackersonly["max_fragment_length"] + 30
     maxsnp = co5["snps"][:].sum()
 
     ## shape of arrays is sidx, we will subsample h5 w/ sidx to match
@@ -1588,10 +1583,7 @@ def vcfchunk(args):
 
     ## empty array to be filled before writing 
     ## will not actually be optim*maxlen, extra needs to be trimmed
-    maxlen = data._hackersonly["max_fragment_length"]    
-    if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-        maxlen *= 2
-
+    maxlen = data._hackersonly["max_fragment_length"] + 30
     gstr = np.zeros((optim*maxlen, 9+sum(sidx)), dtype="S20")
 
     ## get data sliced (optim chunks at a time)
