@@ -776,7 +776,7 @@ class Assembly(object):
 
         """
         if self._headers:
-            print("\n") #  Saving Assembly.\n")
+            print("") #  Saving Assembly.\n")
         ip.save_json(self)
 
 
