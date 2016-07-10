@@ -55,8 +55,6 @@ def muscle_align_across(args):
 
         ## tmparray to store indel information 
         maxlen = data._hackersonly["max_fragment_length"] + 30
-        LOGGER.info("maxlen inside muscle_align_across is %s", maxlen)
-
         indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool)
 
         ## iterate over clusters and align
@@ -90,21 +88,26 @@ def muscle_align_across(args):
                     aseqs = [i+"nnnn"+j for i, j in zip(aseqs1, aseqs2)]
                     for i in xrange(len(anames)):
                         stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
-                        ## store the indels and separator regions as indels
-                        locinds = np.array(list(aseqs[i])) == "-"
                         sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
-                        indels[sidx, loc, :locinds.shape[0]] = locinds
+                        ## store the indels and separator regions as indels
+                        locinds = np.zeros(maxlen, dtype=np.bool)
+                        for idx in range(min(maxlen, len(locinds))):
+                            if aseqs[i][idx] == "-":
+                                locinds[idx] = True
+                        indels[sidx, loc, :maxlen] = locinds
 
                 except IndexError:
                     string1 = muscle_call(data, names, seqs)
                     anames, aseqs = parsemuscle(data, string1)
                     for i in xrange(len(anames)):
                         stack.append(anames[i].rsplit(';', 1)[0]+"\n"+aseqs[i])
-                        ## store the indels
-                        locinds = np.array(list(aseqs[i])) == "-"
-                        
                         sidx = snames.index(anames[i].rsplit("_", 1)[0])
-                        indels[sidx, loc, :locinds.shape[0]] = locinds
+                        ## store the indels
+                        locinds = np.zeros(maxlen, dtype=np.bool)
+                        for idx in range(min(maxlen, len(aseqs[i]))):
+                            if aseqs[i][idx] == "-":
+                                locinds[idx] = True
+                        indels[sidx, loc, :] = locinds
 
             if stack:
                 out.append("\n".join(stack))
@@ -117,14 +120,13 @@ def muscle_align_across(args):
         ## save indels array to tmp dir
         tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
         ifile = os.path.join(tmpdir, chunk+".h5")
-        LOGGER.info('ifile is %s', ifile)
         iofile = h5py.File(ifile, 'w')
         iofile.create_dataset('indels', data=indels)
         iofile.close()
 
     except Exception as inst:
         LOGGER.debug("Caught exception in muscle_align_across - {}".format(inst))
-        raise
+        raise inst
 
     return ifile, loc+1
 
@@ -143,19 +145,15 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
 
     ## create job queue for clustbits
-    submitted_args = []
-    for fname in clustbits:
-        submitted_args.append([data, samples, fname])
-
-    ## submit queued jobs
     jobs = {}
-    for idx, job in enumerate(submitted_args):
-        jobs[idx] = lbview.apply(muscle_align_across, job)
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
+    for idx, fname in enumerate(clustbits):
+        jobs[idx] = lbview.apply(muscle_align_across, [data, samples, fname])
+        #elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        #progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
 
+    LOGGER.info("clustbits %s", len(clustbits))
     LOGGER.info("submitted %s jobs to muscle_align_across", len(jobs))
-    allwait = len(jobs)*2
+    allwait = len(jobs)
 
     try:
         ## align clusters
@@ -167,10 +165,11 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
                 progressbar(allwait, fwait, 
                             " aligning clusters     | {}".format(elapsed))
                 time.sleep(0.1)
+
             else:
                 fwait = sum(finished)
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(20, 20, 
+                progressbar(allwait, fwait, 
                             " aligning clusters     | {}".format(elapsed))
                 break
 
@@ -178,14 +177,13 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         indeltups = []
         keys = jobs.keys()
         for idx in keys:
-            meta = jobs[idx].metadata
-            LOGGER.debug(meta)
             if jobs[idx].completed and jobs[idx].successful():
                 indeltups.append(jobs[idx].get())
             del jobs[idx]
+
         ## submit to indel entry
         if indeltups:
-            build(data, samples, indeltups, clustbits, allwait, fwait, start)
+            build(data, samples, indeltups, clustbits, start)
         else:
             msg = "\n\n  All samples failed alignment step. Check the log files."
             raise IPyradError(msg)
@@ -194,8 +192,8 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         ## Do tmp file cleanup
         for path in ["_cathaps.tmp", "_catcons.tmp", ".utemp", ".htemp"]:
             fname = os.path.join(data.dirs.consens, data.name+path)
-            if os.path.exists(path):
-                os.remove(path)
+            #if os.path.exists(fname):
+            #    os.remove(fname)
 
         tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
         if os.path.exists(tmpdir):
@@ -212,7 +210,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
 
 
 
-def build(data, samples, indeltups, clustbits, tots, done, oldstart):
+def build(data, samples, indeltups, clustbits, init):
     """ 
     Builds the indels array and catclust.gz file from the aligned clusters.
     Both are tmpfiles used for filling the supercatg and superseqs arrays.
@@ -241,24 +239,24 @@ def build(data, samples, indeltups, clustbits, tots, done, oldstart):
     samples.sort(key=lambda x: x.name)
 
     ## enter all tmpindel arrays into full indel array
+    ## TODO: This could be sped up with dask or numba
+    tots = len(indeltups)
+    done = 0
     for tup in indeltups:
-        #LOGGER.info('indeltups: %s, %s, %s', tup[0], tup[1].shape, tup[1].sum())
         LOGGER.info('indeltups: %s, %s', tup[0], tup[1])
         start = int(tup[0].rsplit("_", 1)[-1][:-3])
-        LOGGER.info('start %s', start)
-
         ioinds = h5py.File(tup[0], 'r')
-        iset[:, start:start+tup[1], :] += ioinds['indels'][:] #tup[1][:, ...]        
-        LOGGER.info('added')
+        iset[:, start:start+tup[1], :] += ioinds['indels'][:] 
         ioinds.close()
-        #for sidx, _ in enumerate(samples):
-        #    iset[sidx, start:start+tup[2], :] += tup[1][sidx, ...]
 
         ## continued progress bar from multi_muscle_align
         done += 1
-        elapsed = datetime.timedelta(seconds=int(time.time()-oldstart))
-        progressbar(tots, done, " aligning clusters     | {}".format(elapsed))
+        elapsed = datetime.timedelta(seconds=int(time.time()-init))
+        progressbar(100, 99, " aligning clusters     | {}".format(elapsed))
+
     io5.close()
+    elapsed = datetime.timedelta(seconds=int(time.time()-init))
+    progressbar(100, 100, " aligning clusters     | {}".format(elapsed))
 
     ## concatenate finished seq clusters into a tmp file 
     outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
@@ -403,6 +401,8 @@ def build_h5_array(data, samples, ipyclient):
     if data.nloci < 100:
         chunks = data.nloci
     if data.nloci > 10000:
+        chunks = 500
+    if data.nloci > 50000:
         chunks = 1000
     if data.nloci > 200000:
         chunks = 2000
@@ -418,8 +418,6 @@ def build_h5_array(data, samples, ipyclient):
     # ## very very big data set
     # if (data.nloci > 100000) and len(data.samples.keys()) > 200:
     #     chunks = 100
-
-
     ### Warning: for some reason increasing the chunk size to 5000 
     ### caused enormous problems in step7. Not sure why. hdf5 inflate error. 
     #if data.nloci > 100000:
@@ -921,6 +919,8 @@ def fill_superseqs(data, samples):
 
     ## samples are already sorted
     snames = [i.name for i in samples]
+    LOGGER.info("snames %s", snames)
+
     ## get maxlen again
     maxlen = data._hackersonly["max_fragment_length"] + 30
     LOGGER.info("maxlen inside fill_superseqs is %s", maxlen)
@@ -971,7 +971,7 @@ def fill_superseqs(data, samples):
             shlen = seqs.shape[1]
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
-                fill[sidx, :shlen] = seq
+                fill[sidx, :shlen] = seq[:maxlen]
 
             ## PUT seqs INTO local ARRAY 
             chunkseqs[cloc] = fill
@@ -1109,7 +1109,7 @@ def build_reads_file(data, ipyclient):
     print("")
 
     ## cleanup
-    #del consdic, consdf, updf
+    del consdic, consdf, updf
 
     ## return stuff
     return clustbits, loci
@@ -1227,7 +1227,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     
-    # make file with all samples reads    
+    ## make file with all samples reads    
     binput = lbview.apply(build_input_file, *[data, samples, randomseed])
     while not binput.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -1242,12 +1242,12 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## call vsearch
     cluster(data, noreverse, ipyclient)
 
-    # # build consens clusters and returns chunk handles to be aligned
+    # # # build consens clusters and returns chunk handles to be aligned
     clustbits, nloci = build_reads_file(data, ipyclient)
     data.nloci = nloci
 
-    ## muscle align the consens reads and creates hdf5 indel array
-    LOGGER.info("muscle alignment & building indel database")
+    # ## muscle align the consens reads and creates hdf5 indel array
+    # LOGGER.info("muscle alignment & building indel database")
     multi_muscle_align(data, samples, clustbits, ipyclient)
 
     ## builds the final HDF5 array which includes three main keys
@@ -1263,9 +1263,6 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## calls singlecat func inside
     build_h5_array(data, samples, ipyclient)
 
-    ## do we need to load in singleton clusters?
-    ## invarcats()
-    ## invarcats()
 
 
 if __name__ == "__main__":
