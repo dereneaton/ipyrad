@@ -204,7 +204,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
         if os.path.exists(tmpdir):
             try:
-                pass#shutil.rmtree(tmpdir)
+                shutil.rmtree(tmpdir)
             except OSError as _:
                 ## In some instances nfs creates hidden dot files in directories
                 ## that claim to be "busy" when you try to remove them. Don't
