@@ -7,19 +7,13 @@ Release Notes
 
 0.3.20
 ------
-- bug fix for maxlen errors for paired data
+- bug fix for max_fragment_len errors for paired data and gbs
 - fix for gbs data variable cluster sizes.
-- improvement to removing print statement during save
 - prettier printing, does not explicitly say 'saving', but it's still doing it.
 - numba update added to conda requirements
-- fix to max_fragment_len for gbs data
-- fix to max_fragment_len for gbs data
-- fix for max_fragment_len for gbs data. Wrote some numba compiled funcs for speed
-- new numba compiled svd speedup
-- added update to numba version
+- Wrote some numba compiled funcs for speed in step6
+- New numba compiled svd func can speed up svd4tet
 - update to analysis tools docs
-- added numba version update
-- added numba update version
 
 0.3.19
 ------
