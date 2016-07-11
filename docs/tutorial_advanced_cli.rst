@@ -396,7 +396,7 @@ per line instead of listing sample names after the new assembly name.
 
 What's next
 ~~~~~~~~~~~
-Check out the :ref:`example empirical data sets<pedicularis_cli>`
+Check out the :ref:`example empirical data sets<pedicularis_>`
 to see how this process looks when you run it on a relatively 
 quick set of real data. 
 
