@@ -5,6 +5,22 @@
 Release Notes
 =============
 
+0.3.20
+------
+- bug fix for maxlen errors for paired data
+- fix for gbs data variable cluster sizes.
+- improvement to removing print statement during save
+- prettier printing, does not explicitly say 'saving', but it's still doing it.
+- numba update added to conda requirements
+- fix to max_fragment_len for gbs data
+- fix to max_fragment_len for gbs data
+- fix for max_fragment_len for gbs data. Wrote some numba compiled funcs for speed
+- new numba compiled svd speedup
+- added update to numba version
+- update to analysis tools docs
+- added numba version update
+- added numba update version
+
 0.3.19
 ------
 - fix for bug in edge trimming when assembly is branched after s6 clustering, but before s7 filtering
