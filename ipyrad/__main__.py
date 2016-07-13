@@ -408,10 +408,10 @@ def main():
 
     ## always print the header when doing steps
     header = \
-    "\n --------------------------------------------------"+\
+    "\n ---------------------------------------------------"+\
     "\n  ipyrad [v.{}]".format(ip.__version__)+\
-    "\n  Interactive assembly and analysis of RADseq data"+\
-    "\n --------------------------------------------------"
+    "\n  Interactive assembly and analysis of RAD-seq data"+\
+    "\n ---------------------------------------------------"
 
     ## if merging just do the merge and exit
     if args.merge:

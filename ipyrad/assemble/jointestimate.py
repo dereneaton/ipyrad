@@ -9,7 +9,6 @@ from __future__ import print_function
 import scipy.stats
 import scipy.optimize
 import numpy as np
-import ipyparallel
 import itertools
 import datetime
 import time
@@ -172,18 +171,14 @@ def stackarray(data, sample, sub):
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
     ## array will be (nclusters, readlen, 4)
-    if "pair" in data.paramsdict["datatype"]:
-        readlen = 2*data._hackersonly["max_fragment_length"]
-    else:
-        readlen = data._hackersonly["max_fragment_length"]
+    maxlen = data._hackersonly["max_fragment_length"]
 
-    ## TODO: make clusters_hidepth dynamic in case params change
+    ## we subsample, else use first 10000 loci. 
     if sub:
-        dims = (int(sub), readlen, 4)
+        dims = (int(sub), maxlen, 4)
     else:
-        dims = (int(sample.stats.clusters_hidepth), readlen, 4)
+        dims = (10000, maxlen, 4)
     stacked = np.zeros(dims, dtype=np.uint32)
-    LOGGER.info("sample %s, dims %s", sample.name, stacked.shape)
 
     ## don't use sequence edges / restriction overhangs
     cutlens = [None, None, None, None]
@@ -221,7 +216,8 @@ def stackarray(data, sample, sub):
                 arrayed = np.concatenate(
                       [[seq]*rep for seq, rep in zip(sseqs, reps)])
             except ValueError:
-                LOGGER.info("sseqs %s, reps %s", "\n".join(["".join(i) for i in sseqs]), reps)
+                LOGGER.info("sseqs %s, reps %s", 
+                    "\n".join(["".join(i) for i in sseqs]), reps)
             
             ## enforce minimum depth for estimates
             if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:

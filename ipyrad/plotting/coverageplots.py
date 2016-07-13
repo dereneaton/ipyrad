@@ -22,7 +22,6 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
     if not samples:
         samples = data.samples.keys()
         samples.sort()
-
     subsamples = OrderedDict([(i, data.samples[i]) for i in samples])
 
     ## get canvas dimensions based on n-samples
@@ -49,7 +48,8 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
         statdat = subsamples[sample].depths
         statdat = statdat[statdat >= data.paramsdict["mindepth_statistical"]]
         if use_maxdepth:
-            statdat = statdat[statdat < data.paramsdict["maxdepth"]]
+            statdat = {i:j for (i, j) in statdat if \
+                                        i < data.paramsdict["maxdepth"]}
         sdat = np.histogram(statdat, range(50))
 
         ## majrule called bins
@@ -68,7 +68,7 @@ def depthplot(data, samples=None, dims=(None,None), canvas=(None,None),
         edat = np.histogram(tots, range(50))
 
         ## fill in each panel of canvas with a sample
-        axes = canvas.axes(grid=(dims[0], dims[1], panel), gutter=25)
+        axes = canvas.cartesian(grid=(dims[0], dims[1], panel), gutter=25)
         axes.x.domain.xmax = xmax
         axes.label.text = sample
         if log:

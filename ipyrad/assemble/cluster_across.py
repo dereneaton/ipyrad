@@ -65,6 +65,8 @@ def muscle_align_across(args):
             names = [i.split()[0][1:] for i in lines]
             seqs = [i.split()[1] for i in lines]
 
+            LOGGER.info("seqs first %s %s", len(seqs), seqs)
+
             ## append counter to end of names b/c muscle doesn't retain order
             names = [j+";*"+str(i) for i, j in enumerate(names)]
 
@@ -75,10 +77,14 @@ def muscle_align_across(args):
             else:
                 ## split seqs before align if PE. If 'nnnn' not found (single end 
                 ## or merged reads) then `except` will pass it to SE alignment. 
+                paired = 1
                 try:
                     seqs1 = [i.split("nnnn")[0] for i in seqs] 
                     seqs2 = [i.split("nnnn")[1] for i in seqs]
+                except IndexError:
+                    paired = 0
 
+                if paired:
                     string1 = muscle_call(data, names, seqs1)
                     string2 = muscle_call(data, names, seqs2)
                     anames, aseqs1 = parsemuscle(data, string1)
@@ -91,12 +97,12 @@ def muscle_align_across(args):
                         sidx = [snames.index(anames[i].rsplit("_", 1)[0])]
                         ## store the indels and separator regions as indels
                         locinds = np.zeros(maxlen, dtype=np.bool)
-                        for idx in range(min(maxlen, len(locinds))):
+                        for idx in range(min(maxlen, len(aseqs[i]))):
                             if aseqs[i][idx] == "-":
                                 locinds[idx] = True
-                        indels[sidx, loc, :maxlen] = locinds
+                        indels[sidx, loc, :] = locinds
 
-                except IndexError:
+                else:
                     string1 = muscle_call(data, names, seqs)
                     anames, aseqs = parsemuscle(data, string1)
                     for i in xrange(len(anames)):
@@ -240,8 +246,6 @@ def build(data, samples, indeltups, clustbits, init):
 
     ## enter all tmpindel arrays into full indel array
     ## TODO: This could be sped up with dask or numba
-    tots = len(indeltups)
-    done = 0
     for tup in indeltups:
         LOGGER.info('indeltups: %s, %s', tup[0], tup[1])
         start = int(tup[0].rsplit("_", 1)[-1][:-3])
@@ -250,7 +254,6 @@ def build(data, samples, indeltups, clustbits, init):
         ioinds.close()
 
         ## continued progress bar from multi_muscle_align
-        done += 1
         elapsed = datetime.timedelta(seconds=int(time.time()-init))
         progressbar(100, 99, " aligning clusters     | {}".format(elapsed))
 
@@ -968,6 +971,8 @@ def fill_superseqs(data, samples):
                 chunkedge[cloc] = separator.min()
 
             ## fill in the hits
+            LOGGER.info("seqs : %s", seqs)
+            LOGGER.info("seqs.shape : %s", seqs.shape) 
             shlen = seqs.shape[1]
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
@@ -1003,9 +1008,7 @@ def build_reads_file(data, ipyclient):
     seed:hits info from utemp file.
     """
     ## parallel client
-    ## TODO, THIS CAN BE PARALLELIZED; just split it into chunks of seeds   
-    ## but it's not tooooo slow at the moment. 
-    lbview = ipyclient.load_balanced_view()
+    #lbview = ipyclient.load_balanced_view()
     start = time.time()
 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -1017,12 +1020,15 @@ def build_reads_file(data, ipyclient):
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
     updf = pd.read_table(uhandle, header=None)
 
-    ## load full fasta file into a Dic
+    ## load full fasta file into a Dic... this really doesn't need to be done
+    ## with a pandas DF, and right now it unnecessarily loads in all the data
+    ## at once, which is not memory efficient. however, it seems fast enough
+    ## and hasn't overloaded memory yet, but keep an eye on it.
     LOGGER.info("loading full _catcons file into memory")
     conshandle = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     consdf = pd.read_table(conshandle, delim_whitespace=1, 
                            header=None, compression='gzip')
-    printstring = "{:<%s}    {}" % max([len(i) for i in set(consdf[0])])
+    printstring = "{:<%s}    {}" % str(4+max([len(i) for i in set(consdf[::2][0])]))
     consdic = {i:j for i, j in \
                     zip(\
                         itertools.chain(*consdf[::2].values.tolist()), 

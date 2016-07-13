@@ -86,7 +86,6 @@ class Sample(object):
               })
 
         ## store cluster depth information (biggest memory cost), 
-        ## should save this as a Counter dict, currently its a list
         self.depths = {}
 
 
@@ -112,6 +111,7 @@ class Sample(object):
                 "s5": self.stats_dfs.s5.to_dict(),
             }),
             ("stats", self.stats.to_dict()),
+            ("depths", self.depths)
             ])
 
         return returndict
