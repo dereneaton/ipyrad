@@ -116,9 +116,8 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
     for name in names_sorted:
         ## write perfect hit
         hit = data.barcodes[name]
-        outfile.write('{:<35}  {:>13} {:>13} {:>13}\n'.\
-            format(name, hit, hit, fbarhits[name])) #samplehits[name]))
-
+        offhitstring = ""
+        sumoffhits = 0
         ## write off-n hits
         ## sort list of off-n hits
         if name in fdbars:
@@ -127,8 +126,13 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
             for offhit in offkeys[::-1]:
                 ## exclude perfect hit
                 if offhit not in data.barcodes.values():
-                    outfile.write('{:<35}  {:>13} {:>13} {:>13}\n'.\
-                        format(name, hit, offhit, fbarhits[offhit]))
+                    offhitstring += '{:<35}  {:>13} {:>13} {:>13}\n'.\
+                        format(name, hit, offhit, fbarhits[offhit])
+                    sumoffhits += fbarhits[offhit]
+        ## write string to file
+        outfile.write('{:<35}  {:>13} {:>13} {:>13}\n'.\
+            format(name, hit, hit, fsamplehits[name]-sumoffhits))
+        outfile.write(offhitstring)
 
     ## write misses
     misskeys = list(fmisses.keys())
@@ -372,6 +376,8 @@ def collate_files(data, sname, tmp1s, tmp2s):
         for incol in tmp1s:
             with open(incol, 'r') as tmpin:
                 tmpout.write(tmpin.read())
+        tmpout.flush()
+        os.fsync(tmpout.fileno())
 
     if 'pair' in data.paramsdict["datatype"]:
         out2 = os.path.join(data.dirs.fastqs, "{}_R2_.fastq.gz".format(sname))
@@ -380,6 +386,8 @@ def collate_files(data, sname, tmp1s, tmp2s):
             for incol in tmp2s:
                 with open(incol, 'r') as tmpin:
                     tmpout.write(tmpin.read())
+            tmpout.flush()
+            os.fsync(tmpout.fileno())
 
 
 
@@ -631,8 +639,10 @@ def wrapped_run(data, preview, ipyclient, force):
     ## initial progress bar
     start = time.time()
 
-    ## set up parallel client
-    lbview = ipyclient.load_balanced_view()
+    ## set up parallel client. Don't allow more than 10 processors here.
+    lbview = ipyclient.load_balanced_view()#threads=[:20])
+    limited = ipyclient.load_balanced_view(targets=ipyclient.ids[:10])
+
     ## Each engine will use os.getpid() to get its pid number and will
     ## only write to outfiles with that pid suffix
 
@@ -648,8 +658,20 @@ def wrapped_run(data, preview, ipyclient, force):
 
     #####################################################################
     ## Decide based on file size whether to chunk it to run among engines
-    ## vs whether to just submit it straight to an engine as is
+    ## vs whether to just submit it straight to an engine as is. This is 
+    ## decided based on file sizes and number of files. If few files, then
+    ## chunk them up, if many, then raise the limit for splitting.
     #####################################################################
+
+    ## if more files than cpus: no chunking
+    if len(raws) > data.cpus:
+        splitlimit = int(12e9)
+    else:
+        ## a general good rule for splitting
+        splitlimit = int(12e6)
+        ## but if many files then up the ante
+        if len(raws) > 20:
+            splitlimit = int(20e6)
 
     ## send slices N at a time. The dict chunkfiles stores a tuple of rawpairs
     ## for each input file. So two files and 4 cpus:
@@ -659,8 +681,8 @@ def wrapped_run(data, preview, ipyclient, force):
     start = time.time()
 
     for fidx, tups in enumerate(raws):
-        ## if number of lines is > 12M then just submit it
-        if optim * data.cpus < 12000000:
+        ## if number of lines is > 20M then just submit it
+        if optim * data.cpus < int(splitlimit):
             chunkfiles[fidx] = [tups]
             ## make an empty list for when we analyze this chunk            
             filesort[fidx] = []
@@ -670,7 +692,7 @@ def wrapped_run(data, preview, ipyclient, force):
             ## this can't really be parallelized b/c its I/O limited
             ## we just pass it one engine so we can keep the timer counting
             async = ipyclient[0].apply(zcat_make_temps, 
-                                      [data, tups, fidx, tmpdir, optim])
+                                       [data, tups, fidx, tmpdir, optim])
             ## get the chunk names
             while not async.ready():
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -696,7 +718,7 @@ def wrapped_run(data, preview, ipyclient, force):
         for tups in tuplist:
             LOGGER.info("tups %s", tups)
             args = [data, tups, cutters, longbar, matchdict, fidx]
-            filesort[fidx].append(lbview.apply(barmatch, *args))
+            filesort[fidx].append(limited.apply(barmatch, *args))
 
     ########################################
     ## collect finished results as they come
@@ -763,9 +785,9 @@ def wrapped_run(data, preview, ipyclient, force):
     for sname in data.barcodes:
         tmp1s = sorted(r1dict[sname])
         tmp2s = sorted(r2dict[sname])
-
         #async = ipyclient[0].apply(collate_files, *[data, sname, tmp1s, tmp2s])
-        writers.append(lbview.apply(collate_files, *[data, sname, tmp1s, tmp2s]))
+        writers.append(lbview.apply(collate_files, 
+                       *[data, sname, tmp1s, tmp2s]))
 
     while 1:
         ready = [i.ready() for i in writers]
@@ -776,13 +798,6 @@ def wrapped_run(data, preview, ipyclient, force):
             time.sleep(0.1)
         else:
             break
-
-        # while not async.ready():
-        #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        #     progressbar(total, done, 
-        #                 ' writing/compressing   | {}'.format(elapsed))            
-        #     time.sleep(0.1)
-        # done += 1
 
     ## final prog
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
