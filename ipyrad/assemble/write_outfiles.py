@@ -20,6 +20,7 @@ import numpy as np
 import itertools
 import datetime
 import shutil
+import numba
 import time
 import glob
 import gzip
@@ -776,9 +777,11 @@ def filter_stacks(args):
     del splits
     #LOGGER.info("edgarr returned = %s", edgearr)
 
+    ## get an int view of the seq array
+    intarr = superseqs.view(np.int8)
+
     ## minsamp coverages filtered from superseqs
-    minfilter = filter_minsamp(data, superseqs)
-    #sys.exit(2)
+    minfilter = filter_minsamp(data.paramsdict["min_samples_locus"], intarr)
 
     ## maxhets per site column from superseqs after trimming edges
     hetfilter = filter_maxhet(data, superseqs, edgearr)
@@ -833,7 +836,7 @@ def filter_stacks(args):
 
 
 
-def get_edges(data, superseqs, splits):
+def get_edges(data, superints, splits):
     """ 
     Gets edge trimming based on the overlap of sequences at the edges of 
     alignments and the tuple arg passed in for edge_trimming. Trims as
@@ -842,24 +845,25 @@ def get_edges(data, superseqs, splits):
     """
     ## the filtering arg and parse it into minsamp numbers
     edgetrims = np.array(data.paramsdict["trim_overhang"])
-    minsamp = data.paramsdict["min_samples_locus"]
 
     ## Cuts 3 and 4 are only for 3rad/radcap
     ## TODO: This is moderately hackish, it's not using cut3/4
     ## correctly, just assuming the length is the same as cut1/2
     if "3rad" in data.paramsdict["datatype"]:
-        cut1, cut2, cut3, cut4 = data.paramsdict["restriction_overhang"] 
+        cut1, cut2, _, _ = data.paramsdict["restriction_overhang"] 
     else:
         cut1, cut2 = data.paramsdict["restriction_overhang"]
+    cuts = np.uint16([len(cut1), len(cut2)])
 
     ## a local array for storing edge trims
-    edges = np.zeros((superseqs.shape[0], 5), dtype=np.int16)
+    edges = np.zeros((superints.shape[0], 5), dtype=np.int16)
+
     ## a local array for storing edge filtered loci, these are stored 
     ## eventually as minsamp excludes.
-    edgefilter = np.zeros((superseqs.shape[0],), dtype=np.bool)
+    edgefilter = np.zeros((superints.shape[0],), dtype=np.bool)
 
     ## TRIM GUIDE. The cut site is always trimmed. Number if what else gets it.
-    ## TODO: Not yet fully implemented. 
+    ## TODO: all of these are not yet fully implemented. 
     ## If negative, then N bases are trimmed from that edge.
     ## If zero: no additional trimming.
     ## If positive: N is the minimum number of samples with data to trim to.
@@ -869,12 +873,22 @@ def get_edges(data, superseqs, splits):
     edgetrims = edgetrims.astype(np.int)
 
     ## convert all - to N to make this easier, (only affects local copy)
-    superseqs[superseqs == "-"] = "N"
+    #superseqs[superseqs == "-"] = "N"
+    superints[superints == 45] = 78
 
     ## trim overhanging edges
     ## get the number not Ns in each site, 
-    ccx = np.sum(superseqs != "N", axis=1)
+    #ccx = np.sum(superseqs != "N", axis=1)
+    ccx = np.sum(superints != 78, axis=1)
+    efi, edg = edgetrim_subfunc(splits, ccx, edgetrims, edgefilter, edges, cuts)
+    return efi, edg
 
+
+
+def edgetrim_subfunc(splits, ccx, edgetrims, edgefilter, edges, cuts):
+    """
+    with a little work we could numba compile this func.
+    """
     for idx, split in enumerate(splits):
         if split:
             r1s = ccx[idx, :split]
@@ -890,7 +904,7 @@ def get_edges(data, superseqs, splits):
         try:
             if edgetrims[0] > 0:
                 edge0 = np.where(r1s >= edgetrims[0])[0]
-                edge0 = max(0, edge0[len(cut1):].min())
+                edge0 = max(0, edge0[cuts[0]:].min())
             elif edgetrims[0] < 0:
                 edge0 = max(0, np.where(r1s >= 0)[0].min()) - edgetrims[0]
         except ValueError:
@@ -908,7 +922,7 @@ def get_edges(data, superseqs, splits):
 
         ## sanity check
         if edge0 > edge1:
-            LOGGER.info("mindepth/edge %s, %s %s", idx, edge0, edge1)
+            #LOGGER.info("mindepth/edge %s, %s %s", idx, edge0, edge1)
             edgefilter[idx] = True
             edge1 = edge0 + 1
 
@@ -930,7 +944,7 @@ def get_edges(data, superseqs, splits):
                     ## get farthest site that is not all Ns
                     nondex = np.where(r2s > 0)[0]                  ### 1, 2, ... 99
                     ## remove the cut site
-                    cutdex = nondex[:max(nondex) - (len(cut2))]    ### 1, 2, ... 94
+                    cutdex = nondex[:max(nondex) - (cuts[1])]    ### 1, 2, ... 94
                     ## find farthest that has high cov
                     covmask = r2s[:cutdex.max()+1] >= edgetrims[3] ### 1, 1, ... 0,0
                     ## return index w/ spacers
@@ -949,7 +963,7 @@ def get_edges(data, superseqs, splits):
             #LOGGER.info('what are these: %s %s', edge2, edge3)
             ## sanity check
             if edge2 > edge3:
-                LOGGER.info("mindepth/edge %s, %s %s", idx, edge2, edge3)
+                #LOGGER.info("mindepth/edge %s, %s %s", idx, edge2, edge3)
                 edgefilter[idx] = True
                 edge3 = edge2 + 1
 
@@ -960,22 +974,27 @@ def get_edges(data, superseqs, splits):
 
 
 
-def filter_minsamp(data, superseqs):
+def filter_minsamp(minsamp, superseqs):
     """ 
     Filter minimum # of samples per locus from superseqs[chunk]. The shape
     of superseqs is [chunk, sum(sidx), maxlen]
     """
     ## the minimum filter
-    minsamp = data.paramsdict["min_samples_locus"]
+    #minsamp = data.paramsdict["min_samples_locus"]
     ## ask which rows are not all N along seq dimension, then sum along sample 
     ## dimension to get the number of samples that are not all Ns.
     ## minfilt is a boolean array where True means it failed the filter.
     minfilt = np.sum(~np.all(superseqs == "N", axis=2), axis=1) < minsamp
-    LOGGER.debug("minfilt %s", minfilt)
+    #LOGGER.debug("minfilt %s", minfilt)
 
     ## print the info
-    LOGGER.info("Filtered by min_samples_locus - {}".format(minfilt.sum()))
+    #LOGGER.info("Filtered by min_samples_locus - {}".format(minfilt.sum()))
     return minfilt
+
+
+@numba.jit("b1[:](u1[:,:,:], u1)")
+def filter_minsamp(minsamp, superseqs):
+    return np.sum(~np.all(superseqs == 78, axis=2), axis=1) < minsamp
 
 
 
@@ -1138,7 +1157,7 @@ def filter_maxhet(data, superseqs, edges):
     ## get the per site number of bases in ambig, and get the max per site 
     ## value for each locus, then get boolean array of those > maxhet.
     for idx, edg in enumerate(edges):
-        LOGGER.debug("testing %s, %s", idx, edg)
+        #LOGGER.debug("testing %s, %s", idx, edg)
         share = np.array(\
             [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=0)\
             .max() for ambig in "RSKYWM"]).max()
@@ -1596,7 +1615,6 @@ def vcfchunk(args):
     ## which loci passed all filters
     keep = np.where(np.sum(afilt, axis=1) == 0)[0]
     seqleft = 0
-    LOGGER.info("KEEP %s", keep.shape)
 
     ## write loci that passed after trimming edges, then write snp string
     for iloc in keep:
