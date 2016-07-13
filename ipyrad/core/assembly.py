@@ -183,8 +183,6 @@ class Assembly(object):
                        ("output_formats", "*"),
                        ("pop_assign_file", ""),
         ])
-        #               ("excludes", ""),
-        #               ("outgroups", ""),
 
         ## Store data directories for this Assembly. Init with default project
         self.dirs = ObjDict({"project": 
@@ -358,7 +356,7 @@ class Assembly(object):
 
             ## Test R2 files actually exist
             if not all([os.path.exists(x) for x in r2_files]):
-                    raise IPyradError("""
+                raise IPyradError("""
         Paired file names must be identical except for _R1_ and _R2_.""")
 
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]

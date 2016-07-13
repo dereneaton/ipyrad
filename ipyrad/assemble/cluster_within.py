@@ -39,8 +39,12 @@ def sample_cleanup(data, sample):
     ## set cluster file handles
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
+    
+    ## get new clustered loci 
+    infile = gzip.open(data.samples.values()[0].files.clusters)
+    loci = infile.read().strip("//\n//\n").split("//\n//\n")#[:-1]
 
-    ## number of merged reads is updated dynamically
+    ## get number of merged reads, updated dynamically
     ## TODO: this won't capture merged reads that are merged during refmap
     if 'pair' in data.paramsdict["datatype"]:
         sample.files.merged = os.path.join(data.dirs.edits,
@@ -49,82 +53,52 @@ def sample_cleanup(data, sample):
         with open(sample.files.merged, 'r') as tmpf:
             sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
+    ## arrays for storing data
+    maxlen = np.zeros(len(loci), dtype=np.uint32)
+    depths = np.zeros(len(loci), dtype=np.uint32)
+
     ## get depth stats
-    try:
-        infile = gzip.open(sample.files.clusters)
-    except IOError as inst:
-        msg = "No cluster file found for sample - {}".format(sample.name)
-        LOGGER.warn(msg)
-        raise IPyradError(msg)
-    duo = itertools.izip(*[iter(infile)]*2)
-    depth = []
-    maxlen = 0
-    thisdepth = []
-    while 1:
-        try:
-            itera = duo.next()
-        except StopIteration:
-            break
-        ## keep going until the end of cluster
-        if itera[0] != "//\n":
-            try:
-                ## get longest seqlen 
-                seqlen = len(itera[1])            
-                ## get nreps in read
-                tdepth = int(itera[0].split(";")[-2][5:])
-                ## double depth for merged reads
-                if "_m1;s" in itera[0]:
-                    tdepth *= 2 
-                thisdepth.append(tdepth)
-            except IndexError:
-                ## if no clusts pass align filter this will raise
-                LOGGER.info("No aligned clusters passed for %s", sample.name)
-                raise IPyradError("No aligned clusters passed: {}".format(sample.name))
-        else:
-            ## update maxlen
-            if seqlen > maxlen:
-                maxlen = seqlen
-            ## append and reset
-            depth.append(sum(thisdepth))
-            thisdepth = []
+    for iloc in xrange(depths.shape[0]):
+        lines = loci[iloc].strip().split("\n")
+        maxlen[iloc] = np.uint32(len(lines[1]))
+        tdepth = np.uint32(0)
+        for line in lines[::2]:
+            tdepth += np.uint32(line.split(";")[-2][5:])
+        depths[iloc] = tdepth
+
     infile.close()
 
     ## If our longest sequence is longer than the current max_fragment_length
     ## then update max_fragment_length. For assurance we require that 
     ## max len is 4 greater than maxlen, to allow for pair separators.
-    LOGGER.info("max frag len is %s: %s", maxlen, sample.name)    
-    data._hackersonly["max_fragment_length"] = int(maxlen + 4)
-    LOGGER.info("max frag len increased to %s, during sample %s", maxlen, sample.name)
+    data._hackersonly["max_fragment_length"] = maxlen.max() + 4
 
-    if depth:
+    if depths.max():
         ## make sense of stats
-        depth = np.array(depth)
-        keepmj = depth[depth >= data.paramsdict["mindepth_majrule"]]    
-        keepstat = depth[depth >= data.paramsdict["mindepth_statistical"]]
+        keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]    
+        keepstat = depths[depths >= data.paramsdict["mindepth_statistical"]]
 
         ## sample summary stat assignments
         sample.stats["state"] = 3
-        sample.stats["clusters_total"] = len(depth)
+        sample.stats["clusters_total"] = depths.shape[0]
         sample.stats["clusters_hidepth"] = \
                                 max([i.shape[0] for i in (keepmj, keepstat)])
-        ## store large list of depths as a counter dict
-        sample.depths = dict(Counter(depth))
 
-        ## get stats for depths
-        mmj = depth[depth >= data.paramsdict["mindepth_majrule"]]
-        mms = depth[depth >= data.paramsdict["mindepth_statistical"]]
-       
+        ## store depths histogram as a dict
+        bars, bins = np.histogram(depths, bins=range(depths.min()-1, depths.max()+2))
+        sample.depths = {i:v for i, v in zip(bins, bars)}
+
         ## sample stat assignments
         sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
-        sample.stats_dfs.s3["clusters_total"] = depth.shape[0]
+        sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
         sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
-        sample.stats_dfs.s3["avg_depth_total"] = depth.mean()
-        sample.stats_dfs.s3["avg_depth_mj"] = mmj.mean()
-        sample.stats_dfs.s3["avg_depth_stat"] = mms.mean()
+        sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
+        sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
+        sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
 
-        sample.stats_dfs.s3["sd_depth_total"] = depth.std()
-        sample.stats_dfs.s3["sd_depth_mj"] = mmj.std()
-        sample.stats_dfs.s3["sd_depth_stat"] = mms.std()
+        sample.stats_dfs.s3["sd_depth_total"] = depths.std()
+        sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
+        sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
 
     else:
         print("no clusters found for {}".format(sample.name))

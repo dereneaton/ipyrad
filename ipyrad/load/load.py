@@ -366,7 +366,7 @@ def load_json(path, quiet=False):
 
 
 class Encoder(json.JSONEncoder):
-    """ Save JSON sting with tuples embedded as described in stackoverflow
+    """ Save JSON string with tuples embedded as described in stackoverflow
     thread. Modified here to include dictionary values as tuples.
     link: http://stackoverflow.com/questions/15721363/
 
