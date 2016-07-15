@@ -16,8 +16,10 @@ Theoretical Biology 374: 35-47
 # pylint: disable=E1101
 # pylint: disable=F0401
 # pylint: disable=W0212
+# pylint: disable=W0142
 # pylint: disable=C0103
 # pylint: disable=C0301
+
 
 from __future__ import print_function, division
 import os
@@ -26,6 +28,7 @@ import h5py
 import time
 import random
 import ipyrad
+import numba
 import datetime
 import itertools
 import subprocess
@@ -33,7 +36,6 @@ import numpy as np
 import pandas as pd
 import ipyparallel as ipp
 from fractions import Fraction
-from numba import jit
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 #from collections import Counter, OrderedDict
@@ -304,22 +306,22 @@ def get_quartets(data, method, nquarts, ipyclient):
 
 
 
-def worker(args):
+def worker(data, qidx):
     """ gets data from seq array and puts results into results array """
 
     ## parse args
-    #LOGGER.info("I'm inside a worker")
-    data, qidx = args
     chunk = data.svd.chunk
 
     ## get n chunk quartets from qidx
     lpath = os.path.realpath(data.svd.h5in)
-    with h5py.File(lpath, 'r') as io5in:
-        smps = io5in["samples"][qidx:qidx+chunk]
+    with h5py.File(lpath, 'r') as in5:
+
+        ## 
+        smps = in5["samples"][qidx:qidx+chunk]
         if not data.svd.checkpoint_boot:
-            seqs = io5in["seqarr"][:]
+            seqs = in5["seqarr"][:]
         else:
-            seqs = io5in["bootarr"][:]            
+            seqs = in5["bootarr"][:]            
 
         #start = time.time()
         rquartets = np.zeros((smps.shape[0], 4), dtype=np.uint16)
@@ -343,8 +345,63 @@ def worker(args):
     return tmpchunk
 
 
-## TODO; this can now be nopython=True is numba 0.27
-@jit('Tuple((u2[:],f4))(u1[:, :], u2[:, :])')
+
+def nworker(smpchunk, seqchunk):
+
+    ## get the input arrays ready
+    rquartets = np.zeros((smpchunk.shape[0], 3), dtype=np.uint16)
+    rweights = np.zeros(smpchunk.shape[0], dtype=np.float32)
+    mask = np.ones(seqchunk.shape[1], dtype=np.bool)
+    sidxs = get_sidxs(smpchunk)
+    #rdstats = np.zeros(smps.shape[0], dtype=np.float32)
+
+    ## fill arrays with results using numba funcs
+    for sidx in xrange(sidxs.shape[0]):
+        res1, res2 = findbest(seqchunk[sidxs[sidx], :], rquartets, rweights, mask)
+        rquartets[sidx], rweights[sidx] = res1, res2
+
+
+
+
+@numba.jit(nopython=True)
+def get_sidxs(smps):
+    """ return quartet fast """
+    store = np.zeros((smps.shape[1], 3, 4), dtype=np.uint16)
+    for qt in xrange(smps.shape[1]):
+        ## grab 4 names
+        qtet = smps[qt]
+        ## get 3 resolution of 4 names
+        store[qt, 0] = [qtet[0], qtet[1], qtet[2], qtet[3]]
+        store[qt, 1] = [qtet[0], qtet[2], qtet[1], qtet[3]]
+        store[qt, 2] = [qtet[0], qtet[3], qtet[1], qtet[2]]
+    return store
+
+
+
+
+@numba.jit(nopython=True)
+def findbest(seqchunk, mask):
+    """ numba func """
+    ## iterate over all samples of 4 tips
+    for snp in xrange(seqchunk.shape[1]):
+        qtet = smps[qt]
+        ## store results
+        squart = np.zeros(3, dtype=np.int16)
+        sweigt = np.zeros(3, dtype=np.float32)
+
+        ## run svd on the quartet
+        for sx in range(3):
+            squart[sidxs[sx]], sweigt[sidxs[sx]] = decomp(seqs[sidxs[sx], :], mask)
+
+        rquartets[qt] = squart.max()
+        rweights[qt] = 0
+
+
+
+
+
+## TODO; this can now be nopython=True in numba 0.27
+@numba.jit('Tuple((u2[:],f4))(u1[:, :], u2[:, :])')
 def svdconvert(arr, sidxs):
     """ the workhorse """
 
@@ -375,7 +432,7 @@ def svdconvert(arr, sidxs):
     return quartet, weight
 
 
-@jit()
+@numba.jit()
 def reduce_arr(arr, map, sidx):
     """ 
     If a map file is provided then the array is reduced 
@@ -385,7 +442,7 @@ def reduce_arr(arr, map, sidx):
 
 
 
-@jit('u4[:,:](u1[:,:], u2[:])', nopython=True)
+@numba.jit('u4[:,:](u1[:,:], u2[:])', nopython=True)
 def jseq_to_matrix(arr, sidx):
     """ 
     numba compiled code to get matrix fast.
@@ -533,7 +590,7 @@ def dump(data):
 
 def insert_to_array(data, result):
     """ 
-    Takes a tmpfile output from finished worker, enters it into the 
+    Takes a tmpfile output from finished worker enters it into the 
     full h5 array, and deletes the tmpfile
     """
     out5 = h5py.File(data.svd.h5out, 'r+')
@@ -683,10 +740,8 @@ def run(data, nboots, method, nquarts, force, ipyclient):
                 assert method == data.svd.method, \
                     "loaded object method={}, cannot change methods midstream"+\
                     " use force argument to start new run with new method."
-
             else:
                 fresh = 1
-
         except (AttributeError, IOError):
             fresh = 1
 
@@ -1029,12 +1084,11 @@ def inference(data, ipyclient, bidx):
     """ run inference and store results """
 
     ## a distributor of chunks
-    njobs = sum(1 for _ in iter(xrange(data.svd.checkpoint_arr, 
-                                       data.svd.nquarts, data.svd.chunk)))
-    jobiter = iter(xrange(data.svd.checkpoint_arr, 
-                          data.svd.nquarts, data.svd.chunk))
-    #LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
-    #        data.svd.chunk, data.svd.checkpoint_arr, data.svd.nquarts, njobs)
+    njobs = sum(1 for _ in iter(xrange(
+                data.svd.checkpoint_arr, data.svd.nquarts, data.svd.chunk)))
+    jobiter = iter(xrange(data.svd.checkpoint_arr, data.svd.nquarts, data.svd.chunk))
+    LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
+            data.svd.chunk, data.svd.checkpoint_arr, data.svd.nquarts, njobs)
 
     ## make a distributor for engines
     lbview = ipyclient.load_balanced_view()
@@ -1049,14 +1103,29 @@ def inference(data, ipyclient, bidx):
     ## start progress bar timer
     start = time.time()
 
+    ## open a single view of the seq matrix, ipyparallel will NOT copy it 
+    ## in memory, so we pass this to all workers. 
+    inh5 = h5py.File(os.path.realpath(data.svd.h5in), 'r')
+     ## either grab the seq stream or boot stream
+    if not data.svd.checkpoint_boot:
+        seqs = inh5["seqarr"]
+    else:
+        seqs = inh5["bootarr"]
+
     ## submit initial n jobs
-    assert len(ipyclient) > 0, "No ipyparallel Engines found"
     res = {}
-    for i in range(len(ipyclient)):
+    for jidx in xrange(len(ipyclient)):
         try:
-            res[i] = lbview.apply(worker, [data, jobiter.next()])
+            ## get chunk of quartet samples
+            qidx = jobiter.next()
+            smps = inh5["samples"][qidx:qidx+data.svd.chunk]
+            res[jidx] = lbview.apply(nworker, *[smps, seqs])
+
         except StopIteration:
             continue
+
+    ## debugging
+    [i.get() for i in res.values()]
 
     ## iterate over remaining jobs
     keys = res.keys()
