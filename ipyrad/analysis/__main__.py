@@ -10,6 +10,8 @@ import ipyrad as ip
 import argparse
 import logging
 import sys
+import os
+import atexit
 
 import ipyrad.analysis as ipa
 
@@ -94,6 +96,9 @@ def parse_command_line():
         type=int, default=0,
         help="number of CPU cores to use (default = 0 = Use all)")
 
+    parser.add_argument('-d', "--debug", action='store_true',
+        help="print lots more info to ipyrad_log.txt.")
+
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
 
@@ -144,6 +149,14 @@ def main():
 
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
+
+    ## debugger
+    if os.path.exists(ip.__debugflag__):
+        os.remove(ip.__debugflag__)
+    if args.debug:
+        print("\n  ** Enabling debug mode ** ")
+        ip.debug_on()
+        atexit.register(ip.debug_off)      
 
     ## if JSON, load it
     if args.json:
