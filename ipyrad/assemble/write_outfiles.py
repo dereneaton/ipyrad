@@ -12,6 +12,7 @@ code is as follows:
 # pylint: disable=E1101
 # pylint: disable=W0212
 # pylint: disable=C0301
+# pylint: disable=C0103
 
 from __future__ import print_function
 
@@ -350,7 +351,7 @@ def filter_all_clusters(data, samples, ipyclient):
         progressbar(20, 20, " filtering loci        | {}".format(elapsed))        
         print("")
 
-        ## check that all are done
+        ## make sure that all are done
         [i.get() for i in results]
 
         ## get all the saved tmp arrays for each slice
@@ -372,6 +373,7 @@ def filter_all_clusters(data, samples, ipyclient):
         ## ["duplicates", "max_indels", "max_snps", "max_hets", "min_samps", "max_alleles"]
         io5 = h5py.File(data.database, 'r+')
         superfilter = np.zeros(io5["filters"].shape, io5["filters"].dtype)
+
         ## iterate across filter types (dups & indels are already filled)
         ## we have [4,4] b/c minf and edgf both write to minf
         for fidx, ftype in zip([2, 3, 4, 4, 5], arrdict.keys()):
@@ -764,6 +766,9 @@ def filter_stacks(args):
     ## duplicate filter is already filled
     ## indels filter is already filled
 
+    ## get an int view of the seq array
+    superints = superseqs.view(np.int8)
+
     ## fill edge filter
     ## get edges of superseqs and supercats, since edges need to be trimmed 
     ## before counting hets and snps. Technically, this could edge trim 
@@ -771,20 +776,17 @@ def filter_stacks(args):
     ## also constitutes a filter, though one that is uncommon. For this 
     ## reason we have another filter called edgfilter.
     splits = co5["edges"][hslice[0]:hslice[1], 4]
-
-
-    edgfilter, edgearr = get_edges(data, superseqs, splits)
+    edgfilter, edgearr = get_edges(data, superints, splits)
     del splits
-    #LOGGER.info("edgarr returned = %s", edgearr)
-
-    ## get an int view of the seq array
-    intarr = superseqs.view(np.int8)
+    LOGGER.info('passed edges %s', hslice[0])
 
     ## minsamp coverages filtered from superseqs
-    minfilter = filter_minsamp(data.paramsdict["min_samples_locus"], intarr)
+    minfilter = filter_minsamp(data.paramsdict["min_samples_locus"], superints)
+    LOGGER.info('passed minfilt %s', hslice[0])
 
     ## maxhets per site column from superseqs after trimming edges
-    hetfilter = filter_maxhet(data, superseqs, edgearr)
+    hetfilter = filter_maxhet(data, superints, edgearr)
+    LOGGER.info('passed minhet %s', hslice[0])
 
     ## ploidy filter
     pldfilter = io5["nalleles"][hslice[0]:hslice[1]].max(axis=1) > \
@@ -792,7 +794,7 @@ def filter_stacks(args):
 
     ## Build the .loci snpstring as an array (snps) 
     ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
-    snpfilter, snpsarr = filter_maxsnp(data, superseqs, edgearr)
+    snpfilter, snpsarr = filter_maxsnp(data, superints, edgearr)
 
     LOGGER.info("edg %s", edgfilter.sum())
     LOGGER.info("min %s", minfilter.sum())
@@ -853,7 +855,7 @@ def get_edges(data, superints, splits):
         cut1, cut2, _, _ = data.paramsdict["restriction_overhang"] 
     else:
         cut1, cut2 = data.paramsdict["restriction_overhang"]
-    cuts = np.uint16([len(cut1), len(cut2)])
+    cuts = np.int16([len(cut1), len(cut2)])
 
     ## a local array for storing edge trims
     edges = np.zeros((superints.shape[0], 5), dtype=np.int16)
@@ -870,7 +872,7 @@ def get_edges(data, superints, splits):
     ## default is (4, *, *, 4)
     ## A * value means no missing data (overhang) at edges.
     #edgetrims[edgetrims == "*"] = minsamp
-    edgetrims = edgetrims.astype(np.int)
+    edgetrims = edgetrims.astype(np.int16)
 
     ## convert all - to N to make this easier, (only affects local copy)
     #superseqs[superseqs == "-"] = "N"
@@ -879,102 +881,98 @@ def get_edges(data, superints, splits):
     ## trim overhanging edges
     ## get the number not Ns in each site, 
     #ccx = np.sum(superseqs != "N", axis=1)
-    ccx = np.sum(superints != 78, axis=1)
-    efi, edg = edgetrim_subfunc(splits, ccx, edgetrims, edgefilter, edges, cuts)
+    ccx = np.sum(superints != 78, axis=1, dtype=np.int16)
+    efi, edg = edgetrim_numba(splits, ccx, edges, edgefilter, edgetrims, cuts)
     return efi, edg
 
 
-
-def edgetrim_subfunc(splits, ccx, edgetrims, edgefilter, edges, cuts):
-    """
-    with a little work we could numba compile this func.
-    """
-    for idx, split in enumerate(splits):
-        if split:
-            r1s = ccx[idx, :split]
-            r2s = ccx[idx, split+4:]
+@numba.jit(nopython=True)
+def edgetrim_numba(splits, ccx, edges, edgefilter, edgetrims, cuts):
+    ## get splits
+    for idx in xrange(splits.shape[0]):
+        
+        ## get the data
+        if splits[idx]:
+            r1s = ccx[idx, :splits[idx]]
+            r2s = ccx[idx, splits[idx]+4:]
         else:
             r1s = ccx[idx, :]
-
-        ## set default values
-        edge0 = edge1 = edge2 = edge3 = 0
-        
-        ## Then, check if indels cause overhang at R1 edges
-        ## if edge trim fails then locus is filtered as a mindepth filter
-        try:
-            if edgetrims[0] > 0:
-                edge0 = np.where(r1s >= edgetrims[0])[0]
-                edge0 = max(0, edge0[cuts[0]:].min())
-            elif edgetrims[0] < 0:
-                edge0 = max(0, np.where(r1s >= 0)[0].min()) - edgetrims[0]
-        except ValueError:
-            edge0 = 0
-            edgefilter[idx] = True
-
-        try:
-            if edgetrims[1] > 0:
-                edge1 = np.where(r1s >= edgetrims[1])[0].max()
-            elif edgetrims[1] < 0:
-                edge1 = np.where(r1s > 0)[0].max() - edgetrims[1]
-        except ValueError:
-            edgefilter[idx] = True
-            edge1 = 1 #np.where(r1s >= 1)[0].max()
-
-        ## sanity check
-        if edge0 > edge1:
-            #LOGGER.info("mindepth/edge %s, %s %s", idx, edge0, edge1)
-            edgefilter[idx] = True
-            edge1 = edge0 + 1
-
-
-        ## if split then do the second reads separate
-        if split:
-            try:
-                if edgetrims[2] > 0:
-                    edge2 = split+4+(np.where(r2s >= edgetrims[2])[0]).min()
-                elif edgetrims[2] < 0:
-                    edge2 = split+4+np.where(r2s > 0)[0].max() + edgetrims[2]                    
-                #     #edge2 = split+4+(np.where(r2s >= edgetrims[2])[0]).min()+(-1*edgetrims[2])
-            except ValueError:
+            
+        ## fill in edge 0
+        if edgetrims[0] > 0:
+            x = np.where(r1s >= edgetrims[0])[0]
+            if np.any(x):
+                edges[idx][0] = np.min(x[cuts[0]:])
+            else:
+                edges[idx][0] = np.uint16(0)
                 edgefilter[idx] = True
-                edge2 = edge1 + 4
-
-            try:
-                if edgetrims[3] > 0:
-                    ## get farthest site that is not all Ns
-                    nondex = np.where(r2s > 0)[0]                  ### 1, 2, ... 99
+            
+        elif edgetrims[0] < 0:
+            x = np.where(r1s >= 0)[0]
+            if np.any(x):
+                edges[idx][0] = np.max(x[cuts[0]:]) - edgetrims[0]
+            else:
+                edges[idx][0] = np.uint16(0)
+                edgefilter[idx] = True
+                
+        ## fill in edge 1
+        if edgetrims[1] > 0:
+            x = np.where(r1s >= edgetrims[1])[0]
+            if np.any(x):
+                edges[idx][1] = np.max(x)
+            else:
+                edges[idx][1] = np.uint16(1)
+                edgefilter[idx] = True
+            
+        elif edgetrims[1] < 0:
+            x = np.where(r1s > 0)[0]
+            if np.any(x):
+                edges[idx][1] = np.max(x) - edgetrims[1]
+            else:
+                edges[idx][1] = np.uint16(1)
+                edgefilter[idx] = True       
+           
+        ## If paired, do second read edges    
+        if splits[idx]:
+            if edgetrims[2] > 0:
+                x = np.where(r2s >= edgetrims[2])[0]
+                if np.any(x):
+                    edges[idx][2] = splits[idx] + np.int16(4) + np.min(x)
+                else:
+                    edges[idx][2] = edges[idx][1] + 4
+                    edgefilter[idx] = True
+            elif edgetrims[2] < 0:
+                x = np.where(r2s >= 0)[0]
+                if np.any(x):
+                    edges[idx][2] = splits[idx] + np.int16(4) + np.max(x) + edgetrims[2]
+                else:
+                    edges[idx][2] = edges[idx][1] + 4
+                    edgefilter[idx] = True
+            
+            if edgetrims[3] > 0:
+                ## get farthest site that is not all Ns
+                x = np.where(r2s > 0)[0]
+                if np.any(x):
                     ## remove the cut site
-                    cutdex = nondex[:max(nondex) - (cuts[1])]    ### 1, 2, ... 94
-                    ## find farthest that has high cov
-                    covmask = r2s[:cutdex.max()+1] >= edgetrims[3] ### 1, 1, ... 0,0
+                    cutx = x[:np.max(x) - cuts[1]]
+                    ## find farthest with high cov
+                    covmask = r2s[:np.max(cutx)+np.int16(1)] >= edgetrims[3]
                     ## return index w/ spacers
-                    edge3 = split+4+max(np.where(covmask)[0])      ### 92
-
-                    # if edgetrims[3] > 0:
-                    #     edge3 = np.where(r2s >= edgetrims[3])[0].max()
-                    #     edge3 += (4 + split)
-                elif edgetrims[3] < 0:
-                    edge3 = r2s[edge3].max() + edgetrims[3]
-
-            except ValueError:
-                edgefilter[idx] = True                
-                edge3 = edge2 + 1 #np.where(r2s >= 1)[0].max()
-
-            #LOGGER.info('what are these: %s %s', edge2, edge3)
-            ## sanity check
-            if edge2 > edge3:
-                #LOGGER.info("mindepth/edge %s, %s %s", idx, edge2, edge3)
-                edgefilter[idx] = True
-                edge3 = edge2 + 1
-
-        ## store edges
-        edges[idx] = np.array([edge0, edge1, edge2, edge3, split])
-
+                    edges[idx][3] = splits[idx] + np.int16(4) + np.max(np.where(covmask)[0])
+                else:
+                    edges[idx][3] = edges[idx][2] + 1
+                    edgefilter[idx] = True   
+            elif edgetrims[3] < 0:
+                edges[idx][3] = r2s[edges[idx][3]] + edgetrims[3]
+                
+            ## enter the pair splitter
+            edges[idx][4] = splits[idx]
+            
     return edgefilter, edges
+        
 
 
-
-def filter_minsamp(minsamp, superseqs):
+def filter_minsamp(minsamp, superints):
     """ 
     Filter minimum # of samples per locus from superseqs[chunk]. The shape
     of superseqs is [chunk, sum(sidx), maxlen]
@@ -984,17 +982,13 @@ def filter_minsamp(minsamp, superseqs):
     ## ask which rows are not all N along seq dimension, then sum along sample 
     ## dimension to get the number of samples that are not all Ns.
     ## minfilt is a boolean array where True means it failed the filter.
-    minfilt = np.sum(~np.all(superseqs == "N", axis=2), axis=1) < minsamp
+    #minfilt = np.sum(~np.all(superseqs == "N", axis=2), axis=1) < minsamp
+    minfilt = np.sum(~np.all(superints == 78, axis=2), axis=1) < minsamp
     #LOGGER.debug("minfilt %s", minfilt)
 
     ## print the info
     #LOGGER.info("Filtered by min_samples_locus - {}".format(minfilt.sum()))
     return minfilt
-
-
-@numba.jit("b1[:](u1[:,:,:], u1)")
-def filter_minsamp(minsamp, superseqs):
-    return np.sum(~np.all(superseqs == 78, axis=2), axis=1) < minsamp
 
 
 
@@ -1068,7 +1062,7 @@ def ucount(sitecol):
 
 
 
-def filter_maxsnp(data, superseqs, edges):
+def filter_maxsnp(data, superints, edgearr):
     """ 
     Filter max # of SNPs per locus. Do R1 and R2 separately if PE. 
     Also generate the snpsite line for the .loci format and save in the snp arr
@@ -1076,65 +1070,117 @@ def filter_maxsnp(data, superseqs, edges):
     saves the snps array with edges filtered. **Loci are not yet filtered.**
     """
 
-    maxs1, maxs2 = data.paramsdict["max_SNPs_locus"]
-
     ## an empty array to count with failed loci
-    snpfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
-    snpsarr = np.zeros((superseqs.shape[0], superseqs.shape[2], 2), 
-                       dtype=np.bool)
+    snpfilt = np.zeros(superints.shape[0], dtype=np.bool)
+    snpsarr = np.zeros((superints.shape[0], superints.shape[2], 2), dtype=np.bool)
+    maxsnps = np.array(data.paramsdict['max_SNPs_locus'], dtype=np.int16)    
 
-    ## get the per site snp string (snps) shape=(chunk, maxlen)
-    snps = np.apply_along_axis(ucount, 1, superseqs)
-    ## fill snps array
-    snpsarr[:, :, 0] = snps == "-"
-    snpsarr[:, :, 1] = snps == "*"
+    ## get the per site snp string | shape=(chunk, maxlen)
+    # snpsarr[:, :, 0] = snps == "-"
+    # snpsarr[:, :, 1] = snps == "*"
+    snpsarr = snpcount_numba(superints, snpsarr)
+    LOGGER.info("---found the snps: %s", snpsarr.sum())
+    snpfilt, snpsarr = snpfilter_numba(snpsarr, snpfilt, edgearr, maxsnps)
+    LOGGER.info("---filtered snps: %s", snpfilt.sum())    
+    return snpfilt, snpsarr
 
-    ## mask edge filtered sites and fill maxsnps filter
-    ## check for split for single vs paired loci
-    for idx, edge in enumerate(edges):
-        edg0, edg1, edg2, edg3, split = edge
-        if not split:
-            mask = np.invert([i in range(edg0, edg1+1) for i in \
-                              np.arange(snps.shape[1])])
-            ## apply mask
-            snpsarr[idx, mask, :] = False
-            ## count nsnps
-            nsnps = snpsarr[idx, ].sum(axis=1).sum()
-            if nsnps > maxs1:
+
+@numba.jit(nopython=True)
+def snpfilter_numba(snpsarr, snpfilt, edgearr, maxsnps):
+    for idx in xrange(snpsarr.shape[0]):
+        if not edgearr[idx, 4]:
+            ## exclude snps that are outside of the edges
+            for sidx in xrange(snpsarr.shape[1]):
+                if sidx < edgearr[idx, 0]:
+                    snpsarr[idx, sidx, :] = False
+                elif sidx > edgearr[idx, 1]:
+                    snpsarr[idx, sidx, :] = False
+                        
+            nvar = snpsarr[idx, :].sum()
+            if nvar > maxsnps[0]:
                 snpfilt[idx] = True
-
-
-        ## splitting r1s from r2s and treating each separately.
+        
         else:
-            mask1 = np.invert([i in range(edg0, edg1+1) for i in \
-                               np.arange(split)])
-                                     
-            #maskmid = np.zeros((4,), dtype=np.bool)
-            mask2 = np.invert([i in range(edg2, edg3+1) for i in  \
-                               np.arange(split, snpsarr.shape[1])])
-
-            mask = np.concatenate([mask1, mask2])
-            LOGGER.info('edges %s', edge)
-            LOGGER.info('mask %s', np.where(mask))
-            LOGGER.info('snpsarr %s', snpsarr.sum())
-
-            ## apply masks
-            snpsarr[idx, mask, :] = False
-            LOGGER.info('masked %s', snpsarr.sum())
-
-            ## count snps, array is already masked
-            nsnps1 = snpsarr[idx, :split+1].sum(axis=1).sum()
-            if nsnps1 > maxs1:
+            for sidx in xrange(snpsarr.shape[1]):
+                if sidx < edgearr[idx, 0]:
+                    snpsarr[idx, sidx, :] = False
+                else:
+                    if sidx > edgearr[idx, 1]:
+                        if sidx < edgearr[idx, 2]:
+                            snpsarr[idx, sidx, :] = False
+                    if sidx > edgearr[idx, 3]:
+                        snpsarr[idx, sidx, :] = False
+                        
+            nvar1 = snpsarr[idx, :][:edgearr[idx, 4]].sum()
+            if nvar1 > maxsnps[0]:
                 snpfilt[idx] = True
-            nsnps2 = snpsarr[idx, split+4:].sum(axis=1).sum()
-            if nsnps2 > maxs2:
-                snpfilt[idx] = True
-
+            nvar2 = snpsarr[idx, :][edgearr[idx, 4]:].sum()
+            if nvar2 > maxsnps[1]:
+                snpfilt[idx] = True         
+            
     return snpfilt, snpsarr
 
 
 
-def filter_maxhet(data, superseqs, edges):
+@numba.jit(nopython=True)
+def snpcount_numba(superints, snpsarr):
+    """ 
+    Used to count the number of unique bases in a site for snpstring. 
+    """
+    ## iterate over all loci
+    for iloc in xrange(superints.shape[0]):
+        for site in xrange(superints.shape[2]):
+    
+            ## make new array
+            catg = np.zeros(4, dtype=np.int16)
+
+            ## a list for only catgs
+            ncol = superints[iloc, :, site]
+            for idx in range(ncol.shape[0]):
+                if ncol[idx] == 67: #C
+                    catg[0] += 1
+                elif ncol[idx] == 65: #A
+                    catg[1] += 1
+                elif ncol[idx] == 84: #T
+                    catg[2] += 1
+                elif ncol[idx] == 71: #G
+                    catg[3] += 1
+                elif ncol[idx] == 82: #R
+                    catg[1] += 1        #A
+                    catg[3] += 1        #G
+                elif ncol[idx] == 75: #K
+                    catg[2] += 1        #T
+                    catg[3] += 1        #G
+                elif ncol[idx] == 83: #S
+                    catg[0] += 1        #C
+                    catg[3] += 1        #G
+                elif ncol[idx] == 89: #Y
+                    catg[0] += 1        #C
+                    catg[2] += 1        #T
+                elif ncol[idx] == 87: #W
+                    catg[1] += 1        #A
+                    catg[2] += 1        #T
+                elif ncol[idx] == 77: #M
+                    catg[0] += 1        #C
+                    catg[1] += 1        #A
+            
+
+            ## get second most common site
+            catg.sort()
+            ## if invariant e.g., [0, 0, 0, 9], then nothing (" ")
+            if not catg[2]:
+                pass
+            else:
+                ## if one var, e.g., [0, 0, 1, 8] then (-), else (*)
+                if catg[2] > 1:
+                    snpsarr[iloc, site, 1] = True
+                else:
+                    snpsarr[iloc, site, 0] = True
+    return snpsarr
+
+
+
+def filter_maxhet(data, superints, edgearr):
     """ 
     Filter max shared heterozygosity per locus. The dimensions of superseqs
     are (chunk, sum(sidx), maxlen). Don't need split info since it applies to 
@@ -1147,25 +1193,47 @@ def filter_maxhet(data, superseqs, edges):
     ## int or float is made at assembly load time
     maxhet = data.paramsdict["max_shared_Hs_locus"]
     if isinstance(maxhet, float):
-        maxhet = int(superseqs.shape[1]*maxhet)
-    else:
-        maxhet = maxhet
+        maxhet = np.array(superints.shape[1]*maxhet, dtype=np.int16)
+    elif isinstance(maxhet, int):
+        maxhet = np.array(maxhet, dtype=np.int16)
 
     ## an empty array to fill with failed loci
-    hetfilt = np.zeros(superseqs.shape[0], dtype=np.bool)
-
-    ## get the per site number of bases in ambig, and get the max per site 
-    ## value for each locus, then get boolean array of those > maxhet.
-    for idx, edg in enumerate(edges):
-        #LOGGER.debug("testing %s, %s", idx, edg)
-        share = np.array(\
-            [np.sum(superseqs[idx, :, edg[0]:edg[1]] == ambig, axis=0)\
-            .max() for ambig in "RSKYWM"]).max()
-        ## fill filter
-        if share > maxhet:
-            hetfilt[idx] = True
-    LOGGER.info("Filtered max_shared_heterozygosity- {}".format(hetfilt.sum()))
+    hetfilt = np.zeros(superints.shape[0], dtype=np.bool)
+    hetfilt = maxhet_numba(superints, edgearr, maxhet, hetfilt)
+    LOGGER.info("--------------maxhet sums %s", hetfilt.sum())
     return hetfilt
+
+
+
+@numba.jit(nopython=True)
+def maxhet_numba(superints, edgearr, maxhet, hetfilt):
+    for idx in xrange(edgearr.shape[0]):
+        ## do read1s
+        fcolumns = superints[idx, :, edgearr[idx, 0]:edgearr[idx, 1]]
+        count1s = np.zeros(fcolumns.shape[1], dtype=np.int16)                         
+        for fidx in xrange(fcolumns.shape[1]):
+            subcount = 0
+            for ambig in AMBIGARR:
+                subcount += np.sum(fcolumns[:, fidx] == ambig)
+            count1s[fidx] = subcount
+        
+        ## do read2s
+        fcolumns = superints[idx, :, edgearr[idx, 2]:edgearr[idx, 3]]
+        count2s = np.zeros(fcolumns.shape[1], dtype=np.int16)                         
+        for fidx in xrange(fcolumns.shape[1]):
+            subcount = 0
+            for ambig in AMBIGARR:
+                subcount += np.sum(fcolumns[:, fidx] == ambig)
+            count2s[fidx] = subcount
+
+        ## check against max
+        if (count1s.max() > maxhet) or (count2s.max() > maxhet):
+            hetfilt[idx] = True 
+    return hetfilt    
+
+## MAKE GLOBAL
+AMBIGARR = np.array(list("RSKYWM")).view(np.int8)
+
 
 
 
