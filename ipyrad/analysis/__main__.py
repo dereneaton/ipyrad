@@ -188,6 +188,8 @@ def main():
 
     ## store ipcluster info
     data._ipcluster["cores"] = args.cores
+    if args.cores:
+        data.cpus = args.cores
 
     if args.MPI:
         data._ipcluster["engines"] = "MPI"
