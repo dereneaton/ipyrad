@@ -833,7 +833,7 @@ def singlecat(args):
 
 
 
-@numba.jit
+@numba.jit()
 def fillcats(name, udic, chunksize, catarr, nall, icatg, inall, dfilter, maxlen):
     ## create a local array to fill until writing to disk for write efficiency
     locatg = np.zeros((chunksize, maxlen, 4), dtype=np.uint32)
