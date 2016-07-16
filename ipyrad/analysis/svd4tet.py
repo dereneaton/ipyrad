@@ -21,8 +21,10 @@ Theoretical Biology 374: 35-47
 # pylint: disable=C0301
 
 
+
 from __future__ import print_function, division
 import os
+import sys
 import glob
 import h5py
 import time
@@ -40,7 +42,7 @@ from fractions import Fraction
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 #from collections import Counter, OrderedDict
 
-## extra dependency 
+## ete3 is an extra dependency not included with ipyrad
 try:
     import ete3
 except ImportError:
@@ -52,9 +54,12 @@ except ImportError:
     it with the command `conda install -c etetoolkit ete3`
     """)
 
+## set the logger
 import logging
 LOGGER = logging.getLogger(__name__)
 
+## debug numba code
+#numba.NUMBA_DISABLE_JIT = 1
 
 ## The 16 x 16 matrix of site counts. 
 MKEYS = """
@@ -84,7 +89,8 @@ MKEYS = """
 def get_seqarray(data, boot):
     """ 
     Takes an Assembly object and looks for a phylip file unless the path 
-    argument is used then it looks in path. 
+    argument is used then it looks in path. If boots then it grabs the 
+    resampled seqarray, else it samples the original seqarray. 
     """
 
     ## read in the file
@@ -94,7 +100,7 @@ def get_seqarray(data, boot):
     nbp = int(line[1])
     #LOGGER.info("array shape: (%s, %s)", ntax, nbp)
 
-    ## make a seq array
+    ## make a tmp seq array
     tmpseq = np.zeros((ntax, nbp), dtype="S1")
 
     ## get initial array
@@ -109,9 +115,8 @@ def get_seqarray(data, boot):
             ## fill the tmp array from the input phy
             for line, seq in enumerate(spath.readlines()):
                 tmpseq[line] = np.array(list(seq.split()[-1]))
-            ## save array to disk so it can be easily accessed from 
-            ## many engines on arbitrary nodes 
-            seqarr[:] = tmpseq.view(np.int8)
+            ## save array to disk so it can be easily accessed by slicing
+            seqarr[:] = tmpseq.view(np.uint8)
             del tmpseq
             
     else:
@@ -243,7 +248,9 @@ def equal_splits(data, nquarts, ipyclient):
 
 
 def get_quartets(data, method, nquarts, ipyclient):
-    """ load all quartets into an array """
+    """ 
+    Find all quartets of samples and store in a large array 
+    """
 
     ## calculate how many quartets to generate
     if method == 'all':
@@ -270,6 +277,7 @@ def get_quartets(data, method, nquarts, ipyclient):
     ## 'samples' stores the indices of the quartet. 
     ## `quartets` stores the correct quartet in the order (1,2|3,4)
     ## `weights` stores the calculated weight of the quartet in 'quartets'
+    ## we gzip this for now, but check later if this has a big speed cost
     print("  populating array with {} quartets".format(nquarts))
     with h5py.File(data.svd.h5in, 'a') as io5:
         ## create data sets
@@ -306,144 +314,91 @@ def get_quartets(data, method, nquarts, ipyclient):
 
 
 
-def worker(data, qidx):
-    """ gets data from seq array and puts results into results array """
+#############################################################################
+#############################################################################
+## SVD computation functions
+## 
+#############################################################################
+#############################################################################
 
-    ## parse args
-    chunk = data.svd.chunk
-
-    ## get n chunk quartets from qidx
-    lpath = os.path.realpath(data.svd.h5in)
-    with h5py.File(lpath, 'r') as in5:
-
-        ## 
-        smps = in5["samples"][qidx:qidx+chunk]
-        if not data.svd.checkpoint_boot:
-            seqs = in5["seqarr"][:]
-        else:
-            seqs = in5["bootarr"][:]            
-
-        #start = time.time()
-        rquartets = np.zeros((smps.shape[0], 4), dtype=np.uint16)
-        rweights = np.zeros(smps.shape[0], dtype=np.float32)
-
-        ## iterate over all samples of 4 tips in this chunk
-        for qt in range(smps.shape[0]):
-            qtet = smps[qt]
-            sidxs = np.uint16([[qtet[0], qtet[1], qtet[2], qtet[3]],
-                               [qtet[0], qtet[2], qtet[1], qtet[3]],
-                               [qtet[0], qtet[3], qtet[1], qtet[2]]])
-
-            ## run svd4tet inference on each of the three resolutions of quartet
-            rquartets[qt], rweights[qt] = svdconvert(seqs, sidxs)
-
-    tmpchunk = os.path.join(data.dirs.svd, data.name+"_tmp_{}.h5".format(qidx))
-    with h5py.File(tmpchunk, 'w') as io5out:
-        io5out["weights"] = rweights
-        io5out["quartets"] = rquartets
-
-    return tmpchunk
-
-
-
-def nworker(smpchunk, seqchunk):
-
-    ## get the input arrays ready
-    rquartets = np.zeros((smpchunk.shape[0], 3), dtype=np.uint16)
-    rweights = np.zeros(smpchunk.shape[0], dtype=np.float32)
-    mask = np.ones(seqchunk.shape[1], dtype=np.bool)
-    sidxs = get_sidxs(smpchunk)
-    #rdstats = np.zeros(smps.shape[0], dtype=np.float32)
-
-    ## fill arrays with results using numba funcs
-    for sidx in xrange(sidxs.shape[0]):
-        res1, res2 = findbest(seqchunk[sidxs[sidx], :], rquartets, rweights, mask)
-        rquartets[sidx], rweights[sidx] = res1, res2
-
-
-
-
-@numba.jit(nopython=True)
-def get_sidxs(smps):
-    """ return quartet fast """
-    store = np.zeros((smps.shape[1], 3, 4), dtype=np.uint16)
-    for qt in xrange(smps.shape[1]):
-        ## grab 4 names
-        qtet = smps[qt]
-        ## get 3 resolution of 4 names
-        store[qt, 0] = [qtet[0], qtet[1], qtet[2], qtet[3]]
-        store[qt, 1] = [qtet[0], qtet[2], qtet[1], qtet[3]]
-        store[qt, 2] = [qtet[0], qtet[3], qtet[1], qtet[2]]
-    return store
-
-
-
-
-@numba.jit(nopython=True)
-def findbest(seqchunk, mask):
-    """ numba func """
-    ## iterate over all samples of 4 tips
-    for snp in xrange(seqchunk.shape[1]):
-        qtet = smps[qt]
-        ## store results
-        squart = np.zeros(3, dtype=np.int16)
-        sweigt = np.zeros(3, dtype=np.float32)
-
-        ## run svd on the quartet
-        for sx in range(3):
-            squart[sidxs[sx]], sweigt[sidxs[sx]] = decomp(seqs[sidxs[sx], :], mask)
-
-        rquartets[qt] = squart.max()
-        rweights[qt] = 0
-
-
-
-
-
-## TODO; this can now be nopython=True in numba 0.27
-@numba.jit('Tuple((u2[:],f4))(u1[:, :], u2[:, :])')
-def svdconvert(arr, sidxs):
-    """ the workhorse """
-
-    ## get scores for all three sidxs
-    scores = np.zeros(3, dtype=np.float32)
-    bsidx = 0
-    best = 10000
-
-    ## filter the array to remove Ns
-    narr = arr[sidxs, :]
-    arr = narr[~np.any(narr == 84, axis=0)]
-
-    for sidx in [0, 1, 2]:
-        mat = jseq_to_matrix(arr, sidxs[sidx])
-        sss = np.linalg.svd(mat, full_matrices=1)[1]#, compute_uv=0)
-        scores[sidx] = np.sqrt(sss[11:].sum())
-        if scores[sidx] < best:
-            bsidx = sidx
-            best = scores[sidx]
-
-    ## order smallest to largest
+@numba.jit('f4(f4[:])', nopython=True)
+def get_weights(scores):
+    """ 
+    calculates quartet weights from ordered svd scores. Following 
+    description from Avni et al. 
+    """
     scores.sort()
-    weight = np.float32((scores[2]-scores[0]) / (np.exp(scores[2]-scores[1]) * scores[2]))
+    scores = scores[::-1]
+    if scores[2]:
+        weight = np.float32((scores[2]-scores[0]) / 
+                            (np.exp(scores[2]-scores[1]) * scores[2]))
+    else:
+        #weight = np.float32(0.00001)
+        weight = scores[2]
+    
     if np.isnan(weight):
-        weight = 0.01
+        weight = np.float32(0.01)
+        
+    return weight
 
-    quartet = sidxs[bsidx]
-    return quartet, weight
 
 
-@numba.jit()
+@numba.jit('Tuple((f4,f4,f4))(u4[:,:])', nopython=True)
+def abba_baba(mat):
+    """ 
+    calculate dstats from the count array and return as a float tuple 
+    """
+    ## get all the abba sites from mat
+    baba = 0
+    for i in range(16):
+        if i % 5:
+            baba += mat[i, i]
+    baba = np.float32(baba)
+    
+    ## get all the baba sites from mat
+    abba = np.float32(\
+            mat[1, 4] + mat[2, 8] + mat[3, 12] +\
+            mat[4, 1] + mat[6, 9] + mat[7, 13] +\
+            mat[8, 2] + mat[9, 6] + mat[11, 14] +\
+            mat[12, 3] + mat[13, 7] + mat[14, 11])
+     
+    ## calculate D, protect from ZeroDivision
+    denom = abba + baba
+    if denom:
+        dstat = (abba-baba)/denom
+    else:
+        dstat = 0
+    
+    return abba, baba, dstat
+
+        
+
+@numba.jit('u1[:,:](u1[:,:],b1[:])', nopython=True)
+def removeNs(seqchunk, mask):
+    """ removes ncolumns from snparray prior to matrix calculation"""
+    ## mask columns that contain Ns
+    for idx in xrange(seqchunk.shape[1]):
+        if np.sum(seqchunk[:, idx] == 78):
+            mask[idx] = False
+    ## apply mask
+    newarr = seqchunk[:, mask]
+    ## return smaller Nmasked array
+    return newarr
+
+
+
+#@numba.jit()
 def reduce_arr(arr, map, sidx):
     """ 
-    If a map file is provided then the array is reduced 
+    If a full seqarray and map file are provided then the array is reduced 
     to a single unlinked snp from each locus for this quartet.
     """
     pass
 
 
 
-@numba.jit('u4[:,:](u1[:,:], u2[:])', nopython=True)
-def jseq_to_matrix(arr, sidx):
+@numba.jit('u4[:,:](u1[:,:])', nopython=True)
+def chunk_to_matrix(narr):
     """ 
     numba compiled code to get matrix fast.
     arr is a 4 x N seq matrix converted to np.int8
@@ -452,13 +407,15 @@ def jseq_to_matrix(arr, sidx):
     """
 
     ## get seq alignment and create an empty array for filling
-    narr = arr[sidx, :].T
     mat = np.zeros((16, 16), dtype=np.uint32)
 
-    for x in xrange(narr.shape[0]):
-        i = narr[x]
+    ## replace ints with small ints that index their place in the 
+    ## 16x16. If not replaced, the existing ints are all very large
+    ## and the column will be excluded.
+    for x in xrange(narr.shape[1]):
+        i = narr[:, x]
         ## convert to index values
-        i[i == 65] = 0
+        i[i == 65] = 0  ## already zero
         i[i == 67] = 1
         i[i == 71] = 2
         i[i == 84] = 3
@@ -468,22 +425,63 @@ def jseq_to_matrix(arr, sidx):
                [i[1]]\
                [i[2]*4:(i[2]+4)*4]\
                [i[3]] += 1
-
     return mat
 
 
 
-def seq_to_matrix(arr, sidx):
-    """
-    testing alternative
-    """
-    ## get data for just this quartet
-    narr = arr[sidx, :]
-    narr[:, ~np.any(narr == 84, axis=0)]
+#@numba.jit('(u2[:,:],u1[:,:],u1[:,:])')#, nopython=True)
+#@numba.jit(nopython=True)
+def nworker(smpchunk, seqview, tests):
+    """ The workhorse function. All numba. """
+
+    ## get the input arrays ready
+    rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
+    rweights = np.zeros(smpchunk.shape[0], dtype=np.float32)
+    mask = np.ones(seqview.shape[1], dtype=np.bool_)
+    rdstats = np.zeros((smpchunk.shape[0], 3), dtype=np.float32)
+
+    ## fill arrays with results using numba funcs
+    for idx in xrange(smpchunk.shape[0]):
+        ## get seqchunk for 4 samples (4, ncols) and remove Ns
+        seqchunk = seqview[smpchunk[idx]]
+        seqnon = removeNs(seqchunk, mask)
+
+        ## get svdscores for each arrangement of seqchunk
+        qscores = np.zeros(3, dtype=np.float32)
+        mats = np.zeros((3, 16, 16), dtype=np.uint32)
+        for test in range(3):
+            mats[test] = chunk_to_matrix(seqnon[tests[test]])
+            ## get svd scores
+            tmpscore = np.linalg.svd(mats[test].astype(np.float32))[1]
+            qscores[test] = np.sqrt(tmpscore[11:]).sum()
+
+        ## sort to find the best qorder
+        best = np.where(qscores == qscores.min())[0]
+        bidx = tests[best][0]
+        LOGGER.info("""
+            best: %s, 
+            bidx: %s, 
+            qscores: %s, 
+            mats %s
+            """, best, bidx, qscores, mats)
+        rquartets[idx] = smpchunk[idx][bidx]#[0]
+
+        ## get weights from the three scores sorted
+        rweights[idx] = get_weights(qscores)
+
+        ## get dstat from the best (correct) matrix 
+        ## (or should we get all three?) [option]
+        rdstats[idx] = abba_baba(mats[best][0])
+
+    #return 
+    return rquartets, rweights, rdstats 
 
 
-
-
+#############################################################################
+#############################################################################
+## End svd funcs
+#############################################################################
+#############################################################################
 
 
 def run_qmc(data, boot):
@@ -565,7 +563,7 @@ def renamer(data, tre):
 
 def dump(data):
     """ 
-    prints the quartets to a file formatted for QMC in random order.
+    prints the quartets to a file formatted for wQMC 
     """
     ## open the h5 database
     io5 = h5py.File(data.svd.h5out, 'r')
@@ -588,25 +586,41 @@ def dump(data):
 
 
 
-def insert_to_array(data, result):
-    """ 
-    Takes a tmpfile output from finished worker enters it into the 
-    full h5 array, and deletes the tmpfile
+def insert_to_array(data, start, results):
     """
-    out5 = h5py.File(data.svd.h5out, 'r+')
+    inputs results from workers into hdf4 array
+    """
+    qrts, wgts, dsts = results
 
-    with h5py.File(result) as inh5:
-        qrts = inh5['quartets'][:]
-        wgts = inh5['weights'][:]
-
+    with h5py.File(data.svd.h5out, 'r+') as out:
         chunk = data.svd.chunk
-        start = int(result.split("_")[-1][:-3])
-        out5['quartets'][start:start+chunk] = qrts
-        out5['weights'][start:start+chunk] = wgts
-    out5.close()
+        out['quartets'][start:start+chunk] = qrts
+        out['weights'][start:start+chunk] = wgts
+        out["dstats"][start:start+chunk] = dsts
+    ## save checkpoint
+    #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
 
-    ## remove tmp h5path
-    os.remove(result)
+
+
+#def insert_to_array(data, result):
+#     """ 
+#     Takes a tmpfile output from finished worker enters it into the 
+#     full h5 array, and deletes the tmpfile
+#     """
+#     out5 = h5py.File(data.svd.h5out, 'r+')
+
+#     with h5py.File(result) as inh5:
+#         qrts = inh5['quartets'][:]
+#         wgts = inh5['weights'][:]
+
+#         chunk = data.svd.chunk
+#         start = int(result.split("_")[-1][:-3])
+#         out5['quartets'][start:start+chunk] = qrts
+#         out5['weights'][start:start+chunk] = wgts
+#     out5.close()
+
+#     ## remove tmp h5path
+#     os.remove(result)
 
 
 
@@ -1083,94 +1097,124 @@ def write_supports(data, with_boots):
 def inference(data, ipyclient, bidx):
     """ run inference and store results """
 
-    ## a distributor of chunks
+    ## how many chunks are we gonna be doing?
     njobs = sum(1 for _ in iter(xrange(
-                data.svd.checkpoint_arr, data.svd.nquarts, data.svd.chunk)))
-    jobiter = iter(xrange(data.svd.checkpoint_arr, data.svd.nquarts, data.svd.chunk))
+                data.svd.checkpoint_arr, 
+                data.svd.nquarts, 
+                data.svd.chunk)))
+
+    ## an iterator to distribute those chunks
+    #jobiter = iter(xrange(data.svd.checkpoint_arr, 
+    #                      data.svd.nquarts, 
+    #                      data.svd.chunk))
+    jobiter = iter(xrange(0, data.svd.nquarts, 100))
+    njobs = sum(1 for _ in jobiter)
+    jobiter = iter(xrange(0, data.svd.nquarts, 100))    
+    data.svd.chunk = 100
+
+
     LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
             data.svd.chunk, data.svd.checkpoint_arr, data.svd.nquarts, njobs)
 
-    ## make a distributor for engines
+    ## a distributor for engine jobs
     lbview = ipyclient.load_balanced_view()
 
-    ## open a view to the super h5 array
-    with h5py.File(data.svd.h5out, 'w') as out5:
-        out5.create_dataset("quartets", (data.svd.nquarts, 4), 
+    ## create h5 storage data sets for the correct quartets & and their weights
+    with h5py.File(data.svd.h5out, 'w') as io5:
+        io5.create_dataset("quartets", (data.svd.nquarts, 4), 
                             dtype=np.uint16, chunks=(data.svd.chunk, 4))
-        out5.create_dataset("weights", (data.svd.nquarts,), 
-                            dtype=np.float16, chunks=(data.svd.chunk,))
+        io5.create_dataset("weights", (data.svd.nquarts,), 
+                            dtype=np.float32, chunks=(data.svd.chunk,))
+        io5.create_dataset("dstats", (data.svd.nquarts, 3), 
+                            dtype=np.float32, chunks=(data.svd.chunk, 3))
 
-    ## start progress bar timer
-    start = time.time()
-
-    ## open a single view of the seq matrix, ipyparallel will NOT copy it 
-    ## in memory, so we pass this to all workers. 
+    ## A view to the inh5 hdf5 array will be left open since each time we 
+    ## submit a job we will be slicing a chunk of quartets from disk. 
+    ## This is also where the seqarray is, but we assume that can be held
+    ## in memory just fine (this could change!). One view of the array is fine
+    ## since ipyparallel does NOT copy arrays in memory when sending to engines.
     inh5 = h5py.File(os.path.realpath(data.svd.h5in), 'r')
-     ## either grab the seq stream or boot stream
     if not data.svd.checkpoint_boot:
-        seqs = inh5["seqarr"]
+        seqs = inh5["seqarr"][:]
     else:
-        seqs = inh5["bootarr"]
+        seqs = inh5["bootarr"][:]
 
-    ## submit initial n jobs
+    ## the three indexed resolutions of each quartet
+    tests = np.array([[0, 1, 2, 3], 
+                      [0, 2, 1, 3], 
+                      [0, 3, 1, 2]], dtype=np.uint8)
+
+    ## start progress bar timer and submit initial n jobs
+    start = time.time()
     res = {}
-    for jidx in xrange(len(ipyclient)):
-        try:
-            ## get chunk of quartet samples
-            qidx = jobiter.next()
-            smps = inh5["samples"][qidx:qidx+data.svd.chunk]
-            res[jidx] = lbview.apply(nworker, *[smps, seqs])
+    for _ in xrange(min(len(ipyclient), njobs)):
+        ## get chunk of quartet samples
+        qidx = jobiter.next()
+        smps = inh5["samples"][qidx:qidx+data.svd.chunk]
+        print(qidx, smps.shape, seqs.shape)
+        ## send chunk off to be worked on
+        res[qidx] = lbview.apply(nworker, *[smps, seqs, tests])
 
-        except StopIteration:
-            continue
-
-    ## debugging
-    [i.get() for i in res.values()]
-
-    ## iterate over remaining jobs
-    keys = res.keys()
-    finished = 0
-
-    while res.keys():
-        time.sleep(0.1)
+    #ipyclient.wait_interactive()
+    done = 0
+    while 1:
+        ## print progress unless bootstrapping, diff progbar for that.
         if not bidx:
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(njobs, finished, " | {}".format(elapsed))
+            progressbar(njobs, done, " | {}".format(elapsed))
 
-        for key in keys:
-            try:
-                ## query for finished results
-                result = res[key].get(0)
-                ## put it into the super array
-                insert_to_array(data, result)
-                ## delete result, update checkpoint
-                del res[key]
-                finished += 1
-                ## update the minimum quartets finished/filled.
-                with h5py.File(data.svd.h5out, 'r') as tmp5:
-                    ww = tmp5["weights"][:]
-                    try:
-                        data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
-                        #LOGGER.info("arr saved at %s", data.svd.checkpoint_arr)
-                    except (ValueError, AttributeError):
-                        ## array is full (no zeros)
-                        pass
+        ## check for finished jobs
+        curkeys = res.keys()
+        finished = [i.ready() for i in res.values()]
+
+        ## remove finished and submit new jobs
+        if any(finished):
+            for ikey in curkeys:
+                if res[ikey].completed:
+                    if res[ikey].successful():
+                        LOGGER.info("cleanup key %s", ikey)
+                        ## track finished
+                        done += 1
+                        ## insert results into hdf5 data base
+                        results = res[ikey].get(0)
+                        insert_to_array(data, ikey, results)
+                        ## purge memory of the old one
+                        del res[ikey]
+                    else:
+                        ## print error if something went wrong
+                        meta = res[ikey].metadata
+                        if meta.error:
+                            LOGGER.error("""\
+                        stdout: %s
+                        stderr: %s 
+                        error: %s""", meta.stdout, meta.stderr, meta.error)
+                        del res[ikey]
+
                 ## submit new jobs
                 try:
-                    res[key] = lbview.apply(worker, [data, jobiter.next()])
-                    #LOGGER.info("new job added to Engine %s", key)
+                    qidx = jobiter.next()
+                    smps = inh5["samples"][qidx:qidx+data.svd.chunk]
+                    ## send chunk off to be worked on
+                    res[qidx] = lbview.apply(nworker, *[smps, seqs, tests])
+                    print(qidx, smps.shape, seqs.shape)
+
                 except StopIteration:
                     continue
+        else:
+            time.sleep(0.1)
 
-            except (ipp.error.TimeoutError, KeyError):
-                continue
+        ## know when to finish
+        if njobs == done:
+            break
 
+    ## final progress bar
     if not bidx:
-        progressbar(njobs, finished)                
+        progressbar(njobs, done, " | {}".format(elapsed))
         print("")
 
     ## convert to txt file for wQMC
     dump(data)    
+    sys.exit(2)
 
     ## run quartet joining algorithm
     if not bidx:
