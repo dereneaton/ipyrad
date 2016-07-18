@@ -5,6 +5,13 @@
 Release Notes
 =============
 
+0.3.22
+------
+- only store cluster depth histogram info for bins with data. Removes hugely unnecessary bloat to the JSON file.
+- fixed open closure
+- massive speed improvement to svd4tet funcs with numba jit compiled C code
+- added cores arg to svd4tet
+
 0.3.21
 ------
 - new defaults - lower maxSNPs and higher max_shared_Hs
