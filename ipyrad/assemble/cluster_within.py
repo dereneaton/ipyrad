@@ -86,7 +86,7 @@ def sample_cleanup(data, sample):
 
         ## store depths histogram as a dict
         bars, bins = np.histogram(depths, bins=range(depths.min()-1, depths.max()+2))
-        sample.depths = {i:v for i, v in zip(bins, bars)}
+        sample.depths = {i:v for i, v in zip(bins, bars) if v}
 
         ## sample stat assignments
         sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
