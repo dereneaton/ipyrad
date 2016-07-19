@@ -194,6 +194,7 @@ def merge_assemblies(args):
     print("\n    params-{}.txt\n".format(newname))
 
 
+
 def getassembly(args, parsedict):
     """ loads assembly or creates a new one and set its params from 
     parsedict. Does not launch ipcluster. 
