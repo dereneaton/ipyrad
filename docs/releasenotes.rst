@@ -7,6 +7,9 @@ Release Notes
 
 0.3.22
 ------
+
+0.3.22
+------
 - only store cluster depth histogram info for bins with data. Removes hugely unnecessary bloat to the JSON file.
 - fixed open closure
 - massive speed improvement to svd4tet funcs with numba jit compiled C code
