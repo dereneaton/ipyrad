@@ -12,6 +12,7 @@ import logging
 import sys
 import os
 import atexit
+import json
 
 import ipyrad.analysis as ipa
 
@@ -27,25 +28,22 @@ def parse_command_line():
     ## create the parser
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""\n
-  * Example command-line usage: 
+        epilog="""
+  * Example command-line usage ---------------------------------------------- 
 
-  * Read in sequence/snp data file (-s) and provide output name (-o).
-  * Files should be either phylip formated (whether they contain full
-  * data or SNPs) or they should be in qusnps format (from ipyrad).
-    svd4tet -s data.phy -o test1     ## use full sequence data 
-    svd4tet -s data.snps -o test2    ## use all SNPs
-    svd4tet -s data.usnps -o test2   ## use one SNP from each locus
+  * Read in sequence/SNP data file, provide linkage, and output name. 
+    svd4tet -s data.phy                          ## use full sequence data 
+    svd4tet -s data.snps.phy -n test2            ## use SNPs and name test2
+    svd4tet -s data.snps.phy -l data.snps.map    ## use one SNP from each locus
 
-  * Load existing checkpointed analysis from json file
-    svd4tet -j test.json             ## reads and writes with name 'test'
-    svd4tet -j test.json -f          ## reads in test, force (-f) overwrites
+  * Load saved/checkpointed analysis from json file, or force restart. 
+    svd4tet -j test.json                    ## reads and writes with name 'test'
+    svd4tet -j test.json -f                 ## reads in test, forces overwrite
 
-  * Sampling modes (-m option) all, random, or equal. Equal requires guide tree.
-    svd4tet -s data.snps -m all -o test           ## sample all quartets
-    svd4tet -s data.snps -m random -n 1e6 -o test ## random sample 1M quartets
-    svd4tet -s data.snps -m equal -n 500000       ## sample 500K quartets evenly
-            -t guide.tre -o test_equal            ## across splits of guide tree
+  * Sampling modes, 'equal' can infer or accept guide tree to sample efficiently  
+    svd4tet -s data.snps -m all                     ## sample all quartets
+    svd4tet -s data.snps -m random -q 1e6           ## random sample 1M quartets
+    svd4tet -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
 
   * HPC parallelization
     svd4tet -s data.phy              ## uses all cores on one machine
@@ -61,22 +59,22 @@ def parse_command_line():
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
 
-    parser.add_argument('-q', "--quiet", action='store_true',
-        help="do not print to stderror or stdout.")
+    #parser.add_argument('-q', "--quiet", action='store_true',
+    #    help="do not print to stderror or stdout.")
 
     parser.add_argument('-s', metavar="seq", dest="seq",
         type=str, default=None,
-        help="path to input phylip file (full seqs or SNPs)")
+        help="path to input phylip file (SNPs of full sequence file)")
 
     parser.add_argument('-j', metavar='json', dest="json",
         type=str, default=None,
-        help="load existing saved analysis from json file.")
+        help="load checkpointed/saved analysis from JSON file.")
 
     parser.add_argument('-m', metavar="method", dest="method",
         type=str, default="all",
         help="method for sampling quartets (all, random, or equal)")
 
-    parser.add_argument('-n', metavar="nquartets", dest="nquartets",
+    parser.add_argument('-q', metavar="nquartets", dest="nquartets",
         type=int, default=0,
         help="number of quartets to sample (if not -m all)")
 
@@ -84,13 +82,25 @@ def parse_command_line():
         type=int, default=0,
         help="number of non-parametric bootstrap replicates")
 
+    parser.add_argument('-l', metavar="map_file", dest="map",
+        type=str, default=None,
+        help="map file of snp linkages (e.g., ipyrad .snps.map)")
+
+    parser.add_argument('-r', metavar="resolve", dest='resolve', 
+        type=int, default=1, 
+        help="randomly resolve heterozygous sites (default=1)")
+
+    parser.add_argument('-n', metavar="name", dest="name",
+        type=str, default="svd",
+        help="output name prefix (default: 'svd')")
+
+    parser.add_argument('-o', metavar="outdir", dest="outdir",
+        type=str, default="./analysis_quartets",
+        help="output directory (default: creates ./analysis_quartets)")
+
     parser.add_argument('-t', metavar="starting_tree", dest="tree",
         type=str, default=None,
         help="newick file starting tree for equal splits sampling")
-
-    parser.add_argument('-o', metavar="output_prefix", dest="output",
-        type=str, default=None,
-        help="output name prefix")
 
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=0,
@@ -102,6 +112,7 @@ def parse_command_line():
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
 
+
     ## if no args then return help message
     if len(sys.argv) == 1:
         parser.print_help()
@@ -110,6 +121,7 @@ def parse_command_line():
     ## parse args
     args = parser.parse_args()
 
+    ## RAISE errors right away for some bad argument combinations:
     ## if 'random' require nquarts argument
     if args.method == 'random':
         if not args.nquartets:
@@ -126,12 +138,14 @@ def parse_command_line():
         "  A starting tree (-t newick file) is required with method = equal")
 
     if not any(x in ["seq", "json"] for x in vars(args).keys()):
-        print("  Bad arguments: svd4tet command must include at least one of"\
-             +"`-s` or `-j` to begin\n")
+        print("""
+    Bad arguments: svd4tet command must include at least one of (-s or -j) 
+    """)
         parser.print_help()
         sys.exit(1)
 
     return args
+
 
 
 
@@ -150,7 +164,7 @@ def main():
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
 
-    ## debugger
+    ## debugger----------------------------------------
     if os.path.exists(ip.__debugflag__):
         os.remove(ip.__debugflag__)
     if args.debug:
@@ -158,50 +172,49 @@ def main():
         ip.debug_on()
         atexit.register(ip.debug_off)      
 
-    ## if JSON, load it
+    ## if JSON, load existing Quartet analysis -----------------------
     if args.json:
-        data = ip.load_json(args.json)
-        data.outfiles.svdinput = data.outfiles.svdinput
+        data = ipa.svd4tet.load_json(args.json)
 
-    ## else create a tmp assembly for the seqarray
+    ## else create a new tmp assembly for the seqarray-----------------
     else:
-        if not args.output:
-            raise IPyradWarningExit("  -o output_prefix required")
-        if not args.seq:
-            raise IPyradWarningExit("  -s sequence file required")
         ## create new JSON (Assembly) object
-        data = ip.Assembly(args.output, quiet=True)
-        data.outfiles.svdinput = args.seq
-        data.set_params(1, "./")
+        data = ipa.svd4tet.Quartet(args.name, args.outdir, args.method)
 
-        ## parse samples from the sequence file
-        names = []
-        with iter(open(args.seq, 'r')) as infile:
-            infile.next().strip().split()
-            while 1:
-                try:
-                    names.append(infile.next().split()[0])
-                except StopIteration:
-                    break
-        ## store as Samples in Assembly
-        data.samples = {name:ip.Sample(name) for name in names}
+        ## if more arguments for method 
+        if args.nquartets:
+            data.nquartets = int(args.nquartets)
+        if args.boots:
+            data.nboots = int(args.boots)
 
-    ## store ipcluster info
+        ## get seqfile and names from seqfile
+        data.files.seqfile = args.seq
+        data.init_seqarray(resolve_ambiguities=args.resolve)
+        data.parse_names()
+
+        ## store input files
+        if args.map: 
+            data.files.mapfile = args.map
+        if args.tree:
+            data.files.treefile = args.tree
+
+
+    ## Use ipcluster info passed to command-line this time
     data._ipcluster["cores"] = args.cores
     if args.cores:
-        data.cpus = args.cores
-
+        data.cpus = int(args.cores)
     if args.MPI:
         data._ipcluster["engines"] = "MPI"
     else:
         data._ipcluster["engines"] = "Local"
 
-    ## launch ipcluster and register for later destruction
+    ## launch ipcluster and register for later destruction.
     data = ipcontroller_init(data)
 
-    ## run svd4tet
-    args = [data, args.boots, args.method, args.nquartets, args.force]
-    data._clientwrapper(ipa.svd4tet.run, args, 45)
+    ## run svd4tet main function within a wrapper. The wrapper creates an 
+    ## ipyclient view and appends to the list of arguments to run 'run'. 
+    data.run(force=args.force)
+
 
 
 if __name__ == "__main__": 
