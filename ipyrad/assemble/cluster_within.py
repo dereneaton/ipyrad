@@ -84,8 +84,8 @@ def sample_cleanup(data, sample):
         sample.stats["clusters_hidepth"] = \
                                 max([i.shape[0] for i in (keepmj, keepstat)])
 
-        ## store depths histogram as a dict
-        bars, bins = np.histogram(depths, bins=range(depths.min()-1, depths.max()+2))
+        ## store depths histogram as a dict. Limit to first 25 bins
+        bars, bins = np.histogram(depths, bins=range(1, 26))
         sample.depths = {i:v for i, v in zip(bins, bars) if v}
 
         ## sample stat assignments
