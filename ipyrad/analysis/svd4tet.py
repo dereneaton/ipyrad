@@ -19,18 +19,20 @@ Theoretical Biology 374: 35-47
 # pylint: disable=W0142
 # pylint: disable=C0103
 # pylint: disable=C0301
+# pylint: disable=R0914
 
 
 
 from __future__ import print_function, division
 import os
 import sys
-import glob
+import json
 import h5py
 import time
+import numba
 import random
 import ipyrad
-import numba
+import cStringIO
 import datetime
 import itertools
 import subprocess
@@ -40,7 +42,7 @@ import ipyparallel as ipp
 from fractions import Fraction
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
-#from collections import Counter, OrderedDict
+from collections import OrderedDict
 
 ## ete3 is an extra dependency not included with ipyrad
 try:
@@ -61,7 +63,7 @@ LOGGER = logging.getLogger(__name__)
 ## debug numba code
 #numba.NUMBA_DISABLE_JIT = 1
 
-## The 16 x 16 matrix of site counts. 
+## The 16 x 16 matrix of site counts. This is just for looking at. 
 MKEYS = """
     AAAA AAAC AAAG AAAT  AACA AACC AACG AACT  AAGA AAGC AAGG AAGT  AATA AATC AATG AATT
     ACAA ACAC ACAG ACAT  ACCA ACCC ACCG ACCT  ACGA ACGC ACGG ACGT  ACTA ACTC ACTG ACTT
@@ -86,61 +88,945 @@ MKEYS = """
 
 
 
-def get_seqarray(data, boot):
-    """ 
-    Takes an Assembly object and looks for a phylip file unless the path 
-    argument is used then it looks in path. If boots then it grabs the 
-    resampled seqarray, else it samples the original seqarray. 
+#############################################################################
+#############################################################################
+## Quartet inference Class Object
+#############################################################################
+#############################################################################
+
+
+class Quartet(object):
+    """
+    The main svd4tet object for storing data and checkpointing. It is 
+    initialized with a name, and args to command line (e.g., sampling method, 
+    starting tree, nboots, etc.). 
     """
 
-    ## read in the file
-    spath = open(data.outfiles.svdinput, 'r')
-    line = spath.readline().strip().split()
-    ntax = int(line[0])
-    nbp = int(line[1])
-    #LOGGER.info("array shape: (%s, %s)", ntax, nbp)
+    def __init__(self, name, outdir=os.path.curdir, method='all'):
+        ## version is ipyrad version
+        self._version = ipyrad.__version__
 
-    ## make a tmp seq array
-    tmpseq = np.zeros((ntax, nbp), dtype="S1")
+        ## name this assembly
+        self.name = name
+        self.dirs = os.path.realpath(outdir)
+        if not os.path.exists(self.dirs):
+            os.mkdir(self.dirs)
 
-    ## get initial array
-    if not boot:
+        ## store cluster information the same as ipyrad Assembly objects
+        self._ipcluster = {}
+        for ipkey in ["id", "profile", "engines", "cores"]:
+            self._ipcluster[ipkey] = None
+
+        ## store cpu information, a more convenient call to ipyrad funcs
+        self.cpus = 4
+
+        ## Sampling method attributes
+        self.method = method
+        self.nboots = 0
+        self.nquartets = 0
+        self.chunksize = 0
+
+        ## store samples from the seqarray
+        self.samples = []
+
+        ## self.populations ## if we allow grouping samples (not yet)
+
+        ## hdf5 data bases init and delete existing
+        self.h5in = os.path.join(self.dirs, self.name+".input.h5")
+        self.h5out = os.path.join(self.dirs, self.name+".output.h5")
+        for h5file in [self.h5in, self.h5out]:
+            if os.path.exists(h5file):
+                os.remove(h5file)
+
+        ## input files
+        self.files = ObjDict()
+        self.files.seqfile = None
+        self.files.mapfile = None
+        self.files.treefile = None
+        self.files.qdump = None
+
+        ## store tree data
+        self.trees = ObjDict()
+        ## the full trees
+        self.trees.ttre = os.path.join(self.dirs, self.name+".tre")
+        self.trees.wtre = os.path.join(self.dirs, self.name+".w.tre")
+        ## list of bootstrap trees 
+        self.trees.tboots = os.path.join(self.dirs, self.name+".w.boots")        
+        self.trees.wboots = os.path.join(self.dirs, self.name+".w.boots")        
+        ## trees with boot support as edge length
+        self.trees.tbtre = os.path.join(self.dirs, self.name+".support.tre")        
+        self.trees.wbtre = os.path.join(self.dirs, self.name+".w.support.tre")     
+        ## NHX formatted tre with rich information
+        self.trees.tnhx = os.path.join(self.dirs, self.name+".nhx.tre")     
+        self.trees.wnhx = os.path.join(self.dirs, self.name+".nhx.w.tre")     
+        ## PDF
+        self.trees.pdf = os.path.join(self.dirs, self.name+".pdf")
+
+        ## checkpointing information
+        self.checkpoint = ObjDict()
+        self.checkpoint.boots = 0
+        self.checkpoint.arr = 0
+
+
+
+    ## convenience function
+    #def opj(self, path):
+    #    return os.path.join(self.dirs, path)
+
+
+    def parse_names(self):
+        """ parse names from the seqfile """
+        ## parse samples from the sequence file
+        self.samples = []
+        with iter(open(self.files.seqfile, 'r')) as infile:
+            infile.next().strip().split()
+            while 1:
+                try:
+                    self.samples.append(infile.next().split()[0])
+                except StopIteration:
+                    break
+        ## make sure sorted
+        self.samples = sorted(self.samples)
+
+
+
+    ## parallel launcher and wrapper to kill remote engines at exit
+    def _launch(self, nwait):
+        """ 
+        Creates a client for a given profile to connect to the running 
+        clusters. 
+        """
+        #save_stdout = sys.stdout           
+        try: 
+            clusterargs = [self._ipcluster['id'], self._ipcluster["profile"]]
+            argnames = ["cluster_id", "profile"]
+            args = {key:value for key, value in zip(argnames, clusterargs)}
+
+            ## wait for at least 1 engine to connect
+            for _ in range(nwait):
+                try:
+                    ## using this wrap to avoid ipyparallel's ugly warnings
+                    ## save orig stdout
+                    save_stdout = sys.stdout 
+                    save_stderr = sys.stderr
+                    ## file-like obj to catch stdout
+                    sys.stdout = cStringIO.StringIO()
+                    sys.stderr = cStringIO.StringIO()                    
+                    ## run func with stdout hidden
+                    ipyclient = ipp.Client(**args)
+                    ## resets stdout
+                    sys.stdout = save_stdout
+                    sys.stderr = save_stderr
+                    break
+
+                except IOError as inst:
+                    time.sleep(0.1)
+
+            ## check that at least one engine has connected
+            for _ in range(300):
+                initid = len(ipyclient)
+                time.sleep(0.1)
+                if initid:
+                    break
+        except KeyboardInterrupt as inst:
+            ## ensure stdout is reset even if Exception was raised            
+            sys.stdout = save_stdout
+            raise inst
+
+        except IOError as inst:
+            ## ensure stdout is reset even if Exception was raised
+            sys.stdout = save_stdout
+            print(inst)
+            raise inst
+        return ipyclient
+
+
+
+    def _clientwrapper(self, func, args, nwait):
+        """ wraps a call with error messages for when ipyparallel fails"""
+        ## emtpy error string
+        inst = ""
+
+        ## wrapper to ensure closure of ipyparallel
+        try:
+            ipyclient = ""
+            ipyclient = self._launch(nwait)
+            args.append(ipyclient)
+            func(*args)
+
+        except Exception as inst:
+            ## Caught unhandled exception, print and reraise
+            LOGGER.error(inst)
+            print("\n  Caught unknown exception - {}".format(inst))
+            raise  ## uncomment raise to get traceback
+
+        ## close client when done or interrupted
+        finally:
+            try:
+                self.save()                
+                ## can't close client if it was never open
+                if ipyclient:
+                    ## if CLI, stop jobs and shutdown
+                    ipyclient.abort()                        
+                    ipyclient.close()
+            ## if exception is close and save, print and ignore
+            except Exception as inst2:
+                LOGGER.error("shutdown warning: %s", inst2)
+            if inst:
+                IPyradWarningExit(inst)
+
+
+
+    ## Filling the h5in seqarray
+    def init_seqarray(self, resolve_ambiguities):
+        """ 
+        Fills the seqarr with the full data set, and creates a bootsarr copy
+        with the following modifications:
+
+        1) converts "-" into "N"s, since they are similarly treated as missing. 
+        2) randomly resolve ambiguities (RSKWYM)
+        3) convert to uint8 for smaller memory load and faster computation
+        """
+
+        ## read in the file
+        spath = open(self.files.seqfile, 'r')
+        line = spath.readline().strip().split()
+        ntax = int(line[0])
+        nbp = int(line[1])
+
+        ## make a tmp seq array
+        tmpseq = np.zeros((ntax, nbp), dtype=np.uint8)
+
+        ## get initial array
         print("  loading array [{} taxa x {} bp]".format(ntax, nbp))        
-        ## use 'w' to make initial array
-        with h5py.File(data.svd.h5in, 'w') as io5:
-            ## create array storage for both real seq and for later bootstraps
-            ## seqdata will be stored as int8
-            seqarr = io5.create_dataset("seqarr", (ntax, nbp), dtype=np.uint8)
-            io5.create_dataset("bootarr", (ntax, nbp), dtype=np.uint8)
+    
+        ## create array storage for real seq and the tmp bootstrap seqarray
+        with h5py.File(self.h5in, 'w') as io5:
+            io5.create_dataset("seqarr", (ntax, nbp), dtype=np.uint8)
+            io5.create_dataset("bootsarr", (ntax, nbp), dtype=np.uint8)
+            io5.create_dataset("bootsmap", (nbp,), dtype=np.uint32)        
+
             ## fill the tmp array from the input phy
             for line, seq in enumerate(spath.readlines()):
-                tmpseq[line] = np.array(list(seq.split()[-1]))
+                tmpseq[line] = np.array(list(seq.split()[-1])).view(np.uint8)
+
+            ## convert '-' into 'N'
+            tmpseq[tmpseq == 45] = 78
+
             ## save array to disk so it can be easily accessed by slicing
-            seqarr[:] = tmpseq.view(np.uint8)
+            io5["seqarr"][:] = tmpseq
+
+            ## resolve ambiguous IUPAC codes
+            if bool(resolve_ambiguities):
+                tmpseq = resolve_ambigs(tmpseq)
+
+            ## save modified array to disk
+            io5["bootsarr"][:] = tmpseq
+
+            ## memory cleanup
             del tmpseq
-            
-    else:
+
+
+
+
+    def sample_bootseq_array(self, resolve_ambiguities=0):
+        """ 
+        Takes the seqarray and re-samples columns chunks based on linkage 
+        from the maps array. Saves the new map information in the bootmap. 
+
+        The seqarray is 'cleaned up' in several ways: 
+        1) converts "-" into "N"s, since they are similarly treated as missing. 
+        2) randomly resolve ambiguities (RSKWYM)
+        3) convert to uint8 for smaller memory load and faster computation
+        """
+
         ## use 'r+' to read and write to existing array
-        with h5py.File(data.svd.h5in, 'r+') as io5:        
-            ## load in the seqarr
+        with h5py.File(self.h5in, 'r+') as io5:        
+            ## load in the seqarr and maparr
             tmpseq = pd.DataFrame(io5["seqarr"][:])
+            maparr = io5["maparr"][:]
+
             ## fill the boot array with a re-sampled phy w/ replacement
-            io5["bootarr"][:] = np.uint8(tmpseq.sample(n=tmpseq.shape[1], 
-                                                       replace=True, axis=1))
+            io5["bootarr"][:] = tmpseq.sample(n=tmpseq.shape[1], 
+                                              replace=True, axis=1)
             del tmpseq
-    return data
 
 
+
+    ## Functions to fill h5in with samples
+    def store_N_samples(self):
+        """ Find all quartets of samples and store in a large array """
+        ## print header
+        # if self.method == 'all':
+        #     print("    loading all {} possible quartets".format(self.nquartets))        
+        # else:
+        #     print("    loading {} random quartet samples".format(self.nquartets))        
+
+        ## create a chunk size for sampling from the array of quartets. This should
+        ## be relatively large so that we don't spend a lot of time doing I/O, but
+        ## small enough that jobs finish every few hours since that is how the 
+        ## checkpointing works.
+        breaks = 2
+        if self.nquartets < 5000:
+            breaks = 1
+        if self.nquartets > 100000:
+            breaks = 4
+        if self.nquartets > 500000:
+            breaks = 8
+
+        self.chunksize = (self.nquartets // (breaks * self.cpus)) + \
+                         (self.nquartets % (breaks * self.cpus))
+        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
+
+        ## 'samples' stores the indices of the quartet. 
+        ## `quartets` stores the correct quartet in the order (1,2|3,4)
+        ## `weights` stores the calculated weight of the quartet in 'quartets'
+        ## we gzip this for now, but check later if this has a big speed cost
+
+        ## create h5 OUT empty arrays
+        with h5py.File(self.h5out, 'w') as io5:
+            io5.create_dataset("quartets", (self.nquartets, 4), 
+                                dtype=np.uint16, chunks=(self.chunksize, 4))
+            io5.create_dataset("weights", (self.nquartets,), 
+                                dtype=np.float32, chunks=(self.chunksize, ))
+            io5.create_dataset("dstats", (self.nquartets, 3), 
+                                dtype=np.float32, chunks=(self.chunksize, 3))
+
+        ## append to h5 IN array (which also has seqarray) and fill it
+        with h5py.File(self.h5in, 'a') as io5:
+            ## create data sets
+            io5.create_dataset("samples", (self.nquartets, 4), 
+                               dtype=np.uint16, chunks=(self.chunksize, 4),
+                               compression='gzip')
+
+            ## populate array with all possible quartets. This allows us to 
+            ## sample from the total, and also to continue from a checkpoint
+            qiter = itertools.combinations(xrange(len(self.samples)), 4)
+            i = 0
+
+            ## fill 1000 at a time for efficiency
+            while i < self.nquartets:
+                if self.method != "all":
+                    qiter = []
+                    while len(qiter) < min(1000, io5["samples"].shape[0]):
+                        qiter.append(
+                            random_combination(range(len(self.samples)), 4))
+                    dat = np.array(qiter)
+                else:
+                    dat = np.array(list(itertools.islice(qiter, 1000)))
+                io5["samples"][i:i+dat.shape[0]] = dat
+                i += 1000
+
+
+
+    def store_equal_samples(self):
+        """ 
+        sample quartets even across splits of the starting tree 
+        """
+        
+        ## choose chunker for h5 arr
+        self.chunksize = (self.nquartets // (2 * len(self.cpus))) +\
+                         (self.nquartets % (2 * len(self.cpus)))
+        LOGGER.info("E: nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
+
+        ## get starting tree
+        tre = ete3.Tree(".tmptre")
+        tre.unroot()
+        print("  starting tree: \n {}".format(tre))
+
+        ## randomly sample all splits of tree
+        splits = [([z.name for z in i], 
+                   [z.name for z in j]) \
+                   for (i, j) in tre.get_edges()]
+    
+        ## only keep internal splits
+        splits = [i for i in splits if all([len(j) > 1 for j in i])]
+        N = len(self.samples)
+        if len(splits) < ((N * (N-1)) // 2):
+            print("  starting tree is unresolved, sample more quartets")
+
+        ## turn each into an iterable split sampler
+        ## if the nquartets for that split is small, then sample all of them
+        ## if it is UUUUUGE, then make it a random sampler from that split
+        qiters = []
+        ## how many quartets are we gonna sample from each quartet?
+        squarts = self.nquartets // len(splits)
+
+        for split in splits:
+            ## if small number at this split then sample all
+            if n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2) < squarts*2:
+                qiter = itertools.product(
+                            itertools.combinations(split[0], 2), 
+                            itertools.combinations(split[1], 2))
+            ## else create random sampler for this split
+            else:
+                qiter = (random_product(split[0], split[1]) for _ in xrange(self.nquartets))
+            qiters.append(qiter)
+
+        ## make qiters infinitely cycling
+        qiters = itertools.cycle(qiters)
+
+        ## iterate over qiters sampling from each, if one runs out, keep 
+        ## sampling from remaining qiters. Keep going until samples is filled
+        with h5py.File(self.h5in, 'a') as io5:
+            ## create data sets
+            del io5["samples"]
+            io5.create_dataset("samples", (self.nquartets, 4), 
+                                      dtype=np.uint16, 
+                                      chunks=(self.chunksize, 4),
+                                      compression='gzip')
+
+            ## fill 1000 at a time for efficiency
+            i = 0
+            while i < self.nquartets:
+                qdat = []
+                while len(qdat) < min(1000, io5["samples"].shape[0]): 
+                    qiter = qiters.next()
+                    try:
+                        qdat.append(qiter.next())
+                    except StopIteration:
+                        print(len(qdat))
+                        continue
+                dat = np.array(qdat, dtype=np.uint16)
+                io5["samples"][i:i+dat.shape[0]] = dat
+                i += 1000
+
+
+
+    ## functions to get samples for the 'equal' method
+    def get_equal_samples(self, ipyclient):
+        """ get starting tree for 'equal' sampling method """
+
+        ## infer starting tree if one wasn't provided
+        if not self.files.treefile:
+            ## grab the minimum needed for a good tree
+            self.nquartets = len(self.samples)**2.8
+            self.store_N_samples()
+            print("""\
+    loading {} random quartet samples to infer a starting tree 
+    inferring {} x 3 quartet trees
+    """.format(self.nquartets**2.8, 3*(self.nquartets**2.8)))
+
+            ## run inference functions on sampled quartets 
+            self._clientwrapper(self.inference, [0], 45)
+
+        ## sample quartets from starting tree
+        print("""\
+    loading {} equal-splits quartets from starting tree
+    """.format(self.nquartets))
+        self.store_equal_samples()
+    
+        ## remove starting tree tmp files
+        tmps = [self.tre, self.wtre, self.tboots, 
+                self.wboots, self.btre, self.bwtre]
+        for tmp in tmps:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+
+
+    def run_qmc(self, boot):
+        """ runs quartet max-cut on a quartets file """
+
+        ## make call lists
+        cmd1 = " ".join(
+                [ipyrad.bins.qmc,
+                " qrtt="+self.files.qdump,
+                " weights=off"+
+                " otre=.tmptre"])
+
+        cmd2 = " ".join(
+                [ipyrad.bins.qmc,
+                " qrtt="+self.files.qdump,
+                " weights=on"+
+                " otre=.tmpwtre"])
+
+        ## run them
+        for cmd in [cmd1, cmd2]:
+            try:
+                subprocess.check_call(cmd, shell=True,
+                                           stderr=subprocess.STDOUT,
+                                           stdout=subprocess.PIPE)
+            except subprocess.CalledProcessError as inst:
+                LOGGER.error("Error in wQMC: \n({}).".format(inst))
+                LOGGER.error(subprocess.STDOUT)
+                raise inst
+
+        ## read in the tmp files since qmc does not pipe
+        intmptre = open(".tmptre", 'r')
+        intmpwtre = open(".tmpwtre", 'r')
+
+        ## convert int names back to str names
+        tmptre = self.renamer(ete3.Tree(intmptre.read().strip()))
+        tmpwtre = self.renamer(ete3.Tree(intmpwtre.read().strip()))
+
+        ## save the boot tree
+        if boot:
+            with open(self.trees.tboots, 'a') as outboot:
+                outboot.write(tmptre+"\n")
+            with open(self.trees.wboots, 'a') as outboot:
+                outboot.write(tmpwtre+"\n")
+
+        ## store full data trees to Assembly
+        else:
+            with open(self.trees.ttre, 'w') as outtree:
+                outtree.write(tmptre)
+            with open(self.trees.wtre, 'w') as outtree:
+                outtree.write(tmpwtre)
+
+        ## save JSON file checkpoint
+        intmptre.close()
+        intmpwtre.close()
+        self.save()
+
+
+
+    def dump_qmc(self):
+        """ prints the quartets to a file formatted for wQMC """
+        ## open the h5 database
+        io5 = h5py.File(self.h5out, 'r')
+
+        ## create an output file for writing
+        self.files.qdump = os.path.join(self.dirs, self.name+".quartets.txt")
+        outfile = open(self.files.qdump, 'w')
+        LOGGER.info("qdump file %s", self.files.qdump)
+
+        ## todo: should pull quarts order in randomly
+        for idx in xrange(0, self.nquartets, self.chunksize):
+            quarts = [list(j) for j in io5["quartets"][idx:idx+self.chunksize]]
+            weight = io5["weights"][idx:idx+self.chunksize]
+            chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
+                                                    in zip(quarts, weight)]
+            outfile.write("\n".join(chunk)+"\n")
+
+        ## close output file and h5 database
+        outfile.close()
+        io5.close()
+
+
+
+    def renamer(self, tre):
+        """ renames newick from numbers to sample names"""
+        ## order the numbered tree tip lables
+        names = tre.get_leaves()
+        names.sort(key=lambda x: int(x.name))
+
+        ## order the sample labels in the same order they are 
+        ## in the seq file (e.g., .snp, .phy)
+        snames = self.samples
+        snames.sort()
+
+        ## replace numbered names with snames
+        for (tip, sname) in zip(names, snames):
+            tip.name = sname
+
+        ## return with only topology and leaf labels
+        return tre.write(format=9)
+
+
+
+    def write_output_splash(self, with_boots=1):
+        """ write final tree files """
+        ## create tree with support values on edges
+        self.write_supports(with_boots)
+
+        ## hide error message during tree plotting
+        #save_stdout = sys.stdout           
+        ## file-like obj to catch stdout
+        #sys.stdout = cStringIO.StringIO()  
+        ## run func with stdout hidden
+        #ipyclient = ipp.Client(**args)
+        ## resets stdout
+        #sys.stdout = save_stdout    
+        #self.quickfig()
+
+        ## print finished tree information ---------------------
+        print("""
+  Final quartet-joined and weighted quartet-joined (.w.) tree files:
+    - {}
+    - {}
+    """.format(opr(self.trees.ttre), opr(self.trees.wtre)))
+
+        ## print bootstrap information --------------------------
+        if with_boots:
+            print("""\
+  Bootstrap trees:
+    - {}
+    - {}
+
+  Final tree with bootstrap support as edge lengths:
+    - {}
+    - {}
+    """.format(opr(self.trees.tboots), opr(self.trees.wboots), 
+               opr(self.trees.tbtre), opr(self.tree.wbtre)))
+
+        ## print rich information--------------------------------
+        print("""\
+  Final tree with rich information in NHX format:
+    - {}
+    - {}
+    """.format(opr(self.trees.tnhx), opr(self.trees.wnhx)))
+
+        ## print ASCII tree --------------------------------------
+        qtre = ete3.Tree(self.trees.ttre)
+        qtre.unroot()
+        print("""\
+  ASCII view of unrooted topology from unweighted analysis
+    {}
+    """.format(qtre))
+
+        ## print PDF filename & tips -----------------------------
+        docslink = "ipyrad.readthedocs.org/cookbook.html"    
+        citelink = "ipyrad.readthedocs.org/svd4tet.html"
+        print("""\
+  * For tips on plotting these trees in R see: {}     
+  * For tips on citnig this software see: {} 
+
+    """.format(docslink, citelink))
+
+
+
+    def write_supports(self, with_boots):
+        """ writes support values as edge labels on unrooted tree """
+        ## get name indices
+        names = self.samples
+        names.sort()
+
+        ## get unrooted best trees
+        otre = ete3.Tree(self.trees.ttre, format=0)
+        otre.unroot()
+        for node in otre.traverse():
+            node.add_feature("bootstrap", 0)
+            node.add_feature("quartets_total", get_total(otre, node))
+            node.add_feature("quartets_sampled", get_sampled(self, otre, node, names))
+            try:
+                prop = 100*(float(node.quartets_sampled) / node.quartets_total)
+            except ZeroDivisionError:
+                prop = 0.0
+            node.add_feature("quartets_sampled_prop", prop)
+            node.dist = 0
+            node.support = 0
+
+        ## get unrooted weighted quartets tree
+        wtre = ete3.Tree(self.trees.wtre, format=0)
+        wtre.unroot()
+        for node in wtre.traverse():
+            node.add_feature("bootstrap", 0)
+            node.add_feature("quartets_total", get_total(wtre, node))
+            node.add_feature("quartets_sampled", get_sampled(self, wtre, node, names))
+            try:
+                prop = 100*(float(node.quartets_sampled) / node.quartets_total)
+            except ZeroDivisionError:
+                prop = 0.0
+            node.add_feature("quartets_sampled_prop", prop)
+            node.dist = 0
+            node.support = 0
+
+        ## get unrooted boot trees
+        if with_boots:
+            oboots = open(self.trees.tboots, 'r').readlines()
+            wboots = open(self.trees.wboots, 'r').readlines()
+            oboots = [ete3.Tree(btre.strip()) for btre in oboots]
+            wboots = [ete3.Tree(btre.strip()) for btre in wboots]    
+            _ = [btre.unroot() for btre in oboots]
+            _ = [btre.unroot() for btre in wboots]
+
+            ## get and set support values 
+            for tre, boots in zip([otre, wtre], [oboots, wboots]):
+                for btre in boots:
+                    common = tre.compare(btre, unrooted=True)
+                    for bnode in common["common_edges"]:
+                        ## check monophyly of each side of split
+                        a = tre.check_monophyly(bnode[0], target_attr='name', unrooted=True)
+                        b = tre.check_monophyly(bnode[1], target_attr='name', unrooted=True)
+                        ## if both sides are monophyletic
+                        if a[0] and b[0]:
+                            ## find which is the 'bottom' node, to attach support to
+                            node = list(tre.get_monophyletic(bnode[0], target_attr='name'))
+                            node.extend(list(tre.get_monophyletic(bnode[1], target_attr='name')))
+                            ## add +1 suport to (edge dist) to this edge
+                            if not node[0].is_leaf():
+                                node[0].dist += 1
+                                node[0].support += 1
+                                node[0].bootstrap += 1
+
+            ## change support values to percentage
+            for tre in [otre, wtre]:
+                for node in tre.traverse():
+                    node.dist = int(100 * (node.dist / len(wboots)))
+                    node.support = int(100 * (node.support / len(wboots)))
+                    node.bootstrap = int(100 * (node.bootstrap / len(wboots)))
+
+            ## return as newick string w/ support as edge labels (lengths)
+            with open(self.trees.btre, 'w') as outtre:
+                outtre.write(otre.write(format=5))
+
+            with open(self.trees.bwtre, 'w') as outtre:
+                outtre.write(wtre.write(format=5))
+            features = ["bootstrap", "quartets_total", "quartets_sampled", "quartets_sampled_prop"]            
+        else:
+            features = ["quartets_total", "quartets_sampled", "quartets_sampled_prop"]
+
+        ## return as NHX format with extra info
+        with open(self.trees.tnhx, 'w') as outtre:
+            outtre.write(wtre.write(format=0, features=features))
+
+        with open(self.trees.wnhx, 'w') as outtre:
+            outtre.write(wtre.write(format=0, features=features))
+
+
+    ## not currently being used...
+    def quickfig(self):
+        """ make a quick ete3 fig. Plots total quartets """
+        ts = ete3.TreeStyle()
+        ts.layout_fn = layout
+        ts.show_leaf_name = False
+        ts.mode = 'r'
+        ts.draw_guiding_lines = True
+        ts.show_scale = False
+        ts.scale = 25
+
+        tre = ete3.Tree(self.trees.nhx)
+        tre.ladderize()
+        tre.convert_to_ultrametric(tree_length=len(tre)//2)
+        tre.render(file_name=self.trees.pdf, h=40*len(tre), tree_style=ts)
+
+
+
+    def save(self):
+        """ save a JSON file representation of Quartet Class for checkpoint"""
+
+        ## save each attribute as dict
+        fulldumps = json.dumps(self.__dict__, 
+                               sort_keys=False, 
+                               indent=4, 
+                               separators=(",", ":"),
+                               )
+
+        ## save to file, make dir if it wasn't made earlier
+        assemblypath = os.path.join(self.dirs, self.name+".svd.json")
+        if not os.path.exists(self.dirs):
+            os.mkdir(self.dirs)
+    
+        ## protect save from interruption
+        done = 0
+        while not done:
+            try:
+                with open(assemblypath, 'w') as jout:
+                    jout.write(fulldumps)
+                done = 1
+            except (KeyboardInterrupt, SystemExit): 
+                print('.')
+                continue        
+
+
+
+    def insert_to_array(self, start, results):
+        """ inputs results from workers into hdf4 array """
+        qrts, wgts, dsts = results
+
+        with h5py.File(self.h5out, 'r+') as out:
+            chunk = self.chunksize
+            out['quartets'][start:start+chunk] = qrts
+            out['weights'][start:start+chunk] = wgts
+            out["dstats"][start:start+chunk] = dsts
+        ## save checkpoint
+        #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
+
+
+    ########################################################################
+    ## Main functions
+    ########################################################################
+    def run(self, force):
+        """ 
+        Run svd4tet inference on a sequence or SNP alignment for all samples in
+        the Assembly. By default the job starts from 0 or where it last left 
+        off, unless force=True, then it starts from 0. This passes args to 
+        the function 'inference' which does the real work. 
+        """
+        ## Check for existing (loaded) Quartet Class Object
+        fresh = 0
+        if not force:
+            if self.checkpoint.boots or self.checkpoint.arr:
+                print(LOADING_MESSAGE.format(
+                    self.method, self.checkpoint.arr, self.checkpoint.boots))
+            else:
+                ## if no checkpoints then start fresh
+                fresh = 1
+
+        ## if svd results do not exist or force then restart
+        if force or fresh:
+            ## if nquartets not provided then get all possible
+            if not self.nquartets:
+                self.nquartets = n_choose_k(len(self.samples), 4)
+            ## store N sampled quartets into the h5 array
+            self.store_N_samples()
+
+            ## infer a starting tree from the N sampled quartets 
+            ## this could take a long time. Calls the parallel client.
+            if self.method == "equal":
+                self.store_equal_samples()
+            
+        ## run the full inference or print finished prog bar if it's done
+        if not self.checkpoint.boots:
+            print("  inferring {} x 3 quartet trees".format(self.nquartets))
+            self._clientwrapper(self.inference, [0], 45)
+
+        else:
+            print("  full inference finished")
+            elapsed = datetime.timedelta(seconds=int(0)) 
+            progressbar(20, 20, " | {}".format(elapsed))
+
+
+        ## run the bootstrap replicates -------------------------------
+        if self.nboots:
+            print("  running {} bootstrap replicates".format(self.nboots))  
+    
+            ## load from current boot
+            for bidx in xrange(self.checkpoint.boots, self.nboots):
+                ## get resampled array and set checkpoint
+                if self.checkpoint.arr == 0:
+                    self.resample_bootarr() 
+                    self.checkpoint.boots = bidx
+
+                ## start boot inference, (1-indexed !!!)
+                self._clientwrapper(self.inference, [bidx+1], 45)            
+
+            ## ensure that all qmc jobs are finished
+            #ipyclient = ipp.Client()
+            #ipyclient.wait()
+
+            ## write outputs with bootstraps
+            self.write_output_splash(with_boots=1)
+
+        else:
+            ## write outputs without bootstraps
+            self.write_output_splash(with_boots=0)
+
+
+
+    def inference(self, bidx, ipyclient):
+        """ run inference and store results """
+        ## an iterator to distribute sampled quartets in chunks
+        jobiter = iter(xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
+        njobs = sum(1 for _ in jobiter)
+        jobiter = iter(xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
+        LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
+                self.chunksize, self.checkpoint.arr, self.nquartets, njobs)
+
+        ## a distributor for engine jobs
+        lbview = ipyclient.load_balanced_view()
+
+        ## the three indexed resolutions of each quartet
+        tests = np.array([[0, 1, 2, 3], 
+                          [0, 2, 1, 3], 
+                          [0, 3, 1, 2]], dtype=np.uint8)
+
+        ## start progress bar timer and submit initial n jobs
+        start = time.time()
+        res = {}
+        for _ in xrange(min(self.cpus, njobs)):
+            ## get chunk of quartet samples and send to a worker engine
+            qidx = jobiter.next()
+            with h5py.File(self.h5in, 'r') as inh5:
+                smps = inh5["samples"][qidx:qidx+self.chunksize]
+            res[qidx] = lbview.apply(nworker, *[self, smps, tests])
+
+        ## keep adding jobs until the jobiter is empty
+        done = 0
+        while 1:
+            ## print progress unless bootstrapping, diff progbar for that.
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            if not bidx:
+                progressbar(njobs, done, " initial tree | {}".format(elapsed))
+            else:
+                progressbar(njobs, done, " boot {:<7} | {}".format(bidx, elapsed))
+
+            ## check for finished jobs
+            curkeys = res.keys()
+            finished = [i.ready() for i in res.values()]
+
+            ## remove finished and submit new jobs
+            if any(finished):
+                for ikey in curkeys:
+                    if res[ikey].completed:
+                        if res[ikey].successful():
+                            LOGGER.info("cleanup key %s", ikey)
+                            ## track finished
+                            done += 1
+                            ## insert results into hdf5 data base
+                            results = res[ikey].get(0)
+                            self.insert_to_array(ikey, results)
+                            ## purge memory of the old one
+                            del res[ikey]
+                        else:
+                            ## print error if something went wrong
+                            meta = res[ikey].metadata
+                            if meta.error:
+                                LOGGER.error("""\
+                            stdout: %s
+                            stderr: %s 
+                            error: %s""", meta.stdout, meta.stderr, meta.error)
+                            del res[ikey]
+
+                    ## submit new jobs
+                    try:
+                        qidx = jobiter.next()
+                        with h5py.File(self.h5in, 'r') as inh5:
+                            smps = inh5["samples"][qidx:qidx+self.chunksize]
+                        ## send chunk off to be worked on
+                        res[qidx] = lbview.apply(nworker, *[self, smps, tests])
+                        #print(qidx, smps.shape, seqs.shape)
+
+                    except StopIteration:
+                        continue
+            else:
+                time.sleep(0.1)
+
+            ## done is counted on finish, so this means we're done
+            if njobs == done:
+                break
+
+        ## final progress bar
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        if not bidx:
+            progressbar(njobs, done, " initial tree | {}".format(elapsed))
+        else:
+            progressbar(njobs, done, " boot {:<6} | {}".format(bidx, elapsed))
+        print("")
+
+        ## convert to txt file for wQMC
+        self.dump_qmc()
+
+
+        ## send to qmc
+        if not bidx:
+            self.run_qmc(0)
+            #lbview.apply(self.run_qmc, 0)
+        else:
+            self.run_qmc(1)            
+            #lbview.apply(self.run_qmc, 1)
+
+        ## reset the checkpoint_arr
+        self.checkpoint.arr = 0
+
+
+
+
+#########################################################################
+## Sampling functions 
+#########################################################################
+MUL = lambda x, y: x*y
 
 ## FROM THE ITERTOOLS RECIPES COOKCOOK
-def random_combination(iterable, nquarts):
+def random_combination(iterable, nquartets):
     """
     Random selection from itertools.combinations(iterable, r). 
     Use this if not sampling all possible quartets.
     """
     pool = tuple(iterable)
     size = len(pool)
-    indices = random.sample(xrange(size), nquarts)
+    indices = random.sample(xrange(size), nquartets)
     return tuple(pool[i] for i in indices)
 
 
@@ -155,8 +1041,6 @@ def random_product(iter1, iter2):
 
 
 
-MUL = lambda x, y: x*y
-
 def n_choose_k(n, k):
     """ calculate the number of quartets as n-choose-k. This is used
     in equal splits to decide whether a split should be exhaustively sampled
@@ -164,154 +1048,6 @@ def n_choose_k(n, k):
     edges probably have too many quartets
     """
     return int(reduce(MUL, (Fraction(n-i, i+1) for i in range(k)), 1))
-
-
-
-def equal_splits(data, nquarts, ipyclient):
-    """ sample quartets even across splits of the starting tree """
-    ## choose chunker for h5 arr
-    chunk = (nquarts // (2 * len(ipyclient))) + (nquarts % (2 * len(ipyclient)))
-    LOGGER.info("E: nquarts = %s, chunk = %s", nquarts, chunk)
-
-    ## get starting tree
-    tre = ete3.Tree(".tmptre")
-    tre.unroot()
-    print("  starting tree:")
-    print(tre)
-
-    ## randomly sample all splits of tree
-    splits = [([z.name for z in i], 
-               [z.name for z in j]) \
-               for (i, j) in tre.get_edges()]
-    ## only keep internal splits
-    splits = [i for i in splits if all([len(j) > 1 for j in i])]
-    N = len(data.samples)
-    if len(splits) < ((N * (N-1)) // 2):
-        print("  starting tree is unresolved, sample more quartets")
-
-    ## turn each into an iterable split sampler
-    ## if the nquartets for that split is small, then sample all of them
-    ## if it is UUUUUGE, then make it a random sampler from that split
-    qiters = []
-    ## how many quartets are we gonna sample from each quartet?
-    squarts = nquarts // len(splits)
-
-    for split in splits:
-        ## if small then sample all
-        if n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2) < squarts*2:
-            qiter = itertools.product(
-                        itertools.combinations(split[0], 2), 
-                        itertools.combinations(split[1], 2))
-        ## or create random sampler
-        else:
-            qiter = (random_product(split[0], split[1]) for _ in xrange(nquarts))
-        qiters.append(qiter)
-
-    ## make qiters infinitely cycling
-    qiters = itertools.cycle(qiters)
-
-    ## iterate over qiters sampling from each, if one runs out, keep 
-    ## sampling from remaining qiters. Keep going until samples is filled
-    with h5py.File(data.svd.h5in, 'a') as io5:
-        ## create data sets
-        del io5["samples"]
-        del io5["quartets"]
-        smps = io5.create_dataset("samples", (nquarts, 4), 
-                           dtype=np.uint16, chunks=(chunk, 4),
-                           compression='gzip')
-        io5.create_dataset("quartets", (nquarts, 4), 
-                            dtype=np.uint16, chunks=(chunk, 4),
-                            compression='gzip')
-
-        ## fill 1000 at a time for efficiency
-        i = 0
-        while i < nquarts:
-            qdat = []
-            while len(qdat) < min(1000, smps.shape[0]): 
-                qiter = qiters.next()
-                try:
-                    qdat.append(qiter.next())
-                except StopIteration:
-                    print(len(qdat))
-                    continue
-            dat = np.array(qdat, dtype=np.uint16)
-            smps[i:i+dat.shape[0]] = dat
-            i += 1000
-
-    ## save attrs to data object
-    data.svd.nquarts = nquarts
-    data.svd.chunk = chunk
-
-    return data
-
-
-
-
-def get_quartets(data, method, nquarts, ipyclient):
-    """ 
-    Find all quartets of samples and store in a large array 
-    """
-
-    ## calculate how many quartets to generate
-    if method == 'all':
-        nquarts = n_choose_k(len(data.samples), 4)
-        #qiter = itertools.combinations(range(len(data.samples)), 4)
-        #nquarts = sum(1 for _ in qiter)
-
-    ## create a chunk size for sampling from the array of quartets. This should
-    ## be relatively large so that we don't spend a lot of time doing I/O, but
-    ## small enough that jobs finish every few hours since that is how the 
-    ## checkpointing works.
-    breaks = 2
-    if nquarts < 5000:
-        breaks = 1
-    if nquarts > 100000:
-        breaks = 4
-    if nquarts > 500000:
-        breaks = 8
-
-    chunk = (nquarts // (breaks * len(ipyclient))) + \
-            (nquarts % (breaks * len(ipyclient)))
-    #LOGGER.info("nquarts = %s, chunk = %s", nquarts, chunk)
-
-    ## 'samples' stores the indices of the quartet. 
-    ## `quartets` stores the correct quartet in the order (1,2|3,4)
-    ## `weights` stores the calculated weight of the quartet in 'quartets'
-    ## we gzip this for now, but check later if this has a big speed cost
-    print("  populating array with {} quartets".format(nquarts))
-    with h5py.File(data.svd.h5in, 'a') as io5:
-        ## create data sets
-        smps = io5.create_dataset("samples", (nquarts, 4), 
-                           dtype=np.uint16, chunks=(chunk, 4),
-                           compression='gzip')
-        io5.create_dataset("quartets", (nquarts, 4), 
-                            dtype=np.uint16, chunks=(chunk, 4),
-                            compression='gzip')
-
-        ## populate array with all possible quartets. This allows us to 
-        ## sample from the total, and also to continue from a checkpoint
-        qiter = itertools.combinations(range(len(data.samples)), 4)
-        i = 0
-
-        ## fill 1000 at a time for efficiency
-        while i < nquarts:
-            if method != "all":
-                qiter = []
-                while len(qiter) < min(1000, smps.shape[0]):
-                    qiter.append(
-                        random_combination(range(len(data.samples)), 4))
-                dat = np.array(qiter)
-            else:
-                dat = np.array(list(itertools.islice(qiter, 1000)))
-            smps[i:i+dat.shape[0]] = dat
-            i += 1000
-
-    ## save attrs to data object
-    data.svd.nquarts = nquarts
-    data.svd.chunk = chunk
-
-    return data
-
 
 
 #############################################################################
@@ -327,18 +1063,15 @@ def get_weights(scores):
     calculates quartet weights from ordered svd scores. Following 
     description from Avni et al. 
     """
+    ## lowest to highest [best, ils1, ils2]
     scores.sort()
-    scores = scores[::-1]
+    ## calculate weight given the svd scores
     if scores[2]:
         weight = np.float32((scores[2]-scores[0]) / 
                             (np.exp(scores[2]-scores[1]) * scores[2]))
     else:
         #weight = np.float32(0.00001)
         weight = scores[2]
-    
-    if np.isnan(weight):
-        weight = np.float32(0.01)
-        
     return weight
 
 
@@ -373,27 +1106,24 @@ def abba_baba(mat):
 
         
 
-@numba.jit('u1[:,:](u1[:,:],b1[:])', nopython=True)
-def removeNs(seqchunk, mask):
-    """ removes ncolumns from snparray prior to matrix calculation"""
+@numba.jit('u1[:,:](u1[:,:],b1[:],b1[:])', nopython=True)
+def subsample_snps(seqchunk, rmask, nmask):
+    """ 
+    removes ncolumns from snparray prior to matrix calculation, and 
+    subsamples 'linked' snps (those from the same RAD locus) such that
+    for these four samples only 1 SNP per locus is kept. This information
+    comes from the 'map' array (map file). 
+    """
     ## mask columns that contain Ns
-    for idx in xrange(seqchunk.shape[1]):
-        if np.sum(seqchunk[:, idx] == 78):
-            mask[idx] = False
+    for idx in xrange(rmask.shape[0]):
+        if nmask[idx]: 
+            rmask[idx] = False
+    
     ## apply mask
-    newarr = seqchunk[:, mask]
+    newarr = seqchunk[:, rmask]
+    
     ## return smaller Nmasked array
     return newarr
-
-
-
-#@numba.jit()
-def reduce_arr(arr, map, sidx):
-    """ 
-    If a full seqarray and map file are provided then the array is reduced 
-    to a single unlinked snp from each locus for this quartet.
-    """
-    pass
 
 
 
@@ -431,32 +1161,49 @@ def chunk_to_matrix(narr):
 
 #@numba.jit('(u2[:,:],u1[:,:],u1[:,:])')#, nopython=True)
 #@numba.jit(nopython=True)
-def nworker(smpchunk, seqview, tests):
+def nworker(data, smpchunk, tests):
     """ The workhorse function. All numba. """
+
+    ## open the seqarray view, the modified array is in bootsarr
+    inh5 = h5py.File(data.h5in, 'r')
+    seqview = inh5["bootsarr"][:]
+
+    ## create an N-mask array of all seq cols
+    nall_mask = seqview[:] == 78
 
     ## get the input arrays ready
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
     rweights = np.zeros(smpchunk.shape[0], dtype=np.float32)
-    mask = np.ones(seqview.shape[1], dtype=np.bool_)
+    rmask = np.ones(seqview.shape[1], dtype=np.bool_)
     rdstats = np.zeros((smpchunk.shape[0], 3), dtype=np.float32)
 
     ## fill arrays with results using numba funcs
     for idx in xrange(smpchunk.shape[0]):
-        ## get seqchunk for 4 samples (4, ncols) and remove Ns
-        seqchunk = seqview[smpchunk[idx]]
-        seqnon = removeNs(seqchunk, mask)
+        ## get seqchunk for 4 samples (4, ncols) 
+        sidx = smpchunk[idx]
+        seqchunk = seqview[sidx]
+
+        ## get N-containing columns in 4-array
+        nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)        
+
+        ## remove Ncols from seqchunk & sub-sample unlinked SNPs
+        seqnon = subsample_snps(seqchunk, rmask, nmask)
+        #LOGGER.error("before Ns: %s, after %s", seqchunk.shape, seqnon.shape)
 
         ## get svdscores for each arrangement of seqchunk
         qscores = np.zeros(3, dtype=np.float32)
         mats = np.zeros((3, 16, 16), dtype=np.uint32)
         for test in range(3):
+            #LOGGER.error("%s", seqnon[tests[test]].shape)
             mats[test] = chunk_to_matrix(seqnon[tests[test]])
+
             ## get svd scores
             tmpscore = np.linalg.svd(mats[test].astype(np.float32))[1]
             qscores[test] = np.sqrt(tmpscore[11:]).sum()
 
         ## sort to find the best qorder
         best = np.where(qscores == qscores.min())[0]
+        #LOGGER.error("\n%s", mats[best][0])
         bidx = tests[best][0]
         LOGGER.info("""
             best: %s, 
@@ -464,10 +1211,14 @@ def nworker(smpchunk, seqview, tests):
             qscores: %s, 
             mats %s
             """, best, bidx, qscores, mats)
-        rquartets[idx] = smpchunk[idx][bidx]#[0]
 
-        ## get weights from the three scores sorted
-        rweights[idx] = get_weights(qscores)
+        ## get weights from the three scores sorted. 
+        ## Only save to file if the quartet has information
+        iweight = get_weights(qscores)
+        if iweight:
+            rweights[idx] = iweight
+            rquartets[idx] = smpchunk[idx][bidx]            
+        #    LOGGER.error("zero weight: %s :\n %s", qscores, mats[best][0])
 
         ## get dstat from the best (correct) matrix 
         ## (or should we get all three?) [option]
@@ -477,447 +1228,97 @@ def nworker(smpchunk, seqview, tests):
     return rquartets, rweights, rdstats 
 
 
-#############################################################################
-#############################################################################
-## End svd funcs
-#############################################################################
-#############################################################################
 
 
-def run_qmc(data, boot):
-    """ runs quartet max-cut """
+########################################################################
+## GLOBALS
+########################################################################
 
-    ## make call lists
-    cmd1 = " ".join(
-            [ipyrad.bins.qmc,
-            " qrtt="+data.svd.qdump, 
-            " weights=off"+
-            " otre=.tmptre"])
+MIDSTREAM_MESSAGE = """
+    loaded object method={}
+    cannot change sampling methods midstream
+    use force argument to start new run with new method
+"""
+## require method to be same as loaded type
+## assert method == data..method, MIDSTREAM_MESSAGE.format(method)
 
-    cmd2 = " ".join(
-            [ipyrad.bins.qmc,
-            " qrtt="+data.svd.qdump, 
-            " weights=on"+
-            " otre=.tmpwtre"])
+LOADING_MESSAGE = """\
+    Loading from saved checkpoint:
+      sampling method: {}
+      array checkpoint: {}
+      bootstrap checkpoint: {}
 
-    ## run them
-    for cmd in [cmd1, cmd2]:
-        #LOGGER.info(cmd)
-        try:
-            subprocess.check_call(cmd, shell=True,
-                                       stderr=subprocess.STDOUT,
-                                       stdout=subprocess.PIPE)
-        except subprocess.CalledProcessError as inst:
-            LOGGER.error("Error in wQMC: \n({}).".format(inst))
-            LOGGER.error(subprocess.STDOUT)
-            raise inst
+"""
+AMBIGS = {"R":("G", "A"),
+          "K":("G", "T"),
+          "S":("G", "C"),
+          "Y":("T", "C"),
+          "W":("T", "A"),
+          "M":("C", "A")}
 
-    ## read in the tmp files since qmc does not pipe
-    tmptre = open(".tmptre").read().strip()
-    tmpwtre = open(".tmpwtre").read().strip()    
-
-    ## convert int names back to str names
-    tmptre = ete3.Tree(tmptre)
-    tmptre = renamer(data, tmptre)
-    tmpwtre = ete3.Tree(tmpwtre)
-    tmpwtre = renamer(data, tmpwtre)
-
-    ## save the boot tree
-    if boot:
-        with open(data.svd.tboots, 'a') as outboot:
-            outboot.write(tmptre+"\n")
-        with open(data.svd.wboots, 'a') as outboot:
-            outboot.write(tmpwtre+"\n")
-
-    ## store full data trees to Assembly
-    else:
-        with open(data.svd.tre, 'w') as outtree:
-            outtree.write(tmptre)
-        with open(data.svd.wtre, 'w') as outtree:
-            outtree.write(tmpwtre)
-
-    ## save assembly with new tree
-    data.save()
+## convenience functions
+def opr(path):
+    """ shorthand for realpath """
+    return os.path.realpath(path)
 
 
-
-def renamer(data, tre):
-    """ renames newick from numbers to sample names"""
-    ## order the numbered tree tip lables
-    names = tre.get_leaves()
-    names.sort(key=lambda x: int(x.name))
-
-    ## order the sample labels in the same order they are 
-    ## in the seq file (e.g., .snp, .phy)
-    snames = data.samples.keys()
-    snames.sort()
-
-    ## replace numbered names with snames
-    for (tip, sname) in zip(names, snames):
-        tip.name = sname
-
-    ## return with only topology and leaf labels
-    return tre.write(format=9)
-
-
-
-def dump(data):
-    """ 
-    prints the quartets to a file formatted for wQMC 
-    """
-    ## open the h5 database
-    io5 = h5py.File(data.svd.h5out, 'r')
-
-    ## create an output file for writing
-    data.svd.qdump = os.path.join(data.dirs.svd, data.name+"_quartets.txt")
-    outfile = open(data.svd.qdump, 'w')
-
-    ## todo: should pull quarts order in randomly
-    for idx in range(0, data.svd.nquarts, data.svd.chunk):
-        quarts = [list(j) for j in io5["quartets"][idx:idx+data.svd.chunk]]
-        weight = io5["weights"][idx:idx+data.svd.chunk]
-        chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
-                                                in zip(quarts, weight)]
-        outfile.write("\n".join(chunk)+"\n")
-
-    ## close output file and h5 database
-    outfile.close()
-    io5.close()
-
-
-
-def insert_to_array(data, start, results):
-    """
-    inputs results from workers into hdf4 array
-    """
-    qrts, wgts, dsts = results
-
-    with h5py.File(data.svd.h5out, 'r+') as out:
-        chunk = data.svd.chunk
-        out['quartets'][start:start+chunk] = qrts
-        out['weights'][start:start+chunk] = wgts
-        out["dstats"][start:start+chunk] = dsts
-    ## save checkpoint
-    #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
-
-
-
-#def insert_to_array(data, result):
-#     """ 
-#     Takes a tmpfile output from finished worker enters it into the 
-#     full h5 array, and deletes the tmpfile
-#     """
-#     out5 = h5py.File(data.svd.h5out, 'r+')
-
-#     with h5py.File(result) as inh5:
-#         qrts = inh5['quartets'][:]
-#         wgts = inh5['weights'][:]
-
-#         chunk = data.svd.chunk
-#         start = int(result.split("_")[-1][:-3])
-#         out5['quartets'][start:start+chunk] = qrts
-#         out5['weights'][start:start+chunk] = wgts
-#     out5.close()
-
-#     ## remove tmp h5path
-#     os.remove(result)
-
-
-
-def svd_obj_init(data, method):
-    """ creates svd attribute to Assembly object """
-    ## create ObjDict for storage
-    data.svd = ObjDict()
-
-    ## add array path
-    data.svd.method = method
-    data.svd.h5in = os.path.join(data.dirs.svd, data.name+"_input.h5")
-    data.svd.h5out = os.path.join(data.dirs.svd, data.name+"_output.h5")
-
-    ## original tree paths
-    data.svd.tre = os.path.join(data.dirs.svd, data.name+"_svd4tet.tre")
-    data.svd.wtre = os.path.join(data.dirs.svd, data.name+"_svd4tet.w.tre")
-
-    ## bootstrap tree paths
-    data.svd.tboots = os.path.join(data.dirs.svd, data.name+"_svd4tet.boots")
-    data.svd.wboots = os.path.join(data.dirs.svd, data.name+"_svd4tet.w.boots")
-
-    ## bootstrap labeled o.g. trees paths
-    data.svd.btre = os.path.join(data.dirs.svd, data.name+"_svd4tet.support.tre")
-    data.svd.bwtre = os.path.join(data.dirs.svd, data.name+"_svd4tet.w.support.tre")
-
-    ## NHX formatted tre with rich information
-    data.svd.nhx = os.path.join(data.dirs.svd, data.name+"_svd4tet.nhx")
-    data.svd.wnhx = os.path.join(data.dirs.svd, data.name+"_svd4tet.w.nhx")
-
-    ## checkpoints
-    data.svd.checkpoint_boot = 0
-    data.svd.checkpoint_arr = 0
-
-    ## save to object and return
-    data.save()
-    return data
-
-
-
-def svd4tet(data, nboots=100, method="all", nquarts=None, force=False):
-    """ 
-    API wrapper for svd4tet analysis
-
-    data 
-        ipyrad Assembly object
-    nboots
-        number of non-parametric bootstrap replicates to run
-    method
-        all, random, or equal. Default is all, which samples all possible
-        quartets. For very large trees (>50 tips) this may take too long, 
-        in which case you should use random or equal. The arg nquarts 
-        determines how many quartets will be samples. In random, nquarts
-        are sampled and used. In equal, a starting tree is inferred and
-        the random quartets are drawn so that they are spread ~equally
-        across splits of the tree. 
-    nquarts 
-        The numer of random quartets sampled in random or equal method. 
-        Default is 10000, or all if all < 10000. 
-    force
-        Overwrite existing
-    """
-
-    ## check that method was entered correctly
-    assert method in ["all", "random", "equal"], \
-        "method type not recognized, must be one of ['all', 'random', 'equal']"
-
-    if method != "all":
-        ## require nquarts if method not all
-        assert nquarts, "if method != all, must enter a value for nquarts"
-        ## don't allow nquarts to be greater than all
-        totalquarts = n_choose_k(len(data.samples), 4)
-        if nquarts > totalquarts:
-            print("  nquarts > total quartets, switching to method='all'")
-            method = "all"
-        if nquarts < 500:
-            print("  few possible quartets, only method='all' available")
-            method = "all"
-
-    ## launch ipclient, assumes ipyparallel is running
-    ipyclient = ipp.Client(timeout=10)
-
-    ## protects it from KBD
-    try:
-        run(data, nboots, method, nquarts, force, ipyclient)
-
-    except (KeyboardInterrupt, SystemExit):
-
-        ## protect from KBD while saving
-        try:
-            ## cancel submitted jobs
-            #ipyclient.abort()
-            ## kill running jobs
-            #ipyclient.close()
-
-            ## remove any abandoned tmp arrays 
-            abandon = glob.glob(os.path.join(data.dirs.svd, "*_tmp_*.h5"))
-            for afile in abandon:
-                os.remove(afile)
-
-        except KeyboardInterrupt:
-            pass
-
-    finally:
-        ## checkpoint the state and save
-        LOGGER.info("\n  saving checkpoints to [Assembly].svd")
-        LOGGER.info("  array checkpoint: %s", data.svd.checkpoint_arr)
-        LOGGER.info("  boot checkpoint: %s", data.svd.checkpoint_boot)
-        data.save()        
-
-
-
-def run(data, nboots, method, nquarts, force, ipyclient):
-    """ 
-    Run svd4tet inference on a sequence or SNP alignment for all samples in
-    the Assembly. 
-
-    By default the job starts from 0 or where it last left off, unless 
-    force=True, then it starts from 0. 
-    """
-
-    ## load svd attributes if they exist
-    fresh = 0
-    if not force:
-        try:
-            if data.svd.checkpoint_boot or data.svd.checkpoint_arr:
-                print("  loading from svd checkpoint")
-                print("  array checkpoint: {}".format(data.svd.checkpoint_arr))
-                print("  boots checkpoint: {}".format(data.svd.checkpoint_boot))
-                print("  sampling method: {}".format(data.svd.method))
-                ## require method to be same as loaded type
-                assert method == data.svd.method, \
-                    "loaded object method={}, cannot change methods midstream"+\
-                    " use force argument to start new run with new method."
+def resolve_ambigs(tmpseq):
+    """ returns a seq array with 'RSKYWM' randomly replaced with resolved bases"""
+    ## iterate over the bases 'RSKWYM': [82, 83, 75, 87, 89, 77]
+    for ambig in np.uint8([82, 83, 75, 87, 89, 77]):
+        ## get all site in this ambig
+        idx, idy = np.where(tmpseq == ambig)
+        ## get the two resolutions of the ambig
+        res1, res2 = AMBIGS[ambig.view("S1")]
+        ## randomly sample half those sites
+        halfmask = np.random.choice([True, False], idx.shape[0])
+        ## replace ambig bases with their resolutions
+        for i in xrange(halfmask.shape[0]):
+            if halfmask[i]:
+                tmpseq[idx[i], idy[i]] = np.array(res1).view(np.uint8)
             else:
-                fresh = 1
-        except (AttributeError, IOError):
-            fresh = 1
-
-    ## if svd results do not exist or force then restart
-    if force or fresh:
-        ## make an analysis directory if it doesn't exist
-        data.dirs.svd = os.path.realpath(
-                            os.path.join(
-                                data.dirs.project, data.name+"_analysis_svd"))
-        if not os.path.exists(data.dirs.svd):
-            try:
-                os.mkdir(data.dirs.svd)
-            except OSError:
-                ## if not there then create new svd directory
-                data.dirs.svd = os.path.join(
-                                    os.path.curdir, data.name+"_analysis_svd")
-                os.mkdir(data.dirs.svd)
-                print("  output directory created at: {}".format(data.dirs.svd))
-
-        ## init new svd ObjDict
-        data = svd_obj_init(data, method)
-
-        ## get the real seq array into hdf5 h5in
-        data = get_seqarray(data, boot=False)
-
-        ## make quartet arrays into hdf5. Allow subsetting samples eventually.
-        ## and optimize chunk value given remaining quartets and ipyclient    
-        if method == "equal":
-            ## print equal header
-            print("  loading {} random quartet samples for starting tree inference"\
-                  .format(nquarts))
-            ## grab test number for starting tree
-            data = get_quartets(data, method, nquarts, ipyclient)
-            print("  inferring {} x 3 quartet trees for starting tree"\
-                  .format(nquarts))
-            ## infer starting tree
-            inference(data, ipyclient, bidx=0)
-            ## sample quartets from starting tree
-            print("  loading {} equal-splits quartets from starting tree"\
-                  .format(nquarts))            
-            data = equal_splits(data, nquarts, ipyclient)
-            ## remove starting tree tmp files
-            tmps = [data.svd.tre, data.svd.wtre, data.svd.tboots, 
-                    data.svd.wboots, data.svd.btre, data.svd.bwtre]
-            for tmp in tmps:
-                try:
-                    os.remove(tmp)
-                except OSError:
-                    continue
-
-        ## will sample all or random set of quartets    
-        else:
-            if method == "random":
-                print("  loading {} random quartet samples"\
-                      .format(nquarts))
-            else:   
-                nquarts = n_choose_k(len(data.samples), 4)                
-                print("  loading all {} possible quartets"\
-                      .format(nquarts))
-            data = get_quartets(data, method, nquarts, ipyclient)
-
-
-    ## run the full inference 
-    if not data.svd.checkpoint_boot:
-        print("  inferring {} x 3 quartet trees".format(nquarts))
-        inference(data, ipyclient, bidx=0)
-    else:
-        print("  full inference finished")
-        elapsed = datetime.timedelta(seconds=int(0)) #time.time()-start))
-        progressbar(20, 20, " | {}".format(elapsed))
-
-
-    ## run the bootstrap replicates
-    if nboots:
-        start = time.time()
-        print("  running {} bootstrap replicates".format(nboots))
-    
-        ## get current boot
-        for bidx in range(data.svd.checkpoint_boot, nboots):
-        
-            if data.svd.checkpoint_arr == 0:
-                data = get_seqarray(data, boot=True)
-                #LOGGER.info("  new boot array sampled")
-                data.svd.checkpoint_boot = bidx
-            ## start boot inference
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))            
-            progressbar(nboots, bidx, " | {}".format(elapsed))
-            inference(data, ipyclient, bidx=True)
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))            
-        progressbar(20, 20, " | {}".format(elapsed))
-
-        ## write outputs with bootstraps
-        write_outputs(data, with_boots=1)
-
-    else:
-        ## write outputs without bootstraps
-        write_outputs(data, with_boots=0)
+                tmpseq[idx[i], idy[i]] = np.array(res2).view(np.uint8)
+    return tmpseq
 
 
 
-def write_outputs(data, with_boots=1):
-    """ write final tree files """
+def load_json(path):
+    """ Load a json serialized Quartet Class object """
 
-    ## create tree with support values on edges
-    write_supports(data, with_boots)
+    ## load the JSON string and try with name+.json
+    fullj = ""
+    checkfor = [path+".svd.json", path]
+    for inpath in checkfor:
+        inpath = inpath.replace("~", os.path.expanduser("~"))
+        try:
+            with open(inpath, 'r') as infile:
+                fullj = json.loads(infile.read())
+        except IOError:
+            pass
+    if not fullj:
+        raise IPyradWarningExit("""
+    Cannot find checkpoint (JSON) file at: {}
+    """.format(inpath))
 
-    ## make tree figure
-    data.svd.quicktre = data.svd.nhx.rsplit(".", 1)[0]+"_quartet_sampling.pdf"
+    ## create a new Quartet Class
+    newobj = Quartet(fullj["name"], fullj["dirs"], fullj["method"])
 
-    ## hide error message during tree plotting
-    #save_stdout = sys.stdout           
-    ## file-like obj to catch stdout
-    #sys.stdout = cStringIO.StringIO()  
-    ## run func with stdout hidden
-    #ipyclient = ipp.Client(**args)
-    ## resets stdout
-    #sys.stdout = save_stdout    
-    quickfig(data.svd.nhx, data.svd.quicktre)
+    ## fill in the same attributes
+    for key in fullj:
+        newobj.__setattr__(key, fullj[key])
 
-    ## print finished
-    print("\n  Final quartet-joined and weighted quartet-joined tree files:\
-          \n  {}\n  {}".format(
-          data.svd.tre, 
-          data.svd.wtre))
-
-    if with_boots:
-        print("\n  Bootstrap tree files:\
-              \n  {}\n  {}".format(
-              data.svd.tboots, 
-              data.svd.wboots))
-
-        print("\n  Final trees with bootstraps as edge labels: \n  {}\n  {}".format(
-              data.svd.btre, 
-              data.svd.bwtre))
-
-    print("\n  Final trees with edge info in NHX format: \n  {}\n  {}".format(
-          data.svd.nhx,
-          data.svd.wnhx))
-
-    qtre = ete3.Tree(data.svd.tre)
-    qtre.unroot()
-    print("\n  Quick view of unrooted topology from unweighted analysis")
-    print(qtre)
-
-    print("\n  Quartet sampling visualized on a tree: \n  {}".format(
-          data.svd.quicktre))
-    print("  ")
-
-    docslink = "ipyrad.readthedocs.org/cookbook.html"    
-    print("  * For tips on plotting trees see: {}".format(docslink))
-
-    citelink = "ipyrad.readthedocs.org/svd4tet.html"
-    print("  * For tips on citing this software see: {}".format(citelink))
-    print("")
-
-    return data
+    return newobj
 
 
 
-PIECOLORS = ['#a6cee3',
-             '#1f78b4']
 
+########################################################################
+## Plotting functions
+########################################################################
+
+
+
+PIECOLORS = ['#a6cee3', '#1f78b4']
 def layout(node):
     """ layout for ete3 tree plotting fig """
     if node.is_leaf():
@@ -950,23 +1351,6 @@ def layout(node):
 
 
 
-def quickfig(input_tre, outname):
-    """ make a quick ete3 fig. Plots total quartets """
-    ts = ete3.TreeStyle()
-    ts.layout_fn = layout
-    ts.show_leaf_name = False
-    ts.mode = 'r'
-    ts.draw_guiding_lines = True
-    ts.show_scale = False
-    ts.scale = 25
-
-    tre = ete3.Tree(input_tre)
-    tre.ladderize()
-    tre.convert_to_ultrametric(tree_length=len(tre)//2)
-    tre.render(file_name=outname, h=40*len(tre), tree_style=ts)
-
-
-
 def get_total(tre, node):
     """ get total number of quartets possible for a split """
     tots = set(tre.get_leaf_names())
@@ -988,7 +1372,7 @@ def get_sampled(data, tre, node, names):
     idxu = set([names.index(i) for i in up])
 
     sampled = 0
-    with h5py.File(data.svd.h5out, 'r') as io5:
+    with h5py.File(data.h5out, 'r') as io5:
         qrts = io5["quartets"][:]
         ## iterate over quartets 
         for qrt in qrts:
@@ -996,234 +1380,9 @@ def get_sampled(data, tre, node, names):
             if len(sqrt.intersection(idxd)) > 1:
                 if len(sqrt.intersection(idxu)) > 1:
                     sampled += 1
-
     return sampled
 
 
-
-def write_supports(data, with_boots):
-    """ writes support values as edge labels on unrooted tree """
-    ## get name indices
-    names = data.samples.keys()
-    names.sort()
-
-    ## get unrooted best trees
-    otre = ete3.Tree(data.svd.tre, format=0)
-    otre.unroot()
-    for node in otre.traverse():
-        node.add_feature("bootstrap", 0)
-        node.add_feature("quartets_total", get_total(otre, node))
-        node.add_feature("quartets_sampled", get_sampled(data, otre, node, names))
-        try:
-            prop = 100*(float(node.quartets_sampled) / node.quartets_total)
-        except ZeroDivisionError:
-            prop = 0.0
-        node.add_feature("quartets_sampled_prop", prop)
-        node.dist = 0
-        node.support = 0
-
-    wtre = ete3.Tree(data.svd.wtre, format=0)
-    wtre.unroot()
-    for node in wtre.traverse():
-        node.add_feature("bootstrap", 0)
-        node.add_feature("quartets_total", get_total(wtre, node))
-        node.add_feature("quartets_sampled", get_sampled(data, wtre, node, names))
-        try:
-            prop = 100*(float(node.quartets_sampled) / node.quartets_total)
-        except ZeroDivisionError:
-            prop = 0.0
-        node.add_feature("quartets_sampled_prop", prop)
-        node.dist = 0
-        node.support = 0
-
-    ## get unrooted boot trees
-    if with_boots:
-        oboots = open(data.svd.tboots, 'r').readlines()
-        wboots = open(data.svd.wboots, 'r').readlines()
-        oboots = [ete3.Tree(btre.strip()) for btre in oboots]
-        wboots = [ete3.Tree(btre.strip()) for btre in wboots]    
-        _ = [btre.unroot() for btre in oboots]
-        _ = [btre.unroot() for btre in wboots]
-
-        ## get and set support values 
-        for tre, boots in zip([otre, wtre], [oboots, wboots]):
-            for btre in boots:
-                common = tre.compare(btre, unrooted=True)
-                for bnode in common["common_edges"]:
-                    ## check monophyly of each side of split
-                    a = tre.check_monophyly(bnode[0], target_attr='name', unrooted=True)
-                    b = tre.check_monophyly(bnode[1], target_attr='name', unrooted=True)
-                    ## if both sides are monophyletic
-                    if a[0] and b[0]:
-                        ## find which is the 'bottom' node, to attach support to
-                        node = list(tre.get_monophyletic(bnode[0], target_attr='name'))
-                        node.extend(list(tre.get_monophyletic(bnode[1], target_attr='name')))
-                        ## add +1 suport to (edge dist) to this edge
-                        if not node[0].is_leaf():
-                            node[0].dist += 1
-                            node[0].support += 1
-                            node[0].bootstrap += 1
-
-        ## change support values to percentage
-        for tre in [otre, wtre]:
-            for node in tre.traverse():
-                node.dist = int(100 * (node.dist / len(wboots)))
-                node.support = int(100 * (node.support / len(wboots)))
-                node.bootstrap = int(100 * (node.bootstrap / len(wboots)))
-
-        ## return as newick string w/ support as edge labels (lengths)
-        with open(data.svd.btre, 'w') as outtre:
-            outtre.write(otre.write(format=5))
-
-        with open(data.svd.bwtre, 'w') as outtre:
-            outtre.write(wtre.write(format=5))
-
-        features = ["bootstrap", "quartets_total", "quartets_sampled", "quartets_sampled_prop"]            
-                    
-    else:
-        features = ["quartets_total", "quartets_sampled", "quartets_sampled_prop"]
-
-    ## return as NHX format with extra info
-    with open(data.svd.nhx, 'w') as outtre:
-        outtre.write(wtre.write(format=0, features=features))
-
-    with open(data.svd.wnhx, 'w') as outtre:
-        outtre.write(wtre.write(format=0, features=features))
-
-    return otre, wtre
-
-
-
-def inference(data, ipyclient, bidx):
-    """ run inference and store results """
-
-    ## how many chunks are we gonna be doing?
-    njobs = sum(1 for _ in iter(xrange(
-                data.svd.checkpoint_arr, 
-                data.svd.nquarts, 
-                data.svd.chunk)))
-
-    ## an iterator to distribute those chunks
-    #jobiter = iter(xrange(data.svd.checkpoint_arr, 
-    #                      data.svd.nquarts, 
-    #                      data.svd.chunk))
-    jobiter = iter(xrange(0, data.svd.nquarts, 100))
-    njobs = sum(1 for _ in jobiter)
-    jobiter = iter(xrange(0, data.svd.nquarts, 100))    
-    data.svd.chunk = 100
-
-
-    LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
-            data.svd.chunk, data.svd.checkpoint_arr, data.svd.nquarts, njobs)
-
-    ## a distributor for engine jobs
-    lbview = ipyclient.load_balanced_view()
-
-    ## create h5 storage data sets for the correct quartets & and their weights
-    with h5py.File(data.svd.h5out, 'w') as io5:
-        io5.create_dataset("quartets", (data.svd.nquarts, 4), 
-                            dtype=np.uint16, chunks=(data.svd.chunk, 4))
-        io5.create_dataset("weights", (data.svd.nquarts,), 
-                            dtype=np.float32, chunks=(data.svd.chunk,))
-        io5.create_dataset("dstats", (data.svd.nquarts, 3), 
-                            dtype=np.float32, chunks=(data.svd.chunk, 3))
-
-    ## A view to the inh5 hdf5 array will be left open since each time we 
-    ## submit a job we will be slicing a chunk of quartets from disk. 
-    ## This is also where the seqarray is, but we assume that can be held
-    ## in memory just fine (this could change!). One view of the array is fine
-    ## since ipyparallel does NOT copy arrays in memory when sending to engines.
-    inh5 = h5py.File(os.path.realpath(data.svd.h5in), 'r')
-    if not data.svd.checkpoint_boot:
-        seqs = inh5["seqarr"][:]
-    else:
-        seqs = inh5["bootarr"][:]
-
-    ## the three indexed resolutions of each quartet
-    tests = np.array([[0, 1, 2, 3], 
-                      [0, 2, 1, 3], 
-                      [0, 3, 1, 2]], dtype=np.uint8)
-
-    ## start progress bar timer and submit initial n jobs
-    start = time.time()
-    res = {}
-    for _ in xrange(min(len(ipyclient), njobs)):
-        ## get chunk of quartet samples
-        qidx = jobiter.next()
-        smps = inh5["samples"][qidx:qidx+data.svd.chunk]
-        print(qidx, smps.shape, seqs.shape)
-        ## send chunk off to be worked on
-        res[qidx] = lbview.apply(nworker, *[smps, seqs, tests])
-
-    #ipyclient.wait_interactive()
-    done = 0
-    while 1:
-        ## print progress unless bootstrapping, diff progbar for that.
-        if not bidx:
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(njobs, done, " | {}".format(elapsed))
-
-        ## check for finished jobs
-        curkeys = res.keys()
-        finished = [i.ready() for i in res.values()]
-
-        ## remove finished and submit new jobs
-        if any(finished):
-            for ikey in curkeys:
-                if res[ikey].completed:
-                    if res[ikey].successful():
-                        LOGGER.info("cleanup key %s", ikey)
-                        ## track finished
-                        done += 1
-                        ## insert results into hdf5 data base
-                        results = res[ikey].get(0)
-                        insert_to_array(data, ikey, results)
-                        ## purge memory of the old one
-                        del res[ikey]
-                    else:
-                        ## print error if something went wrong
-                        meta = res[ikey].metadata
-                        if meta.error:
-                            LOGGER.error("""\
-                        stdout: %s
-                        stderr: %s 
-                        error: %s""", meta.stdout, meta.stderr, meta.error)
-                        del res[ikey]
-
-                ## submit new jobs
-                try:
-                    qidx = jobiter.next()
-                    smps = inh5["samples"][qidx:qidx+data.svd.chunk]
-                    ## send chunk off to be worked on
-                    res[qidx] = lbview.apply(nworker, *[smps, seqs, tests])
-                    print(qidx, smps.shape, seqs.shape)
-
-                except StopIteration:
-                    continue
-        else:
-            time.sleep(0.1)
-
-        ## know when to finish
-        if njobs == done:
-            break
-
-    ## final progress bar
-    if not bidx:
-        progressbar(njobs, done, " | {}".format(elapsed))
-        print("")
-
-    ## convert to txt file for wQMC
-    dump(data)    
-    sys.exit(2)
-
-    ## run quartet joining algorithm
-    if not bidx:
-        run_qmc(data, boot=0)
-    else:
-        run_qmc(data, boot=1)
-
-    ## reset the checkpoint_arr
-    data.svd.checkpoint_arr = 0
 
 
 
