@@ -1265,15 +1265,15 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## get names index in order of pnames
     #sindx = [list(anames).index(i) for i in snames]
 
-    ## build arrays and outputs from arrays
+    ## build arrays and outputs from arrays. 
+    ## TODO: make faster with numba, dask, and/or parallel
     arrs = make_arrays(data, sidx, optim, nloci, io5, co5)
-    seqarr, snparr, bisarr, _ = arrs
+    seqarr, snparr, bisarr, maparr = arrs
 
     ## send off outputs as parallel jobs
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     results = []
-
 
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "phy" in output_formats:
@@ -1292,6 +1292,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     if 'snps' in output_formats:
         async = lbview.apply(write_snps, *[data, snparr, sidx, pnames])
         results.append(async)
+        write_snps_map(data, maparr)
         #write_snps(data, snparr, sidx, pnames)
 
     ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
@@ -1342,6 +1343,10 @@ def make_outfiles(data, samples, output_formats, ipyclient):
 
 
 
+
+
+
+## TODO: use view(np.uint8) and compile loop as numba func
 def make_arrays(data, sidx, optim, nloci, io5, co5):
     """ 
     Builds arrays for seq, snp, and bis data after applying locus filters, 
@@ -1355,7 +1360,8 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
     ## shape of arrays is sidx, we will subsample h5 w/ sidx to match
     seqarr = np.zeros((sum(sidx), maxlen*nloci), dtype="S1")
     snparr = np.zeros((sum(sidx), maxsnp), dtype="S1")
-    bisarr = np.zeros((sum(sidx), nloci), dtype="S1")        
+    bisarr = np.zeros((sum(sidx), nloci), dtype="S1")
+    maparr = np.zeros((maxsnp, 4), dtype=np.uint32)
 
     ## apply all filters and write loci data
     start = 0
@@ -1365,6 +1371,8 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
 
     ## edge filter has already been applied to snps, but has not yet been 
     ## applied to seqs. The locus filters have not been applied to either yet.
+    mapsnp = 0
+    totloc = 0
     while start < nloci:
         hslice = [start, start+optim]
         afilt = co5["filters"][hslice[0]:hslice[1], ...]
@@ -1402,9 +1410,6 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
             bcols = np.all(lcopy == "N", axis=0)
             seq = seq[:, ~bcols]
 
-            ## TODO: save partition length
-            #LOGGER.info("%s -- %s", seqleft, seqleft+seq.shape[1])
-
             ## put into large array
             seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
             seqleft += seq.shape[1]
@@ -1412,6 +1417,19 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
             ## subsample all SNPs into an array
             snparr[:, snpleft:snpleft+snps.shape[1]] = snps
             snpleft += snps.shape[1]
+
+            ## TODO: save partition length and snps.map file
+            ## Enter each snp into the map file
+            for i in xrange(snps.shape[1]):
+                ## 1-indexed loci in first column
+                ## actual locus number in second column
+                ## counter for this locus in third column
+                ## snp counter total in fourth column
+                maparr[mapsnp, :] = [totloc+1, iloc, i, mapsnp+1]
+                mapsnp += 1
+            totloc += 1
+            #LOGGER.info("%s -- %s", seqleft, seqleft+seq.shape[1])
+            #LOGGER.info("%s -- %s", snps, snps.shape)
 
             ## subsample one SNP into an array
             if snps.shape[1]:
@@ -1432,9 +1450,7 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
 
     ## return these three arrays which are pretty small
     ## catg array gets to be pretty huge, so we return only 
-    ## the partition info TODO:
-    partitions = 0
-    return seqarr, snparr, bisarr, partitions
+    return seqarr, snparr, bisarr, maparr
 
 
 
@@ -1463,6 +1479,15 @@ def write_nex(data, seqarr, sidx, pnames):
         for idx, name in zip(sidx, pnames):
             out.write("{}{}\n".format(name, "".join(seqarr[idx])))
 
+
+## TODO: this could have much more information for reference aligned data
+def write_snps_map(data, maparr):
+    """ write a map file with linkage information for SNPs file"""
+    data.outfiles.snpsmap = os.path.join(data.dirs.outfiles, data.name+".snps.map")
+    with open(data.outfiles.snpsmap, 'w') as out:
+        for idx in range(maparr.shape[0]):
+            line = maparr[idx, :]
+            out.write("{}\trad{}_snp{}\t{}\t{}\n".format(line[0], line[1], line[2], 0, line[3]))
 
 
 def write_snps(data, snparr, sidx, pnames):
@@ -1523,8 +1548,8 @@ def write_str(data, snparr, bisarr, sidx, pnames):
 def write_geno(data, snparr, bisarr, sidx, inh5):
     ## Write GENO format
     data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
-                                      
     data.outfiles.ugeno = os.path.join(data.dirs.outfiles, data.name+".u.geno")
+
     ## get most common base at each SNP as a pseudo-reference 
     ## and record 0,1,2 or missing=9 for counts of the ref allele
     snpref = np.apply_along_axis(fakeref, 0, snparr)
@@ -1561,11 +1586,12 @@ def write_geno(data, snparr, bisarr, sidx, inh5):
     np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
 
     ## write a map file for use in admixture with locations of SNPs
-    ## for denovo data we just fake it and evenly space the unlinked SNPs
+    ## for denovo data we just have evenly spaced the unlinked SNPs
     # 1  rs123456  0  1234555
     # 1  rs234567  0  1237793
     # 1  rs224534  0  -1237697        <-- exclude this SNP
     # 1  rs233556  0  1337456        
+
 
 
 
@@ -1764,6 +1790,7 @@ def vcfchunk(args):
 
     io5.close()
     co5.close()
+
 
 
 def viewgeno(site, reso):
