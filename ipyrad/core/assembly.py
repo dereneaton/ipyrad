@@ -123,10 +123,6 @@ class Assembly(object):
         ## print headers
         self._headers = 0
 
-        ## analysis save objects
-        self.svd = ObjDict({})
-        self.dstat = ObjDict({})
-
         ## all available cpus
         self.cpus = detect_cpus()
 

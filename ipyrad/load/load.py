@@ -120,8 +120,6 @@ def save_json(data):
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),
         ("_hackersonly", data.__dict__["_hackersonly"]),
-        ("svd", data.__dict__["svd"]),
-        ("dstat", data.__dict__["dstat"])        
         ])
 
     ## sample dict
