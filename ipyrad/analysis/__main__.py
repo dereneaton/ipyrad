@@ -187,16 +187,22 @@ def main():
         if args.boots:
             data.nboots = int(args.boots)
 
-        ## get seqfile and names from seqfile
-        data.files.seqfile = args.seq
-        data.init_seqarray(resolve_ambiguities=args.resolve)
-        data.parse_names()
-
         ## store input files
         if args.map: 
             data.files.mapfile = args.map
         if args.tree:
             data.files.treefile = args.tree
+
+        ## clear any existing databases
+        for h5file in [data.h5in, data.h5out]:
+            if os.path.exists(h5file):
+                os.remove(h5file)
+
+        ## get seqfile and names from seqfile
+        data.files.seqfile = args.seq
+        data.resolve_ambigs = args.resolve
+        data.init_seqarray()
+        data.parse_names()
 
 
     ## Use ipcluster info passed to command-line this time

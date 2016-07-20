@@ -1418,16 +1418,15 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
             snparr[:, snpleft:snpleft+snps.shape[1]] = snps
             snpleft += snps.shape[1]
 
-            ## TODO: save partition length and snps.map file
             ## Enter each snp into the map file
             for i in xrange(snps.shape[1]):
                 ## 1-indexed loci in first column
                 ## actual locus number in second column
                 ## counter for this locus in third column
                 ## snp counter total in fourth column
-                maparr[mapsnp, :] = [totloc+1, iloc, i, mapsnp+1]
+                maparr[mapsnp, :] = [totloc+1, start+iloc, i, mapsnp+1]
                 mapsnp += 1
-            totloc += 1
+
             #LOGGER.info("%s -- %s", seqleft, seqleft+seq.shape[1])
             #LOGGER.info("%s -- %s", snps, snps.shape)
 
@@ -1436,7 +1435,8 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
                 samp = np.random.randint(snps.shape[1])
                 bisarr[:, bis] = snps[:, samp]
                 bis += 1
-
+                totloc += 1
+                
         ## increase the counter
         start += optim
 
@@ -1447,6 +1447,8 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
     snparr = snparr[:, ~ridx]
     ridx = np.all(bisarr == "", axis=0)
     bisarr = bisarr[:, ~ridx]
+    ridx = np.all(maparr == 0, axis=1)
+    maparr = maparr[~ridx, :]
 
     ## return these three arrays which are pretty small
     ## catg array gets to be pretty huge, so we return only 

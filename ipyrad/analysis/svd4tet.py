@@ -125,6 +125,7 @@ class Quartet(object):
         self.nboots = 0
         self.nquartets = 0
         self.chunksize = 0
+        self.resolve_ambigs = 0
 
         ## store samples from the seqarray
         self.samples = []
@@ -134,9 +135,6 @@ class Quartet(object):
         ## hdf5 data bases init and delete existing
         self.h5in = os.path.join(self.dirs, self.name+".input.h5")
         self.h5out = os.path.join(self.dirs, self.name+".output.h5")
-        for h5file in [self.h5in, self.h5out]:
-            if os.path.exists(h5file):
-                os.remove(h5file)
 
         ## input files
         self.files = ObjDict()
@@ -278,7 +276,7 @@ class Quartet(object):
 
 
     ## Filling the h5in seqarray
-    def init_seqarray(self, resolve_ambiguities):
+    def init_seqarray(self):
         """ 
         Fills the seqarr with the full data set, and creates a bootsarr copy
         with the following modifications:
@@ -303,8 +301,14 @@ class Quartet(object):
         ## create array storage for real seq and the tmp bootstrap seqarray
         with h5py.File(self.h5in, 'w') as io5:
             io5.create_dataset("seqarr", (ntax, nbp), dtype=np.uint8)
-            io5.create_dataset("bootsarr", (ntax, nbp), dtype=np.uint8)
-            io5.create_dataset("bootsmap", (nbp,), dtype=np.uint32)        
+            io5.create_dataset("bootsarr", (ntax, nbp), maxshape=(ntax, None), dtype=np.uint8)
+            io5.create_dataset("bootsmap", (nbp, 2), dtype=np.uint32)
+
+            ## if there is a map file, load it into the bootsmap
+            if self.files.mapfile:
+                with open(self.files.mapfile, 'r') as inmap:
+                    maparr = np.genfromtxt(inmap, dtype=np.uint32)
+                    io5["bootsmap"][:] = maparr[:, [0, 3]]  
 
             ## fill the tmp array from the input phy
             for line, seq in enumerate(spath.readlines()):
@@ -314,13 +318,20 @@ class Quartet(object):
             tmpseq[tmpseq == 45] = 78
 
             ## save array to disk so it can be easily accessed by slicing
+            ## This unmodified array is used again later for sampling boots
             io5["seqarr"][:] = tmpseq
 
             ## resolve ambiguous IUPAC codes
-            if bool(resolve_ambiguities):
+            if self.resolve_ambigs:
                 tmpseq = resolve_ambigs(tmpseq)
 
-            ## save modified array to disk
+            ## convert CATG bases to matrix indices
+            tmpseq[tmpseq == 65] = 0
+            tmpseq[tmpseq == 67] = 1
+            tmpseq[tmpseq == 71] = 2
+            tmpseq[tmpseq == 84] = 3
+
+            ## save modified array to disk            
             io5["bootsarr"][:] = tmpseq
 
             ## memory cleanup
@@ -328,8 +339,7 @@ class Quartet(object):
 
 
 
-
-    def sample_bootseq_array(self, resolve_ambiguities=0):
+    def sample_bootseq_array(self):
         """ 
         Takes the seqarray and re-samples columns chunks based on linkage 
         from the maps array. Saves the new map information in the bootmap. 
@@ -343,13 +353,59 @@ class Quartet(object):
         ## use 'r+' to read and write to existing array
         with h5py.File(self.h5in, 'r+') as io5:        
             ## load in the seqarr and maparr
-            tmpseq = pd.DataFrame(io5["seqarr"][:])
-            maparr = io5["maparr"][:]
+            seqarr = io5["seqarr"][:]
+
+            ## resample columns with replacement
+            newarr = np.zeros(seqarr.shape, dtype=np.uint8)
+            cols = np.random.randint(0, seqarr.shape[1], seqarr.shape[1])
+            tmpseq = shuffle_cols(seqarr, newarr, cols)
+
+            ## resolve ambiguous bases randomly. We do this each time so that
+            ## we get different resolutions.
+            if self.resolve_ambigs:
+                tmpseq = resolve_ambigs(tmpseq)
+        
+            ## convert CATG bases to matrix indices
+            tmpseq[tmpseq == 65] = 0
+            tmpseq[tmpseq == 67] = 1
+            tmpseq[tmpseq == 71] = 2
+            tmpseq[tmpseq == 84] = 3
 
             ## fill the boot array with a re-sampled phy w/ replacement
-            io5["bootarr"][:] = tmpseq.sample(n=tmpseq.shape[1], 
-                                              replace=True, axis=1)
+            io5["bootsarr"][:] = tmpseq
             del tmpseq
+
+
+
+    def sample_bootseq_array_map(self):
+        """ Re-samples loci with replacement to fill the bootarr """
+
+        ## open view to the in database
+        with h5py.File(self.h5in, 'r+') as io5:
+            ## load the seqarr and maparr
+            seqarr = io5["seqarr"][:]
+            maparr = io5["bootsmap"][:]
+
+            ## a new bootsarr and maparr to fill
+            #np.zeros((None, 2), )
+            del io5["bootsarr"]
+
+
+            ## load the maparr as a pandas dataframe
+            mapdf = pd.DataFrame(maparr)
+            ## groupby locus number
+            mapdf.groupby(0)
+            ## sample groups
+            cols = np.random.randint(0, seqarr.shape[1], seqarr.shape[1])
+            ##
+            nsites = 0
+            for idx in xrange(cols.shape[0]):
+                nsites += mapdf.groupby(idx).shape[1]
+
+            ## store bootsarr 
+            io5.create_dataset("bootsarr", data="X1")
+
+        return nsites
 
 
 
@@ -518,7 +574,7 @@ class Quartet(object):
     
         ## remove starting tree tmp files
         tmps = [self.tre, self.wtre, self.tboots, 
-                self.wboots, self.btre, self.bwtre]
+                self.wboots, self.tbtre, self.wbtre]
         for tmp in tmps:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -658,7 +714,7 @@ class Quartet(object):
     - {}
     - {}
     """.format(opr(self.trees.tboots), opr(self.trees.wboots), 
-               opr(self.trees.tbtre), opr(self.tree.wbtre)))
+               opr(self.trees.tbtre), opr(self.trees.wbtre)))
 
         ## print rich information--------------------------------
         print("""\
@@ -679,8 +735,10 @@ class Quartet(object):
         docslink = "ipyrad.readthedocs.org/cookbook.html"    
         citelink = "ipyrad.readthedocs.org/svd4tet.html"
         print("""\
-  * For tips on plotting these trees in R see: {}     
-  * For tips on citnig this software see: {} 
+  * For tips on plotting these trees in R see: 
+    - {}     
+  * For tips on citing this software see: 
+    - {} 
 
     """.format(docslink, citelink))
 
@@ -758,10 +816,10 @@ class Quartet(object):
                     node.bootstrap = int(100 * (node.bootstrap / len(wboots)))
 
             ## return as newick string w/ support as edge labels (lengths)
-            with open(self.trees.btre, 'w') as outtre:
+            with open(self.trees.tbtre, 'w') as outtre:
                 outtre.write(otre.write(format=5))
 
-            with open(self.trees.bwtre, 'w') as outtre:
+            with open(self.trees.wbtre, 'w') as outtre:
                 outtre.write(wtre.write(format=5))
             features = ["bootstrap", "quartets_total", "quartets_sampled", "quartets_sampled_prop"]            
         else:
@@ -886,7 +944,10 @@ class Quartet(object):
             for bidx in xrange(self.checkpoint.boots, self.nboots):
                 ## get resampled array and set checkpoint
                 if self.checkpoint.arr == 0:
-                    self.resample_bootarr() 
+                    if self.files.mapfile:
+                        self.sample_bootseq_array()#_map()
+                    else:
+                        self.sample_bootseq_array() 
                     self.checkpoint.boots = bidx
 
                 ## start boot inference, (1-indexed !!!)
@@ -1106,8 +1167,8 @@ def abba_baba(mat):
 
         
 
-@numba.jit('u1[:,:](u1[:,:],b1[:],b1[:])', nopython=True)
-def subsample_snps(seqchunk, rmask, nmask):
+@numba.jit('u1[:,:](u1[:,:],b1[:],b1[:],u4[:])', nopython=True)
+def subsample_snps(seqchunk, rmask, nmask, maparr):
     """ 
     removes ncolumns from snparray prior to matrix calculation, and 
     subsamples 'linked' snps (those from the same RAD locus) such that
@@ -1118,6 +1179,36 @@ def subsample_snps(seqchunk, rmask, nmask):
     for idx in xrange(rmask.shape[0]):
         if nmask[idx]: 
             rmask[idx] = False
+    
+    ## apply mask
+    newarr = seqchunk[:, rmask]
+    
+    ## return smaller Nmasked array
+    return newarr
+
+
+
+@numba.jit('u1[:,:](u1[:,:],b1[:],b1[:],u4[:])', nopython=True)
+def subsample_snps_map(seqchunk, rmask, nmask, maparr):
+    """ 
+    removes ncolumns from snparray prior to matrix calculation, and 
+    subsamples 'linked' snps (those from the same RAD locus) such that
+    for these four samples only 1 SNP per locus is kept. This information
+    comes from the 'map' array (map file). 
+    """
+    ## apply mask to the mapfile
+    last_snp = 0
+    for idx in xrange(rmask.shape[0]):
+        if nmask[idx]:
+            ## mask if Ns
+            rmask[idx] = False
+        else:
+            ## also mask if SNP already sampled 
+            this_snp = maparr[idx]
+            if maparr[idx] == last_snp:
+                rmask[idx] = False
+            ## record this snp
+            last_snp = this_snp  
     
     ## apply mask
     newarr = seqchunk[:, rmask]
@@ -1144,12 +1235,6 @@ def chunk_to_matrix(narr):
     ## and the column will be excluded.
     for x in xrange(narr.shape[1]):
         i = narr[:, x]
-        ## convert to index values
-        i[i == 65] = 0  ## already zero
-        i[i == 67] = 1
-        i[i == 71] = 2
-        i[i == 84] = 3
-
         if np.sum(i) < 16:
             mat[i[0]*4:(i[0]+4)*4]\
                [i[1]]\
@@ -1159,7 +1244,7 @@ def chunk_to_matrix(narr):
 
 
 
-#@numba.jit('(u2[:,:],u1[:,:],u1[:,:])')#, nopython=True)
+## TODO: store stats for each quartet (nSNPs, etc.)
 #@numba.jit(nopython=True)
 def nworker(data, smpchunk, tests):
     """ The workhorse function. All numba. """
@@ -1167,6 +1252,14 @@ def nworker(data, smpchunk, tests):
     ## open the seqarray view, the modified array is in bootsarr
     inh5 = h5py.File(data.h5in, 'r')
     seqview = inh5["bootsarr"][:]
+
+    ## choose function based on mapfile arg
+    if data.files.mapfile:
+        subsample = subsample_snps_map
+        maparr = inh5["bootsmap"][:]
+    else:
+        subsample = subsample_snps
+        maparr = np.zeros((2, 2), dtype=np.uint32)
 
     ## create an N-mask array of all seq cols
     nall_mask = seqview[:] == 78
@@ -1187,8 +1280,8 @@ def nworker(data, smpchunk, tests):
         nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)        
 
         ## remove Ncols from seqchunk & sub-sample unlinked SNPs
-        seqnon = subsample_snps(seqchunk, rmask, nmask)
-        #LOGGER.error("before Ns: %s, after %s", seqchunk.shape, seqnon.shape)
+        seqnon = subsample(seqchunk, rmask, nmask, maparr[:, 0])
+        #LOGGER.info("before sub: %s, after %s", seqchunk.shape, seqnon.shape)
 
         ## get svdscores for each arrangement of seqchunk
         qscores = np.zeros(3, dtype=np.float32)
@@ -1205,12 +1298,12 @@ def nworker(data, smpchunk, tests):
         best = np.where(qscores == qscores.min())[0]
         #LOGGER.error("\n%s", mats[best][0])
         bidx = tests[best][0]
-        LOGGER.info("""
-            best: %s, 
-            bidx: %s, 
-            qscores: %s, 
-            mats %s
-            """, best, bidx, qscores, mats)
+        # LOGGER.info("""
+        #     best: %s, 
+        #     bidx: %s, 
+        #     qscores: %s, 
+        #     mats %s
+        #     """, best, bidx, qscores, mats)
 
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
@@ -1262,6 +1355,14 @@ def opr(path):
     return os.path.realpath(path)
 
 
+@numba.jit(nopython=True)
+def shuffle_cols(seqarr, newarr, cols):
+    for idx in xrange(cols.shape[0]):
+        newarr[:, idx] = seqarr[:, cols[idx]]
+    return newarr
+
+
+## TODO: this could be numbified by making AMBIGS into two arrays
 def resolve_ambigs(tmpseq):
     """ returns a seq array with 'RSKYWM' randomly replaced with resolved bases"""
     ## iterate over the bases 'RSKWYM': [82, 83, 75, 87, 89, 77]
@@ -1291,10 +1392,13 @@ def load_json(path):
     for inpath in checkfor:
         inpath = inpath.replace("~", os.path.expanduser("~"))
         try:
+            ## load in the JSON object
             with open(inpath, 'r') as infile:
                 fullj = json.loads(infile.read())
         except IOError:
             pass
+
+    ## raise an error if json not loaded
     if not fullj:
         raise IPyradWarningExit("""
     Cannot find checkpoint (JSON) file at: {}
