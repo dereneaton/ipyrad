@@ -7,12 +7,12 @@ from ipyrad.core.parallel import ipcontroller_init
 from ipyrad.assemble.util import IPyradWarningExit
 import pkg_resources
 import ipyrad as ip
+import numpy as np
 import argparse
 import logging
 import sys
 import os
 import atexit
-import json
 
 import ipyrad.analysis as ipa
 
@@ -32,22 +32,23 @@ def parse_command_line():
   * Example command-line usage ---------------------------------------------- 
 
   * Read in sequence/SNP data file, provide linkage, and output name. 
-    svd4tet -s data.phy                          ## use full sequence data 
-    svd4tet -s data.snps.phy -n test2            ## use SNPs and name test2
-    svd4tet -s data.snps.phy -l data.snps.map    ## use one SNP from each locus
+     svd4tet -s data.phy                          ## use full sequence data 
+     svd4tet -s data.snps.phy -n test2            ## use SNPs and name test2
+     svd4tet -s data.snps.phy -l data.snps.map    ## use one SNP from each locus
 
   * Load saved/checkpointed analysis from json file, or force restart. 
-    svd4tet -j test.json                    ## reads and writes with name 'test'
-    svd4tet -j test.json -f                 ## reads in test, forces overwrite
+     svd4tet -j test.json                    ## reads and writes with name 'test'
+     svd4tet -j test.json -f                 ## reads in test, forces overwrite
 
-  * Sampling modes, 'equal' can infer or accept guide tree to sample efficiently  
-    svd4tet -s data.snps -m all                     ## sample all quartets
-    svd4tet -s data.snps -m random -q 1e6           ## random sample 1M quartets
-    svd4tet -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
+  * Sampling modes: 'equal' can infer or accept a guide tree to sample more
+    efficiently; quartets can be sampled randomly or default is to sample all. 
+     svd4tet -s data.snps -m all                         ## sample all quartets
+     svd4tet -s data.snps -m random -q 1e6 -x 123        ## random 1M randomly
+     svd4tet -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
 
   * HPC parallelization
-    svd4tet -s data.phy              ## uses all cores on one machine
-    svd4tet -s data.phy -c 20 --MPI  ## access 20 cores across multiple nodes
+      svd4tet -s data.phy              ## uses all cores on one machine
+      svd4tet -s data.phy -c 20 --MPI  ## access 20 cores across multiple nodes
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
@@ -106,6 +107,10 @@ def parse_command_line():
         type=int, default=0,
         help="number of CPU cores to use (default = 0 = Use all)")
 
+    parser.add_argument("-x", metavar="random_seed", dest="rseed",
+        type=int, default=None,
+        help="random seed for quartet sampling and/or bootstrapping")    
+
     parser.add_argument('-d', "--debug", action='store_true',
         help="print lots more info to ipyrad_log.txt.")
 
@@ -163,6 +168,9 @@ def main():
 
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
+
+    ## set random seed
+    np.random.seed(args.rseed)
 
     ## debugger----------------------------------------
     if os.path.exists(ip.__debugflag__):

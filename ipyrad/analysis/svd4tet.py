@@ -149,14 +149,14 @@ class Quartet(object):
         self.trees.ttre = os.path.join(self.dirs, self.name+".tre")
         self.trees.wtre = os.path.join(self.dirs, self.name+".w.tre")
         ## list of bootstrap trees 
-        self.trees.tboots = os.path.join(self.dirs, self.name+".w.boots")        
+        self.trees.tboots = os.path.join(self.dirs, self.name+".boots")        
         self.trees.wboots = os.path.join(self.dirs, self.name+".w.boots")        
         ## trees with boot support as edge length
         self.trees.tbtre = os.path.join(self.dirs, self.name+".support.tre")        
         self.trees.wbtre = os.path.join(self.dirs, self.name+".w.support.tre")     
         ## NHX formatted tre with rich information
         self.trees.tnhx = os.path.join(self.dirs, self.name+".nhx.tre")     
-        self.trees.wnhx = os.path.join(self.dirs, self.name+".nhx.w.tre")     
+        self.trees.wnhx = os.path.join(self.dirs, self.name+".w.nhx.tre")     
         ## PDF
         self.trees.pdf = os.path.join(self.dirs, self.name+".pdf")
 
@@ -293,22 +293,27 @@ class Quartet(object):
         nbp = int(line[1])
 
         ## make a tmp seq array
-        tmpseq = np.zeros((ntax, nbp), dtype=np.uint8)
-
-        ## get initial array
         print("  loading array [{} taxa x {} bp]".format(ntax, nbp))        
+        tmpseq = np.zeros((ntax, nbp), dtype=np.uint8)
     
         ## create array storage for real seq and the tmp bootstrap seqarray
         with h5py.File(self.h5in, 'w') as io5:
             io5.create_dataset("seqarr", (ntax, nbp), dtype=np.uint8)
-            io5.create_dataset("bootsarr", (ntax, nbp), maxshape=(ntax, None), dtype=np.uint8)
+            io5.create_dataset("bootsarr", (ntax, nbp), dtype=np.uint8)
             io5.create_dataset("bootsmap", (nbp, 2), dtype=np.uint32)
 
             ## if there is a map file, load it into the bootsmap
             if self.files.mapfile:
                 with open(self.files.mapfile, 'r') as inmap:
+                    ## parse the map file from txt and save as dataset
                     maparr = np.genfromtxt(inmap, dtype=np.uint32)
-                    io5["bootsmap"][:] = maparr[:, [0, 3]]  
+                    io5["bootsmap"][:] = maparr[:, [0, 3]]
+
+                    ## parse the span info from maparr and save to dataset
+                    spans = np.zeros((maparr[-1, 0], 2), np.uint64)
+                    spans = get_spans(maparr, spans)
+                    io5.create_dataset("spans", data=spans)
+                    print("  max unlinked SNPs per quartet: {}".format(spans.shape[0]))
 
             ## fill the tmp array from the input phy
             for line, seq in enumerate(spath.readlines()):
@@ -336,6 +341,12 @@ class Quartet(object):
 
             ## memory cleanup
             del tmpseq
+
+            ## get initial array
+
+            LOGGER.info("original seqarr \n %s", io5["seqarr"][:, :20])
+            LOGGER.info("original bootsarr \n %s", io5["bootsarr"][:, :20])
+            LOGGER.info("original bootsmap \n %s", io5["bootsmap"][:20, :])
 
 
 
@@ -382,30 +393,43 @@ class Quartet(object):
 
         ## open view to the in database
         with h5py.File(self.h5in, 'r+') as io5:
-            ## load the seqarr and maparr
+            ## load the original data (seqarr and spans)
             seqarr = io5["seqarr"][:]
-            maparr = io5["bootsmap"][:]
+            spans = io5["spans"][:]            
 
-            ## a new bootsarr and maparr to fill
-            #np.zeros((None, 2), )
+            ## get size of the new locus re-samples array
+            nloci = spans.shape[0]
+            loci = np.random.choice(nloci, nloci)
+            arrlen = get_shape(spans, loci)
+
+            ## create a new bootsarr and maparr to fill
             del io5["bootsarr"]
+            del io5["bootsmap"]
+            newbarr = np.zeros((seqarr.shape[0], arrlen), dtype=np.uint8)
+            newbmap = np.zeros((arrlen, 2), dtype=np.uint32)
+            newbmap[:, 1] = np.arange(1, arrlen+1)
+            
+            ## fill the new arrays            
+            tmpseq, tmpmap = fill_boot(seqarr, newbarr, newbmap, spans, loci)
 
+            ## resolve ambiguous bases randomly. We do this each time so that
+            ## we get different resolutions.
+            if self.resolve_ambigs:
+                tmpseq = resolve_ambigs(tmpseq)
 
-            ## load the maparr as a pandas dataframe
-            mapdf = pd.DataFrame(maparr)
-            ## groupby locus number
-            mapdf.groupby(0)
-            ## sample groups
-            cols = np.random.randint(0, seqarr.shape[1], seqarr.shape[1])
-            ##
-            nsites = 0
-            for idx in xrange(cols.shape[0]):
-                nsites += mapdf.groupby(idx).shape[1]
+            ## convert CATG bases to matrix indices
+            tmpseq[tmpseq == 65] = 0
+            tmpseq[tmpseq == 67] = 1
+            tmpseq[tmpseq == 71] = 2
+            tmpseq[tmpseq == 84] = 3
 
-            ## store bootsarr 
-            io5.create_dataset("bootsarr", data="X1")
+            ## store data sets
+            io5.create_dataset("bootsmap", data=tmpmap)
+            io5.create_dataset("bootsarr", data=tmpseq)
 
-        return nsites
+            LOGGER.info("resampled bootsarr \n %s", io5["bootsarr"][:, :20])
+            LOGGER.info("resampled bootsmap \n %s", io5["bootsmap"][:20, :])
+
 
 
 
@@ -724,12 +748,12 @@ class Quartet(object):
     """.format(opr(self.trees.tnhx), opr(self.trees.wnhx)))
 
         ## print ASCII tree --------------------------------------
-        qtre = ete3.Tree(self.trees.ttre)
+        qtre = ete3.Tree(self.trees.tnhx, format=0)
         qtre.unroot()
         print("""\
   ASCII view of unrooted topology from unweighted analysis
     {}
-    """.format(qtre))
+    """.format(qtre.get_ascii(attributes=["name", "support"]), show_internal=True))
 
         ## print PDF filename & tips -----------------------------
         docslink = "ipyrad.readthedocs.org/cookbook.html"    
@@ -741,6 +765,7 @@ class Quartet(object):
     - {} 
 
     """.format(docslink, citelink))
+
 
 
 
@@ -945,7 +970,7 @@ class Quartet(object):
                 ## get resampled array and set checkpoint
                 if self.checkpoint.arr == 0:
                     if self.files.mapfile:
-                        self.sample_bootseq_array()#_map()
+                        self.sample_bootseq_array_map()
                     else:
                         self.sample_bootseq_array() 
                     self.checkpoint.boots = bidx
@@ -1010,7 +1035,7 @@ class Quartet(object):
             ## remove finished and submit new jobs
             if any(finished):
                 for ikey in curkeys:
-                    if res[ikey].completed:
+                    if res[ikey].ready():
                         if res[ikey].successful():
                             LOGGER.info("cleanup key %s", ikey)
                             ## track finished
@@ -1042,7 +1067,7 @@ class Quartet(object):
                     except StopIteration:
                         continue
             else:
-                time.sleep(0.1)
+                time.sleep(0.01)
 
             ## done is counted on finish, so this means we're done
             if njobs == done:
@@ -1053,7 +1078,7 @@ class Quartet(object):
         if not bidx:
             progressbar(njobs, done, " initial tree | {}".format(elapsed))
         else:
-            progressbar(njobs, done, " boot {:<6} | {}".format(bidx, elapsed))
+            progressbar(njobs, done, " boot {:<7} | {}".format(bidx, elapsed))
         print("")
 
         ## convert to txt file for wQMC
@@ -1131,8 +1156,7 @@ def get_weights(scores):
         weight = np.float32((scores[2]-scores[0]) / 
                             (np.exp(scores[2]-scores[1]) * scores[2]))
     else:
-        #weight = np.float32(0.00001)
-        weight = scores[2]
+        weight = np.float32(0.00001)
     return weight
 
 
@@ -1298,19 +1322,18 @@ def nworker(data, smpchunk, tests):
         best = np.where(qscores == qscores.min())[0]
         #LOGGER.error("\n%s", mats[best][0])
         bidx = tests[best][0]
-        # LOGGER.info("""
-        #     best: %s, 
-        #     bidx: %s, 
-        #     qscores: %s, 
-        #     mats %s
-        #     """, best, bidx, qscores, mats)
+        #LOGGER.info("""
+        #    best: %s, 
+        #    bidx: %s, 
+        #    qscores: %s, 
+        #    mats %s
+        #    """, best, bidx, qscores, mats)
 
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
         iweight = get_weights(qscores)
-        if iweight:
-            rweights[idx] = iweight
-            rquartets[idx] = smpchunk[idx][bidx]            
+        rweights[idx] = iweight
+        rquartets[idx] = smpchunk[idx][bidx]            
         #    LOGGER.error("zero weight: %s :\n %s", qscores, mats[best][0])
 
         ## get dstat from the best (correct) matrix 
@@ -1363,6 +1386,7 @@ def shuffle_cols(seqarr, newarr, cols):
 
 
 ## TODO: this could be numbified by making AMBIGS into two arrays
+## IF SO, pay attention to the numba random seed being different from numpy
 def resolve_ambigs(tmpseq):
     """ returns a seq array with 'RSKYWM' randomly replaced with resolved bases"""
     ## iterate over the bases 'RSKWYM': [82, 83, 75, 87, 89, 77]
@@ -1380,6 +1404,65 @@ def resolve_ambigs(tmpseq):
             else:
                 tmpseq[idx[i], idy[i]] = np.array(res2).view(np.uint8)
     return tmpseq
+
+
+
+@numba.jit(nopython=True)
+def get_spans(maparr, spans):
+    """ get span distance for each locus in original seqarray """
+    ## start at 0, finds change at 1-index of map file
+    bidx = 0
+    
+    ## read through marr and record when locus id changes
+    for idx in xrange(maparr.shape[0]):
+        cur = maparr[idx, 0]
+        if cur != bidx:
+            spans[cur-1, 1] = idx+1
+            spans[cur, 0] = idx+1
+    return spans
+
+
+
+@numba.jit(nopython=True)
+def get_shape(spans, loci):
+    """ get shape of new bootstrap resampled locus array """
+    width = 0
+    for idx in xrange(loci.shape[0]):
+        width += spans[loci[idx], 1] - spans[loci[idx], 0]
+    return width
+    
+
+
+@numba.jit(nopython=True)
+def fill_boot(seqarr, newboot, newmap, spans, loci):
+    """ fills the new bootstrap resampled array """
+    ## column index
+    cidx = 0
+  
+    ## resample each locus
+    for i in xrange(loci.shape[0]):
+        
+        ## grab a random locus's columns
+        x1 = spans[loci[i]][0]
+        x2 = spans[loci[i]][1]
+        cols = seqarr[:, x1:x2]
+
+        ## randomize columns within colsq
+        cord = np.random.choice(cols.shape[1], cols.shape[1], replace=False)
+        rcols = cols[:, cord]
+        
+        ## fill bootarr with n columns from seqarr
+        ## the required length was already measured
+        newboot[:, cidx:cidx+cols.shape[1]] = rcols
+
+        ## fill bootmap with new map info
+        newmap[cidx: cidx+cols.shape[1], 0] = i+1
+        
+        ## advance column index
+        cidx += cols.shape[1]
+
+    ## return the concatenated cols
+    return newboot, newmap
 
 
 
