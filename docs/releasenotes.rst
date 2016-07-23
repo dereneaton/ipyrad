@@ -5,8 +5,6 @@
 Release Notes
 =============
 
-0.3.22
-------
 
 0.3.22
 ------
@@ -22,24 +20,13 @@ Release Notes
 - reworking numba code in svd4tet for speed
 - added debugger to svd4tet
 - numba compiling some funcs, and view superseqs as ints instead of strings gives big speedups
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - fix to statcounter in demultiplex stats
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - improvement to demultiplexing speed
 - releasenotes update
 - minor fix to advanced tutorial
-- minor fix to advanced tutorial
 - updated advanced tutorial
 - forgot to rm tpdir when done
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - cosmetic
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - testing s6
 
 0.3.20
