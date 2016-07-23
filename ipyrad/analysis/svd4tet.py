@@ -340,10 +340,9 @@ class Quartet(object):
             io5["bootsarr"][:] = tmpseq
 
             ## memory cleanup
-            del tmpseq
+            #del tmpseq
 
             ## get initial array
-
             LOGGER.info("original seqarr \n %s", io5["seqarr"][:, :20])
             LOGGER.info("original bootsarr \n %s", io5["bootsarr"][:, :20])
             LOGGER.info("original bootsmap \n %s", io5["bootsmap"][:20, :])
@@ -469,8 +468,11 @@ class Quartet(object):
                                 dtype=np.uint16, chunks=(self.chunksize, 4))
             io5.create_dataset("weights", (self.nquartets,), 
                                 dtype=np.float32, chunks=(self.chunksize, ))
-            io5.create_dataset("dstats", (self.nquartets, 3), 
-                                dtype=np.float32, chunks=(self.chunksize, 3))
+            io5.create_dataset("qstats", (self.nquartets, 3), 
+                                dtype=np.uint32, chunks=(self.chunksize, 3))
+            io5.create_group("qboots")
+
+
 
         ## append to h5 IN array (which also has seqarray) and fill it
         with h5py.File(self.h5in, 'a') as io5:
@@ -487,15 +489,17 @@ class Quartet(object):
             ## fill 1000 at a time for efficiency
             while i < self.nquartets:
                 if self.method != "all":
+                    ## grab the next random 1000
                     qiter = []
-                    while len(qiter) < min(1000, io5["samples"].shape[0]):
+                    while len(qiter) < min(self.chunksize, io5["samples"].shape[0]):
                         qiter.append(
                             random_combination(range(len(self.samples)), 4))
                     dat = np.array(qiter)
                 else:
-                    dat = np.array(list(itertools.islice(qiter, 1000)))
+                    ## grab the next ordered chunksize
+                    dat = np.array(list(itertools.islice(qiter, self.chunksize)))
                 io5["samples"][i:i+dat.shape[0]] = dat
-                i += 1000
+                i += self.chunksize
 
 
 
@@ -904,15 +908,20 @@ class Quartet(object):
 
 
 
-    def insert_to_array(self, start, results):
+    def insert_to_array(self, start, results, bidx):
         """ inputs results from workers into hdf4 array """
-        qrts, wgts, dsts = results
+        qrts, wgts, qsts = results
 
         with h5py.File(self.h5out, 'r+') as out:
             chunk = self.chunksize
             out['quartets'][start:start+chunk] = qrts
             out['weights'][start:start+chunk] = wgts
-            out["dstats"][start:start+chunk] = dsts
+
+            if bidx:
+                out["qboots/b{}".format(bidx)][start:start+chunk] = qsts
+            else:
+                out["qstats"] = qsts
+
         ## save checkpoint
         #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
 
@@ -949,7 +958,8 @@ class Quartet(object):
             ## this could take a long time. Calls the parallel client.
             if self.method == "equal":
                 self.store_equal_samples()
-            
+           
+
         ## run the full inference or print finished prog bar if it's done
         if not self.checkpoint.boots:
             print("  inferring {} x 3 quartet trees".format(self.nquartets))
@@ -1000,6 +1010,13 @@ class Quartet(object):
         LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
                 self.chunksize, self.checkpoint.arr, self.nquartets, njobs)
 
+        ## if bootstrap create an output array for results
+        with h5py.File(self.h5out, 'r+') as out:
+            out["qboots"].create_dataset("b{}".format(bidx), 
+                                         (self.nquartets, 3), 
+                                         dtype=np.uint32, 
+                                         chunks=(self.chunksize, 3))
+
         ## a distributor for engine jobs
         lbview = ipyclient.load_balanced_view()
 
@@ -1042,7 +1059,7 @@ class Quartet(object):
                             done += 1
                             ## insert results into hdf5 data base
                             results = res[ikey].get(0)
-                            self.insert_to_array(ikey, results)
+                            self.insert_to_array(ikey, results, bidx)
                             ## purge memory of the old one
                             del res[ikey]
                         else:
@@ -1161,33 +1178,73 @@ def get_weights(scores):
 
 
 
-@numba.jit('Tuple((f4,f4,f4))(u4[:,:])', nopython=True)
-def abba_baba(mat):
+@numba.jit('u4[:](u4[:,:])', nopython=True)
+def count_snps(mat):
     """ 
     calculate dstats from the count array and return as a float tuple 
     """
+
     ## get all the abba sites from mat
-    baba = 0
+    snps = np.zeros(3, dtype=np.uint32)
+
+    ## get concordant pis sites
+    snps[0] = np.uint32(\
+           mat[0, 5] + mat[0, 10] + mat[0, 15] + \
+           mat[5, 0] + mat[5, 10] + mat[5, 15] + \
+           mat[10, 0] + mat[10, 5] + mat[10, 15] + \
+           mat[15, 0] + mat[15, 5] + mat[15, 10])
+
+    ## get baba sites
+    #baba = np.uint32(0)
     for i in range(16):
         if i % 5:
-            baba += mat[i, i]
-    baba = np.float32(baba)
+            snps[1] += mat[i, i]
     
     ## get all the baba sites from mat
-    abba = np.float32(\
-            mat[1, 4] + mat[2, 8] + mat[3, 12] +\
-            mat[4, 1] + mat[6, 9] + mat[7, 13] +\
-            mat[8, 2] + mat[9, 6] + mat[11, 14] +\
-            mat[12, 3] + mat[13, 7] + mat[14, 11])
-     
-    ## calculate D, protect from ZeroDivision
-    denom = abba + baba
-    if denom:
-        dstat = (abba-baba)/denom
-    else:
-        dstat = 0
+    snps[2] = mat[1, 4] + mat[2, 8] + mat[3, 12] +\
+              mat[4, 1] + mat[6, 9] + mat[7, 13] +\
+              mat[8, 2] + mat[9, 6] + mat[11, 14] +\
+              mat[12, 3] + mat[13, 7] + mat[14, 11]
+    return snps
+
+
+
+# @numba.jit('u4[:,:](u4[:,:])', nopython=True)
+# def abba_baba(mat):
+#     """ 
+#     calculate dstats from the count array and return as a float tuple 
+#     """
+
+#     ## get all the abba sites from mat
+#     snps = np.zeros(3, dtype=np.uint32)
+
+#     ## get concordant pis sites
+#     aabb = np.uint32(\
+#            mat[0, 5] + mat[0, 10] + mat[0, 15] + \
+#            mat[5, 0] + mat[5, 10] + mat[5, 15] + \
+#            mat[10, 0] + mat[10, 5] + mat[10, 15] + \
+#            mat[15, 0] + mat[15, 5] + mat[15, 10])
+
+#     ## get baba sites
+#     baba = 0
+#     for i in range(16):
+#         if i % 5:
+#             baba += mat[i, i]
     
-    return abba, baba, dstat
+#     ## get all the baba sites from mat
+#     abba =  mat[1, 4] + mat[2, 8] + mat[3, 12] +\
+#             mat[4, 1] + mat[6, 9] + mat[7, 13] +\
+#             mat[8, 2] + mat[9, 6] + mat[11, 14] +\
+#             mat[12, 3] + mat[13, 7] + mat[14, 11]
+     
+#     ## calculate D, protect from ZeroDivision
+#     #denom = abba + baba
+#     #if denom:
+#     #    dstat = np.float32(abba-baba)/np.float32(denom)
+#     #else:
+#     #    dstat = np.float32(0)
+
+#     return aabb, abba, baba
 
         
 
@@ -1242,6 +1299,70 @@ def subsample_snps_map(seqchunk, rmask, nmask, maparr):
 
 
 
+@numba.jit('u4[:,:,:](u1[:,:])', nopython=True)
+def chunk_to_matrices(narr):
+    """ 
+    numba compiled code to get matrix fast.
+    arr is a 4 x N seq matrix converted to np.int8
+    I convert the numbers for ATGC into their respective index for the MAT
+    matrix, and leave all others as high numbers, i.e., -==45, N==78. 
+    """
+
+    ## get seq alignment and create an empty array for filling
+    mats = np.zeros((3, 16, 16), dtype=np.uint32)        
+
+    ## replace ints with small ints that index their place in the 
+    ## 16x16. If not replaced, the existing ints are all very large
+    ## and the column will be excluded.
+    for x in xrange(narr.shape[1]):
+        i = narr[:, x]
+        if np.sum(i) < 16:
+            mats[0, i[0]*4:(i[0]+4)*4]\
+                    [i[1]]\
+                    [i[2]*4:(i[2]+4)*4]\
+                    [i[3]] += 1
+                
+    ## get matrix 2
+    mats[1, 0:4, 0:4] = mats[0, 0].reshape(4, 4)
+    mats[1, 0:4, 4:8] = mats[0, 1].reshape(4, 4)
+    mats[1, 0:4, 8:12] = mats[0, 2].reshape(4, 4)
+    mats[1, 0:4, 12:16] = mats[0, 3].reshape(4, 4)
+    mats[1, 4:8, 0:4] = mats[0, 4].reshape(4, 4)
+    mats[1, 4:8, 4:8] = mats[0, 5].reshape(4, 4)
+    mats[1, 4:8, 8:12] = mats[0, 6].reshape(4, 4)
+    mats[1, 4:8, 12:16] = mats[0, 7].reshape(4, 4)
+    mats[1, 8:12, 0:4] = mats[0, 8].reshape(4, 4)
+    mats[1, 8:12, 4:8] = mats[0, 9].reshape(4, 4)
+    mats[1, 8:12, 8:12] = mats[0, 10].reshape(4, 4)
+    mats[1, 8:12, 12:16] = mats[0, 11].reshape(4, 4)
+    mats[1, 12:16, 0:4] = mats[0, 12].reshape(4, 4)
+    mats[1, 12:16, 4:8] = mats[0, 13].reshape(4, 4)
+    mats[1, 12:16, 8:12] = mats[0, 14].reshape(4, 4)
+    mats[1, 12:16, 12:16] = mats[0, 15].reshape(4, 4)
+    
+    ## get matsrix 3
+    mats[2, 0:4, 0:4] = mats[0, 0].reshape(4, 4).T
+    mats[2, 0:4, 4:8] = mats[0, 1].reshape(4, 4).T
+    mats[2, 0:4, 8:12] = mats[0, 2].reshape(4, 4).T
+    mats[2, 0:4, 12:16] = mats[0, 3].reshape(4, 4).T
+    mats[2, 4:8, 0:4] = mats[0, 4].reshape(4, 4).T
+    mats[2, 4:8, 4:8] = mats[0, 5].reshape(4, 4).T
+    mats[2, 4:8, 8:12] = mats[0, 6].reshape(4, 4).T
+    mats[2, 4:8, 12:16] = mats[0, 7].reshape(4, 4).T
+    mats[2, 8:12, 0:4] = mats[0, 8].reshape(4, 4).T
+    mats[2, 8:12, 4:8] = mats[0, 9].reshape(4, 4).T
+    mats[2, 8:12, 8:12] = mats[0, 10].reshape(4, 4).T
+    mats[2, 8:12, 12:16] = mats[0, 11].reshape(4, 4).T
+    mats[2, 12:16, 0:4] = mats[0, 12].reshape(4, 4).T
+    mats[2, 12:16, 4:8] = mats[0, 13].reshape(4, 4).T
+    mats[2, 12:16, 8:12] = mats[0, 14].reshape(4, 4).T
+    mats[2, 12:16, 12:16] = mats[0, 15].reshape(4, 4).T  
+                
+    return mats
+
+
+
+
 @numba.jit('u4[:,:](u1[:,:])', nopython=True)
 def chunk_to_matrix(narr):
     """ 
@@ -1268,6 +1389,42 @@ def chunk_to_matrix(narr):
 
 
 
+#@numba.jit(nopython=True)
+def calculate(seqnon, tests):
+    """ groups together several numba compiled funcs """
+
+    ## create empty matrices
+
+    mats = chunk_to_matrices(seqnon[[tests[0]]])
+
+    ## epmty svdscores for each arrangement of seqchunk
+    qscores = np.zeros(3, dtype=np.float32)
+
+    for test in range(3):
+        ## get svd scores
+        tmpscore = np.linalg.svd(mats[test].astype(np.float32))[1]
+        #qscores[test] = np.sqrt(tmpscore[11:]).sum()
+        qscores[test] = np.sqrt(np.sum(tmpscore[11:]**2))
+
+    ## sort to find the best qorder
+    best = np.where(qscores == qscores.min())[0]
+    #LOGGER.error("\n%s", mats[best][0])
+    bidx = tests[best][0]
+    ## get abba baba
+    qsnps = count_snps(mats[best][0])
+
+    LOGGER.info("""
+        best: %s, 
+        bidx: %s, 
+        qscores: %s, 
+        qsnps: %s
+        mats \n %s
+        """, best, bidx, qscores, qsnps, mats)
+
+    return bidx, qscores, qsnps
+
+
+
 ## TODO: store stats for each quartet (nSNPs, etc.)
 #@numba.jit(nopython=True)
 def nworker(data, smpchunk, tests):
@@ -1276,15 +1433,18 @@ def nworker(data, smpchunk, tests):
     ## open the seqarray view, the modified array is in bootsarr
     inh5 = h5py.File(data.h5in, 'r')
     seqview = inh5["bootsarr"][:]
+    LOGGER.info("still bootsarr here ? %s", seqview)
 
     ## choose function based on mapfile arg
     if data.files.mapfile:
         subsample = subsample_snps_map
         maparr = inh5["bootsmap"][:]
     else:
+        LOGGER.info("no map")
         subsample = subsample_snps
         maparr = np.zeros((2, 2), dtype=np.uint32)
 
+    sys.exit()
     ## create an N-mask array of all seq cols
     nall_mask = seqview[:] == 78
 
@@ -1292,7 +1452,7 @@ def nworker(data, smpchunk, tests):
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
     rweights = np.zeros(smpchunk.shape[0], dtype=np.float32)
     rmask = np.ones(seqview.shape[1], dtype=np.bool_)
-    rdstats = np.zeros((smpchunk.shape[0], 3), dtype=np.float32)
+    rdstats = np.zeros((smpchunk.shape[0], 3), dtype=np.uint32)
 
     ## fill arrays with results using numba funcs
     for idx in xrange(smpchunk.shape[0]):
@@ -1303,31 +1463,15 @@ def nworker(data, smpchunk, tests):
         ## get N-containing columns in 4-array
         nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)        
 
+        LOGGER.info("nmask %s", nmask)
         ## remove Ncols from seqchunk & sub-sample unlinked SNPs
+        LOGGER.info("seqchunk %s", seqchunk)
         seqnon = subsample(seqchunk, rmask, nmask, maparr[:, 0])
+        LOGGER.info("seqnon %s", seqnon)        
         #LOGGER.info("before sub: %s, after %s", seqchunk.shape, seqnon.shape)
 
-        ## get svdscores for each arrangement of seqchunk
-        qscores = np.zeros(3, dtype=np.float32)
-        mats = np.zeros((3, 16, 16), dtype=np.uint32)
-        for test in range(3):
-            #LOGGER.error("%s", seqnon[tests[test]].shape)
-            mats[test] = chunk_to_matrix(seqnon[tests[test]])
-
-            ## get svd scores
-            tmpscore = np.linalg.svd(mats[test].astype(np.float32))[1]
-            qscores[test] = np.sqrt(tmpscore[11:]).sum()
-
-        ## sort to find the best qorder
-        best = np.where(qscores == qscores.min())[0]
-        #LOGGER.error("\n%s", mats[best][0])
-        bidx = tests[best][0]
-        #LOGGER.info("""
-        #    best: %s, 
-        #    bidx: %s, 
-        #    qscores: %s, 
-        #    mats %s
-        #    """, best, bidx, qscores, mats)
+        ## get matrices
+        bidx, qscores, dstats = calculate(seqnon, tests)
 
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
@@ -1338,7 +1482,7 @@ def nworker(data, smpchunk, tests):
 
         ## get dstat from the best (correct) matrix 
         ## (or should we get all three?) [option]
-        rdstats[idx] = abba_baba(mats[best][0])
+        rdstats[idx] = dstats 
 
     #return 
     return rquartets, rweights, rdstats 
