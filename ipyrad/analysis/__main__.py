@@ -17,7 +17,7 @@ import atexit
 import ipyrad.analysis as ipa
 
 # pylint: disable=W0212
-
+# pylint: disable=C0301
 
 LOGGER = logging.getLogger(__name__)
 
@@ -160,10 +160,10 @@ def main():
     ip.__interactive__ = 0
 
     header = \
-    "\n --------------------------------------------------"+\
+    "\n ---------------------------------------------------------------------"+\
     "\n  Analysis tools for ipyrad [v.{}]".format(ip.__version__)+\
     "\n  svd4tet -- fast quartet and tree inference "+\
-    "\n --------------------------------------------------"
+    "\n ---------------------------------------------------------------------"
     print(header)
 
     ## parse params file input (returns to stdout if --help or --version)
@@ -186,8 +186,18 @@ def main():
 
     ## else create a new tmp assembly for the seqarray-----------------
     else:
-        ## create new JSON (Assembly) object
-        data = ipa.svd4tet.Quartet(args.name, args.outdir, args.method)
+        ## create new Quartet class Object if it doesn't exist
+        newjson = os.path.join(args.outdir, args.name+'.svd.json')
+        if (not os.path.exists(newjson)) or args.force:
+            data = ipa.svd4tet.Quartet(args.name, args.outdir, args.method)
+
+        else:
+            sys.exit("""
+    Error: svd4tet analysis '{}' already exists in {} 
+    Use the force argument (-f) to overwrite old analysis files, or,
+    Use the JSON argument (-j {}/{}.svd.json) 
+    to continue analysis of '{}' from last checkpoint.
+    """.format(args.name, args.outdir, args.outdir, args.name, args.name))
 
         ## if more arguments for method 
         if args.nquartets:
@@ -201,10 +211,12 @@ def main():
         if args.tree:
             data.files.treefile = args.tree
 
-        ## clear any existing databases
-        for h5file in [data.h5in, data.h5out]:
-            if os.path.exists(h5file):
-                os.remove(h5file)
+        ## clear any existing hdf5 databases
+        oldfiles = [data.h5in, data.h5out, data.files.qdump] + data.trees.values()
+        for oldfile in oldfiles:
+            if oldfile:
+                if os.path.exists(oldfile):
+                    os.remove(oldfile)
 
         ## get seqfile and names from seqfile
         data.files.seqfile = args.seq
