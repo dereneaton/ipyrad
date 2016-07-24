@@ -467,11 +467,10 @@ class Quartet(object):
             io5.create_dataset("quartets", (self.nquartets, 4), 
                                 dtype=np.uint16, chunks=(self.chunksize, 4))
             io5.create_dataset("weights", (self.nquartets,), 
-                                dtype=np.float32, chunks=(self.chunksize, ))
-            io5.create_dataset("qstats", (self.nquartets, 3), 
-                                dtype=np.uint32, chunks=(self.chunksize, 3))
+                                dtype=np.float64, chunks=(self.chunksize, ))
+            io5.create_dataset("qstats", (self.nquartets, 4), 
+                                dtype=np.uint32, chunks=(self.chunksize, 4))
             io5.create_group("qboots")
-
 
 
         ## append to h5 IN array (which also has seqarray) and fill it
@@ -666,19 +665,34 @@ class Quartet(object):
 
 
     def dump_qmc(self):
-        """ prints the quartets to a file formatted for wQMC """
+        """ 
+        Makes a reduced array that excludes quartets with no information and 
+        prints the quartets and weights to a file formatted for wQMC 
+        """
         ## open the h5 database
         io5 = h5py.File(self.h5out, 'r')
 
         ## create an output file for writing
         self.files.qdump = os.path.join(self.dirs, self.name+".quartets.txt")
-        outfile = open(self.files.qdump, 'w')
         LOGGER.info("qdump file %s", self.files.qdump)
+        outfile = open(self.files.qdump, 'w')
 
-        ## todo: should pull quarts order in randomly
+        ## todo: should pull quarts order in randomly?
         for idx in xrange(0, self.nquartets, self.chunksize):
-            quarts = [list(j) for j in io5["quartets"][idx:idx+self.chunksize]]
-            weight = io5["weights"][idx:idx+self.chunksize]
+            ## get mask of zero weight quartets
+            mask = io5["weights"][idx:idx+self.chunksize] != 0
+            LOGGER.info("exluded = %s, mask shape %s", 
+                        self.chunksize - mask.shape[0], mask.shape)
+
+            ## apply mask
+            LOGGER.info('q shape %s', io5["quartets"][idx:idx+self.chunksize].shape)
+            masked_quartets = io5["quartets"][idx:idx+self.chunksize, :][mask, :]
+
+
+            quarts = [list(j) for j in masked_quartets]
+            weight = io5["weights"][idx:idx+self.chunksize][mask]
+
+            ## format and print
             chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
                                                     in zip(quarts, weight)]
             outfile.write("\n".join(chunk)+"\n")
@@ -709,7 +723,7 @@ class Quartet(object):
 
 
 
-    def write_output_splash(self, with_boots=1):
+    def write_output_splash(self, with_boots):
         """ write final tree files """
         ## create tree with support values on edges
         self.write_supports(with_boots)
@@ -725,54 +739,36 @@ class Quartet(object):
         #self.quickfig()
 
         ## print finished tree information ---------------------
-        print("""
-  Final quartet-joined and weighted quartet-joined (.w.) tree files:
-    - {}
-    - {}
-    """.format(opr(self.trees.ttre), opr(self.trees.wtre)))
+        print(FINALTREES.format(opr(self.trees.ttre), opr(self.trees.wtre)))
 
         ## print bootstrap information --------------------------
         if with_boots:
-            print("""\
-  Bootstrap trees:
-    - {}
-    - {}
-
-  Final tree with bootstrap support as edge lengths:
-    - {}
-    - {}
-    """.format(opr(self.trees.tboots), opr(self.trees.wboots), 
+            print(BOOTTREES.format(opr(self.trees.tboots), opr(self.trees.wboots), 
                opr(self.trees.tbtre), opr(self.trees.wbtre)))
 
         ## print rich information--------------------------------
-        print("""\
-  Final tree with rich information in NHX format:
-    - {}
-    - {}
-    """.format(opr(self.trees.tnhx), opr(self.trees.wnhx)))
+        print(FINAL_RICH.format(opr(self.trees.tnhx), opr(self.trees.wnhx)))
 
         ## print ASCII tree --------------------------------------
-        qtre = ete3.Tree(self.trees.tnhx, format=0)
-        qtre.unroot()
-        print("""\
-  ASCII view of unrooted topology from unweighted analysis
-    {}
-    """.format(qtre.get_ascii(attributes=["name", "support"]), show_internal=True))
+        if with_boots:
+            qtre = ete3.Tree(self.trees.wnhx, format=0)
+            qtre.unroot()
+            print(ASCII_TREE.format(
+                    qtre.get_ascii(attributes=["name", "dist"], 
+                                   show_internal=True)))
+        else:
+            qtre = ete3.Tree(self.trees.ttre, format=0)
+            qtre.unroot()
+            print(qtre, "\n")
 
         ## print PDF filename & tips -----------------------------
         docslink = "ipyrad.readthedocs.org/cookbook.html"    
         citelink = "ipyrad.readthedocs.org/svd4tet.html"
-        print("""\
-  * For tips on plotting these trees in R see: 
-    - {}     
-  * For tips on citing this software see: 
-    - {} 
-
-    """.format(docslink, citelink))
+        print(LINKS.format(docslink, citelink))
 
 
 
-
+    ## TODO: Parallelize this, and try to speed it up...
     def write_supports(self, with_boots):
         """ writes support values as edge labels on unrooted tree """
         ## get name indices
@@ -918,9 +914,9 @@ class Quartet(object):
             out['weights'][start:start+chunk] = wgts
 
             if bidx:
-                out["qboots/b{}".format(bidx)][start:start+chunk] = qsts
+                out["qboots/b{}".format(bidx-1)][start:start+chunk] = qsts
             else:
-                out["qstats"] = qsts
+                out["qstats"][start:start+chunk] = qsts
 
         ## save checkpoint
         #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
@@ -1013,9 +1009,9 @@ class Quartet(object):
         ## if bootstrap create an output array for results
         with h5py.File(self.h5out, 'r+') as out:
             out["qboots"].create_dataset("b{}".format(bidx), 
-                                         (self.nquartets, 3), 
+                                         (self.nquartets, 4), 
                                          dtype=np.uint32, 
-                                         chunks=(self.chunksize, 3))
+                                         chunks=(self.chunksize, 4))
 
         ## a distributor for engine jobs
         lbview = ipyclient.load_balanced_view()
@@ -1101,7 +1097,6 @@ class Quartet(object):
         ## convert to txt file for wQMC
         self.dump_qmc()
 
-
         ## send to qmc
         if not bidx:
             self.run_qmc(0)
@@ -1160,7 +1155,7 @@ def n_choose_k(n, k):
 #############################################################################
 #############################################################################
 
-@numba.jit('f4(f4[:])', nopython=True)
+@numba.jit('f8(f8[:])', nopython=True)
 def get_weights(scores):
     """ 
     calculates quartet weights from ordered svd scores. Following 
@@ -1170,10 +1165,10 @@ def get_weights(scores):
     scores.sort()
     ## calculate weight given the svd scores
     if scores[2]:
-        weight = np.float32((scores[2]-scores[0]) / 
-                            (np.exp(scores[2]-scores[1]) * scores[2]))
+        weight = (scores[2]-scores[0]) / \
+                 (np.exp(scores[2]-scores[1]) * scores[2])
     else:
-        weight = np.float32(0.00001)
+        weight = 0
     return weight
 
 
@@ -1184,72 +1179,37 @@ def count_snps(mat):
     calculate dstats from the count array and return as a float tuple 
     """
 
-    ## get all the abba sites from mat
-    snps = np.zeros(3, dtype=np.uint32)
+    ## get [aabb, baba, abba, aaab] 
+    snps = np.zeros(4, dtype=np.uint32)
 
-    ## get concordant pis sites
+    ## get concordant (aabb) pis sites
     snps[0] = np.uint32(\
            mat[0, 5] + mat[0, 10] + mat[0, 15] + \
            mat[5, 0] + mat[5, 10] + mat[5, 15] + \
            mat[10, 0] + mat[10, 5] + mat[10, 15] + \
            mat[15, 0] + mat[15, 5] + mat[15, 10])
 
-    ## get baba sites
-    #baba = np.uint32(0)
+    ## get discordant (baba) sites
     for i in range(16):
         if i % 5:
             snps[1] += mat[i, i]
     
-    ## get all the baba sites from mat
+    ## get discordant (abba) sites
     snps[2] = mat[1, 4] + mat[2, 8] + mat[3, 12] +\
               mat[4, 1] + mat[6, 9] + mat[7, 13] +\
               mat[8, 2] + mat[9, 6] + mat[11, 14] +\
               mat[12, 3] + mat[13, 7] + mat[14, 11]
+
+    ## get autapomorphy sites
+    snps[3] = (mat.sum() - np.diag(mat).sum()) - snps[2]
+
     return snps
 
 
-
-# @numba.jit('u4[:,:](u4[:,:])', nopython=True)
-# def abba_baba(mat):
-#     """ 
-#     calculate dstats from the count array and return as a float tuple 
-#     """
-
-#     ## get all the abba sites from mat
-#     snps = np.zeros(3, dtype=np.uint32)
-
-#     ## get concordant pis sites
-#     aabb = np.uint32(\
-#            mat[0, 5] + mat[0, 10] + mat[0, 15] + \
-#            mat[5, 0] + mat[5, 10] + mat[5, 15] + \
-#            mat[10, 0] + mat[10, 5] + mat[10, 15] + \
-#            mat[15, 0] + mat[15, 5] + mat[15, 10])
-
-#     ## get baba sites
-#     baba = 0
-#     for i in range(16):
-#         if i % 5:
-#             baba += mat[i, i]
-    
-#     ## get all the baba sites from mat
-#     abba =  mat[1, 4] + mat[2, 8] + mat[3, 12] +\
-#             mat[4, 1] + mat[6, 9] + mat[7, 13] +\
-#             mat[8, 2] + mat[9, 6] + mat[11, 14] +\
-#             mat[12, 3] + mat[13, 7] + mat[14, 11]
-     
-#     ## calculate D, protect from ZeroDivision
-#     #denom = abba + baba
-#     #if denom:
-#     #    dstat = np.float32(abba-baba)/np.float32(denom)
-#     #else:
-#     #    dstat = np.float32(0)
-
-#     return aabb, abba, baba
-
         
 
-@numba.jit('u1[:,:](u1[:,:],b1[:],b1[:],u4[:])', nopython=True)
-def subsample_snps(seqchunk, rmask, nmask, maparr):
+@numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
+def subsample_snps(seqchunk, nmask, maparr):
     """ 
     removes ncolumns from snparray prior to matrix calculation, and 
     subsamples 'linked' snps (those from the same RAD locus) such that
@@ -1257,26 +1217,33 @@ def subsample_snps(seqchunk, rmask, nmask, maparr):
     comes from the 'map' array (map file). 
     """
     ## mask columns that contain Ns
+    rmask = np.ones(seqchunk.shape[1], dtype=np.bool_)
+    #LOGGER.info("rmask : %s %s", rmask.shape, rmask.sum())
+
     for idx in xrange(rmask.shape[0]):
         if nmask[idx]: 
             rmask[idx] = False
-    
+    #LOGGER.info("rmasked : %s %s", rmask.shape, rmask.sum())    
+
     ## apply mask
     newarr = seqchunk[:, rmask]
-    
+
     ## return smaller Nmasked array
     return newarr
 
 
 
-@numba.jit('u1[:,:](u1[:,:],b1[:],b1[:],u4[:])', nopython=True)
-def subsample_snps_map(seqchunk, rmask, nmask, maparr):
+@numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
+def subsample_snps_map(seqchunk, nmask, maparr):
     """ 
     removes ncolumns from snparray prior to matrix calculation, and 
     subsamples 'linked' snps (those from the same RAD locus) such that
     for these four samples only 1 SNP per locus is kept. This information
     comes from the 'map' array (map file). 
     """
+    ## mask columns that contain Ns
+    rmask = np.ones(seqchunk.shape[1], dtype=np.bool_)
+
     ## apply mask to the mapfile
     last_snp = 0
     for idx in xrange(rmask.shape[0]):
@@ -1363,69 +1330,41 @@ def chunk_to_matrices(narr):
 
 
 
-@numba.jit('u4[:,:](u1[:,:])', nopython=True)
-def chunk_to_matrix(narr):
-    """ 
-    numba compiled code to get matrix fast.
-    arr is a 4 x N seq matrix converted to np.int8
-    I convert the numbers for ATGC into their respective index for the MAT
-    matrix, and leave all others as high numbers, i.e., -==45, N==78. 
-    """
-
-    ## get seq alignment and create an empty array for filling
-    mat = np.zeros((16, 16), dtype=np.uint32)
-
-    ## replace ints with small ints that index their place in the 
-    ## 16x16. If not replaced, the existing ints are all very large
-    ## and the column will be excluded.
-    for x in xrange(narr.shape[1]):
-        i = narr[:, x]
-        if np.sum(i) < 16:
-            mat[i[0]*4:(i[0]+4)*4]\
-               [i[1]]\
-               [i[2]*4:(i[2]+4)*4]\
-               [i[3]] += 1
-    return mat
-
-
-
-#@numba.jit(nopython=True)
+@numba.jit(nopython=True)
 def calculate(seqnon, tests):
     """ groups together several numba compiled funcs """
 
     ## create empty matrices
-
-    mats = chunk_to_matrices(seqnon[[tests[0]]])
+    #LOGGER.info("tests[0] %s", tests[0])
+    #LOGGER.info('seqnon[[tests[0]]] %s', seqnon[[tests[0]]])
+    mats = chunk_to_matrices(seqnon[tests[0]])
 
     ## epmty svdscores for each arrangement of seqchunk
-    qscores = np.zeros(3, dtype=np.float32)
+    qscores = np.zeros(3, dtype=np.float64)
 
     for test in range(3):
         ## get svd scores
-        tmpscore = np.linalg.svd(mats[test].astype(np.float32))[1]
+        tmpscore = np.linalg.svd(mats[test].astype(np.float64))[1]
         #qscores[test] = np.sqrt(tmpscore[11:]).sum()
         qscores[test] = np.sqrt(np.sum(tmpscore[11:]**2))
 
     ## sort to find the best qorder
     best = np.where(qscores == qscores.min())[0]
-    #LOGGER.error("\n%s", mats[best][0])
     bidx = tests[best][0]
-    ## get abba baba
     qsnps = count_snps(mats[best][0])
 
-    LOGGER.info("""
-        best: %s, 
-        bidx: %s, 
-        qscores: %s, 
-        qsnps: %s
-        mats \n %s
-        """, best, bidx, qscores, qsnps, mats)
+    # LOGGER.info("""
+    #     best: %s, 
+    #     bidx: %s, 
+    #     qscores: %s, 
+    #     qsnps: %s
+    #     mats \n %s
+    #     """, best, bidx, qscores, qsnps, mats)
 
     return bidx, qscores, qsnps
 
 
 
-## TODO: store stats for each quartet (nSNPs, etc.)
 #@numba.jit(nopython=True)
 def nworker(data, smpchunk, tests):
     """ The workhorse function. All numba. """
@@ -1433,26 +1372,28 @@ def nworker(data, smpchunk, tests):
     ## open the seqarray view, the modified array is in bootsarr
     inh5 = h5py.File(data.h5in, 'r')
     seqview = inh5["bootsarr"][:]
-    LOGGER.info("still bootsarr here ? %s", seqview)
 
     ## choose function based on mapfile arg
     if data.files.mapfile:
         subsample = subsample_snps_map
         maparr = inh5["bootsmap"][:]
     else:
-        LOGGER.info("no map")
         subsample = subsample_snps
         maparr = np.zeros((2, 2), dtype=np.uint32)
 
-    sys.exit()
     ## create an N-mask array of all seq cols
     nall_mask = seqview[:] == 78
 
+    ## numba wrap everythin below this ---------------------------------
+    ## just need to check that mine is faster than nall_mask w/ axis
+
     ## get the input arrays ready
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
-    rweights = np.zeros(smpchunk.shape[0], dtype=np.float32)
-    rmask = np.ones(seqview.shape[1], dtype=np.bool_)
-    rdstats = np.zeros((smpchunk.shape[0], 3), dtype=np.uint32)
+    rweights = np.zeros(smpchunk.shape[0], dtype=np.float64)
+    rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
+
+    ## record how many quartets have no information
+    excluded = 0
 
     ## fill arrays with results using numba funcs
     for idx in xrange(smpchunk.shape[0]):
@@ -1461,29 +1402,42 @@ def nworker(data, smpchunk, tests):
         seqchunk = seqview[sidx]
 
         ## get N-containing columns in 4-array
-        nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)        
+        nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
+        #LOGGER.info('not N-masked sites: %s', nmask.sum())
 
-        LOGGER.info("nmask %s", nmask)
         ## remove Ncols from seqchunk & sub-sample unlinked SNPs
-        LOGGER.info("seqchunk %s", seqchunk)
-        seqnon = subsample(seqchunk, rmask, nmask, maparr[:, 0])
-        LOGGER.info("seqnon %s", seqnon)        
+        #LOGGER.info("seqchunk %s", seqchunk.shape)
+        seqnon = subsample(seqchunk, nmask, maparr[:, 0])
+        #LOGGER.info("seqnon sites %s", seqnon.shape)
         #LOGGER.info("before sub: %s, after %s", seqchunk.shape, seqnon.shape)
 
-        ## get matrices
-        bidx, qscores, dstats = calculate(seqnon, tests)
+        ## get matrices if there are any shared SNPs
+        if seqnon.shape[1]:
+            ## returns best-tree index, qscores, and qstats
+            bidx, qscores, qstats = calculate(seqnon, tests)
 
-        ## get weights from the three scores sorted. 
-        ## Only save to file if the quartet has information
-        iweight = get_weights(qscores)
-        rweights[idx] = iweight
-        rquartets[idx] = smpchunk[idx][bidx]            
-        #    LOGGER.error("zero weight: %s :\n %s", qscores, mats[best][0])
+            ## get weights from the three scores sorted. 
+            ## Only save to file if the quartet has information
+            rdstats[idx] = qstats 
+            
+            iwgt = get_weights(qscores)
+            if iwgt:
+                rweights[idx] = iwgt
+                rquartets[idx] = smpchunk[idx][bidx]
+                LOGGER.info("""\n
+                    ------------------------------------
+                    bidx: %s
+                    qstats: %s, 
+                    weight: %s, 
+                    scores: %s
+                    ------------------------------------
+                    """,
+                    bidx, qstats, rweights[idx], qscores)
+            else:
+                excluded += 1
 
-        ## get dstat from the best (correct) matrix 
-        ## (or should we get all three?) [option]
-        rdstats[idx] = dstats 
-
+    LOGGER.error("excluded quartets %s", excluded)
+    LOGGER.warning("excluded quartets %s", excluded)    
     #return 
     return rquartets, rweights, rdstats 
 
@@ -1610,6 +1564,8 @@ def fill_boot(seqarr, newboot, newmap, spans, loci):
 
 
 
+## thoughts on this... we need to re-estimate chunksize given whatever
+## new parallel setup is passed in. Start from arr checkpoint to end. 
 def load_json(path):
     """ Load a json serialized Quartet Class object """
 
@@ -1715,6 +1671,43 @@ def get_sampled(data, tre, node, names):
 
 
 
+## GLOBALS #############################################################
+
+FINALTREES = """
+  Final quartet-joined and weighted quartet-joined (.w.) tree files:
+    - {}
+    - {}
+    """
+
+BOOTTREES = """\
+  Bootstrap trees:
+    - {}
+    - {}
+
+  Final tree with bootstrap support as edge lengths:
+    - {}
+    - {}
+    """
+
+FINAL_RICH = """\
+  Final tree with rich information in NHX format:
+    - {}
+    - {}
+    """
+
+ASCII_TREE = """\
+  ASCII view of unrooted topology from the weighted analysis
+    {}
+    """
+
+LINKS = """\
+  * For tips on plotting these trees in R see: 
+    - {}     
+  * For tips on citing this software see: 
+    - {} 
+
+    """
+########################################################################
 
 
 if __name__ == "__main__":
@@ -1725,7 +1718,7 @@ if __name__ == "__main__":
     #import ipyparallel as ipp
 
     #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/cli/cli.json")
-    DATA = ipyrad.load_json("~/Documents/ipyrad/tests/iptutorial/cli.json")
+    #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/iptutorial/cli.json")
     ## run
-    ipa.svd4tet.wrapper(DATA, nboots=10, method='equal', nquarts=50, force=True)
+    #ipa.svd4tet.wrapper(DATA, nboots=10, method='equal', nquarts=50, force=True)
 
