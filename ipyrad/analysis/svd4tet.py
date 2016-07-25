@@ -1384,8 +1384,8 @@ def nworker(data, smpchunk, tests):
     ## create an N-mask array of all seq cols
     nall_mask = seqview[:] == 78
 
-    ## numba wrap everythin below this ---------------------------------
-    ## just need to check that mine is faster than nall_mask w/ axis
+    ## tried numba compiling everythign below here, but was not faster
+    ## than making nall_mask w/ axis arg in numpy
 
     ## get the input arrays ready
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
@@ -1570,22 +1570,24 @@ def load_json(path):
     """ Load a json serialized Quartet Class object """
 
     ## load the JSON string and try with name+.json
-    fullj = ""
-    checkfor = [path+".svd.json", path]
-    for inpath in checkfor:
-        inpath = inpath.replace("~", os.path.expanduser("~"))
-        try:
-            ## load in the JSON object
-            with open(inpath, 'r') as infile:
-                fullj = json.loads(infile.read())
-        except IOError:
-            pass
+    if not path.endswith(".svd.json"):
+        path += ".svd.json"
 
-    ## raise an error if json not loaded
-    if not fullj:
-        raise IPyradWarningExit("""
+    ## expand user
+    path = path.replace("~", os.path.expanduser("~"))
+
+    ## load the json file
+    if os.path.exists(path):
+        with open(path, 'r') as infile:
+            fullj = _byteify(json.loads(infile.read(),
+                            object_hook=_byteify), 
+                        ignore_dicts=True)
+    else:            
+        ## raise an error if json not loaded
+        if not fullj:
+            raise IPyradWarningExit("""
     Cannot find checkpoint (JSON) file at: {}
-    """.format(inpath))
+    """.format(path))
 
     ## create a new Quartet Class
     newobj = Quartet(fullj["name"], fullj["dirs"], fullj["method"])
@@ -1594,7 +1596,31 @@ def load_json(path):
     for key in fullj:
         newobj.__setattr__(key, fullj[key])
 
+    newobj.files = ObjDict(newobj.files)
+    newobj.trees = ObjDict(newobj.trees)
+    newobj.checkpoint = ObjDict(newobj.checkpoint)
+
     return newobj
+
+
+
+def _byteify(data, ignore_dicts=False):
+    """
+    converts unicode to utf-8 when reading in json files
+    """
+    if isinstance(data, unicode):
+        return data.encode("utf-8")
+
+    if isinstance(data, list):
+        return [_byteify(item, ignore_dicts=True) for item in data]
+
+    if isinstance(data, dict) and not ignore_dicts:
+        return {
+            _byteify(key, ignore_dicts=True): _byteify(value, ignore_dicts=True)
+            for key, value in data.iteritems()
+        }
+    return data
+
 
 
 
