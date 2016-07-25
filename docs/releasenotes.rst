@@ -5,6 +5,25 @@
 Release Notes
 =============
 
+0.3.23
+------
+- cosmetic code cleanup
+- svd4tet load func improved
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- fixed bug with floating point numbers on weights. More speed improvements with fancy matrix tricks.
+- added force support to svd4tet
+- update releasenotes
+- added stats storage to svd4tet
+- loci bootstrap sampling implemented in svd4tet
+- init_seqarray rearrangement for speed improvement to svd4tet
+- removed svd and dstat storage attributes from Assembly Class
+- added a plink map output file format for snps locations
+- further minimized depth storage in JSON file. Only saved here for a quick summary plot. Full info is in the catg file if needed. Reduces bloat of JSON.
+- huge rewrite of svd4tet with Quartet Class Object. Much more concise code
+- big rearrangement to svd4tet CLI commands
+- code cleanup
+-  "Updating ipyrad/__init__.py to version - 0.3.22
+
 
 0.3.22
 ------
