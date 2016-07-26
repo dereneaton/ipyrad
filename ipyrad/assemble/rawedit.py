@@ -749,10 +749,10 @@ def run(data, samples, nreplace, force, preview, ipyclient):
             try:
                 if os.path.exists(sample.files.fastqs[0][1]):
                     conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
-                    with open(conc2.replace, 'w') as cout2:
+                    with open(conc2, 'w') as cout2:
                         for tups in sample.files.fastqs:
                             cout2.write(gzip.open(tups[1]).read())
-            except IndexError as inst:
+            except IndexError as _:
                 ## if SE then no R2 files
                 pass
 
