@@ -41,8 +41,8 @@ def sample_cleanup(data, sample):
                                          sample.name+".clustS.gz")
     
     ## get new clustered loci 
-    infile = gzip.open(data.samples.values()[0].files.clusters)
-    loci = infile.read().strip("//\n//\n").split("//\n//\n")#[:-1]
+    infile = gzip.open(data.samples[sample.name].files.clusters)
+    loci = infile.read().strip("//\n//\n").split("//\n//\n")
 
     ## get number of merged reads, updated dynamically
     ## TODO: this won't capture merged reads that are merged during refmap
