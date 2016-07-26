@@ -1721,7 +1721,7 @@ def vcfchunk(args):
 
         ## ----  build string array ---- 
         ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
-        gstr[seqleft:seqleft+seq.shape[1], 0] = "RAD_{}_".format(start+iloc)
+        gstr[seqleft:seqleft+seq.shape[1], 0] = "{}".format(start+iloc)
         ## fill (POS) position
         gstr[seqleft:seqleft+seq.shape[1], 1] = range(seq.shape[1])
         ## fill (ID) what is this? missing value is .
