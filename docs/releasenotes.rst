@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.3.25
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- better error message if sample names in barcodes file have spaces in them
+- VCF now writes chr ('chromosomes' or 'RAD loci') as ints, since vcftools and other software hate strings apparently
+- fix for concatenating multiple fastq files in step2
+- fix for cluster stats output bug
+
 0.3.24
 ------
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
