@@ -31,6 +31,7 @@ requirements:
     - cython
     - scipy 
     - h5py
+    - nbconvert
     - numba >=0.27
     - jupyter_client
     - jupyter

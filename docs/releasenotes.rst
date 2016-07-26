@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.3.24
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added nbconvert as a run dependency for the conda build
+
 0.3.23
 ------
 - cosmetic code cleanup
