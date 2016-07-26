@@ -58,7 +58,7 @@ Eaton and Ree (2013).
     :maxdepth: 1
 
     pedicularis_.rst
-    pedicularis_cli.rst
+    xxxpedicularis_cli.rst
 
 
 .. _other tutorials:

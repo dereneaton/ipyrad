@@ -16,14 +16,16 @@ VCF is a standard format for storing and manipulating sequence data. The
 format is too complicated to go into here, but you can see a good explanation
 on the :ref:`1000 Genomes Project<http://www.1000genomes.org/wiki/Analysis/Variant%20Call%20Format/vcf-variant-call-format-version-40>` site.
 The VCF format output by ipyrad includes full genotype information for all
-bases in all loci, including information about genotype quality.
+bases in all loci, including information about genotype quality. Many useful 
+conversions and filtering options for this format are available in the software 
+vcftools.
 
 .. parsed-literal::
 
     #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  1A_0    1B_0    1C_0    1D_0    2E_0    2F_0    2G_0    2H_0    3I_0    3J_0    3K_0    3L_0
-    RAD_0_  0       .       G       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,0,19    0/0:0,0,0,22    0/0:0,0,0,20    0/0:0,0,0,19    0/0:0,0,0,18    0/0:0,0,0,22    0/0:0,0,0,20    0/0:0,0,0,21    0/0:0,0,0,15    0/0:0,0,0,14    0/0:0,0,0,24    0/0:0,0,0,21
-    RAD_0_  1       .       T       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,19,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,19,0    0/0:0,0,18,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,21,0    0/0:0,0,15,0    0/0:0,0,14,0    0/0:0,0,24,0    0/0:0,0,21,0
-    RAD_0_  2       .       T       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,19,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,19,0    0/0:0,0,18,0    0/0:0,0,22,0    0/0:0,0,19,1    0/0:0,0,21,0    0/0:0,0,15,0    0/0:0,0,14,0    0/0:0,0,24,0    0/0:0,0,21,0
+    0  0       .       G       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,0,19    0/0:0,0,0,22    0/0:0,0,0,20    0/0:0,0,0,19    0/0:0,0,0,18    0/0:0,0,0,22    0/0:0,0,0,20    0/0:0,0,0,21    0/0:0,0,0,15    0/0:0,0,0,14    0/0:0,0,0,24    0/0:0,0,0,21
+    0  1       .       T       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,19,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,19,0    0/0:0,0,18,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,21,0    0/0:0,0,15,0    0/0:0,0,14,0    0/0:0,0,24,0    0/0:0,0,21,0
+    0  2       .       T       .       13      PASS    NS=12;DP=235    GT:CATG 0/0:0,0,19,0    0/0:0,0,22,0    0/0:0,0,20,0    0/0:0,0,19,0    0/0:0,0,18,0    0/0:0,0,22,0    0/0:0,0,19,1    0/0:0,0,21,0    0/0:0,0,15,0    0/0:0,0,14,0    0/0:0,0,24,0    0/0:0,0,21,0
 
 
 ipyrad format \*.loci
