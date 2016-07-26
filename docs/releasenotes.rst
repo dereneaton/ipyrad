@@ -7,7 +7,6 @@ Release Notes
 
 0.3.25
 ------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - better error message if sample names in barcodes file have spaces in them
 - VCF now writes chr ('chromosomes' or 'RAD loci') as ints, since vcftools and other software hate strings apparently
 - fix for concatenating multiple fastq files in step2
@@ -15,14 +14,12 @@ Release Notes
 
 0.3.24
 ------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added nbconvert as a run dependency for the conda build
 
 0.3.23
 ------
 - cosmetic code cleanup
 - svd4tet load func improved
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - fixed bug with floating point numbers on weights. More speed improvements with fancy matrix tricks.
 - added force support to svd4tet
 - update releasenotes
@@ -35,7 +32,6 @@ Release Notes
 - huge rewrite of svd4tet with Quartet Class Object. Much more concise code
 - big rearrangement to svd4tet CLI commands
 - code cleanup
--  "Updating ipyrad/__init__.py to version - 0.3.22
 
 
 0.3.22
@@ -74,13 +70,11 @@ Release Notes
 0.3.19
 ------
 - fix for bug in edge trimming when assembly is branched after s6 clustering, but before s7 filtering
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - cosmetic code fix
 
 0.3.18
 ------
 - Better error handling for alignment step, and now use only the consensus files for the samples being processed (instead of glob'ing every consens.gz in the working directory
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Fix a bug that catches when you don't pass in the -p flag for branching
 - cleaning up the releasenotes
 
@@ -110,7 +104,6 @@ Release Notes
 - just cosmetic code cleanup.
 - set subsample to 2000 high depth clusters. Much faster, minimal decrease in accuracy. Slightly faster code in s4.
 - better memory handling. Parallelized better. Starts non-parallel cleanups while singlecats are running = things go faster.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - cluster was commented out in s6 for speed testing
 
 0.3.13
@@ -153,7 +146,6 @@ Release Notes
 -----
 - Versioner now updates the docs/releasenotes.rst
 - cosmetic changes
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Eased back on the language in the performance expectations note
 - fixed all links to output formats file
 - blank page for recording different performance expectations
