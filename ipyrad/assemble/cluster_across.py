@@ -877,14 +877,17 @@ def fillcats(name, udic, chunksize, catarr, nall, icatg, inall, dfilter, maxlen)
 
 @numba.jit(nopython=True)
 def where_numba(indels, iloc):
-    """ numba compiled function for grabbing indel locations. Doesn't really
-    speed up np.where, but is abut 6X faster for np.any. """
+    """ 
+    numba compiled function for grabbing indel locations. Doesn't really
+    speed up np.where, but is abut 6X faster for np.any. 
+    """
     indidx = np.where(indels[iloc, :])[0]        
     found = np.any(indidx)
     return indidx, found
 
 
 
+## TODO: simplify these funcs / subfuncs
 def getfill_numba(indidx, tmpcatg):
     """ 
     Fast array filling function for singlecat. 
@@ -894,6 +897,7 @@ def getfill_numba(indidx, tmpcatg):
     newfill = np.zeros(shape=(newrows, 4), dtype=np.uint32)
     res = getfill_numba_sub(tmpcatg, indidx, newfill, newrows)
     return res
+
 
 
 @numba.jit("u4[:,:](u4[:,:],u4[:],u4[:,:],u4)", nopython=True)
