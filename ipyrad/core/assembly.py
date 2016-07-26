@@ -508,10 +508,10 @@ class Assembly(object):
                 ## set attribute on Assembly object
                 self.barcodes = dict(zip(bdf[0], bdf[1]))
 
-        except ValueError:
-            msg = "Barcodes file not recognized."
+        except ValueError as inst:
+            msg = "Barcodes file format error"
             LOGGER.warn(msg)
-            raise IPyradError(msg)
+            raise IPyradError(inst)
 
 
 
@@ -662,8 +662,9 @@ class Assembly(object):
 
         except Exception as inst:
             raise IPyradWarningExit("""
-    Error setting parameter {}: {}. 
-    You entered: {}""".format(param, inst, newvalue))
+    Error setting parameter {}: {}
+    You entered: {}
+    """.format(param, inst, newvalue))
 
 
 
