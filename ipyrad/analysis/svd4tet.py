@@ -585,18 +585,14 @@ class Quartet(object):
             ## grab the minimum needed for a good tree
             self.nquartets = len(self.samples)**2.8
             self.store_N_samples()
-            print("""\
-    loading {} random quartet samples to infer a starting tree 
-    inferring {} x 3 quartet trees
-    """.format(self.nquartets**2.8, 3*(self.nquartets**2.8)))
+            print(LOADING_RANDOM.\
+                  format(self.nquartets**2.8, 3*(self.nquartets**2.8)))
 
             ## run inference functions on sampled quartets 
             self._clientwrapper(self.inference, [0], 45)
 
         ## sample quartets from starting tree
-        print("""\
-    loading {} equal-splits quartets from starting tree
-    """.format(self.nquartets))
+        print(LOADING_STARTER.format(self.nquartets))
         self.store_equal_samples()
     
         ## remove starting tree tmp files
@@ -1461,8 +1457,17 @@ LOADING_MESSAGE = """\
       sampling method: {}
       array checkpoint: {}
       bootstrap checkpoint: {}
-
 """
+
+LOADING_RANDOM="""\
+    loading {} random quartet samples to infer a starting tree 
+    inferring {} x 3 quartet trees
+"""
+
+LOADING_STARTER="""\
+    loading {} equal-splits quartets from starting tree
+    """
+
 AMBIGS = {"R":("G", "A"),
           "K":("G", "T"),
           "S":("G", "C"),
@@ -1698,6 +1703,8 @@ def get_sampled(data, tre, node, names):
 
 
 ## GLOBALS #############################################################
+
+
 
 FINALTREES = """
   Final quartet-joined and weighted quartet-joined (.w.) tree files:
