@@ -127,20 +127,25 @@ def parse_command_line():
     args = parser.parse_args()
 
     ## RAISE errors right away for some bad argument combinations:
+    if args.method not in ["random", "equal", "all"]:
+        raise IPyradWarningExit("  method argument (-m) must be one of"+\
+        """ "all", "random", or "equal.\n""")
+
     ## if 'random' require nquarts argument
     if args.method == 'random':
         if not args.nquartets:
             raise IPyradWarningExit(\
-            "  Number of quartets (-n) is required with method = random")
+            "  Number of quartets (-q) is required with method = random\n")
 
     ## if 'equal' method require starting tree and nquarts
     if args.method == 'equal':
         if not args.nquartets:
             raise IPyradWarningExit(\
-            "  Number of quartets (-n) is required with method = random")
-        if not args.tree:
+            "  Number of quartets (-q) is required with method = equal\n")
+        if args.tree:
             raise IPyradWarningExit(\
-        "  A starting tree (-t newick file) is required with method = equal")
+        "  Using a starting tree to equalize edge sampling ")
+        #"  A starting tree (-t newick file) is required with method = equal")
 
     if not any(x in ["seq", "json"] for x in vars(args).keys()):
         print("""
