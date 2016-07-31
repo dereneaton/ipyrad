@@ -449,7 +449,7 @@ class Assembly(object):
                 appended += appendinc
 
         ## print if data were linked
-        print("    {} new Samples created in `{}`.".format(created, self.name))
+        print("    {} new Samples created in '{}'.".format(created, self.name))
         if linked:
             ## double for paired data
             if 'pair' in self.paramsdict["datatype"]:
