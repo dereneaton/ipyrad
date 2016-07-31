@@ -344,7 +344,7 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
                 dsort1[sample] = []
                 dsort2[sample] = []
             ## reset longlist
-            longlist = np.zeros(waitchunk, dtype=np.uint32)                
+            longlist = np.zeros(waitchunk, dtype=np.uint32)
 
     ## write the remaining reads to file
     writetofile(data, dsort1, 1, epid)
