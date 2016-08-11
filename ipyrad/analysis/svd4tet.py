@@ -63,8 +63,9 @@ LOGGER = logging.getLogger(__name__)
 ## debug numba code
 #numba.NUMBA_DISABLE_JIT = 1
 
-## The 16 x 16 matrix of site counts. This is just for looking at. 
-MKEYS = """
+## The 16 x 16 matrix of site counts (The phylogenetic invariants). 
+## It's here just to look at. 
+PHYLO_INVARIANTS = """
     AAAA AAAC AAAG AAAT  AACA AACC AACG AACT  AAGA AAGC AAGG AAGT  AATA AATC AATG AATT
     ACAA ACAC ACAG ACAT  ACCA ACCC ACCG ACCT  ACGA ACGC ACGG ACGT  ACTA ACTC ACTG ACTT
     AGAA AGAC AGAG AGAT  AGCA AGCC AGCG AGCT  AGGA AGGC AGGG AGGT  AGTA AGTC AGTG AGTT
@@ -1207,7 +1208,7 @@ def count_snps(mat):
 
 
         
-
+## TODO: either use pure numpy here or guvectorized func
 @numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
 def subsample_snps(seqchunk, nmask, maparr):
     """ 
@@ -1307,7 +1308,7 @@ def chunk_to_matrices(narr):
     mats[1, 12:16, 8:12] = mats[0, 14].reshape(4, 4)
     mats[1, 12:16, 12:16] = mats[0, 15].reshape(4, 4)
     
-    ## get matsrix 3
+    ## get matrix 3
     mats[2, 0:4, 0:4] = mats[0, 0].reshape(4, 4).T
     mats[2, 0:4, 4:8] = mats[0, 1].reshape(4, 4).T
     mats[2, 0:4, 8:12] = mats[0, 2].reshape(4, 4).T
