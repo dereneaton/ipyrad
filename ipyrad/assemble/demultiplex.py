@@ -188,9 +188,9 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
     ## longlist stores sample index (1-indexed) for each read, 
     ## indexed at 1 because 0 means no match to sample.
     waitchunk = int(1e6)
-    sample_index = np.zeros(waitchunk, dtype=np.uint32)
-    trim_index = np.zeros(waitchunk, dtype=np.uint32)
-    snames = data.barcodes.keys()
+    #sample_index = np.zeros(waitchunk, dtype=np.uint32)
+    #trim_index = np.zeros(waitchunk, dtype=np.uint32)
+    #snames = data.barcodes.keys()
 
     ## pid name for this engine
     epid = os.getpid()
@@ -283,7 +283,7 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
         sname_match = matchdict.get(barcode)
 
         if sname_match:
-            sample_index[filestat[0]-1] = snames.index(sname_match) + 1
+            #sample_index[filestat[0]-1] = snames.index(sname_match) + 1
             ## record who matched
             dbars[sname_match].add(barcode)
             filestat[1] += 1
@@ -333,18 +333,19 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
 
         ## how can we make it so all of the engines aren't trying to write to
         ## ~100-200 files all at the same time? This is the I/O limit we hit..
-        ## write out at 100K to keep memory low. 
+        ## write out at 100K to keep memory low. It is fine on HPC which can 
+        ## write parallel, but regular systems might crash
         if not filestat[0] % waitchunk:
             ## write the remaining reads to file"
-            #writetofile(data, dsort1, 1, epid)
-            #if 'pair' in data.paramsdict["datatype"]:
-            #    writetofile(data, dsort2, 2, epid)
+            writetofile(data, dsort1, 1, epid)
+            if 'pair' in data.paramsdict["datatype"]:
+                writetofile(data, dsort2, 2, epid)
             ## clear out dsorts
             for sample in data.barcodes:
                 dsort1[sample] = []
                 dsort2[sample] = []
             ## reset longlist
-            longlist = np.zeros(waitchunk, dtype=np.uint32)                
+            #longlist = np.zeros(waitchunk, dtype=np.uint32)                
 
     ## write the remaining reads to file
     writetofile(data, dsort1, 1, epid)
