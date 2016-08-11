@@ -491,7 +491,7 @@ def basecaller(data, base1, base2, comms):
     return cons
 
 
-
+## TODO: Why isn't this parallelized?
 def cleanup(args):
     """ 
     cleaning up. optim is the size (nloci) of tmp arrays 
