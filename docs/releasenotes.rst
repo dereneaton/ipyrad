@@ -5,6 +5,23 @@
 Release Notes
 =============
 
+0.3.26
+------
+- fix merge conflict
+- removed future changes to demultiplex, fixed 1M array size error
+- added notes todo
+- removed unnecessary imports
+- cosmetic changes
+- removed backticks from printouts
+- removed backticks from printouts
+- removed unnecessary '\' from list of args
+- code cleanup for svd4tet
+- update to some error messages in svd4tet
+- slight modification to -n printout
+- updated analysis docs
+- minor docs edits
+- updated releasenotes
+
 0.3.25
 ------
 - better error message if sample names in barcodes file have spaces in them
