@@ -39,13 +39,9 @@ located in the `project dir`. In the example below we load an assembly named
     ## coming soon...
 
 
-Loading other data into the API (coming soon)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alternatively, if you want to analyze a data set that was not created in 
-ipyrad_, but using some other software, it can be loaded in from either a 
-.loci or .vcf formatted file. The analysis options are much more limited in 
-this case (e.g., a lot of information needed for plotting is missing).
-
+Accessing stats and data from an Assembly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Coming soon...
 
 .. .. code-block:: python
 
@@ -60,14 +56,17 @@ this case (e.g., a lot of information needed for plotting is missing).
 
 Plotting (in development)
 ^^^^^^^^
+Coming soon ...
+
 .. toctree::
    :maxdepth: 2
 
-   plotting.rst
+..   plotting.rst
 
 
 Introgression analyses (in development)
 ^^^^^^^^^^^^^^^^^^^^^^
+Coming soon ...
 .. toctree::
    :maxdepth: 2
 
@@ -84,18 +83,23 @@ Population genetic analyses (in development)
 
 SVD4tet -- species tree inference (in development)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+__Documentation coming soon. Currently works only on Linux, not Mac.__
+
 Infer species trees from quartets inferred from SNP data. We have developed
 an implementation of the SVDquartets algorithm of 
 :ref:`Chiffman and Kubatko (2014)<svdquartets>` similar to the one 
-currently implemented in Paup*. However, our implementation differs 
-in several respects, with a focus on making use of RAD-seq data, and of 
-efficiently sampling quartets over both small and very large trees (>200 tips). 
-The analysis can be massively parallelized using MPI, and allows checkpointing
-so that analyses can be stopped and restarted at a later time. 
-We include three sampling schemes: 'full sampling', 'random sampling', and 
-a novel approach for sampling from very large trees called 'even sampling'. 
+currently implemented in Paup*. Our implementation differs 
+in several respects, with a focus on making the best use of RAD-seq data. 
+In svd4tet you can efficiently sample quartets over both small and very 
+large trees (>200 tips). The analysis is fast, massively parallelizable 
+on computing clusters, and allows checkpointing so that analyses can be 
+stopped and restarted. Several bootstrap sampling methods are available
+to randomly sample among unlinked SNPs on RAD loci. 
+For very large trees there are three sub-sampling schemes: 
+'full sampling', 'random sampling', and a novel approach 
+called 'even sampling'. 
 
-Quartet joining is performed in the qQMC software both with and without
+Quartet joining is performed in the wQMC software both with and without
 quartet weights (see :ref:`Avni et al. 2014<weighted_quartets>`)
 
 The command line program svd4tet is installed alongside ipyrad and can be 

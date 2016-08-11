@@ -900,7 +900,7 @@ def declone_3rad(data, sample):
         ## we will want to reopen it to read from it.
         tmp_outfile.close()
         ## Derep the data (adapters+seq)
-        derep_and_sort(data, sample, adapter_seqs_file.name,\
+        derep_and_sort(data, sample, adapter_seqs_file.name,
                         os.path.join(data.dirs.edits, tmp_outfile.name))
     
         ## Remove adapters from head of sequence and write out
@@ -1243,12 +1243,12 @@ def derep_concat_split(args):
     ## remove all identical seqs with identical random i5 adapters.
     if "3rad" in data.paramsdict["datatype"]:
         declone_3rad(data, sample)
-        derep_and_sort(data, sample,\
+        derep_and_sort(data, sample,
                 os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),
                 os.path.join(data.dirs.edits, sample.name+"_derep.fastq"))
     else:
         ## convert fastq to fasta, then derep and sort reads by their size
-        derep_and_sort(data, sample, sample.files.edits[0][0],\
+        derep_and_sort(data, sample, sample.files.edits[0][0],
                 os.path.join(data.dirs.edits, sample.name+"_derep.fastq"))
     
 
