@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.3.27
+------
+- Fixed a race condition where sometimes last_sample gets cleaned up before the current sample finishes, caused a KeyError. Very intermittent and annoying, but should work now
+
 0.3.26
 ------
 - fix merge conflict
