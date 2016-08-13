@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.3.28
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Added statically linked binaries for all linux progs. Updated version for bedtools and samtools. Updated vsearch but did not change symlink (ipyrad will still use 1.10)
+- Bugfix that threw a divide by zero error if no samples were actually ready for step 5
+
 0.3.27
 ------
 - Fixed a race condition where sometimes last_sample gets cleaned up before the current sample finishes, caused a KeyError. Very intermittent and annoying, but should work now
