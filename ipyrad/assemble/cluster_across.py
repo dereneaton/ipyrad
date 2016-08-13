@@ -538,8 +538,25 @@ def multicat(data, samples, ipyclient):
                         fwait += 1
                         ## purge memory of the old one
                         del jobs[sname]                    
+
+                        ## Get the async result for the last sample in the cleanup
+                        ## queue. If the last sample in the cleanup queue
+                        ## gets cleaned up and removed from the cleaning dict
+                        ## before the current sample completes then this will
+                        ## throw a KeyError. In this case just set the current
+                        ## sample to clean up after the 0th job (the dummy job).
+                        ## Not having this try/except creates a nasty race condition
+                        ## where usually everything works fine, but sometimes
+                        ## on some datasets it'll throw, and choke the whole run.
+                        try:
+                            last_sample_async = cleaning[last_sample]
+                        except KeyError:
+                            LOGGER.debug("Last sample already cleaned up. Cleaning "\
+                                + "dict should be empty here - {}".format(cleaning))
+                            last_sample_async = cleaning[0]
+
                         ## submit a clean up job. Can't start til after last one
-                        with lbview.temp_flags(after=cleaning[last_sample]):
+                        with lbview.temp_flags(after=last_sample_async):
                             cleaning[sname] = lbview.apply(insert_and_cleanup, 
                                                            *[data, sname])
                         LOGGER.info("submitting %s to cleanup", sname)
