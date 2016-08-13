@@ -692,6 +692,11 @@ def run(data, samples, force, ipyclient):
             else:
                 subsamples.append(sample)
 
+    if len(subsamples) == 0:
+        raise IPyradWarningExit("""
+    No samples to cluster, exiting.
+    """)
+
     ## if sample is already done skip
     if "hetero_est" not in data.stats:
         print("  No estimates of heterozygosity and error rate. Using default "\
