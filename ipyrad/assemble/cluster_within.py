@@ -23,8 +23,8 @@ import ipyrad
 import time
 import datetime
 
-from collections import Counter, OrderedDict
-from ipyparallel import Dependency, RemoteError
+from collections import OrderedDict
+from ipyparallel import Dependency
 from refmap import *
 from util import * 
 

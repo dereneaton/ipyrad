@@ -5,6 +5,33 @@
 Release Notes
 =============
 
+0.3.28
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Added statically linked binaries for all linux progs. Updated version for bedtools and samtools. Updated vsearch but did not change symlink (ipyrad will still use 1.10)
+- Bugfix that threw a divide by zero error if no samples were actually ready for step 5
+
+0.3.27
+------
+- Fixed a race condition where sometimes last_sample gets cleaned up before the current sample finishes, caused a KeyError. Very intermittent and annoying, but should work now
+
+0.3.26
+------
+- fix merge conflict
+- removed future changes to demultiplex, fixed 1M array size error
+- added notes todo
+- removed unnecessary imports
+- cosmetic changes
+- removed backticks from printouts
+- removed backticks from printouts
+- removed unnecessary '\' from list of args
+- code cleanup for svd4tet
+- update to some error messages in svd4tet
+- slight modification to -n printout
+- updated analysis docs
+- minor docs edits
+- updated releasenotes
+
 0.3.25
 ------
 - better error message if sample names in barcodes file have spaces in them

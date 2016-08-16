@@ -491,7 +491,7 @@ def basecaller(data, base1, base2, comms):
     return cons
 
 
-
+## TODO: Why isn't this parallelized?
 def cleanup(args):
     """ 
     cleaning up. optim is the size (nloci) of tmp arrays 
@@ -676,7 +676,8 @@ def run(data, samples, force, ipyclient):
     .format(sample.name, int(sample.stats.clusters_hidepth)))
             elif sample.stats.state < 4:
                 print("""\
-    Skipping Sample {}; not yet finished step4 """)
+    Skipping Sample {}; not yet finished step4 """\
+    .format(sample.name))
             else:
                 subsamples.append(sample)
                 
@@ -691,6 +692,11 @@ def run(data, samples, force, ipyclient):
     .format(sample.name))
             else:
                 subsamples.append(sample)
+
+    if len(subsamples) == 0:
+        raise IPyradWarningExit("""
+    No samples to cluster, exiting.
+    """)
 
     ## if sample is already done skip
     if "hetero_est" not in data.stats:
