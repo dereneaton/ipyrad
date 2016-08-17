@@ -24,7 +24,7 @@ def start(data):
     ## open all ip views for MPI
     iparg = ""
     if "MPI" in data._ipcluster["engines"]:
-        iparg = "--ip=* "
+        iparg = "--ip=*"
 
     ## make ipcluster arg call
     standard = """
@@ -82,7 +82,6 @@ def ipcontroller_init(data, quiet=False):
     """
     ## check if this pid already has a running cluster
     data._ipcluster["id"] = "ipyrad-"+str(os.getpid())
-
     start(data)
     atexit.register(stop, data._ipcluster["id"])
 
