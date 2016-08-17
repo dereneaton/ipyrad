@@ -409,10 +409,10 @@ def main():
 
     ## always print the header when doing steps
     header = \
-    "\n ---------------------------------------------------"+\
+    "\n -------------------------------------------------------------"+\
     "\n  ipyrad [v.{}]".format(ip.__version__)+\
     "\n  Interactive assembly and analysis of RAD-seq data"+\
-    "\n ---------------------------------------------------"
+    "\n -------------------------------------------------------------"
 
     ## if merging just do the merge and exit
     if args.merge:
@@ -438,9 +438,9 @@ def main():
             ## if cores was entered, limit cores to this number
             ## otherwise use all available cores. By default _ipcluster[cores] 
             ## is set to detect_cpus in Assembly.__init__)
+            data._ipcluster["cores"] = str(args.cores)
             if args.cores:
                 data.cpus = int(args.cores)
-                data._ipcluster["cores"] = str(args.cores)
             if args.MPI:
                 data._ipcluster["engines"] = "MPI"
             else:
@@ -454,7 +454,8 @@ def main():
 
             ## run assembly steps
             steps = list(args.steps)
-            data.run(steps=steps, force=args.force, preview=args.preview)
+            data.run(steps=steps, force=args.force, preview=args.preview,
+                     newclient=0, quiet=0)
 
         if args.results:
             showstats(parsedict)
