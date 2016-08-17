@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 import ipyparallel as ipp
 import ipyrad as ip
+import socket
 
 from collections import OrderedDict
 from ipyrad.assemble.util import *
@@ -841,6 +842,12 @@ class Assembly(object):
             sys.stdout = save_stdout
             print(inst)
             raise inst
+
+        ## print some ipyclient info here for testing
+        print(len(ipyclient))
+        print(ipyclient[:].apply_sync(os.getpid))
+        print(ipyclient[:].apply_sync(socket.gethostname))
+        print(len(ipyclient))
 
         return ipyclient
 

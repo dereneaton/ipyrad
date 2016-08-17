@@ -4,7 +4,7 @@
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradError, IPyradWarningExit, detect_cpus
+from ipyrad.assemble.util import IPyradError, IPyradWarningExit
 import pkg_resources
 import ipyrad as ip
 import argparse
