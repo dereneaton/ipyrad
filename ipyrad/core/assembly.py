@@ -777,11 +777,10 @@ class Assembly(object):
 
 
 
-    def _launch2(self, nwait):
+    def _launch2(self, nwait, quiet=0):
         """ 
-        Creates a client for a given profile to connect to the running 
-        clusters. If CLI, the cluster should have been started by __main__, 
-        if API, you need to start the cluster on your own. 
+        Launches an ipcluster client for a given profile and returns it with
+        at least one engine spun up and ready to go.
         """
 
         #save_stdout = sys.stdout           
@@ -808,16 +807,17 @@ class Assembly(object):
                     break
 
                 except IOError as inst:
-                    time.sleep(0.1)
+                    time.sleep(0.01)
 
             ## check that all engines have connected            
-            for _ in range(300):
+            for _ in range(3000):
                 initid = len(ipyclient)
-                time.sleep(0.1)
-                if not ip.__interactive__:
-                    ## no longer waiting for all engines, just one, and trust
-                    ## that others will come. We let load_balance distribute
-                    ## jobs to them.
+                time.sleep(0.01)
+
+                ## If MPI then wait for all engines to start so we can report
+                ## how many cores are on each host. If Local then just go ahead
+                ## before they're ready since load_balance will distribute jobs
+                if not self._ipcluster["engines"] == "MPI":
                     if initid:
                         break
                 else:
@@ -829,7 +829,10 @@ class Assembly(object):
                         if len(ipyclient) == initid:
                             break
                     else:
-                        print("  connecting to Engines...")
+                        if not quiet:
+                            print(\
+                "\r  Establishing MPI connection to remote hosts", end="")
+                            sys.stdout.flush()
 
 
         except KeyboardInterrupt as inst:
@@ -843,16 +846,13 @@ class Assembly(object):
             print(inst)
             raise inst
 
-        ## print some ipyclient info here for testing
-        print(len(ipyclient))
-        print(ipyclient[:].apply_sync(os.getpid))
-        print(ipyclient[:].apply_sync(socket.gethostname))
-        print(len(ipyclient))
-
         return ipyclient
 
 
 
+    ## this function is now deprecated but let's keep it around for a little 
+    ## bit. We've simplified error handling now but may want to look back at 
+    ## this func if the new one fails to report well on some errors.
     def _clientwrapper(self, stepfunc, args, nwait):
         """ wraps a call with error messages for when ipyparallel fails"""
         ## emtpy error string
@@ -968,9 +968,9 @@ class Assembly(object):
         ## print headers
         if self._headers:
             if sfiles:
-                print("  Step1: Linking sorted fastq data to Samples")
+                print("\n  Step1: Linking sorted fastq data to Samples")
             else:
-                print("  Step1: Demultiplexing fastq data to Samples")                
+                print("\n  Step1: Demultiplexing fastq data to Samples") 
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
@@ -1006,7 +1006,7 @@ class Assembly(object):
 
         ## print header
         if self._headers:
-            print("  Step2: Filtering reads ")
+            print("\n  Step2: Filtering reads ")
 
         ## If no samples in this assembly then it means you skipped step1,
         ## so attempt to link existing demultiplexed fastq files
@@ -1036,7 +1036,7 @@ class Assembly(object):
         """ hidden wrapped function to start step 3 """
         ## print headers
         if self._headers:
-            print("  Step3: Clustering/Mapping reads")
+            print("\n  Step3: Clustering/Mapping reads")
 
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
@@ -1071,11 +1071,12 @@ class Assembly(object):
                                     force, preview, ipyclient)
 
 
+
     def _step4func(self, samples, subsample, force, ipyclient):
         """ hidden wrapped function to start step 4 """
 
         if self._headers:
-            print("  Step4: Joint estimation of error rate and heterozygosity")
+            print("\n  Step4: Joint estimation of error rate and heterozygosity")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1102,7 +1103,7 @@ class Assembly(object):
         """ hidden wrapped function to start step 5 """
         ## print header
         if self._headers:
-            print("  Step5: Consensus base calling ")
+            print("\n  Step5: Consensus base calling ")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1136,7 +1137,7 @@ class Assembly(object):
 
         ## print CLI header
         if self._headers:
-            print("  Step6: Clustering across {} samples at {} similarity".\
+            print("\n  Step6: Clustering across {} samples at {} similarity".\
                   format(len(csamples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
@@ -1167,7 +1168,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         if self._headers:
-            print("  Step7: Filter and write output files for {} Samples".\
+            print("\n  Step7: Filter and write output files for {} Samples".\
                   format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
@@ -1225,208 +1226,292 @@ class Assembly(object):
         
         
 
-    def step1(self, force=False, preview=False):
-        """ docsting ... test """
-        self._clientwrapper(self._step1func, [force, preview], 45)
+    # def step1(self, force=False, preview=False):
+    #     """ docsting ... test """
+    #     self._clientwrapper(self._step1func, [force, preview], 45)
 
 
-    def step2(self, samples=None, nreplace=True, force=False, preview=False):
+    # def step2(self, samples=None, nreplace=True, force=False, preview=False):
+    #     """ 
+    #     Edit/Filter raw demultiplexed reads based on read quality scores and the
+    #     presence of Illumina adapter sequences. 
+
+    #     The following parameters are used in this step:
+    #         - datatype
+    #         - phred_Qscore_offset
+    #         - max_low_qual_bases
+    #         - filter_adapters
+    #         - filter_min_trim_len
+    #         - edit_cutsites
+    #         - restriction_overhang
+    #         ...
+
+    #     Parameters
+    #     ----------
+    #     samples : list or str
+    #         By default all Samples linked to an Assembly object are run. If a 
+    #         subset of Sampled is entered as a list then only those Samples will 
+    #         be run. 
+
+    #     nreplace : bool
+    #         If True (default) low quality base calls (Q < 20 given the 
+    #         `phred_Qscore_offset`) are converted to Ns. If False, low quality 
+    #         bases are not converted, but simply counted. Reads with > 
+    #         `max_low_qual_bases` are excluded. 
+
+    #     force : bool
+    #         If force=True existing files are overwritten, otherwise Samples in 
+    #         state 2 will return a warning that the Sample has already been run. 
+
+    #     preview : bool
+    #         ...
+    #     """
+    #     self._clientwrapper(self._step2func, 
+    #                        [samples, nreplace, force, preview], 45)
+
+    # def step3(self, samples=None, noreverse=False, force=False, preview=False):
+    #     """ 
+    #     Demultiplex reads and then cluster/map denovo or with a reference 
+    #     sequence file. 
+
+    #     The following parameters are used in this step:
+    #         - datatype
+    #         - assembly_method
+    #         - clust_threshold
+    #         - 
+    #         ...
+
+    #     Parameters
+    #     ----------
+    #     samples : list or str
+    #         By default all Samples linked to an Assembly object are run. If a 
+    #         subset of Sampled is entered as a list then only those Samples will 
+    #         be run. 
+
+    #     noreverse : bool
+    #         ...
+
+    #     force : bool
+    #         ...
+
+    #     preview : bool
+    #         ...
+    #     """
+    #     self._clientwrapper(self._step3func, 
+    #                        [samples, noreverse, force, preview], 45)
+
+
+    # def step4(self, samples=None, subsample=2000, force=False):
+    #     """ 
+    #     Joint estimation of error rate and heterozygosity. This uses the 
+    #     frequency of bases and the frequency of site patterns to estimate
+    #     parameters. Only the first 'subsample' of high depth clusters are used
+    #     to improve speed. Default is 2000, but can be modified when run through
+    #     the API. 
+    #     """
+    #     self._clientwrapper(self._step4func, [samples, subsample, force], 45)
+
+
+
+    # def step5(self, samples=None, force=False):
+    #     """ 
+    #     Consensus base calling and filtering from within-sample clusters. 
+    #     Samples must be in state 3 or 4 (passed step3 and/or step4).
+
+    #     The following parameters are used in this step: 
+    #         - max_Ns_consens
+    #         - max_Hs_consens
+    #         - maxdepth
+    #         - mindepth_statistical
+    #         - mindepth_majrule
+    #         - ploidy
+
+    #     If you want to overwrite data for a file, first set its state to 
+    #     3 or 4. e.g., data.samples['sample'].stats['state'] = 3 
+
+    #     Parameters
+    #     ----------
+    #     samples : list or str
+    #         By default all Samples linked to an Assembly object are run. 
+    #         If a subset of Samples is entered as a list then only those samples
+    #         will be executed. 
+
+    #     force : bool
+    #         Force to overwrite existing files. By default files will not be 
+    #         overwritten unless force=True. 
+    #     """
+
+    #     self._clientwrapper(self._step5func, [samples, force], 45)
+
+
+
+    # def step6(self, samples=None, noreverse=False, force=False, randomseed=123):
+    #     """ 
+    #     Cluster consensus reads across samples and align with muscle. 
+
+    #     Parameters
+    #     ----------
+    #     samples : list or str
+    #         By default all Samples linked to an Assembly object are clustered. 
+    #         If a subset of Samples is entered as a list then only those samples
+    #         will be clustered. It is recommended to create .branch() Assembly 
+    #         objects if step6 is performed on different subsets of Samples. 
+
+    #     noreverse : bool
+    #         Reverse complement clustering is performed on gbs and pairgbs data
+    #         types by default. If noreverse=True then reverse complement 
+    #         clustering will not be performed. This can improve clustering speed.
+
+    #     force : bool
+    #         Force to overwrite existing files. By default files will not be 
+    #         overwritten unless force=True. 
+
+    #     randomseed : int
+    #         Consensus reads are sorted by length and then randomized within 
+    #         size classes prior to clustering. The order of sequences in this 
+    #         list can (probably minimally) affect their clustering. The default
+    #         randomseed is 123. Thus, unless it is changed results should be 
+    #         reproducible. 
+    #     """
+    #     self._clientwrapper(self._step6func, [samples, noreverse, force,
+    #                                           randomseed], 45)
+
+
+    # def step7(self, samples=None, force=False):
+    #     """ 
+    #     Create output files in a variety of formats. 
+
+    #     Parameters
+    #     ----------
+    #     samples : list or str
+    #         ...
+
+    #     force : bool
+    #         ...
+
+    #     """
+    #     self._clientwrapper(self._step7func, [samples, force], 45)
+
+
+
+    def run(self, steps=0, force=False, preview=False, newclient=1, quiet=1):
         """ 
-        Edit/Filter raw demultiplexed reads based on read quality scores and the
-        presence of Illumina adapter sequences. 
-
-        The following parameters are used in this step:
-            - datatype
-            - phred_Qscore_offset
-            - max_low_qual_bases
-            - filter_adapters
-            - filter_min_trim_len
-            - edit_cutsites
-            - restriction_overhang
-            ...
-
-        Parameters
-        ----------
-        samples : list or str
-            By default all Samples linked to an Assembly object are run. If a 
-            subset of Sampled is entered as a list then only those Samples will 
-            be run. 
-
-        nreplace : bool
-            If True (default) low quality base calls (Q < 20 given the 
-            `phred_Qscore_offset`) are converted to Ns. If False, low quality 
-            bases are not converted, but simply counted. Reads with > 
-            `max_low_qual_bases` are excluded. 
-
-        force : bool
-            If force=True existing files are overwritten, otherwise Samples in 
-            state 2 will return a warning that the Sample has already been run. 
-
-        preview : bool
-            ...
-        """
-        self._clientwrapper(self._step2func, 
-                           [samples, nreplace, force, preview], 45)
-
-    def step3(self, samples=None, noreverse=False, force=False, preview=False):
-        """ 
-        Demultiplex reads and then cluster/map denovo or with a reference 
-        sequence file. 
-
-        The following parameters are used in this step:
-            - datatype
-            - assembly_method
-            - clust_threshold
-            - 
-            ...
-
-        Parameters
-        ----------
-        samples : list or str
-            By default all Samples linked to an Assembly object are run. If a 
-            subset of Sampled is entered as a list then only those Samples will 
-            be run. 
-
-        noreverse : bool
-            ...
-
-        force : bool
-            ...
-
-        preview : bool
-            ...
-        """
-        self._clientwrapper(self._step3func, 
-                           [samples, noreverse, force, preview], 45)
-
-
-    def step4(self, samples=None, subsample=2000, force=False):
-        """ 
-        Joint estimation of error rate and heterozygosity. This uses the 
-        frequency of bases and the frequency of site patterns to estimate
-        parameters. Only the first 'subsample' of high depth clusters are used
-        to improve speed. Default is 2000, but can be modified when run through
-        the API. 
-        """
-        self._clientwrapper(self._step4func, [samples, subsample, force], 45)
-
-
-
-    def step5(self, samples=None, force=False):
-        """ 
-        Consensus base calling and filtering from within-sample clusters. 
-        Samples must be in state 3 or 4 (passed step3 and/or step4).
-
-        The following parameters are used in this step: 
-            - max_Ns_consens
-            - max_Hs_consens
-            - maxdepth
-            - mindepth_statistical
-            - mindepth_majrule
-            - ploidy
-
-        If you want to overwrite data for a file, first set its state to 
-        3 or 4. e.g., data.samples['sample'].stats['state'] = 3 
-
-        Parameters
-        ----------
-        samples : list or str
-            By default all Samples linked to an Assembly object are run. 
-            If a subset of Samples is entered as a list then only those samples
-            will be executed. 
-
-        force : bool
-            Force to overwrite existing files. By default files will not be 
-            overwritten unless force=True. 
+        Run assembly steps of an ipyrad analysis. Enter steps as a string, 
+        e.g., "1", "123", "12345". This step checks for an existing 
+        ipcluster instance if newclient=0, otherwise it launches a new 
+        ipcluster instance, and kills the instance when finished. 
         """
 
-        self._clientwrapper(self._step5func, [samples, force], 45)
+        ## wrap everything in a try statement and we will clean up the 
+        ## client instance at the end. If it was created then we kill it. If
+        ## using an existing client then we simply clean the memory space.
+        inst = ""
+        try:
+            ## use an existing ipcluster instance
+            if newclient:
+                ipyclient = ipp.Client()
+                print(self.cluster_stats())
+ 
+            else:
+                ipyclient = self._launch2(45, quiet=quiet)
 
+            ## print a message about the cluster status
+            ## if MPI setup then we are going to wait until all engines are
+            ## ready so that we can print how many cores started on each 
+            ## host machine exactly. 
+            if not quiet:
+                if self._ipcluster["engines"] == "MPI":
+                    hosts = ipyclient[:].apply_sync(socket.gethostname)
+                    print("")
+                    for hostname in set(hosts):
+                        print("  Host parallel setup: [{} cores] on {}"\
+                              .format(hosts.count(hostname), hostname))
 
+                ## if Local setup then we know that we can get all the cores for 
+                ## sure and we won't bother waiting for them to start, since 
+                ## they'll start grabbing jobs once they're started. 
+                else:
+                    cpus = min(detect_cpus(), self.cpus)
+                    print("  Local parallel setup: [{} cores] on {}"\
+                          .format(cpus, socket.gethostname()))
 
-    def step6(self, samples=None, noreverse=False, force=False, randomseed=123):
-        """ 
-        Cluster consensus reads across samples and align with muscle. 
-
-        Parameters
-        ----------
-        samples : list or str
-            By default all Samples linked to an Assembly object are clustered. 
-            If a subset of Samples is entered as a list then only those samples
-            will be clustered. It is recommended to create .branch() Assembly 
-            objects if step6 is performed on different subsets of Samples. 
-
-        noreverse : bool
-            Reverse complement clustering is performed on gbs and pairgbs data
-            types by default. If noreverse=True then reverse complement 
-            clustering will not be performed. This can improve clustering speed.
-
-        force : bool
-            Force to overwrite existing files. By default files will not be 
-            overwritten unless force=True. 
-
-        randomseed : int
-            Consensus reads are sorted by length and then randomized within 
-            size classes prior to clustering. The order of sequences in this 
-            list can (probably minimally) affect their clustering. The default
-            randomseed is 123. Thus, unless it is changed results should be 
-            reproducible. 
-        """
-        self._clientwrapper(self._step6func, [samples, noreverse, force,
-                                              randomseed], 45)
-
-
-    def step7(self, samples=None, force=False):
-        """ 
-        Create output files in a variety of formats. 
-
-        Parameters
-        ----------
-        samples : list or str
-            ...
-
-        force : bool
-            ...
-
-        """
-        self._clientwrapper(self._step7func, [samples, force], 45)
-
-
-
-
-    def run(self, steps=0, force=False, preview=False):
-        """ Select steps of an analysis. If no steps are entered then all
-        steps are run. Enter steps as a string, e.g., "1", "123", "12345" """
-        if not steps:
-            steps = list("1234567")
-        else:
+            ## get the list of steps to run
             if isinstance(steps, int):
                 steps = str(steps)
             steps = list(steps)
-        ## print a header in inside API
-        if ip.__interactive__:
-            print("\n  Assembly: {}".format(self.name))
-
-        try:
-            if '1' in steps:
-                self.step1(force=force, preview=preview)
-            if '2' in steps:
-                self.step2(force=force, preview=preview)
-            if '3' in steps:
-                self.step3(force=force, preview=preview)
-            if '4' in steps:
-                self.step4(force=force)
-            if '5' in steps:
-                self.step5(force=force)
-            if '6' in steps:
-                self.step6(force=force)            
-            if '7' in steps:
-                self.step7(force=force)
-        finally:
-            ## save when finished if running API
+            steps.sort()
+        
+            ## print an Assembly name header if inside API
             if ip.__interactive__:
-                self.save()
+                print("\n  Assembly: {}".format(self.name))
 
+            ## has many fixed arguments right now, but we may add these to 
+            ## hackerz_only, or they may be accessed in the API.
+            if '1' in steps:
+                self._step1func(force, preview, ipyclient)
+
+            if '2' in steps:
+                self._step2func(samples=None, nreplace=1, force=force, 
+                                preview=preview, ipyclient=ipyclient)
+
+            if '3' in steps:
+                self._step3func(samples=None, noreverse=0, force=force,
+                                preview=preview, ipyclient=ipyclient)
+
+            if '4' in steps:
+                self._step4func(samples=None, subsample=2000, force=force,
+                                ipyclient=ipyclient)
+
+            if '5' in steps:
+                self._step5func(samples=None, force=force, ipyclient=ipyclient)
+
+            if '6' in steps:
+                self._step6func(samples=None, noreverse=0, randomseed=12345, 
+                                force=force, ipyclient=ipyclient)
+
+            if '7' in steps:
+                self._step7func(samples=None, force=force, ipyclient=ipyclient)
+
+
+        ## handle exceptions so they will be raised after we clean up below
+        except KeyboardInterrupt as inst:
+            LOGGER.info("assembly interrupted by user.")
+            print("\n  Keyboard Interrupt by user. Cleaning up...")
+
+        except IPyradWarningExit as inst:
+            LOGGER.info("IPyradWarningExit: %s", inst)
+            print("  IPyradWarningExit: {}".format(inst))
+
+        except Exception as inst:
+            LOGGER.info("caught an unknown exception %s", inst)
+            print("\n  Exception found: {}".format(inst))
+
+
+        ## close client when done or interrupted
+        finally:
+            try:
+                ## save the Assembly
+                self.save()                
+                
+                ## can't close client if it was never open
+                if ipyclient:
+
+                    ## if CLI, stop jobs and shutdown
+                    if newclient:
+                        ipyclient.abort()
+                        ipyclient.close()
+                    ## if API, stop jobs and clean queue
+                    else:
+                        ipyclient.abort()
+                        ipyclient.purge_everything()
+            
+            ## if exception is close and save, print and ignore
+            except Exception as inst2:
+                LOGGER.error("shutdown warning: %s", inst2)
+
+            ## calls a sys.exit and prints error message if there is one. 
+            ## if newclient, the client was registered to die on sys.exit
+            IPyradWarningExit(inst)
 
 
 
