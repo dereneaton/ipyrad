@@ -130,7 +130,8 @@ def branch_assembly(args, parsedict):
 
 
 def merge_assemblies(args):
-    """ merge all given assemblies into a new assembly. Copies the params
+    """ 
+    merge all given assemblies into a new assembly. Copies the params
     from the first passed in extant assembly. this function is called 
     with the ipyrad -m flag. You must pass it at least 3 values, the first
     is a new assembly name (a new `param-newname.txt` will be created).
