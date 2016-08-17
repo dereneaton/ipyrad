@@ -30,7 +30,6 @@ with the ``-n`` flag, but a new Assembly with a different name can be created
 by branching the Assembly (see :ref:`branching workflow<branching_workflow>`).
 
 Affected steps: 1-7  
-
 Example: new Assemblies are created with the -n or -b options to ipyrad:
 
 .. code-block:: bash
@@ -46,10 +45,10 @@ Example: new Assemblies are created with the -n or -b options to ipyrad:
 A project directory can be used to group together multiple related Assemblies. 
 A new directory will be created at the given path if it does not already exist. 
 A good name for Project_dir will generally be the name of the organism being studied.
-The project dir path should not be changed after an analysis is initiated. 
+The project dir path should generally not be changed after an analysis is initiated, 
+unless the entire directory is moved to a different location/machine. 
 
 Affected steps: 1-7  
-
 Example entries into params.txt:  
 
 .. code-block:: bash
@@ -65,34 +64,36 @@ Example entries into params.txt:
 This is a path to the location of raw (non-demultiplexed) fastq data files. If
 your data are already demultiplexed then this should be left blank. The input
 files can be gzip compressed (i.e., have name-endings with .gz). If you enter
-a path for raw data files then you should also have a path to a 
-:ref:`barcodes file<barcodes file>` for parameter #3 (barcodes_path_). 
+a path for raw data files then you should also enter a path to a 
+:ref:`barcodes file<barcodes file>`.
 To select multiple files, or all files in a directory, use a wildcard character (*).
 
-Affected steps = 1. Example entries into params.txt:  
+Affected steps = 1  
+Example entries into params.txt:  
 
 .. code-block:: bash
 
-    /home/deren/ipyrad/tests/data/*.fastq.gz  ## [2] select all gzip data files
-    ~/ipyrad/tests/data/*.fastq.gz            ## [2] select all gzip data files
-    ./ipsimdata/rad_example*.fastq.gz                  ## [2] select files w/ `rad_example` in name
+    /home/deren/ipyrad/tests/data/*.fastq.gz     ## [2] select all gzip data files
+    ~/ipyrad/tests/data/*.fastq.gz               ## [2] select all gzip data files
+    ./ipsimdata/rad_example*.fastq.gz            ## [2] select files w/ `rad_example` in name
 
 
 .. _barcodes_path:
 
 3. Barcodes path
 ----------------
-This is a path to the location of the barcodes_file_. This is used in step1
+This is a path to the location of a barcodes_file_. This is used in step1
 for demuliplexing, and can also be used in step2 to improve the detection of
 adapter/primer sequences that should be filtered out. If your data are already
 demultiplexed the barcodes path can be left blank. 
 
-Affected steps = 1-2. Example entries into params.txt:  
+Affected steps = 1-2.  
+Example entries into params.txt:  
 
 .. code-block:: python
 
-    /home/deren/ipyrad/tests/ipsimdata/rad_example_barcodes.txt  ## [3] select barcode file
-    ./ipsimdata/rad_example_barcodes.txt                   ## [3] select barcode file
+    /home/deren/ipsimdata/rad_example_barcodes.txt    ## [3] select barcode file
+    ./ipsimdata/rad_example_barcodes.txt              ## [3] select barcode file
 
 
 .. _sorted_fastq_path:
@@ -100,17 +101,18 @@ Affected steps = 1-2. Example entries into params.txt:
 4. Sorted fastq path
 --------------------
 This is a path to the location of sorted fastq data. If your data are already
-demultiplexed then this is the location that will be used in step 1 to load 
-the data into ipyrad. A wildcard character can be used to select multiple 
+demultiplexed then this is the location from which data will be loaded when
+you run step 1. A wildcard character can be used to select multiple 
 files in directory. 
 
-Affected steps = 1. Example entries into params.txt:  
+Affected steps = 1  
+Example entries into params.txt:  
 
 .. code-block:: python
 
-    /home/deren/ipyrad/tests/ipsimdata/*.fastq.gz  ## [4] select all gzip data files
-    ~/ipyrad/tests/ipsimdata/*.fastq               ## [4] select all fastq data files
-    ./ipsimdata/rad_example*.fastq.gz                  ## [4] select files w/ `rad_example` in name
+    /home/deren/ipyrad/tests/ipsimdata/*.fastq.gz    ## [4] select all gzip data files
+    ~/ipyrad/tests/ipsimdata/*.fastq                 ## [4] select all fastq data files
+    ./ipsimdata/rad_example*.fastq.gz                ## [4] select files w/ `rad_example` in name
 
 
 .. _assembly_method:
@@ -122,7 +124,8 @@ denovo, reference, denovo+reference, and denovo-reference.
 The latter three all require a reference sequence file (param #6) in fasta 
 format. See the :ref:`tutorials` for an example. 
 
-Affected steps: 3, 6. Example entries into params.txt:  
+Affected steps = 3, 6  
+Example entries into params.txt:  
 
 .. code-block:: python
 
@@ -137,14 +140,14 @@ Affected steps: 3, 6. Example entries into params.txt:
 6. Reference sequence
 ---------------------
 The reference sequence file should be in fasta format. It does 
-not need to be a complete nuclear genome, but can also be useful for 
-filtering/selecting plastome or transcriptome data, 
-or for other uses as well. 
+not need to be a complete nuclear genome, but could also be any 
+other type of data that you wish to map RAD data to; for example
+plastome or transcriptome data. 
 
 .. code-block:: python
 
     ~/ipyrad/tests/ipsimdata/rad_example_genome.fa   ## [6] select fasta file
-    ./data/finch_full_genome.fasta            ## [6] select fasta file
+    ./data/finch_full_genome.fasta                   ## [6] select fasta file
 
 
 .. _datatype:
