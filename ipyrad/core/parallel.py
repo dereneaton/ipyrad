@@ -24,12 +24,12 @@ def start(data):
     ## open all ip views for MPI
     iparg = ""
     if "MPI" in data._ipcluster["engines"]:
-        iparg = "--ip='*' "
+        iparg = "--ip=* "
 
     ## make ipcluster arg call
     standard = """
         ipcluster start 
-                  --daemon 
+                  --daemonize 
                   --cluster-id={}
                   --engines={} 
                   --n={}
