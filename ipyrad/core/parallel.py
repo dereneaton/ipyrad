@@ -3,6 +3,7 @@
 ## imports for running ipcluster
 from __future__ import print_function
 
+import ipyparallel as ipp
 import subprocess
 import atexit
 import shlex
@@ -21,10 +22,15 @@ LOGGER = logging.getLogger(__name__)
 def start(data):
     """ Start ipcluster """
 
-    ## open all ip views for MPI
+    ## if MPI argument then use --ip arg to view all sockets
     iparg = ""
     if "MPI" in data._ipcluster["engines"]:
         iparg = "--ip=*"
+
+    ## if not designated then no -n arg means get all cores
+    narg = ""
+    if int(data._ipcluster["cores"]):
+        narg = "--n={}".format(data._ipcluster["cores"])
 
     ## make ipcluster arg call
     standard = """
@@ -32,11 +38,11 @@ def start(data):
                   --daemonize 
                   --cluster-id={}
                   --engines={} 
-                  --n={}
+                  {}
                   {}"""\
         .format(data._ipcluster["id"], 
                 data._ipcluster["engines"], 
-                data._ipcluster["cores"],
+                narg,
                 iparg)
                    
     ## wrap ipcluster start
@@ -44,16 +50,14 @@ def start(data):
         LOGGER.info(shlex.split(standard))
         subprocess.check_output(shlex.split(standard))
 
-        print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(data._ipcluster["engines"], data._ipcluster["cores"]))
-
     except subprocess.CalledProcessError as inst:
-        LOGGER.debug("ipcontroller already running.")
+        LOGGER.debug("  ipcontroller already running.")
         raise
 
     except Exception as inst:
-        sys.exit("Error launching ipcluster for parallelization:\n({})\n".\
+        sys.exit("  Error launching ipcluster for parallelization:\n({})\n".\
                  format(inst))
+
 
 
 
