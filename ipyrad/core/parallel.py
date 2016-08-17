@@ -8,7 +8,7 @@ import atexit
 import shlex
 import sys
 import os
-from ipyrad.assemble.util import detect_cpus
+#from ipyrad.assemble.util import detect_cpus
 
 # pylint: disable=W0212
 
@@ -18,7 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 ## start ipcluster
-def start(data, quiet):
+def start(data):
     """ Start ipcluster """
 
     ## open all ip views for MPI
@@ -36,7 +36,7 @@ def start(data, quiet):
                   {}"""\
         .format(data._ipcluster["id"], 
                 data._ipcluster["engines"], 
-                data.cpus,
+                data._ipcluster["cores"],
                 iparg)
                    
     ## wrap ipcluster start
@@ -45,7 +45,7 @@ def start(data, quiet):
         subprocess.check_output(shlex.split(standard))
 
         print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(data._ipcluster["engines"], data.cpus))
+              .format(data._ipcluster["engines"], data._ipcluster["cores"]))
 
     except subprocess.CalledProcessError as inst:
         LOGGER.debug("ipcontroller already running.")
@@ -83,7 +83,7 @@ def ipcontroller_init(data, quiet=False):
     ## check if this pid already has a running cluster
     data._ipcluster["id"] = "ipyrad-"+str(os.getpid())
 
-    start(data, quiet)
+    start(data)
     atexit.register(stop, data._ipcluster["id"])
 
     return data
