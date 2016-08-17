@@ -831,7 +831,7 @@ class Assembly(object):
                     else:
                         if not quiet:
                             print(\
-                "\r  Establishing MPI connection to remote hosts", end="")
+                "\r  establishing MPI connection to remote hosts...", end="")
                             sys.stdout.flush()
 
 
@@ -853,97 +853,98 @@ class Assembly(object):
     ## this function is now deprecated but let's keep it around for a little 
     ## bit. We've simplified error handling now but may want to look back at 
     ## this func if the new one fails to report well on some errors.
-    def _clientwrapper(self, stepfunc, args, nwait):
-        """ wraps a call with error messages for when ipyparallel fails"""
-        ## emtpy error string
-        inst = ""
+    # def _clientwrapper(self, stepfunc, args, nwait):
+    #     """ wraps a call with error messages for when ipyparallel fails"""
+    #     ## emtpy error string
+    #     inst = ""
 
-        ## wrapper to ensure closure of ipyparallel
-        try:
-            ipyclient = ""
-            ipyclient = self._launch2(nwait)
-            args.append(ipyclient)
-            stepfunc(*args)
+    #     ## wrapper to ensure closure of ipyparallel
+    #     try:
+    #         ipyclient = ""
+    #         ipyclient = self._launch2(nwait)
+    #         args.append(ipyclient)
+    #         stepfunc(*args)
 
-        except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
-            ## raise by ipyparallel if no connection file is found for 30 sec.
-            msg = """
-    No Engines found... ensure ipcluster is running (see API docs for details).
-    When using the API you must start an ipyparallel instance using either 
-    `ipcluster start` from a terminal, or the Clusters tab in a Jupyter notebook.
-    """
-            if not ip.__interactive__:
-                msg = """
-    There was a problem connecting to parallel engines. See Docs for advice.
-            """
-            ## raise right away since there is no ipyclient to close
-            msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg 
-            raise IPyradError(msg)
+    #     except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
+    #         ## raise by ipyparallel if no connection file is found for 30 sec.
+    #         msg = """
+    # No Engines found... ensure ipcluster is running (see API docs for details).
+    # When using the API you must start an ipyparallel instance using either 
+    # `ipcluster start` from a terminal, or the Clusters tab in a Jupyter notebook.
+    # """
+    #         if not ip.__interactive__:
+    #             msg = """
+    # There was a problem connecting to parallel engines. See Docs for advice.
+    #         """
+    #         ## raise right away since there is no ipyclient to close
+    #         msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg 
+    #         raise IPyradError(msg)
 
-        except IOError as inst:
-            LOGGER.error("IOError: {}".format(inst))
-            raise
+    #     except IOError as inst:
+    #         LOGGER.error("IOError: {}".format(inst))
+    #         raise
 
-        ## except user or system interrupt
-        except KeyboardInterrupt as inst:
-            ## abort and allow wrapper to save and close
-            LOGGER.info("assembly interrupted by user.")
-            print("\n  Keyboard Interrupt by user")
-            #sys.exit(2)
+    #     ## except user or system interrupt
+    #     except KeyboardInterrupt as inst:
+    #         ## abort and allow wrapper to save and close
+    #         LOGGER.info("assembly interrupted by user.")
+    #         print("\n  Keyboard Interrupt by user")
+    #         #sys.exit(2)
 
-        except IPyradWarningExit as inst:
-            ## save inst for raise error after finally statement
-            LOGGER.info("IPyradWarningExit: %s", inst)
-            print("  IPyradWarningExit: {}".format(inst))
+    #     except IPyradWarningExit as inst:
+    #         ## save inst for raise error after finally statement
+    #         LOGGER.info("IPyradWarningExit: %s", inst)
+    #         print("  IPyradWarningExit: {}".format(inst))
 
-        except SystemExit as inst:
-            LOGGER.info("assembly interrupted by sys.exit.")
-            print("  SystemExit Interrupt: {}".format(inst))
+    #     except SystemExit as inst:
+    #         LOGGER.info("assembly interrupted by sys.exit.")
+    #         print("  SystemExit Interrupt: {}".format(inst))
 
-        ## An Engine Crashed. Raise a readable traceback message.
-        except ipp.error.CompositeError as inst:
-            ## print the trace if it's turned on, tho
-            print(inst.print_traceback())
+    #     ## An Engine Crashed. Raise a readable traceback message.
+    #     except ipp.error.CompositeError as inst:
+    #         ## print the trace if it's turned on, tho
+    #         print(inst.print_traceback())
 
-            ## find and print engine error for debugging
-            for job in ipyclient.metadata:
-                if ipyclient.metadata[job]['error']:
-                    print(ipyclient.metadata[job]['error'])
+    #         ## find and print engine error for debugging
+    #         for job in ipyclient.metadata:
+    #             if ipyclient.metadata[job]['error']:
+    #                 print(ipyclient.metadata[job]['error'])
 
-        except IPyradError as inst:
-            LOGGER.info(inst)
-            print("  IPyradError: {}".format(inst))            
+    #     except IPyradError as inst:
+    #         LOGGER.info(inst)
+    #         print("  IPyradError: {}".format(inst))            
 
-        except Exception as inst:
-            ## Caught unhandled exception, print and reraise
-            LOGGER.error(inst)
-            print("\n  Caught unknown exception - {}".format(inst))
-            raise  ## uncomment raise to get traceback
+    #     except Exception as inst:
+    #         ## Caught unhandled exception, print and reraise
+    #         LOGGER.error(inst)
+    #         print("\n  Caught unknown exception - {}".format(inst))
+    #         raise  ## uncomment raise to get traceback
 
 
-        ## close client when done or interrupted
-        finally:
-            try:
-                ## pickle the data obj
-                self.save()                
-                ## can't close client if it was never open
-                if ipyclient:
-                    ## if CLI, stop jobs and shutdown
-                    if not ip.__interactive__:
-                        ipyclient.abort()                        
-                    ## if API, stop jobs and clean queue
-                    else:
-                        ipyclient.abort()
-                        ## clear the memory
-                        ipyclient.purge_everything()
+    #     ## close client when done or interrupted
+    #     finally:
+    #         try:
+    #             ## pickle the data obj
+    #             self.save()                
+    #             ## can't close client if it was never open
+    #             if ipyclient:
+    #                 ## if CLI, stop jobs and shutdown
+    #                 if not ip.__interactive__:
+    #                     ipyclient.abort()                        
+    #                 ## if API, stop jobs and clean queue
+    #                 else:
+    #                     ipyclient.abort()
+    #                     ## clear the memory
+    #                     ipyclient.purge_everything()
 
-                    ipyclient.close()
-            ## if exception is close and save, print and ignore
-            except Exception as inst2:
-                LOGGER.error("shutdown warning: %s", inst2)
+    #                 ipyclient.close()
+    #         ## if exception is close and save, print and ignore
+    #         except Exception as inst2:
+    #             LOGGER.error("shutdown warning: %s", inst2)
 
-            if inst:
-                IPyradWarningExit(inst)
+    #         if inst:
+    #             IPyradWarningExit(inst)
+
 
 
     def _step1func(self, force, preview, ipyclient):
@@ -1424,7 +1425,7 @@ class Assembly(object):
                     hosts = ipyclient[:].apply_sync(socket.gethostname)
                     print("")
                     for hostname in set(hosts):
-                        print("  Host parallel setup: [{} cores] on {}"\
+                        print("  host compute node: [{} cores] on {}"\
                               .format(hosts.count(hostname), hostname))
 
                 ## if Local setup then we know that we can get all the cores for 
@@ -1432,7 +1433,7 @@ class Assembly(object):
                 ## they'll start grabbing jobs once they're started. 
                 else:
                     cpus = min(detect_cpus(), self.cpus)
-                    print("  Local parallel setup: [{} cores] on {}"\
+                    print("  local compute node: [{} cores] on {}"\
                           .format(cpus, socket.gethostname()))
 
             ## get the list of steps to run
