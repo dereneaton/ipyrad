@@ -676,7 +676,8 @@ def run(data, samples, force, ipyclient):
     .format(sample.name, int(sample.stats.clusters_hidepth)))
             elif sample.stats.state < 4:
                 print("""\
-    Skipping Sample {}; not yet finished step4 """)
+    Skipping Sample {}; not yet finished step4 """\
+    .format(sample.name))
             else:
                 subsamples.append(sample)
                 
