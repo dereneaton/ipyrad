@@ -439,8 +439,8 @@ def main():
             ## otherwise use all available cores. By default _ipcluster[cores] 
             ## is set to detect_cpus in Assembly.__init__)
             if args.cores:
-                data.cpus = args.cores
-
+                data.cpus = int(args.cores)
+                data._ipcluster["cores"] = str(args.cores)
             if args.MPI:
                 data._ipcluster["engines"] = "MPI"
             else:
