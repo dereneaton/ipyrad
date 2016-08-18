@@ -911,15 +911,15 @@ def zcat_make_temps(args):
 
 
 OVERWRITING_FASTQS = """\
-    [force] overwriting demux fastq files previously created by ipyrad in:
-    {}."""
+    [force] overwriting fastq files previously *created by ipyrad* in:
+    {}
+    This does not affect your *original/raw data files*"""
 
 
 if __name__ == "__main__":
 
     ## run test
     import ipyrad as ip
-    #from ipyrad.core.assembly import Assembly
 
     ## get current location
     #PATH = os.path.abspath(os.path.dirname(__file__))
@@ -927,8 +927,13 @@ if __name__ == "__main__":
     #IPATH = os.path.dirname(os.path.dirname(PATH))
     #DATA = os.path.join(IPATH, "tests", "test_rad")
 
-    TEST = ip.Assembly("profile_s1")
+    ## create an Assembly
+    TEST = ip.Assembly("test")
+
+    ## this expects that you have an ipcluster running...
     TEST.set_params(1, "./maintest")
-    TEST.set_params(2, "./ipsimdata/sim_rad_test_R1_.fastq.gz")
-    TEST.set_params(3, "./ipsimdata/sim_rad_test_barcodes.txt")
-    TEST.step1()
+    TEST.set_params(2, "./ipsimdata/rad_example_R1_.fastq.gz")
+    TEST.set_params(3, "./ipsimdata/rad_example_barcodes.txt")
+
+    ## run demultiplexing
+    TEST.run(1)
