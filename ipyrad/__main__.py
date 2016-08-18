@@ -37,8 +37,9 @@ def parse_params(args):
     ## check length
     ## assert len(plines) > 30, "params file error. Format not recognized."
 
-    ## make into a dict
-    items = [i.split("##")[0].strip() for i in plines[1:]]
+    ## make into a dict. Ignore blank lines at the end of file
+    ## Really this will ignore all blang lines
+    items = [i.split("##")[0].strip() for i in plines[1:] if not i.strip() == ""]
 
     #keys = [i.split("]")[-2][-1] for i in plines[1:]]
     keys = range(len(plines)-1)
@@ -245,7 +246,12 @@ def getassembly(args, parsedict):
                 data.set_params(param, parsedict[param])
         else:
             ## all other params should be handled by set_params
-            data.set_params(param, parsedict[param])
+            try:
+                data.set_params(param, parsedict[param])
+            except IndexError as inst:
+                print("  Malformed params file: {}".format(args.params))
+                print("  Bad parameter {} - {}".format(param, parsedict[param]))
+                sys.exit(-1)
 
     return data
 
