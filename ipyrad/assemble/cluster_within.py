@@ -71,7 +71,9 @@ def sample_cleanup(data, sample):
     ## If our longest sequence is longer than the current max_fragment_length
     ## then update max_fragment_length. For assurance we require that 
     ## max len is 4 greater than maxlen, to allow for pair separators.
-    data._hackersonly["max_fragment_length"] = maxlen.max() + 4
+    max_len = maxlen.max()
+    if max_len > data._hackersonly["max_fragment_length"]:
+         data._hackersonly["max_fragment_length"] = max_len + 4
 
     if depths.max():
         ## make sense of stats
