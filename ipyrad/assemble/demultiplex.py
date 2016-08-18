@@ -423,8 +423,8 @@ def prechecks(data, preview, force):
     ## check for data, do glob for fuzzy matching
     if not glob.glob(data.paramsdict["raw_fastq_path"]):
         raise IPyradWarningExit("""\
-    No data found in {}. Fix path to data files.""".
-    format(data.paramsdict["raw_fastq_path"]))
+    No data found in {}. Fix path to data files.
+    """.format(data.paramsdict["raw_fastq_path"]))
 
     ## find longest barcode
     try:
@@ -443,7 +443,9 @@ def prechecks(data, preview, force):
             longbar = (longbar[0], longbar[1], max(barlens))
 
     except ValueError:
-        raise IPyradWarningExit("    Barcodes file not found.")
+        raise IPyradWarningExit(\
+            "    Barcodes file not found. You entered: '{}'\n"\
+            .format(data.paramsdict["barcodes_path"]))
 
     ## make sure there is a [workdir] and a [workdir/name_fastqs]
     project_dir = os.path.realpath(data.paramsdict["project_dir"])
@@ -451,9 +453,7 @@ def prechecks(data, preview, force):
         os.mkdir(project_dir)
     data.dirs.fastqs = os.path.join(project_dir, data.name+"_fastqs")
     if os.path.exists(data.dirs.fastqs) and force:
-        print("""\
-  Force flag is set. Overwriting existing demultiplexed files previously 
-  created by ipyrad in the directory '{}'.""".format(data.dirs.fastqs))
+        print(OVERWRITING_FASTQS.format(data.dirs.fastqs))
         shutil.rmtree(data.dirs.fastqs)
     if not os.path.exists(data.dirs.fastqs):
         os.mkdir(data.dirs.fastqs)
@@ -489,9 +489,9 @@ def prechecks(data, preview, force):
 
     ## set optim chunk size
     if preview:
-        optim = ((data._hackersonly["preview_step1"]) // (data.cpus))
+        optim = ((data._hackersonly["preview_step1"]) // (data._ipcluster["cores"]))
     else:
-        optim = estimate_optim(raws[0][0], data.cpus)
+        optim = estimate_optim(raws[0][0], data._ipcluster["cores"])
 
     ## Build full inverse barcodes dictionary
     matchdict = {}
@@ -623,7 +623,7 @@ def wrapped_run(data, preview, ipyclient, force):
     ## file, assumes others are the same size. Creates tmpdir
     args = prechecks(data, preview, force)
     raws, longbar, cutters, optim, matchdict, tmpdir = args
-    LOGGER.info('ncpus %s', data.cpus)
+    LOGGER.info('ncpus %s', data._ipcluster["cores"])
     LOGGER.info('optim %s', optim)
 
     ## Truncate the input fq so it'll run faster. 
@@ -667,7 +667,8 @@ def wrapped_run(data, preview, ipyclient, force):
         optim += 1
 
     ### progress
-    LOGGER.info("chunks size = {} lines, on {} cpus".format(optim, data.cpus))
+    LOGGER.info("chunks size = %s lines, on %s cpus", 
+                optim, data._ipcluster["cores"])
 
     ## dictionary to store asyncresults for sorting jobs
     filesort = {}
@@ -680,7 +681,7 @@ def wrapped_run(data, preview, ipyclient, force):
     #####################################################################
 
     ## if more files than cpus: no chunking
-    if len(raws) > data.cpus:
+    if len(raws) > data._ipcluster["cores"]:
         splitlimit = int(12e9)
     else:
         ## a general good rule for splitting
@@ -698,7 +699,7 @@ def wrapped_run(data, preview, ipyclient, force):
 
     for fidx, tups in enumerate(raws):
         ## if number of lines is > 20M then just submit it
-        if optim * data.cpus < int(splitlimit):
+        if optim * data._ipcluster["cores"] < int(splitlimit):
             chunkfiles[fidx] = [tups]
             ## make an empty list for when we analyze this chunk            
             filesort[fidx] = []
@@ -712,7 +713,7 @@ def wrapped_run(data, preview, ipyclient, force):
             ## get the chunk names
             while not async.ready():
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(data.cpus, fidx, 
+                progressbar(data._ipcluster["cores"], fidx, 
                     ' chunking large files  | {}'.format(elapsed))        
                 time.sleep(0.1)
             chunkfiles[fidx] = async.result()
@@ -909,6 +910,11 @@ def zcat_make_temps(args):
 
 
 
+OVERWRITING_FASTQS = """\
+    [force] overwriting demux fastq files previously created by ipyrad in:
+    {}."""
+
+
 if __name__ == "__main__":
 
     ## run test
@@ -925,6 +931,4 @@ if __name__ == "__main__":
     TEST.set_params(1, "./maintest")
     TEST.set_params(2, "./ipsimdata/sim_rad_test_R1_.fastq.gz")
     TEST.set_params(3, "./ipsimdata/sim_rad_test_barcodes.txt")
-    print(TEST.cpus)
-    TEST.cpus = 4
     TEST.step1()
