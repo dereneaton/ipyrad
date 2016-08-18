@@ -117,6 +117,8 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
 
         ## get connection within timeout window of wait time and hide messages
         ipyclient = ipp.Client(**args)
+        sys.stdout = save_stdout
+        sys.stderr = save_stderr
 
         ## check that all engines have connected            
         for _ in range(3000):
@@ -124,24 +126,21 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
             time.sleep(0.01)
 
             ## If MPI then wait for all engines to start so we can report
-            ## how many cores are on each host. If Local then just go ahead
-            ## before they're ready since load_balance will distribute jobs
+            ## how many cores are on each host. If Local then only wait for
+            ## one engine to be ready and then just go.
             if not engines == "MPI":
                 if initid:
                     break
             else:
-                ## don't know how many to expect for interactive, but the
-                ## connection stays open, so just wait til no new engines
-                ## have been added for three seconds
-                time.sleep(2.5)
+                if not quiet:
+                    print(\
+            "\r  establishing MPI connection to remote hosts...", end="")
+                    sys.stdout.flush()
+                time.sleep(3)
                 if initid:
                     if len(ipyclient) == initid:
+                        print("")
                         break
-                else:
-                    if not quiet:
-                        print(\
-            "\r  establishing MPI connection to remote hosts...", end="")
-                        sys.stdout.flush()
 
 
     except KeyboardInterrupt as inst:
