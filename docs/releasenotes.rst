@@ -5,6 +5,26 @@
 Release Notes
 =============
 
+0.3.30
+------
+- Fixed very stupid error that was not accurately tracking max_fragment_length.
+- Better error handling on malformed params file. Allows blank lines in params (prevents that gotcha).
+- Cosmetic changes to step 7 interaction if samples are missing from db
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Changed behavior of step 7 to allow writing output for all samples that are ready. Allows the user to choose whether to continue or quit.
+- prettier print func at splash
+- prettier splash
+- testing hpc mpi setups
+- created new format for ipyparallel wrapper function that is much more efficient and clean. Also prints [cores]:hostname
+- edited splash length, added newclient arg to run
+- testing MPI on HPC multiple nodes
+- testing MPI on HPC multiple nodes
+- testing MPI on HPC multiple nodes
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- testing MPI on HPC multiple nodes
+- testing MPI on HPC multiple nodes
+- updating docs parameters
+
 0.3.29
 ------
 - Temp debug code in jointestimate for tracking a bug
