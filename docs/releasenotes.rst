@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.3.29
+------
+- Temp debug code in jointestimate for tracking a bug
+- Step 5 - Fixed info message for printing sample names not in proper state. Cosmetic but confusing.
+
 0.3.28
 ------
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad

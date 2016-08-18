@@ -166,6 +166,7 @@ def tablestack(rstack):
 
 def stackarray(data, sample, sub):
     """ makes a list of lists of reads at each site """
+    LOGGER.error("Entering stackarray - ".format(sample.name))
     ## get clusters file
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
@@ -238,6 +239,15 @@ def stackarray(data, sample, sub):
                     nclust += 1
                 except IndexError:
                     LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
+                ## Catch any loci that are longer than max_fragment_length
+                except Exception as inst:
+                    np.set_printoptions(threshold=np.inf)
+                    LOGGER.error("arrayed - {}".format(arrayed))
+                    LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
+                    LOGGER.error("inst - {}".format(inst))
+                    LOGGER.error("max_frag - {} : array_len - {}".format(\
+                        data._hackersonly["max_fragment_length"], len(arrayed[0])))
+                    raise
 
                 ## finish early if subsampling
                 if nclust == sub:
