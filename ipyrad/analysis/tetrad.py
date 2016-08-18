@@ -878,7 +878,6 @@ class Quartet(object):
             if not quiet:
                 if self._ipcluster["engines"] == "MPI":
                     hosts = ipyclient[:].apply_sync(socket.gethostname)
-                    print("")
                     for hostname in set(hosts):
                         print("  host compute node: [{} cores] on {}"\
                               .format(hosts.count(hostname), hostname))
