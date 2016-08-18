@@ -7,42 +7,21 @@ Release Notes
 
 0.3.31
 ------
-- better print message for MPI nodes
-- cleaning up globals for cleaner code
-- test script for CI, and more descriptive force printout
-- cosmetic cleanup
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- big cleanup to ipcluster call from Assembly, and cleaner code by externalizing global exceptions.
-- removed unused import
-- more flexible importing
-- cleaned up some exception messages
+- changed name of svd4tet to tetrad
+- improved message gives info on node connections for MPI
+- added a test script for continuous integration
+- big cleanup to ipcluster (parallel) setup, better for API/CLI both
 - modified tetrad ipcluster init to work the same as ipyrad's
-- modified parallelism in tetrad
 - generalized ipcluster setup
-- much simplified ipcluster calls setup, more generalized to allow API more flexibility
-- changed svd4tet to tetrad
-- changed name of svd4tet to tetrad
-- changed name of svd4tet to tetrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- updating cookbook in progress
 
 0.3.30
 ------
+- Changed behavior of step 7 to allow writing output for all samples that are ready. Allows the user to choose whether to continue or quit.
 - Fixed very stupid error that was not accurately tracking max_fragment_length.
 - Better error handling on malformed params file. Allows blank lines in params (prevents that gotcha).
 - Cosmetic changes to step 7 interaction if samples are missing from db
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Changed behavior of step 7 to allow writing output for all samples that are ready. Allows the user to choose whether to continue or quit.
-- prettier print func at splash
 - prettier splash
-- testing hpc mpi setups
-- created new format for ipyparallel wrapper function that is much more efficient and clean. Also prints [cores]:hostname
 - edited splash length, added newclient arg to run
-- testing MPI on HPC multiple nodes
-- testing MPI on HPC multiple nodes
-- testing MPI on HPC multiple nodes
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- testing MPI on HPC multiple nodes
 - testing MPI on HPC multiple nodes
 - updating docs parameters
 
