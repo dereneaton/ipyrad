@@ -1170,14 +1170,30 @@ class Assembly(object):
                 iset = set([i.name for i in samples])
                 diff = iset.difference(dbset)
                 if diff:
-                    raise IPyradWarningExit("""
+                    msg = """
     The following Samples do not appear to have been clustered in step6
-    (i.e., they are not in {}): 
+    (i.e., they are not in {}). Check for typos in Sample names, or try 
+    running step6 including the selected samples.
     Missing: {}
-    Check for typos in Sample names, or try running step6 including the 
-    selected samples.
-    """.format(self.database, ", ".join(list(diff))))
+    """.format(self.database, ", ".join(list(diff)))
+                    ## The the old way that failed unless all samples were
+                    ## clustered successfully in step 6. Adding some flexibility
+                    ## to allow writing output even if some samples failed.
+                    ## raise IPyradWarningExit(msg)
+                    msg += "\n    Continue writing output files excluding "\
+                        + "these samples? (yes/no)\n    > "
+                    cont = raw_input(msg)
+                    while not cont in ["yes", "no"]:
+                        cont = raw_input(msg)
+                    if cont == "no":
+                        sys.exit("Exiting")
 
+                    ## Remove the samples that aren't ready for writing out
+                    ## i.e. only proceed with the samples that are actually
+                    ## present in the db
+                    samples = [x for x in samples if x.name not in diff]
+                    print("    Excluding these samples from final output:\n"\
+                        + "\n    {}\n".format(", ".join(list(diff))))
         except (IOError, ValueError):
             raise IPyradError("""
     Database file {} not found. First run step6
