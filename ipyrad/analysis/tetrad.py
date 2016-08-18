@@ -114,7 +114,7 @@ class Quartet(object):
         self._ipcluster = {
             "cluster_id" : "",
             "profile" : "default", 
-            "engines" : "Local", 
+            "engines" : "MPI", 
             "quiet" : 0, 
             "timeout" : 45, 
             "cores" : ip.assemble.util.detect_cpus()}
