@@ -4,7 +4,7 @@
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradError, IPyradWarningExit, detect_cpus
+from ipyrad.assemble.util import IPyradError, IPyradWarningExit
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -130,7 +130,8 @@ def branch_assembly(args, parsedict):
 
 
 def merge_assemblies(args):
-    """ merge all given assemblies into a new assembly. Copies the params
+    """ 
+    merge all given assemblies into a new assembly. Copies the params
     from the first passed in extant assembly. this function is called 
     with the ipyrad -m flag. You must pass it at least 3 values, the first
     is a new assembly name (a new `param-newname.txt` will be created).
@@ -409,10 +410,10 @@ def main():
 
     ## always print the header when doing steps
     header = \
-    "\n ---------------------------------------------------"+\
+    "\n -------------------------------------------------------------"+\
     "\n  ipyrad [v.{}]".format(ip.__version__)+\
     "\n  Interactive assembly and analysis of RAD-seq data"+\
-    "\n ---------------------------------------------------"
+    "\n -------------------------------------------------------------"
 
     ## if merging just do the merge and exit
     if args.merge:
@@ -438,9 +439,9 @@ def main():
             ## if cores was entered, limit cores to this number
             ## otherwise use all available cores. By default _ipcluster[cores] 
             ## is set to detect_cpus in Assembly.__init__)
+            data._ipcluster["cores"] = str(args.cores)
             if args.cores:
-                data.cpus = args.cores
-
+                data.cpus = int(args.cores)
             if args.MPI:
                 data._ipcluster["engines"] = "MPI"
             else:
@@ -454,7 +455,8 @@ def main():
 
             ## run assembly steps
             steps = list(args.steps)
-            data.run(steps=steps, force=args.force, preview=args.preview)
+            data.run(steps=steps, force=args.force, preview=args.preview,
+                     newclient=0, quiet=0)
 
         if args.results:
             showstats(parsedict)

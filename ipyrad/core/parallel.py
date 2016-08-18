@@ -3,12 +3,13 @@
 ## imports for running ipcluster
 from __future__ import print_function
 
+import ipyparallel as ipp
 import subprocess
 import atexit
 import shlex
 import sys
 import os
-from ipyrad.assemble.util import detect_cpus
+#from ipyrad.assemble.util import detect_cpus
 
 # pylint: disable=W0212
 
@@ -18,25 +19,30 @@ LOGGER = logging.getLogger(__name__)
 
 
 ## start ipcluster
-def start(data, quiet):
+def start(data):
     """ Start ipcluster """
 
-    ## open all ip views for MPI
+    ## if MPI argument then use --ip arg to view all sockets
     iparg = ""
     if "MPI" in data._ipcluster["engines"]:
-        iparg = "--ip='*' "
+        iparg = "--ip=*"
+
+    ## if not designated then no -n arg means get all cores
+    narg = ""
+    if int(data._ipcluster["cores"]):
+        narg = "--n={}".format(data._ipcluster["cores"])
 
     ## make ipcluster arg call
     standard = """
         ipcluster start 
-                  --daemon 
+                  --daemonize 
                   --cluster-id={}
                   --engines={} 
-                  --n={}
+                  {}
                   {}"""\
         .format(data._ipcluster["id"], 
                 data._ipcluster["engines"], 
-                data.cpus,
+                narg,
                 iparg)
                    
     ## wrap ipcluster start
@@ -44,16 +50,14 @@ def start(data, quiet):
         LOGGER.info(shlex.split(standard))
         subprocess.check_output(shlex.split(standard))
 
-        print("  ipyparallel setup: {} connection to {} Engines\n"\
-              .format(data._ipcluster["engines"], data.cpus))
-
     except subprocess.CalledProcessError as inst:
-        LOGGER.debug("ipcontroller already running.")
+        LOGGER.debug("  ipcontroller already running.")
         raise
 
     except Exception as inst:
-        sys.exit("Error launching ipcluster for parallelization:\n({})\n".\
+        sys.exit("  Error launching ipcluster for parallelization:\n({})\n".\
                  format(inst))
+
 
 
 
@@ -82,8 +86,7 @@ def ipcontroller_init(data, quiet=False):
     """
     ## check if this pid already has a running cluster
     data._ipcluster["id"] = "ipyrad-"+str(os.getpid())
-
-    start(data, quiet)
+    start(data)
     atexit.register(stop, data._ipcluster["id"])
 
     return data
