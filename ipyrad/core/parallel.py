@@ -8,7 +8,6 @@ import atexit
 import shlex
 import sys
 import os
-from ipyrad.assemble.util import detect_cpus
 
 # pylint: disable=W0212
 
@@ -18,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 ## start ipcluster
-def start(data, quiet):
+def start(data):
     """ Start ipcluster """
 
     ## open all ip views for MPI
@@ -83,7 +82,7 @@ def ipcontroller_init(data, quiet=False):
     ## check if this pid already has a running cluster
     data._ipcluster["id"] = "ipyrad-"+str(os.getpid())
 
-    start(data, quiet)
+    start(data)
     atexit.register(stop, data._ipcluster["id"])
 
     return data
