@@ -3,8 +3,8 @@
 
 from __future__ import print_function, division  # Requires Python 2.7+
 
-from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.core.parallel import register_ipcluster
+from ipyrad.assemble.util import IPyradWarningExit, detect_cpus
 import pkg_resources
 import ipyrad as ip
 import numpy as np
@@ -18,6 +18,7 @@ import ipyrad.analysis as ipa
 
 # pylint: disable=W0212
 # pylint: disable=C0301
+# pylint: disable=E1101
 
 LOGGER = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ def parse_command_line():
         type=str, default=None,
         help="newick file starting tree for equal splits sampling")
 
-    parser.add_argument("-c", metavar="compute_nodes", dest="cnodes",
+    parser.add_argument("-c", metavar="CPUs/cores", dest="cores",
         type=int, default=1,
         help="setting n Nodes improves parallel efficiency on HPC")
 
@@ -164,14 +165,7 @@ def main():
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
 
-    header = """
- ----------------------------------------------------------------------
-  tetrad [v.{}]
-  Quartet inference from phylogenetic invariants
-  Distributed as part of the ipyrad.analysis toolkit
- ----------------------------------------------------------------------\
-  """.format(ip.__version__)
-    print(header)
+    print(HEADER.format(ip.__version__))
 
     ## set random seed
     np.random.seed(args.rseed)
@@ -199,12 +193,8 @@ def main():
         if (not os.path.exists(newjson)) or args.force:
             data = ipa.tetrad.Quartet(args.name, args.outdir, args.method)
         else:
-            raise IPyradWarningExit("""\
-    Error: tetrad analysis '{}' already exists in {} 
-    Use the force argument (-f) to overwrite old analysis files, or,
-    Use the JSON argument (-j {}/{}.tet.json) 
-    to continue analysis of '{}' from last checkpoint.
-    """.format(args.name, args.outdir, args.outdir, args.name, args.name))
+            raise IPyradWarningExit(QUARTET_EXISTS\
+            .format(args.name, args.outdir, args.outdir, args.name, args.name))
 
         ## if input files
         if args.map: 
@@ -239,28 +229,40 @@ def main():
     if args.boots:
         data.nboots = int(args.boots)
 
-    ## This analysis is threaded differently from ipyrad, and thus we want to
-    ## set up assuming hyperthreaded cores, user passes nnodes on HPC
-    ## Use ipcluster info passed to command-line this time
-    data._ipcluster["cores"] = str(args.cnodes)
-    if args.cnodes:
-        data.cnodes = int(args.cnodes)
-        data.cpus = int(ip.assemble.util.detect_cpus())
-    #data._ipcluster["engines"] = "MPI"
-    data._ipcluster["engines"] = "Local"
+    ## set CLI ipcluster terms
+    data._ipcluster["cores"] = max(args.cores, detect_cpus())
 
-    ## launch ipcluster and register for later destruction.
-    data = ipcontroller_init(data)
+    ## start ipcluster and register cluster_id for later destruction.
+    data = register_ipcluster(data)
 
     ## message about whether we are continuing from existing
     if data.checkpoint.boots or data.checkpoint.arr:
-        print(ipa.tetrad.LOADING_MESSAGE.format(
+        print(ipa.tetrad.LOADING_MESSAGE.format(data.name, 
               data.method, data.checkpoint.arr, data.checkpoint.boots))
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
     data.run(force=args.force)
 
+
+
+
+## CONSTANTS AND WARNINGS
+
+HEADER = """
+ ----------------------------------------------------------------------
+  tetrad [v.{}]
+  Quartet inference from phylogenetic invariants
+  Distributed as part of the ipyrad.analysis toolkit
+ ----------------------------------------------------------------------\
+  """
+
+QUARTET_EXISTS = """\
+    Error: tetrad analysis '{}' already exists in {} 
+    Use the force argument (-f) to overwrite old analysis files, or,
+    Use the JSON argument (-j {}/{}.tet.json) 
+    to continue analysis of '{}' from last checkpoint.
+    """
 
 
 if __name__ == "__main__": 
