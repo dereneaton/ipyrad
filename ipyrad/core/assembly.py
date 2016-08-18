@@ -1181,8 +1181,10 @@ class Assembly(object):
                 if diff:
                     msg = """
     The following Samples do not appear to have been clustered in step6
-    (i.e., they are not in {}). Check for typos in Sample names, or try 
-    running step6 including the selected samples.
+    (i.e., they are not in {}).
+    Check for typos in Sample names, or try running step6 including the 
+    selected samples.
+
     Missing: {}
     """.format(self.database, ", ".join(list(diff)))
                     ## The the old way that failed unless all samples were
@@ -1201,8 +1203,8 @@ class Assembly(object):
                     ## i.e. only proceed with the samples that are actually
                     ## present in the db
                     samples = [x for x in samples if x.name not in diff]
-                    print("    Excluding these samples from final output:\n"\
-                        + "\n    {}\n".format(", ".join(list(diff))))
+                    print("    Excluding these samples from final output: {}"\
+                        .format(", ".join(list(diff))))
         except (IOError, ValueError):
             raise IPyradError("""
     Database file {} not found. First run step6
