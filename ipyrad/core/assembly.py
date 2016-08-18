@@ -10,18 +10,15 @@
 
 from __future__ import print_function
 import os
-import time
 import glob
 import sys
 import gzip
 import copy
 import h5py
 import string
-import cStringIO
 import itertools
 import numpy as np
 import pandas as pd
-import ipyparallel as ipp
 import ipyrad as ip
 import socket
 
@@ -90,24 +87,14 @@ class Assembly(object):
 
         ## Make sure assembly name is not empty
         if not name:
-            msg = """\n
-    Assembly name _must_ be set. This is the first parameter in the params.txt 
-    file, and will be used as a prefix for output files. It should be a short 
-    string with no special characters, i.e., not a path (no \"/\" characters). 
-    If you need a suggestion, name it after the organism you're working on.\n"""
-            raise IPyradParamsError(msg)
+            raise IPyradParamsError(REQUIRE_ASSEMBLY_NAME)
 
         ## Do some checking here to make sure the name doesn't have
         ## special characters, spaces, or path delimiters. Allow _ and -.
         invalid_chars = string.punctuation.replace("_", "")\
                                           .replace("-", "")+ " "
         if any(char in invalid_chars for char in name):
-            msg = """\n
-    No spaces or special characters are allowed in the assembly name. A good 
-    practice is to replace spaces with underscores '_'. An example of a good 
-    assembly_name is: white_crowned_sparrows. Here's what you put:
-    {}""".format(name)
-            raise IPyradParamsError(msg)
+            raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
 
         self.name = name
         if not quiet:
@@ -116,16 +103,18 @@ class Assembly(object):
         ## Store assembly version #
         self._version = ip.__version__ 
 
-        ## stores ipcluster launch info
-        self._ipcluster = {}
-        for ipkey in ["id", "profile", "engines", "cores"]:
-            self._ipcluster[ipkey] = None
+        ## stores default ipcluster launch info
+        self._ipcluster = {
+            "cluster_id" : "",
+            "profile" : "default", 
+            "engines" : "Local", 
+            "quiet" : 0, 
+            "timeout" : 45, 
+            "cores" : detect_cpus()}
 
-        ## print headers
+        ## print headers, this is used as a 'quiet' option
+        ## or to control differences in printing between API and CLI
         self._headers = 0
-
-        ## all available cpus
-        self.cpus = detect_cpus()
 
         ## statsfiles is a dict with file locations
         ## stats_dfs is a dict with pandas dataframes
@@ -247,8 +236,7 @@ class Assembly(object):
 
 
 
-    def link_fastqs(self, path=None, merged=False, force=False, append=False,
-                    splitnames="_", fields=None):
+    def link_fastqs(self, path=None, force=False, append=False, splitnames="_", fields=None):
         """ Create Sample objects from demultiplexed fastq files in 
         sorted_fastq_path, or append additional fastq files to 
         existing Samples.
@@ -264,10 +252,6 @@ class Assembly(object):
             Path to the fastq files to be linked to Sample objects. The default
             location is to select all files in the 'sorted_fastq_path'. 
             Alternatively a different path can be entered here. 
-
-        merged : bool
-            Set to True if files represent first and second reads that were 
-            merged using some external software such as `PEAR` or `VSEARCH`. 
 
         append : bool
             The default action is to overwrite fastq files linked to Samples if 
@@ -316,10 +300,7 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
-
-        print("""\
-    Linking to demultiplexed fastq files in:
-      {}""".format(path))
+        print("    Linking to demultiplexed fastq files in: {}""".format(path))
 
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
@@ -332,12 +313,8 @@ class Assembly(object):
 
         ## raise error if no files are found
         if not fastqs:
-            inst = "No files found in `sorted_fastq_path`: {}".\
-                   format(self.paramsdict["sorted_fastq_path"])
-            ## check for simple naming error
-            if any(["_R1." in i for i in fastqs]):
-                inst += "\n  Names should contain _R1_, not _R1."
-            raise IPyradError(inst)
+            raise IPyradError(NO_FILES_FOUND_PAIRS\
+                        .format(self.paramsdict["sorted_fastq_path"]))
 
         ## link pairs into tuples        
         if 'pair' in self.paramsdict["datatype"]:
@@ -362,12 +339,7 @@ class Assembly(object):
         else:
             ## print warning if _R2_ is in names when not paired
             if any(["_R2_" in i for i in fastqs]):
-                print("""
-        Warning: '_R2_' was detected in a file name, which suggests the data
-        may be paired-end. If so, you should set the Assembly parameter
-        `datatype` to a paired type (e.g., pairddrad or pairgbs) and run
-        with the force argument to re-link fastq data.
-        """)
+                print(NAMES_LOOK_PAIRED_WARNING)
             fastqs = [(i, "") for i in fastqs]
 
         ## counters for the printed output
@@ -405,10 +377,7 @@ class Assembly(object):
                     #if fastqtuple not in self.samples[sname].files.fastqs:
                     self.samples[sname].files.fastqs.append(fastqtuple)
                     appendinc += 1
-                    #else:
-                    #    print("    The files {} are already in Sample {}, "\
-                    #          .format(fastqtuple, sname) \
-                    #          +"cannot append duplicate files to a Sample.\n")
+
                 elif force:
                     ## overwrite/create new Sample
                     LOGGER.debug("Overwritting sample - ".format(sname))
@@ -423,17 +392,6 @@ class Assembly(object):
         The files {} are already in Sample. Use append=True to append additional
         files to a Sample or force=True to replace all existing Samples.
         """.format(sname))
-
-            ## record whether data were merged.
-            if merged:
-                self.samples[sname].merged = 1
-
-            ## do not allow merged=False and .forward in file names
-            if (merged == False) and ('forward' in fastqtuple[0]):
-                print("""
-        Warning: If R1 and R2 data are merged use link_fastqs(merge=True) to 
-        indicate this. You may need force=True to overwrite existing files.
-        """)
 
             ## if fastqs already demultiplexed, try to link stats
             if any([linkedinc, createdinc, appendinc]):
@@ -466,39 +424,30 @@ class Assembly(object):
 
 
 
-    def link_barcodes(self):
+    def _link_barcodes(self):
         """ 
-        Saves Sample barcodes in a dictionary as [Assembly].barcodes. Barcodes
-        are parsed from the file `barcodes_path`.
-
-        Note
-        ----
-        [Assembly].link_barcodes() is run automatically if set_params() is used
-        to change barcodes_path.
-
+        Private function. Links Sample barcodes in a dictionary as 
+        [Assembly].barcodes, with barcodes parsed from the 'barcodes_path' 
+        parameter. This function is called during set_params() when setting
+        the barcodes_path. 
         """
-        ## in case fuzzy selected
-        try: 
-            barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
-        except IndexError:
-            raise IPyradWarningExit("""
-    Error: Barcodes file not found: {}
-    """.format(self.paramsdict["barcodes_path"]))
-
+ 
         ## parse barcodefile
         try:
+            ## allows fuzzy match to barcodefile name
+            barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
+
+            ## read in the file
             bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
             bdf = bdf.dropna()
-            ## make sure upper case
+
+            ## make sure bars are upper case
             bdf[1] = bdf[1].str.upper()
 
+            ## make sure chars are all proper
             if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
-                msg = """
-    One or more barcodes contain invalid IUPAC nucleotide code characters.
-    Barcodes must contain only characters from this list "RKSYWMCATG".
-    Doublecheck your barcodes file is properly formatted."""
-                LOGGER.warn(msg)
-                raise IPyradError(msg)
+                LOGGER.warn(BAD_BARCODE)
+                raise IPyradError(BAD_BARCODE)
 
             ## 3rad/seqcap use multiplexed barcodes
             ## We'll concatenate them with a plus and split them later
@@ -509,8 +458,13 @@ class Assembly(object):
                 ## set attribute on Assembly object
                 self.barcodes = dict(zip(bdf[0], bdf[1]))
 
+        except (IOError, IndexError):
+            raise IPyradWarningExit(\
+                "    Barcodes file not found. You entered: {}"\
+                .format(self.paramsdict["barcodes_path"]))
+
         except ValueError as inst:
-            msg = "Barcodes file format error"
+            msg = "    Barcodes file format error."
             LOGGER.warn(msg)
             raise IPyradError(inst)
 
@@ -604,8 +558,8 @@ class Assembly(object):
 
 
     def set_params(self, param, newvalue):
-        """ Set a parameter to a new value. Raises error if newvalue 
-        is wrong type.
+        """ 
+        Set a parameter to a new value. Raises error if newvalue is wrong type.
 
         Note
         ----
@@ -662,10 +616,8 @@ class Assembly(object):
             self = paramschecker(self, param, newvalue)
 
         except Exception as inst:
-            raise IPyradWarningExit("""
-    Error setting parameter {}: {}
-    You entered: {}
-    """.format(param, inst, newvalue))
+            raise IPyradWarningExit(BAD_PARAMETER\
+                                    .format(param, inst, newvalue))
 
 
 
@@ -687,10 +639,7 @@ class Assembly(object):
         ## If not forcing, test for file and bail out if it exists
         if not force:
             if os.path.isfile(outfile):
-                raise IPyradWarningExit("""
-  **Aborting** File exists: {}
-  Use force argument to overwrite.
-    """.format(outfile))
+                raise IPyradWarningExit(PARAMS_EXISTS.format(outfile))
 
         with open(outfile, 'w') as paramsfile:
             ## Write the header. Format to 80 columns
@@ -777,76 +726,7 @@ class Assembly(object):
 
 
 
-    def _launch2(self, nwait, quiet=0):
-        """ 
-        Launches an ipcluster client for a given profile and returns it with
-        at least one engine spun up and ready to go.
-        """
 
-        #save_stdout = sys.stdout           
-        try: 
-            clusterargs = [self._ipcluster['id'], self._ipcluster["profile"]]
-            argnames = ["cluster_id", "profile"]
-            args = {key:value for key, value in zip(argnames, clusterargs)}
-
-            ## wait for at least 1 engine to connect
-            for _ in range(nwait):
-                try:
-                    ## using this wrap to avoid ipyparallel's ugly warnings
-                    ## save orig stdout
-                    save_stdout = sys.stdout 
-                    save_stderr = sys.stderr
-                    ## file-like obj to catch stdout
-                    sys.stdout = cStringIO.StringIO()
-                    sys.stderr = cStringIO.StringIO()                    
-                    ## run func with stdout hidden
-                    ipyclient = ipp.Client(**args)
-                    ## resets stdout
-                    sys.stdout = save_stdout
-                    sys.stderr = save_stderr
-                    break
-
-                except IOError as inst:
-                    time.sleep(0.01)
-
-            ## check that all engines have connected            
-            for _ in range(3000):
-                initid = len(ipyclient)
-                time.sleep(0.01)
-
-                ## If MPI then wait for all engines to start so we can report
-                ## how many cores are on each host. If Local then just go ahead
-                ## before they're ready since load_balance will distribute jobs
-                if not self._ipcluster["engines"] == "MPI":
-                    if initid:
-                        break
-                else:
-                    ## don't know how many to expect for interactive, but the
-                    ## connection stays open, so just wait til no new engines
-                    ## have been added for three seconds
-                    time.sleep(3)
-                    if initid:
-                        if len(ipyclient) == initid:
-                            break
-                    else:
-                        if not quiet:
-                            print(\
-                "\r  establishing MPI connection to remote hosts...", end="")
-                            sys.stdout.flush()
-
-
-        except KeyboardInterrupt as inst:
-            ## ensure stdout is reset even if Exception was raised            
-            sys.stdout = save_stdout
-            raise inst
-
-        except IOError as inst:
-            ## ensure stdout is reset even if Exception was raised
-            sys.stdout = save_stdout
-            print(inst)
-            raise inst
-
-        return ipyclient
 
 
 
@@ -956,30 +836,25 @@ class Assembly(object):
 
         ## do not allow both a sorted_fastq_path and a raw_fastq
         if sfiles and rfiles:
-            raise IPyradWarningExit("""
-    Error: Must enter a raw_fastq_path or sorted_fastq_path, but not both.""")
+            raise IPyradWarningExit(NOT_TWO_PATHS)
 
         ## but also require that at least one exists
         if not (sfiles or rfiles):
-            raise IPyradWarningExit("""
-    Error: Step 1 requires that you enter either:
-        (1) a sorted_fastq_path or (2) a raw_fastq_path and barcodes_path
-    """)
+            raise IPyradWarningExit(NO_SEQ_PATH_FOUND)
 
         ## print headers
         if self._headers:
             if sfiles:
-                print("\n  Step1: Linking sorted fastq data to Samples")
+                print("\n  Step 1: Linking sorted fastq data to Samples")
             else:
-                print("\n  Step1: Demultiplexing fastq data to Samples") 
+                print("\n  Step 1: Demultiplexing fastq data to Samples") 
+        else:
+            print("")
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
             if not force:
-                print("""\
-    Skipping: {} Samples already found in Assembly {}. 
-    (can overwrite with force argument)\
-    """.format(len(self.samples), self.name))
+                print(SAMPLES_EXIST.format(len(self.samples), self.name))
             else:
                 ## overwrite existing data
                 if glob.glob(sfiles):
@@ -1007,14 +882,14 @@ class Assembly(object):
 
         ## print header
         if self._headers:
-            print("\n  Step2: Filtering reads ")
+            print("\n  Step 2: Filtering reads ")
+        else:
+            print("")
 
         ## If no samples in this assembly then it means you skipped step1,
         ## so attempt to link existing demultiplexed fastq files
         if not self.samples.keys():
-            raise IPyradWarningExit("""
-    Error: No Samples found. First run step 1 to load raw or demultiplexed
-    fastq data files from either the raw_fastq_path or sorted_fastq_path. """)
+            raise IPyradWarningExit(FIRST_RUN_1)
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1022,10 +897,7 @@ class Assembly(object):
         if not force:
             ## skip if all are finished
             if all([i.stats.state >= 2 for i in samples]):
-                print("""\
-    Skipping: All {} selected Samples already edited.
-    (can overwrite with force argument)\
-    """.format(len(samples)))
+                print(EDITS_EXIST.format(len(samples)))
                 return
 
         ## pass samples to rawedit
@@ -1037,14 +909,15 @@ class Assembly(object):
         """ hidden wrapped function to start step 3 """
         ## print headers
         if self._headers:
-            print("\n  Step3: Clustering/Mapping reads")
+            print("\n  Step 3: Clustering/Mapping reads")
+        else:
+            print("")
 
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             if not self.paramsdict['reference_sequence']:
-                raise IPyradError("""
-    {} assembly method requires a value for reference_sequence_path.
-    """.format(self.paramsdict["assembly_method"]))
+                raise IPyradError(REQUIRE_REFERENCE_PATH\
+                            .format(self.paramsdict["assembly_method"]))
             else:
                 ## index the reference sequence
                 ## Allow force to reindex the reference sequence
@@ -1055,16 +928,12 @@ class Assembly(object):
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 3, force):
-            raise IPyradError("""
-    No Samples ready to be clustered. First run step2().""")
+            raise IPyradError(FIRST_RUN_2)
 
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 3 for i in samples]):
-                print("""\
-    Skipping: All {} selected Samples already clustered.
-    (can overwrite with force argument)\
-    """.format(len(samples)))
+                print(CLUSTERS_EXIST.format(len(samples)))
                 return
 
         ## run the step function
@@ -1077,23 +946,21 @@ class Assembly(object):
         """ hidden wrapped function to start step 4 """
 
         if self._headers:
-            print("\n  Step4: Joint estimation of error rate and heterozygosity")
+            print("\n  Step 4: Joint estimation of error rate and heterozygosity")
+        else:
+            print("")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 4, force):
-            raise IPyradError("""
-    No Samples ready for joint estimation. First run step3().""")
+            raise IPyradError(FIRST_RUN_3)
 
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 4 for i in samples]):
-                print("""\
-    Skipping: All {} selected Samples already joint estimated
-    (can overwrite with force argument)\
-    """.format(len(samples)))
+                print(JOINTS_EXIST.format(len(samples)))
                 return
 
         ## send to function
@@ -1104,23 +971,21 @@ class Assembly(object):
         """ hidden wrapped function to start step 5 """
         ## print header
         if self._headers:
-            print("\n  Step5: Consensus base calling ")
+            print("\n  Step 5: Consensus base calling ")
+        else:
+            print("")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
 
         ## Check if all/none in the right state
         if not self.samples_precheck(samples, 5, force):
-            raise IPyradError("""
-    No Samples ready for consensus calling. First run step4().""")
+            raise IPyradError(FIRST_RUN_4)
 
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 5 for i in samples]):
-                print("""\
-    Skipping: All {} selected Samples already consensus called
-    (can overwrite with force argument)\
-    """.format(len(samples)))
+                print(CONSENS_EXIST.format(len(samples)))
                 return
         ## pass samples to rawedit
         assemble.consens_se.run(self, samples, force, ipyclient)
@@ -1138,21 +1003,17 @@ class Assembly(object):
 
         ## print CLI header
         if self._headers:
-            print("\n  Step6: Clustering across {} samples at {} similarity".\
+            print("\n  Step 6: Clustering across {} samples at {} similarity".\
                   format(len(csamples), self.paramsdict["clust_threshold"]))
 
         ## Check if all/none in the right state
         if not csamples:
-            raise IPyradError("""
-    No Samples ready for clustering. First run step5().""")
+            raise IPyradError(FIRST_RUN_5)
 
         elif not force:
             ## skip if all are finished
             if all([i.stats.state >= 6 for i in csamples]):
-                print("""\
-    Skipping: All {} selected Samples already clustered.
-    (can overwrite with force argument)\
-    """.format(len(samples)))
+                print(DATABASE_EXISTS.format(len(samples)))
                 return 
 
         ## run if this point is reached. We no longer check for existing 
@@ -1169,7 +1030,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         if self._headers:
-            print("\n  Step7: Filter and write output files for {} Samples".\
+            print("\n  Step 7: Filter and write output files for {} Samples".\
                   format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
@@ -1179,14 +1040,9 @@ class Assembly(object):
                 iset = set([i.name for i in samples])
                 diff = iset.difference(dbset)
                 if diff:
-                    msg = """
-    The following Samples do not appear to have been clustered in step6
-    (i.e., they are not in {}).
-    Check for typos in Sample names, or try running step6 including the 
-    selected samples.
+                    msg = NOT_CLUSTERED_YET\
+                    .format(self.database, ", ".join(list(diff)))
 
-    Missing: {}
-    """.format(self.database, ", ".join(list(diff)))
                     ## The the old way that failed unless all samples were
                     ## clustered successfully in step 6. Adding some flexibility
                     ## to allow writing output even if some samples failed.
@@ -1206,18 +1062,13 @@ class Assembly(object):
                     print("    Excluding these samples from final output: {}"\
                         .format(", ".join(list(diff))))
         except (IOError, ValueError):
-            raise IPyradError("""
-    Database file {} not found. First run step6
-    """.format(self.database))
+            raise IPyradError(FIRST_RUN_6.format(self.database))
 
         if not force:
             if os.path.exists(
                 os.path.join(self.dirs.project, self.name+"_outfiles")):
-                raise IPyradWarningExit("""
-    Output files already created for this Assembly in:
-    {} 
-    To overwrite, rerun using the force argument."""\
-    .format(os.path.join(self.dirs.project, self.name+"_outfiles")))
+                raise IPyradWarningExit(OUTPUT_EXISTS\
+               .format(os.path.join(self.dirs.project, self.name+"_outfiles")))
 
         ## Run step7
         assemble.write_outfiles.run(self, samples, force, ipyclient)
@@ -1242,197 +1093,24 @@ class Assembly(object):
                 subsample.append(sample)
 
         return subsample
-        
-        
-
-    # def step1(self, force=False, preview=False):
-    #     """ docsting ... test """
-    #     self._clientwrapper(self._step1func, [force, preview], 45)
-
-
-    # def step2(self, samples=None, nreplace=True, force=False, preview=False):
-    #     """ 
-    #     Edit/Filter raw demultiplexed reads based on read quality scores and the
-    #     presence of Illumina adapter sequences. 
-
-    #     The following parameters are used in this step:
-    #         - datatype
-    #         - phred_Qscore_offset
-    #         - max_low_qual_bases
-    #         - filter_adapters
-    #         - filter_min_trim_len
-    #         - edit_cutsites
-    #         - restriction_overhang
-    #         ...
-
-    #     Parameters
-    #     ----------
-    #     samples : list or str
-    #         By default all Samples linked to an Assembly object are run. If a 
-    #         subset of Sampled is entered as a list then only those Samples will 
-    #         be run. 
-
-    #     nreplace : bool
-    #         If True (default) low quality base calls (Q < 20 given the 
-    #         `phred_Qscore_offset`) are converted to Ns. If False, low quality 
-    #         bases are not converted, but simply counted. Reads with > 
-    #         `max_low_qual_bases` are excluded. 
-
-    #     force : bool
-    #         If force=True existing files are overwritten, otherwise Samples in 
-    #         state 2 will return a warning that the Sample has already been run. 
-
-    #     preview : bool
-    #         ...
-    #     """
-    #     self._clientwrapper(self._step2func, 
-    #                        [samples, nreplace, force, preview], 45)
-
-    # def step3(self, samples=None, noreverse=False, force=False, preview=False):
-    #     """ 
-    #     Demultiplex reads and then cluster/map denovo or with a reference 
-    #     sequence file. 
-
-    #     The following parameters are used in this step:
-    #         - datatype
-    #         - assembly_method
-    #         - clust_threshold
-    #         - 
-    #         ...
-
-    #     Parameters
-    #     ----------
-    #     samples : list or str
-    #         By default all Samples linked to an Assembly object are run. If a 
-    #         subset of Sampled is entered as a list then only those Samples will 
-    #         be run. 
-
-    #     noreverse : bool
-    #         ...
-
-    #     force : bool
-    #         ...
-
-    #     preview : bool
-    #         ...
-    #     """
-    #     self._clientwrapper(self._step3func, 
-    #                        [samples, noreverse, force, preview], 45)
-
-
-    # def step4(self, samples=None, subsample=2000, force=False):
-    #     """ 
-    #     Joint estimation of error rate and heterozygosity. This uses the 
-    #     frequency of bases and the frequency of site patterns to estimate
-    #     parameters. Only the first 'subsample' of high depth clusters are used
-    #     to improve speed. Default is 2000, but can be modified when run through
-    #     the API. 
-    #     """
-    #     self._clientwrapper(self._step4func, [samples, subsample, force], 45)
 
 
 
-    # def step5(self, samples=None, force=False):
-    #     """ 
-    #     Consensus base calling and filtering from within-sample clusters. 
-    #     Samples must be in state 3 or 4 (passed step3 and/or step4).
-
-    #     The following parameters are used in this step: 
-    #         - max_Ns_consens
-    #         - max_Hs_consens
-    #         - maxdepth
-    #         - mindepth_statistical
-    #         - mindepth_majrule
-    #         - ploidy
-
-    #     If you want to overwrite data for a file, first set its state to 
-    #     3 or 4. e.g., data.samples['sample'].stats['state'] = 3 
-
-    #     Parameters
-    #     ----------
-    #     samples : list or str
-    #         By default all Samples linked to an Assembly object are run. 
-    #         If a subset of Samples is entered as a list then only those samples
-    #         will be executed. 
-
-    #     force : bool
-    #         Force to overwrite existing files. By default files will not be 
-    #         overwritten unless force=True. 
-    #     """
-
-    #     self._clientwrapper(self._step5func, [samples, force], 45)
-
-
-
-    # def step6(self, samples=None, noreverse=False, force=False, randomseed=123):
-    #     """ 
-    #     Cluster consensus reads across samples and align with muscle. 
-
-    #     Parameters
-    #     ----------
-    #     samples : list or str
-    #         By default all Samples linked to an Assembly object are clustered. 
-    #         If a subset of Samples is entered as a list then only those samples
-    #         will be clustered. It is recommended to create .branch() Assembly 
-    #         objects if step6 is performed on different subsets of Samples. 
-
-    #     noreverse : bool
-    #         Reverse complement clustering is performed on gbs and pairgbs data
-    #         types by default. If noreverse=True then reverse complement 
-    #         clustering will not be performed. This can improve clustering speed.
-
-    #     force : bool
-    #         Force to overwrite existing files. By default files will not be 
-    #         overwritten unless force=True. 
-
-    #     randomseed : int
-    #         Consensus reads are sorted by length and then randomized within 
-    #         size classes prior to clustering. The order of sequences in this 
-    #         list can (probably minimally) affect their clustering. The default
-    #         randomseed is 123. Thus, unless it is changed results should be 
-    #         reproducible. 
-    #     """
-    #     self._clientwrapper(self._step6func, [samples, noreverse, force,
-    #                                           randomseed], 45)
-
-
-    # def step7(self, samples=None, force=False):
-    #     """ 
-    #     Create output files in a variety of formats. 
-
-    #     Parameters
-    #     ----------
-    #     samples : list or str
-    #         ...
-
-    #     force : bool
-    #         ...
-
-    #     """
-    #     self._clientwrapper(self._step7func, [samples, force], 45)
-
-
-
-    def run(self, steps=0, force=False, preview=False, newclient=1, quiet=1):
+    def run(self, steps=0, force=False, preview=False, quiet=1):
         """ 
         Run assembly steps of an ipyrad analysis. Enter steps as a string, 
         e.g., "1", "123", "12345". This step checks for an existing 
-        ipcluster instance if newclient=0, otherwise it launches a new 
-        ipcluster instance, and kills the instance when finished. 
+        ipcluster instance otherwise it raises an exception. The ipyparallel
+        connection is made using information from the _ipcluster dict of the 
+        Assembly class object. 
         """
 
-        ## wrap everything in a try statement and we will clean up the 
-        ## client instance at the end. If it was created then we kill it. If
-        ## using an existing client then we simply clean the memory space.
-        inst = ""
+        ## wrap everything in a try statement to ensure that we save the
+        ## Assembly object if it is interrupted at any point, and also
+        ## to ensure proper cleanup of the ipyclient. 
         try:
             ## use an existing ipcluster instance
-            if newclient:
-                ipyclient = ipp.Client()
-                print(self.cluster_stats())
- 
-            else:
-                ipyclient = self._launch2(45, quiet=quiet)
+            ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
             ## if MPI setup then we are going to wait until all engines are
@@ -1450,9 +1128,9 @@ class Assembly(object):
                 ## sure and we won't bother waiting for them to start, since 
                 ## they'll start grabbing jobs once they're started. 
                 else:
-                    cpus = min(detect_cpus(), self.cpus)
+                    _cpus = max(detect_cpus(), self._ipcluster["cores"])
                     print("  local compute node: [{} cores] on {}"\
-                          .format(cpus, socket.gethostname()))
+                          .format(_cpus, socket.gethostname()))
 
             ## get the list of steps to run
             if isinstance(steps, int):
@@ -1496,14 +1174,15 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
             print("\n  Keyboard Interrupt by user. Cleaning up...")
+            raise IPyradWarningExit(inst)
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
-            print("  IPyradWarningExit: {}".format(inst))
+            raise IPyradWarningExit(inst)
 
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
-            print("\n  Exception found: {}".format(inst))
+            raise IPyradWarningExit(inst)
 
 
         ## close client when done or interrupted
@@ -1515,22 +1194,18 @@ class Assembly(object):
                 ## can't close client if it was never open
                 if ipyclient:
 
-                    ## if CLI, stop jobs and shutdown
-                    if newclient:
+                    ## if CLI (has cluster_id), stop jobs and close 
+                    if self._ipcluster["cluster_id"]:
                         ipyclient.abort()
                         ipyclient.close()
-                    ## if API, stop jobs and clean queue
+                    ## elif API, stop jobs and clean queue but don't close
                     else:
                         ipyclient.abort()
                         ipyclient.purge_everything()
             
-            ## if exception is close and save, print and ignore
+            ## if exception in close and save, print and ignore
             except Exception as inst2:
                 LOGGER.error("shutdown warning: %s", inst2)
-
-            ## calls a sys.exit and prints error message if there is one. 
-            ## if newclient, the client was registered to die on sys.exit
-            IPyradWarningExit(inst)
 
 
 
@@ -1609,6 +1284,7 @@ def _name_from_file(fname, splitnames, fields):
     return base
 
 
+
 def _read_sample_names(fname):
     """ Read in sample names from a plain text file. This is a convenience
     function for branching so if you have tons of sample names you can
@@ -1624,6 +1300,7 @@ def _read_sample_names(fname):
         raise inst
 
     return subsamples
+
 
 
 def expander(namepath):
@@ -1809,7 +1486,7 @@ def paramschecker(self, param, newvalue):
     """.format(fullbarpath))
             else:
                 self.paramsdict['barcodes_path'] = fullbarpath
-                self.link_barcodes()
+                self._link_barcodes()
 
         ## if no path was entered then set barcodes path to empty. 
         ## this is checked again during step 1 and will raise an error 
@@ -1893,7 +1570,7 @@ def paramschecker(self, param, newvalue):
             ## a little annoying, but it was better than any
             ## alternatives I could think of.
             if "3rad" in self.paramsdict['datatype']:
-                self.link_barcodes()
+                self._link_barcodes()
 
     elif param == 'restriction_overhang':
         newvalue = tuplecheck(newvalue, str)                        
@@ -2079,6 +1756,117 @@ def paramschecker(self, param, newvalue):
 
     return self
 
+
+
+
+### ERROR MESSAGES ###################################
+REQUIRE_ASSEMBLY_NAME = """\
+    Assembly name _must_ be set. This is the first parameter in the params.txt 
+    file, and will be used as a prefix for output files. It should be a short 
+    string with no special characters, i.e., not a path (no \"/\" characters). 
+    If you need a suggestion, name it after the organism you're working on.
+    """
+REQUIRE_REFERENCE_PATH = """\
+    Assembly method {} requires that you enter a 'reference_sequence_path'.
+    """    
+BAD_ASSEMBLY_NAME = """\
+    No spaces or special characters are allowed in the assembly name. A good 
+    practice is to replace spaces with underscores '_'. An example of a good 
+    assembly_name is: white_crowned_sparrows. Here's what you put:
+    {}
+    """
+NO_FILES_FOUND_PAIRS = """\
+    No files found in 'sorted_fastq_path': {}
+    Check that file names match the required convention for paired datatype
+    i.e., paired file names should be identical save for _R1_ and _R2_
+    (note the underscores before AND after R*). 
+    """
+NAMES_LOOK_PAIRED_WARNING = """\
+    Warning: '_R2_' was detected in a file name, which suggests the data may
+    be paired-end. If so, you should set the parameter 'datatype' to a paired
+    option (e.g., pairddrad or pairgbs) and re-run step 1, which will require
+    using the force flag (-f) to overwrite existing data.
+    """
+BAD_BARCODE = """\
+    One or more barcodes contain invalid IUPAC nucleotide code characters.
+    Barcodes must contain only characters from this list "RKSYWMCATG".
+    Doublecheck your barcodes file is properly formatted.
+    """
+BAD_PARAMETER = """\
+    Error setting parameter {}: {}
+    You entered: {}
+    """    
+NOT_TWO_PATHS = """\
+    Error: Must enter a raw_fastq_path or sorted_fastq_path, but not both.
+    """
+NO_SEQ_PATH_FOUND = """\
+    Error: Step 1 requires that you enter one of the following:
+        (1) a sorted_fastq_path
+        (2) a raw_fastq_path + barcodes_path
+    """
+PARAMS_EXISTS = """\
+    **Aborting** File exists: {}
+    Use force argument to overwrite.
+    """    
+SAMPLES_EXIST = """\
+    Skipping: {} Samples already found in Assembly {}. 
+    (can overwrite with force argument)\
+    """    
+EDITS_EXIST = """\
+    Skipping: All {} selected Samples already edited.
+    (can overwrite with force argument)\
+    """    
+CLUSTERS_EXIST = """\
+    Skipping: All {} selected Samples already clustered.
+    (can overwrite with force argument)\
+    """    
+JOINTS_EXIST = """\
+    Skipping: All {} selected Samples already joint estimated
+    (can overwrite with force argument)\
+    """   
+CONSENS_EXIST = """\
+    Skipping: All {} selected Samples already consensus called
+    (can overwrite with force argument)\
+    """     
+DATABASE_EXISTS = """\
+    Skipping: All {} selected Samples already clustered.
+    (can overwrite with force argument)\
+    """   
+NOT_CLUSTERED_YET = """\
+    The following Samples do not appear to have been clustered in step6
+    (i.e., they are not in {}).
+    Check for typos in Sample names, or try running step6 including the 
+    selected samples.
+
+    Missing: {}
+    """
+OUTPUT_EXISTS = """\
+    Output files already created for this Assembly in:
+    {} 
+    To overwrite, rerun using the force argument.
+    """
+FIRST_RUN_1 = """\
+    No Samples found. First run step 1 to load raw or demultiplexed fastq
+    files from the raw_fastq_path or sorted_fastq_path, respectively.
+    """
+FIRST_RUN_2 = """\
+    No Samples ready to be clustered. First run step 2.
+    """
+FIRST_RUN_3 = """\
+    No Samples ready for estimation. First run step 3.
+    """
+FIRST_RUN_4 = """\
+    No Samples ready for consensus calling. First run step 4.
+    """
+FIRST_RUN_5 = """\
+    No Samples ready for clustering. First run step 5.
+    """
+FIRST_RUN_6 = """\
+    Database file {} not found. First run step 6.
+    """
+
+
+########################################################
 
 
 
