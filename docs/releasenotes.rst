@@ -5,6 +5,27 @@
 Release Notes
 =============
 
+0.3.31
+------
+- better print message for MPI nodes
+- cleaning up globals for cleaner code
+- test script for CI, and more descriptive force printout
+- cosmetic cleanup
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- big cleanup to ipcluster call from Assembly, and cleaner code by externalizing global exceptions.
+- removed unused import
+- more flexible importing
+- cleaned up some exception messages
+- modified tetrad ipcluster init to work the same as ipyrad's
+- modified parallelism in tetrad
+- generalized ipcluster setup
+- much simplified ipcluster calls setup, more generalized to allow API more flexibility
+- changed svd4tet to tetrad
+- changed name of svd4tet to tetrad
+- changed name of svd4tet to tetrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- updating cookbook in progress
+
 0.3.30
 ------
 - Fixed very stupid error that was not accurately tracking max_fragment_length.
