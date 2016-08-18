@@ -1119,7 +1119,7 @@ class Assembly(object):
             if not quiet:
                 if self._ipcluster["engines"] == "MPI":
                     hosts = ipyclient[:].apply_sync(socket.gethostname)
-                    print("")
+                    #print("")
                     for hostname in set(hosts):
                         print("  host compute node: [{} cores] on {}"\
                               .format(hosts.count(hostname), hostname))
@@ -1457,14 +1457,7 @@ def paramschecker(self, param, newvalue):
                 self.paramsdict['raw_fastq_path'] = fullrawpath
             ## else allow empty, tho it can still raise an error in step1
             else:
-                raise IPyradWarningExit("""
-    Error: The value entered for the path to the raw fastq file is 
-    unrecognized. Please be sure this path is correct. Double check the
-    file name and the file extension. If it is a relative path be sure
-    the path is correct with respect to the directory you're running ipyrad
-    from. 
-    You entered: {}
-    """.format(fullrawpath))
+                raise IPyradWarningExit(NO_RAW_FILE)
         else:
             self.paramsdict['raw_fastq_path'] = ""
 
@@ -1792,8 +1785,11 @@ BAD_BARCODE = """\
     Barcodes must contain only characters from this list "RKSYWMCATG".
     Doublecheck your barcodes file is properly formatted.
     """
+
+
 BAD_PARAMETER = """\
-    Error setting parameter {}: {}
+    Error setting parameter '{}'
+    {}
     You entered: {}
     """    
 NOT_TWO_PATHS = """\
@@ -1865,7 +1861,12 @@ FIRST_RUN_6 = """\
     Database file {} not found. First run step 6.
     """
 
-
+NO_RAW_FILE = """\
+    The value entered for the path to the raw fastq file is unrecognized. 
+    Please be sure this path is correct. Double check the file name and 
+    the file extension. If it is a relative path be sure the path is 
+    correct with respect to the directory you're running ipyrad from.
+    """
 ########################################################
 
 
