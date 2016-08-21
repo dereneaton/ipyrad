@@ -251,7 +251,11 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
     #########################################################################
     ## get stats for SNP_distribution    
-    smax = max([i+1 for i in varcounts if varcounts[i]])
+    try:
+        smax = max([i+1 for i in varcounts if varcounts[i]])
+    except Exception as inst:
+        print("\n  Empty varcounts array. Probably no samples passed filtering.")
+        raise
 
     vardat = pd.Series(varcounts, name="var", index=range(smax)).fillna(0)
     sumd = {}
