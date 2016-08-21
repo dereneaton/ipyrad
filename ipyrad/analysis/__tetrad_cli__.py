@@ -1,10 +1,10 @@
 #!/usr/bin/env python2
-""" the main CLI for calling svd4tet """
+""" the main CLI for calling tetrad """
 
 from __future__ import print_function, division  # Requires Python 2.7+
 
-from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.core.parallel import register_ipcluster
+from ipyrad.assemble.util import IPyradWarningExit, detect_cpus
 import pkg_resources
 import ipyrad as ip
 import numpy as np
@@ -18,6 +18,7 @@ import ipyrad.analysis as ipa
 
 # pylint: disable=W0212
 # pylint: disable=C0301
+# pylint: disable=E1101
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,31 +32,32 @@ def parse_command_line():
         epilog="""
   * Example command-line usage ---------------------------------------------- 
 
-  * Read in sequence/SNP data file, provide linkage, and output name. 
-     svd4tet -s data.phy                          ## use full sequence data 
-     svd4tet -s data.snps.phy -n test2            ## use SNPs and name test2
-     svd4tet -s data.snps.phy -l data.snps.map    ## use one SNP from each locus
+  * Read in sequence/SNP data file, provide linkage, output name, ambig option. 
+     tetrad -s data.snps.phy -n test             ## input phylip and give name
+     tetrad -s data.snps.phy -l data.snps.map    ## use one SNP per locus
+     tetrad -s data.snps.phy -n noambigs -r 0    ## do not use hetero sites
 
-  * Load saved/checkpointed analysis from json file, or force restart. 
-     svd4tet -j test.json                    ## reads and writes with name 'test'
-     svd4tet -j test.json -f                 ## reads in test, forces overwrite
+  * Load saved/checkpointed analysis from '.tet.json' file, or force restart. 
+     tetrad -j test.tet.json -b 100         ## continue 'test' until 100 boots
+     tetrad -j test.tet.json -b 100 -f      ## force restart of 'test'
 
-  * Sampling modes: 'equal' can infer or accept a guide tree to sample more
-    efficiently; quartets can be sampled randomly or default is to sample all. 
-     svd4tet -s data.snps -m all                         ## sample all quartets
-     svd4tet -s data.snps -m random -q 1e6 -x 123        ## random 1M randomly
-     svd4tet -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
+  * Sampling modes: 'equal' uses guide tree to sample quartets more efficiently 
+     tetrad -s data.snps -m all                         ## sample all quartets
+     tetrad -s data.snps -m random -q 1e6 -x 123        ## sample 1M randomly
+     tetrad -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
 
-  * HPC parallelization
-      svd4tet -s data.phy              ## uses all cores on one machine
-      svd4tet -s data.phy -c 20 --MPI  ## access 20 cores across multiple nodes
+  * HPC optimization: Set -c to the number of nodes to improve efficiency
+     tetrad -s data.phy -c 4             ## e.g., use 16 cores across 4 nodes
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
 
     ## add arguments 
+
+    ## get version from ipyrad 
+    ipyversion = str(pkg_resources.get_distribution('ipyrad'))
     parser.add_argument('-v', '--version', action='version', 
-        version=str(pkg_resources.get_distribution('ipyrad')))
+        version="tetrad "+ipyversion.split()[1])
 
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
@@ -92,31 +94,27 @@ def parse_command_line():
         help="randomly resolve heterozygous sites (default=1)")
 
     parser.add_argument('-n', metavar="name", dest="name",
-        type=str, default="svd",
-        help="output name prefix (default: 'svd')")
+        type=str, default="test",
+        help="output name prefix (default: 'test')")
 
     parser.add_argument('-o', metavar="outdir", dest="outdir",
-        type=str, default="./analysis_quartets",
-        help="output directory (default: creates ./analysis_quartets)")
+        type=str, default="./analysis_tetrad",
+        help="output directory (default: creates ./analysis_tetrad)")
 
     parser.add_argument('-t', metavar="starting_tree", dest="tree",
         type=str, default=None,
         help="newick file starting tree for equal splits sampling")
 
-    parser.add_argument("-c", metavar="cores", dest="cores",
-        type=int, default=0,
-        help="number of CPU cores to use (default = 0 = Use all)")
+    parser.add_argument("-c", metavar="CPUs/cores", dest="cores",
+        type=int, default=1,
+        help="setting n Nodes improves parallel efficiency on HPC")
 
     parser.add_argument("-x", metavar="random_seed", dest="rseed",
         type=int, default=None,
         help="random seed for quartet sampling and/or bootstrapping")    
 
     parser.add_argument('-d', "--debug", action='store_true',
-        help="print lots more info to ipyrad_log.txt.")
-
-    parser.add_argument("--MPI", action='store_true',
-        help="connect to parallel CPUs across multiple nodes")
-
+        help="print lots more info to debugger: ipyrad_log.txt.")
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -149,7 +147,7 @@ def parse_command_line():
 
     if not any(x in ["seq", "json"] for x in vars(args).keys()):
         print("""
-    Bad arguments: svd4tet command must include at least one of (-s or -j) 
+    Bad arguments: tetrad command must include at least one of (-s or -j) 
     """)
         parser.print_help()
         sys.exit(1)
@@ -164,15 +162,10 @@ def main():
     ## not in ipython
     ip.__interactive__ = 0
 
-    header = \
-    "\n ---------------------------------------------------------------------"+\
-    "\n  Analysis tools for ipyrad [v.{}]".format(ip.__version__)+\
-    "\n  svd4tet -- fast quartet and tree inference "+\
-    "\n ---------------------------------------------------------------------"
-    print(header)
-
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
+
+    print(HEADER.format(ip.__version__))
 
     ## set random seed
     np.random.seed(args.rseed)
@@ -187,41 +180,27 @@ def main():
 
     ## if JSON, load existing Quartet analysis -----------------------
     if args.json:
-        data = ipa.svd4tet.load_json(args.json)
+        data = ipa.tetrad.load_json(args.json)
+
+        ## if force then remove all results
+        if args.force:
+            data.refresh()
 
     ## else create a new tmp assembly for the seqarray-----------------
     else:
         ## create new Quartet class Object if it doesn't exist
-        newjson = os.path.join(args.outdir, args.name+'.svd.json')
+        newjson = os.path.join(args.outdir, args.name+'.tet.json')
         if (not os.path.exists(newjson)) or args.force:
-            data = ipa.svd4tet.Quartet(args.name, args.outdir, args.method)
-
+            data = ipa.tetrad.Quartet(args.name, args.outdir, args.method)
         else:
-            sys.exit("""
-    Error: svd4tet analysis '{}' already exists in {} 
-    Use the force argument (-f) to overwrite old analysis files, or,
-    Use the JSON argument (-j {}/{}.svd.json) 
-    to continue analysis of '{}' from last checkpoint.
-    """.format(args.name, args.outdir, args.outdir, args.name, args.name))
+            raise IPyradWarningExit(QUARTET_EXISTS\
+            .format(args.name, args.outdir, args.outdir, args.name, args.name))
 
-        ## if more arguments for method 
-        if args.nquartets:
-            data.nquartets = int(args.nquartets)
-        if args.boots:
-            data.nboots = int(args.boots)
-
-        ## store input files
+        ## if input files
         if args.map: 
             data.files.mapfile = args.map
         if args.tree:
             data.files.treefile = args.tree
-
-        ## clear any existing hdf5 databases
-        oldfiles = [data.h5in, data.h5out, data.files.qdump] + data.trees.values()
-        for oldfile in oldfiles:
-            if oldfile:
-                if os.path.exists(oldfile):
-                    os.remove(oldfile)
 
         ## get seqfile and names from seqfile
         data.files.seqfile = args.seq
@@ -229,23 +208,61 @@ def main():
         data.init_seqarray()
         data.parse_names()
 
+        ## if quartets not entered then sample all
+        if args.nquartets:
+            data.nquartets = int(args.nquartets)
+        else:
+            data.nquartets = ipa.tetrad.n_choose_k(len(data.samples), 4)
 
-    ## Use ipcluster info passed to command-line this time
-    data._ipcluster["cores"] = args.cores
-    if args.cores:
-        data.cpus = int(args.cores)
-    if args.MPI:
-        data._ipcluster["engines"] = "MPI"
-    else:
-        data._ipcluster["engines"] = "Local"
+        if data.method != 'equal':
+            ## store N sampled quartets into the h5 array
+            data.store_N_samples()
 
-    ## launch ipcluster and register for later destruction.
-    data = ipcontroller_init(data)
+        else:
+            ## infer a starting tree from the N sampled quartets 
+            ## this could take a long time. Calls the parallel client.
+            raise IPyradWarningExit(\
+                "  The 'equal' sampling method is still under development\n")
+                #data.store_equal_samples()
 
-    ## run svd4tet main function within a wrapper. The wrapper creates an 
+    ## boots can be set either for a new object or loaded JSON to continue it
+    if args.boots:
+        data.nboots = int(args.boots)
+
+    ## set CLI ipcluster terms
+    data._ipcluster["cores"] = max(args.cores, detect_cpus())
+
+    ## start ipcluster and register cluster_id for later destruction.
+    data = register_ipcluster(data)
+
+    ## message about whether we are continuing from existing
+    if data.checkpoint.boots or data.checkpoint.arr:
+        print(ipa.tetrad.LOADING_MESSAGE.format(data.name, 
+              data.method, data.checkpoint.arr, data.checkpoint.boots))
+
+    ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
     data.run(force=args.force)
 
+
+
+
+## CONSTANTS AND WARNINGS
+
+HEADER = """
+ ----------------------------------------------------------------------
+  tetrad [v.{}]
+  Quartet inference from phylogenetic invariants
+  Distributed as part of the ipyrad.analysis toolkit
+ ----------------------------------------------------------------------\
+  """
+
+QUARTET_EXISTS = """\
+    Error: tetrad analysis '{}' already exists in {} 
+    Use the force argument (-f) to overwrite old analysis files, or,
+    Use the JSON argument (-j {}/{}.tet.json) 
+    to continue analysis of '{}' from last checkpoint.
+    """
 
 
 if __name__ == "__main__": 

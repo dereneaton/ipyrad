@@ -3,8 +3,8 @@
 
 from __future__ import print_function, division  # Requires Python 2.7+
 
-from ipyrad.core.parallel import ipcontroller_init
-from ipyrad.assemble.util import IPyradError, IPyradWarningExit
+from ipyrad.core.parallel import register_ipcluster
+from ipyrad.assemble.util import IPyradError, IPyradWarningExit, detect_cpus
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -402,7 +402,7 @@ def main():
     if not args.params:
         if any([args.branch, args.results, args.steps]):
             print("""
-    Must provide params file for branching, doing steps or getting results.
+    Must provide params file for branching, doing steps, or getting results.
     e.g., ipyrad -p params-test.txt -r              ## shows results
     e.g., ipyrad -p params-test.txt -s 12           ## runs steps 1 & 2
     e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
@@ -442,27 +442,29 @@ def main():
             ## launch or load assembly with custom profile/pid
             data = getassembly(args, parsedict)
 
-            ## if cores was entered, limit cores to this number
-            ## otherwise use all available cores. By default _ipcluster[cores] 
-            ## is set to detect_cpus in Assembly.__init__)
-            data._ipcluster["cores"] = str(args.cores)
-            if args.cores:
-                data.cpus = int(args.cores)
+            ## set CLI ipcluster terms
+            data._ipcluster["cores"] = max(args.cores, detect_cpus())
+
+            ## if more ipcluster args from command-line then use those
             if args.MPI:
                 data._ipcluster["engines"] = "MPI"
             else:
                 data._ipcluster["engines"] = "Local"
 
-            ## launch ipcluster and register for later destruction
-            data = ipcontroller_init(data)
+            ## launch a NEW ipcluster instance and register "cluster_id" 
+            ## for later destruction, and to avoid conflicts between 
+            ## simultaneous ipcluster instances. If a user wanted to use 
+            ## an ipcluster instance that is already running instead then 
+            ## they have to use the API. 
+            data = register_ipcluster(data)
 
             ## set to print headers
             data._headers = 1
 
             ## run assembly steps
             steps = list(args.steps)
-            data.run(steps=steps, force=args.force, preview=args.preview,
-                     newclient=0, quiet=0)
+            data.run(steps=steps, force=args.force, preview=args.preview, quiet=0)
+                     
 
         if args.results:
             showstats(parsedict)

@@ -1,7 +1,8 @@
 
 
-from . import svd4tet
+from . import tetrad
+
 #from . import dstat
-#from .svd4tet import svd4tet
+#from .tetrad import tetrad
 
 

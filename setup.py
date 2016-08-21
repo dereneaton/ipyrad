@@ -42,7 +42,7 @@ setup(
     entry_points={
             'console_scripts': [
                 'ipyrad = ipyrad.__main__:main',
-                'svd4tet = ipyrad.analysis.__main__:main',
+                'tetrad = ipyrad.analysis.__tetrad_cli__:main',
             ],
     },
     data_files=[('bin', glob.glob("./bin/*"))],

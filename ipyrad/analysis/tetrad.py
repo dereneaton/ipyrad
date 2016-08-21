@@ -20,31 +20,28 @@ Theoretical Biology 374: 35-47
 # pylint: disable=C0103
 # pylint: disable=C0301
 # pylint: disable=R0914
-
+# pylint: disable=R0915
 
 
 from __future__ import print_function, division
 import os
-import sys
 import json
 import h5py
 import time
 import numba
 import random
-import ipyrad
-import cStringIO
+import socket
 import datetime
 import itertools
 import subprocess
 import numpy as np
-import pandas as pd
-import ipyparallel as ipp
+import ipyrad as ip
 from fractions import Fraction
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
-from collections import OrderedDict
 
 ## ete3 is an extra dependency not included with ipyrad
+## replace with biopython asap
 try:
     import ete3
 except ImportError:
@@ -52,7 +49,7 @@ except ImportError:
         import ete2 as ete3
     except ImportError:
         raise IPyradWarningExit("""
-    svd4tet requires the dependency `ete3`. You can install
+    tetrad requires the dependency `ete3`. You can install
     it with the command `conda install -c etetoolkit ete3`
     """)
 
@@ -98,40 +95,42 @@ PHYLO_INVARIANTS = """
 
 class Quartet(object):
     """
-    The main svd4tet object for storing data and checkpointing. It is 
+    The main tetrad object for storing data and checkpointing. It is 
     initialized with a name, and args to command line (e.g., sampling method, 
     starting tree, nboots, etc.). 
     """
 
-    def __init__(self, name, outdir=os.path.curdir, method='all'):
+    def __init__(self, name, wdir=os.path.curdir, method='all'):
         ## version is ipyrad version
-        self._version = ipyrad.__version__
+        self._version = ip.__version__
 
         ## name this assembly
         self.name = name
-        self.dirs = os.path.realpath(outdir)
+        self.dirs = os.path.realpath(wdir)
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
 
-        ## store cluster information the same as ipyrad Assembly objects
-        self._ipcluster = {}
-        for ipkey in ["id", "profile", "engines", "cores"]:
-            self._ipcluster[ipkey] = None
-
-        ## store cpu information, a more convenient call to ipyrad funcs
-        self.cpus = 4
+        ## store default cluster information 
+        self._ipcluster = {
+            "cluster_id" : "",
+            "profile" : "default", 
+            "engines" : "MPI", 
+            "quiet" : 0, 
+            "timeout" : 45, 
+            "cores" : ip.assemble.util.detect_cpus()}
 
         ## Sampling method attributes
         self.method = method
         self.nboots = 0
         self.nquartets = 0
         self.chunksize = 0
-        self.resolve_ambigs = 0
+        self.resolve = 0
 
         ## store samples from the seqarray
         self.samples = []
 
-        ## self.populations ## if we allow grouping samples (not yet)
+        ## self.populations ## if we allow grouping samples
+        ## (haven't done this yet)
 
         ## hdf5 data bases init and delete existing
         self.h5in = os.path.join(self.dirs, self.name+".input.h5")
@@ -168,9 +167,38 @@ class Quartet(object):
 
 
 
-    ## convenience function
-    #def opj(self, path):
-    #    return os.path.join(self.dirs, path)
+    def refresh(self):
+        """ 
+        Remove all existing results files and reinit the h5 arrays 
+        so that the Quartet object is just like fresh from a CLI start
+        """
+
+        ## clear any existing results files
+        oldfiles = [self.files.qdump] + self.trees.values()
+        for oldfile in oldfiles:
+            if oldfile:
+                if os.path.exists(oldfile):
+                    os.remove(oldfile) 
+
+        ## io5 input has 'samples' and 'seqarr' keys which can be left
+        ## io5 output has 'qboots', 'qstats', 'quartets', 'weights'
+        with h5py.File(self.h5out, 'w') as io5:
+            ## remove old arrs
+            for key in io5.keys():
+                del io5[key]
+            ## create fresh ones
+            io5.create_dataset("quartets", (self.nquartets, 4), 
+                                dtype=np.uint16, chunks=(self.chunksize, 4))
+            io5.create_dataset("weights", (self.nquartets,), 
+                                dtype=np.float64, chunks=(self.chunksize, ))
+            io5.create_dataset("qstats", (self.nquartets, 4), 
+                                dtype=np.uint32, chunks=(self.chunksize, 4))
+            io5.create_group("qboots")        
+
+        ## reset metadata
+        self.checkpoint.array = 0
+        self.checkpoint.boots = 0
+
 
 
     def parse_names(self):
@@ -189,93 +217,6 @@ class Quartet(object):
 
 
 
-    ## parallel launcher and wrapper to kill remote engines at exit
-    def _launch(self, nwait):
-        """ 
-        Creates a client for a given profile to connect to the running 
-        clusters. 
-        """
-        #save_stdout = sys.stdout           
-        try: 
-            clusterargs = [self._ipcluster['id'], self._ipcluster["profile"]]
-            argnames = ["cluster_id", "profile"]
-            args = {key:value for key, value in zip(argnames, clusterargs)}
-
-            ## wait for at least 1 engine to connect
-            for _ in range(nwait):
-                try:
-                    ## using this wrap to avoid ipyparallel's ugly warnings
-                    ## save orig stdout
-                    save_stdout = sys.stdout 
-                    save_stderr = sys.stderr
-                    ## file-like obj to catch stdout
-                    sys.stdout = cStringIO.StringIO()
-                    sys.stderr = cStringIO.StringIO()                    
-                    ## run func with stdout hidden
-                    ipyclient = ipp.Client(**args)
-                    ## resets stdout
-                    sys.stdout = save_stdout
-                    sys.stderr = save_stderr
-                    break
-
-                except IOError as inst:
-                    time.sleep(0.1)
-
-            ## check that at least one engine has connected
-            for _ in range(300):
-                initid = len(ipyclient)
-                time.sleep(0.1)
-                if initid:
-                    break
-        except KeyboardInterrupt as inst:
-            ## ensure stdout is reset even if Exception was raised            
-            sys.stdout = save_stdout
-            raise inst
-
-        except IOError as inst:
-            ## ensure stdout is reset even if Exception was raised
-            sys.stdout = save_stdout
-            print(inst)
-            raise inst
-        return ipyclient
-
-
-
-    def _clientwrapper(self, func, args, nwait):
-        """ wraps a call with error messages for when ipyparallel fails"""
-        ## emtpy error string
-        inst = ""
-
-        ## wrapper to ensure closure of ipyparallel
-        try:
-            ipyclient = ""
-            ipyclient = self._launch(nwait)
-            args.append(ipyclient)
-            func(*args)
-
-        except Exception as inst:
-            ## Caught unhandled exception, print and reraise
-            LOGGER.error(inst)
-            print("\n  Caught unknown exception - {}".format(inst))
-            raise  ## uncomment raise to get traceback
-
-        ## close client when done or interrupted
-        finally:
-            try:
-                self.save()                
-                ## can't close client if it was never open
-                if ipyclient:
-                    ## if CLI, stop jobs and shutdown
-                    ipyclient.abort()                        
-                    ipyclient.close()
-            ## if exception is close and save, print and ignore
-            except Exception as inst2:
-                LOGGER.error("shutdown warning: %s", inst2)
-            if inst:
-                IPyradWarningExit(inst)
-
-
-
     ## Filling the h5in seqarray
     def init_seqarray(self):
         """ 
@@ -288,7 +229,11 @@ class Quartet(object):
         """
 
         ## read in the file
-        spath = open(self.files.seqfile, 'r')
+        try:
+            spath = open(self.files.seqfile, 'r')
+        except IOError:
+            raise IPyradWarningExit(NO_SNP_FILE\
+                                    .format(self.files.seqfile))
         line = spath.readline().strip().split()
         ntax = int(line[0])
         nbp = int(line[1])
@@ -328,7 +273,7 @@ class Quartet(object):
             io5["seqarr"][:] = tmpseq
 
             ## resolve ambiguous IUPAC codes
-            if self.resolve_ambigs:
+            if self.resolve:
                 tmpseq = resolve_ambigs(tmpseq)
 
             ## convert CATG bases to matrix indices
@@ -373,7 +318,7 @@ class Quartet(object):
 
             ## resolve ambiguous bases randomly. We do this each time so that
             ## we get different resolutions.
-            if self.resolve_ambigs:
+            if self.resolve:
                 tmpseq = resolve_ambigs(tmpseq)
         
             ## convert CATG bases to matrix indices
@@ -414,7 +359,7 @@ class Quartet(object):
 
             ## resolve ambiguous bases randomly. We do this each time so that
             ## we get different resolutions.
-            if self.resolve_ambigs:
+            if self.resolve:
                 tmpseq = resolve_ambigs(tmpseq)
 
             ## convert CATG bases to matrix indices
@@ -436,12 +381,6 @@ class Quartet(object):
     ## Functions to fill h5in with samples
     def store_N_samples(self):
         """ Find all quartets of samples and store in a large array """
-        ## print header
-        # if self.method == 'all':
-        #     print("    loading all {} possible quartets".format(self.nquartets))        
-        # else:
-        #     print("    loading {} random quartet samples".format(self.nquartets))        
-
         ## create a chunk size for sampling from the array of quartets. This should
         ## be relatively large so that we don't spend a lot of time doing I/O, but
         ## small enough that jobs finish every few hours since that is how the 
@@ -454,8 +393,9 @@ class Quartet(object):
         if self.nquartets > 500000:
             breaks = 8
 
-        self.chunksize = (self.nquartets // (breaks * self.cpus)) + \
-                         (self.nquartets % (breaks * self.cpus))
+        cpus = self._ipcluster["cores"]
+        self.chunksize = (self.nquartets // (breaks * cpus) + \
+                         (self.nquartets % (breaks * cpus)))
         LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
 
         ## 'samples' stores the indices of the quartet. 
@@ -509,8 +449,9 @@ class Quartet(object):
         """
         
         ## choose chunker for h5 arr
-        self.chunksize = (self.nquartets // (2 * len(self.cpus))) +\
-                         (self.nquartets % (2 * len(self.cpus)))
+        cpus = self._ipcluster["cores"]
+        self.chunksize = (self.nquartets // (2 * len(cpus))) +\
+                         (self.nquartets % (2 * len(cpus)))
         LOGGER.info("E: nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
 
         ## get starting tree
@@ -610,13 +551,13 @@ class Quartet(object):
 
         ## make call lists
         cmd1 = " ".join(
-                [ipyrad.bins.qmc,
+                [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
                 " weights=off"+
                 " otre=.tmptre"])
 
         cmd2 = " ".join(
-                [ipyrad.bins.qmc,
+                [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
                 " weights=on"+
                 " otre=.tmpwtre"])
@@ -725,16 +666,6 @@ class Quartet(object):
         ## create tree with support values on edges
         self.write_supports(with_boots)
 
-        ## hide error message during tree plotting
-        #save_stdout = sys.stdout           
-        ## file-like obj to catch stdout
-        #sys.stdout = cStringIO.StringIO()  
-        ## run func with stdout hidden
-        #ipyclient = ipp.Client(**args)
-        ## resets stdout
-        #sys.stdout = save_stdout    
-        #self.quickfig()
-
         ## print finished tree information ---------------------
         print(FINALTREES.format(opr(self.trees.ttre), opr(self.trees.wtre)))
 
@@ -760,7 +691,7 @@ class Quartet(object):
 
         ## print PDF filename & tips -----------------------------
         docslink = "ipyrad.readthedocs.org/cookbook.html"    
-        citelink = "ipyrad.readthedocs.org/svd4tet.html"
+        citelink = "ipyrad.readthedocs.org/tetrad.html"
         print(LINKS.format(docslink, citelink))
 
 
@@ -855,21 +786,21 @@ class Quartet(object):
             outtre.write(wtre.write(format=0, features=features))
 
 
-    ## not currently being used...
-    def quickfig(self):
-        """ make a quick ete3 fig. Plots total quartets """
-        ts = ete3.TreeStyle()
-        ts.layout_fn = layout
-        ts.show_leaf_name = False
-        ts.mode = 'r'
-        ts.draw_guiding_lines = True
-        ts.show_scale = False
-        ts.scale = 25
+    ## not currently being used and its ugly, just provide a cookbook
+    # def quickfig(self):
+    #     """ make a quick ete3 fig. Plots total quartets """
+    #     ts = ete3.TreeStyle()
+    #     ts.layout_fn = layout
+    #     ts.show_leaf_name = False
+    #     ts.mode = 'r'
+    #     ts.draw_guiding_lines = True
+    #     ts.show_scale = False
+    #     ts.scale = 25
 
-        tre = ete3.Tree(self.trees.nhx)
-        tre.ladderize()
-        tre.convert_to_ultrametric(tree_length=len(tre)//2)
-        tre.render(file_name=self.trees.pdf, h=40*len(tre), tree_style=ts)
+    #     tre = ete3.Tree(self.trees.nhx)
+    #     tre.ladderize()
+    #     tre.convert_to_ultrametric(tree_length=len(tre)//2)
+    #     tre.render(file_name=self.trees.pdf, h=40*len(tre), tree_style=ts)
 
 
 
@@ -884,7 +815,7 @@ class Quartet(object):
                                )
 
         ## save to file, make dir if it wasn't made earlier
-        assemblypath = os.path.join(self.dirs, self.name+".svd.json")
+        assemblypath = os.path.join(self.dirs, self.name+".tet.json")
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
     
@@ -922,93 +853,144 @@ class Quartet(object):
     ########################################################################
     ## Main functions
     ########################################################################
-    def run(self, force):
+    def run(self, force=0, profile="default", quiet=0):
         """ 
-        Run svd4tet inference on a sequence or SNP alignment for all samples in
-        the Assembly. By default the job starts from 0 or where it last left 
-        off, unless force=True, then it starts from 0. This passes args to 
-        the function 'inference' which does the real work. 
+        Run quartet inference on a SNP alignment. If checkpoint values exist 
+        it will continue from where it left off unless force=True to force a
+        a restart using the same parameter values. The analysis launches an
+        ipcluster instance by default unless newclient=0, in which case it 
+        expects to find an ipcluster instance running under the "default"
+        profile. 
         """
-        ## Check for existing (loaded) Quartet Class Object
-        fresh = 0
-        if not force:
-            if self.checkpoint.boots or self.checkpoint.arr:
-                print(LOADING_MESSAGE.format(
-                    self.method, self.checkpoint.arr, self.checkpoint.boots))
+
+        ## wrap everything in a try statement so we can ensure that it will
+        ## save if interrupted and we will clean up the 
+        ## client instance at the end. If it was created then we kill it. If
+        ## using an existing client then we simply clean the memory space.
+        try:
+            ## find an ipcluster instance
+            ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+
+            ## print a message about the cluster status
+            ## if MPI setup then we are going to wait until all engines are
+            ## ready so that we can print how many cores started on each 
+            ## host machine exactly. 
+            if not quiet:
+                if self._ipcluster["engines"] == "MPI":
+                    hosts = ipyclient[:].apply_sync(socket.gethostname)
+                    for hostname in set(hosts):
+                        print("  host compute node: [{} cores] on {}"\
+                              .format(hosts.count(hostname), hostname))
+
+                ## if Local setup then we know that we can get all the cores for 
+                ## sure and we won't bother waiting for them to start, since 
+                ## they'll start grabbing jobs once they're started. 
+                else:
+                    _cpus = max(ip.assemble.util.detect_cpus(), 
+                                self._ipcluster["cores"])
+                    print("  local compute node: [{} cores] on {}"\
+                          .format(_cpus, socket.gethostname()))
+
+            ## run the full inference or print finished prog bar if it's done
+            if not self.checkpoint.boots:
+                print("  inferring {} x 3 quartet trees".format(self.nquartets))
+                self.inference(0, ipyclient)
+
             else:
-                ## if no checkpoints then start fresh
-                fresh = 1
+                print("  full inference finished")
+                elapsed = datetime.timedelta(seconds=int(0)) 
+                progressbar(20, 20, " | {}".format(elapsed))
+                print("")
 
-        ## if svd results do not exist or force then restart
-        if force or fresh:
-            ## if nquartets not provided then get all possible
-            if not self.nquartets:
-                self.nquartets = n_choose_k(len(self.samples), 4)
-            ## store N sampled quartets into the h5 array
-            self.store_N_samples()
-
-            ## infer a starting tree from the N sampled quartets 
-            ## this could take a long time. Calls the parallel client.
-            if self.method == "equal":
-                self.store_equal_samples()
-           
-
-        ## run the full inference or print finished prog bar if it's done
-        if not self.checkpoint.boots:
-            print("  inferring {} x 3 quartet trees".format(self.nquartets))
-            self._clientwrapper(self.inference, [0], 45)
-
-        else:
-            print("  full inference finished")
-            elapsed = datetime.timedelta(seconds=int(0)) 
-            progressbar(20, 20, " | {}".format(elapsed))
-
-
-        ## run the bootstrap replicates -------------------------------
-        if self.nboots:
-            print("  running {} bootstrap replicates".format(self.nboots))  
+            ## run the bootstrap replicates -------------------------------
+            if self.nboots:
+                if self.nboots == self.checkpoint.boots:
+                    print("  continuing {} bootstrap replicates from boot {}"\
+                          .format(self.nboots, self.checkpoint.boots))  
+                else:
+                    print("  running {} bootstrap replicates".format(self.nboots))              
     
-            ## load from current boot
-            for bidx in xrange(self.checkpoint.boots, self.nboots):
-                ## get resampled array and set checkpoint
-                if self.checkpoint.arr == 0:
-                    if self.files.mapfile:
-                        self.sample_bootseq_array_map()
+                ## load from current boot
+                for bidx in xrange(self.checkpoint.boots, self.nboots):
+                    ## get resampled array and set checkpoint
+                    if self.checkpoint.arr == 0:
+                        if self.files.mapfile:
+                            self.sample_bootseq_array_map()
+                        else:
+                            self.sample_bootseq_array() 
+                        self.checkpoint.boots = bidx
+
+                    ## start boot inference, (1-indexed !!!)
+                    self.inference(bidx+1, ipyclient)
+
+                ## write outputs with bootstraps
+                self.write_output_splash(with_boots=1)
+
+            else:
+                ## write outputs without bootstraps
+                self.write_output_splash(with_boots=0)
+
+
+        ## handle exceptions so they will be raised after we clean up below
+        except KeyboardInterrupt as inst:
+            LOGGER.info("assembly interrupted by user.")
+            print("\n  Keyboard Interrupt by user. Cleaning up...")
+
+        except IPyradWarningExit as inst:
+            LOGGER.info("IPyradWarningExit: %s", inst)
+            print("  IPyradWarningExit: {}".format(inst))
+
+        except Exception as inst:
+            LOGGER.info("caught an unknown exception %s", inst)
+            print("\n  Exception found: {}".format(inst))
+
+
+
+        ## close client when done or interrupted
+        finally:
+            try:
+                ## save the Assembly
+                self.save()                
+                
+                ## can't close client if it was never open
+                if ipyclient:
+
+                    ## if CLI, stop jobs and shutdown
+                    if self._ipcluster["cluster_id"]:
+                        ipyclient.abort()
+                        ipyclient.close()
+                    ## if API, stop jobs and clean queue
                     else:
-                        self.sample_bootseq_array() 
-                    self.checkpoint.boots = bidx
-
-                ## start boot inference, (1-indexed !!!)
-                self._clientwrapper(self.inference, [bidx+1], 45)            
-
-            ## ensure that all qmc jobs are finished
-            #ipyclient = ipp.Client()
-            #ipyclient.wait()
-
-            ## write outputs with bootstraps
-            self.write_output_splash(with_boots=1)
-
-        else:
-            ## write outputs without bootstraps
-            self.write_output_splash(with_boots=0)
+                        ipyclient.abort()
+                        ipyclient.purge_everything()
+            
+            ## if exception is close and save, print and ignore
+            except Exception as inst2:
+                LOGGER.error("shutdown warning: %s", inst2)
 
 
 
     def inference(self, bidx, ipyclient):
-        """ run inference and store results """
+        """ 
+        Inference sends slices of jobs to the parallel engines for computing
+        and collects the results into the output hdf5 array as they finish. 
+        """
+
         ## an iterator to distribute sampled quartets in chunks
-        jobiter = iter(xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
-        njobs = sum(1 for _ in jobiter)
+        njobs = sum(1 for _ in \
+                xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
         jobiter = iter(xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
         LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
                 self.chunksize, self.checkpoint.arr, self.nquartets, njobs)
 
-        ## if bootstrap create an output array for results
+        ## if bootstrap create an output array for results unless we are 
+        ## restarting an existing analysis, then use the one already present
         with h5py.File(self.h5out, 'r+') as out:
-            out["qboots"].create_dataset("b{}".format(bidx), 
-                                         (self.nquartets, 4), 
-                                         dtype=np.uint32, 
-                                         chunks=(self.chunksize, 4))
+            if 'b{}'.format(bidx) not in out["qboots"].keys():
+                out["qboots"].create_dataset("b{}".format(bidx), 
+                                             (self.nquartets, 4), 
+                                             dtype=np.uint32, 
+                                             chunks=(self.chunksize, 4))
 
         ## a distributor for engine jobs
         lbview = ipyclient.load_balanced_view()
@@ -1021,7 +1003,7 @@ class Quartet(object):
         ## start progress bar timer and submit initial n jobs
         start = time.time()
         res = {}
-        for _ in xrange(min(self.cpus, njobs)):
+        for _ in xrange(njobs):
             ## get chunk of quartet samples and send to a worker engine
             qidx = jobiter.next()
             with h5py.File(self.h5in, 'r') as inh5:
@@ -1067,13 +1049,13 @@ class Quartet(object):
 
                     ## submit new jobs
                     try:
+                        ## send chunk off to be worked on
                         qidx = jobiter.next()
                         with h5py.File(self.h5in, 'r') as inh5:
                             smps = inh5["samples"][qidx:qidx+self.chunksize]
-                        ## send chunk off to be worked on
                         res[qidx] = lbview.apply(nworker, *[self, smps, tests])
-                        #print(qidx, smps.shape, seqs.shape)
 
+                    ## if no more jobs then just wait until these are done
                     except StopIteration:
                         continue
             else:
@@ -1362,9 +1344,8 @@ def calculate(seqnon, tests):
 
 
 
-#@numba.jit(nopython=True)
 def nworker(data, smpchunk, tests):
-    """ The workhorse function. All numba. """
+    """ The workhorse function. Not numba. """
 
     ## open the seqarray view, the modified array is in bootsarr
     inh5 = h5py.File(data.h5in, 'r')
@@ -1433,7 +1414,6 @@ def nworker(data, smpchunk, tests):
             else:
                 excluded += 1
 
-    LOGGER.error("excluded quartets %s", excluded)
     LOGGER.warning("excluded quartets %s", excluded)    
     #return 
     return rquartets, rweights, rdstats 
@@ -1454,20 +1434,25 @@ MIDSTREAM_MESSAGE = """
 ## assert method == data..method, MIDSTREAM_MESSAGE.format(method)
 
 LOADING_MESSAGE = """\
-    Loading from saved checkpoint:
-      sampling method: {}
-      array checkpoint: {}
-      bootstrap checkpoint: {}
+  Continuing checkpointed analysis: {}
+    sampling method: {}
+    bootstrap checkpoint: {}
+    array checkpoint: {}
 """
 
-LOADING_RANDOM="""\
+LOADING_RANDOM = """\
     loading {} random quartet samples to infer a starting tree 
     inferring {} x 3 quartet trees
 """
 
-LOADING_STARTER="""\
+LOADING_STARTER = """\
     loading {} equal-splits quartets from starting tree
     """
+
+NO_SNP_FILE = """\
+    Cannot find SNP file. You entered: '{}'. 
+    """
+
 
 AMBIGS = {"R":("G", "A"),
           "K":("G", "T"),
@@ -1576,24 +1561,21 @@ def load_json(path):
     """ Load a json serialized Quartet Class object """
 
     ## load the JSON string and try with name+.json
-    if not path.endswith(".svd.json"):
-        path += ".svd.json"
+    if not path.endswith(".tet.json"):
+        path += ".tet.json"
 
     ## expand user
     path = path.replace("~", os.path.expanduser("~"))
 
     ## load the json file
-    if os.path.exists(path):
+    try:
         with open(path, 'r') as infile:
             fullj = _byteify(json.loads(infile.read(),
                             object_hook=_byteify), 
                         ignore_dicts=True)
-    else:            
-        ## raise an error if json not loaded
-        if not fullj:
-            raise IPyradWarningExit("""
-    Cannot find checkpoint (JSON) file at: {}
-    """.format(path))
+    except IOError:
+        raise IPyradWarningExit("""\
+    Cannot find checkpoint (.test.json) file at: {}""".format(path))
 
     ## create a new Quartet Class
     newobj = Quartet(fullj["name"], fullj["dirs"], fullj["method"])
@@ -1637,36 +1619,36 @@ def _byteify(data, ignore_dicts=False):
 
 
 
-PIECOLORS = ['#a6cee3', '#1f78b4']
-def layout(node):
-    """ layout for ete3 tree plotting fig """
-    if node.is_leaf():
-        nameF = ete3.TextFace(node.name, tight_text=False, 
-                                         fgcolor="#262626", fsize=8)
-        ete3.add_face_to_node(nameF, node, column=0, position="aligned")
-        node.img_style["size"] = 0
+# PIECOLORS = ['#a6cee3', '#1f78b4']
+# def layout(node):
+#     """ layout for ete3 tree plotting fig """
+#     if node.is_leaf():
+#         nameF = ete3.TextFace(node.name, tight_text=False, 
+#                                          fgcolor="#262626", fsize=8)
+#         ete3.add_face_to_node(nameF, node, column=0, position="aligned")
+#         node.img_style["size"] = 0
               
-    else:
-        if not node.is_root():
-            node.img_style["size"] = 0
-            node.img_style["shape"] = 'square'
-            node.img_style["fgcolor"] = "#262626"   
-            if "quartets_total" in node.features:
-                ete3.add_face_to_node(ete3.PieChartFace(
-                                    percents=[float(node.quartets_sampled_prop), 
-                                    100-float(node.quartets_sampled_prop)],
-                                    width=15, height=15, colors=PIECOLORS),
-                                    node, column=0, position="float-behind")  
-            if "bootstrap" in node.features:
-                ete3.add_face_to_node(ete3.AttrFace(
-                                  "bootstrap", fsize=7, fgcolor='red'),
-                                  node, column=0, position="branch-top")  
-        else:
-            node.img_style["size"] = 0
-            if node.is_root():
-                node.img_style["size"] = 0
-                node.img_style["shape"] = 'square'
-                node.img_style["fgcolor"] = "#262626"   
+#     else:
+#         if not node.is_root():
+#             node.img_style["size"] = 0
+#             node.img_style["shape"] = 'square'
+#             node.img_style["fgcolor"] = "#262626"   
+#             if "quartets_total" in node.features:
+#                 ete3.add_face_to_node(ete3.PieChartFace(
+#                                     percents=[float(node.quartets_sampled_prop), 
+#                                     100-float(node.quartets_sampled_prop)],
+#                                     width=15, height=15, colors=PIECOLORS),
+#                                     node, column=0, position="float-behind")  
+#             if "bootstrap" in node.features:
+#                 ete3.add_face_to_node(ete3.AttrFace(
+#                                   "bootstrap", fsize=7, fgcolor='red'),
+#                                   node, column=0, position="branch-top")  
+#         else:
+#             node.img_style["size"] = 0
+#             if node.is_root():
+#                 node.img_style["size"] = 0
+#                 node.img_style["shape"] = 'square'
+#                 node.img_style["fgcolor"] = "#262626"   
 
 
 
@@ -1754,5 +1736,5 @@ if __name__ == "__main__":
     #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/cli/cli.json")
     #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/iptutorial/cli.json")
     ## run
-    #ipa.svd4tet.wrapper(DATA, nboots=10, method='equal', nquarts=50, force=True)
+
 

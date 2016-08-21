@@ -118,7 +118,6 @@ def muscle_align(args):
     """ aligns reads, does split then aligning for paired reads """
     ## parse args
     data, chunk = args
-
     LOGGER.debug("aligning chunk %s", chunk)
 
     ## data are already chunked, read in the whole thing. 
@@ -286,17 +285,6 @@ def parsemuscle(data, out):
     names = [line.split("\n", 1)[0] for line in lines]
     ## grab the seqs
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
-    ## split on the 'T' of the 'TGCAG' anchor for 'rad' data
-    #if data.paramsdict["datatype"] == 'rad':
-    #    maxlen = max([len(i) for i in seqs])
-    #    seqs = [i.rsplit("T", 1)[0] for i in seqs]
-    #    ## add spacers back in to right justify
-    #    for sidx in range(len(seqs)):
-    #        #OGGER.info("before %s", seqs[sidx])
-    #        while len(seqs[sidx]) < maxlen:
-    #            seqs[sidx] += "-"
-    #            #LOGGER.info("after %s", seqs[sidx])                
-
     tups = zip(names, seqs)
     ## who knew, zip(*) is the inverse of zip
     anames, aseqs = zip(*sorted(tups, 
