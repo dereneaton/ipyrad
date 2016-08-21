@@ -1177,34 +1177,35 @@ class Assembly(object):
             with h5py.File(self.clust_database, 'r') as ioh5:
                 dbset = set(ioh5["seqs"].attrs['samples'])
                 iset = set([i.name for i in samples])
-                diff = iset.difference(dbset)
-                if diff:
+                idiff = iset.difference(dbset)
+                dbdiff = dbset.difference(iset)
+                if dbdiff:
                     msg = """
-    The following Samples do not appear to have been clustered in step6
-    (i.e., they are not in {}).
+    Samples exist in the cluster database that are not in the list of
+    samples to write out. If you want to write output for a subset of
+    samples you have to branch at step 6. See branching docs for more info. 
+
+    Samples in the db but not requested: {}""".format(", ".join(list(dbdiff)))
+                    raise IPyradWarningExit(msg)
+
+                if idiff:
+                    msg = """
+    The following Samples do not appear to have been clustered in step6.
     Check for typos in Sample names, or try running step6 including the 
     selected samples.
 
-    Missing: {}
-    """.format(self.database, ", ".join(list(diff)))
+    Excluding these samples from final output: {}
+    """.format(", ".join(list(idiff)))
+                    print(msg)
                     ## The the old way that failed unless all samples were
                     ## clustered successfully in step 6. Adding some flexibility
                     ## to allow writing output even if some samples failed.
                     ## raise IPyradWarningExit(msg)
-                    msg += "\n    Continue writing output files excluding "\
-                        + "these samples? (yes/no)\n    > "
-                    cont = raw_input(msg)
-                    while not cont in ["yes", "no"]:
-                        cont = raw_input(msg)
-                    if cont == "no":
-                        sys.exit("Exiting")
 
                     ## Remove the samples that aren't ready for writing out
                     ## i.e. only proceed with the samples that are actually
                     ## present in the db
-                    samples = [x for x in samples if x.name not in diff]
-                    print("    Excluding these samples from final output: {}"\
-                        .format(", ".join(list(diff))))
+                    samples = [x for x in samples if x.name not in idiff]
         except (IOError, ValueError):
             raise IPyradError("""
     Database file {} not found. First run step6
