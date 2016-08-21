@@ -100,8 +100,6 @@ purpose. Lets take a look at it.
     1, 2, 2, 1                     ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
     *                              ## [27] [output_formats]: Output formats (see docs)
                                    ## [28] [pop_assign_file]: Path to population assignment file
-                                   ## [29] [excludes]: Samples to be excluded from final output files
-                                   ## [30] [outgroups]: Outgroup individuals. Excluded from final output files
 
 In general the defaults are sensible, and we won't mess with them for now, but there
 are a few parameters we *must* change. We need to set the path to the raw data we 

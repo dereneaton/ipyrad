@@ -359,7 +359,7 @@ Affected steps = 4, 5. Example entries to params.txt:
 
 14. clust_threshold
 --------------------
-This the level of sequene similarity at which two sequences are identified
+This the level of sequence similarity at which two sequences are identified
 as being homologous, and thus cluster together. The value should be entered
 as a decimal (e.g., 0.90). We do not recommend using values higher than 0.95, 
 as homologous sequences may not cluster together at such high threshold due
@@ -628,25 +628,5 @@ Affected step: 7. Example entries to params.txt
 
     /home/user/ipyrad/popfile.txt        ## [28] example...
 
-
-.. _excludes:
-
-29. excludes
--------------
-Names of samples to exclude from the executed step. These will be left in 
-their current state. 
-
-Affected step: 7. Example entries to params.txt
-
-.. parsed-literal::
-
-    sample1, sample2, sample3            ## [29] excluded samples
-
-
-.. _outgroups:
-
-30. outgroups
--------------
-Not currently implemented.
 
 

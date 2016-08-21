@@ -130,7 +130,6 @@ used or required (\*) for step2:
 * :ref:`filter_adapters<filter_adapters>`  
 * :ref:`filter_min_trim_len<filter_min_trim_len>`  
 * :ref:`edit_cut_sites<edit_cut_sites>`  
-* :ref:`excludes<excludes>`  
 
 
 3. Clustering / Mapping reads within Samples and alignment
@@ -151,7 +150,6 @@ used or required (\*) for step3:
 * :ref:`*assembly_method<assembly_method>`  
 * :ref:`*datatype<datatype>`  
 * :ref:`*clust_threshold<clust_threshold>`  
-* :ref:`excludes<excludes>`  
 
 
 4. Joint estimation of heterozygosity and error rate
@@ -170,7 +168,6 @@ used or required (\*) for step4:
 * :ref:`*project_dir<project_dir>`  
 * :ref:`*datatype<datatype>`  
 * :ref:`*restriction_overhang<restriction_overhang>`  
-* :ref:`excludes<excludes>`  
 
 
 5. Consensus base calling and filtering
@@ -192,7 +189,6 @@ used or required (\*) for step5:
 * :ref:`*datatype<datatype>`  
 * :ref:`*max_alleles_consens<max_alleles_consens>`  
 * :ref:`*max_Ns_consens<max_Ns_consens>`  
-* :ref:`excludes<excludes>`  
 
 
 6. Clustering / Mapping reads among Samples and alignment
@@ -211,7 +207,6 @@ used or required (\*) for step6:
 * :ref:`*datatype<datatype>`  
 * :ref:`*max_alleles_consens<max_alleles_consens>`  
 * :ref:`*max_Ns_consens<max_Ns_consens>`  
-* :ref:`excludes<excludes>`  
 
 
 7. Filtering and formatting output files
@@ -234,8 +229,6 @@ used or required (\*) for step7:
 * :ref:`trim_overhang<trim_overhang>`  
 * :ref:`output_formats<output_formats>`  
 * :ref:`pop_assign_file<pop_assign_file>`  
-* :ref:`excludes<excludes>`  
-* :ref:`outgroups<outgroups>`
 
 
 
