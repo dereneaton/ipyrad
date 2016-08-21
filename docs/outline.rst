@@ -168,18 +168,16 @@ used or required (\*) for step4:
 * :ref:`*project_dir<project_dir>`  
 * :ref:`*datatype<datatype>`  
 * :ref:`*restriction_overhang<restriction_overhang>`  
+* :ref:`*max_alleles_consens<max_alleles_consens>`  
 
 
 5. Consensus base calling and filtering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step5 estimates consensus allele sequences from clustered reads given the estimated
-parameters from step4 and a binomial model. Several filters can be applied at this
-stage to remove clusters with the aim of improving across-sample clustering, 
-and speed. This includes minimum depth of coverage, maximum number of 
-undetermined sites (Ns), and maximum number of heterozygous sites. 
-The number of alleles at each locus is recorded, but a filter for max_alleles
-is not applied until step7. Read depth information is also stored at this step
-for the VCF output in step7. 
+parameters from step 4 and a binomial model. During this step we filter for maximum
+number of undetermined sites (Ns) per locus (max_Ns_consens). The number of alleles
+at each locus is recorded, but a filter for max_alleles is not applied until step7. 
+Read depth information is also stored at this step for the VCF output in step7. 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step5:  
@@ -187,7 +185,6 @@ used or required (\*) for step5:
 * :ref:`*assembly_name<assembly_name>`  
 * :ref:`*project_dir<project_dir>`  
 * :ref:`*datatype<datatype>`  
-* :ref:`*max_alleles_consens<max_alleles_consens>`  
 * :ref:`*max_Ns_consens<max_Ns_consens>`  
 
 
@@ -205,8 +202,6 @@ used or required (\*) for step6:
 * :ref:`*assembly_name<assembly_name>`  
 * :ref:`*project_dir<project_dir>`  
 * :ref:`*datatype<datatype>`  
-* :ref:`*max_alleles_consens<max_alleles_consens>`  
-* :ref:`*max_Ns_consens<max_Ns_consens>`  
 
 
 7. Filtering and formatting output files
@@ -226,6 +221,7 @@ used or required (\*) for step7:
 * :ref:`min_samples_locus<min_samples_locus>`  
 * :ref:`max_Indels_locus<max_Indels_locus>`  
 * :ref:`max_shared_Hs_locus<max_shared_Hs_locus>`  
+* :ref:`max_alleles_consens<max_alleles_consens>`  
 * :ref:`trim_overhang<trim_overhang>`  
 * :ref:`output_formats<output_formats>`  
 * :ref:`pop_assign_file<pop_assign_file>`  
