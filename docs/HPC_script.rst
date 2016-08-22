@@ -75,20 +75,20 @@ qsub script which is saved as ``qsub_script.sh``:
 
 .. parsed-literal::
 
-#!/bin/sh
+    #!/bin/sh
 
-#PBS -N ipyrad-test
-#PBS -j oe
-#PBS -m ae
-#PBS -M deren.eaton@yale.edu
-#PBS -q fas_normal
-#PBS -l nodes=1:ppn=8
+    #PBS -N ipyrad-test
+    #PBS -j oe
+    #PBS -m ae
+    #PBS -M deren.eaton@yale.edu
+    #PBS -q fas_normal
+    #PBS -l nodes=1:ppn=8
 
-## change into whichever directory you which to run code from
-cd $PBS_O_WORKDIR
+    ## change into whichever directory you which to run code from
+    cd $PBS_O_WORKDIR
 
-## call ipyrad on your params file
-ipyrad -p params-test.txt -s 1 
+    ## call ipyrad on your params file
+    ipyrad -p params-test.txt -s 1 
 
 
 Then you submit this script to a queue with a qsub command such as:
@@ -104,20 +104,20 @@ spread across multiple nodes:
 
 .. parsed-literal::
 
-#!/bin/sh
+    #!/bin/sh
 
-#PBS -N ipyrad-test
-#PBS -j oe
-#PBS -m ae
-#PBS -M deren.eaton@yale.edu
-#PBS -q fas_normal
-#PBS -l nodes=8:ppn=8
+    #PBS -N ipyrad-test
+    #PBS -j oe
+    #PBS -m ae
+    #PBS -M deren.eaton@yale.edu
+    #PBS -q fas_normal
+    #PBS -l nodes=8:ppn=8
 
-## change into whichever directory you which to run code from
-cd $PBS_O_WORKDIR
+    ## change into whichever directory you which to run code from
+    cd $PBS_O_WORKDIR
 
-## call ipyrad on your params file
-ipyrad -p params-test.txt -s 1 -c 64 --MPI
+    ## call ipyrad on your params file
+    ipyrad -p params-test.txt -s 1 -c 64 --MPI
 
 
 
