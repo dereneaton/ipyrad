@@ -9,10 +9,11 @@ Running ipyrad on a cluster
 
 High performance computing (HPC) clusters are accessible to most 
 users with University affiliations, providing cheap or free access
-to dozens or hundreds of computing cores allowing for very fast
-assembly of genomic data. HPC set ups often vary between 
-different institutions but we provide here a general workflow 
-for running on TORQUE systems, which use the ``qsub`` submission format. 
+to dozens or hundreds of computing cores, which is key for 
+assembling genomic data set quickly. The HPC software set up often varies 
+between different institutions but we provide here a general workflow 
+for running ipyrad on TORQUE systems, which are those that 
+use the ``qsub`` submission format. 
 
 When you login to an HPC cluster you will be connected to a
 ``login`` node, and from there you can submit ``jobs`` which 
@@ -76,7 +77,7 @@ will access 64 cores spread across 8 8-core nodes.
 
 Submitting job scripts
 ^^^^^^^^^^^^^^^^^^^^^^
-However, Because it sometimes takes a while to connect to an interactive
+Because it sometimes takes a while to connect to an interactive
 node, it is common practice to instead submit scripts that will
 be run whenever the node becomes available. Here is an example
 qsub script which is saved as ``qsub_script.sh``:
@@ -88,11 +89,11 @@ qsub script which is saved as ``qsub_script.sh``:
     #PBS -N ipyrad-test
     #PBS -j oe
     #PBS -m ae
-    #PBS -M deren.eaton@yale.edu
-    #PBS -q fas_normal
+    #PBS -M youremail@institution.edu
+    #PBS -q queue_name
     #PBS -l nodes=1:ppn=8
 
-    ## change into whichever directory you which to run code from
+    ## change into whichever directory you will run code from
     cd $PBS_O_WORKDIR
 
     ## call ipyrad on your params file
@@ -117,8 +118,8 @@ spread across multiple nodes:
     #PBS -N ipyrad-test
     #PBS -j oe
     #PBS -m ae
-    #PBS -M deren.eaton@yale.edu
-    #PBS -q fas_normal
+    #PBS -M youremail@institution.edu
+    #PBS -q queue_name
     #PBS -l nodes=8:ppn=8
 
     ## change into whichever directory you which to run code from
