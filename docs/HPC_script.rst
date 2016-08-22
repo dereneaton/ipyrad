@@ -42,7 +42,7 @@ the HPC cluster, usually involving an `ssh` script.
 
 
 Running interactive jobs
-^^^^^^^^^^^^^^^^^^^^^^^^
+------------------------
 From there you can then try logging in interactively to a 
 computing node by using the command ``qsub`` with the ``-I``
 argument. Sometimes you have to provide additional
@@ -76,7 +76,7 @@ will access 64 cores spread across 8 8-core nodes.
     
 
 Submitting job scripts
-^^^^^^^^^^^^^^^^^^^^^^
+----------------------
 Because it sometimes takes a while to connect to an interactive
 node, it is common practice to instead submit scripts that will
 be run whenever the node becomes available. Here is an example
