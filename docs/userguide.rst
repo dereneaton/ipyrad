@@ -61,7 +61,7 @@ Eaton and Ree (2013).
     xxxpedicularis_cli.rst
 
 
-.. _other tutorials:
+.. _further tutorials:
 Other tutorials
 ----------------
 The second tutorial analyzes the same data set using the API, 
@@ -71,6 +71,6 @@ and ABBA-BABA tests for introgression.
 
 .. toctree::
     :maxdepth: 1
-
+    HPC_script.rst
     pedicularis_api.rst
     viburnum.rst
