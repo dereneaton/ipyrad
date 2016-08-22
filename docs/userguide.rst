@@ -47,8 +47,8 @@ both denovo and reference assembly methods.
 
 .. _empirical_example:
 
-Examples with empirical data
------------------------------
+Empirical example
+-----------------
 The following tutorials show example assemblies with publicly available 
 empirical data sets. The first analyzes a small RAD-seq data set from 
 Eaton and Ree (2013). 
@@ -61,9 +61,9 @@ Eaton and Ree (2013).
     xxxpedicularis_cli.rst
 
 
-.. _further tutorials:
-Other tutorials
-----------------
+
+Cookbook recipes
+-----------------
 Many more tutorials coming soon. 
 
 
