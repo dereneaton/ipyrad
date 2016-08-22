@@ -5,6 +5,35 @@
 Release Notes
 =============
 
+0.3.32
+------
+- Fix optim chunk size bug in step 6 (very large datasets overflow hdf5 max chunksize 4GB limit)
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- docs updates
+- Doc update: Cleaned up the lists of parameters used during each step to reflect current reality.
+- Fixed merge conflict in assembly.py
+- Fix behavior in step 7 if requested samples and samples actually ready differ
+- Removing references to deprecated params (excludes/outgroups)
+- Simple error handling in the event no loci pass filtering
+- changed tetrad default mode to MPI
+- changed tetrad default mode to MPI
+- release notes update
+
 0.3.31
 ------
 - changed name of svd4tet to tetrad

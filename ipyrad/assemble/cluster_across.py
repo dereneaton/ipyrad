@@ -409,8 +409,15 @@ def build_h5_array(data, samples, ipyclient):
         chunks = 1000
     if data.nloci > 200000:
         chunks = 2000
-    #if data.nloci > 500000:
-    #    chunks = 5000
+
+    ## Number of elements in hdf5 chunk may not exceed 4GB
+    ## This is probably not actually optimal, to have such
+    ## enormous chunk sizes, could probably explore efficiency
+    ## of smaller chunk sizes on very very large datasets
+    chunklen = chunks * len(samples) * maxlen * 4
+    if chunklen > 4000000000:
+        chunks = int(round(4000000000/(len(samples) * maxlen * 4)))
+
     data.chunks = chunks
     LOGGER.info("data.nloci is %s", data.nloci)
     LOGGER.info("chunks is %s", data.chunks)
