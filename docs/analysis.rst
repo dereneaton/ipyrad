@@ -81,7 +81,7 @@ Population genetic analyses (in development)
    popgen.rst
 
 
-SVD4tet -- species tree inference (in development)
+tetrad -- species tree inference (in development)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 __Documentation coming soon. Currently works only on Linux, not Mac.__
 
@@ -101,8 +101,5 @@ called 'even sampling'.
 
 Quartet joining is performed in the wQMC software both with and without
 quartet weights (see :ref:`Avni et al. 2014<weighted_quartets>`)
-
-The command line program svd4tet is installed alongside ipyrad and can be 
-called from the command line. 
 
 Link to a notebook tutorial for svd4tet and also to further cookbook recipes. 
