@@ -35,15 +35,17 @@ the HPC cluster, usually involving an `ssh` script.
 Running interactive jobs
 ^^^^^^^^^^^^^^^^^^^^^^^^
 From there you can then try logging in interactively to a 
-computing node by using the command `qsub` with the ``-I``
-argument. Sometimes you have to provide other default
+computing node by using the command ``qsub`` with the ``-I``
+argument. Sometimes you have to provide additional
 arguments such as the name of the queue you are connecting to.
 This information should be available from your institution.
+Gaining access to the node may be instant, or it may take hours
+depending on the size of your cluster and how many users are 
+active.
 
 .. parsed-literal::
 
-    ## try logging into an interactive node, depending
-    ## on the queue this may be instant, or may take hours
+    ## connect to an node interactively
     qsub -I 
 
 
