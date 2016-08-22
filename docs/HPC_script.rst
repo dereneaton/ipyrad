@@ -4,8 +4,8 @@
 
 .. _HPCscript:
 
-Command-line interface
-^^^^^^^^^^^^^^^^^^^^^^
+Running ipyrad on a cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 High performance computing (HPC) clusters are accessible to most 
 users with University affiliations, providing cheap or free access
@@ -23,7 +23,15 @@ but job scripts are usually better suited for very long running jobs.
 I suggest that you start by trying interactive mode, since it
 is much better for trouble shooting.
 
-The first step is to connect from your local terminal to 
+We've designed ipyrad to be very easy to run on HPC setups. 
+Because the software is installed locally (in your miniconda directory)
+you can simply call ipyrad the same as you would on your local
+machine. No need to ask you administrator to install the software
+globally, and no need to load software modules before running 
+ipyrad. 
+
+The first step to running ipyrad on an HPC is to connect 
+from your local terminal to 
 the HPC cluster, usually involving an `ssh` script. 
 
 .. parsed-literal::
