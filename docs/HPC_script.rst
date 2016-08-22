@@ -80,7 +80,8 @@ Submitting job scripts
 Because it sometimes takes a while to connect to an interactive
 node, it is common practice to instead submit scripts that will
 be run whenever the node becomes available. Here is an example
-qsub script which is saved as ``qsub_script.sh``:
+qsub script that could make with a text editor and then 
+save with a name such as ``qsub_script.sh``:
 
 .. parsed-literal::
 
