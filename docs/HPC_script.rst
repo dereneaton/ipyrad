@@ -11,25 +11,30 @@ High performance computing (HPC) clusters are accessible to most
 users with University affiliations, providing cheap or free access
 to dozens or hundreds of computing cores allowing for very fast
 assembly of genomic data. HPC set ups often vary between 
-different institutions but we'll provide a general recommended 
+different institutions but we provide a general recommended 
 workflow here that works for most common setups.  
 
 When you login to an HPC cluster you are usually connected to 
-``login`` node, and from there you can ``submit jobs`` which 
-are sent to ``processing nodes``. If it's available, a very 
-easy way to get started at running jobs on ``processing nodes``
-is to log onto them directly using an interactive feauture. 
+``login`` node, and from there you can submit ``jobs`` which 
+are sent to processing nodes. That's where the heavy computing happens.
+Here we show two ways to run ipyrad, interactively, and through job
+submission. If it's available, interactive jobs are easier to run, 
+but very long running jobs are better suited for submitting as 
+scripts. 
+
+The first step is to use connect from your local terminal to 
+the HPC cluster, usually involving an `ssh` script. 
 
 .. parsed-literal::
 
     ## connect to the login node from your computer
     ssh user@address_of_HPC_cluster
 
-Then you can try logging in interactively to processing
- cores using the ``-I`` argument. Sometimes you have to 
-provide other default arguments such as the name of the 
-queue you are connecting to. This information is often 
-available from your institution. 
+From there you can then try logging in interactively to a 
+computing node by using the command `qsub` with the ``-I`` 
+argument. Sometimes you have to provide other default 
+arguments such as the name of the queue you are connecting to. 
+This information should be available from your institution. 
 
 .. parsed-literal::
 
