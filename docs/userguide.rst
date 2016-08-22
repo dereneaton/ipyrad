@@ -64,10 +64,8 @@ Eaton and Ree (2013).
 .. _further tutorials:
 Other tutorials
 ----------------
-The second tutorial analyzes the same data set using the API, 
-and includes downstream visualization of data sharing among 
-samples, and analysis of the results using the svd4tet species tree approach, 
-and ABBA-BABA tests for introgression.
+Many more tutorials coming soon. 
+
 
 .. toctree::
     :maxdepth: 1
