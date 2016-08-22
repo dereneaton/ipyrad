@@ -12,11 +12,11 @@ calculating population-genetic statistics or performing several comparative
 genomic analyses. Many of these tools are still in development and will 
 be expanded with time.
 
-Some of the tools are available as separate command line programs (e.g., svd4tet)
+Some of the tools are available as separate command line programs (e.g., tetrad)
 while others are accessed through the ipyrad_ Python API (e.g., plotting functions).
 For the latter, a bit of familiarity with Python programming will generally help. 
 However, we are working to develop a suite of examples in the form of 
-:ref:`cookbook recipes<cookbook_recipes>` which should make it easy to use.
+:ref:`cookbook recipes<cookbook_recipes>` which aim to make it easy to learn.
 
 
 Loading an Assembly into the API
