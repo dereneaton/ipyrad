@@ -135,6 +135,35 @@ bases per sample. The output below is truncated for clarity.
     1B_0     GAAASRCATACTCAAACACCCTKGATACGGACAACGAAATTGCACTCATCAGACAAAGAAATTACAGAGGAACCCAAGAGAGACCGCCTTCAATA...
 
 
+MAP/PARTITION (*.snps.map)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+Because the concatenated SNPs file does not include information about which
+SNPs come from which locus we provide a _map_ file with this information. 
+This is used by the program _tetrad_ to randomly sample single SNPs 
+from among loci. 
+
+.. parsed-literal::
+
+    1       rad0_snp0       0       1
+    1       rad0_snp1       0       2
+    1       rad0_snp2       0       3
+    1       rad0_snp3       0       4
+    1       rad0_snp4       0       5
+    2       rad1_snp0       0       6
+    2       rad1_snp1       0       7
+    2       rad1_snp2       0       8
+    2       rad1_snp3       0       9
+    3       rad2_snp0       0       10
+    3       rad2_snp1       0       11
+    3       rad2_snp2       0       12
+    3       rad2_snp3       0       13
+    3       rad2_snp4       0       14
+    3       rad2_snp5       0       15
+    3       rad2_snp6       0       16
+
+
+
+
 EIGENSTRAT \*.geno & \*.u.geno
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This is a SNP based format. Each line corresponds to one snp with one column per

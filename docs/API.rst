@@ -10,67 +10,47 @@
 The ipyrad API
 ===============
 The API_ (application program interface) for ipyrad_ is a way of directly 
-accessing the nuts and bolts of ipyrad_ using Python_. 
-This has a number of advantages over the CLI_ in that there is a lot more 
-flexibility for creating highly complex branching assemblies, or for applying
-ipyrad_ in a non-standard way. It's best feature, though, is that you can 
+accessing the nuts and bolts of ipyrad_ using Python_, and in particular
+we have written it to work interactively in IPython_. 
+This has a number of advantages over the CLI_ (command line interface) 
+in that there is greater flexibility for creating highly 
+complex branching assemblies, or for applying ipyrad_ in a 
+non-standard way. Perhaps the best feature, though, is that you can 
 perform entire analyses within Jupyter :ref:`notebooks<notebooks>` to create 
 documented reproducible code for your analyses. 
 
 
-Why use the API? 
+Cookbooks -- coming soon
 ----------------
-The API provides a more flexible framework for writing code to perform
-complex branching assemblies than the CLI, and it also provides a more 
-method of running remote code over very large computing clusters. 
-Because it is interactive you can easily access the results and statistics 
-from each step and use these in downstream analyses to visualize, analyze, 
-and compare assemblies. 
+We plan to add example cookbook recipes of IPython code that 
+can used to perform non-standard procedures in ipyrad that
+are not easily implemented in the CLI. 
 
 
 Two main functions of the API
 ------------------------------
 
-* Assembly -- perform all the assembly steps available in the CLI.
-* Analysis -- analyze and compare the size and distribution of data sets, 
-create plots, calculate population genetic statistics, and perform phylogenetic
+* Assembly -- perform all assembly steps available in the CLI but with several additional options.
+* Analysis -- analyze and compare the size and distribution of data sets, create plots, calculate population genetic statistics, and perform phylogenetic
 analyses. 
-
-Most users will start by using the CLI, but may eventually find that the
-API provides functionality that is necessary for advanced usage. For example, 
-the API can be used to merge two Assemblies so that Samples from different 
-Assemblies can be clustered together. This can be useful when combining data 
-from a previous study with newly collected data. 
 
 
 Getting started with IPython/Jupyter notebooks
 -----------------------------------------------
-Our goal with using the ipyrad API is not only to get people writing Python 
+Our goal in developing the ipyrad API is not only to get people writing Python 
 scripts, but also to encourage the use of an exciting new tool called
-Jupyter notebooks, which are a great tool for reproducible science. 
+Jupyter notebooks, an excellent tool for reproducible science. 
 
 The envisioned usage of the ipyrad Python API is to run test assemblies within
-a Jupyter notebook on a local computer using the **preview mode** method to 
-execute quickly. Once you've tested that your assembly looks good, and that 
+a Jupyter notebook on a local computer.  
+Once you've tested that your assembly looks good, and that 
 your selected parameters seems appropriate you can then take your script and 
 submit a long running job to a larger computing cluster. 
 
-When using the API there are some really fancy methods you can use to connect
-to large computing clusters in complex ways which you can read about in the 
-:ref:`advanced ipyparallel connections<advanced ipyparallel connections>`
-section. The easiest way to get started though is using the clusters tab 
-within Jupyter notebooks. Run the code below in a terminal to enable the 
-jupyter clusters tab. 
-
-.. parsed-literal:
-
-    ipcluster nbextension enable
-
-After you run this you should be able to connect to computing engines on 
-your local machine by entering a number in the default engines cell and hitting
-start. See the image below. 
-
-[insert image here].
+Beyond the very easy way that the CLI provides for connecting to HPC 
+clusters, the API provides even more flexibility for doing very 
+advanced computation for users that are fluent with the 
+ipyparallel package. 
 
 
 Assembly and Sample objects
@@ -92,20 +72,10 @@ object if data are already demultiplexed, or by running ``step1()`` to
 demultiplex raw data files, as shown below.
 
 
-Advanced remote computing with ipyparallel
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The ipyrad CLI automatically launches parallel connections to computing engines
-requiring little or no prior computing knowledge on the part of the user. The
-ipyrad API is for more advanced users, and ...
-
-using the Python module ipyparallel_. 
-
-
-.. _cookbook_recipes:
+.. _cookbook_recipes_API:
 
 Cookbook recipes - API 
 -----------------------
-
 
 .. toctree::
    :maxdepth: 1
@@ -116,40 +86,107 @@ Cookbook recipes - API
 
 
 
-
-
-
 old api stuff
 -----------------
-
-All of the parameter settings are linked to an Assembly object, which
-has a set of default parameters when it is created. These can be viewed
-using the ``get_params()`` function. To get more detailed information
-about all parameters use ``ip.get_params_info()`` or to select a single
-parameter use ``ip.get_params_info(3)``. Assembly objects have a
-function ``set_params()`` that can be used to modify parameters.
-
-
-If the data are already demultiplexed then fastq files can be linked
-directly to the Data object, which in turn will create Sample objects
-for each fastq file (or pair of fastq files for paired data). The files
-may be gzip compressed. If the data are not demultiplexed then you will
-have to run the step1 function below to demultiplex the raw data.
-
-If for some reason we wanted to execute on just a subsample of our data,
-we could do this by selecting only certain samples to call the ``step2``
-function on. Because ``step2`` is a function of ``data``, it will always
-execute with the parameters that are linked to ``data``.
+Begin by creating an Assembly class object, this is equivalent 
+to running the (-n) argument from the command line. It initializes
+an the Assembly object that will be used to store the assembly 
+parameters that will be used. 
 
 .. code:: python
 
-    ## example of ways to run step 2 to filter and trim reads
-    #data1.step2("1B_0")                 ## run on a single sample
-    #data1.step2(["1B_0", "1C_0"])       ## run on one or more samples
-    data1.step2(force=True)              ## run on all samples, skipping finished ones
-    
-    ## print the results
-    print data1.stats.head()
+   ## initalize an Assembly class object
+   data = ip.Assemble("test")
+   
+The assembly object has a number of attributes and functions
+that you can access interactively in IPython by using tab-completion. 
+Simply type the name of your object (here named 'data'), followed
+by tab to see all of the options. 
+
+.. code:: python
+
+    data.<tab>     
+              data.barcodes         data.dirs             data.name              
+              data.branch           data.files            data.outfiles          
+              data.build_stat       data.get_params       data.paramsdict
+              data.clust_database   data.link_fastqs      data.populations       
+              data.database         data.link_populations data.run               
+
+
+Two important functions of the Assembly include ``get_params()`` and
+``set_params()``, which are used to view and modify the parameter 
+settings, respectively. 
+
+.. code:: python
+
+    data.get_params()
+
+
+.. parsed-literal::
+
+  0   assembly_name               test                                         
+  1   project_dir                 ./                                           
+  2   raw_fastq_path                                                           
+  3   barcodes_path                                                            
+  4   sorted_fastq_path                                                        
+  5   assembly_method             denovo                                       
+  6   reference_sequence                                                       
+  7   datatype                    rad                                          
+  8   restriction_overhang        ('TGCAG', '')                                
+  9   max_low_qual_bases          5                                            
+  10  phred_Qscore_offset         33                                           
+  11  mindepth_statistical        6                                            
+  12  mindepth_majrule            6                                            
+  13  maxdepth                    10000                                        
+  14  clust_threshold             0.85                                         
+  15  max_barcode_mismatch        0                                            
+  16  filter_adapters             0                                            
+  17  filter_min_trim_len         35                                           
+  18  max_alleles_consens         2                                            
+  19  max_Ns_consens              (5, 5)                                       
+  20  max_Hs_consens              (8, 8)                                       
+  21  min_samples_locus           4                                            
+  22  max_SNPs_locus              (20, 20)                                     
+  23  max_Indels_locus            (8, 8)                                       
+  24  max_shared_Hs_locus         0.5                                          
+  25  edit_cutsites               (0, 0)                                       
+  26  trim_overhang               (4, 4, 4, 4)                                 
+  27  output_formats              *                                            
+  28  pop_assign_file                       
+
+
+You can change parameters by providing either the name or index number 
+of the parameter you want to change and the new parameter setting
+to ``set_params``. Below we also show what happens if you enter an invalid
+parameter.
+
+
+.. code:: python
+
+    ## change a few parameters
+    data.set_params("project_dir", "iptest")
+    data.set_params("raw_fastq_path", "ipsimdata/rad_example_R1_.fastq.gz")
+    data.set_params("barcodes_path", "ipsimdata/rad_example_barcodes.txt")
+
+    ## if you enter a parameter setting that is invalid an error will raise
+    data.set_params("max_alleles_consens", "four")
+
+
+.. parsed-literal::
+
+    IPyradError:     
+        Error setting parameter 'max_alleles_consens'
+        invalid literal for int() with base 10: 'four'
+        You entered: four
+
+
+The next important function is the ``run()`` command, which is used
+to run steps of the assembly. 
+
+.. code:: python 
+
+    ## run a few steps of the assembly
+    data.run("12")
 
 
 Let's imagine at this point that we are interested in clustering our
@@ -159,17 +196,24 @@ locations of the data linked in the first object, but diverge in any
 future applications to the object. Thus, they can share the same working
 directory, and will inherit shared files, but create divergently linked
 files within this directory. You can view the directories linked to an
-Assembly object with the ``.dirs`` argument, shown below. The
-prefix\_outname (param 14) of the new object is automatically set to the
-Assembly object name.
+Assembly object with the ``.dirs`` argument, shown below. 
+
 
 .. code:: python
 
-    ## run step 3 to cluster reads within samples using vsearch
-    #data1.step3(['2E_0'], force=True, preview=True)  # ["2H_0", "2G_0"])
-    data1.step3(force=True)
+    ## run step 3 to cluster reads within samples
+    data.run(3) 
+
     ## print the results
-    print data1.stats.head()
+    print data1.stats
+
+    ## create a new branch
+    data2 = data.branch("c85")
+    data2.set_params("clust_threshold", 0.85)
+
+    ## run steps on new assembly
+    data2.run(3, force=True)
+
 
 
 And you can see below that the two Assembly objects are now working with
@@ -178,99 +222,11 @@ clust directories (clust\_0.85 and clust\_0.9).
 
 .. code:: python
 
-    ## create a branch of our Assembly object
-    data2 = data1.branch(newname="data2")
-    
-    ## set clustering threshold to 0.90
-    data2.set_params(11, 0.90)
-    
-    ## look at inherited parameters
-    data2.get_params()
-
-.. code:: python
-
-    ## run step 3 to cluster reads within samples using vsearch
-    data2.step3(force=True)  # ["2H_0", "2G_0"])
-    
-    ## print the results
-    print data2.stats
-
-.. code:: python
-
     print "data1 directories:"
-    for (i,j) in data1.dirs.items():
+    for (i,j) in data.dirs.items():
         print "{}\t{}".format(i, j)
         
     print "\ndata2 directories:"
     for (i,j) in data2.dirs.items():
         print "{}\t{}".format(i, j)
-
-.. code:: python
-
-    ## TODO, just make a [name]_stats directory in [work] for each data obj
-    data1.statsfiles
-
-
-.. code:: python
-
-    data1.stats.to_csv("data1_results.csv", sep="\t")
-    data1.stats.to_latex("data1_results.tex")
-
-
-There are a a few simple plotting functions in *ipyrad* useful for
-visualizing results. These are in the module ``ipyrad.plotting``. Below
-is an interactive plot for visualizing the distributions of coverages
-across the 12 samples in the test data set.
-
-.. code:: python
-
-    import ipyrad.plotting as iplot
-    
-    ## plot for one or more selected samples
-    iplot.depthplot(data1, ["1A_0", "1B_0"])
-    
-    ## plot for all samples in data1
-    #iplot.depthplot(data1)
-    
-    ## save plot as pdf and html
-    iplot.depthplot(data1, outprefix="testfig")
-
-
-.. code:: python
-
-    import ipyrad as ip
-    data1 = ip.load_assembly("test_rad/data1")
-
-.. code:: python
-
-    ## run step 4
-    data1.step4("1A_0", force=True)
-    
-    ## print the results
-    print data1.stats
-
-
-.. code:: python
-
-    #import ipyrad as ip
-    
-    ## reload autosaved data. In case you quit and came back 
-    #data1 = ip.load_dataobj("test_rad/data1.assembly")
-
-.. code:: python
-
-    ## run step 5
-    data1.step5()
-    
-    ## print the results
-    print data1.stats
-
-.. code:: python
-
-    data1.samples["1A_0"].stats
-
-.. code:: python
-
-    ip.get_params_info(10)
-
 

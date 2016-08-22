@@ -4,115 +4,98 @@
 
 .. _HPCscript:
 
-HPC script
-==========
+Command-line interface
+^^^^^^^^^^^^^^^^^^^^^^
 
-The API requires starting the parallel Engines before executing step 
-functions with ipyrad. This provides a lot of flexibility to run ipyrad 
-on with complex connection setups. Below we show a fairly common setup 
-to connect to multiple nodes on an HPC cluster. 
+High performance computing (HPC) clusters are accessible to most 
+users with University affiliations, providing cheap or free access
+to dozens or hundreds of computing cores allowing for very fast
+assembly of genomic data. HPC set ups often vary between 
+different institutions but we'll provide a general recommended 
+workflow here that works for most common setups.  
 
+When you login to an HPC cluster you are usually connected to 
+``login`` node, and from there you can ``submit jobs`` which 
+are sent to ``processing nodes``. If it's available, a very 
+easy way to get started at running jobs on ``processing nodes``
+is to log onto them directly using an interactive feauture. 
 
-Starting ipcluster
-^^^^^^^^^^^^^^^^^^^
+.. parsed-literal::
 
-First update ipyparallel to the most recent version. This should upgrade it 
-to version >5.0. 
+    ## connect to the login node from your computer
+    ssh user@address_of_HPC_cluster
 
-.. code-block:: bash
+Then you can try logging in interactively to processing
+ cores using the ``-I`` argument. Sometimes you have to 
+provide other default arguments such as the name of the 
+queue you are connecting to. This information is often 
+available from your institution. 
 
-    pip install -U ipyparallel
+.. parsed-literal::
 
-
-Now you can start an ipcluster running. I recommend doing this in a separate
-screen created using the ``screen`` unix command. We use the engines=MPI and 
---ip=* commands to tell ipcluster to connect to cores across multiple nodes.
-
-
-.. code-block:: bash
-
-    screen
-
-    ## once in new screen type the following
-    ipcluster start -n 32 --engines=MPI --ip=* 
-
-    ## now disconnect from this screen by typing (ctrl-a, then d)
-
-
-Running ipyrad interactively
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Now open up a second screen which we will use to run the ipyrad API interactively.
-The code below could alternatively be saved as a python script and run as 
-`python myscript.py`. The ipyrad API will automatically use all available 
-Engines from ipcluster. In this case, 32. You can 
+    ## try logging into an interactive node, depending
+    ## on the queue this may be instant, or may take hours
+    qsub -I 
 
 
-.. code-block:: python
+You can use all of the typical qsub arguments here to connect
+to more CPUs, or specific queues. 
+
+    ## ask for 64 cores across 8 nodes from queue 'fas_general' 
+    ## and request 24 hours of wall time.
+    qsub -I -l nodes=8:ppn=8:walltime=24:00:00 -q "fas_devel"
+    
+
+Because it sometimes takes a while to connect to an interactive
+node, it is common practice to instead submit scripts that will
+be run whenever the node becomes available. Here is an example
+qsub script which is saved as ``qsub_script.sh``:
+
+.. parsed-literal::
+
+#!/bin/sh
+
+#PBS -N ipyrad-test
+#PBS -j oe
+#PBS -m ae
+#PBS -M deren.eaton@yale.edu
+#PBS -q fas_normal
+#PBS -l nodes=1:ppn=8
+
+## change into whichever directory you which to run code from
+cd $PBS_O_WORKDIR
+
+## call ipyrad on your params file
+ipyrad -p params-test.txt -s 1 
 
 
-    ## First open an IPython session by typing `ipython` into a terminal.
-    ## Then execute the code below inside IPython.
+Then you submit this script to a queue with a qsub command such as:
 
-    ## imports
-    import ipyrad as ip
+.. parsed-literal::
 
-    ## make Assembly object
-    data = ip.Assembly("test")
-
-    ## Fill params. Set the location of your files here.
-    data.set_params("project_dir", "test")
-    data.set_params("raw_fastq_path", "iptest/rad_example_.fastq.gz")
-    data.set_params("barcodes_path", "iptest/rad_example_barcodes.txt")
-
-    ## set subsampling for step 2
-    data._hackersonly["preview_step2"] = 2000
-
-    ## print params and hackers params
-    data.get_params()
-    print "hackers dict"
-    print data._hackersonly
-
-    ## demultiplex without preview mode. This will take a while.
-    data.step1()
-
-    ## run step2 with preview mode. This should run very fast.
-    data.step2(preview=True)
-
-    ## save the commands from this session to a file
-    %save my_ipyrad_script.py 
+    ## submit the qsub script
+    qsub qsub_script.sh
 
 
+Here is another example script that would connect to more processors
+spread across multiple nodes:
 
-Now while the code is running you can disconnect from this session 
-(again ctrl-a, then d) and watch the cpus working away using the unix 
-``top`` command. And you can peek into the output directory. 
-Finally, when the job is done you can go back in and look at the 
-resulting stats for your assembly by reconnecting to the interactive 
-IPython session using ``screen -r``.
+.. parsed-literal::
 
+#!/bin/sh
 
-.. code-block:: python
+#PBS -N ipyrad-test
+#PBS -j oe
+#PBS -m ae
+#PBS -M deren.eaton@yale.edu
+#PBS -q fas_normal
+#PBS -l nodes=8:ppn=8
 
-    ## print stats
-    data.stats
+## change into whichever directory you which to run code from
+cd $PBS_O_WORKDIR
 
-    ## run the next step
-    data.step3()
-
-    ## etc.
-
-
-If you were to close the IPython session and want to restart working on the 
-same Assembly later you can re-load the Assembly using the following command:
-
-.. code-block:: python
-
-    ## load Assembly object -- use the path to your json file here.
-    data = ip.load_json("projdir/assembly.json")
-
-
-
+## call ipyrad on your params file
+ipyrad -p params-test.txt -s 1 -c 64 --MPI
 
 
 
