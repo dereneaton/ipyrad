@@ -409,8 +409,8 @@ def build_h5_array(data, samples, ipyclient):
         chunks = 1000
     if data.nloci > 200000:
         chunks = 2000
-    if data.nloci > 500000:
-        chunks = 5000
+    #if data.nloci > 500000:
+    #    chunks = 5000
     data.chunks = chunks
     LOGGER.info("data.nloci is %s", data.nloci)
     LOGGER.info("chunks is %s", data.chunks)
