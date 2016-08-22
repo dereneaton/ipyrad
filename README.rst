@@ -1,20 +1,27 @@
-ipyrad: Interactive assembly and analysis of RAD-seq data sets
-=======================
-Welcome to ipyrad, an interactive toolkit for assembly and analysis of restriction-site associated genomic data sets (e.g., RAD, ddRAD, GBS) for population genetic and phylogenetic studies.
+*ipyrad*: interactive assembly and analysis of RAD-seq data sets
+--------------------------------------------------------------
 
-Quick Install
-------------
-ipyrad is available through conda with all dependencies included. If you have conda installed you can simply:
-
-    conda install -c ipyrad ipyrad
-
-If you do not have conda you will enjoy our `complete installation instructions <http://ipyrad.readthedocs.io/installation.html>`_.
+Welcome to ipyrad, an interactive toolkit for assembly and analysis of 
+restriction-site associated genomic data sets (e.g., RAD, ddRAD, GBS) 
+for population genetic and phylogenetic studies.
 
 Documentation
 ---------
-`Full documentation <http://ipyrad.readthedocs.io>`_ is available on our readthedocs site. There you will find installation instructions, example tutorials, and a full user guide.
+Full documentation is available here (`<http://ipyrad.readthedocs.io>`_),
+where you will find installation instructions, example tutorials, and a full user guide.
 
-Quick link to the `full tutorial <http://ipyrad.readthedocs.io/tutorial_intro_cli.html>`_.
+
+Quick Install
+------------
+ipyrad is available through the Python package installer `conda` with all dependencies included.
+If you have `conda` installed you can simply run::
+
+    conda install -c ipyrad ipyrad
+
+
+If you do not have `conda` installed then you will enjoy our 
+`complete installation instructions <http://ipyrad.readthedocs.io/installation.html>`_.
+
 
 Getting Help
 ------------
