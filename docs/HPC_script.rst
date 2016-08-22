@@ -11,8 +11,8 @@ High performance computing (HPC) clusters are accessible to most
 users with University affiliations, providing cheap or free access
 to dozens or hundreds of computing cores allowing for very fast
 assembly of genomic data. HPC set ups often vary between 
-different institutions but we provide a general recommended 
-workflow here that works for most common setups.  
+different institutions but we provide here a general workflow 
+for running on TORQUE systems, which use the ``qsub`` submission format. 
 
 When you login to an HPC cluster you will be connected to a
 ``login`` node, and from there you can submit ``jobs`` which 
