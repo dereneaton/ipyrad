@@ -29,7 +29,7 @@ the HPC cluster, usually involving an `ssh` script.
 .. parsed-literal::
 
     ## connect to the login node from your computer
-    ssh user@address_of_HPC_cluster
+    >>> ssh user@address_of_HPC_cluster
 
 
 Running interactive jobs
@@ -46,7 +46,7 @@ active.
 .. parsed-literal::
 
     ## connect to an node interactively
-    qsub -I 
+    >>> qsub -I 
 
 
 You can use all of the typical qsub arguments to connect
@@ -63,7 +63,7 @@ will access 64 cores spread across 8 8-core nodes.
 
     ## ask for 64 cores across 8 nodes from queue 'fas_general' 
     ## and request 24 hours of wall time.
-    qsub -I -l nodes=8:ppn=8:walltime=24:00:00 -q "fas_general"
+    >>> qsub -I -l nodes=8:ppn=8:walltime=24:00:00 -q "fas_general"
     
 
 Submitting job scripts
@@ -96,7 +96,7 @@ Then you submit this script to a queue with a qsub command such as:
 .. parsed-literal::
 
     ## submit the qsub script
-    qsub qsub_script.sh
+    >>> qsub qsub_script.sh
 
 
 Here is another example script that would connect to more processors
@@ -119,6 +119,11 @@ spread across multiple nodes:
     ## call ipyrad on your params file
     ipyrad -p params-test.txt -s 1 -c 64 --MPI
 
+
+.. parsed-literal::
+
+    ## submit the qsub script
+    >>> qsub qsub_script.sh
 
 
 
