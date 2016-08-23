@@ -628,5 +628,17 @@ Affected step: 7. Example entries to params.txt
 
     /home/user/ipyrad/popfile.txt        ## [28] example...
 
+The population assignment file should be formatted as a plain-txt, whitespace
+delimited list of individuals and population assignments. Care should be taken
+with spelling and capitalization. Sample names and population assignments can 
+separated by spaces or tabs. A simple example population file might look like:
+
+.. parsed-literal::
+
+    Sample1 pop1
+    Sample2 pop1
+    Sample3 pop1
+    Sample4 pop2
+    Sample5 pop2
 
 
