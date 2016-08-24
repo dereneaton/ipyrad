@@ -72,7 +72,7 @@ will access 64 cores spread across 8 8-core nodes.
 
     ## ask for 64 cores across 8 nodes from queue 'fas_general' 
     ## and request 24 hours of wall time.
-    >>> qsub -I -l nodes=8:ppn=8:walltime=24:00:00 -q "fas_general"
+    >>> qsub -I -l nodes=8:ppn=8 -l walltime=24:00:00 -q "fas_general"
     
 
 Submitting job scripts
