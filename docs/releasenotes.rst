@@ -7,6 +7,10 @@ Release Notes
 
 0.3.33
 ------
+- also make longer timeout in _ipcluster dict of Assembly object
+
+0.3.33
+------
 - increased timeout for ipcluster instance from 30 seconds to 90 seconds
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Added sample populations file format example
