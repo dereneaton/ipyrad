@@ -333,6 +333,9 @@ def parse_command_line():
         help="run ipyrad in preview mode. Subset the input file so it'll run"\
             + "quickly so you can verify everything is working")
 
+    parser.add_argument("--ipcluster", action='store_true',
+        help="connect to ipcluster instance with profile=ipyrad")
+
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -455,8 +458,13 @@ def main():
             ## for later destruction, and to avoid conflicts between 
             ## simultaneous ipcluster instances. If a user wanted to use 
             ## an ipcluster instance that is already running instead then 
-            ## they have to use the API. 
-            data = register_ipcluster(data)
+            ## they have to use the API, or to have set args.ipcluster
+            if args.ipcluster:
+                data._ipcluster["profile"] = "ipyrad"
+                #ip.__interactive__ = 1
+            else:
+                data = register_ipcluster(data)
+
 
             ## set to print headers
             data._headers = 1

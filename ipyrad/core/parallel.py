@@ -107,18 +107,22 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
     ## save stds for later, we're gonna hide them to prevent external printing 
     save_stdout = sys.stdout 
     save_stderr = sys.stderr
-    #sys.stdout = cStringIO.StringIO()
-    #sys.stderr = cStringIO.StringIO()
+    sys.stdout = cStringIO.StringIO()
+    sys.stderr = cStringIO.StringIO()
 
     try: 
-        clusterargs = [cluster_id, profile, timeout]
-        argnames = ["cluster_id", "profile", "timeout"]
-        args = {key:value for key, value in zip(argnames, clusterargs)}
+        ## are we looking for a running ipcluster instance?
+        if profile not in [None, "default"]:
+            args = {'profile': profile, "timeout": timeout}
+        else:
+            clusterargs = [cluster_id, profile, timeout]
+            argnames = ["cluster_id", "profile", "timeout"]
+            args = {key:value for key, value in zip(argnames, clusterargs)}
 
         ## get connection within timeout window of wait time and hide messages
         ipyclient = ipp.Client(**args)
-        #sys.stdout = save_stdout
-        #sys.stderr = save_stderr
+        sys.stdout = save_stdout
+        sys.stderr = save_stderr
 
         ## check that all engines have connected 
         for _ in range(12000):
@@ -154,7 +158,6 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
         ## ensure stdout is reset even if Exception was raised
         sys.stdout = save_stdout
         sys.stderr = save_stderr
-        print(inst)
         if ip.__interactive__:
             raise ip.assemble.util.IPyradWarningExit(NO_IPCLUSTER_API)
         else:
