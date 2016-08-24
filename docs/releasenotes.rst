@@ -5,6 +5,17 @@
 Release Notes
 =============
 
+0.3.33
+------
+- increased timeout for ipcluster instance from 30 seconds to 90 seconds
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Added sample populations file format example
+- quick api example up
+- quick api example up
+- merge conflict
+- removed chunksize=5000 option
+- Update README.rst
+
 0.3.32
 ------
 - Fix optim chunk size bug in step 6 (very large datasets overflow hdf5 max chunksize 4GB limit)
