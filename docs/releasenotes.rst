@@ -7,6 +7,12 @@ Release Notes
 
 0.3.33
 ------
+- temporary explicit printing during ipcluster launch for debugging
+-  "Updating ipyrad/__init__.py to version - 0.3.33
+- also make longer timeout in _ipcluster dict of Assembly object
+
+0.3.33
+------
 - also make longer timeout in _ipcluster dict of Assembly object
 
 0.3.33
