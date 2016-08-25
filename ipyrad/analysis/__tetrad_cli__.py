@@ -10,6 +10,7 @@ import ipyrad as ip
 import numpy as np
 import argparse
 import logging
+import random
 import sys
 import os
 import atexit
@@ -116,6 +117,12 @@ def parse_command_line():
     parser.add_argument('-d', "--debug", action='store_true',
         help="print lots more info to debugger: ipyrad_log.txt.")
 
+    parser.add_argument("--MPI", action='store_true',
+        help="connect to parallel CPUs across multiple nodes")
+
+    parser.add_argument("--ipcluster", action='store_true',
+        help="connect to ipcluster instance with profile=ipyrad")
+
     ## if no args then return help message
     if len(sys.argv) == 1:
         parser.print_help()
@@ -137,14 +144,16 @@ def parse_command_line():
 
     ## if 'equal' method require starting tree and nquarts
     if args.method == 'equal':
+        raise IPyradWarningExit(\
+            "  The equal sampling method is currently for developers only.\n")
         if not args.nquartets:
             raise IPyradWarningExit(\
             "  Number of quartets (-q) is required with method = equal\n")
         if not args.tree:
             raise IPyradWarningExit(\
-            "  Must provide an input guide tree (-t) to equalize edge sampling\n")
-        #"  A starting tree (-t newick file) is required with method = equal")
+            "  Input guide tree (-t) is required with method = equal\n")
 
+    ## required args
     if not any(x in ["seq", "json"] for x in vars(args).keys()):
         print("""
     Bad arguments: tetrad command must include at least one of (-s or -j) 
@@ -168,6 +177,7 @@ def main():
 
     ## set random seed
     np.random.seed(args.rseed)
+    random.seed(args.rseed)
 
     ## debugger----------------------------------------
     if os.path.exists(ip.__debugflag__):
@@ -180,6 +190,7 @@ def main():
     ## if JSON, load existing Quartet analysis -----------------------
     if args.json:
         data = ipa.tetrad.load_json(args.json)
+        ## loading message?
 
         ## if force then remove all results
         if args.force:
@@ -191,6 +202,7 @@ def main():
         newjson = os.path.join(args.outdir, args.name+'.tet.json')
         if (not os.path.exists(newjson)) or args.force:
             data = ipa.tetrad.Quartet(args.name, args.outdir, args.method)
+            print("  new Quartet instance: {}".format(args.name))
         else:
             raise IPyradWarningExit(QUARTET_EXISTS\
             .format(args.name, args.outdir, args.outdir, args.name, args.name))
@@ -235,8 +247,15 @@ def main():
     else:
         data._ipcluster["cores"] = detect_cpus()
 
+    ## set MPI flag
+    if args.MPI:
+        data._ipcluster["engines"] = "MPI"
+
     ## start ipcluster and register cluster_id for later destruction.
-    data = register_ipcluster(data)
+    if args.ipcluster:
+        data._ipcluster["profile"] = "ipyrad"
+    else:
+        data = register_ipcluster(data)
 
     ## message about whether we are continuing from existing
     if data.checkpoint.boots or data.checkpoint.arr:

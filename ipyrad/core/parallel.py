@@ -111,9 +111,13 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
     sys.stderr = cStringIO.StringIO()
 
     try: 
-        clusterargs = [cluster_id, profile, timeout]
-        argnames = ["cluster_id", "profile", "timeout"]
-        args = {key:value for key, value in zip(argnames, clusterargs)}
+        ## are we looking for a running ipcluster instance?
+        if profile not in [None, "default"]:
+            args = {'profile': profile, "timeout": timeout}
+        else:
+            clusterargs = [cluster_id, profile, timeout]
+            argnames = ["cluster_id", "profile", "timeout"]
+            args = {key:value for key, value in zip(argnames, clusterargs)}
 
         ## get connection within timeout window of wait time and hide messages
         ipyclient = ipp.Client(**args)

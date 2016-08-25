@@ -5,6 +5,35 @@
 Release Notes
 =============
 
+0.3.34
+------
+- new --ipcluster arg allows using a running ipcluster instance that has profile=ipyrad
+-  "Updating ipyrad/__init__.py to version - 0.3.33
+- temporary explicit printing during ipcluster launch for debugging
+-  "Updating ipyrad/__init__.py to version - 0.3.33
+- also make longer timeout in _ipcluster dict of Assembly object
+
+0.3.33
+------
+- temporary explicit printing during ipcluster launch for debugging
+-  "Updating ipyrad/__init__.py to version - 0.3.33
+- also make longer timeout in _ipcluster dict of Assembly object
+
+0.3.33
+------
+- also make longer timeout in _ipcluster dict of Assembly object
+
+0.3.33
+------
+- increased timeout for ipcluster instance from 30 seconds to 90 seconds
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Added sample populations file format example
+- quick api example up
+- quick api example up
+- merge conflict
+- removed chunksize=5000 option
+- Update README.rst
+
 0.3.32
 ------
 - Fix optim chunk size bug in step 6 (very large datasets overflow hdf5 max chunksize 4GB limit)

@@ -37,12 +37,15 @@ import itertools
 import subprocess
 import numpy as np
 import ipyrad as ip
+from bitarray import bitarray
 from fractions import Fraction
-
+from collections import defaultdict
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 
 ## for our desired form of parallelism we will limit 1 thread per cpu
 numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
+## debug numba code
+#numba.config.NUMBA_DISABLE_JIT = 1
 
 ## ete3 is an extra dependency not included with ipyrad
 ## replace with biopython asap
@@ -56,26 +59,23 @@ except ImportError:
     tetrad requires the dependency `ete3`. You can install
     it with the command `conda install -c etetoolkit ete3`
     Sorry for the inconvenience, this will be incorporated into the
-    ipyrad installation eventuall.
+    ipyrad installation eventually.
     """)
 
-try:
-    import skbio.tree as sktree
-    from io import StringIO
-except ImportError:
-    raise IPyradWarningExit("""
-    tetrad requires the dependency `biopython`. You can install
-    it with the command `conda install -c anaconda biopython`. 
-    Sorry for the inconvenience, this will be incorporated into the
-    ipyrad installation eventuall.
-    """)        
+# try:
+#     import skbio.tree as sktree
+#     from io import StringIO
+# except ImportError:
+#     raise IPyradWarningExit("""
+#     tetrad requires the dependency `biopython`. You can install
+#     it with the command `conda install -c anaconda biopython`. 
+#     Sorry for the inconvenience, this will be incorporated into the
+#     ipyrad installation eventuall.
+#     """)        
 
 ## set the logger
 import logging
 LOGGER = logging.getLogger(__name__)
-
-## debug numba code
-#numba.NUMBA_DISABLE_JIT = 1
 
 ## The 16 x 16 matrix of site counts (The phylogenetic invariants). 
 ## It's here just to look at. 
@@ -131,9 +131,9 @@ class Quartet(object):
         self._ipcluster = {
             "cluster_id" : "",
             "profile" : "default", 
-            "engines" : "MPI", 
+            "engines" : "Local", 
             "quiet" : 0, 
-            "timeout" : 45, 
+            "timeout" : 60, 
             "cores" : ip.assemble.util.detect_cpus()}
 
         ## Sampling method attributes
@@ -160,23 +160,18 @@ class Quartet(object):
         self.files.treefile = None
         self.files.qdump = None
 
-        ## store tree data
+        ## store tree file paths
         self.trees = ObjDict()
         ## the full trees
-        self.trees.ttre = os.path.join(self.dirs, self.name+".tre")
-        self.trees.wtre = os.path.join(self.dirs, self.name+".w.tre")
-        ## list of bootstrap trees 
-        self.trees.tboots = os.path.join(self.dirs, self.name+".boots")        
-        self.trees.wboots = os.path.join(self.dirs, self.name+".w.boots")        
-        ## trees with boot support as edge length
-        self.trees.tbtre = os.path.join(self.dirs, self.name+".support.tre")        
-        self.trees.wbtre = os.path.join(self.dirs, self.name+".w.support.tre")     
+        self.trees.tre = os.path.join(self.dirs, self.name+".full.tre")
+        ## the extended majority rule consensus tree w/ support values
+        self.trees.cons = os.path.join(self.dirs, self.name+".consensus.tre")
+        ## all bootstrap trees 
+        self.trees.boots = os.path.join(self.dirs, self.name+".boots")        
         ## NHX formatted tre with rich information
-        self.trees.tnhx = os.path.join(self.dirs, self.name+".nhx.tre")     
-        self.trees.wnhx = os.path.join(self.dirs, self.name+".w.nhx.tre")     
-        ## PDF
-        self.trees.pdf = os.path.join(self.dirs, self.name+".pdf")
-
+        self.trees.nhx = os.path.join(self.dirs, self.name+".nhx.tre")     
+        ## a file for tree and quartet stats
+        self.trees.stats = os.path.join(self.dirs, self.name+".stats.txt")
         ## checkpointing information
         self.checkpoint = ObjDict()
         self.checkpoint.boots = 0
@@ -256,7 +251,7 @@ class Quartet(object):
         nbp = int(line[1])
 
         ## make a tmp seq array
-        print("  loading array [{} taxa x {} bp]".format(ntax, nbp))        
+        print("  loading seq array [{} taxa x {} bp]".format(ntax, nbp))        
         tmpseq = np.zeros((ntax, nbp), dtype=np.uint8)
     
         ## create array storage for real seq and the tmp bootstrap seqarray
@@ -496,7 +491,7 @@ class Quartet(object):
         ## get starting tree, unroot, randomly resolve, ladderize
         tre = ete3.Tree(self.files.treefile, format=0)
         tre.unroot()
-        tre.resolve_polytomy()
+        tre.resolve_polytomy(recursive=True)
         tre.ladderize()
 
         ## randomly sample all splits of tree and convert tip names to indices
@@ -520,18 +515,28 @@ class Quartet(object):
         nsaturation = 0
 
         for split in splits:
-            ## if small number at this split then sample all
+            ## if small number at this split then sample all possible sets
+            ## we will exhaust this quickly and then switch to random for 
+            ## the larger splits.
             if n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2) < squarts*2:
                 qiter = (i+j for (i, j) in itertools.product(
                             itertools.combinations(split[0], 2), 
                             itertools.combinations(split[1], 2)))
                 nsaturation += 1
 
-            ## else create random sampler for this split
+            ## else create random sampler across that split, this is slower
+            ## because it can propose the same split repeatedly and so we 
+            ## have to check it against the 'sampled' set.
             else:
                 qiter = (random_product(split[0], split[1]) for _ \
                          in xrange(self.nquartets))
+                nsaturation += 1
+
+            ## store all iterators into a list
             qiters.append(qiter)
+
+        #for split in splits:
+        #    print(split)
 
         ## make qiters infinitely cycling
         qiters = itertools.cycle(qiters)
@@ -571,6 +576,8 @@ class Quartet(object):
                             qdat.append(qrtsamp)
                             sampled.add(qrtsamp)
                             edge_targeted += 1
+                        #else:
+                        #    print('repeat')
                         
                     ## unless iterator is empty, then skip it
                     except StopIteration:
@@ -593,64 +600,47 @@ class Quartet(object):
                 io5["samples"][i:i+self.chunksize] = dat[:io5["samples"].shape[0] - i]
                 i += self.chunksize
 
-            print("  sampled {} edge targeted quartets and {} random quartets"\
+            print("  equal sampling: {} edge quartets, {} random quartets "\
                   .format(edge_targeted, random_target))
-
-            print(sampled)
 
 
 
     def run_qmc(self, boot):
         """ runs quartet max-cut on a quartets file """
 
-        ## make call lists
-        cmd1 = " ".join(
-                [ip.bins.qmc,
-                " qrtt="+self.files.qdump,
-                " weights=off"+
-                " otre=.tmptre"])
-
-        cmd2 = " ".join(
+        cmd = " ".join(
                 [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
                 " weights=on"+
                 " otre=.tmpwtre"])
 
         ## run them
-        for cmd in [cmd1, cmd2]:
-            try:
-                subprocess.check_call(cmd, shell=True,
-                                           stderr=subprocess.STDOUT,
-                                           stdout=subprocess.PIPE)
-            except subprocess.CalledProcessError as inst:
-                LOGGER.error("Error in wQMC: \n({}).".format(inst))
-                LOGGER.error(subprocess.STDOUT)
-                raise inst
+        try:
+            subprocess.check_call(cmd, shell=True,
+                                       stderr=subprocess.STDOUT,
+                                       stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as inst:
+            LOGGER.error("Error in wQMC: \n({}).".format(inst))
+            LOGGER.error(subprocess.STDOUT)
+            raise inst
 
         ## read in the tmp files since qmc does not pipe
-        intmptre = open(".tmptre", 'r')
         intmpwtre = open(".tmpwtre", 'r')
 
         ## convert int names back to str names
-        tmptre = self.renamer(ete3.Tree(intmptre.read().strip()))
         tmpwtre = self.renamer(ete3.Tree(intmpwtre.read().strip()))
 
         ## save the boot tree
         if boot:
-            with open(self.trees.tboots, 'a') as outboot:
-                outboot.write(tmptre+"\n")
-            with open(self.trees.wboots, 'a') as outboot:
+            with open(self.trees.boots, 'a') as outboot:
                 outboot.write(tmpwtre+"\n")
 
         ## store full data trees to Assembly
         else:
-            with open(self.trees.ttre, 'w') as outtree:
-                outtree.write(tmptre)
-            with open(self.trees.wtre, 'w') as outtree:
+            with open(self.trees.tre, 'w') as outtree:
                 outtree.write(tmpwtre)
 
         ## save JSON file checkpoint
-        intmptre.close()
         intmpwtre.close()
         self.save()
 
@@ -709,33 +699,37 @@ class Quartet(object):
 
 
 
-    def write_output_splash(self, with_boots):
+    def write_output_splash(self):
         """ write final tree files """
-        ## create tree with support values on edges
-        self.write_supports(with_boots)
+
+        ## print stats file location:
+        print(STATSOUT.format(opr(self.trees.stats)))
 
         ## print finished tree information ---------------------
-        print(FINALTREES.format(opr(self.trees.ttre), opr(self.trees.wtre)))
+        print(FINALTREES.format(opr(self.trees.tre)))
 
         ## print bootstrap information --------------------------
-        if with_boots:
-            print(BOOTTREES.format(opr(self.trees.tboots), opr(self.trees.wboots), 
-               opr(self.trees.tbtre), opr(self.trees.wbtre)))
+        if self.nboots:
+            ## get consensus, map values to tree edges, record stats file
+            self._compute_tree_stats()
+            ## print bootstrap info
+            print(BOOTTREES.format(opr(self.trees.cons),
+                                   opr(self.trees.boots))) 
 
-        ## print rich information--------------------------------
-        print(FINAL_RICH.format(opr(self.trees.tnhx), opr(self.trees.wnhx)))
-
-        ## print ASCII tree --------------------------------------
-        if with_boots:
-            qtre = ete3.Tree(self.trees.wnhx, format=0)
-            qtre.unroot()
-            print(ASCII_TREE.format(
-                    qtre.get_ascii(attributes=["name", "dist"], 
-                                   show_internal=True)))
-        else:
-            qtre = ete3.Tree(self.trees.ttre, format=0)
-            qtre.unroot()
-            print(qtre, "\n")
+        ## print the ASCII tree only if its small
+        if len(self.samples) < 20:
+            if self.nboots:
+                wctre = ete3.Tree(self.trees.cons, format=0)
+                #wctre.unroot()
+                #wctre.ladderize()
+                print(wctre.get_ascii(show_internal=True, 
+                                      attributes=["dist", "name"]))
+                print("")
+            else:
+                qtre = ete3.Tree(self.trees.tre, format=0)
+                qtre.unroot()
+                print(qtre.get_ascii())
+                print("")
 
         ## print PDF filename & tips -----------------------------
         docslink = "ipyrad.readthedocs.org/cookbook.html"    
@@ -744,118 +738,100 @@ class Quartet(object):
 
 
 
-    # def _summarize_bootstraps(self):
-    #     """
-    #     uses biopython functions to infer a consensus tree 
-    #     and put support values on it.
-    #     """
-
-    #     ## read in the trees as skbio.tree class objects
-    #     intrees = open(qrt.trees.tboots, 'r')
-    #     trees = [sktree.TreeNode.read(StringIO(unicode(line))) for line \
-    #              in intrees.readlines()]
-    #     intrees.close()
-
-    #     ## get majority-fule consensus tree
-    #     cons = sktree.majority_rule(trees, cutoff=0.5)[0]
-
-
-
-    def write_supports(self, with_boots):
+    def _compute_tree_stats(self):
         """ writes support values as edge labels on unrooted tree """
+
         ## get name indices
         names = self.samples
-        names.sort()
 
-        ## get unrooted best trees and ensure unrooted
-        otre = ete3.Tree(self.trees.wtre, format=0)
-        otre.unroot()
+        ## get majority rule consensus tree of weighted Q bootstrap trees
+        if self.nboots:
+            fulltre = ete3.Tree(self.trees.tre, format=0)
+            with open(self.trees.boots, 'r') as inboots:
+                wboots = [fulltre] + \
+                  [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+            wctre, wcounts = consensus_tree(wboots, names=names)
 
+
+        ## build stats file
+        with open(self.trees.stats, 'w') as ostats:
+
+            ## print Quartet info
+            ostats.write("## Analysis info\n")
+            ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
+            ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
+            ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.seqfile))
+            ostats.write("{:<30}  {:<20}\n".format("Map_file", self.files.mapfile))
+            used_treefile = [self.files.treefile if self.method == 'equal' else None][0]
+            ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
+            ostats.write("\n")
+
+            ## calculate Quartet stats
+            ostats.write("## Quartet statistics (coming soon)\n")
+            ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
+            proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
+            ostats.write("{:<30}  {:<20.1f}\n".format("percent_sampled_of_total", proportion))
+            mean_loci = 0
+            mean_snps = 0
+            mean_weight = 0
+            mean_dstat = 0
+            ostats.write("{:<30}  {:<20}\n".format("Mean_N_loci_per_split", mean_loci))
+            ostats.write("{:<30}  {:<20}\n".format("Mean_SNPs_per_split", mean_snps))
+            ostats.write("{:<30}  {:<20}\n".format("Mean_quartet_weight", mean_weight))
+            ostats.write("{:<30}  {:<20}\n".format("Mean_abba_baba", mean_dstat))
+            ostats.write("\n")
+
+            ## print tree output files info
+            ostats.write("## Tree files\n")
+            ostats.write("{:<30}  {:<20}\n".format("Initial_tree", self.trees.tre))
+            ostats.write("{:<30}  {:<20}\n".format("bootstrap_replicates", self.trees.boots))
+            ostats.write("{:<30}  {:<20}\n".format("extended_majrule_consens", self.trees.cons))            
+            ostats.write("\n")
+
+            ## print bootstrap splits
+            if self.nboots:
+                ostats.write("## splits observed in {} trees\n".format(len(wboots)))
+                for i, j in enumerate(self.samples):
+                    ostats.write("{:<3} {}\n".format(i, j))
+                ostats.write("\n")
+                for split, freq in wcounts:
+                    ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
+                ostats.write("\n")
+
+
+        ## parallelized this function because it can be slogging
+        ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+        lbview = ipyclient.load_balanced_view()
+        
+        ## store results in dicts
+        qtots = {}
+        qsamp = {}
+        tots = set(wctre.get_leaf_names())
         ## iterate over node traversal. 
-        tots = otre.get_leaf_names()
-        for node in otre.traverse():
-            #node.add_feature("bootstrap", 0)
-            total = _get_total(tots, node)
-            node.add_feature("quartets_total", total)
-            sampled = _get_sampled(self, tots, node, names)
+        for node in wctre.traverse():
+            ## this is slow, needs to look at every sampled quartet
+            ## so we send it be processed on an engine
+            qtots[node] = lbview.apply(_get_total, *(tots, node))
+            qsamp[node] = lbview.apply(_get_sampled, *(self, tots, node, names))
+
+        ## wait for jobs to finish
+        ipyclient.wait()
+
+        ## put results into tree
+        for node in wctre.traverse():
+            ## this is fast, just calcs n_choose_k
+            total = qtots[node].result()
+            sampled = qsamp[node].result()
+            ## store the results to the tree            
+            node.add_feature("quartets_possible", total)
             node.add_feature("quartets_sampled", sampled)
-            try:
-                prop = 100*(float(node.quartets_sampled) / node.quartets_total)
-            except ZeroDivisionError:
-                prop = 0.0
-            node.add_feature("quartets_sampled_prop", prop)
-            node.dist = 0
-            node.support = 0
 
-        ## get unrooted weighted quartets tree
-        wtre = ete3.Tree(self.trees.wtre, format=0)
-        wtre.unroot()
-        for node in wtre.traverse():
-            node.add_feature("bootstrap", 0)
-            node.add_feature("quartets_total", _get_total(wtre, node))
-            node.add_feature("quartets_sampled", _get_sampled(self, wtre, node, names))
-            try:
-                prop = 100*(float(node.quartets_sampled) / node.quartets_total)
-            except ZeroDivisionError:
-                prop = 0.0
-            node.add_feature("quartets_sampled_prop", prop)
-            node.dist = 0
-            node.support = 0
-
-        ## close it
-        io5.close()
-
-        ## get unrooted boot trees
-        if with_boots:
-            oboots = open(self.trees.tboots, 'r').readlines()
-            wboots = open(self.trees.wboots, 'r').readlines()
-            oboots = [ete3.Tree(btre.strip()) for btre in oboots]
-            wboots = [ete3.Tree(btre.strip()) for btre in wboots]    
-            _ = [btre.unroot() for btre in oboots]
-            _ = [btre.unroot() for btre in wboots]
-
-            ## get and set support values 
-            for tre, boots in zip([otre, wtre], [oboots, wboots]):
-                for btre in boots:
-                    common = tre.compare(btre, unrooted=True)
-                    for bnode in common["common_edges"]:
-                        ## check monophyly of each side of split
-                        a = tre.check_monophyly(bnode[0], target_attr='name', unrooted=True)
-                        b = tre.check_monophyly(bnode[1], target_attr='name', unrooted=True)
-                        ## if both sides are monophyletic
-                        if a[0] and b[0]:
-                            ## find which is the 'bottom' node, to attach support to
-                            node = list(tre.get_monophyletic(bnode[0], target_attr='name'))
-                            node.extend(list(tre.get_monophyletic(bnode[1], target_attr='name')))
-                            ## add +1 suport to (edge dist) to this edge
-                            if not node[0].is_leaf():
-                                node[0].dist += 1
-                                node[0].support += 1
-                                node[0].bootstrap += 1
-
-            ## change support values to percentage
-            for tre in [otre, wtre]:
-                for node in tre.traverse():
-                    node.dist = int(100 * (node.dist / len(wboots)))
-                    node.support = int(100 * (node.support / len(wboots)))
-                    node.bootstrap = int(100 * (node.bootstrap / len(wboots)))
-
-            ## return as newick string w/ support as edge labels (lengths)
-            with open(self.trees.tbtre, 'w') as outtre:
-                outtre.write(otre.write(format=5))
-
-            with open(self.trees.wbtre, 'w') as outtre:
-                outtre.write(wtre.write(format=5))
-            features = ["bootstrap", "quartets_total", "quartets_sampled", "quartets_sampled_prop"]            
-        else:
-            features = ["quartets_total", "quartets_sampled", "quartets_sampled_prop"]
+        features = ["quartets_total", "quartets_sampled"]
 
         ## return as NHX format with extra info
-        with open(self.trees.tnhx, 'w') as outtre:
-            outtre.write(wtre.write(format=0, features=features))
+        with open(self.trees.cons, 'w') as outtre:
+            outtre.write(wctre.write(format=0, features=features))
 
-        with open(self.trees.wnhx, 'w') as outtre:
-            outtre.write(wtre.write(format=0, features=features))
 
 
     ## not currently being used and its ugly, just provide a cookbook
@@ -953,26 +929,20 @@ class Quartet(object):
                     for hostname in set(hosts):
                         print("  host compute node: [{} cores] on {}"\
                               .format(hosts.count(hostname), hostname))
-
+                    print("")
                 ## if Local setup then we know that we can get all the cores for 
                 ## sure and we won't bother waiting for them to start, since 
                 ## they'll start grabbing jobs once they're started. 
                 else:
                     _cpus = max(ip.assemble.util.detect_cpus(), 
                                 self._ipcluster["cores"])
-                    print("  local compute node: [{} cores] on {}"\
+                    print("  local compute node: [{} cores] on {}\n"\
                           .format(_cpus, socket.gethostname()))
 
             ## run the full inference or print finished prog bar if it's done
             if not self.checkpoint.boots:
                 print("  inferring {} x 3 induced quartet trees".format(self.nquartets))
                 self.inference(0, ipyclient)
-
-            # else:
-            #     print("  full inference finished")
-            #     elapsed = datetime.timedelta(seconds=int(0)) 
-            #     progressbar(20, 20, " | {}".format(elapsed))
-            #     print("")
 
             ## run the bootstrap replicates -------------------------------
             if self.nboots:
@@ -996,11 +966,11 @@ class Quartet(object):
                     self.checkpoint.boots = bidx
 
                 ## write outputs with bootstraps
-                self.write_output_splash(with_boots=1)
+                self.write_output_splash()
 
             else:
                 ## write outputs without bootstraps
-                self.write_output_splash(with_boots=0)
+                self.write_output_splash()
 
 
         ## handle exceptions so they will be raised after we clean up below
@@ -1167,6 +1137,8 @@ class Quartet(object):
 MUL = lambda x, y: x*y
 
 ## FROM THE ITERTOOLS RECIPES COOKCOOK
+## TODO: replace random.sample with numpy random so that 
+## our random seed stays the same
 def random_combination(iterable, nquartets):
     """
     Random selection from itertools.combinations(iterable, r). 
@@ -1434,7 +1406,7 @@ def nworker(data, smpchunk, tests):
     nall_mask = seqview[:] == 78
 
     ## tried numba compiling everythign below here, but was not faster
-    ## than making nall_mask w/ axis arg in numpy
+    ## than making nmask w/ axis arg in numpy
 
     ## get the input arrays ready
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
@@ -1540,6 +1512,7 @@ def opr(path):
 
 @numba.jit(nopython=True)
 def shuffle_cols(seqarr, newarr, cols):
+    """ used in bootstrap resampling without a map file """
     for idx in xrange(cols.shape[0]):
         newarr[:, idx] = seqarr[:, cols[idx]]
     return newarr
@@ -1689,39 +1662,187 @@ def _byteify(data, ignore_dicts=False):
 ########################################################################
 
 
+def consensus_tree(trees, names=None, cutoff=0.0):
+    """ 
+    An extended majority rule consensus function for ete3. 
+    Modelled on the similar function from scikit-bio tree module. If 
+    cutoff=0.5 then it is a normal majority rule consensus, while if 
+    cutoff=0.0 then subsequent non-conflicting clades are added to the tree.
+    """
 
-# PIECOLORS = ['#a6cee3', '#1f78b4']
-# def layout(node):
-#     """ layout for ete3 tree plotting fig """
-#     if node.is_leaf():
-#         nameF = ete3.TextFace(node.name, tight_text=False, 
-#                                          fgcolor="#262626", fsize=8)
-#         ete3.add_face_to_node(nameF, node, column=0, position="aligned")
-#         node.img_style["size"] = 0
-              
-#     else:
-#         if not node.is_root():
-#             node.img_style["size"] = 0
-#             node.img_style["shape"] = 'square'
-#             node.img_style["fgcolor"] = "#262626"   
-#             if "quartets_total" in node.features:
-#                 ete3.add_face_to_node(ete3.PieChartFace(
-#                                     percents=[float(node.quartets_sampled_prop), 
-#                                     100-float(node.quartets_sampled_prop)],
-#                                     width=15, height=15, colors=PIECOLORS),
-#                                     node, column=0, position="float-behind")  
-#             if "bootstrap" in node.features:
-#                 ete3.add_face_to_node(ete3.AttrFace(
-#                                   "bootstrap", fsize=7, fgcolor='red'),
-#                                   node, column=0, position="branch-top")  
-#         else:
-#             node.img_style["size"] = 0
-#             if node.is_root():
-#                 node.img_style["size"] = 0
-#                 node.img_style["shape"] = 'square'
-#                 node.img_style["fgcolor"] = "#262626"   
+    ## find which clades occured with freq > cutoff
+    namedict, clade_counts = _find_clades(trees, names=names)
+    print("got the clades")
+    for c in clade_counts:
+        print(c)
+
+    ## filter out the < cutoff clades
+    fclade_counts = _filter_clades(clade_counts, cutoff)
+    print("got the fclades")    
+    for c in fclade_counts:
+        print(c)
+
+    ## build tree
+    consens_tree, _ = _build_trees(fclade_counts, namedict)
+    return consens_tree, clade_counts
 
 
+
+def _filter_clades(clade_counts, cutoff):
+    """ 
+    A subfunc of consensus_tree(). Removes clades that occur 
+    with freq < cutoff.
+    """
+
+    ## store clades that pass filter
+    passed = []
+    clades = np.array([list(i[0]) for i in clade_counts], dtype=np.int8)
+    counts = np.array([i[1] for i in clade_counts], dtype=np.float64)
+    
+    for idx in xrange(clades.shape[0]):
+        conflict = False
+    
+        if counts[idx] < cutoff:
+            continue
+            
+        if sum(clades[idx]) > 1:
+            # check the current clade against all the accepted clades to see if
+            # it conflicts. A conflict is defined as:
+            # 1. the clades are not disjoint
+            # 2. neither clade is a subset of the other
+            # OR:
+            # 1. it is inverse of clade (affects only <fake> root state)
+            # because at root node it mirror images {0011 : 95}, {1100 : 5}.
+            for aidx in passed:
+                #intersect = clade.intersection(accepted_clade)
+                summed = clades[idx] + clades[aidx]
+                intersect = np.max(summed) > 1
+                subset_test0 = np.all(clades[idx] - clades[aidx] >= 0)
+                subset_test1 = np.all(clades[aidx] - clades[idx] >= 0)
+                invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
+
+                if np.all(invert_test):
+                    counts[aidx] += counts[idx]
+                    conflict = True
+                if intersect:
+                    if (not subset_test0) and (not subset_test1):
+                        conflict = True
+
+        if conflict == False:
+            passed.append(idx)
+    
+    ## rebuild the dict
+    rclades = [j for i, j in enumerate(clade_counts) if i in passed]
+    ## set the counts to include mirrors
+    for idx in passed:
+        rclades[idx] = rclades[idx][0], counts[idx]
+    
+    return rclades
+
+
+
+def _find_clades(trees, names):
+    """ 
+    A subfunc of consensus_tree(). Traverses trees to count clade occurrences.
+    Names are ordered by names, else they are in the order of the first
+    tree. 
+    """
+    ## index names from the first tree
+    if not names:
+        names = trees[0].get_leaf_names()
+    ndict = {j:i for i, j in enumerate(names)}
+    namedict = {i:j for i, j in enumerate(names)}
+
+    ## store counts
+    clade_counts = defaultdict(int)
+    ## count as bitarray clades in each tree
+    for tree in trees:
+        tree.unroot()
+        for node in tree.traverse('postorder'):
+            bits = bitarray('0'*len(tree))
+            for child in node.iter_leaf_names():
+                bits[ndict[child]] = 1
+            ## if parent is root then mirror flip one child (where bit[0]=0)
+            if not node.is_root():
+                if node.up.is_root():
+                    if bits[0]:
+                        bits.invert()
+            clade_counts[bits.to01()] += 1
+
+    ## convert to freq
+    for key, val in clade_counts.items():
+        clade_counts[key] = val / float(len(trees))
+
+    ## return in sorted order
+    clade_counts = sorted(clade_counts.items(), 
+                          key=lambda x: x[1],
+                          reverse=True)
+    return namedict, clade_counts
+
+
+
+def _build_trees(fclade_counts, namedict):
+    """ 
+    A subfunc of consensus_tree(). Build an unrooted consensus tree 
+    from filtered clade counts. 
+    """
+
+    ## storage
+    nodes = {}
+    idxarr = np.arange(len(fclade_counts[0][0]))
+    queue = []
+
+    ## create dict of clade counts and set keys
+    countdict = defaultdict(int)
+    for clade, count in fclade_counts:
+        mask = np.int_(list(clade)).astype(np.bool)
+        ccx = idxarr[mask]
+        queue.append((len(ccx), frozenset(ccx)))
+        countdict[frozenset(ccx)] = count
+
+    while queue:
+        queue.sort()
+        (clade_size, clade) = queue.pop(0)
+        new_queue = []
+    
+        # search for ancestors of clade
+        for (_, ancestor) in queue:
+            if clade.issubset(ancestor):
+                # update ancestor such that, in the following example:
+                # ancestor == {1, 2, 3, 4}
+                # clade == {2, 3}
+                # new_ancestor == {1, {2, 3}, 4}
+                new_ancestor = (ancestor - clade) | frozenset([clade])          
+                countdict[new_ancestor] = countdict.pop(ancestor)
+                ancestor = new_ancestor
+            
+            new_queue.append((len(ancestor), ancestor))
+   
+        # if the clade is a tip, then we have a name
+        if clade_size == 1:
+            name = list(clade)[0]
+            name = namedict[name]
+        else:
+            name = None 
+        
+        # the clade will not be in nodes if it is a tip
+        children = [nodes.pop(c) for c in clade if c in nodes]
+        node = ete3.Tree(name=name)    
+        for child in children:
+            node.add_child(child)
+        if not node.is_leaf():
+            node.dist = int(round(100*countdict[clade]))
+        else:
+            node.dist = int(0) 
+        
+        nodes[clade] = node
+        queue = new_queue
+    tre = nodes.values()[0]
+    tre.unroot()
+    ## return the tree and other trees if present
+    return tre, list(nodes.values())
+
+    
 
 def _get_total(tots, node):
     """ get total number of quartets possible for a split """
@@ -1761,28 +1882,22 @@ def _get_sampled(data, tots, node, names):
 
 ## GLOBALS #############################################################
 
+STATSOUT = """
+  Statistics for sampling, discordance, and tree support:
+    > {}
+    """
 
-
-FINALTREES = """
-  Final quartet-joined and weighted quartet-joined (.w.) tree files:
-    - {}
-    - {}
+FINALTREES = """\
+  Full tree inferred from by weighted quartet-joining of the SNP supermatrix
+    > {}
     """
 
 BOOTTREES = """\
-  Bootstrap trees:
-    - {}
-    - {}
+  Extended majority-rule consensus with support as edge lengths:
+    > {}
 
-  Final tree with bootstrap support as edge lengths:
-    - {}
-    - {}
-    """
-
-FINAL_RICH = """\
-  Final tree with rich information in NHX format:
-    - {}
-    - {}
+  All bootstrap trees:
+    > {}
     """
 
 ASCII_TREE = """\
@@ -1791,13 +1906,75 @@ ASCII_TREE = """\
     """
 
 LINKS = """\
-  * For tips on plotting these trees in R see: 
-    - {}     
-  * For tips on citing this software see: 
-    - {} 
-
+  * For tips on plotting trees in R: {}     
+  * For tips on citing this software: {} 
     """
+
 ########################################################################
+## JUNK
+
+        # ## get unrooted weighted quartets tree
+        # wtre = ete3.Tree(self.trees.wtre, format=0)
+        # wtre.unroot()
+        # for node in wtre.traverse():
+        #     node.add_feature("bootstrap", 0)
+        #     node.add_feature("quartets_total", _get_total(wtre, node))
+        #     node.add_feature("quartets_sampled", _get_sampled(self, wtre, node, names))
+        #     try:
+        #         prop = 100*(float(node.quartets_sampled) / node.quartets_total)
+        #     except ZeroDivisionError:
+        #         prop = 0.0
+        #     node.add_feature("quartets_sampled_prop", prop)
+        #     node.dist = 0
+        #     node.support = 0
+
+
+        # ## get unrooted boot trees
+        # if with_boots:
+        #     oboots = open(self.trees.tboots, 'r').readlines()
+        #     wboots = open(self.trees.wboots, 'r').readlines()
+        #     oboots = [ete3.Tree(btre.strip()) for btre in oboots]
+        #     wboots = [ete3.Tree(btre.strip()) for btre in wboots]    
+        #     _ = [btre.unroot() for btre in oboots]
+        #     _ = [btre.unroot() for btre in wboots]
+
+        #     ## get and set support values 
+        #     for tre, boots in zip([otre, wtre], [oboots, wboots]):
+        #         for btre in boots:
+        #             common = tre.compare(btre, unrooted=True)
+        #             for bnode in common["common_edges"]:
+        #                 ## check monophyly of each side of split
+        #                 a = tre.check_monophyly(bnode[0], target_attr='name', unrooted=True)
+        #                 b = tre.check_monophyly(bnode[1], target_attr='name', unrooted=True)
+        #                 ## if both sides are monophyletic
+        #                 if a[0] and b[0]:
+        #                     ## find which is the 'bottom' node, to attach support to
+        #                     node = list(tre.get_monophyletic(bnode[0], target_attr='name'))
+        #                     node.extend(list(tre.get_monophyletic(bnode[1], target_attr='name')))
+        #                     ## add +1 suport to (edge dist) to this edge
+        #                     if not node[0].is_leaf():
+        #                         node[0].dist += 1
+        #                         node[0].support += 1
+        #                         node[0].bootstrap += 1
+
+        #     ## change support values to percentage
+        #     for tre in [otre, wtre]:
+        #         for node in tre.traverse():
+        #             node.dist = int(100 * (node.dist / len(wboots)))
+        #             node.support = int(100 * (node.support / len(wboots)))
+        #             node.bootstrap = int(100 * (node.bootstrap / len(wboots)))
+
+        #     ## return as newick string w/ support as edge labels (lengths)
+        #     with open(self.trees.tbtre, 'w') as outtre:
+        #         outtre.write(otre.write(format=5))
+
+        #     with open(self.trees.wbtre, 'w') as outtre:
+        #         outtre.write(wtre.write(format=5))
+        #     features = ["bootstrap", "quartets_total", "quartets_sampled", "quartets_sampled_prop"]            
+        # else:
+        #     
+        
+
 
 
 if __name__ == "__main__":

@@ -109,7 +109,7 @@ class Assembly(object):
             "profile" : "default", 
             "engines" : "Local", 
             "quiet" : 0, 
-            "timeout" : 45, 
+            "timeout" : 120, 
             "cores" : detect_cpus()}
 
         ## print headers, this is used as a 'quiet' option
