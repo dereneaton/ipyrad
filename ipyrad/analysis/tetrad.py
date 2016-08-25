@@ -934,7 +934,7 @@ class Quartet(object):
                 ## sure and we won't bother waiting for them to start, since 
                 ## they'll start grabbing jobs once they're started. 
                 else:
-                    _cpus = max(ip.assemble.util.detect_cpus(), 
+                    _cpus = min(ip.assemble.util.detect_cpus(), 
                                 self._ipcluster["cores"])
                     print("  local compute node: [{} cores] on {}\n"\
                           .format(_cpus, socket.gethostname()))
