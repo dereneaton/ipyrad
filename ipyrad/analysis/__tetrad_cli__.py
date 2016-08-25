@@ -140,9 +140,9 @@ def parse_command_line():
         if not args.nquartets:
             raise IPyradWarningExit(\
             "  Number of quartets (-q) is required with method = equal\n")
-        if args.tree:
+        if not args.tree:
             raise IPyradWarningExit(\
-        "  Using a starting tree to equalize edge sampling ")
+            "  Must provide an input guide tree (-t) to equalize edge sampling\n")
         #"  A starting tree (-t newick file) is required with method = equal")
 
     if not any(x in ["seq", "json"] for x in vars(args).keys()):
@@ -164,7 +164,6 @@ def main():
 
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
-
     print(HEADER.format(ip.__version__))
 
     ## set random seed
@@ -204,33 +203,37 @@ def main():
 
         ## get seqfile and names from seqfile
         data.files.seqfile = args.seq
-        data.resolve_ambigs = args.resolve
+        data.resolve = args.resolve
         data.init_seqarray()
         data.parse_names()
 
         ## if quartets not entered then sample all
+        data.nquartets = ipa.tetrad.n_choose_k(len(data.samples), 4)
         if args.nquartets:
-            data.nquartets = int(args.nquartets)
-        else:
-            data.nquartets = ipa.tetrad.n_choose_k(len(data.samples), 4)
+            ## if sampling N > all, then switch to method='all'
+            if int(args.nquartets) >= data.nquartets:
+                data.method = "all"
+                print("  nquartets > total: switching to method='all' ")
+
+            if int(args.nquartets) < data.nquartets:
+                data.nquartets = int(args.nquartets)
 
         if data.method != 'equal':
             ## store N sampled quartets into the h5 array
             data.store_N_samples()
 
         else:
-            ## infer a starting tree from the N sampled quartets 
-            ## this could take a long time. Calls the parallel client.
-            raise IPyradWarningExit(\
-                "  The 'equal' sampling method is still under development\n")
-                #data.store_equal_samples()
+            data.store_equal_samples()
 
     ## boots can be set either for a new object or loaded JSON to continue it
     if args.boots:
         data.nboots = int(args.boots)
 
     ## set CLI ipcluster terms
-    data._ipcluster["cores"] = max(args.cores, detect_cpus())
+    if args.cores:
+        data._ipcluster["cores"] = min(args.cores, detect_cpus())
+    else:
+        data._ipcluster["cores"] = detect_cpus()
 
     ## start ipcluster and register cluster_id for later destruction.
     data = register_ipcluster(data)

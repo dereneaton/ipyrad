@@ -14,6 +14,7 @@ Theoretical Biology 374: 35-47
 """
 
 # pylint: disable=E1101
+# pylint: disable=E1103
 # pylint: disable=F0401
 # pylint: disable=W0212
 # pylint: disable=W0142
@@ -40,6 +41,9 @@ from fractions import Fraction
 
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 
+## for our desired form of parallelism we will limit 1 thread per cpu
+numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
+
 ## ete3 is an extra dependency not included with ipyrad
 ## replace with biopython asap
 try:
@@ -51,7 +55,20 @@ except ImportError:
         raise IPyradWarningExit("""
     tetrad requires the dependency `ete3`. You can install
     it with the command `conda install -c etetoolkit ete3`
+    Sorry for the inconvenience, this will be incorporated into the
+    ipyrad installation eventuall.
     """)
+
+try:
+    import skbio.tree as sktree
+    from io import StringIO
+except ImportError:
+    raise IPyradWarningExit("""
+    tetrad requires the dependency `biopython`. You can install
+    it with the command `conda install -c anaconda biopython`. 
+    Sorry for the inconvenience, this will be incorporated into the
+    ipyrad installation eventuall.
+    """)        
 
 ## set the logger
 import logging
@@ -212,8 +229,8 @@ class Quartet(object):
                     self.samples.append(infile.next().split()[0])
                 except StopIteration:
                     break
-        ## make sure sorted
-        self.samples = sorted(self.samples)
+        ## names are in the order of the sequences in seqfile
+        #self.samples = sorted(self.samples)
 
 
 
@@ -372,9 +389,8 @@ class Quartet(object):
             io5.create_dataset("bootsmap", data=tmpmap)
             io5.create_dataset("bootsarr", data=tmpseq)
 
-            LOGGER.info("resampled bootsarr \n %s", io5["bootsarr"][:, :20])
-            LOGGER.info("resampled bootsmap \n %s", io5["bootsmap"][:20, :])
-
+            LOGGER.info("resampled bootsarr \n %s", io5["bootsarr"][:, :10])
+            LOGGER.info("resampled bootsmap \n %s", io5["bootsmap"][:10, :])
 
 
 
@@ -383,8 +399,7 @@ class Quartet(object):
         """ Find all quartets of samples and store in a large array """
         ## create a chunk size for sampling from the array of quartets. This should
         ## be relatively large so that we don't spend a lot of time doing I/O, but
-        ## small enough that jobs finish every few hours since that is how the 
-        ## checkpointing works.
+        ## small enough that jobs finish every few hours for checkpointing
         breaks = 2
         if self.nquartets < 5000:
             breaks = 1
@@ -418,7 +433,8 @@ class Quartet(object):
         with h5py.File(self.h5in, 'a') as io5:
             ## create data sets
             io5.create_dataset("samples", (self.nquartets, 4), 
-                               dtype=np.uint16, chunks=(self.chunksize, 4),
+                               dtype=np.uint16, 
+                               chunks=(self.chunksize, 4),
                                compression='gzip')
 
             ## populate array with all possible quartets. This allows us to 
@@ -426,7 +442,7 @@ class Quartet(object):
             qiter = itertools.combinations(xrange(len(self.samples)), 4)
             i = 0
 
-            ## fill 1000 at a time for efficiency
+            ## fill chunksize at a time for efficiency
             while i < self.nquartets:
                 if self.method != "all":
                     ## grab the next random 1000
@@ -438,111 +454,149 @@ class Quartet(object):
                 else:
                     ## grab the next ordered chunksize
                     dat = np.array(list(itertools.islice(qiter, self.chunksize)))
-                io5["samples"][i:i+dat.shape[0]] = dat
+
+                ## store to h5 
+                io5["samples"][i:i+self.chunksize] = dat[:io5["samples"].shape[0] - i]
                 i += self.chunksize
 
 
 
     def store_equal_samples(self):
         """ 
-        sample quartets even across splits of the starting tree 
+        sample quartets evenly across splits of the starting tree, and fills
+        in remaining samples with random quartet samples. Uses a hash dict to 
+        not sample the same quartet twice, so for very large trees this can 
+        take a few minutes to find millions of possible quartet samples. 
         """
         
         ## choose chunker for h5 arr
+        breaks = 2
+        if self.nquartets < 5000:
+            breaks = 1
+        if self.nquartets > 100000:
+            breaks = 4
+        if self.nquartets > 500000:
+            breaks = 8
+
         cpus = self._ipcluster["cores"]
-        self.chunksize = (self.nquartets // (2 * len(cpus))) +\
-                         (self.nquartets % (2 * len(cpus)))
-        LOGGER.info("E: nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
+        self.chunksize = (self.nquartets // (breaks * cpus) + \
+                         (self.nquartets % (breaks * cpus)))
+        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
 
-        ## get starting tree
-        tre = ete3.Tree(".tmptre")
+        ## create h5 OUT empty arrays
+        with h5py.File(self.h5out, 'w') as io5:
+            io5.create_dataset("quartets", (self.nquartets, 4), 
+                                dtype=np.uint16, chunks=(self.chunksize, 4))
+            io5.create_dataset("weights", (self.nquartets,), 
+                                dtype=np.float64, chunks=(self.chunksize, ))
+            io5.create_dataset("qstats", (self.nquartets, 4), 
+                                dtype=np.uint32, chunks=(self.chunksize, 4))
+            io5.create_group("qboots")
+
+        ## get starting tree, unroot, randomly resolve, ladderize
+        tre = ete3.Tree(self.files.treefile, format=0)
         tre.unroot()
-        print("  starting tree: \n {}".format(tre))
+        tre.resolve_polytomy()
+        tre.ladderize()
 
-        ## randomly sample all splits of tree
-        splits = [([z.name for z in i], 
-                   [z.name for z in j]) \
+        ## randomly sample all splits of tree and convert tip names to indices
+        splits = [([self.samples.index(z.name) for z in i], 
+                   [self.samples.index(z.name) for z in j]) \
                    for (i, j) in tre.get_edges()]
     
-        ## only keep internal splits
+        ## only keep internal splits (no single tips edges)
+        ## this seemed to cause problems with unsampled tips
         splits = [i for i in splits if all([len(j) > 1 for j in i])]
-        N = len(self.samples)
-        if len(splits) < ((N * (N-1)) // 2):
-            print("  starting tree is unresolved, sample more quartets")
 
         ## turn each into an iterable split sampler
         ## if the nquartets for that split is small, then sample all of them
-        ## if it is UUUUUGE, then make it a random sampler from that split
+        ## if it is big, then make it a random sampler from that split
         qiters = []
-        ## how many quartets are we gonna sample from each quartet?
+
+        ## how many min quartets are we gonna sample from each split?
         squarts = self.nquartets // len(splits)
+
+        ## how many iterators can be sampled to saturation?
+        nsaturation = 0
 
         for split in splits:
             ## if small number at this split then sample all
             if n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2) < squarts*2:
-                qiter = itertools.product(
+                qiter = (i+j for (i, j) in itertools.product(
                             itertools.combinations(split[0], 2), 
-                            itertools.combinations(split[1], 2))
+                            itertools.combinations(split[1], 2)))
+                nsaturation += 1
+
             ## else create random sampler for this split
             else:
-                qiter = (random_product(split[0], split[1]) for _ in xrange(self.nquartets))
+                qiter = (random_product(split[0], split[1]) for _ \
+                         in xrange(self.nquartets))
             qiters.append(qiter)
 
         ## make qiters infinitely cycling
         qiters = itertools.cycle(qiters)
+        cycler = itertools.cycle(range(len(splits)))
+
+        ## store visiting quartets
+        sampled = set()
 
         ## iterate over qiters sampling from each, if one runs out, keep 
         ## sampling from remaining qiters. Keep going until samples is filled
         with h5py.File(self.h5in, 'a') as io5:
             ## create data sets
-            del io5["samples"]
             io5.create_dataset("samples", (self.nquartets, 4), 
                                       dtype=np.uint16, 
                                       chunks=(self.chunksize, 4),
                                       compression='gzip')
 
-            ## fill 1000 at a time for efficiency
+            ## fill chunksize at a time for efficiency
             i = 0
+            empty = set()
+            edge_targeted = 0
+            random_target = 0
+
+            ## keep filling quartets until nquartets are sampled
             while i < self.nquartets:
                 qdat = []
-                while len(qdat) < min(1000, io5["samples"].shape[0]): 
+                ## keep filling this chunk until its full
+                while len(qdat) < self.chunksize:
+                    ## grab the next iterator
                     qiter = qiters.next()
+                    cycle = cycler.next()
+
+                    ## sample from iterator
                     try:
-                        qdat.append(qiter.next())
+                        qrtsamp = qiter.next()
+                        if tuple(qrtsamp) not in sampled:
+                            qdat.append(qrtsamp)
+                            sampled.add(qrtsamp)
+                            edge_targeted += 1
+                        
+                    ## unless iterator is empty, then skip it
                     except StopIteration:
-                        print(len(qdat))
-                        continue
+                        empty.add(cycle)
+
+                    ## break when all edge samplers are empty
+                    if len(empty) == nsaturation:
+                        break
+
+                ## if array is not full then add random samples
+                while len(qdat) < self.chunksize:
+                    qrtsamp = random_combination(range(len(self.samples)), 4)
+                    if tuple(qrtsamp) not in sampled:
+                        qdat.append(qrtsamp)
+                        sampled.add(qrtsamp)
+                        random_target += 1
+
+                ## stick chunk into h5 array
                 dat = np.array(qdat, dtype=np.uint16)
-                io5["samples"][i:i+dat.shape[0]] = dat
-                i += 1000
+                io5["samples"][i:i+self.chunksize] = dat[:io5["samples"].shape[0] - i]
+                i += self.chunksize
 
+            print("  sampled {} edge targeted quartets and {} random quartets"\
+                  .format(edge_targeted, random_target))
 
-
-    ## functions to get samples for the 'equal' method
-    def get_equal_samples(self, ipyclient):
-        """ get starting tree for 'equal' sampling method """
-
-        ## infer starting tree if one wasn't provided
-        if not self.files.treefile:
-            ## grab the minimum needed for a good tree
-            self.nquartets = len(self.samples)**2.8
-            self.store_N_samples()
-            print(LOADING_RANDOM.\
-                  format(self.nquartets**2.8, 3*(self.nquartets**2.8)))
-
-            ## run inference functions on sampled quartets 
-            self._clientwrapper(self.inference, [0], 45)
-
-        ## sample quartets from starting tree
-        print(LOADING_STARTER.format(self.nquartets))
-        self.store_equal_samples()
-    
-        ## remove starting tree tmp files
-        tmps = [self.tre, self.wtre, self.tboots, 
-                self.wboots, self.tbtre, self.wbtre]
-        for tmp in tmps:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+            print(sampled)
 
 
 
@@ -643,18 +697,12 @@ class Quartet(object):
 
     def renamer(self, tre):
         """ renames newick from numbers to sample names"""
-        ## order the numbered tree tip lables
+        ## get the tre with numbered tree tip labels
         names = tre.get_leaves()
-        names.sort(key=lambda x: int(x.name))
-
-        ## order the sample labels in the same order they are 
-        ## in the seq file (e.g., .snp, .phy)
-        snames = self.samples
-        snames.sort()
 
         ## replace numbered names with snames
-        for (tip, sname) in zip(names, snames):
-            tip.name = sname
+        for name in names:
+            name.name = self.samples[int(name.name)]
 
         ## return with only topology and leaf labels
         return tre.write(format=9)
@@ -696,20 +744,41 @@ class Quartet(object):
 
 
 
-    ## TODO: Parallelize this, and try to speed it up...
+    # def _summarize_bootstraps(self):
+    #     """
+    #     uses biopython functions to infer a consensus tree 
+    #     and put support values on it.
+    #     """
+
+    #     ## read in the trees as skbio.tree class objects
+    #     intrees = open(qrt.trees.tboots, 'r')
+    #     trees = [sktree.TreeNode.read(StringIO(unicode(line))) for line \
+    #              in intrees.readlines()]
+    #     intrees.close()
+
+    #     ## get majority-fule consensus tree
+    #     cons = sktree.majority_rule(trees, cutoff=0.5)[0]
+
+
+
     def write_supports(self, with_boots):
         """ writes support values as edge labels on unrooted tree """
         ## get name indices
         names = self.samples
         names.sort()
 
-        ## get unrooted best trees
-        otre = ete3.Tree(self.trees.ttre, format=0)
+        ## get unrooted best trees and ensure unrooted
+        otre = ete3.Tree(self.trees.wtre, format=0)
         otre.unroot()
+
+        ## iterate over node traversal. 
+        tots = otre.get_leaf_names()
         for node in otre.traverse():
-            node.add_feature("bootstrap", 0)
-            node.add_feature("quartets_total", get_total(otre, node))
-            node.add_feature("quartets_sampled", get_sampled(self, otre, node, names))
+            #node.add_feature("bootstrap", 0)
+            total = _get_total(tots, node)
+            node.add_feature("quartets_total", total)
+            sampled = _get_sampled(self, tots, node, names)
+            node.add_feature("quartets_sampled", sampled)
             try:
                 prop = 100*(float(node.quartets_sampled) / node.quartets_total)
             except ZeroDivisionError:
@@ -723,8 +792,8 @@ class Quartet(object):
         wtre.unroot()
         for node in wtre.traverse():
             node.add_feature("bootstrap", 0)
-            node.add_feature("quartets_total", get_total(wtre, node))
-            node.add_feature("quartets_sampled", get_sampled(self, wtre, node, names))
+            node.add_feature("quartets_total", _get_total(wtre, node))
+            node.add_feature("quartets_sampled", _get_sampled(self, wtre, node, names))
             try:
                 prop = 100*(float(node.quartets_sampled) / node.quartets_total)
             except ZeroDivisionError:
@@ -732,6 +801,9 @@ class Quartet(object):
             node.add_feature("quartets_sampled_prop", prop)
             node.dist = 0
             node.support = 0
+
+        ## close it
+        io5.close()
 
         ## get unrooted boot trees
         if with_boots:
@@ -853,7 +925,7 @@ class Quartet(object):
     ########################################################################
     ## Main functions
     ########################################################################
-    def run(self, force=0, profile="default", quiet=0):
+    def run(self, force=0, quiet=0):
         """ 
         Run quartet inference on a SNP alignment. If checkpoint values exist 
         it will continue from where it left off unless force=True to force a
@@ -893,14 +965,14 @@ class Quartet(object):
 
             ## run the full inference or print finished prog bar if it's done
             if not self.checkpoint.boots:
-                print("  inferring {} x 3 quartet trees".format(self.nquartets))
+                print("  inferring {} x 3 induced quartet trees".format(self.nquartets))
                 self.inference(0, ipyclient)
 
-            else:
-                print("  full inference finished")
-                elapsed = datetime.timedelta(seconds=int(0)) 
-                progressbar(20, 20, " | {}".format(elapsed))
-                print("")
+            # else:
+            #     print("  full inference finished")
+            #     elapsed = datetime.timedelta(seconds=int(0)) 
+            #     progressbar(20, 20, " | {}".format(elapsed))
+            #     print("")
 
             ## run the bootstrap replicates -------------------------------
             if self.nboots:
@@ -918,10 +990,10 @@ class Quartet(object):
                             self.sample_bootseq_array_map()
                         else:
                             self.sample_bootseq_array() 
-                        self.checkpoint.boots = bidx
 
                     ## start boot inference, (1-indexed !!!)
                     self.inference(bidx+1, ipyclient)
+                    self.checkpoint.boots = bidx
 
                 ## write outputs with bootstraps
                 self.write_output_splash(with_boots=1)
@@ -943,8 +1015,6 @@ class Quartet(object):
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
             print("\n  Exception found: {}".format(inst))
-
-
 
         ## close client when done or interrupted
         finally:
@@ -1006,6 +1076,7 @@ class Quartet(object):
         for _ in xrange(njobs):
             ## get chunk of quartet samples and send to a worker engine
             qidx = jobiter.next()
+            LOGGER.info('qidx: %s', qidx)
             with h5py.File(self.h5in, 'r') as inh5:
                 smps = inh5["samples"][qidx:qidx+self.chunksize]
             res[qidx] = lbview.apply(nworker, *[self, smps, tests])
@@ -1109,7 +1180,7 @@ def random_combination(iterable, nquartets):
 
 
 def random_product(iter1, iter2):
-    """ random sampler for equa_splits func"""
+    """ random sampler for equal_splits func"""
     pool1 = tuple(iter1)
     pool2 = tuple(iter2)
     ind1 = random.sample(pool1, 2)
@@ -1652,19 +1723,17 @@ def _byteify(data, ignore_dicts=False):
 
 
 
-def get_total(tre, node):
+def _get_total(tots, node):
     """ get total number of quartets possible for a split """
-    tots = set(tre.get_leaf_names())
     down = set(node.get_leaf_names())
     up = tots - down
     return n_choose_k(len(down), 2) * n_choose_k(len(up), 2)
     
 
     
-def get_sampled(data, tre, node, names):
+def _get_sampled(data, tots, node, names):
     """ get how many quartets were sampled that are informative for a split"""
     ## get leaves up and down
-    tots = set(tre.get_leaf_names())
     down = set(node.get_leaf_names())
     up = tots - down
 
@@ -1672,15 +1741,20 @@ def get_sampled(data, tre, node, names):
     idxd = set([names.index(i) for i in down])
     idxu = set([names.index(i) for i in up])
 
+    ## find how many sampled quartets span each edge
     sampled = 0
+
+    ## do chunks at a time in case qrts is huge
+    idx = 0
     with h5py.File(data.h5out, 'r') as io5:
-        qrts = io5["quartets"][:]
-        ## iterate over quartets 
+        qrts = io5["quartets"][idx:idx+data.chunksize]
         for qrt in qrts:
             sqrt = set(qrt)
             if len(sqrt.intersection(idxd)) > 1:
                 if len(sqrt.intersection(idxu)) > 1:
                     sampled += 1
+            idx += data.chunksize
+
     return sampled
 
 
