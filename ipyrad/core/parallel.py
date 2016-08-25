@@ -121,7 +121,7 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
         sys.stderr = save_stderr
 
         ## check that all engines have connected            
-        for _ in range(3000):
+        for _ in range(6000):
             initid = len(ipyclient)
             time.sleep(0.01)
 
