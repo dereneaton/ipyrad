@@ -44,6 +44,7 @@ from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 
 ## for our desired form of parallelism we will limit 1 thread per cpu
 numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
+
 ## debug numba code
 #numba.config.NUMBA_DISABLE_JIT = 1
 
@@ -717,7 +718,7 @@ class Quartet(object):
                                    opr(self.trees.boots))) 
 
         ## print the ASCII tree only if its small
-        if len(self.samples) < 20:
+        if len(self.samples) < 200:
             if self.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
                 #wctre.unroot()
@@ -953,7 +954,7 @@ class Quartet(object):
                     print("  running {} bootstrap replicates".format(self.nboots))              
     
                 ## load from current boot
-                for bidx in xrange(self.checkpoint.boots, self.nboots):
+                for bidx in xrange(self.checkpoint.boots+1, self.nboots):
                     ## get resampled array and set checkpoint
                     if self.checkpoint.arr == 0:
                         if self.files.mapfile:
@@ -1705,7 +1706,7 @@ def _filter_clades(clade_counts, cutoff):
         if counts[idx] < cutoff:
             continue
             
-        if sum(clades[idx]) > 1:
+        if np.sum(clades[idx]) > 1:
             # check the current clade against all the accepted clades to see if
             # it conflicts. A conflict is defined as:
             # 1. the clades are not disjoint
@@ -1719,24 +1720,23 @@ def _filter_clades(clade_counts, cutoff):
                 intersect = np.max(summed) > 1
                 subset_test0 = np.all(clades[idx] - clades[aidx] >= 0)
                 subset_test1 = np.all(clades[aidx] - clades[idx] >= 0)
-                invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
+                #invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
 
-                if np.all(invert_test):
-                    counts[aidx] += counts[idx]
-                    conflict = True
+                #if np.all(invert_test):
+                #    counts[aidx] += counts[idx]
+                #    conflict = True
                 if intersect:
                     if (not subset_test0) and (not subset_test1):
                         conflict = True
 
         if conflict == False:
             passed.append(idx)
-    
+
     ## rebuild the dict
-    rclades = [j for i, j in enumerate(clade_counts) if i in passed]
+    rclades = []#j for i, j in enumerate(clade_counts) if i in passed]
     ## set the counts to include mirrors
     for idx in passed:
-        rclades[idx] = rclades[idx][0], counts[idx]
-    
+        rclades.append((clades[idx], counts[idx]))
     return rclades
 
 
