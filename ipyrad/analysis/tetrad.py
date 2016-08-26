@@ -963,7 +963,7 @@ class Quartet(object):
                             self.sample_bootseq_array() 
 
                     ## start boot inference, (1-indexed !!!)
-                    self.inference(bidx+1, ipyclient)
+                    self.inference(bidx, ipyclient)
                     self.checkpoint.boots = bidx
 
                 ## write outputs with bootstraps
@@ -1673,18 +1673,13 @@ def consensus_tree(trees, names=None, cutoff=0.0):
 
     ## find which clades occured with freq > cutoff
     namedict, clade_counts = _find_clades(trees, names=names)
-    print("got the clades")
-    for c in clade_counts:
-        print(c)
 
     ## filter out the < cutoff clades
     fclade_counts = _filter_clades(clade_counts, cutoff)
-    print("got the fclades")    
-    for c in fclade_counts:
-        print(c)
 
     ## build tree
     consens_tree, _ = _build_trees(fclade_counts, namedict)
+    ## make sure no singleton nodes were left behind
     return consens_tree, clade_counts
 
 
