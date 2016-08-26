@@ -796,7 +796,8 @@ class Quartet(object):
                     ostats.write("{:<3} {}\n".format(i, j))
                 ostats.write("\n")
                 for split, freq in wcounts:
-                    ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
+                    if split.count('1') > 1:
+                        ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
                 ostats.write("\n")
 
 
@@ -1673,15 +1674,9 @@ def consensus_tree(trees, names=None, cutoff=0.0):
 
     ## find which clades occured with freq > cutoff
     namedict, clade_counts = _find_clades(trees, names=names)
-    print("got the clades")
-    for c in clade_counts:
-        print(c)
 
     ## filter out the < cutoff clades
     fclade_counts = _filter_clades(clade_counts, cutoff)
-    print("got the fclades")    
-    for c in fclade_counts:
-        print(c)
 
     ## build tree
     consens_tree, _ = _build_trees(fclade_counts, namedict)
