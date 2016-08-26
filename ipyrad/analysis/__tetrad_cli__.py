@@ -107,7 +107,7 @@ def parse_command_line():
         help="newick file starting tree for equal splits sampling")
 
     parser.add_argument("-c", metavar="CPUs/cores", dest="cores",
-        type=int, default=1,
+        type=int, default=0,
         help="setting n Nodes improves parallel efficiency on HPC")
 
     parser.add_argument("-x", metavar="random_seed", dest="rseed",
