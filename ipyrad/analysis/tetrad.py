@@ -964,7 +964,7 @@ class Quartet(object):
                             self.sample_bootseq_array() 
 
                     ## start boot inference, (1-indexed !!!)
-                    self.inference(bidx+1, ipyclient)
+                    self.inference(bidx, ipyclient)
                     self.checkpoint.boots = bidx
 
                 ## write outputs with bootstraps
@@ -1680,6 +1680,7 @@ def consensus_tree(trees, names=None, cutoff=0.0):
 
     ## build tree
     consens_tree, _ = _build_trees(fclade_counts, namedict)
+    ## make sure no singleton nodes were left behind
     return consens_tree, clade_counts
 
 
