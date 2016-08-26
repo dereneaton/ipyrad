@@ -260,7 +260,7 @@ def main():
     ## message about whether we are continuing from existing
     if data.checkpoint.boots or data.checkpoint.arr:
         print(ipa.tetrad.LOADING_MESSAGE.format(data.name, 
-              data.method, data.checkpoint.arr, data.checkpoint.boots))
+              data.method, data.checkpoint.boots, data.checkpoint.arr))
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
