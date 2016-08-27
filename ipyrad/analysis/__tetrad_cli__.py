@@ -258,10 +258,9 @@ def main():
         data = register_ipcluster(data)
 
     ## message about whether we are continuing from existing
-    ## (+1) to bootstrap because it is 1-indexed
     if data.checkpoint.boots or data.checkpoint.arr:
         print(ipa.tetrad.LOADING_MESSAGE.format(data.name, 
-              data.method, data.checkpoint.boots+1, data.checkpoint.arr))
+              data.method, data.checkpoint.boots, data.checkpoint.arr))
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 

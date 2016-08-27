@@ -1308,10 +1308,11 @@ def chunk_to_matrices(narr):
     for x in xrange(narr.shape[1]):
         i = narr[:, x]
         if np.sum(i) < 16:
-            mats[0, i[0]*4:(i[0]+4)*4]\
-                    [i[1]]\
-                    [i[2]*4:(i[2]+4)*4]\
-                    [i[3]] += 1
+            mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
+            # mats[0, i[0]*4:(i[0]+4)*4]\
+            #         [i[1]]\
+            #         [i[2]*4:(i[2]+4)*4]\
+            #         [i[3]] += 1
                 
     ## get matrix 2
     mats[1, 0:4, 0:4] = mats[0, 0].reshape(4, 4)
@@ -1416,7 +1417,7 @@ def nworker(data, smpchunk, tests):
     rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
 
     ## record how many quartets have no information
-    excluded = 0
+    #excluded = 0
 
     ## fill arrays with results using numba funcs
     for idx in xrange(smpchunk.shape[0]):
@@ -1426,6 +1427,9 @@ def nworker(data, smpchunk, tests):
 
         ## get N-containing columns in 4-array TODO(replace with numba gufunc)
         nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
+        ## get N-containing columns in 4-array
+        nmask += np.all(seqchunk == seqchunk[0], axis=0)
+        #nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
         #LOGGER.info('not N-masked sites: %s', nmask.sum())
 
         ## remove Ncols from seqchunk & sub-sample unlinked SNPs
@@ -1456,8 +1460,8 @@ def nworker(data, smpchunk, tests):
                     ------------------------------------
                     """,
                     bidx, qstats, rweights[idx], qscores)
-            else:
-                excluded += 1
+            #else:
+            #    excluded += 1
 
     # LOGGER.warning("excluded quartets %s", excluded)    
     #return 
