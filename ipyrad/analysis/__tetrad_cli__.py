@@ -107,7 +107,7 @@ def parse_command_line():
         help="newick file starting tree for equal splits sampling")
 
     parser.add_argument("-c", metavar="CPUs/cores", dest="cores",
-        type=int, default=1,
+        type=int, default=0,
         help="setting n Nodes improves parallel efficiency on HPC")
 
     parser.add_argument("-x", metavar="random_seed", dest="rseed",
@@ -261,7 +261,7 @@ def main():
     ## (+1) to bootstrap because it is 1-indexed
     if data.checkpoint.boots or data.checkpoint.arr:
         print(ipa.tetrad.LOADING_MESSAGE.format(data.name, 
-              data.method, data.checkpoint.boots+1, data.checkpoint.arr))
+              data.method, data.checkpoint.boots, data.checkpoint.arr))
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
