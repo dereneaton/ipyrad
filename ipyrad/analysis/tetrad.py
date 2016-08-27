@@ -1307,10 +1307,11 @@ def chunk_to_matrices(narr):
     for x in xrange(narr.shape[1]):
         i = narr[:, x]
         if np.sum(i) < 16:
-            mats[0, i[0]*4:(i[0]+4)*4]\
-                    [i[1]]\
-                    [i[2]*4:(i[2]+4)*4]\
-                    [i[3]] += 1
+            mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
+            # mats[0, i[0]*4:(i[0]+4)*4]\
+            #         [i[1]]\
+            #         [i[2]*4:(i[2]+4)*4]\
+            #         [i[3]] += 1
                 
     ## get matrix 2
     mats[1, 0:4, 0:4] = mats[0, 0].reshape(4, 4)
@@ -1424,7 +1425,8 @@ def nworker(data, smpchunk, tests):
         seqchunk = seqview[sidx]
 
         ## get N-containing columns in 4-array
-        nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
+        nmask = np.any(nall_mask[sidx], axis=0)
+        #nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
         #LOGGER.info('not N-masked sites: %s', nmask.sum())
 
         ## remove Ncols from seqchunk & sub-sample unlinked SNPs
