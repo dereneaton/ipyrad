@@ -1424,7 +1424,7 @@ def nworker(data, smpchunk, tests):
         sidx = smpchunk[idx]
         seqchunk = seqview[sidx]
 
-        ## get N-containing columns in 4-array
+        ## get N-containing columns in 4-array TODO(replace with numba gufunc)
         nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
         #LOGGER.info('not N-masked sites: %s', nmask.sum())
 
@@ -1459,7 +1459,7 @@ def nworker(data, smpchunk, tests):
             else:
                 excluded += 1
 
-    LOGGER.warning("excluded quartets %s", excluded)    
+    # LOGGER.warning("excluded quartets %s", excluded)    
     #return 
     return rquartets, rweights, rdstats 
 

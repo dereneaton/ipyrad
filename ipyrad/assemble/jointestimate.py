@@ -166,7 +166,8 @@ def tablestack(rstack):
 
 def stackarray(data, sample, sub):
     """ makes a list of lists of reads at each site """
-    LOGGER.error("Entering stackarray - {}".format(sample.name))
+    
+    LOGGER.info("Entering stackarray - {}".format(sample.name))
     ## get clusters file
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
