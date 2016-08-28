@@ -1018,7 +1018,6 @@ class Quartet(object):
         Inference sends slices of jobs to the parallel engines for computing
         and collects the results into the output hdf5 array as they finish. 
         """
-
         ## an iterator to distribute sampled quartets in chunks
         njobs = sum(1 for _ in \
                 xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
@@ -1049,7 +1048,7 @@ class Quartet(object):
         for _ in xrange(njobs):
             ## get chunk of quartet samples and send to a worker engine
             qidx = jobiter.next()
-            LOGGER.info('qidx: %s', qidx)
+            LOGGER.info('submitting chunk: %s', qidx)
             with h5py.File(self.h5in, 'r') as inh5:
                 smps = inh5["samples"][qidx:qidx+self.chunksize]
             res[qidx] = lbview.apply(nworker, *[self, smps, tests])
@@ -1073,7 +1072,7 @@ class Quartet(object):
                 for ikey in curkeys:
                     if res[ikey].ready():
                         if res[ikey].successful():
-                            LOGGER.info("cleanup key %s", ikey)
+                            LOGGER.info("collecting results chunk: %s, tool %s ms", ikey, res[ikey].elapsed*1e3)
                             ## track finished
                             done += 1
                             ## insert results into hdf5 data base
@@ -1334,7 +1333,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
 
     last_loc = -1
     for idx in xrange(mapcol.shape[0]):
-        if mapcol[idx] != last_loc:
+        if not mapcol[idx] == last_loc:
             if not nmask[idx]:
                 i = narr[:, idx]
                 if np.max(i) < 4:
@@ -1393,7 +1392,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
 
 
 
-@numba.jit(nopython=True)
+#@numba.jit(nopython=True)
 def calculate(seqnon, mapcol, nmask, tests):
     """ groups together several numba compiled funcs """
 
@@ -1408,7 +1407,6 @@ def calculate(seqnon, mapcol, nmask, tests):
     for test in range(3):
         ## get svd scores
         tmpscore = np.linalg.svd(mats[test].astype(np.float64))[1]
-        #qscores[test] = np.sqrt(tmpscore[11:]).sum()
         qscores[test] = np.sqrt(np.sum(tmpscore[11:]**2))
 
     ## sort to find the best qorder
@@ -1416,13 +1414,13 @@ def calculate(seqnon, mapcol, nmask, tests):
     bidx = tests[best][0]
     qsnps = count_snps(mats[best][0])
 
-    # LOGGER.info("""
-    #     best: %s, 
-    #     bidx: %s, 
-    #     qscores: %s, 
-    #     qsnps: %s
-    #     mats \n %s
-    #     """, best, bidx, qscores, qsnps, mats)
+    LOGGER.info("""
+        best: %s, 
+        bidx: %s, 
+        qscores: %s, 
+        qsnps: %s
+        mats \n %s
+        """, best, bidx, qscores, qsnps, mats)
 
     return bidx, qscores, qsnps
 
@@ -1447,39 +1445,23 @@ def nworker(data, smpchunk, tests):
     rweights = np.zeros(smpchunk.shape[0], dtype=np.float64)
     rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
 
-    ## record how many quartets have no information
-    excluded = 0
-
+    times = []
     ## fill arrays with results using numba funcs
     for idx in xrange(smpchunk.shape[0]):
         ## get seqchunk for 4 samples (4, ncols) 
         sidx = smpchunk[idx]
         seqchunk = seqview[sidx]
 
+        ctime = time.time()
         ## get N-containing columns in 4-array
         nmask = np.any(nall_mask[sidx], axis=0)
         nmask += np.all(seqchunk == seqchunk[0], axis=0)
 
-        ## get invariant columns in 4-array
-        LOGGER.info('nmask %s', nmask.sum())
-        
-        #LOGGER.info('nmask %s', nmask.sum())
-        #nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
-        #LOGGER.info('not N-masked sites: %s', nmask.sum())
-        #tmpmap = maparr[~nmask, 0]
-        #seqnon = seqchunk[:, ~nmask]
-        ## remove Ncols from seqchunk & sub-sample unlinked SNPs
-        LOGGER.info("seqchunk shape %s", seqchunk.shape)
-        #if data.files.mapfile:
-        #    rmask = subsample_snps_map(seqchunk, nmask, maparr[:, 0])
-        #seqnon = subsample(seqchunk, nmask, maparr[:, 0])
-        #LOGGER.info("seqnon sites %s", seqnon.shape)
-        #LOGGER.info("before sub: %s, after %s", seqchunk.shape, seqnon.shape)
-
         ## get matrices if there are any shared SNPs
         ## returns best-tree index, qscores, and qstats
         bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
-
+        #LOGGER.info("seqchunk to scores: %s", 
+        times.append(1000*(time.time()-ctime))
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
         rdstats[idx] = qstats 
@@ -1497,10 +1479,8 @@ def nworker(data, smpchunk, tests):
                     ------------------------------------
                     """,
                     bidx, qstats, rweights[idx], qscores)
-        else:
-            excluded += 1
 
-    LOGGER.warning("excluded quartets %s", excluded)
+    LOGGER.warning("average time: %s", np.mean(times))
     #return 
     return rquartets, rweights, rdstats 
 
