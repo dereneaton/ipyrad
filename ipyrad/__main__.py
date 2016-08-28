@@ -446,7 +446,7 @@ def main():
             data = getassembly(args, parsedict)
 
             ## set CLI ipcluster terms
-            data._ipcluster["cores"] = max(args.cores, detect_cpus())
+            data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
 
             ## if more ipcluster args from command-line then use those
             if args.MPI:
