@@ -411,7 +411,7 @@ class Quartet(object):
 
         ## 'samples' stores the indices of the quartet. 
         ## `quartets` stores the correct quartet in the order (1,2|3,4)
-        ## `weights` stores the calculated weight of the quartet in 'quartets'
+        ## `weights` stores the weight of the quartet in 'quartets'
         ## we gzip this for now, but check later if this has a big speed cost
 
         ## create h5 OUT empty arrays
@@ -767,7 +767,7 @@ class Quartet(object):
             ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
             ostats.write("\n")
 
-            ## calculate Quartet stats
+            ## get Quartet stats
             ostats.write("## Quartet statistics (coming soon)\n")
             ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
             proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
@@ -943,7 +943,7 @@ class Quartet(object):
 
             ## run the full inference or print finished prog bar if it's done
             if not self.checkpoint.boots:
-                print("  inferring {} x 3 induced quartet trees".format(self.nquartets))
+                print("  inferring {} induced quartet trees".format(self.nquartets))
                 self.inference(0, ipyclient)
 
             ## run the bootstrap replicates -------------------------------
@@ -979,6 +979,7 @@ class Quartet(object):
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
             print("\n  Keyboard Interrupt by user. Cleaning up...")
+            raise
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
@@ -987,6 +988,7 @@ class Quartet(object):
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
             print("\n  Exception found: {}".format(inst))
+            raise
 
         ## close client when done or interrupted
         finally:
@@ -1003,8 +1005,8 @@ class Quartet(object):
                         ipyclient.close()
                     ## if API, stop jobs and clean queue
                     else:
-                        ipyclient.abort()
-                        ipyclient.purge_everything()
+                        ipyclient.abort()#ipyclient.outstanding)
+                        ipyclient.purge_results(ipyclient.ids)
             
             ## if exception is close and save, print and ignore
             except Exception as inst2:
@@ -1164,7 +1166,7 @@ def random_product(iter1, iter2):
 
 
 def n_choose_k(n, k):
-    """ calculate the number of quartets as n-choose-k. This is used
+    """ get the number of quartets as n-choose-k. This is used
     in equal splits to decide whether a split should be exhaustively sampled
     or randomly sampled. Edges near tips can be exhaustive while highly nested
     edges probably have too many quartets
@@ -1182,12 +1184,12 @@ def n_choose_k(n, k):
 @numba.jit('f8(f8[:])', nopython=True)
 def get_weights(scores):
     """ 
-    calculates quartet weights from ordered svd scores. Following 
+    gets quartet weights from ordered svd scores. Following 
     description from Avni et al. 
     """
     ## lowest to highest [best, ils1, ils2]
     scores.sort()
-    ## calculate weight given the svd scores
+    ## get weight given the svd scores
     if scores[2]:
         weight = (scores[2]-scores[0]) / \
                  (np.exp(scores[2]-scores[1]) * scores[2])
@@ -1200,7 +1202,7 @@ def get_weights(scores):
 @numba.jit('u4[:](u4[:,:])', nopython=True)
 def count_snps(mat):
     """ 
-    calculate dstats from the count array and return as a float tuple 
+    get dstats from the count array and return as a float tuple 
     """
 
     ## get [aabb, baba, abba, aaab] 
@@ -1230,34 +1232,32 @@ def count_snps(mat):
     return snps
 
 
-        
-## TODO: either use pure numpy here or guvectorized func
-@numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
-def subsample_snps(seqchunk, nmask, maparr):
-    """ 
-    removes ncolumns from snparray prior to matrix calculation, and 
-    subsamples 'linked' snps (those from the same RAD locus) such that
-    for these four samples only 1 SNP per locus is kept. This information
-    comes from the 'map' array (map file). 
-    """
-    ## mask columns that contain Ns
-    rmask = np.ones(seqchunk.shape[1], dtype=np.bool_)
-    #LOGGER.info("rmask : %s %s", rmask.shape, rmask.sum())
+# @numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
+# def subsample_snps(seqchunk, nmask, maparr):
+#     """ 
+#     removes ncolumns from snparray prior to matrix calculation, and 
+#     subsamples 'linked' snps (those from the same RAD locus) such that
+#     for these four samples only 1 SNP per locus is kept. This information
+#     comes from the 'map' array (map file). 
+#     """
+#     ## mask columns that contain Ns
+#     rmask = np.ones(seqchunk.shape[1], dtype=np.bool_)
+#     #LOGGER.info("rmask : %s %s", rmask.shape, rmask.sum())
 
-    for idx in xrange(rmask.shape[0]):
-        if nmask[idx]: 
-            rmask[idx] = False
-    #LOGGER.info("rmasked : %s %s", rmask.shape, rmask.sum())    
+#     for idx in xrange(rmask.shape[0]):
+#         if nmask[idx]: 
+#             rmask[idx] = False
+#     #LOGGER.info("rmasked : %s %s", rmask.shape, rmask.sum())    
 
-    ## apply mask
-    newarr = seqchunk[:, rmask]
+#     ## apply mask
+#     newarr = seqchunk[:, rmask]
 
-    ## return smaller Nmasked array
-    return newarr
+#     ## return smaller Nmasked array
+#     return newarr
 
 
 
-@numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
+@numba.jit('b1[:](u1[:,:],b1[:],u4[:])', nopython=True)
 def subsample_snps_map(seqchunk, nmask, maparr):
     """ 
     removes ncolumns from snparray prior to matrix calculation, and 
@@ -1266,32 +1266,59 @@ def subsample_snps_map(seqchunk, nmask, maparr):
     comes from the 'map' array (map file). 
     """
     ## mask columns that contain Ns
-    rmask = np.ones(seqchunk.shape[1], dtype=np.bool_)
+    rmask = np.zeros(seqchunk.shape[1], dtype=np.bool_)
 
     ## apply mask to the mapfile
-    last_snp = 0
-    for idx in xrange(rmask.shape[0]):
-        if nmask[idx]:
-            ## mask if Ns
-            rmask[idx] = False
-        else:
-            ## also mask if SNP already sampled 
-            this_snp = maparr[idx]
-            if maparr[idx] == last_snp:
-                rmask[idx] = False
-            ## record this snp
-            last_snp = this_snp  
+    last_loc = -1
+    for idx in xrange(maparr.shape[0]):
+        if maparr[idx] != last_loc:
+            if not nmask[idx]:
+                rmask[idx] = True
+            last_loc = maparr[idx]
     
     ## apply mask
-    newarr = seqchunk[:, rmask]
+    #newarr = seqchunk[:, rmask]
     
     ## return smaller Nmasked array
-    return newarr
+    return rmask
 
 
 
-@numba.jit('u4[:,:,:](u1[:,:])', nopython=True)
-def chunk_to_matrices(narr):
+# @numba.jit('u1[:,:](u1[:,:],b1[:],u4[:])', nopython=True)
+# def subsample_snps_map(seqchunk, nmask, maparr):
+#     """ 
+#     removes ncolumns from snparray prior to matrix calculation, and 
+#     subsamples 'linked' snps (those from the same RAD locus) such that
+#     for these four samples only 1 SNP per locus is kept. This information
+#     comes from the 'map' array (map file). 
+#     """
+#     ## mask columns that contain Ns
+#     rmask = np.ones(seqchunk.shape[1], dtype=np.bool_)
+
+#     ## apply mask to the mapfile
+#     last_snp = 0
+#     for idx in xrange(rmask.shape[0]):
+#         if nmask[idx]:
+#             ## mask if Ns
+#             rmask[idx] = False
+#         else:
+#             ## also mask if SNP already sampled 
+#             this_snp = maparr[idx]
+#             if maparr[idx] == last_snp:
+#                 rmask[idx] = False
+#             ## record this snp
+#             last_snp = this_snp  
+    
+#     ## apply mask
+#     newarr = seqchunk[:, rmask]
+    
+    ## return smaller Nmasked array
+#    return newarr
+
+
+
+@numba.jit('u4[:,:,:](u1[:,:],u4[:],b1[:])', nopython=True)
+def chunk_to_matrices(narr, mapcol, nmask):
     """ 
     numba compiled code to get matrix fast.
     arr is a 4 x N seq matrix converted to np.int8
@@ -1305,10 +1332,22 @@ def chunk_to_matrices(narr):
     ## replace ints with small ints that index their place in the 
     ## 16x16. If not replaced, the existing ints are all very large
     ## and the column will be excluded.
-    for x in xrange(narr.shape[1]):
-        i = narr[:, x]
-        if np.sum(i) < 16:
-            mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
+
+    last_loc = -1
+    for idx in xrange(mapcol.shape[0]):
+        if mapcol[idx] != last_loc:
+            if not nmask[idx]:
+                i = narr[:, idx]
+                if np.max(i) < 4:
+                    mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
+                    last_loc = mapcol[idx]
+
+
+    # for idx in xrange(narr.shape[1]):
+    #     if not rmask[idx]:
+    #         i = narr[:, idx]
+    #         if np.sum(i) < 16:
+    #             mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
             # mats[0, i[0]*4:(i[0]+4)*4]\
             #         [i[1]]\
             #         [i[2]*4:(i[2]+4)*4]\
@@ -1356,13 +1395,13 @@ def chunk_to_matrices(narr):
 
 
 @numba.jit(nopython=True)
-def calculate(seqnon, tests):
+def calculate(seqnon, mapcol, nmask, tests):
     """ groups together several numba compiled funcs """
 
     ## create empty matrices
     #LOGGER.info("tests[0] %s", tests[0])
     #LOGGER.info('seqnon[[tests[0]]] %s', seqnon[[tests[0]]])
-    mats = chunk_to_matrices(seqnon[tests[0]])
+    mats = chunk_to_matrices(seqnon, mapcol, nmask)
 
     ## epmty svdscores for each arrangement of seqchunk
     qscores = np.zeros(3, dtype=np.float64)
@@ -1394,16 +1433,9 @@ def nworker(data, smpchunk, tests):
     """ The workhorse function. Not numba. """
 
     ## open the seqarray view, the modified array is in bootsarr
-    inh5 = h5py.File(data.h5in, 'r')
-    seqview = inh5["bootsarr"][:]
-
-    ## choose function based on mapfile arg
-    if data.files.mapfile:
-        subsample = subsample_snps_map
-        maparr = inh5["bootsmap"][:]
-    else:
-        subsample = subsample_snps
-        maparr = np.zeros((2, 2), dtype=np.uint32)
+    with h5py.File(data.h5in, 'r') as io5:
+        seqview = io5["bootsarr"][:]
+        maparr = io5["bootsmap"][:]
 
     ## create an N-mask array of all seq cols
     nall_mask = seqview[:] == 78
@@ -1425,33 +1457,23 @@ def nworker(data, smpchunk, tests):
         sidx = smpchunk[idx]
         seqchunk = seqview[sidx]
 
-        ## get N-containing columns in 4-array TODO(replace with numba gufunc)
-        nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
-        ## get N-containing columns in 4-array
+        ## get N-containing columns as mask for 4-array
+        nmask = np.any(nall_mask[sidx], axis=0)
         nmask += np.all(seqchunk == seqchunk[0], axis=0)
-        #nmask = nall_mask[sidx].sum(axis=0, dtype=np.bool_)
-        #LOGGER.info('not N-masked sites: %s', nmask.sum())
-
-        ## remove Ncols from seqchunk & sub-sample unlinked SNPs
-        #LOGGER.info("seqchunk %s", seqchunk.shape)
-        seqnon = subsample(seqchunk, nmask, maparr[:, 0])
-        #LOGGER.info("seqnon sites %s", seqnon.shape)
-        #LOGGER.info("before sub: %s, after %s", seqchunk.shape, seqnon.shape)
 
         ## get matrices if there are any shared SNPs
-        if seqnon.shape[1]:
-            ## returns best-tree index, qscores, and qstats
-            bidx, qscores, qstats = calculate(seqnon, tests)
+        ## returns best-tree index, qscores, and qstats
+        bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
 
-            ## get weights from the three scores sorted. 
-            ## Only save to file if the quartet has information
-            rdstats[idx] = qstats 
+        ## get weights from the three scores sorted. 
+        ## Only save to file if the quartet has information
+        rdstats[idx] = qstats 
             
-            iwgt = get_weights(qscores)
-            if iwgt:
-                rweights[idx] = iwgt
-                rquartets[idx] = smpchunk[idx][bidx]
-                LOGGER.info("""\n
+        iwgt = get_weights(qscores)
+        if iwgt:
+            rweights[idx] = iwgt
+            rquartets[idx] = smpchunk[idx][bidx]
+            LOGGER.info("""\n
                     ------------------------------------
                     bidx: %s
                     qstats: %s, 
@@ -1460,10 +1482,6 @@ def nworker(data, smpchunk, tests):
                     ------------------------------------
                     """,
                     bidx, qstats, rweights[idx], qscores)
-            #else:
-            #    excluded += 1
-
-    # LOGGER.warning("excluded quartets %s", excluded)    
     #return 
     return rquartets, rweights, rdstats 
 
@@ -1491,7 +1509,7 @@ LOADING_MESSAGE = """\
 
 LOADING_RANDOM = """\
     loading {} random quartet samples to infer a starting tree 
-    inferring {} x 3 quartet trees
+    inferring {} quartet trees
 """
 
 LOADING_STARTER = """\
