@@ -5,6 +5,27 @@
 Release Notes
 =============
 
+0.3.35
+------
+- Handled bug with samtools and gzip formatted reference sequence
+- Fixed a bug where CLI was not honoring -c flag
+- debugging and speed tests
+- added manuscript dir
+- Merge branch 'master' of https://git.overleaf.com/5993657ssvbct
+- Update on Overleaf.
+- Project created
+- speed improvements to tetrad
+- smarter/faster indexing in tetrad matrix filling and speed up from skipping over invariant sites
+- finer tuning of bootstrap restart from checkpoint tetrad
+- finer tuning of bootstrap restart from checkpoint tetrad
+- print bigger trees for tetrad
+- fix to printing checkpoint info for tetrad
+- bug fix for limiting n cores in tetrad
+- made an extended majority rule consensus method for tetrad to avoid big import packages just for this.
+- testing timeout parallel
+- test notebook update
+- adding consensus mj50 function
+
 0.3.34
 ------
 - new --ipcluster arg allows using a running ipcluster instance that has profile=ipyrad
