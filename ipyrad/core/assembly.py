@@ -1124,7 +1124,10 @@ class Assembly(object):
                 ## sure and we won't bother waiting for them to start, since 
                 ## they'll start grabbing jobs once they're started. 
                 else:
-                    _cpus = max(detect_cpus(), self._ipcluster["cores"])
+                    ## If `cores` is set then honor this request, else use all
+                    ## available cores.
+                    _cpus = self._ipcluster["cores"] if self._ipcluster["cores"] \
+                            else detect_cpus()
                     print("  local compute node: [{} cores] on {}"\
                           .format(_cpus, socket.gethostname()))
 
