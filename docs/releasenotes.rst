@@ -5,18 +5,28 @@
 Release Notes
 =============
 
+0.3.36
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- hotfix for memory error in build_clusters, need to improve efficiency for super large numbers of hits
+- more speed testing on tetrad
+- merge conflict
+- cosmetic
+- cosmetic
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cleaner print stats for tetrad
+- finer tuning of parallelization tetrad
+
 0.3.35
 ------
 - Handled bug with samtools and gzip formatted reference sequence
 - Fixed a bug where CLI was not honoring -c flag
 - debugging and speed tests
 - added manuscript dir
-- Merge branch 'master' of https://git.overleaf.com/5993657ssvbct
 - Update on Overleaf.
-- Project created
+- Manuscript project created
 - speed improvements to tetrad
 - smarter/faster indexing in tetrad matrix filling and speed up from skipping over invariant sites
-- finer tuning of bootstrap restart from checkpoint tetrad
 - finer tuning of bootstrap restart from checkpoint tetrad
 - print bigger trees for tetrad
 - fix to printing checkpoint info for tetrad
@@ -29,9 +39,7 @@ Release Notes
 0.3.34
 ------
 - new --ipcluster arg allows using a running ipcluster instance that has profile=ipyrad
--  "Updating ipyrad/__init__.py to version - 0.3.33
 - temporary explicit printing during ipcluster launch for debugging
--  "Updating ipyrad/__init__.py to version - 0.3.33
 - also make longer timeout in _ipcluster dict of Assembly object
 
 0.3.33
@@ -47,9 +55,7 @@ Release Notes
 0.3.33
 ------
 - increased timeout for ipcluster instance from 30 seconds to 90 seconds
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Added sample populations file format example
-- quick api example up
 - quick api example up
 - merge conflict
 - removed chunksize=5000 option
@@ -58,29 +64,11 @@ Release Notes
 0.3.32
 ------
 - Fix optim chunk size bug in step 6 (very large datasets overflow hdf5 max chunksize 4GB limit)
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
-- docs updates
 - Doc update: Cleaned up the lists of parameters used during each step to reflect current reality.
 - Fixed merge conflict in assembly.py
 - Fix behavior in step 7 if requested samples and samples actually ready differ
 - Removing references to deprecated params (excludes/outgroups)
 - Simple error handling in the event no loci pass filtering
-- changed tetrad default mode to MPI
 - changed tetrad default mode to MPI
 - release notes update
 
@@ -111,7 +99,6 @@ Release Notes
 
 0.3.28
 ------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Added statically linked binaries for all linux progs. Updated version for bedtools and samtools. Updated vsearch but did not change symlink (ipyrad will still use 1.10)
 - Bugfix that threw a divide by zero error if no samples were actually ready for step 5
 
