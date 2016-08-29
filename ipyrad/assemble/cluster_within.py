@@ -412,7 +412,7 @@ def build_clusters(data, sample):
                 else:
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
-        # seqslist.append("\n".join(seq))
+        seqslist.append("\n".join(seq))
         # if count % 1000:
         #     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
         #     seqslist = []
