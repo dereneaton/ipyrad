@@ -7,6 +7,10 @@ Release Notes
 
 0.3.36
 ------
+- hotfix for edgar fix break
+
+0.3.36
+------
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - hotfix for memory error in build_clusters, need to improve efficiency for super large numbers of hits
 - more speed testing on tetrad
