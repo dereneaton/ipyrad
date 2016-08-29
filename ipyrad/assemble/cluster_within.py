@@ -412,11 +412,11 @@ def build_clusters(data, sample):
                 else:
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
-        seqslist.append("\n".join(seq))
-        if count % 1000:
-            clustfile.write("\n//\n//\n".join(seqslist)+"\n")
-            seqslist = []
-            count = 0
+        # seqslist.append("\n".join(seq))
+        # if count % 1000:
+        #     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
+        #     seqslist = []
+        #     count = 0
 
     ## if udic is empty then this writes a blank line to the top of the file
     ## and messes up writing the final clustS.gz
