@@ -8,6 +8,12 @@ Release Notes
 0.3.36
 ------
 - hotfix for edgar fix break
+-  "Updating ipyrad/__init__.py to version - 0.3.36
+- hotfix for edgar fix break
+
+0.3.36
+------
+- hotfix for edgar fix break
 
 0.3.36
 ------
