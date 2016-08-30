@@ -200,12 +200,22 @@ pinfo = OrderedDict([
 
 ("10", ("""
     (10) phred_Qscore_offset ---------------------------------------------
+    The threshold at which a base call is considered low quality during 
+    step 2 filtering is determined by the phred_Qscore_offset. The default
+    offset is 33, which is equivalent to a minimum qscore of 20 (99% call
+    confidence). Some older data use a qscore offset of 64. You can toggle 
+    the offset number to change the threshold for low qual bases. For 
+    example, reducing the offset to 26 is equivalent to a minimum qscore 
+    of 13, which is approximately 95% probability of a correct base call.
+
     Examples:
     ----------------------------------------------------------------------
     data.set_params(10) = 33
+    data.set_params("phred_Qscore_offset") = 26     ## 95% confidence
+    data.set_params("phred_Qscore_offset") = 43     ## 99.9% confidence
     data.set_params("phred_Qscore_offset") = 33
     ----------------------------------------------------------------------
-    """, "phred Q score offset (only alternative=64)")
+    """, "phred Q score offset (33 is default and very standard)")
 ),
 
 ("11", ("""
