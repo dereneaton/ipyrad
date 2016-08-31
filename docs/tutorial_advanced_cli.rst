@@ -394,8 +394,8 @@ including only the 4 samples listed.
   Writing new params file to params-subdata.txt
 
 
-Branching and selecting a subset by specifying samples in a file
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Branching with a subset of samples specified in a file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you want to select more than a handful of samples it might be easier
 to instead provide a text file with sample names listed one per line.
