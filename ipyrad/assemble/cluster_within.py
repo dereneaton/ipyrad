@@ -386,7 +386,9 @@ def build_clusters(data, sample):
 
     ## map sequences to clust file in order
     seqslist = [] 
+    count = 0
     for key, values in udic.iteritems():
+        count += 1 
         ## this is the seed. 
         seedhit = hits[key][1]
         seq = [key.strip()+"*\n"+seedhit]
@@ -411,6 +413,11 @@ def build_clusters(data, sample):
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
         seqslist.append("\n".join(seq))
+        if count % 1000:
+            clustfile.write("\n//\n//\n".join(seqslist)+"\n")
+            seqslist = []
+            count = 0
+
     ## if udic is empty then this writes a blank line to the top of the file
     ## and messes up writing the final clustS.gz
     if seqslist:

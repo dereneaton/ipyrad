@@ -278,8 +278,9 @@ class Quartet(object):
             for line, seq in enumerate(spath.readlines()):
                 tmpseq[line] = np.array(list(seq.split()[-1])).view(np.uint8)
 
-            ## convert '-' into 'N'
+            ## convert '-' or '_' into 'N'
             tmpseq[tmpseq == 45] = 78
+            tmpseq[tmpseq == 95] = 78            
 
             ## save array to disk so it can be easily accessed by slicing
             ## This unmodified array is used again later for sampling boots
@@ -797,7 +798,8 @@ class Quartet(object):
                     ostats.write("{:<3} {}\n".format(i, j))
                 ostats.write("\n")
                 for split, freq in wcounts:
-                    ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
+                    if split.count('1') > 1:
+                        ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
                 ostats.write("\n")
 
 
@@ -1400,7 +1402,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
 
 
 
-#@numba.jit(nopython=True)
+@numba.jit(nopython=True)
 def calculate(seqnon, mapcol, nmask, tests):
     """ groups together several numba compiled funcs """
 
@@ -1422,13 +1424,13 @@ def calculate(seqnon, mapcol, nmask, tests):
     bidx = tests[best][0]
     qsnps = count_snps(mats[best][0])
 
-    LOGGER.info("""
-        best: %s, 
-        bidx: %s, 
-        qscores: %s, 
-        qsnps: %s
-        mats \n %s
-        """, best, bidx, qscores, qsnps, mats)
+    # LOGGER.info("""
+    #     best: %s, 
+    #     bidx: %s, 
+    #     qscores: %s, 
+    #     qsnps: %s
+    #     mats \n %s
+    #     """, best, bidx, qscores, qsnps, mats)
 
     return bidx, qscores, qsnps
 
@@ -1436,7 +1438,10 @@ def calculate(seqnon, mapcol, nmask, tests):
 
 def nworker(data, smpchunk, tests):
     """ The workhorse function. Not numba. """
-
+    
+    ## tell engines to limit threads
+    numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
+    
     ## open the seqarray view, the modified array is in bootsarr
     with h5py.File(data.h5in, 'r') as io5:
         seqview = io5["bootsarr"][:]
@@ -1453,14 +1458,14 @@ def nworker(data, smpchunk, tests):
     rweights = np.zeros(smpchunk.shape[0], dtype=np.float64)
     rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
 
-    times = []
+    #times = []
     ## fill arrays with results using numba funcs
     for idx in xrange(smpchunk.shape[0]):
         ## get seqchunk for 4 samples (4, ncols) 
         sidx = smpchunk[idx]
         seqchunk = seqview[sidx]
 
-        ctime = time.time()
+        #ctime = time.time()
         ## get N-containing columns in 4-array
         nmask = np.any(nall_mask[sidx], axis=0)
         nmask += np.all(seqchunk == seqchunk[0], axis=0)
@@ -1469,7 +1474,7 @@ def nworker(data, smpchunk, tests):
         ## returns best-tree index, qscores, and qstats
         bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
         #LOGGER.info("seqchunk to scores: %s", 
-        times.append(1000*(time.time()-ctime))
+        #times.append(1000*(time.time()-ctime))
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
         rdstats[idx] = qstats 
@@ -1478,17 +1483,17 @@ def nworker(data, smpchunk, tests):
         if iwgt:
             rweights[idx] = iwgt
             rquartets[idx] = smpchunk[idx][bidx]
-            LOGGER.info("""\n
-                    ------------------------------------
-                    bidx: %s
-                    qstats: %s, 
-                    weight: %s, 
-                    scores: %s
-                    ------------------------------------
-                    """,
-                    bidx, qstats, rweights[idx], qscores)
+            # LOGGER.info("""\n
+            #         ------------------------------------
+            #         bidx: %s
+            #         qstats: %s, 
+            #         weight: %s, 
+            #         scores: %s
+            #         ------------------------------------
+            #         """,
+            #         bidx, qstats, rweights[idx], qscores)
 
-    LOGGER.warning("average time: %s", np.mean(times))
+    #LOGGER.warning("average time: %s", np.mean(times))
     #return 
     return rquartets, rweights, rdstats 
 

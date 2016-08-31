@@ -69,7 +69,23 @@ def index_reference_sequence(data, force=False):
     cmd = ipyrad.bins.samtools\
         + " faidx "\
         + " " + refseq_file
-    subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)        
+
+    res = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+    if res:
+        msg = """
+    Reference sequence must be uncompressed fasta or bgzip compressed,
+    your file is probably gzip compressed. The simplest fix is to gunzip
+    your reference sequence by running this command:
+
+        gunzip {}
+
+    Then edit your params file to remove the `.gz` from the end of the
+    path to your reference sequence file and rerun step 3 with the `-f` flag.
+
+    The specific error message was:
+        {}
+    """.format(refseq_file, res)
+        raise IPyradWarningExit(msg)
 
     if data._headers:
         print("    Done indexing reference sequence")
