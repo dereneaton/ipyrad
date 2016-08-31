@@ -376,7 +376,7 @@ Branching and selecting a subset of samples by sample name
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 It's also possible to create a branch with only a subset of samples from
 the original assembly. You can do this by specifying a list of samples 
-to include following the new assembly name after the `-b`  flag. For 
+to include following the new assembly name after the ``-b``  flag. For 
 example the command below will create a new branch called ``subdata`` 
 including only the 4 samples listed. 
 
@@ -401,12 +401,12 @@ If you want to select more than a handful of samples it might be easier
 to instead provide a text file with sample names listed one per line.
 So we made it so you can do that. The format of the file for listing
 sample names is literally just a text file with one sample name per line.
-Here is an example sample names file `samples_to_keep.txt`
+Here is an example sample names file ``samples_to_keep.txt``
 
 .. parsed_literal::
-1A_0
-1B_0
-1C_0
+    1A_0
+    1B_0
+    1C_0
 
 And the command to do the branching:
 
