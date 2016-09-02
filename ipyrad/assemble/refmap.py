@@ -534,7 +534,7 @@ def bedtools_merge(data, sample):
             ## differently.
             else:
                 hack = (avg_insert - avg_len) * (3 * math.ceil(stdv_insert))
-            data._hackersonly["max_inner_mate_distance"] = hack
+            data._hackersonly["max_inner_mate_distance"] = int(math.ceil(hack))
         else:
             ## If something fsck then set a relatively conservative distance
             data._hackersonly["max_inner_mate_distance"] = 300
