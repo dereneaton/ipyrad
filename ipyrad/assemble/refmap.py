@@ -612,8 +612,11 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
 
             ## Set output files and flags for PE/SE
             ## Create temporary files for R1, R2 and merged
+            ## translate() is simply removing pipes from chrom names
+            ## This is a fix for one user who's chroms had complicated
+            ## names like `mt|23432|wat|do`, but i assume others will have this too
             prefix = os.path.join(data.dirs.refmapping, sample.name \
-                            + chrom + region_start + region_end)
+                            + chrom.translate(None, "|") + region_start + region_end)
             R1 = prefix+"-R1"
             R2 = prefix+"-R2"
             merged = prefix+"-merged"
