@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.3.38
+------
+- Handle samples with few reads, esp the case where there are no matches during clustering.
+- Handle samples with few or no high depth reads. Just ignore them and inform the user.
+
 0.3.37
 ------
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
