@@ -39,7 +39,7 @@ requirements:
     - pandas
     - mpi4py
     - numpy >=1.7
-
+    - bitarray
 
 about:
   home: http://github.com/dereneaton/ipyrad
