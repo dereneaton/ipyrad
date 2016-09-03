@@ -995,13 +995,16 @@ def derep_and_sort(data, sample, infile, outfile):
         reverse = " "
 
     ## do dereplication with vsearch
+    ## --fastq_qmax sets the max phred q score to 1000 (arbitrarily high)
+    ## just don't filter on max qscore
     cmd = ipyrad.bins.vsearch\
          +" -derep_fulllength "+infile\
          +reverse \
          +" -output "+outfile\
          +" -sizeout " \
          +" -threads 1 "\
-         +" -fasta_width 0"
+         +" -fasta_width 0"\
+         +" --fastq_qmax 1000"
     LOGGER.info(cmd)
 
     ## run vsearch
@@ -1154,7 +1157,6 @@ def muscle_chunker(args):
 
     idx = 0
     while grabchunk:
-        LOGGER.debug("chunk {} {}".format(idx, grabchunk))
         tmpfile = os.path.join(tmpdir, sample.name+"_chunk_{}.ali".format(idx)) 
         with open(tmpfile, 'wb') as out:
             out.write("//\n//\n".join(grabchunk))
