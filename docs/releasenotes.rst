@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.3.39
+------
+- Fix vsearch fastq max threshold arbitrarily high. Also remove debug crust.
+
 0.3.38
 ------
 - Handle samples with few reads, esp the case where there are no matches during clustering.
