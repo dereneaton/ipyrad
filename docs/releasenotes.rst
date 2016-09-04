@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.3.40
+------
+- Set vsearch to ignore max phred q score on merging pairs
+- Added bitarray dependency to conda build
+
 0.3.39
 ------
 - Fix vsearch fastq max threshold arbitrarily high. Also remove debug crust.
