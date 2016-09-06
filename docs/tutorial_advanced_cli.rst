@@ -372,17 +372,18 @@ This makes for a good reproducible workflow, and can be referenced later
 as a reminder of the parameters used for each data set. 
 
 
-Branching with a subset of samples
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Branching and selecting a subset of samples by sample name
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 It's also possible to create a branch with only a subset of samples from
-the original assembly. For example the command below will create a new branch
-called ``subdata`` including only the 4 samples listed. If you were selecting 
-many samples, you could instead provide a text file with names listed one 
-per line instead of listing sample names after the new assembly name. 
+the original assembly. You can do this by specifying a list of samples 
+to include following the new assembly name after the ``-b``  flag. For 
+example the command below will create a new branch called ``subdata`` 
+including only the 4 samples listed. 
 
 .. code:: bash
    
-   ## Branch subset of Samples to a new Assembly.
+    ## Branch subset of Samples to a new Assembly by passing in
+    ## sample names to include.
    >>> ipyrad -p params-data1.txt -b subdata 1A_0 1B_0 1C_0 1D_0
 
 
@@ -393,6 +394,32 @@ per line instead of listing sample names after the new assembly name.
   Writing new params file to params-subdata.txt
 
 
+Branching with a subset of samples specified in a file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you want to select more than a handful of samples it might be easier
+to instead provide a text file with sample names listed one per line.
+So we made it so you can do that. The format of the file for listing
+sample names is literally just a text file with one sample name per line.
+Here is an example sample names file ``samples_to_keep.txt``
+
+.. parsed_literal::
+    1A_0
+    1B_0
+    1C_0
+
+And the command to do the branching:
+
+.. code:: bash
+   
+    ## Branch subset of Samples by passing in a file with sample names
+    >>> ipyrad -p params-data1.txt -b subdata samples_to_keep.txt
+
+.. parsed-literal::
+  loading Assembly: data1
+  from saved path: ~/Documents/ipyrad/tests/iptutorial/data1.json
+  Creating a new branch called 'subdata' with 3 Samples
+  Writing new params file to params-subdata.txt
 
 What's next
 ~~~~~~~~~~~

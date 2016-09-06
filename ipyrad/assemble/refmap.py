@@ -10,6 +10,7 @@ from __future__ import print_function
 
 import os
 import gzip
+import math
 import shutil
 import subprocess
 import ipyrad
@@ -508,20 +509,35 @@ def bedtools_merge(data, sample):
             if "insert size average" in line:
                 avg_insert = float(line.split(":")[-1].strip())
             elif "insert size standard deviation" in line:
-                stdv_insert = float(line.split(":")[-1].strip())
+                ## hack to fix sim data when stdv is 0.0. Shouldn't
+                ## impact real data bcz stdv gets rounded up below
+                stdv_insert = float(line.split(":")[-1].strip()) + 0.1
             elif "average length" in line:
                 avg_len = float(line.split(":")[-1].strip())
 
         LOGGER.debug("avg {} stdv {} avg_len {}"\
                      .format(avg_insert, stdv_insert, avg_len))
 
-        ## If all values return successfully set the max inner mate distance to 
+        ## If all values return successfully set the max inner mate distance.
+        ## This is tricky. avg_insert is the average length of R1+R2+inner mate
+        ## distance. avg_len is the average length of a read. If there are lots
+        ## of reads that overlap then avg_insert will be close to but bigger than
+        ## avg_len. We are looking for the right value for `bedtools merge -d`
+        ## which wants to know the max distance between reads. 
         if all([avg_insert, stdv_insert, avg_len]):
-            hack = avg_insert + (3 * stdv_insert) - (2 * avg_len)
-            data._hackersonly["max_inner_mate_distance"] = hack
+            ## If 2 * the average length of a read is less than the average
+            ## insert size then most reads DO NOT overlap
+            if(2*avg_len < avg_insert):
+                hack = avg_insert + (3 * math.ceil(stdv_insert)) - (2 * avg_len)
+            ## If it is > than the average insert size then most reads DO
+            ## overlap, so we have to calculate inner mate distance a little 
+            ## differently.
+            else:
+                hack = (avg_insert - avg_len) * (3 * math.ceil(stdv_insert))
+            data._hackersonly["max_inner_mate_distance"] = int(math.ceil(hack))
         else:
             ## If something fsck then set a relatively conservative distance
-            data._hackersonly["max_inner_mate_distance"] = 200
+            data._hackersonly["max_inner_mate_distance"] = 300
         LOGGER.debug("inner mate distance for {} - {}".format(sample.name,\
                     data._hackersonly["max_inner_mate_distance"]))
 
@@ -577,7 +593,7 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
         view_ref = ipyrad.bins.samtools+\
                 " faidx "+\
                 data.paramsdict["reference_sequence"]+\
-                " {}:{}-{}".format(chrom, str(int(region_start)+1), region_end)
+                " '{}':{}-{}".format(chrom, str(int(region_start)+1), region_end)
 
         ## Reach out and grap the reference sequence that overlaps this region
         ## we'll paste this in at the top of each stack to aid alignment
@@ -596,8 +612,11 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
 
             ## Set output files and flags for PE/SE
             ## Create temporary files for R1, R2 and merged
+            ## translate() is simply removing pipes from chrom names
+            ## This is a fix for one user who's chroms had complicated
+            ## names like `mt|23432|wat|do`, but i assume others will have this too
             prefix = os.path.join(data.dirs.refmapping, sample.name \
-                            + chrom + region_start + region_end)
+                            + chrom.translate(None, "|") + region_start + region_end)
             R1 = prefix+"-R1"
             R2 = prefix+"-R2"
             merged = prefix+"-merged"
@@ -606,7 +625,7 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
             pe_view_cmd = ipyrad.bins.samtools + \
                     " view -b "+\
                     bamf + \
-                    " {}:{}-{}".format(chrom, region_start, region_end)
+                    " '{}':{}-{}".format(chrom, region_start, region_end)
             bam2fq_cmd = ipyrad.bins.samtools+" bam2fq " + outflags + " - "
             cmd = " | ".join((pe_view_cmd, bam2fq_cmd))
 
@@ -615,28 +634,35 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
                 subprocess.check_output(cmd, shell=True)
                 ## merge the pairs. 0 means don't revcomp bcz samtools already
                 ## did it for us. 1 means "actually merge".
-                nmerged = merge_pairs(data, [(R1, R2)], merged,0, 1)
+                try:
+                    nmerged = merge_pairs(data, [(R1, R2)], merged,0, 1)
 
-                infile = open(merged)
-                quatro = itertools.izip(*[iter(infile)]*4)
-                while 1:
-                    try:
-                        itera = quatro.next()
-                    except StopIteration:
-                        break
-                    ## TODO: figure out a real way to get orientation for PE
-                    orient = "+"
-                    label = itera[0].split(";")[0] + ";" + "{}:{}-{}".format(\
-                            chrom, str(int(region_start)+1), region_end) \
-                            + ";" + itera[0].split(";")[1] + ";" + orient
-                    fasta.append(label+"\n"+itera[1].strip())
+                    infile = open(merged)
+                    quatro = itertools.izip(*[iter(infile)]*4)
+                    while 1:
+                        try:
+                            itera = quatro.next()
+                        except StopIteration:
+                            break
+                        ## TODO: figure out a real way to get orientation for PE
+                        orient = "+"
+                        label = itera[0].split(";")[0] + ";" + "{}:{}-{}".format(\
+                                chrom, str(int(region_start)+1), region_end) \
+                                + ";" + itera[0].split(";")[1] + ";" + orient
+                        fasta.append(label+"\n"+itera[1].strip())
+                except Exception as inst:
+                    ## Failed merging, probably unequal number of reads in R1 and R2
+                    ## Skip this locus?
+                    LOGGER.debug("Failed to merge reads, continuing")
+                    pass
             except Exception as inst:
                 LOGGER.error("Exception in bam_region_to_fasta doing PE - {}".format(inst))
                 raise
             ## always clean up the temp files
             finally:
                 files = []
-                #files = [R1, R2, merged]
+                ## Comment out the next line to retain temp files. Useful for debugging.
+                files = [R1, R2, merged]
                 for f in files:
                     if os.path.exists(f):
                         os.remove(f)
@@ -647,7 +673,7 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
             se_view_cmd = ipyrad.bins.samtools+\
                         " view "+\
                         bamf+\
-                        " {}:{}-{}".format(chrom, region_start, region_end)
+                        " '{}':{}-{}".format(chrom, region_start, region_end)
             sam = subprocess.check_output(se_view_cmd, shell=True)
 
             ## do not join seqs that 

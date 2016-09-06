@@ -5,6 +5,38 @@
 Release Notes
 =============
 
+0.3.40
+------
+- Set vsearch to ignore max phred q score on merging pairs
+- Added bitarray dependency to conda build
+
+0.3.39
+------
+- Fix vsearch fastq max threshold arbitrarily high. Also remove debug crust.
+
+0.3.38
+------
+- Handle samples with few reads, esp the case where there are no matches during clustering.
+- Handle samples with few or no high depth reads. Just ignore them and inform the user.
+
+0.3.37
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fix to allow pipe character  in chrom names of reference sequences
+- Tweak to calculation of inner mate distance (round up and cast to int)
+- Refmap: fix calc inner mate distance PE, handle samples w/ inner mate distance > max, and handle special characters in ref seq chromosome names
+- Add a test to forbid spaces in project directory paths
+- Cosmetic docs fix
+- Cosmetic fix to advanced CLI docs
+- Added more explicit documentation about using the file to select samples during branching
+- Clarifying docs for qscore offset in the default params file
+- Cosmetic change to docs
+- Rolling back changes to build_clusters
+-  "Updating ipyrad/__init__.py to version - 0.3.36
+- hotfix for edgar fix break
+-  "Updating ipyrad/__init__.py to version - 0.3.36
+- hotfix for edgar fix break
+
 0.3.36
 ------
 - hotfix for edgar fix break

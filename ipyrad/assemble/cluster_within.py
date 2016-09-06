@@ -125,6 +125,7 @@ def muscle_align(args):
     try:
         infile = open(chunk, 'rb')
     except IOError:
+        LOGGER.debug("Found chunk that doesn't exist - {}".format(chunk))
         return 0
     clusts = infile.read().split("//\n//\n")
     out = []
@@ -150,8 +151,12 @@ def muscle_align(args):
             pass
         ## don't bother aligning singletons
         elif len(names) <= 1:
-            if names:
-                stack = [names[0]+"\n"+seqs[0]]
+            try:
+                if names:
+                    stack = [names[0]+"\n"+seqs[0]]
+            except IndexError as inst:
+                ## Protect against malformed elements. Just ignore them.
+                pass
         else:
             ## split seqs if paired end seqs
             try:
@@ -413,14 +418,14 @@ def build_clusters(data, sample):
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
         seqslist.append("\n".join(seq))
-        # if count % 1000:
-        #     clustfile.write("\n//\n//\n".join(seqslist)+"\n")
-        #     seqslist = []
-        #     count = 0
+        if count % 1000:
+            clustfile.write("\n//\n//\n".join(seqslist)+"\n")
+            seqslist = []
+            count = 0
 
-    ## if udic is empty then this writes a blank line to the top of the file
-    ## and messes up writing the final clustS.gz
-    if seqslist:
+    ## This will get skipped but the part below assumes there is already
+    ## at least one seq in the file (prepends the // sep)
+    if seqslist and udic:
         clustfile.write("\n//\n//\n".join(seqslist)+"\n")
 
     ## make Dict. from seeds (_temp files) 
@@ -434,10 +439,28 @@ def build_clusters(data, sample):
     set2 = set(udic.keys())       ## utemp file (with hits) seeds
     diff = set1.difference(set2)  ## seeds in 'temp not matched to in 'u
     if diff:
+        ## if udic is empty then this writes a blank line to the top of the file
+        ## and messes up writing the final clustS.gz. We correct for it below.
         for i in list(diff):
             clustfile.write("//\n//\n"+i.strip()+"*\n"+hits[i][1]+'\n')
     #clustfile.write("//\n//\n\n")
+
     clustfile.close()
+
+    ## Test for malformed clust.gz file or else downstream gets messed up
+    ## Samples w/ empty udic produce files with leading // //, so we remove them
+    ## This function is responsible for making sure everything that it 
+    ## produces is uniform, so this block of code is annoying, but necessary
+    dat = ''
+    with gzip.open(clustfile.name, 'r+') as clusts:
+        if "//" in clusts.readline():
+            ## Pop the next // and write all the data back
+            clusts.readline()
+            dat = clusts.read()
+    if dat:
+        with gzip.open(clustfile.name, 'w+') as clusts:
+                clusts.write(dat)
+
     del dereps
     del userout
     del udic
@@ -972,13 +995,16 @@ def derep_and_sort(data, sample, infile, outfile):
         reverse = " "
 
     ## do dereplication with vsearch
+    ## --fastq_qmax sets the max phred q score to 1000 (arbitrarily high)
+    ## just don't filter on max qscore
     cmd = ipyrad.bins.vsearch\
          +" -derep_fulllength "+infile\
          +reverse \
          +" -output "+outfile\
          +" -sizeout " \
          +" -threads 1 "\
-         +" -fasta_width 0"
+         +" -fasta_width 0"\
+         +" --fastq_qmax 1000"
     LOGGER.info(cmd)
 
     ## run vsearch
