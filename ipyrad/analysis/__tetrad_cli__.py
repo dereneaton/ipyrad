@@ -254,6 +254,7 @@ def main():
     ## start ipcluster and register cluster_id for later destruction.
     if args.ipcluster:
         data._ipcluster["profile"] = "ipyrad"
+        data._ipcluster["cluster_id"] = ""
     else:
         data = register_ipcluster(data)
 
