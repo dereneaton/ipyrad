@@ -13,26 +13,26 @@ requirements:
   build:
     - cython
     - h5py
-    - ipyparallel >=5.0.1
+    - ipyparallel >=5.1.0
     - ipython >=4.0.0
     - jupyter_client
     - jupyter
     - mpi4py
     - nbconvert
-    - numba >=0.27
+    - numba >=0.28
     - numpy >=1.7
     - pandas >=0.16
-    - scipy
+    - scipy >=0.16
     - sphinx
     - python {{PY_VER}}*,>=2.7
   run:
     - ipython >=4.0.0
-    - ipyparallel >=5.0.1
+    - ipyparallel >=5.1.0
     - cython
-    - scipy 
+    - scipy >=0.16
     - h5py
     - nbconvert
-    - numba >=0.27
+    - numba >=0.28
     - jupyter_client
     - jupyter
     - sphinx
