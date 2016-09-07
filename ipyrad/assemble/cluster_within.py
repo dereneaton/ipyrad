@@ -73,7 +73,7 @@ def sample_cleanup(data, sample):
     ## max len is 4 greater than maxlen, to allow for pair separators.
     max_len = maxlen.max()
     if max_len > data._hackersonly["max_fragment_length"]:
-         data._hackersonly["max_fragment_length"] = max_len + 4
+        data._hackersonly["max_fragment_length"] = max_len + 4
 
     if depths.max():
         ## make sense of stats
@@ -117,19 +117,19 @@ def sample_cleanup(data, sample):
 def muscle_align(args):
     """ aligns reads, does split then aligning for paired reads """
     ## parse args
-    data, chunk = args
+    data, chunk, maxindels = args
     LOGGER.debug("aligning chunk %s", chunk)
 
     ## data are already chunked, read in the whole thing. 
-    ## bail out if there is not a chunk file, means there were few clusts
-    try:
-        infile = open(chunk, 'rb')
-    except IOError:
-        return 0
-    clusts = infile.read().split("//\n//\n")
-    out = []
+    with open(chunk, 'rb') as infile:
+        clusts = infile.read().split("//\n//\n")
 
-    ## a counter for discarded clusters due to poor alignment
+    ## if no clusters then this chunk was empty (there are few clusts)
+    if not clusts[0]:
+        return 0
+
+    ## storage and a counter for discarded clusters due to poor alignment
+    out = []
     highindels = 0
 
     ## iterate over clusters and align
@@ -143,15 +143,9 @@ def muscle_align(args):
         ## append counter to end of names b/c muscle doesn't retain order
         names = [j+str(i) for i, j in enumerate(names)]
 
-        ## 0 length names indicates back to back //\n//\n sequences, so pass
-        ## TODO: This should probably be fixed upstream so it doesn't happen
-        ## but it's protective regardless... but still, it's slowing us down...
-        if len(names) == 0:
-            pass
         ## don't bother aligning singletons
-        elif len(names) <= 1:
-            if names:
-                stack = [names[0]+"\n"+seqs[0]]
+        if len(names) == 1:
+            stack = ["{}\n{}".format(names[0], seqs[0])]
         else:
             ## split seqs if paired end seqs
             try:
@@ -172,90 +166,62 @@ def muscle_align(args):
                 aseqs = zip(aseqs1, aseqs2) 
 
                 ## append to somedic if not bad align
-                for i in range(len(anames)):
+                for i in xrange(len(anames)):
                     ## filter for max internal indels
                     intindels1 = aseqs[i][0].rstrip('-').lstrip('-').count('-')
                     intindels2 = aseqs[i][1].rstrip('-').lstrip('-').count('-')
-                    #if intindels1 <= data.paramsdict["max_Indels_locus"][0] & \
-                    #   intindels2 <= data.paramsdict["max_Indels_locus"][1]:
-                    if (intindels1 <= 5) and (intindels2 <= 5):
-                        stack.append("\n".join([anames[i], 
-                                        aseqs[i][0]+"nnnn"+aseqs[i][1]]))
+
+                    if (intindels1 <= maxindels) and (intindels2 <= maxindels):
+                        stack.append("{}\n{}nnnn{}".format(anames[i], aseqs[i][0], aseqs[i][1]))
+
                     else:
                         highindels += 1
                         badalign = 1
                         LOGGER.info("""
-                high indels: %s
-                1, 2: (%s, %s)
-                """, aseqs[i], intindels1, intindels2)
+                              high indels: %s
+                              1, 2, max: (%s, %s, %s)
+                              """, aseqs[i], intindels1, intindels2, maxindels)
 
             except IndexError:
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(data, string1)
+
                 ## Get left and right limits, no hits can go outside of this. 
                 ## This can save gbs overlap data significantly. 
                 if 'gbs' in data.paramsdict['datatype']:
-                    ## left side filter is the left limit of the seed, unless 
-                    ## there is a mixture of merged and non-merged reads. If 
-                    ## any reads are merged then the left limit is the left
-                    ## limit of a merged read.
 
-                    # ## if merged
-                    # if any(["_m1;s" in nam for nam in anames]):
-                    #     LOGGER.info("""
-                    #                 THIS IS A MERGE/NON_MERGE MATCH: 
-                    #                 %s""", aseqs)
-                    #     idxs = []
-                    #     for nam, seq in zip(anames, aseqs):
-                    #         if "_m1;s" in nam:
-                    #             idxs.append(\
-                    #           min([i for i, j in enumerate(seq) if j != "-"]))
+                    ## do not allow any indels left of seed's left side
+                    aseqs = np.array([list(i) for i in aseqs])
+                    leftlimit = max(0, np.min(np.where(aseqs[0] != "-")[0]))
 
-                    ## much simpler if no merged reads
-                    ## else:
-                    idxs = [i for i, j in enumerate(aseqs[0]) if j != "-"]
+                    ## right filter is the revcomped seq that goes least right
+                    isrev = np.array([i.split(";")[-1][0] == "-" for i in anames])
 
-                    ## apply left side filter
-                    if idxs:
-                        leftlimit = max(0, min(idxs))
-                        aseqs = [i[leftlimit:] for i in aseqs]
-                        #LOGGER.info('leftlimit %s', leftlimit)
+                    if np.sum(isrev):
+                        revd = aseqs[isrev, :]
+                        maxrev = [np.max(np.where(i != "-")[0]) for i in revd]
+                        rightlimit = np.min(maxrev)
+                    else:
+                        rightlimit = aseqs.shape[1]
 
-                    ## right side filter is the reverse seq that goes the least
-                    ## far to the right. 
-                    ## Get reverse seqs and their index (index, rseq)
-                    revs = [(i, aseqs[i]) for i in range(len(aseqs)) if \
-                            anames[i].split(";")[-1][0] == '-']
-                    ## get right side filter and remove if there's a bad match.
-                    idxs = []
-                    for ridx, rseq in revs:
-                        try:
-                            idxs.append(max(\
-                                [i for i, j in enumerate(rseq) if j != "-"]))
-                        except ValueError as _:
-                            LOGGER.debug("\
-                            Found chunk that contains a locus that's all "\
-                          +"indels. Throw it out and count it as filtered.")
-                            ## Remove the seq name from the names list, and 
-                            ## continue with the next iteration of the for loop,
-                            ## effectively drops the rseq. Use list comprehension
-                            ## to drop the idx'th element and then convert back to tuple
-                            anames = tuple([x for i, x in enumerate(anames) if i != ridx])
-                            aseqs = tuple([x for i, x in enumerate(aseqs) if i != ridx])
-                            continue
-                    if idxs:
-                        rightlimit = min(idxs)
-                        aseqs = [i[:rightlimit] for i in aseqs]
-                        #LOGGER.info('rightlimit %s', rightlimit)                    
+                    ## trim all ready down to the trimmed edge length
+                    aseqs = aseqs[:, leftlimit:rightlimit]
+                    allindels = np.all(aseqs == "-", axis=1)
+                    aseqs = aseqs[~allindels, :]
+                    anames = list(np.array(anames)[~allindels])
+
+                    ## if all seqs were trimmed then skip this loc
+                    if not anames:
+                        continue
+                    ## make seqs from array back into lists
+                    aseqs = [i.tostring() for i in aseqs]
 
                 badalign = 0
                 for i in range(len(anames)):
                     ## filter for max internal indels 
-                    intind = aseqs[i].rstrip('-').lstrip('-')
-                    ind1 = intind.count('-') <= \
-                                data.paramsdict["max_Indels_locus"][0]
-                    if ind1:
-                        stack.append("\n".join([anames[i], aseqs[i]]))
+                    intind = aseqs[i].rstrip('-').lstrip('-').count('-')
+                    if intind <= maxindels:
+                        stack.append("{}\n{}".format(anames[i], aseqs[i]))
                     else:
                         highindels += 1
                         badalign = 1
@@ -277,7 +243,7 @@ def muscle_align(args):
 
 def parsemuscle(data, out):
     """ 
-    parse muscle string output into two sorted lists. Sorts them first.
+    parse muscle string output into two *sorted* lists. 
     """
     ## remove '>' and split lines
     lines = out[1:].split("\n>")
@@ -305,13 +271,7 @@ def muscle_call(data, names, seqs):
     """
 
     ## make input string
-    ## if RAD data, add TGCAG anchor for right side muscle alignment.
-    #if data.paramsdict["datatype"] == 'rad':
-    #    inputstr = "\n".join([">{}\n{}TGCAG".format(i, j) for i, j in zip(names, seqs)])
-    ## need testing for whether anchor messes up other kinds of data which 
-    ## can have partial overlaps. So not anchoring others for now. 
-    #else:
-    inputstr = "\n".join([">{}\n{}".format(i, j) for i, j in zip(names, seqs)])
+    inputstr = "\n".join(["{}\n{}".format(i, j) for i, j in zip(names, seqs)])
     args = [ipyrad.bins.muscle, "-quiet"]
 
     ## increase gap penalty if reference region is included 
@@ -329,119 +289,126 @@ def muscle_call(data, names, seqs):
 
 
 
-def build_clusters(data, sample):
-    """ combines information from .utemp and .htemp files 
-    to create .clust files, which contain un-aligned clusters """
+def build_clusters(data, sample, maxindels):
+    """ 
+    Combines information from .utemp and .htemp files to create .clust files, 
+    which contain un-aligned clusters. Hits to seeds are only kept in the 
+    cluster if the number of internal indels is less than 'maxindels'. 
+    By default, we set maxindels=6 for this step (within-sample clustering).
+    """
 
     ## derepfile 
     derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
     ## vsearch results files
-    ufile = os.path.join(data.dirs.clusts, sample.name+".utemp")
-    htempfile = os.path.join(data.dirs.clusts, sample.name+".htemp")
+    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+    usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
+    hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
     ## create an output file to write clusters to        
-    clustfile = gzip.open(os.path.join(data.dirs.clusts,
-                          sample.name+".clust.gz"), 'wb')
-    sample.files["clusts"] = clustfile
+    sample.files.clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+    clustsout = gzip.open(sample.files.clusters, 'wb')
 
-    ## if .u files are present read them in as userout
-    try:
-        userout = open(ufile, 'rb').readlines()
-    except IOError:
-        inst = """
-    No clusters (.utemp hits) found for {}. If you are running preview mode and
-    the size of the truncated input file isn't big enough try increasing the 
-    size of <your_assembly>._hackersonly[\"preview_truncate_length\"
-    """.format(sample.name)
-        LOGGER.warn(inst)
-        raise IPyradError(inst)
+    ## Sort the uhandle file so we can read through matches efficiently
+    cmd = ["sort", "-k", "2", uhandle, "-o", usort]
+    proc = subprocess.Popen(cmd)
+    _ = proc.communicate()[0]
 
-    ## load derep reads into a dictionary
-    hits = {}  
-    ioderep = open(derepfile, 'rb')
-    dereps = itertools.izip(*[iter(ioderep)]*2)
-    for namestr, seq in dereps:
-        _, count = namestr.strip()[:-1].split(";size=")
-        hits[namestr] = [int(count), seq.strip()]
-    ioderep.close()
+    ## load ALL derep reads into a dictionary (this can be a few GB of RAM)
+    ## and is larger if names are larger. We are grabbing two lines at a time.
+    alldereps = {}
+    with open(derepfile, 'rb') as ioderep:
+        dereps = itertools.izip(*[iter(ioderep)]*2)
+        for namestr, seq in dereps:
+            nnn, sss = [i.strip() for i in namestr, seq]
+            alldereps[nnn[1:]] = sss
 
-    ## create dictionary of .utemp cluster hits
-    udic = {} 
-    for uline in userout:
-        uitems = uline.strip().split("\t")
-        ## if the seed is in udic
-        if ">"+uitems[1]+"\n" in udic:
-            ## append hit to udict
-            udic[">"+uitems[1]+'\n'].append([">"+uitems[0]+"\n", 
-                                            uitems[4],
-                                            uitems[5].strip(),
-                                            uitems[3]])
-        else:
-            ## write as seed
-            udic[">"+uitems[1]+'\n'] = [[">"+uitems[0]+"\n", 
-                                         uitems[4],
-                                         uitems[5].strip(),
-                                         uitems[3]]]
+    ## store observed seeds (this could count up to >million in bad data sets)
+    seedsseen = set()
 
-    ## map sequences to clust file in order
-    seqslist = [] 
-    count = 0
-    for key, values in udic.iteritems():
-        count += 1 
-        ## this is the seed. 
-        seedhit = hits[key][1]
-        seq = [key.strip()+"*\n"+seedhit]
+    ## Iterate through the usort file grabbing matches to build clusters
+    with open(usort, 'rb') as insort:
+        ## iterator, seed null, seqlist null
+        isort = iter(insort)
+        lastseed = 0
+        fseqs = []
+        seqlist = []
+        seqsize = 0
+        while 1:
+            ## grab the next line
+            try:
+                hit, seed, _, ind, ori, _ = isort.next().strip().split()
+            except StopIteration:
+                break
 
-        ## allow only N internal indels in hits to seed for within-sample clust
-        ## prior to alignment. Exclude read that match poorly. This improves 
-        ## alignments. Whole stack will be excluded after alignment if poor. 
-        for i in xrange(len(values)):
-            inserts = int(values[i][3])
-            if values[i][1] == "+":
-                fwdseq = hits[values[i][0]][1]
-                if inserts < 6:
-                    seq.append(values[i][0].strip()+"+\n"+fwdseq)
-                else:
-                    LOGGER.info("exc indbld: %s %s", inserts, fwdseq)
-            ## flip to the right orientation 
+            ## same seed, append match
+            if seed != lastseed:
+                seedsseen.add(seed)
+                ## store the last fseq, count it, and clear fseq
+                if fseqs:
+                    seqlist.append("\n".join(fseqs))
+                    seqsize += 1
+                    fseqs = []
+
+                ## occasionally write to file
+                if not seqsize % 10000:
+                    if seqlist:
+                        clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+                        ## reset list and counter
+                        seqlist = []
+
+                ## store the new seed on top of fseq
+                fseqs.append(">{}*\n{}".format(seed, alldereps[seed]))
+                lastseed = seed
+
+            ## add match to the seed
+            seq = alldereps[hit]
+            ## revcomp if orientation is reversed
+            if ori == "-":
+                seq = revcomp(seq)
+                #LOGGER.debug("REVCOMPED")
+            ## only save if not too many indels
+            if int(ind) <= maxindels:                
+                fseqs.append(">{}{}\n{}".format(hit, ori, seq))
             else:
-                revseq = comp(hits[values[i][0]][1][::-1])
-                if inserts < 6:
-                    seq.append(values[i][0].strip()+"-\n"+revseq)
-                else:
-                    LOGGER.info("exc indbld: %s %s", inserts, revseq)
+                LOGGER.info("filtered by maxindels: %s %s", ind, seq)
 
-        seqslist.append("\n".join(seq))
-        if count % 1000:
-            clustfile.write("\n//\n//\n".join(seqslist)+"\n")
-            seqslist = []
-            count = 0
+    ## write whatever is left over to the clusts file
+    if fseqs:
+        seqlist.append("\n".join(fseqs))
+    if seqlist:
+        clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
 
-    ## if udic is empty then this writes a blank line to the top of the file
-    ## and messes up writing the final clustS.gz
-    if seqslist:
-        clustfile.write("\n//\n//\n".join(seqslist)+"\n")
+    ## now write the seeds that had no hits. Make dict from htemp
+    with open(hhandle, 'rb') as iotemp:
+        nohits = itertools.izip(*[iter(iotemp)]*2)
+        seqlist = []
+        seqsize = 0
+        while 1:
+            try:
+                nnn, sss = [i.strip() for i in nohits.next()]
+            except StopIteration:
+                break
 
-    ## make Dict. from seeds (_temp files) 
-    iotemp = open(htempfile, 'rb')
-    invars = itertools.izip(*[iter(iotemp)]*2)
-    seedsdic = {k:v for (k, v) in invars}  
-    iotemp.close()
+            ## occasionally write to file
+            if not seqsize % 10000:
+                if seqlist:
+                    clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+                    ## reset list and counter
+                    seqlist = []
 
-    ## create a set for keys in I not in seedsdic
-    set1 = set(seedsdic.keys())   ## htemp file (no hits) seeds
-    set2 = set(udic.keys())       ## utemp file (with hits) seeds
-    diff = set1.difference(set2)  ## seeds in 'temp not matched to in 'u
-    if diff:
-        for i in list(diff):
-            clustfile.write("//\n//\n"+i.strip()+"*\n"+hits[i][1]+'\n')
-    #clustfile.write("//\n//\n\n")
-    clustfile.close()
-    del dereps
-    del userout
-    del udic
-    del seedsdic
+            ## append to list if new seed
+            if nnn[1:] not in seedsseen:
+                seqlist.append("{}*\n{}".format(nnn, sss))
+                seqsize += 1            
+
+    ## write whatever is left over to the clusts file
+    if seqlist:
+        clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+
+    ## close the file handle
+    clustsout.close()
+    del alldereps
 
 
 
@@ -481,7 +448,7 @@ def null_func(args):
 
 
 
-def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
+def apply_jobs(data, samples, ipyclient, noreverse, maxindels, force, preview):
     """ pass the samples to N engines to execute run_full on each.
 
     :param data: An Assembly object
@@ -554,7 +521,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     if data.paramsdict["assembly_method"] != "reference":
         steps["clust_and_build"] = {"printstr": "clustering       ",
                                     "function":clust_and_build, 
-                                    "extra_args":[noreverse, 1]}
+                                    "extra_args":[noreverse, maxindels, 1]}
 
     if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]: 
         steps["ref_muscle_chunker"] = {"printstr": "finalize mapping ",
@@ -573,13 +540,6 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                          "function":reconcat, 
                          "extra_args":[]}
 
-    ## Create threaded_view of engines by grouping only ids that are threaded
-    hostdict = get_threaded_view(ipyclient)
-    threaded_views = {}
-    for key, val in hostdict.items():
-        ## e.g., client.load_balanced_view([1,3])
-        threaded_views[key] = ipyclient.load_balanced_view(val)
-
     ## A single load-balanced view for FUNCs 3-4
     lbview = ipyclient.load_balanced_view()
     first_dependency = lbview.apply(os.getpid)
@@ -595,7 +555,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
     ## Roughly:
     ##  - Create the dependencies. In all cases except the first step, the task 
     ##      for the current sample is dependent on the state of the task for that
-    ##      sample from the prefious step. For the first step you just use a dummy
+    ##      sample from the previous step. For the first step you just use a dummy
     ##      dependency.
     ##  - Apply the function for the current step for each sample, pulling in any
     ##      extra args from the steps dictionary. Store the async_result for each
@@ -616,6 +576,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
             ######################
             if i == 0:
                 check_deps = first_dependency
+            
             else:
                 laststep = steps.items()[i-1][1]
                 if step == "reconcat":
@@ -623,6 +584,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                 else:
                     tmpids = laststep["async_results"][sample]
                 check_deps = Dependency(tmpids, failure=False, success=True)
+            
             with lbview.temp_flags(after=check_deps):
                 #######################################################
                 ## Call apply with our functions and args for this step
@@ -631,7 +593,7 @@ def apply_jobs(data, samples, ipyclient, noreverse, force, preview):
                     stepdict["async_results"][sample] = []
                     for j in range(10):
                         chunk = os.path.join(tmpdir, sample.name+"_chunk_{}.ali".format(j))
-                        stepdict["async_results"][sample].append(lbview.apply(muscle_align, [data, chunk]))
+                        stepdict["async_results"][sample].append(lbview.apply(muscle_align, [data, chunk, maxindels]))
                     all_aligns = list(itertools.chain(*stepdict["async_results"].values()))
                     stepdict["all_aligns"] = all_aligns
                 else:
@@ -830,6 +792,7 @@ def jobs_cleanup(data, samples, preview):
                 pass
 
 
+
 def declone_3rad(data, sample):
     """ 
     3rad uses random adapters to identify pcr duplicates. We will
@@ -897,7 +860,7 @@ def declone_3rad(data, sample):
         ## we will want to reopen it to read from it.
         tmp_outfile.close()
         ## Derep the data (adapters+seq)
-        derep_and_sort(data, sample, adapter_seqs_file.name,
+        derep_and_sort(data, adapter_seqs_file.name,
                         os.path.join(data.dirs.edits, tmp_outfile.name))
     
         ## Remove adapters from head of sequence and write out
@@ -955,7 +918,7 @@ def declone_3rad(data, sample):
 
 
 
-def derep_and_sort(data, sample, infile, outfile):
+def derep_and_sort(data, infile, outfile):
     """ 
     Dereplicates reads and sorts so reads that were highly replicated are at
     the top, and singletons at bottom, writes output to derep file. Paired
@@ -964,32 +927,28 @@ def derep_and_sort(data, sample, infile, outfile):
     dereplication that we need for 3rad (5/29/15 iao).
     """
 
-    LOGGER.info("in the real derep; %s", sample.name)
-    ## reverse complement clustering for some types    
+    strand = "plus"
     if "gbs" in data.paramsdict["datatype"]:
-        reverse = " -strand both "
-    else:
-        reverse = " "
+        strand = "both"    
 
     ## do dereplication with vsearch
-    cmd = ipyrad.bins.vsearch\
-         +" -derep_fulllength "+infile\
-         +reverse \
-         +" -output "+outfile\
-         +" -sizeout " \
-         +" -threads 1 "\
-         +" -fasta_width 0"
+    cmd = [ipyrad.bins.vsearch,
+            "-derep_fulllength", infile, 
+            "-strand", strand,
+            "-output", outfile,
+            "-threads", str(1),
+            "-fasta_width", str(0),
+            "-fastq_qmax", "100",
+            "-sizeout"]
     LOGGER.info(cmd)
 
     ## run vsearch
-    try:
-        LOGGER.info(cmd)
-        subprocess.call(cmd, shell=True,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError as inst:
-        LOGGER.error(inst)
-        raise IPyradError(inst)
+    proc = subprocess.Popen(cmd)
+    errmsg = proc.communicate()[0]
+    if proc.returncode:
+        LOGGER.error(errmsg)
+        raise IPyradWarningExit(errmsg)
+
 
 
 
@@ -1032,13 +991,18 @@ def concat_edits(data, sample):
 
 
 def cluster(data, sample, noreverse, nthreads):
-    """ calls vsearch for clustering. cov varies by data type, 
-    values were chosen based on experience, but could be edited by users """
-    ## get files
+    """ 
+    Calls vsearch for clustering. cov varies by data type, values were chosen
+    based on experience, but could be edited by users 
+    """
+
+    ## get the dereplicated reads 
     if "reference" in data.paramsdict["assembly_method"]:
         derephandle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
     else:
         derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+
+    ## create handles for the outfiles
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
@@ -1057,53 +1021,50 @@ def cluster(data, sample, noreverse, nthreads):
     ##    larger values for pairgbs where they should overlap near completely
     ##    small minsl and high query cov allows trimmed reads to match to untrim
     ##    seed for rad/ddrad/pairddrad. 
+    strand = "plus"
+    cov = 0.90
+    minsl = 0.5
     if data.paramsdict["datatype"] == "gbs":
-        reverse = " -strand both "
-        cov = " -query_cov .33 " 
-        minsl = " 0.33"
+        strand = "both"
+        cov = 0.33
+        minsl = 0.33
     elif data.paramsdict["datatype"] == 'pairgbs':
-        reverse = "  -strand both "
-        cov = " -query_cov .75 " 
-        minsl = " 0.75"  
-    else:  ## rad, ddrad
-        reverse = " -leftjust "
-        cov = " -query_cov .90 "
-        minsl = " 0.5"
+        strand = "both"
+        cov = 0.75
+        minsl = 0.75
 
-    ## If this value is not null (which is the default) then optionally
-    ## override query cov
+    ## If this value is not null (which is the default) then override query cov
     if data._hackersonly["query_cov"]:
         cov = " -query_cov "+str(data._hackersonly["query_cov"])
         assert data._hackersonly["query_cov"] <= 1, "query_cov must be <= 1.0"
 
-    ## override reverse clustering option
-    if noreverse:
-        reverse = " -leftjust "
-        LOGGER.warn(noreverse, "not performing reverse complement clustering")
-
     ## get call string
-    cmd = ipyrad.bins.vsearch+\
-        " -cluster_smallmem "+derephandle+\
-        reverse+\
-        cov+\
-        " -id "+str(data.paramsdict["clust_threshold"])+\
-        " -userout "+uhandle+\
-        " -userfields query+target+id+gaps+qstrand+qcov"+\
-        " -maxaccepts 1"+\
-        " -maxrejects 0"+\
-        " -minsl "+str(minsl)+\
-        " -fulldp"+\
-        " -threads "+str(nthreads)+\
-        " -usersort "+\
-        " -notmatched "+temphandle+\
-        " -fasta_width 0"
+    cmd = [ipyrad.bins.vsearch, 
+           "-cluster_smallmem", derephandle, 
+           "-strand", strand, 
+           "-query_cov", str(cov), 
+           "-id", str(data.paramsdict["clust_threshold"]), 
+           "-minsl", str(minsl), 
+           "-userout", uhandle, 
+           "-userfields", "query+target+id+gaps+qstrand+qcov", 
+           "-maxaccepts", "1", 
+           "-maxrejects", "0", 
+           "-threads", str(nthreads), 
+           "-notmatched", temphandle, 
+           "-fasta_width", "0", 
+           "-fastq_qmax", "100", 
+           "-fulldp", 
+           "-usersort"]
+
+    if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
+        cmd += ["-leftjust"]
 
     ## run vsearch
     try:
         LOGGER.debug("%s", cmd)
-        subprocess.call(cmd, shell=True,
-                             stderr=subprocess.STDOUT,
-                             stdout=subprocess.PIPE)
+        proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,
+                                     stdout=subprocess.PIPE)
+        proc.communicate()
     except subprocess.CalledProcessError as inst:
         sys.exit("Error in vsearch: \n{}\n{}".format(inst, subprocess.STDOUT))
 
@@ -1240,12 +1201,12 @@ def derep_concat_split(args):
     ## remove all identical seqs with identical random i5 adapters.
     if "3rad" in data.paramsdict["datatype"]:
         declone_3rad(data, sample)
-        derep_and_sort(data, sample,
+        derep_and_sort(data,
                 os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),
                 os.path.join(data.dirs.edits, sample.name+"_derep.fastq"))
     else:
         ## convert fastq to fasta, then derep and sort reads by their size
-        derep_and_sort(data, sample, sample.files.edits[0][0],
+        derep_and_sort(data, sample.files.edits[0][0],
                 os.path.join(data.dirs.edits, sample.name+"_derep.fastq"))
     
 
@@ -1255,7 +1216,7 @@ def clust_and_build(args):
     cluster and build clusters
     """
     ## parse args
-    data, sample, noreverse, nthreads = args
+    data, sample, noreverse, maxindels, nthreads = args
     LOGGER.debug("Entering clust_and_build - {}".format(sample))
 
     ## cluster derep fasta files in vsearch 
@@ -1263,7 +1224,7 @@ def clust_and_build(args):
 
     ## cluster_rebuild. Stop and print warning if no .utemp hits
     try:
-        build_clusters(data, sample)
+        build_clusters(data, sample, maxindels)
         ## record that it passed the clustfile build
         return 1
 
@@ -1287,7 +1248,7 @@ def cleanup_and_die(async_results):
 
 
 
-def run(data, samples, noreverse, force, preview, ipyclient):
+def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
@@ -1321,7 +1282,7 @@ def run(data, samples, noreverse, force, preview, ipyclient):
 
     else:
         ## arguments to apply_jobs, inst catches exceptions
-        args = [data, subsamples, ipyclient, noreverse, force, preview]
+        args = [data, subsamples, ipyclient, noreverse, maxindels, force, preview]
         inst = ""
 
         ## wrap job in try/finally to ensure cleanup
@@ -1335,14 +1296,29 @@ def run(data, samples, noreverse, force, preview, ipyclient):
 
 
 
+
+
+
+### GLOBALS
+
+
+NO_UHITS_ERROR = """\
+    No clusters (.utemp hits) found for {}. If you are running preview mode and
+    the size of the truncated input file isn't big enough try increasing the 
+    size of <your_assembly>._hackersonly[\"preview_truncate_length\"
+    """
+    
+
+
 if __name__ == "__main__":
     ## test...
 
     ## reload autosaved data. In case you quit and came back 
-    DATA = ipyrad.load_json("cli/cli.json")
+    JSONPATH = "/home/deren/Documents/ipyrad/tests/cli/cli.json"
+    DATA = ipyrad.load_json(JSONPATH)
 
     ## run step 6
-    DATA.step3(force=True)
+    DATA.run('3', force=True)
 
     # DATA = Assembly("test")
     # DATA.get_params()
@@ -1351,9 +1327,6 @@ if __name__ == "__main__":
     # DATA.get_params()
     # print(DATA.log)
     # DATA.step3()
-    #PARAMS = {}
-    #FASTQS = []
-    #QUIET = 0
-    #run(PARAMS, FASTQS, QUIET)
+
 
     
