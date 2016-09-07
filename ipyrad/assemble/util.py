@@ -291,6 +291,7 @@ def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
           +" --fastq_minovlen 20 " \
           +" --fastq_maxdiffs 4 " \
           +" --label_suffix _m1" \
+          +" --fastq_qmax 1000"\
           +" --threads 0"
 
         try:

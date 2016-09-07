@@ -121,9 +121,12 @@ def muscle_align(args):
     LOGGER.debug("aligning chunk %s", chunk)
 
     ## data are already chunked, read in the whole thing. 
-    with open(chunk, 'rb') as infile:
-        clusts = infile.read().split("//\n//\n")
-
+    try:
+        with open(chunk, 'rb') as infile:
+            clusts = infile.read().split("//\n//\n")
+    except IOError:
+        LOGGER.error("Found chunk that doesn't exist - {}".format(chunk))
+        return 0
     ## if no clusters then this chunk was empty (there are few clusts)
     if not clusts[0]:
         return 0
@@ -938,7 +941,7 @@ def derep_and_sort(data, infile, outfile):
             "-output", outfile,
             "-threads", str(1),
             "-fasta_width", str(0),
-            "-fastq_qmax", "100",
+            "-fastq_qmax", "1000",
             "-sizeout"]
     LOGGER.info(cmd)
 

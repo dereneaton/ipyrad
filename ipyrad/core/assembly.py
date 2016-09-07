@@ -1434,6 +1434,14 @@ def paramschecker(self, param, newvalue):
             if os.path.exists(expandpath):
                 #expandpath = "./"+expandpath
                 expandpath = expander(expandpath)
+        ## Forbid spaces in path names
+        if " " in expandpath:
+            raise IPyradWarningExit("""
+    Error: Your project_dir contains a directory with a space in the name.
+    This can cause all kinds of funny problems so please rename this
+    directory and remove the space. Try replacing the space with an underscore.
+    You entered: {}
+    """.format(expandpath))
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath
 

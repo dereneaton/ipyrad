@@ -278,7 +278,7 @@ def optim(args):
     bfreqs = get_frequencies(stacked)
     #LOGGER.debug(bfreqs)
     if np.isnan(bfreqs).any():
-        raise IPyradError("Caught sample with bad stack - {} {}".\
+        LOGGER.error("Caught sample with bad stack - {} {}".\
                           format(sample.name, bfreqs))
 
     ## reshape to concatenate all site rows
@@ -380,6 +380,9 @@ def submit(data, submitted_args, ipyclient):
     fwait = 0
     error = 0
 
+    ## List to store failed samples for reporting
+    failed = []
+
     ## each job is submitted to cleanup as it finishes
     allwait = len(jobs)
     try:
@@ -404,6 +407,7 @@ def submit(data, submitted_args, ipyclient):
                         meta = jobs[sname].metadata
                         ## if not done do nothing, if failure print error
                         LOGGER.error('  sample %s did not finish', sname)
+                        failed.append(sname)
                         if meta.error:
                             LOGGER.error("""\
                         stdout: %s
@@ -423,7 +427,12 @@ def submit(data, submitted_args, ipyclient):
         progressbar(20, 20, 
                 " inferring [H, E]      | {}".format(elapsed))
         print("")
-
+        if failed:
+            msg = """
+    The following samples failed joint estimation, probably because 
+    of low read depth. You may continue steps 5-7 but these samples
+    will be ignored:\n\t{}""".format(failed)
+            print(msg)
 
     except KeyboardInterrupt as kbt:
         ## reraise kbt after cleanup
