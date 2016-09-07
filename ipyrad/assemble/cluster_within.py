@@ -418,10 +418,10 @@ def build_clusters(data, sample):
                     LOGGER.info("exc indbld: %s %s", inserts, revseq)
 
         seqslist.append("\n".join(seq))
-        if count % 1000:
-            clustfile.write("\n//\n//\n".join(seqslist)+"\n")
-            seqslist = []
-            count = 0
+        #if count % 1000:
+        #    clustfile.write("\n//\n//\n".join(seqslist)+"\n")
+        #    seqslist = []
+        #    count = 0
 
     ## This will get skipped but the part below assumes there is already
     ## at least one seq in the file (prepends the // sep)

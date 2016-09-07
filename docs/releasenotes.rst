@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.3.41
+------
+- Reverting a change that broke cluster_within
+
 0.3.40
 ------
 - Set vsearch to ignore max phred q score on merging pairs
