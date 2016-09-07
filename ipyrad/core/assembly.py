@@ -905,7 +905,7 @@ class Assembly(object):
 
 
 
-    def _step3func(self, samples, noreverse, force, preview, ipyclient):
+    def _step3func(self, samples, noreverse, maxindels, force, preview, ipyclient):
         """ hidden wrapped function to start step 3 """
         ## print headers
         if self._headers:
@@ -937,7 +937,7 @@ class Assembly(object):
                 return
 
         ## run the step function
-        assemble.cluster_within.run(self, samples, noreverse, 
+        assemble.cluster_within.run(self, samples, noreverse, maxindels,
                                     force, preview, ipyclient)
 
 
@@ -1151,8 +1151,8 @@ class Assembly(object):
                                 preview=preview, ipyclient=ipyclient)
 
             if '3' in steps:
-                self._step3func(samples=None, noreverse=0, force=force,
-                                preview=preview, ipyclient=ipyclient)
+                self._step3func(samples=None, noreverse=0, force=force, 
+                             maxindels=8, preview=preview, ipyclient=ipyclient)
 
             if '4' in steps:
                 self._step4func(samples=None, subsample=2000, force=force,
