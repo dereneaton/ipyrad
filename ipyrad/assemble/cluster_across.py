@@ -631,6 +631,10 @@ def multicat(data, samples, ipyclient):
             " building database     | {}".format(elapsed))
 
         if not cleaning.keys():
+            # print final progress
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(20, 20,
+                " building database     | {}".format(elapsed))
             break
         else:
             time.sleep(0.1)
