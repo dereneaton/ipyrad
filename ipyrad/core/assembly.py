@@ -1603,20 +1603,27 @@ def paramschecker(self, param, newvalue):
         if int(newvalue) < 5:
             raise IPyradError("""
     mindepth statistical cannot be set < 5. Use mindepth_majrule.""")
-        ## do not allow majrule to be > statistical
-        elif int(newvalue) < self.paramsdict["mindepth_majrule"]:
-            raise IPyradError("""
-    mindepth statistical cannot be less than mindepth_majrule""")
         else:
+            ## do not allow majrule to be > statistical
+            if int(newvalue) < self.paramsdict["mindepth_majrule"]:
+                msg = """
+    NB: mindepth_statistical may not be < mindepth_majrule.
+        Forcing mindepth_majrule = mindepth_statistical = {}""".format(newvalue)
+                print(msg)
+                self.paramsdict['mindepth_majrule'] = int(newvalue)
             self.paramsdict['mindepth_statistical'] = int(newvalue)
+
             ## TODO: calculate new clusters_hidepth if passed step3
 
     elif param == 'mindepth_majrule':
         assert isinstance(int(newvalue), int), \
             "mindepth_majrule must be an integer."
         if int(newvalue) > self.paramsdict["mindepth_statistical"]:
-            print(\
-        "error: mindepth_majrule cannot be > mindepth_statistical")
+            msg = """ 
+    NB: mindepth_majrule cannot be > mindepth_statistical.
+        Forcing mindepth_majrule = mindepth_statistical = {}"""\
+        .format(self.paramsdict["mindepth_statistical"])
+            self.paramsdict['mindepth_majrule'] = self.paramsdict["mindepth_statistical"]
         else:
             ## TODO: calculate new clusters_hidepth if passed step3
             self.paramsdict['mindepth_majrule'] = int(newvalue)
