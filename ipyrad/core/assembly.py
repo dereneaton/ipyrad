@@ -1688,7 +1688,7 @@ def paramschecker(self, param, newvalue):
         for i in range(2):
             try:
                 newvalue[i] = int(newvalue[i])
-            except ValueError:
+            except (ValueError, IndexError):
                 pass
         newvalue = tuple(newvalue)                
         ## make sure we have a nice tuple
