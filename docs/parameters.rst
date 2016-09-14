@@ -516,7 +516,7 @@ Affected steps = 7. Example entries to params.txt
 Maximum number of SNPs allowed in a final locus.
 This can remove potential effects of poor alignments in repetitive regions
 in a final data set by excluding loci with more than N snps.
-The default is very high (100). Setting lower values is likely only helpful
+The default is 20, 20. Setting lower values is likely only helpful
 for extra filtering of very messy data sets. For single end data only the first
 value is used, for paired data the first value affects R1s and the second
 value affects R2s.
