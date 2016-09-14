@@ -465,13 +465,13 @@ The maximum number of uncalled bases allowed in consens seqs. If a
 base call cannot be made confidently (statistically) then it is called
 as ambiguous (N). You do not want to allow too many Ns in consensus reads
 or it will affect their ability to cluster with consensus reads from other
-Samples, and it may represent a poor alignment.
+Samples, and it may represent a poor alignment. Default is 2.
 
 Affected steps = 5. Example entries to params.txt
 
 .. parsed-literal::
 
-    3                ## [19] allow max of 3 Ns in a consensus seq
+    2                ## [19] allow max of 2 Ns in a consensus seq
     5                ## [19] allow max of 5 Ns in a consensus seq
 
 
