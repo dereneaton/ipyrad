@@ -1208,7 +1208,19 @@ class Assembly(object):
                     ## elif API, stop jobs and clean queue but don't close
                     else:
                         ipyclient.abort()
-                        ipyclient.purge_everything()
+                        ## purge fails if jobs are still running. We could do 
+                        ## a wait call, but what if its a really long running 
+                        ## job?. We could do os.kill, but that also kills the 
+                        ## engines. it seems there is a shutdown function in 
+                        ## the works that allows for engine restart, but its
+                        ## not available yet. This is problem for the API. 
+                        if not ipyclient.outstanding:
+                            ipyclient.purge_everything()
+                        else:
+                            ## nanny: kill the engines left running, report 
+                            ## that some engines were killed.
+                            pass
+
             
             ## if exception in close and save, print and ignore
             except Exception as inst2:
