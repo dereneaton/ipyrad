@@ -6,6 +6,7 @@ from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=W0212
 # pylint: disable=W0142
+# pylint: disable=C0301
 
 import os
 import gzip
@@ -16,6 +17,7 @@ import datetime
 import itertools
 import cPickle as pickle
 import numpy as np
+import subprocess as sps
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.util import *
 from collections import defaultdict, Counter
@@ -869,34 +871,48 @@ def zcat_make_temps(args):
 
     ## split args
     data, raws, num, tmpdir, optim = args
+    tmpdir = os.path.realpath(tmpdir)
     #LOGGER.info("zcat is using optim = %s", optim)
 
-    ## is it gzipped
-    cat = ["cat"]
+    ## read it, is it gzipped?
+    catcmd = ["cat"]
     if raws[0].endswith(".gz"):
-        cat = ["gunzip", "-c"]
+        catcmd = ["gunzip", "-c"]
+
+    ## get reading commands for r1s, r2s
+    cmd1 = catcmd + [raws[0]]
+    cmd2 = catcmd + [raws[1]]
+
+    ## second command splits and writes with name prefix
+    cmd3 = ["split", "-a", "4", "-l", str(int(optim)), "-", 
+            os.path.join(tmpdir, "chunk1_"+str(num)+"_")]
+    cmd4 = ["split", "-a", "4", "-l", str(int(optim)), "-", 
+            os.path.join(tmpdir, "chunk2_"+str(num)+"_")]
 
     ### run splitter
     ### The -a flag tells split how long the suffix for each split file
     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
     ### will have 26^4 possible tmp file names.
-    tmpdir = os.path.realpath(tmpdir)
-    cmd1 = subprocess.Popen(cat + [raws[0]], stdout=subprocess.PIPE)
-    cmd2 = subprocess.Popen(["split", "-a", "4", "-l", str(int(optim)),
-                             "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")],
-                             stdin=cmd1.stdout)
-    cmd1.stdout.close()
-    cmd2.wait()
+    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
+    res = proc3.communicate(proc1.stdout.read())[0]
+    proc1.stdout.close()
+    if proc3.returncode:
+        raise IPyradWarningExit(" error in %s: %s", cmd3, res)
+
+    ## grab output handles
     chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
     chunks1.sort()
 
     if "pair" in data.paramsdict["datatype"]:
-        cmd1 = subprocess.Popen(cat + [raws[1]], stdout=subprocess.PIPE)
-        cmd2 = subprocess.Popen(["split", "-a", "4", "-l", str(int(optim)),
-                             "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")],
-                             stdin=cmd1.stdout)
-        cmd1.stdout.close()
-        cmd2.wait()
+        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
+        res = proc4.communicate(proc2.stdout.read())[0]
+        if proc4.returncode:
+            raise IPyradWarningExit(" error in %s: %s", cmd4, res)
+        proc2.stdout.close()
+
+        ## grab output handles
         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
         chunks2.sort()
     
