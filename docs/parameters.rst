@@ -466,6 +466,8 @@ base call cannot be made confidently (statistically) then it is called
 as ambiguous (N). You do not want to allow too many Ns in consensus reads
 or it will affect their ability to cluster with consensus reads from other
 Samples, and it may represent a poor alignment. Default is 5, 5.
+For single end data only the first value is used, for paired data the first
+value affects R1s and the second value affects R2s.
 
 Affected steps = 5. Example entries to params.txt
 
@@ -481,7 +483,9 @@ Affected steps = 5. Example entries to params.txt
 --------------------
 The maximum number of heterozygous bases allowed in consens seqs (R1, R2).
 This filter helps to remove poor alignments which will tend to have an
-excess of Hs. Default is 8, 8
+excess of Hs. Default is 8, 8.
+For single end data only the first value is used, for paired data the first
+value affects R1s and the second value affects R2s.
 
 Affected steps = 5. Example entries to params.txt
 
