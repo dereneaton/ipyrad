@@ -461,34 +461,34 @@ Affected steps = 4, 7. Example entries to params.txt
 
 19. max_Ns_consens:
 --------------------
-The maximum number of uncalled bases allowed in consens seqs. If a
+The maximum number of uncalled bases allowed in consens seqs (R1, R2). If a
 base call cannot be made confidently (statistically) then it is called
 as ambiguous (N). You do not want to allow too many Ns in consensus reads
 or it will affect their ability to cluster with consensus reads from other
-Samples, and it may represent a poor alignment. Default is 2.
+Samples, and it may represent a poor alignment. Default is 5, 5.
 
 Affected steps = 5. Example entries to params.txt
 
 .. parsed-literal::
 
     2                ## [19] allow max of 2 Ns in a consensus seq
-    5                ## [19] allow max of 5 Ns in a consensus seq
+    5, 5             ## [19] allow max of 5 Ns in a consensus seq (R1, R2)
 
 
 .. _max_Hs_consens:
 
 20. max_Hs_consens:
 --------------------
-The maximum number of heterozygous bases allowed in consens seqs.
+The maximum number of heterozygous bases allowed in consens seqs (R1, R2).
 This filter helps to remove poor alignments which will tend to have an
-excess of Hs.
+excess of Hs. Default is 8, 8
 
 Affected steps = 5. Example entries to params.txt
 
 .. parsed-literal::
 
     2                ## [20] allow max of 2 Hs in a consensus seq
-    8                ## [20] allow max of 8 Hs in a consensus seq
+    8, 8             ## [20] allow max of 8 Hs in a consensus seq (R1, R2)
 
 
 .. _min_samples_locus:
