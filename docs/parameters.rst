@@ -557,7 +557,9 @@ Affected steps = 7. Example entries to params.txt
 Maximum number (or proportion) of shared polymorphic sites in a locus.
 This option is used to detect potential paralogs, as a shared heterozygous
 site across many samples likely represents clustering of paralogs with a
-fixed difference rather than a true heterozygous site.
+fixed difference rather than a true heterozygous site. Default is 0.5.
+For single end data only the first value is used, for paired data the first
+value affects R1s and the second value affects R2s.
 
 Affected steps = 7. Example entries to params.txt
 
