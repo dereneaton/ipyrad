@@ -13,7 +13,7 @@ import sys
 import socket
 import tempfile
 import itertools
-import subprocess
+import subprocess as sps
 import ipyrad 
 from collections import defaultdict
 
@@ -227,11 +227,12 @@ def fullcomp(seq):
 
 
 
-def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
+def merge_pairs(data, two_files, merged_out, revcomp, merge):
     """ 
-    Merge PE reads. Takes in a tuple of unmerged files and the file to merge
-    to and returns the file the number of reads that were 
-    merged (overlapping). If merge==0 then only concat pairs, no merging.
+    Merge PE reads. Takes in a list of unmerged files [r1, r2] and the 
+    filehandle to write merged data to, and it returns the number of reads 
+    that were merged (overlapping). If merge==0 then only concat pairs (nnnn), 
+    no merging in vsearch. 
 
     If merge==1 merge_pairs() will return the number of pairs successfully
     merged, if merge==0 it will return -1.
@@ -244,15 +245,16 @@ def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
     ## Return the number of merged pairs
     nmerged = -1
 
-    ## Check input files
-    for f in files_to_merge[0]:
-        if not os.path.exists(f):
-            raise IPyradWarningExit("    Attempting to merge file that "\
-                                        "doesn't exist - {}.".format(f))
+    ## Check input files from inside list-tuple [(r1, r2)]
+    for fhandle in two_files[0]:
+        print(fhandle)
+        if not os.path.exists(fhandle):
+            raise IPyradWarningExit("""
+    Attempting to merge a file that doesn't exist - {}.""".format(fhandle))
 
     ## If it already exists, clean up the old merged file
-    if os.path.exists(merged_file):
-        os.remove(merged_file)
+    if os.path.exists(merged_out):
+        os.remove(merged_out)
 
     ## if merge then catch nonmerged in a separate file
     if merge:
@@ -262,12 +264,11 @@ def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
         nonmerged2 = tempfile.NamedTemporaryFile(mode='wb', 
                                             dir=data.dirs.edits,
                                             suffix="_nonmerged_R2_.fastq").name
+
     ## if not merging then the nonmerged reads will come from the normal edits
     else:
-        nonmerged1 = files_to_merge[0][0]
-        nonmerged2 = files_to_merge[0][1]
-
-    print("nonmerged 1/2 - {} / {}".format(nonmerged1, nonmerged2))
+        nonmerged1 = two_files[0][0]
+        nonmerged2 = two_files[0][1]
 
     ## get the maxn and minlen values
     try:
@@ -278,36 +279,38 @@ def merge_pairs(data, files_to_merge, merged_file, revcomp, merge):
 
     ## If we are actually mergeing and not just joining then do vsearch
     if merge:
-        cmd = ipyrad.bins.vsearch \
-          +" --fastq_mergepairs "+files_to_merge[0][0] \
-          +" --reverse "+files_to_merge[0][1] \
-          +" --fastqout "+merged_file \
-          +" --fastqout_notmerged_fwd "+nonmerged1 \
-          +" --fastqout_notmerged_rev "+nonmerged2 \
-          +" --fasta_width 0 " \
-          +" --fastq_allowmergestagger " \
-          +" --fastq_minmergelen "+minlen \
-          +" --fastq_maxns "+str(maxn) \
-          +" --fastq_minovlen 20 " \
-          +" --fastq_maxdiffs 4 " \
-          +" --label_suffix _m1" \
-          +" --fastq_qmax 1000"\
-          +" --threads 0"
+        cmd = [ipyrad.bins.vsearch, 
+               "--fastq_mergepairs", two_files[0][0],
+               "--reverse", two_files[0][1], 
+               "--fastqout", merged_out, 
+               "--fastqout_notmerged_fwd", nonmerged1, 
+               "--fastqout_notmerged_rev", nonmerged2, 
+               "--fasta_width", "0", 
+               "--fastq_minmergelen", minlen, 
+               "--fastq_maxns", str(maxn), 
+               "--fastq_minovlen", "20", 
+               "--fastq_maxdiffs", "4", 
+               "--label_suffix", "_m1", 
+               "--fastq_qmax", "1000", 
+               "--threads", "0", 
+               "--fastq_allowmergestagger"]
 
-        try:
-            subprocess.check_call(cmd, shell=True,
-                                       stderr=subprocess.STDOUT,
-                                       stdout=subprocess.PIPE)
-        except subprocess.CalledProcessError as inst:
-            LOGGER.error("  Error in merging pairs: \n({}).".format(inst))
-            IPyradWarningExit("  Error in merging pairs: \n({}).".format(inst))
+        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+        res = proc.communicate()[0]
+        if proc.returncode:
+            LOGGER.error("Error: %s %s", cmd, res)
+            #IPyradWarningExit("  Error in merging pairs:\n %s\n%s", cmd, res)
+            data1 = open(two_files[0][0], 'r').read()
+            data2 = open(two_files[0][1], 'r').read()
+            LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s", 
+                         two_files, merged_out, data1, data2)
 
         ## record how many read pairs were merged
-        with open(merged_file, 'r') as tmpf:
+        with open(merged_out, 'r') as tmpf:
             nmerged = len(tmpf.readlines()) // 4
 
     ## Combine the unmerged pairs and append to the merge file
-    with open(merged_file, 'ab') as combout:
+    with open(merged_out, 'ab') as combout:
         ## read in paired end read files"
         ## create iterators to sample 4 lines at a time
         fr1 = open(nonmerged1, 'rb')
