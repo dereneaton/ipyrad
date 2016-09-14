@@ -530,7 +530,7 @@ Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    20, 100             ## [22] allow max of 20 SNPs at a single-end locus.
+    20                  ## [22] allow max of 20 SNPs at a single-end locus.
     20, 30              ## [22] allow max of 20 and 30 SNPs in paired locus.
 
 .. _max_Indels_locus:
@@ -539,6 +539,7 @@ Affected steps = 7. Example entries to params.txt
 ---------------------
 The maximum number of Indels allowed in a final locus. This helps to filter
 out poor final alignments, particularly for paired-end data.
+The default is 8,8.
 For single end data only the first value is used,
 for paired data the first value affects R1s and the second value affects R2s.
 
@@ -546,7 +547,7 @@ Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    5, 5             ## [23] allow max of 5 indels at a single-end locus.
+    5                ## [23] allow max of 5 indels at a single-end locus.
     5, 10            ## [23] allow max of 5 and 10 indels in paired locus.
 
 .. _max_shared_Hs_locus:
