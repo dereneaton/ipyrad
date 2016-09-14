@@ -40,6 +40,7 @@ requirements:
     - mpi4py
     - numpy >=1.7
     - bitarray
+    - networkx
 
 about:
   home: http://github.com/dereneaton/ipyrad
