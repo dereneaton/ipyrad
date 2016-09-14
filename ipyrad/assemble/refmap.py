@@ -228,10 +228,11 @@ def mapreads(data, sample, nthreads):
     ## Running cmd3 pulls mapped BAM from pipe and writes to 
     ## ref_mapping/sname.mapped-sorted.bam. 
     ## Because proc2 pipes to proc3 we just communicate this to run both.
-    proc3 = sps.Popen(cmd3, stdin=proc2.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[0]
     if proc3.returncode:
         raise IPyradWarningExit(error3)
+    proc2.stdout.close()
 
     ## Later we're gonna use samtools to grab out regions using 'view', and to
     ## do that we need it to be indexed. Let's index it now. 
@@ -446,10 +447,10 @@ def check_insert_size(data, sample):
     cmd1 = [ipyrad.bins.samtools, "stats", sample.files.mapped_reads]
     cmd2 = ["grep", "SN"]
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
+    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
 
     ## get piped result
-    res = proc2.communicate(proc1.stdout.read())[0]
+    res = proc2.communicate()[0]
 
     ## raise exception on failure and do cleanup
     if proc2.returncode:
@@ -538,8 +539,8 @@ def bedtools_merge(data, sample):
     ## pipe output from bamtobed into merge
     LOGGER.info("stdv: bedtools merge cmds: %s %s", cmd1, cmd2)
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
-    result = proc2.communicate(proc1.stdout.read())[0]
+    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
+    result = proc2.communicate()[0]
     proc1.stdout.close()
 
     ## check for errors and do cleanup
@@ -623,8 +624,8 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
 
         ## run commands, pipe 1 -> 2, then cleanup
         proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
-        res = proc2.communicate(proc1.stdout.read())[0]
+        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
+        res = proc2.communicate()[0]
         if proc2.returncode:
             raise IPyradWarningExit("error {}: {}".format(cmd2, res))
         proc1.stdout.close()

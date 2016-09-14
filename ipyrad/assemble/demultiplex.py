@@ -894,9 +894,15 @@ def zcat_make_temps(args):
     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
     ### will have 26^4 possible tmp file names.
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
-    res = proc3.communicate(proc1.stdout.read())[0]
-    proc1.stdout.close()
+    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
+
+    ## wrap the actual call so we can kill it if anything goes awry
+    try:
+        res = proc3.communicate()[0]
+        proc1.stdout.close()
+    except KeyboardInterrupt:
+        proc3.kill()
+
     if proc3.returncode:
         raise IPyradWarningExit(" error in %s: %s", cmd3, res)
 
@@ -906,11 +912,17 @@ def zcat_make_temps(args):
 
     if "pair" in data.paramsdict["datatype"]:
         proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=sps.PIPE)
-        res = proc4.communicate(proc2.stdout.read())[0]
+        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+
+        ## wrap the call so we can kill it if interrupted
+        try:
+            res = proc4.communicate()[0]
+            proc2.stdout.close()
+        except KeyboardInterrupt:
+            proc4.kill()
+
         if proc4.returncode:
             raise IPyradWarningExit(" error in %s: %s", cmd4, res)
-        proc2.stdout.close()
 
         ## grab output handles
         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
