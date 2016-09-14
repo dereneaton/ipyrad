@@ -261,7 +261,7 @@ kind of data, simply list all the restriction overhangs for all your cutters.
 ---------------------
 During step 2 low quality base calls are converted to Ns, and reads with more
 than some number of low quality base calls are excluded. The default value for 
-`max_low_qual_bases` is 6. Allowing too many Ns in sequences will reduce the 
+`max_low_qual_bases` is 5. Allowing too many Ns in sequences will reduce the 
 likelihood that homologous reads cluster together, so I do not recommend 
 increasing this value above the number of allowed differences between reads
 based on the `clust_threshold` and sequence length. 
@@ -271,7 +271,7 @@ Affected steps = 2. Example entries to params.txt:
 .. code-block:: bash
     
     0                      ## [9] allow zero low quality bases in a read
-    6                      ## [9] allow up to six low quality bases in a read
+    5                      ## [9] allow up to five low quality bases in a read
 
 
 .. _phred_Qscore_offset:
