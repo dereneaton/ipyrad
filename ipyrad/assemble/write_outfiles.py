@@ -22,6 +22,7 @@ import itertools
 import datetime
 import shutil
 import numba
+import copy
 import time
 import glob
 import gzip
@@ -363,13 +364,14 @@ def filter_all_clusters(data, samples, ipyclient):
         tmphet = glob.glob(os.path.join(chunkdir, "hetf.*.npy"))
         tmpmin = glob.glob(os.path.join(chunkdir, "minf.*.npy"))
         tmpedg = glob.glob(os.path.join(chunkdir, "edgf.*.npy"))
-        tmppld = glob.glob(os.path.join(chunkdir, "pldf.*.npy"))        
+        tmppld = glob.glob(os.path.join(chunkdir, "pldf.*.npy"))
+        tmpind = glob.glob(os.path.join(chunkdir, "indf.*.npy"))
 
         ## sort array files within each group
         arrdict = OrderedDict([
             ('snp', tmpsnp), ('het', tmphet),
             ('min', tmpmin), ('edg', tmpedg), 
-            ('pld', tmppld)])
+            ('pld', tmppld), ('ind', tmpind)])
         for arrglob in arrdict.values():
             arrglob.sort(key=lambda x: int(x.rsplit(".")[-2]))
 
@@ -378,9 +380,9 @@ def filter_all_clusters(data, samples, ipyclient):
         io5 = h5py.File(data.database, 'r+')
         superfilter = np.zeros(io5["filters"].shape, io5["filters"].dtype)
 
-        ## iterate across filter types (dups & indels are already filled)
+        ## iterate across filter types (dups is already filled)
         ## we have [4,4] b/c minf and edgf both write to minf
-        for fidx, ftype in zip([2, 3, 4, 4, 5], arrdict.keys()):
+        for fidx, ftype in zip([2, 3, 4, 4, 5, 1], arrdict.keys()):
             ## fill in the edgefilters
             for ffile in arrdict[ftype]:
                 ## grab a file and get it's slice            
@@ -734,14 +736,7 @@ def init_arrays(data):
     edges[:, 4] = co5["splits"][:]
     filters[:, 0] = co5["duplicates"][:]
     
-    ## apply indel filter 
-    if "pair" in data.paramsdict["datatype"]:
-        ## get lenght of locus 
-        maxinds = sum(data.paramsdict["max_Indels_locus"])
-    else:
-        maxinds = data.paramsdict["max_Indels_locus"][0]
-    filters[:, 1] = co5["indels"][:] > maxinds
-
+    ## close h5s
     io5.close()
     co5.close()
 
@@ -767,15 +762,12 @@ def filter_stacks(args):
     ## get a chunk (hslice) of loci for the selected samples (sidx)
     superseqs = io5["seqs"][hslice[0]:hslice[1], sidx,]
 
-    ## duplicate filter is already filled
-    ## indels filter is already filled
-
     ## get an int view of the seq array
     superints = superseqs.view(np.int8)
 
     ## fill edge filter
     ## get edges of superseqs and supercats, since edges need to be trimmed 
-    ## before counting hets and snps. Technically, this could edge trim 
+    ## before counting hets, snps, inds. Technically, this could edge trim 
     ## clusters to the point that they are below the minlen, and so this 
     ## also constitutes a filter, though one that is uncommon. For this 
     ## reason we have another filter called edgfilter.
@@ -796,6 +788,10 @@ def filter_stacks(args):
     pldfilter = io5["nalleles"][hslice[0]:hslice[1]].max(axis=1) > \
                                          data.paramsdict["max_alleles_consens"]
 
+    ## indel filter, needs a fresh superints b/c get_edges does (-)->(N)
+    indfilter = filter_indels(data, superints, edgearr)
+    LOGGER.info('passed minind %s', hslice[0])
+
     ## Build the .loci snpstring as an array (snps) 
     ## shape = (chunk, 1) dtype=S1, or should it be (chunk, 2) for [-,*] ?
     snpfilter, snpsarr = filter_maxsnp(data, superints, edgearr)
@@ -805,6 +801,7 @@ def filter_stacks(args):
     LOGGER.info("het %s", hetfilter.sum())
     LOGGER.info("pld %s", pldfilter.sum())
     LOGGER.info("snp %s", snpfilter.sum())
+    LOGGER.info("ind %s", indfilter.sum())
 
     ## SAVE FILTERS AND INFO TO DISK BY SLICE NUMBER (.0.tmp.h5)
     chunkdir = os.path.join(data.dirs.outfiles, data.name+"_tmpchunks")
@@ -829,6 +826,10 @@ def filter_stacks(args):
     with open(handle, 'w') as out:
         np.save(out, pldfilter)
 
+    handle = os.path.join(chunkdir, "indf.{}.npy".format(hslice[0]))
+    with open(handle, 'w') as out:
+        np.save(out, indfilter)
+
     handle = os.path.join(chunkdir, "snpsarr.{}.npy".format(hslice[0]))
     with open(handle, 'w') as out:
         np.save(out, snpsarr)
@@ -836,6 +837,7 @@ def filter_stacks(args):
     handle = os.path.join(chunkdir, "edgearr.{}.npy".format(hslice[0]))
     with open(handle, 'w') as out:
         np.save(out, edgearr)
+
 
     io5.close()
     co5.close()
@@ -879,15 +881,16 @@ def get_edges(data, superints, splits):
     edgetrims = edgetrims.astype(np.int16)
 
     ## convert all - to N to make this easier, (only affects local copy)
-    #superseqs[superseqs == "-"] = "N"
-    superints[superints == 45] = 78
+    nodashints = superints.copy()
+    nodashints[nodashints == 45] = 78
 
     ## trim overhanging edges
     ## get the number not Ns in each site, 
     #ccx = np.sum(superseqs != "N", axis=1)
-    ccx = np.sum(superints != 78, axis=1, dtype=np.int16)
+    ccx = np.sum(nodashints != 78, axis=1, dtype=np.int16)
     efi, edg = edgetrim_numba(splits, ccx, edges, edgefilter, edgetrims, cuts)
     return efi, edg
+
 
 
 @numba.jit(nopython=True)
@@ -1089,6 +1092,7 @@ def filter_maxsnp(data, superints, edgearr):
     return snpfilt, snpsarr
 
 
+
 @numba.jit(nopython=True)
 def snpfilter_numba(snpsarr, snpfilt, edgearr, maxsnps):
     for idx in xrange(snpsarr.shape[0]):
@@ -1206,6 +1210,64 @@ def filter_maxhet(data, superints, edgearr):
     hetfilt = maxhet_numba(superints, edgearr, maxhet, hetfilt)
     LOGGER.info("--------------maxhet sums %s", hetfilt.sum())
     return hetfilt
+
+
+
+def filter_indels(data, superints, edgearr):
+    """ 
+    Filter max indels. Needs to split to apply to each read separately. 
+    The dimensions of superseqs are (chunk, sum(sidx), maxlen).
+    """
+
+    maxinds = np.array(data.paramsdict["max_Indels_locus"]).astype(np.int64)
+
+    ## an empty array to fill with failed loci
+    ifilter = np.zeros(superints.shape[0], dtype=np.bool_)
+
+    ## if paired then worry about splits
+    if "pair" in data.paramsdict["datatype"]:
+        for idx in xrange(superints.shape[0]):
+            block1 = superints[idx, :, edgearr[idx, 0]:edgearr[idx, 1]]
+            block2 = superints[idx, :, edgearr[idx, 2]:edgearr[idx, 3]]
+
+            sums1 = maxind_numba(block1)
+            sums2 = maxind_numba(block2)
+
+            if (sums1 > maxinds[0]) or (sums2 > maxinds[1]):
+                ifilter[idx] = True            
+
+    else:
+        for idx in xrange(superints.shape[0]):
+            ## get block based on edge filters
+            block = superints[idx, :, edgearr[idx, 0]:edgearr[idx, 1]]
+            ## shorten block to exclude terminal indels
+            ## if data at this locus (not already filtered by edges/minsamp)
+            if block.shape[1] > 1:
+                sums = maxind_numba(block)
+                LOGGER.info("maxind numba %s %s", idx, sums)
+                LOGGER.info("sums, maxinds[0], compare: %s %s %s", 
+                             sums, maxinds[0], sums > maxinds[0])
+                if sums > maxinds[0]:
+                    ifilter[idx] = True            
+
+    LOGGER.info("--------------maxIndels sums %s", ifilter.sum())
+    return ifilter
+
+
+
+@numba.jit(nopython=True)
+def maxind_numba(block):
+    """ filter for indels """
+    ## remove terminal edges
+    inds = 0
+    for row in xrange(block.shape[0]):
+        where = np.where(block[row] != 45)[0]
+        left = np.min(where)
+        right = np.max(where)
+        obs = np.sum(block[row, left:right] == 45)
+        if obs > inds:
+            inds = obs
+    return inds
 
 
 

@@ -610,6 +610,7 @@ class Quartet(object):
     def run_qmc(self, boot):
         """ runs quartet max-cut on a quartets file """
 
+        ## convert to txt file for wQMC
         cmd = " ".join(
                 [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
@@ -723,7 +724,7 @@ class Quartet(object):
             if self.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
                 #wctre.unroot()
-                #wctre.ladderize()
+                wctre.ladderize()
                 print(wctre.get_ascii(show_internal=True, 
                                       attributes=["dist", "name"]))
                 print("")
@@ -1081,6 +1082,7 @@ class Quartet(object):
                             done += 1
                             ## insert results into hdf5 data base
                             results = res[ikey].get(0)
+                            LOGGER.info("%s", results[1])
                             self.insert_to_array(ikey, results, bidx)
                             ## purge memory of the old one
                             del res[ikey]
@@ -1120,19 +1122,21 @@ class Quartet(object):
             progressbar(njobs, done, " boot {:<7} | {}".format(bidx, elapsed))
         print("")
 
-        ## convert to txt file for wQMC
+        ## dump quartets to a file
         self.dump_qmc()
 
         ## send to qmc
         if not bidx:
             self.run_qmc(0)
-            #lbview.apply(self.run_qmc, 0)
+            #_ = lbview.apply(self.run_qmc, 0)
         else:
             self.run_qmc(1)            
-            #lbview.apply(self.run_qmc, 1)
+            #_ = lbview.apply(self.run_qmc, 1)
 
         ## reset the checkpoint_arr
         self.checkpoint.arr = 0
+
+        #return async_qmc
 
 
 
@@ -1341,11 +1345,16 @@ def chunk_to_matrices(narr, mapcol, nmask):
                 i = narr[:, idx]
                 #if np.max(i) < 4:
                 mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
+                # mats[0, i[0]*4:(i[0]+4)*4]\
+                #         [i[1]]\
+                #         [i[2]*4:(i[2]+4)*4]\
+                #         [i[3]] += 1
                 last_loc = mapcol[idx]
-
+                
     ## set invariant (AAAA, CCCC, GGGG, TTTT) arbitrarily high since we 
     ## only used variable sites.
     #mats[0, 0, 0] = mats[0, 5, 5] = mats[0, 10, 10] = mats[0, 15, 15] = mats[0].max()*100
+                
 
     # for idx in xrange(narr.shape[1]):
     #     if not rmask[idx]:
@@ -1758,11 +1767,11 @@ def _filter_clades(clade_counts, cutoff):
                 intersect = np.max(summed) > 1
                 subset_test0 = np.all(clades[idx] - clades[aidx] >= 0)
                 subset_test1 = np.all(clades[aidx] - clades[idx] >= 0)
-                #invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
+                invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
 
-                #if np.all(invert_test):
-                #    counts[aidx] += counts[idx]
-                #    conflict = True
+                if np.all(invert_test):
+                    counts[aidx] += counts[idx]
+                    conflict = True
                 if intersect:
                     if (not subset_test0) and (not subset_test1):
                         conflict = True
@@ -1801,10 +1810,10 @@ def _find_clades(trees, names):
             for child in node.iter_leaf_names():
                 bits[ndict[child]] = 1
             ## if parent is root then mirror flip one child (where bit[0]=0)
-            if not node.is_root():
-                if node.up.is_root():
-                    if bits[0]:
-                        bits.invert()
+            # if not node.is_root():
+            #     if node.up.is_root():
+            #         if bits[0]:
+            #             bits.invert()
             clade_counts[bits.to01()] += 1
 
     ## convert to freq

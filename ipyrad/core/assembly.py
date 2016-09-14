@@ -905,7 +905,7 @@ class Assembly(object):
 
 
 
-    def _step3func(self, samples, noreverse, force, preview, ipyclient):
+    def _step3func(self, samples, noreverse, maxindels, force, preview, ipyclient):
         """ hidden wrapped function to start step 3 """
         ## print headers
         if self._headers:
@@ -937,7 +937,7 @@ class Assembly(object):
                 return
 
         ## run the step function
-        assemble.cluster_within.run(self, samples, noreverse, 
+        assemble.cluster_within.run(self, samples, noreverse, maxindels,
                                     force, preview, ipyclient)
 
 
@@ -1126,8 +1126,10 @@ class Assembly(object):
                 else:
                     ## If `cores` is set then honor this request, else use all
                     ## available cores.
-                    _cpus = self._ipcluster["cores"] if self._ipcluster["cores"] \
-                            else detect_cpus()
+                    if self._ipcluster["cores"]:
+                        _cpus = self._ipcluster["cores"]
+                    else:
+                        _cpus = detect_cpus()
                     print("  local compute node: [{} cores] on {}"\
                           .format(_cpus, socket.gethostname()))
 
@@ -1141,8 +1143,11 @@ class Assembly(object):
             if ip.__interactive__:
                 print("\n  Assembly: {}".format(self.name))
 
+            ## store pids in case we need to die hard (w/ a vengeance)
+            #pids = ipyclient[:].apply_sync(os.getpid)
+
             ## has many fixed arguments right now, but we may add these to 
-            ## hackerz_only, or they may be accessed in the API.
+            ## hackerz_only, or they may be accessed in the API. 
             if '1' in steps:
                 self._step1func(force, preview, ipyclient)
 
@@ -1151,8 +1156,8 @@ class Assembly(object):
                                 preview=preview, ipyclient=ipyclient)
 
             if '3' in steps:
-                self._step3func(samples=None, noreverse=0, force=force,
-                                preview=preview, ipyclient=ipyclient)
+                self._step3func(samples=None, noreverse=0, force=force, 
+                             maxindels=8, preview=preview, ipyclient=ipyclient)
 
             if '4' in steps:
                 self._step4func(samples=None, subsample=2000, force=force,
@@ -1173,30 +1178,33 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
             print("\n  Keyboard Interrupt by user. Cleaning up...")
-            raise IPyradWarningExit(inst)
+            #raise IPyradWarningExit(inst)
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
-            raise IPyradWarningExit(inst)
+            #raise IPyradWarningExit(inst)
 
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
-            raise IPyradWarningExit(inst)
-
+            #raise IPyradWarningExit(inst)
 
         ## close client when done or interrupted
         finally:
             try:
                 ## save the Assembly
-                self.save()                
+                self.save()
                 
                 ## can't close client if it was never open
                 if ipyclient:
 
                     ## if CLI (has cluster_id), stop jobs and close 
                     if self._ipcluster["cluster_id"]:
+                        ## protect from KBD while killing jobs?
+                        LOGGER.info("  shutting down engines")
+                        #_cleanup_and_die(pids)
                         ipyclient.abort()
-                        ipyclient.close()
+                        ipyclient.shutdown(hub=True, block=True)
+                        ipyclient.close()                        
                     ## elif API, stop jobs and clean queue but don't close
                     else:
                         ipyclient.abort()
@@ -1204,7 +1212,26 @@ class Assembly(object):
             
             ## if exception in close and save, print and ignore
             except Exception as inst2:
-                LOGGER.error("shutdown warning: %s", inst2)
+                LOGGER.warning("\
+            error during ipcluster shutdown (%s)\
+            some Python processes may have been orphaned and should be killed"
+            , inst2)
+                   
+
+
+
+
+def _cleanup_and_die(pids):
+    """ 
+    When engines are running external bins like vsearch they sometimes
+    aren't killed properly on exit, so let's just kill the pid to be sure
+    """
+    ## get pids of engines
+    for pid in pids:
+        try:
+            os.kill(pid, 9)
+        except OSError:
+            pass
 
 
 
@@ -1604,20 +1631,27 @@ def paramschecker(self, param, newvalue):
         if int(newvalue) < 5:
             raise IPyradError("""
     mindepth statistical cannot be set < 5. Use mindepth_majrule.""")
-        ## do not allow majrule to be > statistical
-        elif int(newvalue) < self.paramsdict["mindepth_majrule"]:
-            raise IPyradError("""
-    mindepth statistical cannot be less than mindepth_majrule""")
         else:
+            ## do not allow majrule to be > statistical
+            if int(newvalue) < self.paramsdict["mindepth_majrule"]:
+                msg = """
+    NB: mindepth_statistical may not be < mindepth_majrule.
+        Forcing mindepth_majrule = mindepth_statistical = {}""".format(newvalue)
+                print(msg)
+                self.paramsdict['mindepth_majrule'] = int(newvalue)
             self.paramsdict['mindepth_statistical'] = int(newvalue)
+
             ## TODO: calculate new clusters_hidepth if passed step3
 
     elif param == 'mindepth_majrule':
         assert isinstance(int(newvalue), int), \
             "mindepth_majrule must be an integer."
         if int(newvalue) > self.paramsdict["mindepth_statistical"]:
-            print(\
-        "error: mindepth_majrule cannot be > mindepth_statistical")
+            msg = """ 
+    NB: mindepth_majrule cannot be > mindepth_statistical.
+        Forcing mindepth_majrule = mindepth_statistical = {}"""\
+        .format(self.paramsdict["mindepth_statistical"])
+            self.paramsdict['mindepth_majrule'] = self.paramsdict["mindepth_statistical"]
         else:
             ## TODO: calculate new clusters_hidepth if passed step3
             self.paramsdict['mindepth_majrule'] = int(newvalue)
@@ -1689,7 +1723,7 @@ def paramschecker(self, param, newvalue):
         for i in range(2):
             try:
                 newvalue[i] = int(newvalue[i])
-            except ValueError:
+            except (ValueError, IndexError):
                 pass
         newvalue = tuple(newvalue)                
         ## make sure we have a nice tuple

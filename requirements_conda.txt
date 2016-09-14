@@ -13,3 +13,4 @@ pandas>=0.16
 pip>=8.1
 scipy>0.10
 sphinx
+networkx
