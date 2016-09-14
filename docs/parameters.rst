@@ -422,7 +422,7 @@ Affected steps = 2. Example entries to params.txt:
 ------------------------
 If filter_adapters is set > 0 then reads containing adapters will be trimmed
 to a shorter length. By default ipyrad will keep trimmed reads down to a minimum
-length of 32bp. If you want to set a higher limit you can set it here.
+length of 35bp. If you want to set a higher limit you can set it here.
 
 Affected steps = 2. Example entries to params.txt
 
