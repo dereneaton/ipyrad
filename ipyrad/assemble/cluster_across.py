@@ -71,8 +71,6 @@ def muscle_align_across(data, samples, chunk):
         ## don't bother aligning singletons
         if len(names) <= 1:
             pass
-            #if names:
-            #    stack = ["{}\n{}".format(names[0]+"\n"+seqs[0])]
         else:
             ## split seqs before align if PE. If 'nnnn' not found (single end 
             ## or merged reads) then `except` will pass it to SE alignment. 
@@ -118,15 +116,14 @@ def muscle_align_across(data, samples, chunk):
             out.append("\n".join(stack))
 
     ## write to file after
-    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
     odx = chunk.rsplit("_")[-1]
-    alignfile = os.path.join(tmpdir, "align_{}.fa".format(odx))
+    alignfile = os.path.join(data.tmpdir, "align_{}.fa".format(odx))
     with open(alignfile, 'wb') as outfile:
         outfile.write("\n//\n//\n".join(out)+"\n")
         os.remove(chunk)
 
     ## save indels array to tmp dir
-    ifile = os.path.join(tmpdir, "indels_{}.h5".format(odx))
+    ifile = os.path.join(data.tmpdir, "indels_{}.h5".format(odx))
     with h5py.File(ifile, 'w') as iofile:
         iofile.create_dataset('indels', data=indels)
 
@@ -186,9 +183,8 @@ def build_indels(data, samples, init):
     """
 
     ## get file handles
-    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
-    indelfiles = glob.glob(os.path.join(tmpdir, "indels_*.h5"))
-    alignbits = glob.glob(os.path.join(tmpdir, "align_*.fa"))
+    indelfiles = glob.glob(os.path.join(data.tmpdir, "indels_*.h5"))
+    alignbits = glob.glob(os.path.join(data.tmpdir, "align_*.fa"))
 
     ## sort into input order by chunk names
     alignbits.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-3]))
@@ -203,7 +199,7 @@ def build_indels(data, samples, init):
         for fname in alignbits:
             with open(fname) as infile:
                 out.write(infile.read()+"//\n//\n")
-            #os.remove(fname)
+            os.remove(fname)
             elapsed = datetime.timedelta(seconds=int(time.time()-init))
             progressbar(100, 99, " aligning clusters     | {}".format(elapsed))
 
@@ -549,8 +545,8 @@ def multicat(data, samples, ipyclient):
                 sicatdone += 1
             else:
                 ## print error if something went wrong
-                if job.error:
-                    LOGGER.error("\n  error: %s", job.metadata)
+                #if job.error:
+                LOGGER.error("\n  error: %s", job.metadata)
             del jobs[subname]
                         
         ## print progress
@@ -561,8 +557,13 @@ def multicat(data, samples, ipyclient):
             progressbar(allwait, sicatdone, 
                 " indexing clusters     | {}".format(elapsed))
         time.sleep(0.1)
+    elapsed = datetime.timedelta(seconds=int(time.time() - start))
+    progressbar(allwait, sicatdone, 
+               " indexing clusters     | {}".format(elapsed))
+    print("")
 
     ## print final progress
+    start = time.time()
     allwait = len(cleanups)
     while 1:
         ## grab finished/ready jobs
@@ -928,11 +929,6 @@ def build_reads_file(data, ipyclient):
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(20, 0, " building clusters     | {}".format(elapsed))
 
-    ## make an tmpout directory
-    tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
-    if not os.path.exists(tmpdir):
-        os.mkdir(tmpdir)
-
     ## a chunker for writing every N loci. This uses core info, meaning that
     ## if users do not supply -n arg then it might be poorly estimated. 
     ## if no info we use detect_cpus to get info for this node. 
@@ -977,7 +973,7 @@ def build_reads_file(data, ipyclient):
                 if seqsize >= optim:
                     if seqlist:
                         loci += seqsize
-                        with open(os.path.join(tmpdir, 
+                        with open(os.path.join(data.tmpdir, 
                             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
                             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
@@ -1004,7 +1000,7 @@ def build_reads_file(data, ipyclient):
         seqsize += 1
         loci += seqsize
     if seqlist:
-        with open(os.path.join(tmpdir, 
+        with open(os.path.join(data.tmpdir, 
             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
 
@@ -1013,7 +1009,7 @@ def build_reads_file(data, ipyclient):
     progressbar(100, 100, " building clusters     | {}".format(elapsed))
     print("")
     del allcons
-    clustbits = glob.glob(os.path.join(tmpdir, data.name+".chunk_*"))
+    clustbits = glob.glob(os.path.join(data.tmpdir, data.name+".chunk_*"))
 
     ## return stuff
     return clustbits, loci
@@ -1142,12 +1138,27 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## calls vsearch, uses all threads available to head node
     cluster(data, noreverse)
 
-    ## build consens clusters and returns chunk handles to be aligned
-    clustbits, nloci = build_reads_file(data, ipyclient)
-    data.nloci = nloci
+    ## make an tmpout directory
+    data.tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
+    if not os.path.exists(data.tmpdir):
+        os.mkdir(data.tmpdir)
 
-    ## muscle align the consens reads and creates hdf5 indel array
-    multi_muscle_align(data, samples, clustbits, ipyclient)
+    ## wrap everything involving tmpdir to make sure we delete it on failure
+    try:
+        ## build consens clusters and returns chunk handles to be aligned
+        clustbits, nloci = build_reads_file(data, ipyclient)
+        data.nloci = nloci
+
+        ## muscle align the consens reads and creates hdf5 indel array
+        multi_muscle_align(data, samples, clustbits, ipyclient)
+
+    except Exception as inst:
+        LOGGER.error(inst)
+        raise IPyradWarningExit(inst)
+
+    finally:
+        ## delete the tmpdir
+        shutil.rmtree(data.tmpdir)
 
     ## builds the final HDF5 array which includes three main keys
     ## /catg -- contains all indiv catgs and has indels inserted
