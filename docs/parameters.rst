@@ -579,7 +579,10 @@ your reads is either offset by one or more bases, or contains many errors.
 If it is offset you can choose to trim off the extra bases by entering a number
 for how many bases to trim off. If you want to correct the sequences so that they
 do not contain errors, since they should all be the same sequence you can enter
-the sequence here.
+the sequence here. Default is 0, 0.
+For single end data only the first value is used, for paired data the first
+value affects R1s and the second value affects R2s.
+
 
 Affected steps = 2. Example entries to params.txt
 
