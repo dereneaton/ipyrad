@@ -1126,8 +1126,10 @@ class Assembly(object):
                 else:
                     ## If `cores` is set then honor this request, else use all
                     ## available cores.
-                    _cpus = self._ipcluster["cores"] if self._ipcluster["cores"] \
-                            else detect_cpus()
+                    if self._ipcluster["cores"]:
+                        _cpus = self._ipcluster["cores"]
+                    else:
+                        _cpus = detect_cpus()
                     print("  local compute node: [{} cores] on {}"\
                           .format(_cpus, socket.gethostname()))
 
@@ -1141,8 +1143,11 @@ class Assembly(object):
             if ip.__interactive__:
                 print("\n  Assembly: {}".format(self.name))
 
+            ## store pids in case we need to die hard (w/ a vengeance)
+            #pids = ipyclient[:].apply_sync(os.getpid)
+
             ## has many fixed arguments right now, but we may add these to 
-            ## hackerz_only, or they may be accessed in the API.
+            ## hackerz_only, or they may be accessed in the API. 
             if '1' in steps:
                 self._step1func(force, preview, ipyclient)
 
@@ -1173,30 +1178,33 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
             print("\n  Keyboard Interrupt by user. Cleaning up...")
-            raise IPyradWarningExit(inst)
+            #raise IPyradWarningExit(inst)
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
-            raise IPyradWarningExit(inst)
+            #raise IPyradWarningExit(inst)
 
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
-            raise IPyradWarningExit(inst)
-
+            #raise IPyradWarningExit(inst)
 
         ## close client when done or interrupted
         finally:
             try:
                 ## save the Assembly
-                self.save()                
+                self.save()
                 
                 ## can't close client if it was never open
                 if ipyclient:
 
                     ## if CLI (has cluster_id), stop jobs and close 
                     if self._ipcluster["cluster_id"]:
+                        ## protect from KBD while killing jobs?
+                        LOGGER.info("  shutting down engines")
+                        #_cleanup_and_die(pids)
                         ipyclient.abort()
-                        ipyclient.close()
+                        ipyclient.shutdown(hub=True, block=True)
+                        ipyclient.close()                        
                     ## elif API, stop jobs and clean queue but don't close
                     else:
                         ipyclient.abort()
@@ -1204,7 +1212,26 @@ class Assembly(object):
             
             ## if exception in close and save, print and ignore
             except Exception as inst2:
-                LOGGER.error("shutdown warning: %s", inst2)
+                LOGGER.warning("\
+            error during ipcluster shutdown (%s)\
+            some Python processes may have been orphaned and should be killed"
+            , inst2)
+                   
+
+
+
+
+def _cleanup_and_die(pids):
+    """ 
+    When engines are running external bins like vsearch they sometimes
+    aren't killed properly on exit, so let's just kill the pid to be sure
+    """
+    ## get pids of engines
+    for pid in pids:
+        try:
+            os.kill(pid, 9)
+        except OSError:
+            pass
 
 
 

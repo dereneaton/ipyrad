@@ -62,22 +62,23 @@ def start_ipcluster(data):
 
 
 
-
+## DEPRECATED: shutdown now happens at the bottom of the run() function
+## in assembly.py
 ## decorated func for stopping. Does not need to be called?
-def stop_ipcluster(profile, cluster_id):
-    """ stop ipcluster at sys.exit """
+# def stop_ipcluster(profile, cluster_id):
+#     """ stop ipcluster at sys.exit """
 
-    LOGGER.info("Shutting down [%s] remote Engines", cluster_id)
-    stopcall = ["ipcluster", 
-                "stop", 
-                "--profile="+profile,
-                "--cluster-id="+cluster_id]
-    try:
-        subprocess.check_call(stopcall, 
-            stderr=subprocess.STDOUT,
-            stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError:
-        pass
+#     LOGGER.info("Shutting down [%s] remote Engines", cluster_id)
+#     stopcall = ["ipcluster", 
+#                 "stop", 
+#                 "--profile="+profile,
+#                 "--cluster-id="+cluster_id]
+#     try:
+#         subprocess.check_call(stopcall, 
+#             stderr=subprocess.STDOUT,
+#             stdout=subprocess.PIPE)
+#     except subprocess.CalledProcessError:
+#         pass
 
 
 
@@ -89,9 +90,9 @@ def register_ipcluster(data):
     ## check if this pid already has a running cluster
     data._ipcluster["cluster_id"] = "ipyrad-"+str(os.getpid())
     start_ipcluster(data)
-    atexit.register(stop_ipcluster, 
-                    data._ipcluster["profile"],
-                    data._ipcluster["cluster_id"])
+    #atexit.register(stop_ipcluster, 
+    #                data._ipcluster["profile"],
+    #                data._ipcluster["cluster_id"])
     return data
 
 
