@@ -214,10 +214,17 @@ def mapreads(data, sample, nthreads):
         cmd5.insert(2, mumapfile)
         cmd5.insert(2, "-0")
 
-    ## Running cmd1 creates ref_mapping/sname.sam
+    ## Running cmd1 creates ref_mapping/sname.sam, 
     LOGGER.debug(cmd1)
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    error1 = proc1.communicate()[0]
+
+    ## This is really long running job so we wrap it to ensure it dies. 
+    try:
+        error1 = proc1.communicate()[0]
+    except KeyboardInterrupt:
+        proc1.kill()
+
+    ## raise error if one occurred in smalt
     if proc1.returncode:
         raise IPyradWarningExit(error1)
 

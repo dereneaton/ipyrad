@@ -976,7 +976,14 @@ def cluster(data, sample, nthreads):
     ## run vsearch
     LOGGER.debug("%s", cmd)
     proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-    res = proc.communicate()[0]
+    
+    ## This is long running so we wrap it to make sure we can kill it
+    try:
+        res = proc.communicate()[0]
+    except KeyboardInterrupt:
+        proc.kill()        
+
+    ## check for errors
     if proc.returncode:
         LOGGER.error("error %s: %s", cmd, res)
         raise IPyradWarningExit("cmd %s: %s", res)
@@ -1154,9 +1161,11 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
             if not data.paramsdict["assembly_method"] == "denovo":
                 for sample in subsamples:
                     refmap_init(data, sample)
-            ## data, samples, ipyclient, nthreads, maxindels 
-            args = [data, subsamples, ipyclient, 2, 8]
-            ## run single and multi-threaded jobs
+
+            ## hard-coded params for now
+            nthreads = 2
+            maxindels = 8
+            args = [data, subsamples, ipyclient, nthreads, maxindels]
             new_apply_jobs(*args)
 
         finally:

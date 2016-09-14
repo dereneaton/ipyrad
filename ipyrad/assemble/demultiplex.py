@@ -708,11 +708,15 @@ def wrapped_run(data, preview, ipyclient, force):
 
         else:
             ## chunk the file using zcat_make_temps
-            ## this can't really be parallelized b/c its I/O limited
+            ## this can't really be parallelized unless I/O is parallelized, 
             ## we just pass it one engine so we can keep the timer counting
             async = ipyclient[0].apply(zcat_make_temps, 
                                        [data, tups, fidx, tmpdir, optim])
+
             ## get the chunk names
+            ## TODO: this progress bar could be improved to update when it finds
+            ## more files in the tmpdir, and count until the num it expects will
+            ## be created.
             while not async.ready():
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(data._ipcluster["cores"], fidx, 
