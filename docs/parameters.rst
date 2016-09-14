@@ -436,8 +436,9 @@ Affected steps = 2. Example entries to params.txt
 
 18. max_alleles_consens:
 -------------------------
-This is the maximum number of unique alleles allowed in consens reads after
-accounting for sequencing errors. Default=2, which is fitting for diploids.
+This is the maximum number of unique alleles allowed in (**individual**) consens
+reads after accounting for sequencing errors. Default=2, which is fitting for
+diploids.
 At this setting any locus which has a sample with more than 2 alleles detected
 will be  excluded/filtered out. If set to max_alleles_consens = 1 (haploid)
 then error-rate and heterozygosity are estimated with H fixed to 0.0 in step 4,
