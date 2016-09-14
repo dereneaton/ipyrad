@@ -1475,8 +1475,9 @@ def paramschecker(self, param, newvalue):
     elif param == 'barcodes_path':
         ## if a value was entered check that it exists
         if newvalue and not "Merged:" in newvalue:
-            fullbarpath = expander(newvalue)
-        
+            ## also allow for fuzzy match in names using glob
+            fullbarpath = glob.glob(expander(newvalue))[0]
+            ## raise error if file is not found
             if not os.path.exists(fullbarpath):
                 raise IPyradWarningExit("""
     Error: barcodes file not found. This must be an absolute path 
