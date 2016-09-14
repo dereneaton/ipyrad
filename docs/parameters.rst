@@ -500,7 +500,7 @@ be retained in the final data set. If you enter a number equal to the full
 number of samples in your data set then it will return only loci that have
 data across all samples.
 If you enter a lower value, like 4, it will return a more sparse matrix,
-including any loci for which at least four samples contain data.
+including any loci for which at least four samples contain data. Default is 4.
 
 Affected steps = 7. Example entries to params.txt
 
