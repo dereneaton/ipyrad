@@ -1186,9 +1186,9 @@ class Assembly(object):
 
         except Exception as inst:
             LOGGER.info(inst)
-            print("\n Encountered an unexpected error (see ./ipyrad_log.txt) "+\
-                   "  You may want to contact the developers.   \n{}"\
-                  .format(inst))
+            print("\n  Encountered an unexpected error (see ./ipyrad_log.txt)"+\
+                  "\n  Error message is below -------------------------------"+\
+                  "\n{}".format(inst))
 
         ## close client when done or interrupted
         finally:
