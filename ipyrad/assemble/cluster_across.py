@@ -588,7 +588,6 @@ def multicat(data, samples, ipyclient):
 
 
 
-
 def insert_and_cleanup(data, sname):
     """ 
     Enter results from singlecat into the super h5 arrays. This is 

@@ -368,9 +368,9 @@ def build_clusters(data, sample, maxindels):
 
             ## add match to the seed
             seq = alldereps[hit]
-            ## revcomp if orientation is reversed
+            ## revcomp if orientation is reversed (comp preserves nnnn)
             if ori == "-":
-                seq = revcomp(seq)
+                seq = comp(seq)[::-1]
             ## only save if not too many indels
             if int(ind) <= maxindels:                
                 fseqs.append(">{}{}\n{}".format(hit, ori, seq))
