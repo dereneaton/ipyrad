@@ -7,6 +7,9 @@ Release Notes
 
 0.3.42
 ------
+
+0.3.42
+------
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - always prints cluster information when not using ipcluster[profile] = default
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
