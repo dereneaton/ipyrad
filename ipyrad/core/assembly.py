@@ -1178,15 +1178,17 @@ class Assembly(object):
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
             print("\n  Keyboard Interrupt by user. Cleaning up...")
-            #raise IPyradWarningExit(inst)
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
-            #raise IPyradWarningExit(inst)
+            print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}"\
+                  .format(inst))
 
         except Exception as inst:
-            LOGGER.info("caught an unknown exception %s", inst)
-            #raise IPyradWarningExit(inst)
+            LOGGER.info(inst)
+            print("\n Encountered an unexpected error (see ./ipyrad_log.txt) "+\
+                   "  You may want to contact the developers.   \n{}"\
+                  .format(inst))
 
         ## close client when done or interrupted
         finally:
