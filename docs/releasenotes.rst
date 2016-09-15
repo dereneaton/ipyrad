@@ -5,6 +5,68 @@
 Release Notes
 =============
 
+0.3.42
+------
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- always prints cluster information when not using ipcluster[profile] = default
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fix for samtools sorting on mac
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic
+- better error message at command line
+- just cleaning code base, deleting deprecated funcs.
+- revcomp function bug fix to preserve lower case pair splitter nnnn for pairgbs data
+- Adding requirement for numba >= 0.28 to support
+- Updating mac vsearch to 2.0
+- Merge pull request #186 from StuntsPT/master
+- Added a troubleshooting note.
+- wrapped long running proc jobs so they can be killed easily when engines are interrupted
+- fix for API closing ipyclient view
+- fix for piping in subprocess
+- bug fix for missing subprocess module for zcat, and new simplified sps calls.
+- merge fix
+- allow for fuzzy match characters in barcode path
+- Added another missing default.
+- Added another missing default.
+- Added another missing default.
+- Added the (R1, R2) explanation from where it was missing.
+- Corrected another outdated default.
+- Added another missing default.
+- Added paired options to parameter docs.
+- Added a missing reference to defautl value.
+- Clarified an explanation.
+- Corrected another default to match the code.
+- Changed another default value to match that of the code.
+- Undid a mistake.
+- Simplified a command & changed max_low_qual_bases default to match the code.
+- added networkx as a new dependency
+- zip sim data at end of notebook
+- merge fix
+- new simulated data set
+- uploaded cookbook for simulating data
+- no longer register ipcluster to die at exit, but rather call shutdown explicitly for CLI in the finally call of run()
+- cosmetic changes to merge function in util
+- massive code cleanup, though mostly cosmetic. Simplified file paths and calls to subprocess.
+- massive restructuring to organize engine jobs in a directed acyclic graph to designate dependencies to ipyparallel. Lot's of code cleanup for subprocess calls.
+- fix for progress bar cutting short in step 6. And simplified some code calling tmpdir.
+- Adding notebooks for ipyrad/pyrad/stacks simulated/emprical horserace.
+- Better handling for mindepth_statistical/majrule. Enforce statistical >= majrule.
+- Allow users with SE data to only enter a single value for edit_cutsites.
+- Properly finalize building database progress bar during step 6, even if some samples fail.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- merge conflicts resolved
+- allow max_indels option for step 3 in API. Experimental.
+- bug fix to indel filter counter. Now applies in step7 after ignoring terminal indels, only applies to internal indels
+- much faster indexing using sorted arrays of matches from usort. Faster and more efficient build clusters func.
+- rewrote build_clusters func to be much faster and avoid memory limits. Other code cleanup. Allow max_indel_within option, though only in API currently.
+- numba update requirement to v.0.28
+- upgraded vsearch linux to v.2.0.3
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cluster_id setting testing in tetrad
+- speed testing tetrad
+- merge fix
+- tetrad testing
+
 0.3.41
 ------
 - Reverting a change that broke cluster_within
