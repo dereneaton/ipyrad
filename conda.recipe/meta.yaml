@@ -19,7 +19,7 @@ requirements:
     - jupyter
     - mpi4py
     - nbconvert
-    - numba >=0.28
+    - numba >=0.28.1
     - numpy >=1.7
     - pandas >=0.16
     - scipy >=0.16
@@ -32,7 +32,7 @@ requirements:
     - scipy >=0.16
     - h5py
     - nbconvert
-    - numba >=0.28
+    - numba >=0.28.1
     - jupyter_client
     - jupyter
     - sphinx
