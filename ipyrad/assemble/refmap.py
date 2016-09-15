@@ -184,7 +184,7 @@ def mapreads(data, sample, nthreads):
     ## this is gonna catch mapped bam output from cmd2 and write to file
     cmd3 = [ipyrad.bins.samtools, "sort", 
             "-T", os.path.join(data.dirs.refmapping, sample.name+".sam.tmp"),
-            "-O", "BAM", 
+            "-O", "bam", 
             "-o", sample.files.mapped_reads]
 
     ## this is gonna read the sorted BAM file and index it. only for pileup?
@@ -215,7 +215,7 @@ def mapreads(data, sample, nthreads):
         cmd5.insert(2, "-0")
 
     ## Running cmd1 creates ref_mapping/sname.sam, 
-    LOGGER.debug(cmd1)
+    LOGGER.debug(" ".join(cmd1))
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
 
     ## This is really long running job so we wrap it to ensure it dies. 
@@ -230,11 +230,13 @@ def mapreads(data, sample, nthreads):
 
     ## Running cmd2 writes to ref_mapping/sname.unmapped.bam, and 
     ## fills the pipe with mapped BAM data
+    LOGGER.debug(" ".join(cmd2))
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
 
     ## Running cmd3 pulls mapped BAM from pipe and writes to 
     ## ref_mapping/sname.mapped-sorted.bam. 
     ## Because proc2 pipes to proc3 we just communicate this to run both.
+    LOGGER.debug(" ".join(cmd3))
     proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[0]
     if proc3.returncode:
@@ -243,6 +245,7 @@ def mapreads(data, sample, nthreads):
 
     ## Later we're gonna use samtools to grab out regions using 'view', and to
     ## do that we need it to be indexed. Let's index it now. 
+    LOGGER.debug(" ".join(cmd4))
     proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
     error4 = proc4.communicate()[0]
     if proc4.returncode:
@@ -251,6 +254,7 @@ def mapreads(data, sample, nthreads):
     ## Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
     ## or it makes edits/sname-tmp-umap{12}.fastq for paired data, which 
     ## will then need to be merged.
+    LOGGER.debug(" ".join(cmd5))
     proc5 = sps.Popen(cmd5, stderr=sps.STDOUT, stdout=sps.PIPE)
     error5 = proc5.communicate()[0]
     if proc5.returncode:
