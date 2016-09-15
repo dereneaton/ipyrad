@@ -24,6 +24,7 @@ requirements:
     - pandas >=0.16
     - scipy >=0.16
     - sphinx
+    - networkx
     - python {{PY_VER}}*,>=2.7
   run:
     - ipython >=4.0.0
