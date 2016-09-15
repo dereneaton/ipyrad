@@ -6,7 +6,7 @@
 # pylint: disable=E1103
 # pylint: disable=W0142
 # pylint: disable=W0212
-
+# pylint: disable=C0301
 
 from __future__ import print_function
 import os
@@ -35,6 +35,7 @@ LOGGER = logging.getLogger(__name__)
 ## turn off traceback for the CLI
 if not ip.__interactive__:
     sys.tracebacklimit = 0
+
 
 
 class Assembly(object):
@@ -1113,9 +1114,9 @@ class Assembly(object):
             ## ready so that we can print how many cores started on each 
             ## host machine exactly. 
             if not quiet:
-                if self._ipcluster["engines"] == "MPI":
+                if (self._ipcluster["profile"] != "default") or \
+                   (self._ipcluster["engines"] == "MPI"):
                     hosts = ipyclient[:].apply_sync(socket.gethostname)
-                    #print("")
                     for hostname in set(hosts):
                         print("  host compute node: [{} cores] on {}"\
                               .format(hosts.count(hostname), hostname))
