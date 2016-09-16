@@ -50,7 +50,7 @@ class Assembly(object):
         A name should be passed when creating a new Assembly object.
         This name will be used as a prefix for all files saved to disk
         associated with this Assembly. It is automatically set as the
-        prefix name (parameter 14).          
+        prefix name (parameter 14).
 
 
     Attributes
@@ -64,7 +64,7 @@ class Assembly(object):
         The barcodes information is fetched from parameter 3
         `[Assembly].paramsdict['barcodes_path']`.
     dirs : dict
-        Returns a dictionary with the location of directories that contain 
+        Returns a dictionary with the location of directories that contain
         linked Sample object files and stats results.
 
 
@@ -75,7 +75,7 @@ class Assembly(object):
     toparamsfile(filehandle)
         writes params dictionary to params.txt file format
 
-        
+
     Returns
     -------
     object
@@ -102,15 +102,15 @@ class Assembly(object):
             print("  New Assembly: {}".format(self.name))
 
         ## Store assembly version #
-        self._version = ip.__version__ 
+        self._version = ip.__version__
 
         ## stores default ipcluster launch info
         self._ipcluster = {
             "cluster_id" : "",
-            "profile" : "default", 
-            "engines" : "Local", 
-            "quiet" : 0, 
-            "timeout" : 120, 
+            "profile" : "default",
+            "engines" : "Local",
+            "quiet" : 0,
+            "timeout" : 120,
             "cores" : detect_cpus()}
 
         ## print headers, this is used as a 'quiet' option
@@ -120,12 +120,12 @@ class Assembly(object):
         ## statsfiles is a dict with file locations
         ## stats_dfs is a dict with pandas dataframes
         self.stats_files = ObjDict({})
-        self.stats_dfs = ObjDict({})        
+        self.stats_dfs = ObjDict({})
 
-        ## samples linked 
+        ## samples linked
         self.samples = {}
 
-        ## samples linked 
+        ## samples linked
         self.populations = OrderedDict()
 
         ## multiplex files linked
@@ -146,38 +146,38 @@ class Assembly(object):
                        ("barcodes_path", ""),
                        ("sorted_fastq_path", ""),
                        ("assembly_method", "denovo"),
-                       ("reference_sequence", ""), 
-                       ("datatype", 'rad'), 
+                       ("reference_sequence", ""),
+                       ("datatype", 'rad'),
                        ("restriction_overhang", ("TGCAG", "")),
                        ("max_low_qual_bases", 5),
                        ("phred_Qscore_offset", 33),
-                       ("mindepth_statistical", 6), 
-                       ("mindepth_majrule", 6), 
+                       ("mindepth_statistical", 6),
+                       ("mindepth_majrule", 6),
                        ("maxdepth", 10000),
                        ("clust_threshold", 0.85),
                        ("max_barcode_mismatch", 0),
-                       ("filter_adapters", 0), 
-                       ("filter_min_trim_len", 35), 
-                       ("max_alleles_consens", 2), 
-                       ("max_Ns_consens", (5, 5)), 
-                       ("max_Hs_consens", (8, 8)), 
-                       ("min_samples_locus", 4), 
-                       ("max_SNPs_locus", (20, 20)), 
-                       ("max_Indels_locus", (8, 8)), 
-                       ("max_shared_Hs_locus", 0.50), 
+                       ("filter_adapters", 0),
+                       ("filter_min_trim_len", 35),
+                       ("max_alleles_consens", 2),
+                       ("max_Ns_consens", (5, 5)),
+                       ("max_Hs_consens", (8, 8)),
+                       ("min_samples_locus", 4),
+                       ("max_SNPs_locus", (20, 20)),
+                       ("max_Indels_locus", (8, 8)),
+                       ("max_shared_Hs_locus", 0.50),
                        ("edit_cutsites", (0, 0)),
-                       ("trim_overhang", (4, 4, 4, 4)),                        
+                       ("trim_overhang", (4, 4, 4, 4)),
                        ("output_formats", "*"),
                        ("pop_assign_file", ""),
         ])
 
         ## Store data directories for this Assembly. Init with default project
-        self.dirs = ObjDict({"project": 
+        self.dirs = ObjDict({"project":
                               os.path.realpath(self.paramsdict["project_dir"]),
                              "fastqs": "",
                              "edits": "",
                              "clusts": "",
-                             "consens": "", 
+                             "consens": "",
                              "outfiles": ""})
 
         ## Default hackers only parameters dictionary
@@ -206,13 +206,13 @@ class Assembly(object):
 
         ## Set pandas to display all samples instead of truncating
         pd.options.display.max_rows = len(self.samples)
-        statdat = pd.DataFrame([self.samples[i].stats for i in nameordered], 
+        statdat = pd.DataFrame([self.samples[i].stats for i in nameordered],
                       index=nameordered).dropna(axis=1, how='all')
         # ensure non h,e columns print as ints
         for column in statdat:
             if column not in ["hetero_est", "error_est"]:
                 statdat[column] = np.nan_to_num(statdat[column]).astype(int)
-        return statdat    
+        return statdat
 
 
     @property
@@ -222,7 +222,7 @@ class Assembly(object):
         nameordered.sort()
         ## replace curdir with . for shorter printing
         #fullcurdir = os.path.realpath(os.path.curdir)
-        return pd.DataFrame([self.samples[i].files for i in nameordered], 
+        return pd.DataFrame([self.samples[i].files for i in nameordered],
                       index=nameordered).dropna(axis=1, how='all')
 
 
@@ -231,15 +231,15 @@ class Assembly(object):
         nameordered = self.samples.keys()
         nameordered.sort()
         return pd.DataFrame([self.samples[i].stats_dfs[idx] \
-                      for i in nameordered], 
+                      for i in nameordered],
                       index=nameordered)\
                       .dropna(axis=1, how='all')
 
 
 
     def link_fastqs(self, path=None, force=False, append=False, splitnames="_", fields=None):
-        """ Create Sample objects from demultiplexed fastq files in 
-        sorted_fastq_path, or append additional fastq files to 
+        """ Create Sample objects from demultiplexed fastq files in
+        sorted_fastq_path, or append additional fastq files to
         existing Samples.
 
         Note
@@ -251,23 +251,23 @@ class Assembly(object):
         ----------
         path : str
             Path to the fastq files to be linked to Sample objects. The default
-            location is to select all files in the 'sorted_fastq_path'. 
-            Alternatively a different path can be entered here. 
+            location is to select all files in the 'sorted_fastq_path'.
+            Alternatively a different path can be entered here.
 
         append : bool
-            The default action is to overwrite fastq files linked to Samples if 
-            they already have linked files. Use append=True to instead append 
-            additional fastq files to a Sample (file names should be formatted 
+            The default action is to overwrite fastq files linked to Samples if
+            they already have linked files. Use append=True to instead append
+            additional fastq files to a Sample (file names should be formatted
             the same as usual, e.g., [name]_R1_[optional].fastq.gz).
 
         splitnames : str
-            A string character used to file names. In combination with the 
+            A string character used to file names. In combination with the
             fields argument can be used to subselect filename fields names.
 
         fields : list
-            A list of indices for the fields to be included in names after 
+            A list of indices for the fields to be included in names after
             filnames are split on the splitnames character. Useful for appending
-            sequence names which must match existing names. If the largest index 
+            sequence names which must match existing names. If the largest index
             is greater than the number of split strings in the name the index
             if ignored. e.g., [2,3,4] ## excludes 0, 1 and >4
 
@@ -277,8 +277,8 @@ class Assembly(object):
         Returns
         -------
         str
-            Prints the number of new Sample objects created and the number of 
-            fastq files linked to Sample objects in the Assembly object. 
+            Prints the number of new Sample objects created and the number of
+            fastq files linked to Sample objects in the Assembly object.
         """
 
         ## cannot both force and append at once
@@ -290,7 +290,7 @@ class Assembly(object):
                 +" Use force=True to replace all files, or append=True to add"
                 +" additional files to existing Samples.")
 
-        ## make sure there is a workdir and workdir/fastqdir 
+        ## make sure there is a workdir and workdir/fastqdir
         self.dirs.fastqs = os.path.join(self.paramsdict["project_dir"],
                                         self.name+"_fastqs")
         if not os.path.exists(self.paramsdict["project_dir"]):
@@ -317,7 +317,7 @@ class Assembly(object):
             raise IPyradError(NO_FILES_FOUND_PAIRS\
                         .format(self.paramsdict["sorted_fastq_path"]))
 
-        ## link pairs into tuples        
+        ## link pairs into tuples
         if 'pair' in self.paramsdict["datatype"]:
             ## check that names fit the paired naming convention
             r1_files = [i for i in fastqs if "_R1_" in i]
@@ -368,7 +368,7 @@ class Assembly(object):
                 LOGGER.debug("Creating new sample - ".format(sname))
                 self.samples[sname] = Sample(sname)
                 self.samples[sname].stats.state = 1
-                self.samples[sname].barcode = None 
+                self.samples[sname].barcode = None
                 self.samples[sname].files.fastqs.append(fastqtuple)
                 createdinc += 1
                 linkedinc += 1
@@ -384,7 +384,7 @@ class Assembly(object):
                     LOGGER.debug("Overwritting sample - ".format(sname))
                     self.samples[sname] = Sample(sname)
                     self.samples[sname].stats.state = 1
-                    self.samples[sname].barcode = None 
+                    self.samples[sname].barcode = None
                     self.samples[sname].files.fastqs.append(fastqtuple)
                     createdinc += 1
                     linkedinc += 1
@@ -426,13 +426,13 @@ class Assembly(object):
 
 
     def _link_barcodes(self):
-        """ 
-        Private function. Links Sample barcodes in a dictionary as 
-        [Assembly].barcodes, with barcodes parsed from the 'barcodes_path' 
-        parameter. This function is called during set_params() when setting
-        the barcodes_path. 
         """
- 
+        Private function. Links Sample barcodes in a dictionary as
+        [Assembly].barcodes, with barcodes parsed from the 'barcodes_path'
+        parameter. This function is called during set_params() when setting
+        the barcodes_path.
+        """
+
         ## parse barcodefile
         try:
             ## allows fuzzy match to barcodefile name
@@ -472,12 +472,12 @@ class Assembly(object):
 
 
     def link_populations(self, popdict=None):
-        """ 
-        Creates self.populations dictionary to save mappings of individuals to 
-        populations/sites, and checks that individual names match with Samples.  
-        Population assigments are used for heirarchical clustering, for 
-        generating summary stats, and for outputing some file types (.treemix 
-        for example). Internally stored as a dictionary. 
+        """
+        Creates self.populations dictionary to save mappings of individuals to
+        populations/sites, and checks that individual names match with Samples.
+        Population assigments are used for heirarchical clustering, for
+        generating summary stats, and for outputing some file types (.treemix
+        for example). Internally stored as a dictionary.
 
         Note
         ----
@@ -487,13 +487,13 @@ class Assembly(object):
             ind1 pop1
             ind2 pop2
             ind3 pop3
-            etc... 
+            etc...
 
         Parameters
         ----------
         popdict : dict
-            When using the API it may be easier to simply create a dictionary 
-            to pass in as an argument instead of reading from an input file. 
+            When using the API it may be easier to simply create a dictionary
+            to pass in as an argument instead of reading from an input file.
             This can be done with the `popdict` argument like below:
 
             pops = {pop1: [ind1, ind2, ind3], pop2: [ind4, ind5]}
@@ -510,7 +510,7 @@ class Assembly(object):
 
             ## parse populations file
             try:
-                popdat = pd.read_csv(popfile, header=None, 
+                popdat = pd.read_csv(popfile, header=None,
                                               delim_whitespace=1,
                                               names=["inds", "pops"])
                 popdict = {key: group.inds.values.tolist() for key, group in \
@@ -559,7 +559,7 @@ class Assembly(object):
 
 
     def set_params(self, param, newvalue):
-        """ 
+        """
         Set a parameter to a new value. Raises error if newvalue is wrong type.
 
         Note
@@ -590,12 +590,12 @@ class Assembly(object):
         ## param 8 must be a tuple or str, if str it is converted to a tuple
         ## with the second entry empty.
         [Assembly].set_params(8, 'TGCAG')
-        [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')                            
+        [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')
 
         ## param 24 can be an int or a float:
         [Assembly].set_params(24, 4)
         [Assembly].set_params('max_shared_Hs_locus', 0.25)
-            
+
         """
 
         ## require parameter recognition
@@ -612,7 +612,7 @@ class Assembly(object):
         if len(param) < 3:
             param = self.paramsdict.keys()[int(param)]
 
-        ## run assertions on new param 
+        ## run assertions on new param
         try:
             self = paramschecker(self, param, newvalue)
 
@@ -626,7 +626,7 @@ class Assembly(object):
         """ Write out the parameters of this assembly to a file properly
         formatted as input for `ipyrad -p <params.txt>`. A good and
         simple way to share/archive parameter settings for assemblies.
-        This is also the function that's used by __main__ to 
+        This is also the function that's used by __main__ to
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:
@@ -650,7 +650,7 @@ class Assembly(object):
 
             ## Whip through the current paramsdict and write out the current
             ## param value, the ordered dict index number. Also,
-            ## get the short description from paramsinfo. Make it look pretty, 
+            ## get the short description from paramsinfo. Make it look pretty,
             ## pad nicely if at all possible.
             for key, val in self.paramsdict.iteritems():
                 ## If multiple elements, write them out comma separated
@@ -670,11 +670,11 @@ class Assembly(object):
 
 
     def branch(self, newname, subsamples=[], infile=None):
-        """ Returns a copy of the Assembly object. Does not allow Assembly 
+        """ Returns a copy of the Assembly object. Does not allow Assembly
         object names to be replicated in namespace or path. """
         ## is there a better way to ask if it already exists?
         if (newname == self.name or os.path.exists(
-                                    os.path.join(self.paramsdict["project_dir"], 
+                                    os.path.join(self.paramsdict["project_dir"],
                                     newname+".assembly"))):
             print("    Assembly object named {} already exists".format(newname))
 
@@ -715,8 +715,8 @@ class Assembly(object):
 
 
     def save(self):
-        """ 
-        Save Assembly object to disk as a JSON file. Used for checkpointing, 
+        """
+        Save Assembly object to disk as a JSON file. Used for checkpointing,
         ipyrad auto-saves after every assembly step. File is saved to:
         [project_dir]/[assembly_name].json
 
@@ -731,8 +731,8 @@ class Assembly(object):
 
 
 
-    ## this function is now deprecated but let's keep it around for a little 
-    ## bit. We've simplified error handling now but may want to look back at 
+    ## this function is now deprecated but let's keep it around for a little
+    ## bit. We've simplified error handling now but may want to look back at
     ## this func if the new one fails to report well on some errors.
     # def _clientwrapper(self, stepfunc, args, nwait):
     #     """ wraps a call with error messages for when ipyparallel fails"""
@@ -750,7 +750,7 @@ class Assembly(object):
     #         ## raise by ipyparallel if no connection file is found for 30 sec.
     #         msg = """
     # No Engines found... ensure ipcluster is running (see API docs for details).
-    # When using the API you must start an ipyparallel instance using either 
+    # When using the API you must start an ipyparallel instance using either
     # `ipcluster start` from a terminal, or the Clusters tab in a Jupyter notebook.
     # """
     #         if not ip.__interactive__:
@@ -758,7 +758,7 @@ class Assembly(object):
     # There was a problem connecting to parallel engines. See Docs for advice.
     #         """
     #         ## raise right away since there is no ipyclient to close
-    #         msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg 
+    #         msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg
     #         raise IPyradError(msg)
 
     #     except IOError as inst:
@@ -793,7 +793,7 @@ class Assembly(object):
 
     #     except IPyradError as inst:
     #         LOGGER.info(inst)
-    #         print("  IPyradError: {}".format(inst))            
+    #         print("  IPyradError: {}".format(inst))
 
     #     except Exception as inst:
     #         ## Caught unhandled exception, print and reraise
@@ -806,12 +806,12 @@ class Assembly(object):
     #     finally:
     #         try:
     #             ## pickle the data obj
-    #             self.save()                
+    #             self.save()
     #             ## can't close client if it was never open
     #             if ipyclient:
     #                 ## if CLI, stop jobs and shutdown
     #                 if not ip.__interactive__:
-    #                     ipyclient.abort()                        
+    #                     ipyclient.abort()
     #                 ## if API, stop jobs and clean queue
     #                 else:
     #                     ipyclient.abort()
@@ -848,7 +848,7 @@ class Assembly(object):
             if sfiles:
                 print("\n  Step 1: Linking sorted fastq data to Samples")
             else:
-                print("\n  Step 1: Demultiplexing fastq data to Samples") 
+                print("\n  Step 1: Demultiplexing fastq data to Samples")
         else:
             print("")
 
@@ -1015,9 +1015,9 @@ class Assembly(object):
             ## skip if all are finished
             if all([i.stats.state >= 6 for i in csamples]):
                 print(DATABASE_EXISTS.format(len(samples)))
-                return 
+                return
 
-        ## run if this point is reached. We no longer check for existing 
+        ## run if this point is reached. We no longer check for existing
         ## h5 file, since checking Sample states should suffice.
         assemble.cluster_across.run(self, csamples, noreverse,
                                     force, randomseed, ipyclient)
@@ -1074,14 +1074,14 @@ class Assembly(object):
 
     def samples_precheck(self, samples, mystep, force):
         """ Return a list of samples that are actually ready for the next step.
-            Each step runs this prior to calling run, makes it easier to 
+            Each step runs this prior to calling run, makes it easier to
             centralize and normalize how each step is checking sample states.
 
             mystep is the state produced by the current step.
         """
         subsample = []
 
-        ## filter by state 
+        ## filter by state
         for sample in samples:
             if sample.stats.state < mystep - 1:
                 LOGGER.debug("Sample {} not in proper state."\
@@ -1094,25 +1094,25 @@ class Assembly(object):
 
 
     def run(self, steps=0, force=False, preview=False, quiet=1):
-        """ 
-        Run assembly steps of an ipyrad analysis. Enter steps as a string, 
-        e.g., "1", "123", "12345". This step checks for an existing 
+        """
+        Run assembly steps of an ipyrad analysis. Enter steps as a string,
+        e.g., "1", "123", "12345". This step checks for an existing
         ipcluster instance otherwise it raises an exception. The ipyparallel
-        connection is made using information from the _ipcluster dict of the 
-        Assembly class object. 
+        connection is made using information from the _ipcluster dict of the
+        Assembly class object.
         """
 
         ## wrap everything in a try statement to ensure that we save the
         ## Assembly object if it is interrupted at any point, and also
-        ## to ensure proper cleanup of the ipyclient. 
+        ## to ensure proper cleanup of the ipyclient.
         try:
             ## use an existing ipcluster instance
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
             ## if MPI setup then we are going to wait until all engines are
-            ## ready so that we can print how many cores started on each 
-            ## host machine exactly. 
+            ## ready so that we can print how many cores started on each
+            ## host machine exactly.
             if not quiet:
                 if (self._ipcluster["profile"] != "default") or \
                    (self._ipcluster["engines"] == "MPI"):
@@ -1121,9 +1121,9 @@ class Assembly(object):
                         print("  host compute node: [{} cores] on {}"\
                               .format(hosts.count(hostname), hostname))
 
-                ## if Local setup then we know that we can get all the cores for 
-                ## sure and we won't bother waiting for them to start, since 
-                ## they'll start grabbing jobs once they're started. 
+                ## if Local setup then we know that we can get all the cores for
+                ## sure and we won't bother waiting for them to start, since
+                ## they'll start grabbing jobs once they're started.
                 else:
                     ## If `cores` is set then honor this request, else use all
                     ## available cores.
@@ -1139,7 +1139,7 @@ class Assembly(object):
                 steps = str(steps)
             steps = list(steps)
             steps.sort()
-        
+
             ## print an Assembly name header if inside API
             if ip.__interactive__:
                 print("\n  Assembly: {}".format(self.name))
@@ -1147,17 +1147,17 @@ class Assembly(object):
             ## store pids in case we need to die hard (w/ a vengeance)
             #pids = ipyclient[:].apply_sync(os.getpid)
 
-            ## has many fixed arguments right now, but we may add these to 
-            ## hackerz_only, or they may be accessed in the API. 
+            ## has many fixed arguments right now, but we may add these to
+            ## hackerz_only, or they may be accessed in the API.
             if '1' in steps:
                 self._step1func(force, preview, ipyclient)
 
             if '2' in steps:
-                self._step2func(samples=None, nreplace=1, force=force, 
+                self._step2func(samples=None, nreplace=1, force=force,
                                 preview=preview, ipyclient=ipyclient)
 
             if '3' in steps:
-                self._step3func(samples=None, noreverse=0, force=force, 
+                self._step3func(samples=None, noreverse=0, force=force,
                              maxindels=8, preview=preview, ipyclient=ipyclient)
 
             if '4' in steps:
@@ -1168,7 +1168,7 @@ class Assembly(object):
                 self._step5func(samples=None, force=force, ipyclient=ipyclient)
 
             if '6' in steps:
-                self._step6func(samples=None, noreverse=0, randomseed=12345, 
+                self._step6func(samples=None, noreverse=0, randomseed=12345,
                                 force=force, ipyclient=ipyclient)
 
             if '7' in steps:
@@ -1196,48 +1196,48 @@ class Assembly(object):
             try:
                 ## save the Assembly
                 self.save()
-                
+
                 ## can't close client if it was never open
                 if ipyclient:
 
-                    ## if CLI (has cluster_id), stop jobs and close 
+                    ## if CLI (has cluster_id), stop jobs and close
                     if self._ipcluster["cluster_id"]:
                         ## protect from KBD while killing jobs?
                         LOGGER.info("  shutting down engines")
                         #_cleanup_and_die(pids)
                         ipyclient.abort()
                         ipyclient.shutdown(hub=True, block=True)
-                        ipyclient.close()                        
+                        ipyclient.close()
                     ## elif API, stop jobs and clean queue but don't close
                     else:
                         ipyclient.abort()
-                        ## purge fails if jobs are still running. We could do 
-                        ## a wait call, but what if its a really long running 
-                        ## job?. We could do os.kill, but that also kills the 
-                        ## engines. it seems there is a shutdown function in 
+                        ## purge fails if jobs are still running. We could do
+                        ## a wait call, but what if its a really long running
+                        ## job?. We could do os.kill, but that also kills the
+                        ## engines. it seems there is a shutdown function in
                         ## the works that allows for engine restart, but its
-                        ## not available yet. This is problem for the API. 
+                        ## not available yet. This is problem for the API.
                         if not ipyclient.outstanding:
                             ipyclient.purge_everything()
                         else:
-                            ## nanny: kill the engines left running, report 
+                            ## nanny: kill the engines left running, report
                             ## that some engines were killed.
                             pass
 
-            
+
             ## if exception in close and save, print and ignore
             except Exception as inst2:
                 LOGGER.warning("\
             error during ipcluster shutdown (%s)\
             some Python processes may have been orphaned and should be killed"
             , inst2)
-                   
+
 
 
 
 
 def _cleanup_and_die(pids):
-    """ 
+    """
     When engines are running external bins like vsearch they sometimes
     aren't killed properly on exit, so let's just kill the pid to be sure
     """
@@ -1251,7 +1251,7 @@ def _cleanup_and_die(pids):
 
 
 def _get_samples(self, samples):
-    """ 
+    """
     Internal function. Prelude for each step() to read in perhaps
     non empty list of samples to process. Input is a list of sample names,
     output is a list of sample objects."""
@@ -1259,9 +1259,9 @@ def _get_samples(self, samples):
     if not samples:
         samples = self.samples.keys()
 
-    ## Be nice and allow user to pass in only one sample as a string, 
+    ## Be nice and allow user to pass in only one sample as a string,
     ## rather than a one element list. When you make the string into a list
-    ## you have to wrap it in square braces or else list makes a list of 
+    ## you have to wrap it in square braces or else list makes a list of
     ## each character individually.
     if isinstance(samples, str):
         samples = list([samples])
@@ -1281,7 +1281,7 @@ def _get_samples(self, samples):
         "Unrecognized Sample name(s) not linked to {}: {}"\
         .format(self.name, outstring))
 
-    ## require Samples 
+    ## require Samples
     assert newsamples, \
            "No Samples passed in and none in assembly {}".format(self.name)
 
@@ -1292,7 +1292,7 @@ def _get_samples(self, samples):
 def _name_from_file(fname, splitnames, fields):
     """ internal func: get the sample name from any pyrad file """
     ## allowed extensions
-    file_extensions = [".gz", ".fastq", ".fq", ".fasta", 
+    file_extensions = [".gz", ".fastq", ".fq", ".fasta",
                        ".clustS", ".consens"]
     base, _ = os.path.splitext(os.path.basename(fname))
 
@@ -1345,7 +1345,7 @@ def _read_sample_names(fname):
 
 
 def expander(namepath):
-    """ expand ./ ~ and ../ designators in location names """        
+    """ expand ./ ~ and ../ designators in location names """
     if "~" in namepath:
         namepath = os.path.expanduser(namepath)
     else:
@@ -1355,12 +1355,12 @@ def expander(namepath):
 
 
 def merge(name, assemblies):
-    """ 
-    Creates and returns a new Assembly object in which 
+    """
+    Creates and returns a new Assembly object in which
     samples from two or more Assembly objects with matching names
     are 'merged'. Merging does not affect the actual files written
-    on disk, but rather creates new Samples that are linked to 
-    multiple data files, and with stats summed. 
+    on disk, but rather creates new Samples that are linked to
+    multiple data files, and with stats summed.
     """
 
     ## checks
@@ -1398,12 +1398,12 @@ def merge(name, assemblies):
 
 
 def bufcountlines(filename, gzipped):
-    """ fast line counter. Used to quickly sum number of input reads 
+    """ fast line counter. Used to quickly sum number of input reads
     when running link_fastqs to append files. """
-    if gzipped: 
-        fin = gzip.open(filename)                  
+    if gzipped:
+        fin = gzip.open(filename)
     else:
-        fin = open(filename)                          
+        fin = open(filename)
     nlines = 0
     buf_size = 1024 * 1024
     read_f = fin.read # loop optimization
@@ -1417,9 +1417,9 @@ def bufcountlines(filename, gzipped):
 
 
 def tuplecheck(newvalue, dtype=str):
-    """ 
-    Takes a string argument and returns value as a tuple. 
-    Needed for paramfile conversion from CLI to set_params args 
+    """
+    Takes a string argument and returns value as a tuple.
+    Needed for paramfile conversion from CLI to set_params args
     """
 
     if isinstance(newvalue, list):
@@ -1439,7 +1439,7 @@ def tuplecheck(newvalue, dtype=str):
             LOGGER.info("Assembly.tuplecheck() failed to cast to {} - {}"\
                         .format(dtype, newvalue))
             raise
-            
+
         except Exception as inst:
             LOGGER.info(inst)
             raise SystemExit(\
@@ -1454,25 +1454,25 @@ def paramschecker(self, param, newvalue):
     """ Raises exceptions when params are set to values they should not be"""
 
     if param == 'assembly_name':
-        ## Make sure somebody doesn't try to change their assembly_name, bad 
-        ## things would happen. Calling set_params on assembly_name only raises 
-        ## an informative error. Assembly_name is set at Assembly creation time 
+        ## Make sure somebody doesn't try to change their assembly_name, bad
+        ## things would happen. Calling set_params on assembly_name only raises
+        ## an informative error. Assembly_name is set at Assembly creation time
         ## and is immutable.
         raise IPyradWarningExit("""
-    Warning: Assembly name is set at Assembly creation time and is an immutable 
-    property: You may, however, branch the assembly which will create a copy 
+    Warning: Assembly name is set at Assembly creation time and is an immutable
+    property: You may, however, branch the assembly which will create a copy
     with a new name, a sort of roundabout name change. Here's how:
 
     Command Line Interface:
         ipyrad -p old_name-params.txt --branch new_name
-          
+
     API (Jupyter Notebook Users):
         new_assembly = my_assembly.copy("new_name")
     """)
-        
+
     elif param == 'project_dir':
         expandpath = expander(newvalue)
-        if not expandpath.startswith("/"): 
+        if not expandpath.startswith("/"):
             if os.path.exists(expandpath):
                 #expandpath = "./"+expandpath
                 expandpath = expander(expandpath)
@@ -1495,9 +1495,9 @@ def paramschecker(self, param, newvalue):
             fullrawpath = expander(newvalue)
             if os.path.isdir(fullrawpath):
                 raise IPyradWarningExit("""
-    Error: You entered the path to a directory for raw_fastq_path. To 
-    ensure the correct files in the directory are selected, please use a 
-    wildcard selector to designate the desired files. 
+    Error: You entered the path to a directory for raw_fastq_path. To
+    ensure the correct files in the directory are selected, please use a
+    wildcard selector to designate the desired files.
     Example: /home/user/data/*.fastq  ## selects all files ending in '.fastq'
     You entered: {}
     """.format(fullrawpath))
@@ -1522,17 +1522,17 @@ def paramschecker(self, param, newvalue):
             ## raise error if file is not found
             if not os.path.exists(fullbarpath):
                 raise IPyradWarningExit("""
-    Error: barcodes file not found. This must be an absolute path 
-    (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory 
-    where you're running ipyrad (./data/data_barcodes.txt). You entered: 
+    Error: barcodes file not found. This must be an absolute path
+    (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory
+    where you're running ipyrad (./data/data_barcodes.txt). You entered:
     {}
     """.format(fullbarpath))
             else:
                 self.paramsdict['barcodes_path'] = fullbarpath
                 self._link_barcodes()
 
-        ## if no path was entered then set barcodes path to empty. 
-        ## this is checked again during step 1 and will raise an error 
+        ## if no path was entered then set barcodes path to empty.
+        ## this is checked again during step 1 and will raise an error
         ## if you try demultiplexing without a barcodes file
         else:
             self.paramsdict['barcodes_path'] = ""
@@ -1547,9 +1547,9 @@ def paramschecker(self, param, newvalue):
 
             if os.path.isdir(fullsortedpath):
                 raise IPyradWarningExit("""
-    Error: You entered the path to a directory for sorted_fastq_path. To 
-    ensure the correct files in the directory are selected, please use a 
-    wildcard selector to designate the desired files. 
+    Error: You entered the path to a directory for sorted_fastq_path. To
+    ensure the correct files in the directory are selected, please use a
+    wildcard selector to designate the desired files.
     Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
     You entered: {}
     """.format(fullsortedpath))
@@ -1560,10 +1560,10 @@ def paramschecker(self, param, newvalue):
                 raise IPyradWarningExit("""
     Error: fastq sequence files in sorted_fastq_path could not be found.
     Please check that the location was entered correctly and that a wild
-    card selector (*) was used to select all or a subset of files. 
+    card selector (*) was used to select all or a subset of files.
     You entered: {}
     """.format(fullsortedpath))
-        ## if no value was entered then set to "". 
+        ## if no value was entered then set to "".
         else:
             self.paramsdict['sorted_fastq_path'] = ""
 
@@ -1572,7 +1572,7 @@ def paramschecker(self, param, newvalue):
     elif param == 'assembly_method':
         methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
         assert newvalue in methods, """
-    The assembly_method parameter must be one of the following: denovo, reference, 
+    The assembly_method parameter must be one of the following: denovo, reference,
     denovo+reference or denovo-reference. You entered: \n{}.
     """.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
@@ -1584,13 +1584,13 @@ def paramschecker(self, param, newvalue):
             if not os.path.isfile(fullrawpath):
                 LOGGER.info("reference sequence file not found.")
                 raise IPyradWarningExit("""
-    "Warning: reference sequence file not found. This must be an absolute path 
-    (/home/wat/ipyrad/data/reference.gz) or relative to the directory where 
-    you're running ipyrad (./data/reference.gz). You entered: 
+    "Warning: reference sequence file not found. This must be an absolute path
+    (/home/wat/ipyrad/data/reference.gz) or relative to the directory where
+    you're running ipyrad (./data/reference.gz). You entered:
     {}
     """.format(fullrawpath))
             self.paramsdict['reference_sequence'] = fullrawpath
-        ## if no value was entered the set to "". Will be checked again 
+        ## if no value was entered the set to "". Will be checked again
         ## at step3 if user tries to do refseq and raise error
         else:
             self.paramsdict['reference_sequence'] = ""
@@ -1616,11 +1616,11 @@ def paramschecker(self, param, newvalue):
                 self._link_barcodes()
 
     elif param == 'restriction_overhang':
-        newvalue = tuplecheck(newvalue, str)                        
+        newvalue = tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), """
     cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         if len(newvalue) == 1:
-            newvalue = (newvalue, "")
+            newvalue += ("",)
         ## Handle 3rad datatype with only 3 cutters
         if len(newvalue) == 3:
             newvalue = (newvalue[0], newvalue[1], newvalue[2], "")
@@ -1662,7 +1662,7 @@ def paramschecker(self, param, newvalue):
         assert isinstance(int(newvalue), int), \
             "mindepth_majrule must be an integer."
         if int(newvalue) > self.paramsdict["mindepth_statistical"]:
-            msg = """ 
+            msg = """
     NB: mindepth_majrule cannot be > mindepth_statistical.
         Forcing mindepth_majrule = mindepth_statistical = {}"""\
         .format(self.paramsdict["mindepth_statistical"])
@@ -1692,13 +1692,13 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['max_alleles_consens'] = int(newvalue)
 
     elif param == 'max_Ns_consens':
-        newvalue = tuplecheck(newvalue, int)                        
+        newvalue = tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_Ns_consens should be a tuple e.g., (8, 8)"
         self.paramsdict['max_Ns_consens'] = newvalue
 
     elif param == 'max_Hs_consens':
-        newvalue = tuplecheck(newvalue, int)                        
+        newvalue = tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_Hs_consens should be a tuple e.g., (5, 5)"
         self.paramsdict['max_Hs_consens'] = newvalue
@@ -1719,17 +1719,17 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['max_shared_Hs_locus'] = newvalue
 
     elif param == 'max_SNPs_locus':
-        newvalue = tuplecheck(newvalue, int)                        
+        newvalue = tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_SNPs_locus should be a tuple e.g., (20, 20)"
         self.paramsdict['max_SNPs_locus'] = newvalue
 
     elif param == 'max_Indels_locus':
-        newvalue = tuplecheck(newvalue, int)            
+        newvalue = tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
-        "max_Indels_locus should be a tuple e.g., (5, 100)" 
+        "max_Indels_locus should be a tuple e.g., (5, 100)"
         self.paramsdict['max_Indels_locus'] = newvalue
- 
+
     elif param == 'edit_cutsites':
         ## Force into a string tuple
         newvalue = tuplecheck(newvalue)
@@ -1740,7 +1740,7 @@ def paramschecker(self, param, newvalue):
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
                 pass
-        newvalue = tuple(newvalue)                
+        newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
         if not isinstance(newvalue, tuple):
             raise IPyradWarningExit("""
@@ -1773,7 +1773,7 @@ def paramschecker(self, param, newvalue):
             #requested_formats = "".join([i[0] for i in newvalue.split()])
             requested_formats = [i for i in \
                                  newvalue.replace(" ", "").split(",")]
-        
+
             ## Exit if requested formats are bad
             for form in requested_formats:
                 if form not in [i for i in output_formats]:
@@ -1793,7 +1793,7 @@ def paramschecker(self, param, newvalue):
                 LOGGER.warn("Population assignment file not found.")
                 raise IPyradWarningExit("""
     Warning: Population assignment file not found. This must be an
-    absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to 
+    absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to
     the directory where you're running ipyrad (./data/my_popfile.txt)
     You entered: {}\n""".format(fullpoppath))
         ## should we add a check here that all pop samples are in samples?
@@ -1811,17 +1811,17 @@ def paramschecker(self, param, newvalue):
 
 ### ERROR MESSAGES ###################################
 REQUIRE_ASSEMBLY_NAME = """\
-    Assembly name _must_ be set. This is the first parameter in the params.txt 
-    file, and will be used as a prefix for output files. It should be a short 
-    string with no special characters, i.e., not a path (no \"/\" characters). 
+    Assembly name _must_ be set. This is the first parameter in the params.txt
+    file, and will be used as a prefix for output files. It should be a short
+    string with no special characters, i.e., not a path (no \"/\" characters).
     If you need a suggestion, name it after the organism you're working on.
     """
 REQUIRE_REFERENCE_PATH = """\
     Assembly method {} requires that you enter a 'reference_sequence_path'.
-    """    
+    """
 BAD_ASSEMBLY_NAME = """\
-    No spaces or special characters are allowed in the assembly name. A good 
-    practice is to replace spaces with underscores '_'. An example of a good 
+    No spaces or special characters are allowed in the assembly name. A good
+    practice is to replace spaces with underscores '_'. An example of a good
     assembly_name is: white_crowned_sparrows. Here's what you put:
     {}
     """
@@ -1829,7 +1829,7 @@ NO_FILES_FOUND_PAIRS = """\
     No files found in 'sorted_fastq_path': {}
     Check that file names match the required convention for paired datatype
     i.e., paired file names should be identical save for _R1_ and _R2_
-    (note the underscores before AND after R*). 
+    (note the underscores before AND after R*).
     """
 NAMES_LOOK_PAIRED_WARNING = """\
     Warning: '_R2_' was detected in a file name, which suggests the data may
@@ -1848,7 +1848,7 @@ BAD_PARAMETER = """\
     Error setting parameter '{}'
     {}
     You entered: {}
-    """    
+    """
 NOT_TWO_PATHS = """\
     Error: Must enter a raw_fastq_path or sorted_fastq_path, but not both.
     """
@@ -1860,42 +1860,42 @@ NO_SEQ_PATH_FOUND = """\
 PARAMS_EXISTS = """\
     **Aborting** File exists: {}
     Use force argument to overwrite.
-    """    
+    """
 SAMPLES_EXIST = """\
-    Skipping: {} Samples already found in Assembly {}. 
+    Skipping: {} Samples already found in Assembly {}.
     (can overwrite with force argument)\
-    """    
+    """
 EDITS_EXIST = """\
     Skipping: All {} selected Samples already edited.
     (can overwrite with force argument)\
-    """    
+    """
 CLUSTERS_EXIST = """\
     Skipping: All {} selected Samples already clustered.
     (can overwrite with force argument)\
-    """    
+    """
 JOINTS_EXIST = """\
     Skipping: All {} selected Samples already joint estimated
     (can overwrite with force argument)\
-    """   
+    """
 CONSENS_EXIST = """\
     Skipping: All {} selected Samples already consensus called
     (can overwrite with force argument)\
-    """     
+    """
 DATABASE_EXISTS = """\
     Skipping: All {} selected Samples already clustered.
     (can overwrite with force argument)\
-    """   
+    """
 NOT_CLUSTERED_YET = """\
     The following Samples do not appear to have been clustered in step6
     (i.e., they are not in {}).
-    Check for typos in Sample names, or try running step6 including the 
+    Check for typos in Sample names, or try running step6 including the
     selected samples.
 
     Missing: {}
     """
 OUTPUT_EXISTS = """\
     Output files already created for this Assembly in:
-    {} 
+    {}
     To overwrite, rerun using the force argument.
     """
 FIRST_RUN_1 = """\
@@ -1919,9 +1919,9 @@ FIRST_RUN_6 = """\
     """
 
 NO_RAW_FILE = """\
-    The value entered for the path to the raw fastq file is unrecognized. 
-    Please be sure this path is correct. Double check the file name and 
-    the file extension. If it is a relative path be sure the path is 
+    The value entered for the path to the raw fastq file is unrecognized.
+    Please be sure this path is correct. Double check the file name and
+    the file extension. If it is a relative path be sure the path is
     correct with respect to the directory you're running ipyrad from.
     """
 ########################################################
