@@ -1620,7 +1620,10 @@ def paramschecker(self, param, newvalue):
         assert isinstance(newvalue, tuple), """
     cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         if len(newvalue) == 1:
-            newvalue += ("",)
+            if self.paramsdict['datatype'] == "gbs":
+                newvalue += newvalue
+            else:
+                newvalue += ("",)
         ## Handle 3rad datatype with only 3 cutters
         if len(newvalue) == 3:
             newvalue = (newvalue[0], newvalue[1], newvalue[2], "")
