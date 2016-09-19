@@ -74,6 +74,10 @@ will access 64 cores spread across 8 8-core nodes.
     ## and request 24 hours of wall time.
     >>> qsub -I -l nodes=8:ppn=8 -l walltime=24:00:00 -q "fas_general"
     
+.. parsed-literal::
+
+    ## On SLURM systems the command is somewhat different.
+    >>> srun -A lfg_lab -p serial -t 120:00:00 -N 1 -n 5 --pty --mem-per-cpu=6000 /bin/bash
 
 Submitting job scripts
 ----------------------
@@ -135,6 +139,28 @@ spread across multiple nodes:
     ## submit the qsub script
     >>> qsub qsub_script.sh
 
+Running ipcluster by hand
+-------------------------
 
+On some hpc compute nodes ipcluster does not spin up fast enough
+and ipyrad times out. To work around this it is possible to start
+ipcluster by hand, wait for it to fully fire up, then connect to
+it with the CLI. ipyrad has an argument `--ipcluster`, which when 
+enabled will tell it to skip trying to create an ipcluster 
+instance and to instead connect to the existing ipcluster 
+instance with `profile=ipryad`. It's up to you to remember to run 
+`ipcluster stop --profile=ipyrad` when you're done. The 
+`--daemonize` flag tells ipcluster to run in the background.
+
+.. parsed-literal::
+    ## Get an interactive shell on a compute node
+    $ qsub -I -l nodes=8:ppn=8 -l walltime=24:00:00
+    
+    ## start an ipcluster instance with --profile=ipyrad
+    $ ipcluster start --n 48 --profile=ipyrad --daemonize
+
+    ## run ipyrad with --ipcluster flag so it knows to look for 
+    ## that specific ipcluster instance
+    $ ipyrad -p params-test.txt -s 2 --ipcluster
 
 
