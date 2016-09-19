@@ -1374,6 +1374,11 @@ def merge(name, assemblies):
     for iterass in assemblies[1:]:
         allsamples.update(set(iterass.samples.keys()))
 
+    ## Make sure we have the max of all values for max frag length
+    ## from all merging assemblies.
+    merged._hackersonly["max_fragment_length"] =\
+        max([x._hackersonly["max_fragment_length"] for x in assemblies])
+
     ## iterate over assembly objects, skip first already copied
     for iterass in assemblies[1:]:
         ## iterate over stats, skip 'state'
