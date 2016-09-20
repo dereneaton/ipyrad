@@ -1624,11 +1624,10 @@ def paramschecker(self, param, newvalue):
         newvalue = tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), """
     cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
+        ## Handle the special case where the user has 1
+        ## restriction overhang and does not include the trailing comma
         if len(newvalue) == 1:
-            if self.paramsdict['datatype'] == "gbs":
-                newvalue += newvalue
-            else:
-                newvalue += ("",)
+            newvalue = (newvalue[0], "")
         ## Handle 3rad datatype with only 3 cutters
         if len(newvalue) == 3:
             newvalue = (newvalue[0], newvalue[1], newvalue[2], "")
