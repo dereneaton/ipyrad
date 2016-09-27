@@ -237,6 +237,10 @@ can optionally be left blank.
     @HWI-ST609:152:D0RDLACXX:2:2202:20938:93852 1:N:0:
     TGCAGAAGCTGGAGATTCTGGGGCAGCTTTGCAGCAAGCTGAAAATTCTGGGGGTCGATCTGCAAGATCGGAAGAGCGGTTCAGCAGGAATGCCGAG
 
+In some cases restriction enzymes can bind to more than one specific sequence,
+for example ApoI will bind to AATTY (i.e. AATTC and AATTT). If you used an 
+enzyme with reduced specificity you can include ambiguity codes in the 
+restriction overhang sequence.
 
 Affected steps = 1,2. Example entries to params.txt file:
 

@@ -25,6 +25,7 @@ import numpy as np
 import ipyrad
 import time
 import datetime
+import warnings
 import networkx as nx
 
 from refmap import *
@@ -93,16 +94,19 @@ def sample_cleanup(data, sample):
         sample.depths = {i:v for i, v in zip(bins, bars) if v}
 
         ## sample stat assignments
-        sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
-        sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
-        sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
-        sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
-        sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
-        sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
-
-        sample.stats_dfs.s3["sd_depth_total"] = depths.std()
-        sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
-        sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
+        ## Trap numpy warnings ("mean of empty slice") printed by samples
+        ## with few reads. 
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
+            sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
+            sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
+            sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
+            sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
+            sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
+            sample.stats_dfs.s3["sd_depth_total"] = depths.std()
+            sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
+            sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
 
     else:
         print("no clusters found for {}".format(sample.name))

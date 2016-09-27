@@ -9,6 +9,10 @@ The ipyrad documentation:
 
 * http://ipyrad.readthedocs.org
 
+FAQ and Troubleshooting docs:
+
+* http://ipyrad.readthedocs.org/faq.html
+
 Source code and issue tracking at the github repository:
 
 * http://github.com/dereneaton/ipyrad
