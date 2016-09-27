@@ -36,7 +36,7 @@ class Sample(object):
         self.stats = pd.Series(
             index=["state",
                    "reads_raw",
-                   "reads_filtered",
+                   "reads_passed_filter",
                    "reads_merged",
                    "refseq_mapped_reads",
                    "refseq_unmapped_reads",
@@ -52,10 +52,14 @@ class Sample(object):
                                      ]).astype(np.object),
 
               "s2": pd.Series(index=["reads_raw",
-                                     "filtered_by_qscore",
-                                     "filtered_by_adapter",
-                                     "reads_passed",
+                                     "trimmed_bp_adapter",
+                                     "trimmed_bp_quality",
+                                     "reads_filtered_by_Ns",
+                                     "reads_filtered_by_trimlen",
+                                     "reads_passed_filter",
                                      ]).astype(np.object),
+                                     #"filtered_by_qscore",
+                                     #"filtered_by_adapter",
 
               "s3": pd.Series(index=["merged_pairs",
                                      "clusters_total",
