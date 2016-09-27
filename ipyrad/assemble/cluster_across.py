@@ -26,7 +26,6 @@ import datetime
 import itertools
 import subprocess
 import numpy as np
-import pandas as pd
 import ipyrad as ip
 from ipyrad.assemble.util import *
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
@@ -53,11 +52,13 @@ def muscle_align_across(data, samples, chunk):
         clusts = infile.read().split("//\n//\n")[:-1]
 
     ## tmparray to store indel information, for super huge data it may
-    ## be necessary to build h5 here instead of below.
+    ## be necessary to build h5 here instead of below. Quick test shows that
+    ## (300, 2M, 300) will give a memory error. 
     maxlen = data._hackersonly["max_fragment_length"] + 30
-    indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool)
+    indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool_)
+    duples = np.zeros(len(clusts), dtype=np.bool_)
 
-    ## iterate over clusters and align
+    ## iterate over clusters and align, record excluded loci containing dups
     out = []
     for ldx in xrange(len(clusts)):
         stack = []
@@ -93,25 +94,36 @@ def muscle_align_across(data, samples, chunk):
                 for idx in xrange(aseqs.shape[0]):
                     newn = anames[idx].rsplit(';', 1)[0]
                     ## save to aligned cluster
-                    stack.append("{}\n{}".format(newn, aseqs[idx].tostring()))
+                    stack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
                     ## name index from sorted list (indels order)
                     sidx = snames.index(anames[idx].rsplit("_", 1)[0])
                     ## store the indels
-                    indels[sidx, ldx, :thislen] = aseqs[idx] == "-"
+                    LOGGER.info(np.where(aseqs[idx, :thislen] == "-")[0])
+                    indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
 
             else:
                 string1 = muscle_call(data, names, seqs)
                 anames, aseqs = parsemuscle(data, string1)
+                ## aseqs is the length of the data
                 aseqs = np.array([list(i) for i in aseqs])
+                ## this len is at most maxlen
                 thislen = min(maxlen, aseqs.shape[1])
+                ## get sname indexes of samples, also used to check for dups
+                sidxs = [snames.index(anames[idx].rsplit("_", 1)[0]) for idx \
+                         in xrange(aseqs.shape[0])]
+                ## if no dups
+                if len(set(sidxs)) != aseqs.shape[0]:
+                    duples[ldx] = 1
+                ## arrange data into the correct order to input to indels arr
                 for idx in xrange(aseqs.shape[0]):
                     newn = anames[idx].rsplit(';', 1)[0]
-                    ## save to aligned cluster
-                    stack.append("{}\n{}".format(newn, aseqs[idx].tostring()))
                     ## name index from sorted list (indels order)
-                    sidx = snames.index(anames[idx].rsplit("_", 1)[0])
+                    sidx = sidxs[idx] #snames.index(anames[idx].rsplit("_", 1)[0])
+                    ## save to aligned cluster
+                    stack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
                     ## store the indels
-                    indels[sidx, ldx, :thislen] = aseqs[idx] == "-"
+                    indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
+
         if stack:
             out.append("\n".join(stack))
 
@@ -123,9 +135,13 @@ def muscle_align_across(data, samples, chunk):
         os.remove(chunk)
 
     ## save indels array to tmp dir
-    ifile = os.path.join(data.tmpdir, "indels_{}.h5".format(odx))
-    with h5py.File(ifile, 'w') as iofile:
-        iofile.create_dataset('indels', data=indels)
+    ifile = os.path.join(data.tmpdir, "indels_{}.tmp.npy".format(odx))
+    np.save(ifile, indels)
+    dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
+    np.save(dfile, duples)
+    #with h5py.File(ifile, 'w') as iofile:
+    #    iofile.create_dataset('indels', data=indels)
+
 
 
 
@@ -148,60 +164,71 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         args = [data, samples, clustbits[idx]]
         jobs[idx] = lbview.apply(muscle_align_across, *args)
     allwait = len(jobs)
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
 
     ## print progress while bits are aligning
     while 1:
         finished = [i.ready() for i in jobs.values()]
+        fwait = sum(finished)
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(allwait, fwait, 
+                    " aligning clusters     | {}".format(elapsed))
+        time.sleep(0.1)
         if all(finished):
             break
-        else:
-            fwait = sum(finished)
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(allwait, fwait, 
-                        " aligning clusters     | {}".format(elapsed))
-            time.sleep(0.1)
 
     ## check for errors in muscle_align_across
     keys = jobs.keys()
     for idx in keys:
         if not jobs[idx].successful():
-            LOGGER.error("error in muscle_align_across %s", jobs[idx].error)
-            raise IPyradWarningExit("error in step 6 %s", jobs[idx].error)
+            LOGGER.error("error in muscle_align_across %s", jobs[idx].exception())
+            raise IPyradWarningExit("error in step 6 %s", jobs[idx].exception())
         del jobs[idx]
-
-    ## submit to indel entry
-    build_indels(data, samples, start)
     print("")
 
 
 
-def build_indels(data, samples, init):
-    """ 
-    Builds the indels array and catclust.gz file from the aligned clusters.
-    Both are tmpfiles used for filling the supercatg and superseqs arrays.
-    NOT currently parallelizable, but could use dask...
-    """
-
-    ## get file handles
-    indelfiles = glob.glob(os.path.join(data.tmpdir, "indels_*.h5"))
-    alignbits = glob.glob(os.path.join(data.tmpdir, "align_*.fa"))
-
-    ## sort into input order by chunk names
-    alignbits.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-3]))
-    indelfiles.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-3]))
-
-    LOGGER.info("alignbits %s", alignbits)
-    LOGGER.info("indelfiles %s", indelfiles)
-
-    ## concatenate finished seq clusters into a tmp file 
-    outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
+def concatclusts(outhandle, alignbits):
+    """ concatenates sorted aligned cluster tmpfiles and removes them."""
     with gzip.open(outhandle, 'wb') as out:
         for fname in alignbits:
             with open(fname) as infile:
                 out.write(infile.read()+"//\n//\n")
-            os.remove(fname)
-            elapsed = datetime.timedelta(seconds=int(time.time()-init))
-            progressbar(100, 99, " aligning clusters     | {}".format(elapsed))
+            #os.remove(fname)
+
+
+
+def build_indels(data, samples, ipyclient):
+    """ 
+    Builds the indels array and catclust.gz file from the aligned clusters.
+    Building catclust is very fast. Entering indels into h5 array is a bit 
+    slow but can probably be sped up. (todo). 
+    NOT currently parallelized.
+    """
+
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))    
+    progressbar(100, 0, " database indels       | {}".format(elapsed))
+
+    ## get file handles
+    indelfiles = glob.glob(os.path.join(data.tmpdir, "indels_*.tmp.npy"))
+    alignbits = glob.glob(os.path.join(data.tmpdir, "align_*.fa"))
+
+    ## sort into input order by chunk names
+    indelfiles.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
+    alignbits.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-3]))
+    LOGGER.info("indelfiles %s", indelfiles)
+    LOGGER.info("alignbits %s", alignbits)
+    chunksize = int(indelfiles[0].rsplit("_", 1)[-1][:-8])
+
+    ## concatenate finished seq clusters into a tmp file 
+    outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
+    async = ipyclient[0].apply(concatclusts, *(outhandle, alignbits))
+    while not async.ready():
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(alignbits), 0, " database indels       | {}".format(elapsed))
+        time.sleep(0.1)
 
     ## get dims for full indel array
     maxlen = data._hackersonly["max_fragment_length"] + 30
@@ -210,34 +237,41 @@ def build_indels(data, samples, init):
     ## INIT TEMP INDEL ARRAY
     ## build an indel array for ALL loci in cat.clust.gz, 
     ## chunked so that individual samples can be pulled out
-    ipath = os.path.join(data.dirs.consens, data.name+".indels")
+    ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
     io5 = h5py.File(ipath, 'w')
     iset = io5.create_dataset("indels", 
-                              (len(samples), data.nloci, maxlen),
-                              dtype=np.bool, 
-                              chunks=(1, data.nloci, maxlen),
-                              compression="gzip")
-    iset.attrs["chunksize"] = (1, data.nloci, maxlen)
-
+                              shape=(len(samples), data.nloci, maxlen),
+                              dtype=np.bool_,
+                              chunks=(1, chunksize, maxlen))
+                              #compression="gzip") this is temp why bother zip?
+                              #chunks=(len(samples), min(1000, data.nloci), maxlen),
     ## again make sure names are ordered right
     samples.sort(key=lambda x: x.name)
 
+    #iset.attrs["chunksize"] = (1, data.nloci, maxlen)
+    iset.attrs["samples"] = [i.name for i in samples]
+
     ## enter all tmpindel arrays into full indel array
-    start = 0
+    done = 0
+    init = 0
     for indf in indelfiles:
-        end = int(indf.rsplit("_", 1)[-1][:-3])
-        with h5py.File(indf, 'r') as ioinds:
-            iset[:, start:end, :] += ioinds['indels'][:]
-        start += end-start
-        os.remove(indf)
+        end = int(indf.rsplit("_", 1)[-1][:-8])
+        inarr = np.load(indf)
+        LOGGER.info('inarr shape %s', inarr.shape)
+        LOGGER.info('iset shape %s', iset[:].shape)        
+        iset[:, init:end, :] = inarr[:, :end-init]
+        init += end-init
+        done += 1
+        #os.remove(indf)
 
         ## continued progress bar from multi_muscle_align
-        elapsed = datetime.timedelta(seconds=int(time.time()-init))
-        progressbar(100, 99, " aligning clusters     | {}".format(elapsed))
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(alignbits), done, " database indels       | {}".format(elapsed))        
 
     io5.close()
-    elapsed = datetime.timedelta(seconds=int(time.time()-init))
-    progressbar(100, 100, " aligning clusters     | {}".format(elapsed))
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(100, 100, " database indels       | {}".format(elapsed))
+    print("")
 
 
 
@@ -297,6 +331,9 @@ def cluster(data, noreverse):
                                      close_fds=True)
         done = 0
         while 1:
+            ## TODO: this seems to freeze on progress bar for very big data sets
+            ## which may be b/c reading dog get's too big? or splitting it? Try
+            ## realine, or rsplit(, 1), or something to find a fix...
             dat = os.read(dog, 80192)
             if "Clustering" in dat:
                 try:
@@ -304,6 +341,7 @@ def cluster(data, noreverse):
                 ## may raise value error when it gets to the end
                 except ValueError:
                     pass
+
             ## break if done
             ## catches end chunk of printing if clustering went really fast
             elif "Clusters:" in dat:
@@ -357,23 +395,16 @@ def build_h5_array(data, samples, ipyclient):
     io5 = h5py.File(data.clust_database, 'w')
 
     ## chunk to approximately 2 chunks per core
-    chunks = data.nloci
-    if data.nloci > 20000:
-        chunks = 5000
-    if data.nloci > 100000:
-        chunks = 10000
-    if data.nloci > 500000:
-        chunks = 50000
-    if data.nloci > 1000000:
-        chunks = 100000
+    chunks = ((data.nloci // (data.cpus*2)) + (data.nloci % (data.cpus*2)))
 
     ## Number of elements in hdf5 chunk may not exceed 4GB
     ## This is probably not actually optimal, to have such
     ## enormous chunk sizes, could probably explore efficiency
     ## of smaller chunk sizes on very very large datasets
     chunklen = chunks * len(samples) * maxlen * 4
-    if chunklen > 4000000000:
-        chunks = int(round(4000000000/(len(samples) * maxlen * 4)))
+    while chunklen > 4000000000:
+        chunks = (chunks // 2) + (chunks % 2)
+        chunklen = chunks * len(samples) * maxlen * 4
 
     data.chunks = chunks
     LOGGER.info("data.nloci is %s", data.nloci)
@@ -383,10 +414,10 @@ def build_h5_array(data, samples, ipyclient):
     ## store catgs with a .10 loci chunk size
     supercatg = io5.create_dataset("catgs", (data.nloci, len(samples), maxlen, 4),
                                     dtype=np.uint32,
-                                    chunks=(chunks, len(samples), maxlen, 4), 
+                                    chunks=(chunks, 1, maxlen, 4), 
                                     compression="gzip")
     superseqs = io5.create_dataset("seqs", (data.nloci, len(samples), maxlen),
-                                    dtype="|S1",
+                                    dtype="|S1", 
                                     chunks=(chunks, len(samples), maxlen), 
                                     compression='gzip')
     superalls = io5.create_dataset("nalleles", (data.nloci, len(samples)), 
@@ -394,17 +425,16 @@ def build_h5_array(data, samples, ipyclient):
                                     chunks=(chunks, len(samples)),
                                     compression="gzip")
     ## allele count storage
-    superseqs.attrs["chunksize"] = chunks
-    superseqs.attrs["samples"] = [i.name for i in samples]
-    supercatg.attrs["chunksize"] = chunks
+    supercatg.attrs["chunksize"] = (chunks, 1, maxlen, 4)
     supercatg.attrs["samples"] = [i.name for i in samples]
-    superalls.attrs["chunksize"] = chunks
+    superseqs.attrs["chunksize"] = (chunks, len(samples), maxlen)
+    superseqs.attrs["samples"] = [i.name for i in samples]
+    superalls.attrs["chunksize"] = (chunks, len(samples))
     superalls.attrs["samples"] = [i.name for i in samples]
 
     ## array for pair splits locations, dup and ind filters
     io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
     io5.create_dataset("duplicates", (data.nloci, ), dtype=np.bool_)    
-    ## io5.create_dataset("indels", (data.nloci, ), dtype=np.uint16)
 
     ## close the big boy
     io5.close()
@@ -421,46 +451,42 @@ def build_h5_array(data, samples, ipyclient):
 
 
 
-def multicat(data, samples, ipyclient):
+def fill_dups_arr(data):
+    """ 
+    fills the duplicates array from the multi_muscle_align tmp files
     """
-    Runs singlecat and cleanup jobs for each sample.
-    For each sample this fills its own hdf5 array with catg data & indels. 
-    This is messy, could use simplifiying.
-    """
+    ## build the duplicates array
+    duplefiles = glob.glob(os.path.join(data.tmpdir, "duples_*.tmp.npy"))    
+    duplefiles.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
 
-    ## notes for improvements: 
-    #######################################################################
-    ## create parallel client
-    ## it might be a good idea to limit the number of engines here based on 
-    ## some estimate of the individual file sizes, to avoid memory limits.
-    ##
-    ## I think the indels arr is what's crushing RAM, should be chunked...
-    ##
-    ## read in the biggest individual file (e.g., 4GB), and limit the number
-    ## of concurrent engines so that if N files that big were loaded into
-    ## memory they would not exceed 75% memory. 
-    ##
-    ## but what if we're on multiple machines and each has its own memory?...
-    ## then we need to ask each machine and use the min value
-    ########################################################################
-    LOGGER.info("in the multicat")
-    start = time.time()
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
+    ## enter the duplicates filter into super h5 array
+    io5 = h5py.File(data.clust_database, 'r+')
+    dfilter = io5["duplicates"]
 
-    ## parallel client
-    lbview = ipyclient.load_balanced_view()
-    ## First submit a sleeper job as temp_flag for cleanups
-    cleanups = [lbview.apply(time.sleep, 0.1)]
+    ## enter all duple arrays into full duplicates array
+    init = 0
+    for dupf in duplefiles:
+        end = int(dupf.rsplit("_", 1)[-1][:-8])
+        inarr = np.load(dupf)
+        dfilter[init:end] = inarr
+        init += end-init
+        os.remove(dupf)
+    #del inarr
 
-    ## get samples and names, sorted
-    samples.sort(key=lambda x: x.name)  
-    snames = [i.name for i in samples]
-
-    ## Build an array for quickly indexing consens reads from catg files
-    uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
-    updf = np.loadtxt(uhandle, dtype="S")
+    ## continued progress bar 
+    LOGGER.info("all duplicates: %s", dfilter[:].sum())
+    io5.close()
     
+
+
+def get_seeds_and_hits(uhandle, bseeds, snames):
+    """
+    builds a seeds and hits (uarr) array of ints from the utemp.sort file. 
+    Saves outputs to files ...
+    """
+    ## read in the utemp.sort file
+    updf = np.loadtxt(uhandle, dtype="S")
+
     ## Get seeds for all matches from usort
     seeds = np.unique(updf[:, 1])
     seedsarr = np.column_stack([
@@ -469,10 +495,6 @@ def multicat(data, samples, ipyclient):
                    [i.rsplit("_", 1)[1] for i in seeds]])
     seedsarr[:, 1] = [snames.index(i) for i in seedsarr[:, 1]]
     seedsarr = seedsarr.astype(np.int64)    
-    
-    ## progress
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
     LOGGER.info("got a seedsarr %s", seedsarr.shape)
 
     ## Get matches from usort and create an array for fast entry
@@ -485,133 +507,285 @@ def multicat(data, samples, ipyclient):
             idx += 1
         uarr[ldx, 0] = idx
         lastloc = tloc
-
     ## create a column with sample index
     uarr[:, 1] = [int(snames.index(i.rsplit("_", 1)[0])) for i in updf[:, 0]]
     ## create a column with only consens index for sample
     uarr[:, 2] = [int(i.rsplit("_", 1)[1]) for i in updf[:, 0]]
     uarr = uarr.astype(np.int64)
-
-    ## progress
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
     LOGGER.info("got a uarr %s", uarr.shape)
 
-    ## a numba compiled func calcs duplicate filter across 16 blocks
-    blocks = (seedsarr.shape[0] / 16) + (seedsarr.shape[0] % 16)
-    dupres = {}
-    for test in xrange(0, seedsarr.shape[0], blocks):
-        args = (test, blocks, seedsarr, uarr, len(samples))
-        async = lbview.apply(fill_duplicates_parallel, *args)
-        dupres[test] = async
+    ## save as h5 to we can grab by sample slices
+    with h5py.File(bseeds, 'w') as io5:
+        io5.create_dataset("seedsarr", data=seedsarr, dtype=np.int64)
+        io5.create_dataset("uarr", data=uarr, dtype=np.int64)
 
-    ## progress bar
-    while not all([i.ready() for i in dupres.values()]):
+
+
+def multicat(data, samples, ipyclient):
+    """
+    Runs singlecat and cleanup jobs for each sample.
+    For each sample this fills its own hdf5 array with catg data & indels. 
+    This is messy, could use simplifiying.
+    """
+
+    ## notes for improvements: 
+    LOGGER.info("in the multicat")
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time() - start))
+    progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
+
+    ## parallel client
+    lbview = ipyclient.load_balanced_view()
+    ## First submit a sleeper job as temp_flag for cleanups
+    last_sample = 0
+    cleanups = {}
+    cleanups[last_sample] = lbview.apply(time.sleep, 0.0)
+
+    ## get samples and names, sorted
+    snames = [i.name for i in samples]
+    snames.sort()
+
+    ## Build an array for quickly indexing consens reads from catg files. 
+    ## save as a npy int binary file.
+    uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
+    bseeds = os.path.join(data.dirs.consens, data.name+".tmparrs.h5")
+
+    ## send as first async1 job
+    async1 = lbview.apply(get_seeds_and_hits, *(uhandle, bseeds, snames))
+    async2 = lbview.apply(fill_dups_arr, data)
+
+    ## progress
+    while not (async1.ready() and async2.ready()):
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
         progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
         time.sleep(0.1)
+    if not async1.successful():
+        raise IPyradWarningExit("error in get_seeds: %s", async1.exception())
+    if not async2.successful():
+        raise IPyradWarningExit("error in fill_dups: %s", async2.exception())
 
-    keys = sorted(dupres.keys())
-    dfilter = np.concatenate([dupres[key].result() for key in keys])
-    LOGGER.info("dfilter size and it %s %s", dfilter.shape, dfilter)
-
-    ## enter the duplicates filter into super h5 array
-    with h5py.File(data.clust_database, 'r+') as io5:
-        io5["duplicates"][:] = dfilter
+    ## make a limited njobs view based on mem limits
+    smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
 
     ## make a list of jobs
     jobs = {}
-    for sidx, sample in enumerate(samples):
+    for sample in samples:
         ## grab just the hits for this sample
-        hits = uarr[uarr[:, 1] == sidx]
-        seeds = seedsarr[seedsarr[:, 1] == sidx]
-        ## send to engines
-        args = [data, sample, seeds, hits, sidx]
-        jobs[sample.name] = lbview.apply(singlecat, *args)
-        LOGGER.info("submitting %s %s to singlecat", sample.name, hits.shape)
+        sidx = snames.index(sample.name)
+        jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
 
-    ## Check progress and submit cleanups for finished jobs. 
+    ## check for finished and submit disk-writing job when finished
     allwait = len(jobs)
-    sicatdone = 0
+    fwait = 0
     while 1:
-        ## grab finished/ready jobs
-        jitems = [(i, j) for i, j in jobs.iteritems() if j.ready()]
-        for subname, job in jitems:
-            if job.successful():
-                sname = job.result()
-                with lbview.temp_flags(after=cleanups[-1]):
-                    async = lbview.apply(insert_and_cleanup, *[data, sname])
-                    cleanups.append(async)
-                sicatdone += 1
-            else:
-                ## print error if something went wrong
-                #if job.error:
-                LOGGER.error("\n  error: %s", job.metadata)
-            del jobs[subname]
-                        
-        ## print progress
-        if sicatdone == allwait:
-            break
-        else:
-            elapsed = datetime.timedelta(seconds=int(time.time() - start))
-            progressbar(allwait, sicatdone, 
-                " indexing clusters     | {}".format(elapsed))
-        time.sleep(0.1)
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(allwait, sicatdone, 
-               " indexing clusters     | {}".format(elapsed))
-    print("")
+        ## check for new jobs to submit
+        jkeys = jobs.keys()
+        for name in jkeys:
+            if jobs[name].ready():
+                if jobs[name].successful():
+                    ## get args for writing
+                    args = (data, data.samples[name], snames.index(name))
+                    ## store that job has finished
+                    fwait += 1
+                    # submit writing job
+                    LOGGER.info("sending %s:%s after %s", snames.index(name), name, last_sample)
+                    with smallview.temp_flags(after=cleanups[last_sample]):
+                        cleanups[name] = smallview.apply(write_to_fullarr, *args)
+                    last_sample = name
+                    del jobs[name]
+                else:
+                    LOGGER.error(" error in singlecat (%s) %s", 
+                                 name, jobs[name].exception())
+                    raise IPyradWarningExit(" error in singlecat ({}) {}"\
+                                        .format(name), jobs[name].exception())
 
-    ## print final progress
-    start = time.time()
-    allwait = len(cleanups)
-    while 1:
-        ## grab finished/ready jobs
-        cdones = [i.ready() for i in cleanups]
-        if not all(cdones):
-            elapsed = datetime.timedelta(seconds=int(time.time() - start))
-            progressbar(allwait, sum(cdones),  
-                        " building database     | {}".format(elapsed))
-            time.sleep(0.1)
-        else:
+        ## print progress bar
+        elapsed = datetime.timedelta(seconds=int(time.time() - start))
+        progressbar(allwait, fwait, " indexing clusters     | {}".format(elapsed))
+        time.sleep(0.1)
+        if fwait == allwait:
             break
+
+    ## wait for writing jobs to finish
+    print("")
+    start = time.time()
+    while 1:
+        finished = [i for i in cleanups.values() if i.ready()]
+        elapsed = datetime.timedelta(seconds=int(time.time() - start))
+        progressbar(len(cleanups), len(finished),
+                    " building database     | {}".format(elapsed))
+        time.sleep(0.1)
+        ## break if one failed, or if finished
+        if not all([i.successful() for i in finished]):
+            break
+        if len(cleanups) == len(finished):
+            break
+
+    ## check for errors
+    for job in cleanups:
+        if cleanups[job].ready():
+            if not cleanups[job].successful():
+                LOGGER.error(" error in write_to_fullarr (%s) %s", 
+                             job, cleanups[job].exception())
+                raise IPyradWarningExit(" error in write_to_fullarr ({}) {}"\
+                                    .format(job, cleanups[job].exception()))
 
     ## remove large indels array file
-    ifile = os.path.join(data.dirs.consens, data.name+".indels")
+    ifile = os.path.join(data.dirs.consens, data.name+".tmp.indels")
     if os.path.exists(ifile):
         os.remove(ifile)
 
     ## print final progress
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(100, 100, " building database     | {}".format(elapsed))
+    progressbar(10, 10, " building database     | {}".format(elapsed))
     print("")
 
 
 
-def insert_and_cleanup(data, sname):
+## This is where indels are imputed
+def singlecat(data, sample, bseeds, sidx):
     """ 
-    Enter results from singlecat into the super h5 arrays. This is 
-    not parallelized. Why isn't it faster?
+    Orders catg data for each sample into the final locus order. This allows
+    all of the individual catgs to simply be combined later. They are also in 
+    the same order as the indels array, so indels are inserted from the indel
+    array that is passed in. 
     """
-    ## grab supercatg from super and get index of this sample
+
+    ## grab seeds and hits info for this sample
+    with h5py.File(bseeds, 'r') as io5:
+        ## get hits just for this sample and sort them by sample order index
+        hits = io5["uarr"][:]
+        hits = hits[hits[:, 1] == sidx, :]
+        #hits = hits[hits[:, 2].argsort()]
+        ## get seeds just for this sample and sort them by sample order index
+        seeds = io5["seedsarr"][:]
+        seeds = seeds[seeds[:, 1] == sidx, :]
+        #seeds = seeds[seeds[:, 2].argsort()]
+        full = np.concatenate((seeds, hits))
+        full = full[full[:, 0].argsort()]
+
+    ## still using max+30 len limit, rare longer merged reads get trimmed
+    ## we need to allow room for indels to be added too
+    maxlen = data._hackersonly["max_fragment_length"] + 30
+
+    ## we'll fill a new catg and alleles arr for this sample in locus order, 
+    ## which is known from seeds and hits
+    ocatg = np.zeros((data.nloci, maxlen, 4), dtype=np.uint32)
+    onall = np.zeros(data.nloci, dtype=np.uint8)
+
+    LOGGER.info("single cat here")
+    ## grab the sample's data and write to ocatg and onall
+    with h5py.File(sample.files.database, 'r') as io5:
+        ## get it and delete it
+        catarr = io5["catg"][:]
+        ocatg[full[:, 0], :catarr.shape[1], :] = catarr[full[:, 2], :]
+        del catarr
+
+        ## get it and delete it
+        nall = io5["nalleles"][:]
+        onall[full[:, 0]] = nall[full[:, 2]]
+        del nall
+
+    ## get indel locations for this sample
+    ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
+    with h5py.File(ipath, 'r') as ih5:
+        indels = ih5["indels"][sidx, :, :]
+
+    ## insert indels into ocatg
+    newcatg = inserted_indels(indels, ocatg)
+    del ocatg, indels
+
+    ## save big arrays to disk temporarily
+    smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
+    if os.path.exists(smpio):
+        os.remove(smpio)
+    with h5py.File(smpio, 'w') as oh5:
+        oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
+                           #chunks=(chunksize, maxlen, 4), gzip=True)
+        oh5.create_dataset("inall", data=onall, dtype=np.uint8)
+                           #chunks=(chunksize, maxlen, 4), gzip=True)
+    # LOGGER.info("submitting %s %s to singlecat", sidx, hits.shape)
+    #del ocatg
+    #del onall    
+
+    #return newcatg, onall, sidx
+
+
+
+#def write_to_fullarr(data, newcatg, onall, sidx):
+def write_to_fullarr(data, sample, sidx):
+    """ writes arrays to h5 disk """
+    ## save big arrays to disk temporarily
+
+
     with h5py.File(data.clust_database, 'r+') as io5:
+        chunk = io5["catgs"].attrs["chunksize"][0]
         catg = io5["catgs"]
         nall = io5["nalleles"]
 
-        smpio = os.path.join(data.dirs.consens, sname+".tmp.h5")
-        with h5py.File(smpio, 'r') as smp5:
-            newcatg = smp5["icatg"]
-            onall = smp5["inall"]
-    
-            ## get this samples index in the h5
-            sidx = list(catg.attrs["samples"]).index(sname)
-            LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
+        ## adding an axis to newcatg makes it write about 1000X faster. 
+        ## so instead of e.g., 
+        ##        newcatg (1000, 150, 4) -> catg (1000, 150, 4)
+        ## we do:
+        ##        newcatg (1000, 1, 150, 4) -> catg (1000, 1, 150, 4)
+        smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
+        with h5py.File(smpio) as indat:
+            newcatg = indat["icatg"][:]
+            onall = indat["inall"][:]
+            for cidx in xrange(0, catg.shape[0], chunk):
+                #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
+                end = cidx + chunk
+                catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
+                nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
+        os.remove(smpio)
 
-            ## single fill, does this crush memory? should we chunk?
-            ## I think it's slow because it's entering into a column
-            ## but catg is chunked by rows... C vs. F, amiright?
-            catg[:, sidx, :] = newcatg[:]
-            nall[:, sidx] = onall[:]
+
+            # for cidx in xrange(0, catg.shape[0], chunks):
+            #     #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
+            #     catg[init:cidx, sidx:sidx+1, :] = np.expand_dims(newcatg[init:cidx, :], axis=1)
+            #     nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
+            #     init = cidx
+    # smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
+    # if os.path.exists(smpio):
+    #     os.remove(smpio)
+    # with h5py.File(smpio, 'w') as oh5:
+    #     oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
+    #     oh5.create_dataset("inall", data=onall, dtype=np.uint8)
+
+    # with h5py.File(data.clust_database, 'r+') as io5:
+    #     catg = io5["catgs"]
+    #     nall = io5["nalleles"]
+
+    #     #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
+    #     catg[:, sidx, :] = newcatg[:]
+    #     nall[:, sidx] = onall[:]
+
+
+# def insert_and_cleanup(data, sname, sidx, newcatg, onall):
+#     """ 
+#     Enter results from singlecat into the super h5 arrays. This is 
+#     not parallelized. Why isn't it faster?
+#     """
+
+#     ## grab supercatg from super and get index of this sample
+#     with h5py.File(data.clust_database, 'r+') as io5:
+#         catg = io5["catgs"]
+#         nall = io5["nalleles"]
+
+#         #smpio = os.path.join(data.dirs.consens, sname+".tmp.h5")
+#         #with h5py.File(smpio, 'r') as smp5:
+#         #    newcatg = smp5["icatg"]
+#         #    onall = smp5["inall"]
+    
+#             ## get this samples index in the h5
+#             sidx = list(catg.attrs["samples"]).index(sname)
+#             LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
+
+#             ## single fill, does this crush memory? should we chunk?
+#             ## I think it's slow because it's entering into a column
+#             ## but catg is chunked by rows... C vs. F, amiright?
+#             catg[:, sidx, :] = newcatg[:]
+#             nall[:, sidx] = onall[:]
 
             ## FILL SUPERCATG -- catg is chunked by nchunk loci
             # chunk = catg.attrs["chunksize"]
@@ -624,120 +798,69 @@ def insert_and_cleanup(data, sname):
 
 
 
-## This is where indels are imputed
-def singlecat(data, sample, seeds, hits, sidx):
-    """ 
-    Orders catg data for each sample into the final locus order. This allows
-    all of the individual catgs to simply be combined later. They are also in 
-    the same order as the indels array, so indels are inserted from the indel
-    array that is passed in. 
-    """
+# @numba.jit(nopython=True)
+# def fill_duplicates_parallel(base, block, seedsarr, uarr, ntax):
+#     """ 
+#     Applies filter to block of loci. Requires numba v.0.28.
+#     """
+#     ## filter for duplicates
+#     size = min(block, seedsarr.shape[0] - (base))
+#     dfilter = np.zeros(size, dtype=np.bool_)
 
-    ## set maximum allowable length of clusters. For single end RAD this only
-    ## has to allow for a few extra indels, so 30 should be fine. For GBS, we 
-    ## have to allow for the fact that two clusters could now partially overlap
-    ## which previously did not within samples. Again, 30 is pretty good, but
-    ## we have to set this as a max cut off so anything over this will get 
-    ## trimmed. Fine, it's probably quite rare. 
-    nloci = data.nloci
-    maxlen = data._hackersonly["max_fragment_length"] + 30
-
-    ## get catg and nalleles from step 5 for this sample. 
-    ## the shape of catg is (nconsens, maxlen)
-    with h5py.File(sample.files.database, 'r') as oh5:
-        catarr = oh5["catg"][:]
-        nall = oh5["nalleles"][:]
-
-    ## get catg and alleles data for this sample in locus order
-    ocatg, onall = fill_cats_and_alleles(nloci, maxlen, seeds, hits, catarr, nall)
-    del catarr, nall
-
-    ## time this next step
-    tmpstart = time.time()
-    LOGGER.info("loading indels for %s %s", sample.name, sidx)
-
-    ## get indel locations for this sample
-    ipath = os.path.join(data.dirs.consens, data.name+".indels")
-    with h5py.File(ipath, 'r') as ih5:
-        indels = ih5["indels"][sidx, :, :]
-
-    ## insert indels into ocatg
-    newcatg = inserted_indels(indels, ocatg)
-    del ocatg
-
-    ## report time for this step
-    elapsed = datetime.timedelta(seconds=int(time.time()- tmpstart))
-    LOGGER.info("how long to do indels for %s %s", sample.name, elapsed)
-
-    ## save big arrays to disk temporarily
-    smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
-    if os.path.exists(smpio):
-        os.remove(smpio)
-    with h5py.File(smpio, 'w') as oh5:
-        oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
-        oh5.create_dataset("inall", data=onall, dtype=np.uint8)
-
-    ## clear memory
-    del indels, newcatg, onall
-
-    ## return name for
-    return sample.name
+#     ## fill dfilter
+#     for bidx in xrange(size):
+#         idx = bidx + base
+#         ## get idx of seed and matches
+#         sidxs = uarr[uarr[:, 0] == idx, 1]
+#         seedx = seedsarr[seedsarr[:, 0] == idx, 1]
+#         bins = np.concatenate((sidxs, seedx))
+#         counts = np.bincount(bins)
+#         if counts.max() > 1:
+#             dfilter[bidx] = True
+#     return dfilter
 
 
 
-@numba.jit(nopython=True)
-def fill_duplicates_parallel(base, block, seedsarr, uarr, ntax):
-    """ 
-    Applies filter to block of loci. Requires numba v.0.28.
-    """
-    ## filter for duplicates
-    size = min(block, seedsarr.shape[0] - (base))
-    dfilter = np.zeros(size, dtype=np.bool_)
+# @numba.jit(nopython=True)
+# def fill_cats_and_alleles(maxlen, seeds, hits, catarr, nall):
+#     """ 
+#     Fill catg and nalleles data in locus sorted order and returns
+#     the filled arrays. Uses the seeds and hits arrays. Needs the entire 
+#     catarr and nall arrays loaded into memory, unfortunately.
+#     """
+#     ocatg = np.zeros((10000, maxlen, 4), dtype=np.uint32)
+#     onall = np.zeros(10000, dtype=np.uint8)
 
-    ## fill dfilter
-    for bidx in xrange(size):
-        idx = bidx + base
-        ## get idx of seed and matches
-        sidxs = uarr[uarr[:, 0] == idx, 1]
-        seedx = seedsarr[seedsarr[:, 0] == idx, 1]
-        bins = np.concatenate((sidxs, seedx))
-        counts = np.bincount(bins)
-        if counts.max() > 1:
-            dfilter[bidx] = True
-    return dfilter
+#     ## fill the locus data where sample was a seed
+#     #for idx in xrange(seeds.shape[0]):
+#     for idx in xrange(hslice, hslice+10000):
+#         ## this is the samples data
+#         cidx = seeds[idx, 2]
 
+#         ## we can fill it into the array if its in this 10K chunk
+#         if cidx in seeds[:, ]
 
+#         ## is this sample the seed?
+#         if idx in seeds[:, 0]:
 
-@numba.jit(nopython=True)
-def fill_cats_and_alleles(nloci, maxlen, seeds, hits, catarr, nall):
-    """ 
-    Fill catg and nalleles data in locus sorted order and returns
-    the filled arrays. Uses the seeds and hits arrays. 
-    """
-    ## arrays to fill
-    ocatg = np.zeros((nloci, maxlen, 4), dtype=np.uint32)
-    onall = np.zeros(nloci, dtype=np.uint8)
-
-    ## fill the locus data where sample was a seed
-    for idx in xrange(seeds.shape[0]):
-        loc = seeds[idx, 0]
-        cidx = seeds[idx, 2]
+#         loc = seeds[idx, 0]
+#         cidx = seeds[idx, 2]
         
-        ## set locus with sample data
-        ocatg[loc, :catarr.shape[1]] = catarr[cidx]
-        onall[loc] = nall[cidx]
+#         ## set locus with sample data
+#         ocatg[loc, :catarr.shape[1]] = catarr[cidx]
+#         onall[loc] = nall[cidx]
         
-    ## fill the locus data where sample is a hit
-    for idx in xrange(hits.shape[0]):
-        ## get the locus number
-        loc = hits[idx, 0]
-        cidx = hits[idx, 2]
+#     ## fill the locus data where sample is a hit
+#     for idx in xrange(hits.shape[0]):
+#         ## get the locus number
+#         loc = hits[idx, 0]
+#         cidx = hits[idx, 2]
         
-        ## set locus with sample data
-        ocatg[loc, :catarr.shape[1]] = catarr[cidx]
-        onall[loc] = nall[cidx]
+#         ## set locus with sample data
+#         ocatg[loc, :catarr.shape[1]] = catarr[cidx]
+#         onall[loc] = nall[cidx]
         
-    return ocatg, onall
+#     return ocatg, onall
 
 
 
@@ -794,12 +917,13 @@ def fill_superseqs(data, samples):
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
     ## iterate over clusters
-    chunksize = superseqs.attrs["chunksize"]
+    chunks = superseqs.attrs["chunksize"]
+    chunksize = chunks[0]
     done = 0
     iloc = 0
     cloc = 0
-    chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="|S1")
-    chunkedge = np.zeros((chunksize), dtype=np.uint16)
+    chunkseqs = np.zeros(chunks, dtype="|S1")
+    chunkedge = np.zeros(chunksize, dtype=np.uint16)
 
     while 1:
         try:
@@ -826,7 +950,7 @@ def fill_superseqs(data, samples):
             names = piece[0::2]
             seqs = np.array([list(i) for i in piece[1::2]])
             ## fill in the separator if it exists
-            separator = np.where(np.all(seqs == "n", axis=0))[0]
+            separator = np.where(np.all(seqs == 'n', axis=0))[0]
             if np.any(separator):
                 chunkedge[cloc] = separator.min()
 
@@ -857,6 +981,7 @@ def fill_superseqs(data, samples):
 
     ## close handle
     clusters.close()
+    os.remove(infile)
 
 
 
@@ -880,17 +1005,16 @@ def count_seeds(usort):
 
 
 
-def build_reads_file(data, ipyclient):
+def build_clustbits(data, ipyclient):
     """ 
     Reconstitutes clusters from .utemp and htemp files and writes them 
     to chunked files for aligning in muscle. 
     """
 
     ## parallel client
-    lbview = ipyclient.load_balanced_view()
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " building clusters     | {}".format(elapsed))
+    progressbar(3, 0, " building clusters     | {}".format(elapsed))
     LOGGER.info("building reads file -- loading utemp file into mem")
 
     ## send sort job to engines. Sorted seeds allows us to work through
@@ -898,22 +1022,43 @@ def build_reads_file(data, ipyclient):
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
     usort = os.path.join(data.dirs.consens, data.name+".utemp.sort")
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    #async1 = lbview.apply(subprocess.Popen, cmd)
     async1 = subprocess.Popen(cmd)
     while async1.poll() == None:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(20, 0, " building clusters     | {}".format(elapsed))
+        progressbar(3, 0, " building clusters     | {}".format(elapsed))
         time.sleep(0.1)
 
     ## send count seeds job to engines. 
-    async2 = lbview.apply(count_seeds, usort)
+    async2 = ipyclient[0].apply(count_seeds, usort)
     while not async2.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(20, 0, " building clusters     | {}".format(elapsed))
+        progressbar(3, 1, " building clusters     | {}".format(elapsed))
         time.sleep(0.1)
 
     ## wait for both to finish while printing progress timer
     nseeds = async2.result()
+
+    ## send the clust bit building job to work and track progress
+    async3 = ipyclient[0].apply(sub_build_clustbits, *(data, usort, nseeds))
+    while not async3.ready():
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(3, 2, " building clusters     | {}".format(elapsed))
+        time.sleep(0.1)
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(3, 3, " building clusters     | {}".format(elapsed))
+    print("")
+
+    ## return the nloci and clustbits
+    clustbits, nloci = async3.result()
+    return clustbits, nloci
+
+
+
+def sub_build_clustbits(data, usort, nseeds):
+    """ 
+    A subfunction of build_clustbits to allow progress tracking. This func
+    splits the unaligned clusters into bits for aligning on separate cores. 
+    """
 
     ## load FULL concat fasta file into a dict. This could cause RAM issues.
     ## this file has iupac codes in it, not ambigs resolved, and is gzipped.
@@ -925,22 +1070,12 @@ def build_reads_file(data, ipyclient):
         for namestr, seq in cons:
             nnn, sss = [i.strip() for i in namestr, seq]
             allcons[nnn[1:]] = sss
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " building clusters     | {}".format(elapsed))
-
-    ## a chunker for writing every N loci. This uses core info, meaning that
-    ## if users do not supply -n arg then it might be poorly estimated. 
-    ## if no info we use detect_cpus to get info for this node. 
-    cores = data._ipcluster["cores"]
-    if not cores:
-        cores = detect_cpus()
 
     ## set optim to approximately 4 chunks per core. Smaller allows for a bit
     ## cleaner looking progress bar. 40 cores will make 160 files. 
-    optim = (nseeds / cores) + (nseeds % cores)
-    if nseeds >= 1000:
-        optim = optim / 4
-    LOGGER.info("building reads file, optim=%s, nseeds=%s", optim, nseeds)
+    optim = ((nseeds // (data.cpus*4)) + (nseeds % (data.cpus*4)))
+    LOGGER.info("building clustbits, optim=%s, nseeds=%s, cpus=%s", 
+                optim, nseeds, data.cpus)
 
     ## iterate through usort grabbing seeds and matches
     with open(usort, 'rb') as insort:
@@ -978,9 +1113,6 @@ def build_reads_file(data, ipyclient):
                         ## reset list and counter
                         seqlist = []
                         seqsize = 0
-                    ## print progress
-                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                    progressbar(nseeds, loci, " building clusters     | {}".format(elapsed))
 
                 ## store the new seed on top of fseq
                 fseqs.append(">{}\n{}".format(seed, allcons[seed]))
@@ -1004,9 +1136,6 @@ def build_reads_file(data, ipyclient):
             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
 
     ## final progress and cleanup
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " building clusters     | {}".format(elapsed))
-    print("")
     del allcons
     clustbits = glob.glob(os.path.join(data.tmpdir, data.name+".chunk_*"))
 
@@ -1121,11 +1250,17 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         os.remove(data.clust_database)
 
     ## get parallel view
-    lbview = ipyclient.load_balanced_view()
     start = time.time()
+
+    ## a chunker for writing every N loci. This uses core info, meaning that
+    ## if users do not supply -n arg then it might be poorly estimated. 
+    ## if no info we use detect_cpus to get info for this node. 
+    data.cpus = data._ipcluster["cores"]
+    if not data.cpus:
+        data.cpus = detect_cpus()
     
     ## make a vsearch input fasta file with all samples reads concat
-    binput = lbview.apply(build_input_file, *[data, samples, randomseed])
+    binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
     while not binput.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 0, " concat/shuffle input  | {}".format(elapsed))
@@ -1137,7 +1272,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## calls vsearch, uses all threads available to head node
     cluster(data, noreverse)
 
-    ## make an tmpout directory
+    # ## make an tmpout directory
     data.tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
     if not os.path.exists(data.tmpdir):
         os.mkdir(data.tmpdir)
@@ -1145,32 +1280,37 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## wrap everything involving tmpdir to make sure we delete it on failure
     try:
         ## build consens clusters and returns chunk handles to be aligned
-        clustbits, nloci = build_reads_file(data, ipyclient)
+        clustbits, nloci = build_clustbits(data, ipyclient)
         data.nloci = nloci
 
         ## muscle align the consens reads and creates hdf5 indel array
         multi_muscle_align(data, samples, clustbits, ipyclient)
+    
+        ## submit to indel entry
+        build_indels(data, samples, ipyclient)
 
-    except Exception as inst:
-        LOGGER.error(inst)
-        raise IPyradWarningExit(inst)
+        ## builds the final HDF5 array which includes three main keys
+        ## /catg -- contains all indiv catgs and has indels inserted
+        ##   .attr['samples'] = [samples]
+        ## /filters -- filled for dups, left empty for others until step 7.
+        ##   .attr['filters'] = [f1, f2, f3, f4, f5]
+        ## /seqs -- contains the clustered sequence data as string arrays
+        ##   .attr['samples'] = [samples]
+        ## /edges -- gets the paired split locations for now.
+        ## /snps  -- left empty for now
+        
+        ## calls singlecat func inside
+        LOGGER.info("building full database")
+        build_h5_array(data, samples, ipyclient)
+
+    #except Exception as inst:
+    #    LOGGER.error(inst)
+    #    raise IPyradWarningExit(inst)
 
     finally:
         ## delete the tmpdir
         shutil.rmtree(data.tmpdir)
 
-    ## builds the final HDF5 array which includes three main keys
-    ## /catg -- contains all indiv catgs and has indels inserted
-    ##   .attr['samples'] = [samples]
-    ## /filters -- filled for dups, left empty for others until step 7.
-    ##   .attr['filters'] = [f1, f2, f3, f4, f5]
-    ## /seqs -- contains the clustered sequence data as string arrays
-    ##   .attr['samples'] = [samples]
-    ## /edges -- gets the paired split locations for now.
-    ## /snps  -- left empty for now
-    LOGGER.info("building full database")    
-    ## calls singlecat func inside
-    build_h5_array(data, samples, ipyclient)
 
 
 
