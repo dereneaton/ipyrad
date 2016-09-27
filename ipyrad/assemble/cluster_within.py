@@ -20,7 +20,7 @@ import sys
 import gzip
 import glob
 import itertools
-import subprocess
+import subprocess as sps
 import numpy as np
 import ipyrad
 import time
@@ -286,9 +286,7 @@ def muscle_call(data, names, seqs):
         args += ["-gapopen", "-1200"]
 
     ## make a call arg
-    proc1 = subprocess.Popen(args,
-                          stdin=subprocess.PIPE,
-                          stdout=subprocess.PIPE)
+    proc1 = sps.Popen(args, stdin=sps.PIPE, stdout=sps.PIPE)
     ## return result
     return proc1.communicate(inputstr)[0]
 
@@ -316,7 +314,7 @@ def build_clusters(data, sample, maxindels):
 
     ## Sort the uhandle file so we can read through matches efficiently
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    proc = subprocess.Popen(cmd)
+    proc = sps.Popen(cmd)
     _ = proc.communicate()[0]
 
     ## load ALL derep reads into a dictionary (this can be a few GB of RAM)
@@ -846,21 +844,29 @@ def derep_and_sort(data, infile, outfile, nthreads):
     #if "1A_0" in infile:
     #    infile = 'xxx'
 
+    ## pipe in a gzipped file
+    if infile.endswith(".gz"):
+        catcmd = ["gunzip", "-c", infile]
+    else:
+        catcmd = ["cat", infile]
+    LOGGER.info("catcmd %s", catcmd)
+
     ## do dereplication with vsearch
     cmd = [ipyrad.bins.vsearch,
-            "-derep_fulllength", infile, 
+            "-derep_fulllength", "-", 
             "-strand", strand,
             "-output", outfile,
             "-threads", str(nthreads),
             "-fasta_width", str(0),
             "-fastq_qmax", "1000",
             "-sizeout"]
-    LOGGER.info(cmd)
+    LOGGER.info("derep cmd %s", cmd)
 
     ## run vsearch
-    proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-    errmsg = proc.communicate()[0]
-    if proc.returncode:
+    proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
+    errmsg = proc2.communicate()[0]
+    if proc2.returncode:
         LOGGER.error("error inside derep_and_sort %s", errmsg)
         raise IPyradWarningExit(errmsg)
 
@@ -970,12 +976,16 @@ def cluster(data, sample, nthreads):
            "-fulldp", 
            "-usersort"]
 
+    ## not sure what the benefit of this option is exactly, needs testing, 
+    ## might improve indel detection on left side, but we don't want to enforce
+    ## aligning on left side if not necessarily, since quality trimmed reads 
+    ## might lose bases on left side in step2 and no longer align.
     if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
         cmd += ["-leftjust"]
 
     ## run vsearch
     LOGGER.debug("%s", cmd)
-    proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     
     ## This is long running so we wrap it to make sure we can kill it
     try:
@@ -1060,6 +1070,7 @@ def derep_concat_split(data, sample, nthreads):
     ## merging several assemblies. This returns a new sample.files.edits with 
     ## the concat file. No change if not merged Assembly. 
     sample = concat_edits(data, sample)
+    LOGGER.info("Passed concat edits")
 
     ## Denovo: merge or concat fastq pairs [sample.files.pairs]
     ## Reference: only concat fastq pairs  []
@@ -1141,11 +1152,11 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
     Skipping {}; aleady clustered. Use force to re-cluster""".\
     format(sample.name))
             else:
-                if sample.stats.reads_filtered:
+                if sample.stats.reads_passed_filter:
                     subsamples.append(sample)
         else:
             ## force to overwrite
-            if sample.stats.reads_filtered:            
+            if sample.stats.reads_passed_filter:            
                 subsamples.append(sample)
 
     ## run subsamples 
