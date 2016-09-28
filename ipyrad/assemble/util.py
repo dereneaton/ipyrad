@@ -15,6 +15,7 @@ import tempfile
 import itertools
 import subprocess as sps
 import ipyrad 
+import gzip
 from collections import defaultdict
 
 import logging
@@ -247,7 +248,6 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
     ## Check input files from inside list-tuple [(r1, r2)]
     for fhandle in two_files[0]:
-        print(fhandle)
         if not os.path.exists(fhandle):
             raise IPyradWarningExit("""
     Attempting to merge a file that doesn't exist - {}.""".format(fhandle))
@@ -277,11 +277,28 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
         maxn = data.paramsdict['max_low_qual_bases']
     minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
 
+    ## we need to gunzip the files if they are zipped (at least for now)
+    if merge and two_files[0][0].endswith(".gz"):
+        LOGGER.info("gunzipping pairs")
+        tmp1 = os.path.splitext(two_files[0][0])[0]+".tmp1"
+        tmp2 = os.path.splitext(two_files[0][1])[0]+".tmp2"
+        with open(tmp1, 'w') as out:
+            gun1 = sps.Popen(["gunzip", "-c", two_files[0][0]],
+                              stderr=sps.STDOUT, stdout=out)
+            res = gun1.communicate()
+        with open(tmp2, 'w') as out:            
+            gun2 = sps.Popen(["gunzip", "-c", two_files[0][1]],
+                              stderr=sps.STDOUT, stdout=out)
+            res = gun2.communicate()
+    else:
+        tmp1 = two_files[0][0]
+        tmp2 = two_files[0][1]
+
     ## If we are actually mergeing and not just joining then do vsearch
     if merge:
         cmd = [ipyrad.bins.vsearch, 
-               "--fastq_mergepairs", two_files[0][0],
-               "--reverse", two_files[0][1], 
+               "--fastq_mergepairs", tmp1,
+               "--reverse", tmp2, 
                "--fastqout", merged_out, 
                "--fastqout_notmerged_fwd", nonmerged1, 
                "--fastqout_notmerged_rev", nonmerged2, 
@@ -295,15 +312,28 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                "--threads", "0", 
                "--fastq_allowmergestagger"]
 
+        LOGGER.info("merge cmd: %s", cmd)
         proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-        res = proc.communicate()[0]
+        try:
+            res = proc.communicate()[0]
+        except KeyboardInterrupt:
+            proc.kill()
+
         if proc.returncode:
             LOGGER.error("Error: %s %s", cmd, res)
-            #IPyradWarningExit("  Error in merging pairs:\n %s\n%s", cmd, res)
+            ## remove temp files
+            try:
+                os.remove(os.path.splitext(two_files[0][0])[0]+".tmp1")
+                os.remove(os.path.splitext(two_files[0][1])[0]+".tmp2")
+            except IOError:
+                pass
+
+            ## this is going to be tooo slow to read big files!!
             data1 = open(two_files[0][0], 'r').read()
             data2 = open(two_files[0][1], 'r').read()
             LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s", 
                          two_files, merged_out, data1, data2)
+            raise IPyradWarningExit("  Error in merging pairs:\n %s\n%s", cmd, res)
 
         ## record how many read pairs were merged
         with open(merged_out, 'r') as tmpf:
@@ -311,11 +341,16 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
     ## Combine the unmerged pairs and append to the merge file
     with open(merged_out, 'ab') as combout:
-        ## read in paired end read files"
-        ## create iterators to sample 4 lines at a time
-        fr1 = open(nonmerged1, 'rb')
+        ## read in paired end read files 4 lines at a time
+        if nonmerged1.endswith(".gz"):
+            fr1 = gzip.open(nonmerged1, 'rb')
+        else:
+            fr1 = open(nonmerged1, 'rb')
         quart1 = itertools.izip(*[iter(fr1)]*4)
-        fr2 = open(nonmerged2, 'rb')
+        if nonmerged2.endswith(".gz"):
+            fr2 = gzip.open(nonmerged2, 'rb')
+        else:
+            fr2 = open(nonmerged2, 'rb')
         quart2 = itertools.izip(*[iter(fr2)]*4)
         quarts = itertools.izip(quart1, quart2)
 
@@ -361,8 +396,14 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
     ## if merged then delete the nonmerge tmp files
     if merge:
+        ## remove temp files
         os.remove(nonmerged1)
         os.remove(nonmerged2)
+        try:
+            os.remove(os.path.splitext(two_files[0][0])[0]+".tmp1")
+            os.remove(os.path.splitext(two_files[0][1])[0]+".tmp2")
+        except IOError:
+            pass
 
     return nmerged
 
