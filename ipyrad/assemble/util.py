@@ -309,7 +309,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                "--fastq_maxdiffs", "4", 
                "--label_suffix", "_m1", 
                "--fastq_qmax", "1000", 
-               "--threads", "0", 
+               "--threads", "2", 
                "--fastq_allowmergestagger"]
 
         LOGGER.info("merge cmd: %s", cmd)
@@ -322,18 +322,18 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
         if proc.returncode:
             LOGGER.error("Error: %s %s", cmd, res)
             ## remove temp files
-            try:
-                os.remove(os.path.splitext(two_files[0][0])[0]+".tmp1")
-                os.remove(os.path.splitext(two_files[0][1])[0]+".tmp2")
-            except IOError:
-                pass
+            rmfiles = [os.path.splitext(two_files[0][0])[0]+".tmp1", 
+                       os.path.splitext(two_files[0][1])[0]+".tmp2"]
+            for rmfile in rmfiles:
+                if os.path.exists(rmfile):
+                    os.remove(rmfile)
 
             ## this is going to be tooo slow to read big files!!
             data1 = open(two_files[0][0], 'r').read()
             data2 = open(two_files[0][1], 'r').read()
             LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s", 
                          two_files, merged_out, data1, data2)
-            raise IPyradWarningExit("  Error in merging pairs:\n %s\n%s", cmd, res)
+            raise IPyradWarningExit("Error in merge pairs:\n %s\n%s", cmd, res)
 
         ## record how many read pairs were merged
         with open(merged_out, 'r') as tmpf:
@@ -397,13 +397,12 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
     ## if merged then delete the nonmerge tmp files
     if merge:
         ## remove temp files
-        os.remove(nonmerged1)
-        os.remove(nonmerged2)
-        try:
-            os.remove(os.path.splitext(two_files[0][0])[0]+".tmp1")
-            os.remove(os.path.splitext(two_files[0][1])[0]+".tmp2")
-        except IOError:
-            pass
+        rmfiles = [nonmerged1, nonmerged2, 
+                   os.path.splitext(two_files[0][0])[0]+".tmp1", 
+                   os.path.splitext(two_files[0][1])[0]+".tmp2"]
+        for rmfile in rmfiles:
+            if os.path.exists(rmfile):
+                os.remove(rmfile)
 
     return nmerged
 
