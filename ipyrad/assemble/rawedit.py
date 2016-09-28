@@ -43,15 +43,15 @@ def assembly_cleanup(data):
 
 
 
-def parse_single_cut_results(data, sample, res1):
+def parse_single_results(data, sample, res1):
     """ parse results from cutadapt into sample data"""
 
     ## set default values 
     #sample.stats_dfs.s2["reads_raw"] = 0
-    sample.stats_dfs.s2["trimmed_bp_adapter"] = 0
-    sample.stats_dfs.s2["trimmed_bp_quality"] = 0
-    sample.stats_dfs.s2["reads_filtered_by_trimlen"] = 0
+    sample.stats_dfs.s2["trim_adapter_bp_read1"] = 0
+    sample.stats_dfs.s2["trim_quality_bp_read1"] = 0
     sample.stats_dfs.s2["reads_filtered_by_Ns"] = 0
+    sample.stats_dfs.s2["reads_filtered_by_minlen"] = 0
     sample.stats_dfs.s2["reads_passed_filter"] = 0
 
     ## parse new values from cutadapt results output
@@ -64,15 +64,15 @@ def parse_single_cut_results(data, sample, res1):
 
         if "Reads with adapters:" in line:
             value = int(line.split()[3].replace(",", ""))
-            sample.stats_dfs.s2["trimmed_bp_adapter"] = value
+            sample.stats_dfs.s2["trim_adapter_bp_read1"] = value
 
         if "Quality-trimmed" in line:
             value = int(line.split()[1].replace(",", ""))
-            sample.stats_dfs.s2["trimmed_bp_quality"] = value
+            sample.stats_dfs.s2["trim_quality_bp_read1"] = value
 
         if "Reads that were too short" in line:
             value = int(line.split()[5].replace(",", ""))
-            sample.stats_dfs.s2["reads_filtered_by_trimlen"] = value
+            sample.stats_dfs.s2["reads_filtered_by_minlen"] = value
 
         if "Reads with too many N" in line:
             value = int(line.split()[5].replace(",", ""))
@@ -96,29 +96,59 @@ def parse_single_cut_results(data, sample, res1):
 
 
 
-def parse_pair_adapt_results(data, sample, res):
-    """ get stats from cutadapt on pairs """
-    LOGGER.info(res)
+
+def parse_pair_results(data, sample, res):
+    """ parse results from cutadapt for paired data"""
+    LOGGER.info("in parse pair mod results\n%s", res)   
+    ## set default values
+    sample.stats_dfs.s2["trim_adapter_bp_read1"] = 0
+    sample.stats_dfs.s2["trim_adapter_bp_read2"] = 0    
+    sample.stats_dfs.s2["trim_quality_bp_read1"] = 0
+    sample.stats_dfs.s2["trim_quality_bp_read2"] = 0    
+    sample.stats_dfs.s2["reads_filtered_by_Ns"] = 0
+    sample.stats_dfs.s2["reads_filtered_by_minlen"] = 0
+    sample.stats_dfs.s2["reads_passed_filter"] = 0
+
     lines = res.strip().split("\n")
+    qprimed = 0
     for line in lines:
+        ## set primer to catch next line
+        if "Quality-trimmed" in line:
+            qprimed = 1
 
-        if "Reads with adapters:" in line:
-            value = int(line.split()[3].replace(",", ""))
-            sample.stats_dfs.s2["trimmed_bp_adapter"] = value
+        ## grab read1 and read2 lines when qprimed
+        if "Read 1:" in line:
+            if qprimed:
+                value = int(line.split()[2].replace(",", ""))
+                sample.stats_dfs.s2["trim_quality_bp_read1"] = value
 
-        if "Total reads processed:" in line:
-            value = int(line.split()[3].replace(",", ""))
+        if "Read 2:" in line:
+            if qprimed:
+                value = int(line.split()[2].replace(",", ""))
+                sample.stats_dfs.s2["trim_quality_bp_read2"] = value
+                qprimed = 0
+
+        if "Read 1 with adapter:" in line:
+            value = int(line.split()[4].replace(",", ""))
+            sample.stats_dfs.s2["trim_adapter_bp_read1"] = value
+
+        if "Read 2 with adapter:" in line:
+            value = int(line.split()[4].replace(",", ""))
+            sample.stats_dfs.s2["trim_adapter_bp_read2"] = value
+
+        if "Total read pairs processed:" in line:
+            value = int(line.split()[4].replace(",", ""))
             sample.stats_dfs.s2["reads_raw"] = value
 
-        if "Reads that were too short" in line:
+        if "Pairs that were too short" in line:
             value = int(line.split()[5].replace(",", ""))
-            sample.stats_dfs.s2["reads_filtered_by_trimlen"] = value
+            sample.stats_dfs.s2["reads_filtered_by_minlen"] = value
 
-        if "Reads with too many N" in line:
+        if "Pairs with too many N" in line:
             value = int(line.split()[5].replace(",", ""))
             sample.stats_dfs.s2["reads_filtered_by_Ns"] = value
 
-        if "Reads written (passing filters):" in line:
+        if "Pairs written (passing filters):" in line:
             value = int(line.split()[4].replace(",", ""))
             sample.stats_dfs.s2["reads_passed_filter"] = value
 
@@ -130,28 +160,9 @@ def parse_pair_adapt_results(data, sample, res):
              OPJ(data.dirs.edits, sample.name+".trimmed_R1_.fastq.gz"), 
              OPJ(data.dirs.edits, sample.name+".trimmed_R2_.fastq.gz")
              )]
-        ## write the long form output to the log file.
-        LOGGER.info(res)
 
     else:
         print("No reads passed filtering in Sample: {}".format(sample.name))
-
-
-
-def parse_pair_mod_results(sample, res):
-    """ parse results from cutadapt for paired data"""
-
-    lines = res.strip().split("\n")
-    for line in lines:
-        if "Quality-trimmed" in line:
-            value = int(line.split()[1].replace(",", ""))
-            if np.isnan(sample.stats_dfs.s2["trimmed_bp_quality"]):
-                sample.stats_dfs.s2["trimmed_bp_quality"] = value
-            else:
-                sample.stats_dfs.s2["trimmed_bp_quality"] += value
-   
-
-
 
 
 def cutadaptit_single(data, sample):
@@ -175,33 +186,21 @@ def cutadaptit_single(data, sample):
         cmdf1 = ["cutadapt", 
                  "--cut", str(data.paramsdict["edit_cutsites"][0]),
                  "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-                 "--trim-n", 
                  "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+                 "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
+                 "--trim-n", 
                  "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
                  sample.files.concat[0][0]]
 
-    elif data.paramsdict["filter_adapters"] == 1:
-        cmdf1 = ["cutadapt", 
-                 "--cut", str(data.paramsdict["edit_cutsites"][0]),
-                 "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-                 "--trim-n", 
-                 "--max-n", str(data.paramsdict["max_low_qual_bases"]),
-                 "--quality-cutoff", "20,20", 
-                 "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
-                 "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
-                 sample.files.concat[0][0]]
+    if int(data.paramsdict["filter_adapters"]):
+        cmdf1.insert(1, "20,20")
+        cmdf1.insert(1, "--quality-cutoff")
+        #cmdf1.insert(1, str(data.paramsdict["max_low_qual_bases"]))
+        #cmdf1.insert(1, "--max-n")
 
-    else:
-        cmdf1 = ["cutadapt", 
-                 "-a", adapter,
-                 "--cut", str(data.paramsdict["edit_cutsites"][0]),
-                 "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-                 "--trim-n", 
-                 "--max-n", str(data.paramsdict["max_low_qual_bases"]),
-                 "--quality-cutoff", "20,20", 
-                 "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
-                 "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
-                 sample.files.concat[0][0]]
+    if int(data.paramsdict["filter_adapters"]) > 1:
+        cmdf1.insert(1, adapter)
+        cmdf1.insert(1, "-a")
 
     ## do modifications to read1 and write to tmp file
     LOGGER.info(cmdf1)
@@ -209,7 +208,7 @@ def cutadaptit_single(data, sample):
     try:
         res1 = proc1.communicate()[0]
     except KeyboardInterrupt:
-        res1.kill()
+        proc1.kill()
 
     ## raise errors if found
     if proc1.returncode:
@@ -220,63 +219,23 @@ def cutadaptit_single(data, sample):
 
 
 
-def cutadaptit_pair_mod(data, sample, readpair):
-    """ 
-    Applies quality and edge trimming to reads using cutadapt but does not yet
-    apply filters because we do can't filter R1 without R2. 
+def cutadaptit_pairs(data, sample):
     """
-
-    sname = sample.name
-
-    ## FIRST round of filtering:
-    ## apply filter for trim_edges and quality trimmer, but no filters yet 
-    ## b/c we wouldn't want to filter R1 without R2
-    if readpair == 1:
-        trimedge = str(data.paramsdict["edit_cutsites"][0])
-        foutput = OPJ(data.dirs.edits, sname+".tmp_R1_.fastq.gz")
-        finput = sample.files.concat[0][0]
-    else:
-        trimedge = str(data.paramsdict["edit_cutsites"][1])
-        foutput = OPJ(data.dirs.edits, sname+".tmp_R2_.fastq.gz")
-        finput = sample.files.concat[0][1]
-
-    if not data.paramsdict["filter_adapters"]:
-        cmdf1 = ["cutadapt", "--cut", trimedge,
-                             "--trim-n",
-                             "--output", foutput,
-                             finput]
-
-    else:
-        cmdf1 = ["cutadapt", "--cut", trimedge,
-                             "--trim-n",
-                             "--quality-cutoff", "20,20", 
-                             "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),         
-                             "--output", foutput,
-                             finput]
-
-    ## do modifications to read1 and write to tmp file
-    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    try:
-        res1 = proc1.communicate()[0]
-    except KeyboardInterrupt:
-        res1.kill()
-    ## raise errors if found
-    if proc1.returncode:
-        raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
-
-    return res1
-
-
-
-def cutadaptit_pair_adapt(data, sample):
-    """
-    Applies filters to readpairs, including adapter detection. If we have
-    barcode information then we can use it to trim reversecut+bcode+adapter from 
+    Applies trim & filters to pairs, including adapter detection. If we have
+    barcode information then we use it to trim reversecut+bcode+adapter from 
     reverse read, if not then we have to apply a more general cut to make sure 
-    we remove the barcode. 
+    we remove the barcode, this uses wildcards and so will have more false 
+    positives that trim a little extra from the ends of reads. Should we add
+    a warning about this when filter_adapters=2 and no barcodes?
     """
 
     sname = sample.name
+
+    ## applied to read pairs
+    trim_r1 = str(data.paramsdict["edit_cutsites"][0])
+    trim_r2 = str(data.paramsdict["edit_cutsites"][1])
+    finput_r1 = sample.files.concat[0][0]
+    finput_r2 = sample.files.concat[0][1]
 
     ## Get adapter sequences. This is very important. For the forward adapter
     ## we don't care all that much about getting the sequence just before the 
@@ -289,7 +248,6 @@ def cutadaptit_pair_adapt(data, sample):
     ## cut site too to be safe. Problem is we don't always know the barcode if 
     ## users demultiplexed their data elsewhere. So, if barcode is missing we 
     ## do a very fuzzy match before the adapter and trim it out. 
-
     if data.barcodes:
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
@@ -303,41 +261,42 @@ def cutadaptit_pair_adapt(data, sample):
                    "N"*6+\
                    data._hackersonly["p5_adapter"]
 
+    ## the base command
+    cmdf1 = ["cutadapt", 
+                  "-u", trim_r1,
+                  "-U", trim_r2,
+                  "--trim-n",
+                  "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
+                  "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
+                  "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),                         
+                  "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
+                  "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
+                  finput_r1, 
+                  finput_r2]
 
-    ## SECOND round of filtering:
-    ## apply filter for adapter detection and filter pairs
-    ## filter reads1
-    if data.paramsdict["filter_adapters"] != 2:    
-        cmdf3 = ["cutadapt", 
-                  "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
-                  "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-                  "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
-                  "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
-                  OPJ(data.dirs.edits, sname+".tmp_R1_.fastq.gz"), 
-                  OPJ(data.dirs.edits, sname+".tmp_R2_.fastq.gz")]
-    else:
-        cmdf3 = ["cutadapt", 
-                  "-a", adapter1, 
-                  "-A", adapter2,
-                  "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
-                  "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-                  "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
-                  "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
-                  OPJ(data.dirs.edits, sname+".tmp_R1_.fastq.gz"), 
-                  OPJ(data.dirs.edits, sname+".tmp_R2_.fastq.gz")]
+    ## additional args
+    if int(data.paramsdict["filter_adapters"]):
+        cmdf1.insert(1, "20,20")
+        cmdf1.insert(1, "--quality-cutoff")
+
+    if int(data.paramsdict["filter_adapters"]) > 1:
+        cmdf1.insert(1, adapter1)
+        cmdf1.insert(1, '-a')        
+        cmdf1.insert(1, adapter2)
+        cmdf1.insert(1, '-A')                
 
     ## do modifications to read1 and write to tmp file
-    proc3 = sps.Popen(cmdf3, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
     try:
-        res3 = proc3.communicate()[0]
+        res1 = proc1.communicate()[0]
     except KeyboardInterrupt:
-        res3.kill()
+        res1.kill()
     ## raise errors if found
-    if proc3.returncode:
-        raise IPyradWarningExit(" error in %s, %s", cmdf3, res3)
+    if proc1.returncode:
+        raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
 
     ## return results string to be parsed outside of engine
-    return res3
+    return res1
 
 
 
@@ -351,8 +310,9 @@ def run2(data, samples, force, ipyclient):
         import cutadapt
     except ImportError:
         raise IPyradWarningExit("""\
-    Required dependency 'cutadapt' is missing. Run the following command to 
-    install it: `conda install -c bioconda cutadapt`
+    Required dependency 'cutadapt' is missing. It will normally be installed
+    during the ipyrad installation. Run the following command to install it:
+    `conda install -c ipyrad cutadapt`
     """)
 
     ## create output directories 
@@ -406,14 +366,7 @@ def run2(data, samples, force, ipyclient):
     ## send samples to cutadapt filtering
     if "pair" in data.paramsdict["datatype"]:
         for sample in subsamples:
-            key1 = sample.name+"_read1"
-            key2 = sample.name+"_read2"
-            key3 = sample.name+"_pair"
-            rawedits[key1] = lbview.apply(cutadaptit_pair_mod, *(data, sample, 1))
-            rawedits[key2] = lbview.apply(cutadaptit_pair_mod, *(data, sample, 2))
-            deps = [rawedits[key1], rawedits[key2]]
-            with lbview.temp_flags(after=deps):
-                rawedits[key3] = lbview.apply(cutadaptit_pair_adapt, *(data, sample))
+            rawedits[sample.name] = lbview.apply(cutadaptit_pairs, *(data, sample))
     else:
         for sample in subsamples:
             rawedits[sample.name] = lbview.apply(cutadaptit_single, *(data, sample))
@@ -426,6 +379,7 @@ def run2(data, samples, force, ipyclient):
                     " processing reads      | {}".format(elapsed))
         time.sleep(0.1)
         if finished == len(rawedits):
+            print("")
             break
 
     ## collect results, report failures, and store stats. async = sample.name
@@ -435,17 +389,9 @@ def run2(data, samples, force, ipyclient):
 
             ## if single cleanup is easy
             if "pair" not in data.paramsdict["datatype"]:
-                parse_single_cut_results(data, data.samples[async], res)
+                parse_single_results(data, data.samples[async], res)
             else:
-                ## is it pairmod or pairadapt?
-                name, key = async.rsplit("_", 1)
-                LOGGER.info("name, key %s %s", name, key)
-                if key == "read1":
-                    parse_pair_mod_results(data.samples[name], res)
-                elif key == "read2":
-                    parse_pair_mod_results(data.samples[name], res)
-                else:
-                    parse_pair_adapt_results(data, data.samples[name], res)
+                parse_pair_results(data, data.samples[async], res)
         else:
             raise IPyradWarningExit(rawedits[async].exception())
 
