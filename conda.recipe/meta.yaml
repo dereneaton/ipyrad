@@ -25,6 +25,7 @@ requirements:
     - scipy >=0.16
     - sphinx
     - networkx
+    - cutadapt
     - python {{PY_VER}}*,>=2.7
   run:
     - ipython >=4.0.0
@@ -42,6 +43,7 @@ requirements:
     - numpy >=1.7
     - bitarray
     - networkx
+    - cutadapt
 
 about:
   home: http://github.com/dereneaton/ipyrad

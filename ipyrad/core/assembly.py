@@ -186,8 +186,10 @@ class Assembly(object):
         ## you change these values.
         self._hackersonly = OrderedDict([
                         ("random_seed", 42),
-                        ("max_fragment_length", 150),
+                        ("max_fragment_length", 50),
                         ("max_inner_mate_distance", 60),
+                        ("p5_adapter", "AGATCGGAAGAGC"), 
+                        ("p3_adapter", "AGATCGGAAGAGC"),
                         ("preview_step1", 4000000),
                         ("preview_step2", 100000),
                         ("output_loci_name_buffer", 5),
@@ -237,15 +239,18 @@ class Assembly(object):
 
 
 
-    def link_fastqs(self, path=None, force=False, append=False, splitnames="_", fields=None):
-        """ Create Sample objects from demultiplexed fastq files in
-        sorted_fastq_path, or append additional fastq files to
-        existing Samples.
+    def link_fastqs(self, path=None, force=False, append=False, splitnames="_", 
+                    fields=None, ipyclient=None):
+        """ 
+        Create Sample objects from demultiplexed fastq files in sorted_fastq_path, 
+        or append additional fastq files to existing Samples. This provides 
+        more flexible file input through the API than available in step1 of the 
+        command line interface. If passed ipyclient it will run in parallel. 
 
         Note
         ----
-        link_fastqs() is called during step 1 if files are specified in
-        `sorted_fastq_path`.
+        link_fastqs() is normally called during step 1 if files are specified in
+        'sorted_fastq_path'.
 
         Parameters
         ----------
@@ -301,7 +306,10 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
-        print("    Linking to demultiplexed fastq files in: {}""".format(path))
+        print("""\
+        Linking to demultiplexed fastq files in:
+            {}
+        """.format(path))
 
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
@@ -381,7 +389,7 @@ class Assembly(object):
 
                 elif force:
                     ## overwrite/create new Sample
-                    LOGGER.debug("Overwritting sample - ".format(sname))
+                    LOGGER.debug("Overwriting sample - ".format(sname))
                     self.samples[sname] = Sample(sname)
                     self.samples[sname].stats.state = 1
                     self.samples[sname].barcode = None
@@ -398,9 +406,10 @@ class Assembly(object):
             if any([linkedinc, createdinc, appendinc]):
                 gzipped = bool(fastqtuple[0].endswith(".gz"))
                 nreads = 0
-                ## iterate over files if there are multiple
+                ## iterate over files if there are multiple and get nreads
                 for alltuples in self.samples[sname].files.fastqs:
                     nreads += bufcountlines(alltuples[0], gzipped)
+
                 self.samples[sname].stats.reads_raw = nreads/4
                 LOGGER.debug("Got reads for sample - {} {}".format(sname,\
                                     self.samples[sname].stats.reads_raw))
@@ -535,6 +544,7 @@ class Assembly(object):
 
         ## return dict
         self.populations = popdict
+
 
 
 
@@ -722,109 +732,8 @@ class Assembly(object):
 
         """
         if self._headers:
-            print("") #  Saving Assembly.\n")
+            print("") 
         ip.save_json(self)
-
-
-
-
-
-
-
-    ## this function is now deprecated but let's keep it around for a little
-    ## bit. We've simplified error handling now but may want to look back at
-    ## this func if the new one fails to report well on some errors.
-    # def _clientwrapper(self, stepfunc, args, nwait):
-    #     """ wraps a call with error messages for when ipyparallel fails"""
-    #     ## emtpy error string
-    #     inst = ""
-
-    #     ## wrapper to ensure closure of ipyparallel
-    #     try:
-    #         ipyclient = ""
-    #         ipyclient = self._launch2(nwait)
-    #         args.append(ipyclient)
-    #         stepfunc(*args)
-
-    #     except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
-    #         ## raise by ipyparallel if no connection file is found for 30 sec.
-    #         msg = """
-    # No Engines found... ensure ipcluster is running (see API docs for details).
-    # When using the API you must start an ipyparallel instance using either
-    # `ipcluster start` from a terminal, or the Clusters tab in a Jupyter notebook.
-    # """
-    #         if not ip.__interactive__:
-    #             msg = """
-    # There was a problem connecting to parallel engines. See Docs for advice.
-    #         """
-    #         ## raise right away since there is no ipyclient to close
-    #         msg = "ipyrad error message - {}".format(inst) + "\n\n" + msg
-    #         raise IPyradError(msg)
-
-    #     except IOError as inst:
-    #         LOGGER.error("IOError: {}".format(inst))
-    #         raise
-
-    #     ## except user or system interrupt
-    #     except KeyboardInterrupt as inst:
-    #         ## abort and allow wrapper to save and close
-    #         LOGGER.info("assembly interrupted by user.")
-    #         print("\n  Keyboard Interrupt by user")
-    #         #sys.exit(2)
-
-    #     except IPyradWarningExit as inst:
-    #         ## save inst for raise error after finally statement
-    #         LOGGER.info("IPyradWarningExit: %s", inst)
-    #         print("  IPyradWarningExit: {}".format(inst))
-
-    #     except SystemExit as inst:
-    #         LOGGER.info("assembly interrupted by sys.exit.")
-    #         print("  SystemExit Interrupt: {}".format(inst))
-
-    #     ## An Engine Crashed. Raise a readable traceback message.
-    #     except ipp.error.CompositeError as inst:
-    #         ## print the trace if it's turned on, tho
-    #         print(inst.print_traceback())
-
-    #         ## find and print engine error for debugging
-    #         for job in ipyclient.metadata:
-    #             if ipyclient.metadata[job]['error']:
-    #                 print(ipyclient.metadata[job]['error'])
-
-    #     except IPyradError as inst:
-    #         LOGGER.info(inst)
-    #         print("  IPyradError: {}".format(inst))
-
-    #     except Exception as inst:
-    #         ## Caught unhandled exception, print and reraise
-    #         LOGGER.error(inst)
-    #         print("\n  Caught unknown exception - {}".format(inst))
-    #         raise  ## uncomment raise to get traceback
-
-
-    #     ## close client when done or interrupted
-    #     finally:
-    #         try:
-    #             ## pickle the data obj
-    #             self.save()
-    #             ## can't close client if it was never open
-    #             if ipyclient:
-    #                 ## if CLI, stop jobs and shutdown
-    #                 if not ip.__interactive__:
-    #                     ipyclient.abort()
-    #                 ## if API, stop jobs and clean queue
-    #                 else:
-    #                     ipyclient.abort()
-    #                     ## clear the memory
-    #                     ipyclient.purge_everything()
-
-    #                 ipyclient.close()
-    #         ## if exception is close and save, print and ignore
-    #         except Exception as inst2:
-    #             LOGGER.error("shutdown warning: %s", inst2)
-
-    #         if inst:
-    #             IPyradWarningExit(inst)
 
 
 
@@ -888,21 +797,21 @@ class Assembly(object):
             print("")
 
         ## If no samples in this assembly then it means you skipped step1,
-        ## so attempt to link existing demultiplexed fastq files
         if not self.samples.keys():
             raise IPyradWarningExit(FIRST_RUN_1)
 
-        ## Get sample objects from list of strings
+        ## Get sample objects from list of strings, if API.
         samples = _get_samples(self, samples)
 
         if not force:
-            ## skip if all are finished
+            ## print warning and skip if all are finished
             if all([i.stats.state >= 2 for i in samples]):
                 print(EDITS_EXIST.format(len(samples)))
                 return
 
-        ## pass samples to rawedit
-        assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
+        ## Run samples through rawedit
+        assemble.rawedit.run2(self, samples, force, ipyclient)
+        #assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
 
 
 
@@ -966,6 +875,7 @@ class Assembly(object):
 
         ## send to function
         assemble.jointestimate.run(self, samples, subsample, force, ipyclient)
+
 
 
     def _step5func(self, samples, force, ipyclient):
@@ -1036,8 +946,8 @@ class Assembly(object):
 
         ## Check if all/none of the samples are in the self.database
         try:
-            with h5py.File(self.clust_database, 'r') as ioh5:
-                dbset = set(ioh5["seqs"].attrs['samples'])
+            with h5py.File(self.clust_database, 'r') as io5:
+                dbset = set(io5["seqs"].attrs['samples'])
                 iset = set([i.name for i in samples])
 
                 ## TODO: Handle the case where dbdiff is not empty?
@@ -1046,8 +956,8 @@ class Assembly(object):
                 dbdiff = dbset.difference(iset)
                 idiff = iset.difference(dbset)
                 if idiff:
-                    msg = NOT_CLUSTERED_YET\
-                    .format(self.database, ", ".join(list(idiff)))
+                    print(NOT_CLUSTERED_YET\
+                    .format(self.database, ", ".join(list(idiff))))
 
                     ## The the old way that failed unless all samples were
                     ## clustered successfully in step 6. Adding some flexibility
@@ -1627,7 +1537,16 @@ def paramschecker(self, param, newvalue):
         ## Handle the special case where the user has 1
         ## restriction overhang and does not include the trailing comma
         if len(newvalue) == 1:
-            newvalue = (newvalue[0], "")
+            ## for gbs users might not know to enter the second cut site
+            ## so we do it for them. 
+            if self.paramsdict["datatype"] == "gbs":
+                newvalue += newvalue
+            else:                
+                newvalue += ("",)
+        #=======
+        #    newvalue = (newvalue[0], "")
+        #>>>>>>> d40a5d5086a0d0aace04dd08338ec4ba5341d1f2
+
         ## Handle 3rad datatype with only 3 cutters
         if len(newvalue) == 3:
             newvalue = (newvalue[0], newvalue[1], newvalue[2], "")

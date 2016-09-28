@@ -14,6 +14,7 @@ import sys
 import os
 
 # pylint: disable=W0212
+# pylint: disable=C0301
 
 LOGGER = logging.getLogger(__name__)
 
