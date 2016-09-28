@@ -895,21 +895,21 @@ def concat_edits(data, sample):
     ## if more than one tuple in the list
     if len(sample.files.edits) > 1:
         ## create temporary concat file
-        tmphandle1 = os.path.join(data.dirs.edits, "tmp1_"+sample.name+".concat")       
-        with open(tmphandle1, 'wb') as tmp:
+        out1 = os.path.join(data.dirs.edits, "tmp1_"+sample.name+".concat")       
+        with gzip.open(out1, 'wb') as out:
             for editstuple in sample.files.edits:
-                with open(editstuple[0]) as inedit:
-                    tmp.write(inedit)
+                with gzip.open(editstuple[0]) as ins:
+                    out.write(ins)
 
         if 'pair' in data.paramsdict['datatype']:
-            tmphandle2 = os.path.join(data.dirs.edits, "tmp2_"+sample.name+".concat")       
-            with open(tmphandle2, 'wb') as tmp:
+            out2 = os.path.join(data.dirs.edits, "tmp2_"+sample.name+".concat")       
+            with gzip.open(out2, 'wb') as out:
                 for editstuple in sample.files.edits:
-                    with open(editstuple[1]) as inedit:
-                        tmp.write(inedit)
-            sample.files.edits = [(tmphandle1, tmphandle2)]
+                    with gzip.open(editstuple[1]) as ins:
+                        out.write(ins)
+            sample.files.edits = [(out1, out2)]
         else:
-            sample.files.edits = [(tmphandle1, )]
+            sample.files.edits = [(out1, )]
     return sample
 
 
