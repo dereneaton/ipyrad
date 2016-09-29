@@ -1061,25 +1061,31 @@ class Assembly(object):
             ## hackerz_only, or they may be accessed in the API.
             if '1' in steps:
                 self._step1func(force, preview, ipyclient)
+                self.save()
 
             if '2' in steps:
                 self._step2func(samples=None, nreplace=1, force=force,
                                 preview=preview, ipyclient=ipyclient)
+                self.save()
 
             if '3' in steps:
                 self._step3func(samples=None, noreverse=0, force=force,
                              maxindels=8, preview=preview, ipyclient=ipyclient)
+                self.save()
 
             if '4' in steps:
                 self._step4func(samples=None, subsample=2000, force=force,
                                 ipyclient=ipyclient)
+                self.save()
 
             if '5' in steps:
                 self._step5func(samples=None, force=force, ipyclient=ipyclient)
+                self.save()
 
             if '6' in steps:
                 self._step6func(samples=None, noreverse=0, randomseed=12345,
                                 force=force, ipyclient=ipyclient)
+                self.save()
 
             if '7' in steps:
                 self._step7func(samples=None, force=force, ipyclient=ipyclient)
