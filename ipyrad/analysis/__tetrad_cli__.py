@@ -48,7 +48,7 @@ def parse_command_line():
      tetrad -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
 
   * HPC optimization: Set -c to the number of nodes to improve efficiency
-     tetrad -s data.phy -c 4             ## e.g., use 16 cores across 4 nodes
+     tetrad -s data.phy -c 16               ## e.g., use 16 cores across 4 nodes
 
   * Documentation: http://ipyrad.readthedocs.org/en/latest/
     """)
