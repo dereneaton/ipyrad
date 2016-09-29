@@ -282,14 +282,17 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
         LOGGER.info("gunzipping pairs")
         tmp1 = os.path.splitext(two_files[0][0])[0]+".tmp1"
         tmp2 = os.path.splitext(two_files[0][1])[0]+".tmp2"
-        with open(tmp1, 'w') as out:
-            gun1 = sps.Popen(["gunzip", "-c", two_files[0][0]],
-                              stderr=sps.STDOUT, stdout=out)
-            res = gun1.communicate()
-        with open(tmp2, 'w') as out:            
-            gun2 = sps.Popen(["gunzip", "-c", two_files[0][1]],
-                              stderr=sps.STDOUT, stdout=out)
-            res = gun2.communicate()
+
+        out1 = open(tmp1, 'w')
+        out2 = open(tmp2, 'w')
+        gun1 = sps.Popen(["gunzip", "-c", two_files[0][0]], 
+                          stderr=sps.STDOUT, stdout=out1)
+        gun2 = sps.Popen(["gunzip", "-c", two_files[0][1]],
+                          stderr=sps.STDOUT, stdout=out2)
+        res1 = gun1.communicate()
+        res2 = gun2.communicate()
+        out1.close()
+        out2.close()
     else:
         tmp1 = two_files[0][0]
         tmp2 = two_files[0][1]
