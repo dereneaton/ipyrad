@@ -273,6 +273,8 @@ class Quartet(object):
                     spans = get_spans(maparr, spans)
                     io5.create_dataset("spans", data=spans)
                     print("  max unlinked SNPs per quartet: {}".format(spans.shape[0]))
+            else:
+                io5["bootsmap"][:, 0] = np.arange(io5["bootsmap"].shape[0])
 
             ## fill the tmp array from the input phy
             for line, seq in enumerate(spath.readlines()):
@@ -614,7 +616,7 @@ class Quartet(object):
         cmd = " ".join(
                 [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
-                " weights=on"+
+                " weights=off"+
                 " otre=.tmpwtre"])
 
         ## run them
@@ -1018,6 +1020,7 @@ class Quartet(object):
 
 
 
+
     def inference(self, bidx, ipyclient):
         """ 
         Inference sends slices of jobs to the parallel engines for computing
@@ -1042,10 +1045,7 @@ class Quartet(object):
         ## a distributor for engine jobs
         lbview = ipyclient.load_balanced_view()
 
-        ## the three indexed resolutions of each quartet
-        tests = np.array([[0, 1, 2, 3], 
-                          [0, 2, 1, 3], 
-                          [0, 3, 1, 2]], dtype=np.uint8)
+
 
         ## start progress bar timer and submit initial n jobs
         start = time.time()
@@ -1056,7 +1056,7 @@ class Quartet(object):
             LOGGER.info('submitting chunk: %s', qidx)
             with h5py.File(self.h5in, 'r') as inh5:
                 smps = inh5["samples"][qidx:qidx+self.chunksize]
-            res[qidx] = lbview.apply(nworker, *[self, smps, tests])
+            res[qidx] = lbview.apply(nworker, *[self, smps, TESTS])
 
         ## keep adding jobs until the jobiter is empty
         done = 0
@@ -1102,7 +1102,7 @@ class Quartet(object):
                         qidx = jobiter.next()
                         with h5py.File(self.h5in, 'r') as inh5:
                             smps = inh5["samples"][qidx:qidx+self.chunksize]
-                        res[qidx] = lbview.apply(nworker, *[self, smps, tests])
+                        res[qidx] = lbview.apply(nworker, *[self, smps, TESTS])
 
                     ## if no more jobs then just wait until these are done
                     except StopIteration:
@@ -1344,11 +1344,11 @@ def chunk_to_matrices(narr, mapcol, nmask):
             if not mapcol[idx] == last_loc:
                 i = narr[:, idx]
                 #if np.max(i) < 4:
-                mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
-                # mats[0, i[0]*4:(i[0]+4)*4]\
-                #         [i[1]]\
-                #         [i[2]*4:(i[2]+4)*4]\
-                #         [i[3]] += 1
+                #mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
+                mats[0, i[0]*4:(i[0]+4)*4]\
+                        [i[1]]\
+                        [i[2]*4:(i[2]+4)*4]\
+                        [i[3]] += 1
                 last_loc = mapcol[idx]
                 
     ## set invariant (AAAA, CCCC, GGGG, TTTT) arbitrarily high since we 
@@ -1452,7 +1452,7 @@ def nworker(data, smpchunk, tests):
     """ The workhorse function. Not numba. """
     
     ## tell engines to limit threads
-    numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
+    #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
     
     ## open the seqarray view, the modified array is in bootsarr
     with h5py.File(data.h5in, 'r') as io5:
@@ -1478,8 +1478,7 @@ def nworker(data, smpchunk, tests):
         sidx = smpchunk[idx]
         seqchunk = seqview[sidx]
 
-        #ctime = time.time()
-        ## get N-containing columns in 4-array
+        ## get N-containing columns in 4-array, and invariant sites.
         nmask = np.any(nall_mask[sidx], axis=0)
         nmask += np.all(seqchunk == seqchunk[0], axis=0)
 
@@ -1520,6 +1519,12 @@ def nworker(data, smpchunk, tests):
 ########################################################################
 ## GLOBALS
 ########################################################################
+
+## the three indexed resolutions of each quartet
+TESTS = np.array([[0, 1, 2, 3], 
+                  [0, 2, 1, 3], 
+                  [0, 3, 1, 2]], dtype=np.uint8)
+
 
 MIDSTREAM_MESSAGE = """
     loaded object method={}
@@ -1672,7 +1677,7 @@ def load_json(path):
                         ignore_dicts=True)
     except IOError:
         raise IPyradWarningExit("""\
-    Cannot find checkpoint (.test.json) file at: {}""".format(path))
+    Cannot find checkpoint (.tet.json) file at: {}""".format(path))
 
     ## create a new Quartet Class
     newobj = Quartet(fullj["name"], fullj["dirs"], fullj["method"])
