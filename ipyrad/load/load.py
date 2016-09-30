@@ -260,7 +260,7 @@ def load_json(path, quiet=False):
             null.__setattr__("svd", fullj["assembly"]["svd"])
             null.svd = ObjDict(null.svd)
     except Exception:
-        LOGGER.warn("skipping: no svd results present in old assembly")
+        LOGGER.debug("skipping: no svd results present in old assembly")
 
     ## Now, load in the Sample objects json dicts
     sample_names = fullj["samples"].keys()
