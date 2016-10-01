@@ -182,15 +182,14 @@ def cutadaptit_single(data, sample):
         adapter = data._hackersonly["p3_adapter"]
 
     ## get command line argument
-    if not data.paramsdict["filter_adapters"]:
-        cmdf1 = ["cutadapt", 
-                 "--cut", str(data.paramsdict["edit_cutsites"][0]),
-                 "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-                 "--max-n", str(data.paramsdict["max_low_qual_bases"]),
-                 "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
-                 "--trim-n", 
-                 "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
-                 sample.files.concat[0][0]]
+    cmdf1 = ["cutadapt", 
+             "--cut", str(data.paramsdict["edit_cutsites"][0]),
+             "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
+             "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+             "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
+             "--trim-n", 
+             "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
+             sample.files.concat[0][0]]
 
     if int(data.paramsdict["filter_adapters"]):
         cmdf1.insert(1, "20,20")
