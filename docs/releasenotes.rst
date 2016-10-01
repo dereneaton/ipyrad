@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.4.1
+-----
+- Fixed reference before assignment error in step 2.
+
 0.4.0
 -----
 - Cosmetic change
