@@ -584,6 +584,8 @@ def progressbar(njobs, finished, msg=""):
     progress = 100*(finished / float(njobs))
     hashes = '#'*int(progress/5.)
     nohash = ' '*int(20-len(hashes))
+    if not ipyrad.__interactive__:
+        msg = msg.rsplit("|", 2)[0]
     print("\r  [{}] {:>3}% {} "\
           .format(hashes+nohash, int(progress), msg), end="")
     sys.stdout.flush()
