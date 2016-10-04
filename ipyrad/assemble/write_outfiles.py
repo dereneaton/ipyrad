@@ -346,7 +346,7 @@ def filter_all_clusters(data, samples, ipyclient):
             readies = [i.ready() for i in fasyncs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(readies), sum(readies), 
-                " filtering loci        | {}".format(elapsed))
+                " filtering loci        | {} | s7 |".format(elapsed))
             time.sleep(1)
             if all(readies):
                 break
@@ -469,8 +469,7 @@ def make_loci_and_stats(data, samples, ipyclient):
     ## start vcf progress bar
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, 
-        " building loci/stats   | {}".format(elapsed))
+    progressbar(20, 0, " building loci/stats   | {} | s7 |".format(elapsed))
 
     ## get some db info
     io5 = h5py.File(data.clust_database, 'r')
@@ -486,10 +485,10 @@ def make_loci_and_stats(data, samples, ipyclient):
 
     ## keep track of how many loci from each sample pass all filters
     samplecov = np.zeros(len(anames), dtype=np.int32)
-    locuscov = Counter()
 
     ## set initial value to zero for all values above min_samples_locus
     #for cov in range(data.paramsdict["min_samples_locus"], len(anames)+1):
+    locuscov = Counter()
     for cov in range(len(anames)+1):        
         locuscov[cov] = 0
 
@@ -497,10 +496,10 @@ def make_loci_and_stats(data, samples, ipyclient):
     lbview = ipyclient.load_balanced_view()
 
     ## send jobs in chunks
-    loci_asyncs = []
+    loci_asyncs = {}
     for istart in xrange(0, nloci, optim):
         args = [data, optim, pnames, snppad, smask, istart, samplecov, locuscov]
-        loci_asyncs.append(lbview.apply(locichunk, args))
+        loci_asyncs[istart] = lbview.apply(locichunk, args)
 
     ### FOR DEBUGGING
     # ipyclient.wait()
@@ -508,29 +507,31 @@ def make_loci_and_stats(data, samples, ipyclient):
     #     if not job.successful():
     #         print(job.metadata)
 
-    ## just a waiting function for chunks to finish
-    tmpids = list(itertools.chain(*[i.msg_ids for i in loci_asyncs]))
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1)
+    # ## just a waiting function for chunks to finish
+    # tmpids = list(itertools.chain(*[i.msg_ids for i in loci_asyncs]))
+    # with lbview.temp_flags(after=tmpids):
+    #     res = lbview.apply(time.sleep, 0.1)
 
     while 1:
-        done = [i.ready() for i in loci_asyncs]
+        done = [i.ready() for i in loci_asyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(done), sum(done),
-            " building loci/stats   | {}".format(elapsed))
-        if not res.completed:
-            time.sleep(1)
-        else:
+            " building loci/stats   | {} | s7 |".format(elapsed))
+        time.sleep(0.1)
+        if len(done) == sum(done):
             print("")   
             break            
 
     ## check for errors
     for job in loci_asyncs:
-        if job.ready() and not job.successful():
-            print(job.metadata)
+        if loci_asyncs[job].ready() and not loci_asyncs[job].successful():
+            LOGGER.error("error in building loci [%s]: %s", 
+                         job, loci_asyncs[job].exception())
+            raise IPyradWarningExit
 
     ## concat and cleanup
-    results = [i.get() for i in loci_asyncs]
+    results = [i.get() for i in loci_asyncs.values()]
+    #results.sort(key=[int(i) for i in loci_asyncs])
     ## update dictionaries
     for chunk in results:
         samplecov += chunk[0]
@@ -1327,14 +1328,14 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         if not all(readies):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(readies), sum(readies), 
-                " writing outfiles      | {}".format(elapsed))
+                " writing outfiles      | {} | s7 |".format(elapsed))
             time.sleep(1)
         else:
             break
 
     ## final progress bar
     elapsed = datetime.timedelta(seconds=int(time.time()-start))            
-    progressbar(20, 20, " writing outfiles      | {}".format(elapsed))        
+    progressbar(20, 20, " writing outfiles      | {} | s7 |".format(elapsed))        
     #if data._headers:
     print("")
 
@@ -1614,7 +1615,7 @@ def make_vcf(data, samples, ipyclient):
     start = time.time()
     LOGGER.info("Writing .vcf file")
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " building vcf file     | {}".format(elapsed))
+    progressbar(20, 0, " building vcf file     | {} | s7 |".format(elapsed))
 
     ## create output, gzip it to be disk friendly
     data.outfiles.vcf = os.path.join(data.dirs.outfiles, data.name+".vcf.gz")
@@ -1646,7 +1647,7 @@ def make_vcf(data, samples, ipyclient):
         finished = [i.ready() for i in vasyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(finished), sum(finished),
-                " building vcf file     | {}".format(elapsed))
+                " building vcf file     | {} | s7 |".format(elapsed))
         time.sleep(1)
         if len(finished) == sum(finished):
             break
@@ -1666,10 +1667,10 @@ def make_vcf(data, samples, ipyclient):
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         curchunks = len(glob.glob(data.outfiles.vcf+".*"))
         progressbar(ogchunks, ogchunks-curchunks,
-                    " writing vcf file      | {}".format(elapsed))        
+                    " writing vcf file      | {} | s7 |".format(elapsed))        
         time.sleep(1)
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(1, 1, " writing vcf file      | {}".format(elapsed))        
+    progressbar(1, 1, " writing vcf file      | {} | s7 |".format(elapsed))        
     print("")   
 
 
@@ -1679,24 +1680,20 @@ def concat_vcf(data, names):
     Sorts, concatenates, and gzips VCF chunks. Also cleans up chunks.
     """
     ## open handle and write headers
-    vout = gzip.open(data.outfiles.vcf, 'w')
-    vcfheader(data, names, vout)
+    with gzip.open(data.outfiles.vcf, 'w') as vout:
+        vcfheader(data, names, vout)
 
     ## get vcf chunks
     vcfchunks = glob.glob(data.outfiles.vcf+".*")
     vcfchunks.sort(key=lambda x: int(x.rsplit(".")[-1]))
 
     ## concatenate
-    # for vcf in vcfchunks:
-    #     ## load the data
-    #     sstr = np.load(vcf)
-    #     np.savetxt(vout, sstr, delimiter="\t", fmt="%s")        
-    #     os.remove(vcf)
-    proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=vout)
-    err = proc.communicate()[0]
-    if proc.returncode:
-        raise IPyradWarningExit("err in concat_vcf: %s", err)
-    vout.close()
+    with gzip.open(data.outfiles.vcf, 'a') as vout:
+        proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=vout)
+        err = proc.communicate()[0]
+        if proc.returncode:
+            raise IPyradWarningExit("err in concat_vcf: %s", err)
+
     for chunk in vcfchunks:
         os.remove(chunk)
 
