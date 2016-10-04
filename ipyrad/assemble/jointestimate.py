@@ -389,7 +389,7 @@ def submit(data, submitted_args, ipyclient):
         while 1:
             elapsed = datetime.timedelta(seconds=int(time.time() - start))
             progressbar(allwait, fwait,
-                    " inferring [H, E]      | {}".format(elapsed))
+                    " inferring [H, E]      | {} | s4 |".format(elapsed))
  
             ## get job keys
             keys = jobs.keys()
@@ -425,7 +425,7 @@ def submit(data, submitted_args, ipyclient):
         ## print final statement
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
         progressbar(20, 20, 
-                " inferring [H, E]      | {}".format(elapsed))
+                " inferring [H, E]      | {} | s4 |".format(elapsed))
         print("")
         if failed:
             msg = """
