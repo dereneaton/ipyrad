@@ -17,8 +17,6 @@ import time
 import datetime
 import subprocess as sps
 import numpy as np
-import glob
-import shutil
 from .util import *
 
 import logging
@@ -92,7 +90,7 @@ def parse_single_results(data, sample, res1):
         LOGGER.info(res1)
 
     else:
-        print("No reads passed filtering in Sample: {}".format(sample.name))
+        print("  No reads passed filtering in Sample: {}".format(sample.name))
 
 
 
@@ -165,6 +163,7 @@ def parse_pair_results(data, sample, res):
         print("No reads passed filtering in Sample: {}".format(sample.name))
 
 
+
 def cutadaptit_single(data, sample):
     """ 
     Applies quality and adapter filters to reads using cutadapt. If the ipyrad
@@ -204,10 +203,7 @@ def cutadaptit_single(data, sample):
     ## do modifications to read1 and write to tmp file
     LOGGER.info(cmdf1)
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    try:
-        res1 = proc1.communicate()[0]
-    except KeyboardInterrupt:
-        proc1.kill()
+    res1 = proc1.communicate()[0]
 
     ## raise errors if found
     if proc1.returncode:
@@ -247,6 +243,14 @@ def cutadaptit_pairs(data, sample):
     ## cut site too to be safe. Problem is we don't always know the barcode if 
     ## users demultiplexed their data elsewhere. So, if barcode is missing we 
     ## do a very fuzzy match before the adapter and trim it out. 
+    if not data.barcodes:
+        ## try linking barcodes again in case user just added a barcodes path
+        ## after receiving the warning
+        try:
+            data._link_barcodes()
+        except Exception as inst:
+            LOGGER.warning("  error adding barcodes info: %s", inst)
+
     if data.barcodes:
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
@@ -254,6 +258,7 @@ def cutadaptit_pairs(data, sample):
                    data.barcodes[sample.name]+\
                    data._hackersonly["p5_adapter"]
     else:
+        print(NO_BARS_GBS_WARNING)
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
         adapter2 = "N"*len(data.paramsdict["restriction_overhang"][0])+\
@@ -286,10 +291,7 @@ def cutadaptit_pairs(data, sample):
 
     ## do modifications to read1 and write to tmp file
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    try:
-        res1 = proc1.communicate()[0]
-    except KeyboardInterrupt:
-        res1.kill()
+    res1 = proc1.communicate()[0]
     ## raise errors if found
     if proc1.returncode:
         raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
@@ -334,14 +336,15 @@ def run2(data, samples, force, ipyclient):
         finished = 0
         catjobs = {}
         for sample in subsamples:
-            catjobs[sample.name] = ipyclient[0].apply(concat_muliple_inputs, *(data, sample))
+            catjobs[sample.name] = ipyclient[0].apply(\
+                                   concat_muliple_inputs, *(data, sample))
 
         ## wait for all to finish
         while 1:
             finished = sum([i.ready() for i in catjobs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(subsamples), finished, 
-                       " concatenating inputs  | {}".format(elapsed))
+                       " concatenating inputs  | {} | s2 |".format(elapsed))
             time.sleep(0.1)
             if finished == len(subsamples):
                 break
@@ -351,7 +354,9 @@ def run2(data, samples, force, ipyclient):
             if catjobs[async].successful():
                 data.samples[async].files.concat = catjobs[async].result
             else:
-                raise IPyradWarningExit(catjobs[async].exception())
+                error = catjobs[async].exception()
+                LOGGER.error("error in step2 concat %s", error)
+                raise IPyradWarningExit("error in step2 concat: {}".format(error))
     else:
         for sample in subsamples:
             ## just copy fastqs handles to concat attribute
@@ -375,7 +380,7 @@ def run2(data, samples, force, ipyclient):
         finished = sum([i.ready() for i in rawedits.values()])
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(rawedits), finished, 
-                    " processing reads      | {}".format(elapsed))
+                    " processing reads      | {} | s2 |".format(elapsed))
         time.sleep(0.1)
         if finished == len(rawedits):
             print("")
@@ -447,7 +452,7 @@ def concat_muliple_inputs(data, sample):
         conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq")
         with open(conc1, 'w') as cout1:
             proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1)
-            res1 = proc1.communicate()
+            res1 = proc1.communicate()[0]
         if proc1.returncode:
             raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
 
@@ -458,7 +463,7 @@ def concat_muliple_inputs(data, sample):
             conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
             with open(conc2, 'w') as cout2:
                 proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2)
-                res2 = proc2.communicate()
+                res2 = proc2.communicate()[0]
             if proc2.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
 
@@ -620,6 +625,20 @@ def concat_muliple_inputs(data, sample):
 #         for concat in concats:
 #             os.remove(concat)
 
+
+## GLOBALS
+NO_BARS_GBS_WARNING = """\
+    This is a just a warning: 
+    You set 'filter_adapters' to 2 (stringent), however, b/c your data
+    is paired-end gbs or ddrad the second read is likely to contain the 
+    barcode in addition to the adapter sequence. Actually, it be:
+                  [sequence][cut overhang][barcode][adapter]
+    If you add a barcode table to your params it will improve the accuracy of 
+    adapter trimming, especially if your barcodes are of varying lengths, and 
+    ensure proper removal of barcodes. If you do not have this information 
+    that's OK, but we will apply a slightly more rigorous trimming of 3' edges 
+    on R2 that results in more false positives (more bp trimmed off of R2). 
+    """
 
 
 if __name__ == "__main__":
