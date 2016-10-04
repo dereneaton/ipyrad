@@ -13,7 +13,6 @@ from __future__ import print_function
 # pylint: disable=R0915
 
 import os
-import sys
 import pty
 import gzip
 import glob
@@ -22,6 +21,7 @@ import time
 import numba
 import shutil
 import random
+import select
 import datetime
 import itertools
 import subprocess
@@ -156,7 +156,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
+    progressbar(20, 0, " aligning clusters     | {} | s6 |".format(elapsed))
 
     ## submit clustbits as jobs to engines
     jobs = {}
@@ -165,7 +165,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         jobs[idx] = lbview.apply(muscle_align_across, *args)
     allwait = len(jobs)
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " aligning clusters     | {}".format(elapsed))
+    progressbar(20, 0, " aligning clusters     | {} | s6 |".format(elapsed))
 
     ## print progress while bits are aligning
     while 1:
@@ -173,7 +173,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         fwait = sum(finished)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(allwait, fwait, 
-                    " aligning clusters     | {}".format(elapsed))
+                    " aligning clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
         if all(finished):
             break
@@ -209,7 +209,7 @@ def build_indels(data, samples, ipyclient):
 
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))    
-    progressbar(100, 0, " database indels       | {}".format(elapsed))
+    progressbar(100, 0, " database indels       | {} | s6 |".format(elapsed))
 
     ## get file handles
     indelfiles = glob.glob(os.path.join(data.tmpdir, "indels_*.tmp.npy"))
@@ -227,7 +227,7 @@ def build_indels(data, samples, ipyclient):
     async = ipyclient[0].apply(concatclusts, *(outhandle, alignbits))
     while not async.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(alignbits), 0, " database indels       | {}".format(elapsed))
+        progressbar(len(alignbits), 0, " database indels       | {} | s6 |".format(elapsed))
         time.sleep(0.1)
 
     ## get dims for full indel array
@@ -266,11 +266,11 @@ def build_indels(data, samples, ipyclient):
 
         ## continued progress bar from multi_muscle_align
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(alignbits), done, " database indels       | {}".format(elapsed))        
+        progressbar(len(alignbits), done, " database indels       | {} | s6 |".format(elapsed))        
 
     io5.close()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " database indels       | {}".format(elapsed))
+    progressbar(100, 100, " database indels       | {} | s6 |".format(elapsed))
     print("")
 
 
@@ -331,10 +331,13 @@ def cluster(data, noreverse):
                                      close_fds=True)
         done = 0
         while 1:
-            ## TODO: this seems to freeze on progress bar for very big data sets
-            ## which may be b/c reading dog get's too big? or splitting it? Try
-            ## realine, or rsplit(, 1), or something to find a fix...
-            dat = os.read(dog, 80192)
+            #dat = os.read(dog, 80192)
+            isdat, _, _ = select.select([dog], [], [], 0)
+            if isdat:
+                dat = os.read(dog, 80192)
+            else:
+                dat = ""
+
             if "Clustering" in dat:
                 try:
                     done = int(dat.split()[-1][:-1])
@@ -352,13 +355,13 @@ def cluster(data, noreverse):
             ## print progress
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(100, done, 
-                " clustering across     | {}".format(elapsed))
+                " clustering across     | {} | s6 |".format(elapsed))
 
         ## another catcher to let vsearch cleanup after clustering is done
         proc.wait()
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(100, 100, 
-                    " clustering across     | {}".format(elapsed))
+                    " clustering across     | {} | s6 |".format(elapsed))
 
     except subprocess.CalledProcessError as inst:
         raise IPyradWarningExit("""
@@ -367,7 +370,7 @@ def cluster(data, noreverse):
     finally:
         ## progress bar
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 100, " clustering across     | {}".format(elapsed))
+        progressbar(100, 100, " clustering across     | {} | s6 |".format(elapsed))
         #if data._headers:
         print("")
         data.stats_files.s6 = logfile
@@ -532,7 +535,7 @@ def multicat(data, samples, ipyclient):
     LOGGER.info("in the multicat")
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
+    progressbar(20, 0, " indexing clusters     | {} | s6 |".format(elapsed))
 
     ## parallel client
     lbview = ipyclient.load_balanced_view()
@@ -557,7 +560,7 @@ def multicat(data, samples, ipyclient):
     ## progress
     while not (async1.ready() and async2.ready()):
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(20, 0, " indexing clusters     | {}".format(elapsed))
+        progressbar(20, 0, " indexing clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
     if not async1.successful():
         raise IPyradWarningExit("error in get_seeds: %s", async1.exception())
@@ -601,7 +604,7 @@ def multicat(data, samples, ipyclient):
 
         ## print progress bar
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(allwait, fwait, " indexing clusters     | {}".format(elapsed))
+        progressbar(allwait, fwait, " indexing clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
         if fwait == allwait:
             break
@@ -613,7 +616,7 @@ def multicat(data, samples, ipyclient):
         finished = [i for i in cleanups.values() if i.ready()]
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
         progressbar(len(cleanups), len(finished),
-                    " building database     | {}".format(elapsed))
+                    " building database     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
         ## break if one failed, or if finished
         if not all([i.successful() for i in finished]):
@@ -637,7 +640,7 @@ def multicat(data, samples, ipyclient):
 
     ## print final progress
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(10, 10, " building database     | {}".format(elapsed))
+    progressbar(10, 10, " building database     | {} | s6 |".format(elapsed))
     print("")
 
 
@@ -1014,7 +1017,7 @@ def build_clustbits(data, ipyclient):
     ## parallel client
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(3, 0, " building clusters     | {}".format(elapsed))
+    progressbar(3, 0, " building clusters     | {} | s6 |".format(elapsed))
     LOGGER.info("building reads file -- loading utemp file into mem")
 
     ## send sort job to engines. Sorted seeds allows us to work through
@@ -1025,14 +1028,14 @@ def build_clustbits(data, ipyclient):
     async1 = subprocess.Popen(cmd)
     while async1.poll() == None:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(3, 0, " building clusters     | {}".format(elapsed))
+        progressbar(3, 0, " building clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
 
     ## send count seeds job to engines. 
     async2 = ipyclient[0].apply(count_seeds, usort)
     while not async2.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(3, 1, " building clusters     | {}".format(elapsed))
+        progressbar(3, 1, " building clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
 
     ## wait for both to finish while printing progress timer
@@ -1042,10 +1045,10 @@ def build_clustbits(data, ipyclient):
     async3 = ipyclient[0].apply(sub_build_clustbits, *(data, usort, nseeds))
     while not async3.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(3, 2, " building clusters     | {}".format(elapsed))
+        progressbar(3, 2, " building clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(3, 3, " building clusters     | {}".format(elapsed))
+    progressbar(3, 3, " building clusters     | {} | s6 |".format(elapsed))
     print("")
 
     ## return the nloci and clustbits
@@ -1263,10 +1266,10 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
     while not binput.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 0, " concat/shuffle input  | {}".format(elapsed))
+        progressbar(100, 0, " concat/shuffle input  | {} | s6 |".format(elapsed))
         time.sleep(0.1)
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " concat/shuffle input  | {}".format(elapsed))
+    progressbar(100, 100, " concat/shuffle input  | {} | s6 |".format(elapsed))
     print("")
 
     ## calls vsearch, uses all threads available to head node

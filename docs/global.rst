@@ -2,7 +2,7 @@
 .. _bedtools: http://bedtools.readthedocs.org/en/latest/
 .. _conda: http://docs.continuum.io/conda/
 .. _Cython: http://www.cython.org
-.. _eaton_and_ree: http://sysbio.oxfordjournals.org/content/62/5/689.full
+.. _eatonAndRee: http://sysbio.oxfordjournals.org/content/62/5/689.full
 .. _gitter: https://gitter.im/dereneaton/ipyrad
 .. _hdf5: https://www.hdfgroup.org/HDF5
 .. _H5py: http://www.h5py.org
