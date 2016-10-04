@@ -282,15 +282,15 @@ def muscle_call(data, names, seqs):
 
     ## make input string
     inputstr = "\n".join(["{}\n{}".format(i, j) for i, j in zip(names, seqs)])
-    args = [ipyrad.bins.muscle, "-quiet"]
+    cmd = [ipyrad.bins.muscle, "-quiet"]
 
     ## increase gap penalty if reference region is included 
     ## This could use more testing/refining!
     if "_REF;+0" in names:
-        args += ["-gapopen", "-1200"]
+        cmd += ["-gapopen", "-1200"]
 
     ## make a call arg
-    proc1 = sps.Popen(args, stdin=sps.PIPE, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmd, stdin=sps.PIPE, stdout=sps.PIPE)
     ## return result
     return proc1.communicate(inputstr)[0]
 
@@ -451,6 +451,11 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
 
     ## Two view objects, threaded and unthreaded
     lbview = ipyclient.load_balanced_view()
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(10, 0, " {}     | {} | s3 |"\
+                .format(PRINTSTR["derep_concat_split"], elapsed))
+
     ## for HPC systems this should be done to make sure targets are spread
     ## among different nodes. 
     if nthreads:
@@ -655,7 +660,6 @@ def _plot_dag(dag, results, snames):
 
     except Exception as inst:
         LOGGER.warning(inst)
-        pass
 
 
 
@@ -669,27 +673,18 @@ def trackjobs(func, results):
     ## get just the jobs from results that are relevant to this func
     asyncs = [(i, results[i]) for i in results if i.split("-", 2)[0] == func]
 
-    ## get start time for progress bar
+    ## progress bar
     start = time.time()
     while 1:
         ## how many of this func have finished so far
         ready = [i[1].ready() for i in asyncs]
-
-        ## get time so far
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-
-        ## print progress so far
-        if not all(ready):
-            progressbar(len(ready), np.sum(ready), 
-                        " {}     | {}".format(PRINTSTR[func], elapsed))
-
-        ## if all are finished print final progress and break
-        else:
-            progressbar(100, 100, 
-                        " {}     | {}".format(PRINTSTR[func], elapsed))
+        progressbar(len(ready), sum(ready), 
+                    " {}     | {} | s3 |".format(PRINTSTR[func], elapsed))
+        time.sleep(0.1)
+        if len(ready) == sum(ready):
             print("")
             break
-        time.sleep(0.1)
 
     ## did any samples fail?
     success = [i[1].successful() for i in asyncs]
@@ -1177,8 +1172,10 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
                 for sample in subsamples:
                     refmap_init(data, sample)
 
-            ## hard-coded params for now
+            ## use saved value if present, else use hard-coded thread count
             nthreads = 2
+            if "threads" in data._ipcluster.keys():
+                nthreads = int(data._ipcluster["threads"])
             maxindels = 8
             args = [data, subsamples, ipyclient, nthreads, maxindels]
             new_apply_jobs(*args)
