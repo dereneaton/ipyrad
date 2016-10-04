@@ -464,7 +464,7 @@ def prechecks(data, preview, force):
     tmpdir = os.path.join(project_dir, "tmp-chunks-"+data.name)
     if os.path.exists(tmpdir):
         shutil.rmtree(tmpdir)
-        time.sleep(0.5) ## give it a second to make sure its ready
+        time.sleep(0.5)   ## give it a second to make sure its ready
 
     ## create dir
     if not os.path.exists(tmpdir):
@@ -517,7 +517,8 @@ def prechecks(data, preview, force):
                         matchdict[tbar1] = sname                    
                         poss.add(tbar1)
                     else:
-                        print("""\
+                        if matchdict.get(tbar1) != sname:
+                            print("""\
         Note: barcodes {}:{} and {}:{} are within {} base change of each other
             Ambiguous barcodes that match to both samples will arbitrarily
             be assigned to the first sample. If you do not like this idea 
@@ -540,7 +541,8 @@ def prechecks(data, preview, force):
                                     matchdict[tbar2] = sname                    
                                     poss.add(tbar2)
                                 else:
-                                    print("""\
+                                    if matchdict.get(tbar2) != sname:
+                                        print("""\
         Note: barcodes {}:{} and {}:{} are within {} base change of each other\
              Ambiguous barcodes that match to both samples will arbitrarily
              be assigned to the first sample. If you do not like this idea 

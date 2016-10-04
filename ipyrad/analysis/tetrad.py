@@ -888,8 +888,8 @@ class Quartet(object):
 
     def insert_to_array(self, start, results, bidx):
         """ inputs results from workers into hdf4 array """
-        #qrts, wgts, qsts = results
-        qrts, wgts = results
+        qrts, wgts, qsts = results
+        #qrts, wgts = results
         #print(qrts)
 
         with h5py.File(self.h5out, 'r+') as out:
@@ -897,10 +897,10 @@ class Quartet(object):
             out['quartets'][start:start+chunk] = qrts
             out['weights'][start:start+chunk] = wgts
 
-            #if bidx:
-            #    out["qboots/b{}".format(bidx-1)][start:start+chunk] = qsts
-            #else:
-            #    out["qstats"][start:start+chunk] = qsts
+            if bidx:
+                out["qboots/b{}".format(bidx-1)][start:start+chunk] = qsts
+            else:
+                out["qstats"][start:start+chunk] = qsts
 
         ## save checkpoint
         #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
@@ -1434,7 +1434,7 @@ def calculate(seqnon, mapcol, nmask, tests):
     ## sort to find the best qorder
     best = np.where(qscores == qscores.min())[0]
     bidx = tests[best][0]
-    #qsnps = count_snps(mats[best][0])
+    qsnps = count_snps(mats[best][0])
 
     # LOGGER.info("""
     #     best: %s, 
@@ -1443,7 +1443,7 @@ def calculate(seqnon, mapcol, nmask, tests):
     #     qsnps: %s
     #     mats \n %s
     #     """, best, bidx, qscores, qsnps, mats)
-    return bidx  #, qscores
+    return bidx, qsnps  #, qscores
     #return bidx, qscores, qsnps
 
 
@@ -1469,7 +1469,7 @@ def nworker(data, smpchunk, tests):
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
     #rweights = np.zeros(smpchunk.shape[0], dtype=np.float64)
     rweights = np.ones(smpchunk.shape[0], dtype=np.float64)
-    #rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
+    rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
 
     #times = []
     ## fill arrays with results using numba funcs
@@ -1485,15 +1485,15 @@ def nworker(data, smpchunk, tests):
         ## get matrices if there are any shared SNPs
         ## returns best-tree index, qscores, and qstats
         #bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
-        bidx = calculate(seqchunk, maparr[:, 0], nmask, tests)        
+        bidx, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)        
         
         #LOGGER.info("seqchunk to scores: %s", 
         #times.append(1000*(time.time()-ctime))
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
-        #rdstats[idx] = qstats 
-        
+        rdstats[idx] = qstats 
         rquartets[idx] = smpchunk[idx][bidx]
+
         # iwgt = get_weights(qscores)
         # if iwgt:
         #     rweights[idx] = iwgt
@@ -1510,7 +1510,7 @@ def nworker(data, smpchunk, tests):
 
     #LOGGER.warning("average time: %s", np.mean(times))
     #return 
-    return rquartets, rweights #, rdstats 
+    return rquartets, rweights, rdstats 
     #return rquartets, rweights, rdstats 
 
 
