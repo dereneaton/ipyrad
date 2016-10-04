@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import ipyrad as ip
 import socket
+import time
+import datetime
 
 from collections import OrderedDict
 from ipyrad.assemble.util import *
@@ -111,7 +113,9 @@ class Assembly(object):
             "engines" : "Local",
             "quiet" : 0,
             "timeout" : 120,
-            "cores" : detect_cpus()}
+            "cores" : 0, 
+            "threads" : 2
+            }
 
         ## print headers, this is used as a 'quiet' option
         ## or to control differences in printing between API and CLI
@@ -249,7 +253,7 @@ class Assembly(object):
 
         Note
         ----
-        link_fastqs() is normally called during step 1 if files are specified in
+        This function is called during step 1 if files are specified in
         'sorted_fastq_path'.
 
         Parameters
@@ -306,10 +310,7 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
-        print("""\
-        Linking to demultiplexed fastq files in:
-            {}
-        """.format(path))
+        #print(LINKING_TO_MSG.format(path))
 
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
@@ -360,6 +361,11 @@ class Assembly(object):
         if force:
             self.samples = {}
 
+        ## track parallel jobs
+        linkjobs = {}
+        if ipyclient:
+            lbview = ipyclient.load_balanced_view()
+
         ## iterate over input files
         for fastqtuple in list(fastqs):
             assert isinstance(fastqtuple, tuple), "fastqs not a tuple."
@@ -369,7 +375,7 @@ class Assembly(object):
             appendinc = 0
             ## remove file extension from name
             sname = _name_from_file(fastqtuple[0], splitnames, fields)
-            LOGGER.debug("Got name {}".format(sname))
+            LOGGER.debug("New Sample name {}".format(sname))
 
             if sname not in self.samples:
                 ## create new Sample
@@ -402,35 +408,72 @@ class Assembly(object):
         files to a Sample or force=True to replace all existing Samples.
         """.format(sname))
 
-            ## if fastqs already demultiplexed, try to link stats
-            if any([linkedinc, createdinc, appendinc]):
-                gzipped = bool(fastqtuple[0].endswith(".gz"))
-                nreads = 0
-                ## iterate over files if there are multiple and get nreads
-                for alltuples in self.samples[sname].files.fastqs:
-                    nreads += bufcountlines(alltuples[0], gzipped)
-
-                self.samples[sname].stats.reads_raw = nreads/4
-                LOGGER.debug("Got reads for sample - {} {}".format(sname,\
+            ## support serial execution w/o ipyclient
+            if not ipyclient:
+                if any([linkedinc, createdinc, appendinc]):
+                    gzipped = bool(fastqtuple[0].endswith(".gz"))
+                    nreads = 0
+                    for alltuples in self.samples[sname].files.fastqs:
+                        nreads += bufcountlines(alltuples[0], gzipped)
+                    self.samples[sname].stats.reads_raw = nreads/4
+                    LOGGER.debug("Got reads for sample - {} {}".format(sname,\
                                     self.samples[sname].stats.reads_raw))
-                created += createdinc
-                linked += linkedinc
-                appended += appendinc
+                    created += createdinc
+                    linked += linkedinc
+                    appended += appendinc
+            
+            ## do counting in parallel
+            else:
+                if any([linkedinc, createdinc, appendinc]):
+                    gzipped = bool(fastqtuple[0].endswith(".gz"))
+                    for sidx, tup in enumerate(self.samples[sname].files.fastqs):
+                        key = sname+"_{}".format(sidx)
+                        linkjobs[key] = lbview.apply(bufcountlines, 
+                                                    *(tup[0], gzipped))
+                    LOGGER.debug("sent count job for {}".format(sname))
+                    created += createdinc
+                    linked += linkedinc
+                    appended += appendinc
+
+        ## wait for link jobs to finish if parallel 
+        if ipyclient:
+            start = time.time()
+            while 1:
+                fin = [i.ready() for i in linkjobs.values()]
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(len(fin), sum(fin),
+                    ' loading reads         | {} | s1 |'.format(elapsed))
+                time.sleep(0.1)
+                if len(fin) == sum(fin):
+                    print("")
+                    break
+
+            ## collect link job results
+            sampdict = {i:0 for i in self.samples}
+            for result in linkjobs:
+                sname = result.rsplit("_", 1)[0]
+                nreads = linkjobs[result].result()
+                sampdict[sname] += nreads
+
+            for sname in sampdict:
+                self.samples[sname].stats.reads_raw = sampdict[sname]/4
 
         ## print if data were linked
-        print("    {} new Samples created in '{}'.".format(created, self.name))
+        #print("  {} new Samples created in '{}'.".format(created, self.name))
         if linked:
             ## double for paired data
             if 'pair' in self.paramsdict["datatype"]:
                 linked = linked*2
-            print("    {} fastq files linked to {} new Samples.".\
-                  format(linked, len(self.samples)))
+            if self._headers:
+                print("  {} fastq files loaded to {} Samples.".\
+                      format(linked, len(self.samples)))
             ## save the location where these files are located
             self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
 
         if appended:
-            print("    {} fastq files appended to {} existing Samples.".\
-                  format(appended, len(self.samples)))
+            if self._headers:
+                print("  {} fastq files appended to {} existing Samples.".\
+                      format(appended, len(self.samples)))
 
 
 
@@ -547,7 +590,6 @@ class Assembly(object):
 
 
 
-
     def get_params(self, param=""):
         """ pretty prints params if called as a function """
         fullcurdir = os.path.realpath(os.path.curdir)
@@ -564,7 +606,6 @@ class Assembly(object):
                     return self.paramsdict.values()[int(param)]
             except (ValueError, TypeError, NameError, IndexError):
                 return 'key not recognized'
-
 
 
 
@@ -640,10 +681,6 @@ class Assembly(object):
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:
-            #usedir = self.paramsdict["project_dir"]
-            #if not os.path.exists(usedir):
-            #    usedir = "./"
-            #outfile = os.path.join(
             outfile = "params-"+self.name+".txt"
 
         ## Test if params file already exists?
@@ -679,9 +716,11 @@ class Assembly(object):
 
 
 
-    def branch(self, newname, subsamples=[], infile=None):
-        """ Returns a copy of the Assembly object. Does not allow Assembly
-        object names to be replicated in namespace or path. """
+    def branch(self, newname, subsamples=None, infile=None):
+        """ 
+        Returns a copy of the Assembly object. Does not allow Assembly
+        object names to be replicated in namespace or path. 
+        """
         ## is there a better way to ask if it already exists?
         if (newname == self.name or os.path.exists(
                                     os.path.join(self.paramsdict["project_dir"],
@@ -731,8 +770,8 @@ class Assembly(object):
         [project_dir]/[assembly_name].json
 
         """
-        if self._headers:
-            print("") 
+        #if self._headers:
+        #    print("") 
         ip.save_json(self)
 
 
@@ -755,7 +794,7 @@ class Assembly(object):
         ## print headers
         if self._headers:
             if sfiles:
-                print("\n  Step 1: Linking sorted fastq data to Samples")
+                print("\n  Step 1: Loading sorted fastq data to Samples")
             else:
                 print("\n  Step 1: Demultiplexing fastq data to Samples")
         else:
@@ -769,7 +808,7 @@ class Assembly(object):
                 ## overwrite existing data
                 if glob.glob(sfiles):
                     if self._headers:
-                        self.link_fastqs()
+                        self.link_fastqs(ipyclient=ipyclient)
 
                 ## otherwise do the demultiplexing
                 else:
@@ -779,7 +818,7 @@ class Assembly(object):
         else:
             ## first check if demultiplexed files exist in sorted path
             if glob.glob(sfiles):
-                self.link_fastqs()
+                self.link_fastqs(ipyclient=ipyclient)                
 
             ## otherwise do the demultiplexing
             else:
@@ -1122,8 +1161,9 @@ class Assembly(object):
                         LOGGER.info("  shutting down engines")
                         #_cleanup_and_die(pids)
                         ipyclient.abort()
-                        ipyclient.shutdown(hub=True, block=True)
+                        ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
+                        LOGGER.info("  finished shutdown")
                     ## elif API, stop jobs and clean queue but don't close
                     else:
                         ipyclient.abort()
@@ -1139,7 +1179,9 @@ class Assembly(object):
                             ## nanny: kill the engines left running, report
                             ## that some engines were killed.
                             pass
-
+                ## a final spacer
+                if self._headers:
+                    print("")
 
             ## if exception in close and save, print and ignore
             except Exception as inst2:
@@ -1154,8 +1196,9 @@ class Assembly(object):
 
 def _cleanup_and_die(pids):
     """
-    When engines are running external bins like vsearch they sometimes
-    aren't killed properly on exit, so let's just kill the pid to be sure
+    When engines are running external bins like vsearch they can't hear 
+    KeyboardInterrupts, and so they aren't killed properly. We can save the 
+    pids of Engines and kill them here instead. 
     """
     ## get pids of engines
     for pid in pids:
@@ -1308,6 +1351,7 @@ def merge(name, assemblies):
                     merged.samples[sample].stats[stat] += \
                                   iterass.samples[sample].stats[stat]
                     ## merge file references
+                    ## ToDO: THIS is broken for clusters
                     for filetype in ["fastqs", "edits", "clusters", "consens"]:
                         merged.samples[sample].files[filetype] += \
                                   iterass.samples[sample].files[filetype]
@@ -1856,6 +1900,10 @@ NO_RAW_FILE = """\
     the file extension. If it is a relative path be sure the path is
     correct with respect to the directory you're running ipyrad from.
     """
+
+LINKING_TO_MSG = """\
+  Loading data from: {}"""
+
 ########################################################
 
 
