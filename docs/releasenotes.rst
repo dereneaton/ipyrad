@@ -5,6 +5,51 @@
 Release Notes
 =============
 
+0.4.1
+-----
+- Fixed reference before assignment error in step 2.
+
+0.4.0
+-----
+- Cosmetic change
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- new sim data and notebook up
+- Added aftrRAD to the manuscript analysis horserace
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- made merging reads compatible with gzipped files from step2
+- modify help message
+- made TESTS global var, made maparr bug fix to work with no map info
+- More carefully save state after completion of each step.
+- limit vsearch merging to 2 threads to improve parallel, but should eventually make match to cluster threading. Added removal of temp ungzipped files.
+- more detailed Sample stats_df.s2 categories for paired data
+- made merge command compatible with gzip outputs from step2
+- simplified cutadapt code calls
+- cosmetic
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- updates to simdata notebook
+- merge conflict fix
+- new stats categories for step2 results
+- added adapter seqs to hackersdict
+- much faster vcf building
+- new step2 quality checks using cutadapt
+- small changes to use stats from new s2 rewrite. Breaks backwards compatibility with older assemblies at step3
+- massive rewrite of cluster across, faster indexing, way less memory overhead
+- just added a pylint comment
+- Adding cutadapt requirement for conda build
+- Suppress numpy mean of empty slice warnings.
+- Merged PR from StuntsPT. Fix to allow param restriction_overhang with only one enzyme to drop the trailing comma (,).
+- Merge branch 'StuntsPT-master'
+- Adding a FAQ to the docs, including some basic ipyparallel connection debugging steps.
+- Adding documentation for the  CLI flag for attaching to already running cluster.
+- Merge branch 'master' of https://github.com/StuntsPT/ipyrad into StuntsPT-master
+- Update docs to include more specifics about ambiguous bases in restriction overhang seqs.
+- Get max of max_fragment_length for all assemblies during merge()
+- Make gbs a special case for handling the restriction overhang.
+- Changed the way single value tuples are handled.
+- cleaning up releasenotes
+- added networkx to meta.yaml build requirements
+-  "Updating ipyrad/__init__.py to version - 0.3.42
+
 0.3.42
 ------
 - always prints cluster information when not using ipcluster[profile] = default
