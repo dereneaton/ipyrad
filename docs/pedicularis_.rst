@@ -152,7 +152,7 @@ With access to 24 cores it would take only about 20 minutes.
   local compute node: [4 cores] on oud
 
   Step 2: Filtering reads 
-  [####################] 100%  processing reads      | 0:37:50 
+  [####################] 100%  processing reads      | 0:03:50 
 
   Step 3: Clustering/Mapping reads
   [####################] 100%  dereplicating         | 0:00:31 
@@ -230,41 +230,6 @@ With access to 24 cores it would take only about 20 minutes.
   step 5: ./pedicularis/linktest_consens/s5_consens_stats.txt
   step 6: ./pedicularis/linktest_consens/s6_cluster_stats.txt
   step 7: ./pedicularis/linktest_outfiles/linktest_stats.txt
-
-
-
-  Summary stats of Assembly pedic
-  ------------------------------------------------
-                          state  reads_raw  reads_filtered  clusters_total
-  29154_superba               6     696994          644514          121823   
-  30556_thamno                6    1452316         1358296          191762   
-  30686_cyathophylla          6    1253109         1109175          212955   
-  32082_przewalskii           6     964244          887289          136218   
-  33413_thamno                6     636625          570041          153729   
-  33588_przewalskii           6    1002923          929348          143611   
-  35236_rex                   6    1803858         1668629          382823   
-  35855_rex                   6    1409843         1307294          159765   
-  38362_rex                   6    1391175         1294460          121620   
-  39618_rex                   6     822263          756623          134339   
-  40578_rex                   6    1707942         1591828          202486   
-  41478_cyathophylloides      6    2199740         2056389          156560   
-  41954_cyathophylloides      6    2199613         2008385          270071   
-  
-                          clusters_hidepth  hetero_est  error_est  reads_consens  
-  29154_superba                      32503    0.021164   0.003767          30934  
-  30556_thamno                       49918    0.020225   0.003297          47289  
-  30686_cyathophylla                 49563    0.017679   0.002749          46957  
-  32082_przewalskii                  38720    0.022536   0.004018          36590  
-  33413_thamno                       27742    0.021708   0.002996          26259  
-  33588_przewalskii                  42843    0.022167   0.003103          40701  
-  35236_rex                          51861    0.020122   0.002004          49786  
-  35855_rex                          53107    0.020848   0.006000          49974  
-  38362_rex                          50231    0.014790   0.002639          48381  
-  39618_rex                          40723    0.019533   0.003938          38877  
-  40578_rex                          53346    0.018743   0.001154          51263  
-  41478_cyathophylloides             52494    0.013695   0.001281          50426  
-  41954_cyathophylloides             70699    0.014845   0.007090          67582    
-
 
 
 Take a look at the stats summary 
