@@ -97,12 +97,14 @@ def register_ipcluster(data):
 
 
 
-def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
+def get_client(cluster_id, profile, engines, timeout, cores, quiet, **kwargs):
     """ 
     Creates a client to view ipcluster engines for a given profile and 
     returns it with at least one engine spun up and ready to go. If no 
     engines are found after nwait amount of time then an error is raised.
-    If engines==MPI it waits a bit longer to find engines.
+    If engines==MPI it waits a bit longer to find engines. If the number
+    of engines is set then it waits even longer to try to find that number
+    of engines.
     """
 
     ## save stds for later, we're gonna hide them to prevent external printing 
@@ -133,19 +135,30 @@ def get_client(cluster_id, profile, engines, timeout, quiet, **kwargs):
             ## If MPI then wait for all engines to start so we can report
             ## how many cores are on each host. If Local then only wait for
             ## one engine to be ready and then just go.
-            if not engines == "MPI":
-                if initid:
-                    break
-            else:
+            if (engines == "MPI") or (cluster_id == "ipyrad"):
                 if not quiet:
                     print(\
-            "\r  establishing MPI connection to remote hosts...", end="")
+            "\r  establishing parallel connection with hosts...", end="")
                     sys.stdout.flush()
-                time.sleep(3)
+                ## wait for cores to be connected
+                if cores:
+                    time.sleep(0.1)
+                    if initid == cores:
+                        print("")
+                        break
                 if initid:
+                    time.sleep(3)
                     if len(ipyclient) == initid:
                         print("")
                         break
+            else:
+                if cores:
+                    if initid == cores:
+                        break
+                else:
+                    if initid:
+                        break
+
 
 
     except KeyboardInterrupt as inst:
