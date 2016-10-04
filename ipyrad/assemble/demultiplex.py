@@ -720,7 +720,7 @@ def wrapped_run(data, preview, ipyclient, force):
             while not async.ready():
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(data._ipcluster["cores"], fidx, 
-                    ' chunking large files  | {}'.format(elapsed))        
+                    ' chunking large files  | {} | s1 |'.format(elapsed))        
                 time.sleep(0.1)
             chunkfiles[fidx] = async.result()
             ## make an empty list for when we analyze this chunk
@@ -728,7 +728,7 @@ def wrapped_run(data, preview, ipyclient, force):
 
     ## finished
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 10, ' chunking large files  | {}'.format(elapsed))        
+    progressbar(10, 10, ' chunking large files  | {} | s1 |'.format(elapsed))        
     print("")
 
     #####################################
@@ -752,7 +752,7 @@ def wrapped_run(data, preview, ipyclient, force):
         ## progress report
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(total, done, 
-        ' sorting reads         | {}'.format(elapsed))
+        ' sorting reads         | {} | s1 |'.format(elapsed))
 
         ## get the finished jobs
         for fidx in filesort.iterkeys():
@@ -775,13 +775,13 @@ def wrapped_run(data, preview, ipyclient, force):
             time.sleep(0.1)
 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 10, ' sorting reads         | {}'.format(elapsed))
+    progressbar(10, 10, ' sorting reads         | {} | s1 |'.format(elapsed))
     print("")
 
     ## collate files progress bar
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, ' writing/compressing   | {}'.format(elapsed))            
+    progressbar(10, 0, ' writing/compressing   | {} | s1 |'.format(elapsed))            
     ## get all the files
     ftmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.fastq"))
 
@@ -814,18 +814,13 @@ def wrapped_run(data, preview, ipyclient, force):
 
     while 1:
         ready = [i.ready() for i in writers]
-        if not all(ready):
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(total, sum(ready), 
-                         ' writing/compressing   | {}'.format(elapsed))            
-            time.sleep(0.1)
-        else:
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(total, sum(ready), 
+                    ' writing/compressing   | {} | s1 |'.format(elapsed))            
+        time.sleep(0.1)
+        if all(ready):
+            print("")
             break
-
-    ## final prog
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 20, ' writing/compressing   | {}'.format(elapsed))
-    print("")
 
     ## clean up junk files
     tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
@@ -905,6 +900,7 @@ def zcat_make_temps(args):
         res = proc3.communicate()[0]
         proc1.stdout.close()
     except KeyboardInterrupt:
+        proc1.kill()
         proc3.kill()
 
     if proc3.returncode:
@@ -923,6 +919,7 @@ def zcat_make_temps(args):
             res = proc4.communicate()[0]
             proc2.stdout.close()
         except KeyboardInterrupt:
+            proc2.kill()
             proc4.kill()
 
         if proc4.returncode:
