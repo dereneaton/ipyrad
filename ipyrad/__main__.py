@@ -227,7 +227,7 @@ def getassembly(args, parsedict):
         else:
             data = ip.load_json(assembly_file)
 
-    except IPyradWarningExit as inst:
+    except IPyradWarningExit as _:
         ## if no assembly is found then go ahead and make one
         if '1' not in args.steps:
             raise IPyradWarningExit("""
@@ -249,7 +249,7 @@ def getassembly(args, parsedict):
             ## all other params should be handled by set_params
             try:
                 data.set_params(param, parsedict[param])
-            except IndexError as inst:
+            except IndexError as _:
                 print("  Malformed params file: {}".format(args.params))
                 print("  Bad parameter {} - {}".format(param, parsedict[param]))
                 sys.exit(-1)
@@ -271,21 +271,24 @@ def parse_command_line():
     ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
     ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
-  * HPC parallelization across multiple nodes
-    ipyrad -p params-data.txt -s 3 --MPI    
+  * HPC parallelization across 32 cores
+    ipyrad -p params-data.txt -s 3 -c 32 --MPI
 
-  * Results summary quick view
+  * Print results summary 
     ipyrad -p params-data.txt -r 
 
   * Branch/Merging Assemblies
     ipyrad -p params-data.txt -b newdata  
-    ipyrad -m newdata params-1.txt params2.txt [params-3.txt, ...]
+    ipyrad -m newdata params-1.txt params-2.txt [params-3.txt, ...]
 
-  * Preview mode (subsamples data)
-    ipyrad -p params-data.txt -s --preview  
+  * Subsample taxa during branching
+    ipyrad -p params-data.txt -b newdata taxaKeepList.txt
 
   * Documentation: http://ipyrad.readthedocs.io
     """)
+
+    #* Preview mode (subsamples data)
+    #  ipyrad -p params-data.txt -s --preview  
 
     ## add arguments 
     parser.add_argument('-v', '--version', action='version', 
@@ -326,6 +329,10 @@ def parse_command_line():
     parser.add_argument("-c", metavar="cores", dest="cores",
         type=int, default=0,
         help="number of CPU cores to use (Default=0=All)")
+
+    parser.add_argument("-t", metavar="threading", dest="threads",
+        type=int, default=2,
+        help="tune threading of binaries (Default=2)")
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
@@ -448,6 +455,7 @@ def main():
 
             ## set CLI ipcluster terms
             data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
+            data._ipcluster["threads"] = args.threads
 
             ## if more ipcluster args from command-line then use those
             if args.MPI:
