@@ -5,6 +5,32 @@
 Release Notes
 =============
 
+0.4.2
+-----
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merging for Samples at any state, with warning for higher level states. Prettier printing for API. Fix to default cores setting on API.
+- fix for merged Assemblies/Samples for s2
+- fix for merged Assemblies&Samples in s3
+- removed limit on number of engines used during indexing
+- Added ddocent to manuscript analysis.
+- tutorial update
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- in progress doc notebook
+- parallel waits for all engines when engines are designated, up until timeout limit
+- parallelized loading demux files, added threads to _ipcluster dict, removed print statement from save
+- vcf header was missing
+- added step number to progress bar when in interactive mode
+- added warning message when filter=2 and no barcodes are present
+- improved kill switch in step 1
+- cosmetic changes
+- cosmetic changes
+- use select to improve cluster progress bar
+- added a CLI option to fine-tune threading
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added dstat storage by default
+- new default trim_overhang setting and function (0,0,0,0)
+- fix for overzealous warning message on demultiplexing when allowing differences
+
 0.4.1
 -----
 - Fixed reference before assignment error in step 2.
