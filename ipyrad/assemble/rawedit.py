@@ -337,7 +337,7 @@ def run2(data, samples, force, ipyclient):
         catjobs = {}
         for sample in subsamples:
             catjobs[sample.name] = ipyclient[0].apply(\
-                                   concat_muliple_inputs, *(data, sample))
+                                   concat_multiple_inputs, *(data, sample))
 
         ## wait for all to finish
         while 1:
@@ -347,12 +347,13 @@ def run2(data, samples, force, ipyclient):
                        " concatenating inputs  | {} | s2 |".format(elapsed))
             time.sleep(0.1)
             if finished == len(subsamples):
+                print("")
                 break
 
         ## collect results, which are concat file handles.
         for async in catjobs:
             if catjobs[async].successful():
-                data.samples[async].files.concat = catjobs[async].result
+                data.samples[async].files.concat = catjobs[async].result()
             else:
                 error = catjobs[async].exception()
                 LOGGER.error("error in step2 concat %s", error)
@@ -436,7 +437,7 @@ def choose_samples(samples, force):
 
 
 
-def concat_muliple_inputs(data, sample):
+def concat_multiple_inputs(data, sample):
     """ 
     if multiple fastq files were appended into the list of fastqs for samples
     then we merge them here before proceeding. 
@@ -449,7 +450,7 @@ def concat_muliple_inputs(data, sample):
         cmd1 = ["cat"] + [i[0] for i in sample.files.fastqs]
 
         ## write to new concat handle
-        conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq")
+        conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz")
         with open(conc1, 'w') as cout1:
             proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1)
             res1 = proc1.communicate()[0]
@@ -458,9 +459,9 @@ def concat_muliple_inputs(data, sample):
 
         ## Only set conc2 if R2 actually exists
         conc2 = 0
-        if os.path.exists(sample.files.fastqs[0][1]):
+        if os.path.exists(str(sample.files.fastqs[0][1])):
             cmd2 = ["cat"] + [i[1] for i in sample.files.fastqs]
-            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
+            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz")
             with open(conc2, 'w') as cout2:
                 proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2)
                 res2 = proc2.communicate()[0]
