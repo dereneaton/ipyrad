@@ -979,8 +979,8 @@ def cluster(data, sample, nthreads):
     ## might improve indel detection on left side, but we don't want to enforce
     ## aligning on left side if not necessarily, since quality trimmed reads 
     ## might lose bases on left side in step2 and no longer align.
-    if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
-        cmd += ["-leftjust"]
+    #if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
+    #    cmd += ["-leftjust"]
 
     ## run vsearch
     LOGGER.debug("%s", cmd)
