@@ -175,6 +175,13 @@ class Assembly(object):
                        ("pop_assign_file", ""),
         ])
 
+        ### TODO: cleanup/simplify output args:
+        ### - always make loci file ('l')
+        ### - others: (phy, snps, nex, struct, fineradstruct, geno, usnps, 
+        ###            vcfSNPs, vcfFull, treemix, migrate-n)
+        ### - shortnames: * = ('p', 's', 'n', 'k', 'f', 'g', 'u', 'v', 'V', 't', 'm')
+        ### - default: ('l', 'p', 's', 'v')
+
         ## Store data directories for this Assembly. Init with default project
         self.dirs = ObjDict({"project":
                               os.path.realpath(self.paramsdict["project_dir"]),
