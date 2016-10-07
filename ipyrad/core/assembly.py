@@ -113,7 +113,7 @@ class Assembly(object):
             "engines" : "Local",
             "quiet" : 0,
             "timeout" : 120,
-            "cores" : 0, 
+            "cores" : 0, #detect_cpus(), 
             "threads" : 2
             }
 
@@ -728,6 +728,9 @@ class Assembly(object):
         Returns a copy of the Assembly object. Does not allow Assembly
         object names to be replicated in namespace or path. 
         """
+        ## subsample by removal or keeping. 
+        remove = 0
+
         ## is there a better way to ask if it already exists?
         if (newname == self.name or os.path.exists(
                                     os.path.join(self.paramsdict["project_dir"],
@@ -745,8 +748,15 @@ class Assembly(object):
                         "and an input file, ignoring `subsamples` argument")
 
             if infile:
+                if infile[0] == "-":
+                    remove = 1
+                    infile = infile[1:]
                 if os.path.exists(infile):
                     subsamples = _read_sample_names(infile)
+
+            ## if remove then swap the samples
+            if remove:
+                subsamples = list(set(self.samples.keys()) - set(subsamples))
 
             ## create copies of each subsampled Sample obj
             if subsamples:
@@ -757,7 +767,7 @@ class Assembly(object):
                         print("  Sample name not found: {}".format(sname))
                 ## reload sample dict w/o non subsamples
                 newobj.samples = {name:sample for name, sample in \
-                           self.samples.items() if name in subsamples}
+                           newobj.samples.items() if name in subsamples}
 
             ## create copies of each subsampled Sample obj
             else:
@@ -804,8 +814,8 @@ class Assembly(object):
                 print("\n  Step 1: Loading sorted fastq data to Samples")
             else:
                 print("\n  Step 1: Demultiplexing fastq data to Samples")
-        else:
-            print("")
+        #else:
+        #    print("")
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
@@ -839,8 +849,8 @@ class Assembly(object):
         ## print header
         if self._headers:
             print("\n  Step 2: Filtering reads ")
-        else:
-            print("")
+        #else:
+        #    print("")
 
         ## If no samples in this assembly then it means you skipped step1,
         if not self.samples.keys():
@@ -866,8 +876,8 @@ class Assembly(object):
         ## print headers
         if self._headers:
             print("\n  Step 3: Clustering/Mapping reads")
-        else:
-            print("")
+        #else:
+        #    print("")
 
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
@@ -903,8 +913,8 @@ class Assembly(object):
 
         if self._headers:
             print("\n  Step 4: Joint estimation of error rate and heterozygosity")
-        else:
-            print("")
+        #else:
+        #    print("")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -929,8 +939,8 @@ class Assembly(object):
         ## print header
         if self._headers:
             print("\n  Step 5: Consensus base calling ")
-        else:
-            print("")
+        #else:
+        #    print("")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -960,8 +970,8 @@ class Assembly(object):
 
         ## print CLI header
         if self._headers:
-            print("\n  Step 6: Clustering across {} samples at {} similarity".\
-                  format(len(csamples), self.paramsdict["clust_threshold"]))
+            print("\n  Step 6: Clustering at {} similarity across {} samples".\
+                  format(self.paramsdict["clust_threshold"], len(csamples)))
 
         ## Check if all/none in the right state
         if not csamples:
@@ -1332,7 +1342,7 @@ def merge(name, assemblies):
     ## checks
     assemblies = list(assemblies)
 
-    ## create new Assembly
+    ## create new Assembly as a branch (deepcopy)
     merged = assemblies[0].branch(name)
 
     ## get all sample names from all Assemblies
@@ -1345,23 +1355,51 @@ def merge(name, assemblies):
     merged._hackersonly["max_fragment_length"] =\
         max([x._hackersonly["max_fragment_length"] for x in assemblies])
 
+    ## warning message?
+    warning = 0
+
     ## iterate over assembly objects, skip first already copied
     for iterass in assemblies[1:]:
-        ## iterate over stats, skip 'state'
-        for stat in merged.stats.keys()[1:]:
-            ## iterate over allsamples, add if not in merged
-            for sample in iterass.samples:
-                if sample not in merged.samples:
-                    merged.samples[sample] = iterass.samples[sample]
-                else:
-                    ## merge stats
+        ## iterate over allsamples, add if not in merged
+        for sample in iterass.samples:
+            ## iterate over stats, skip 'state'
+            if sample not in merged.samples:
+                merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
+            else:
+                ## merge stats and files of the sample
+                for stat in merged.stats.keys()[1:]:
                     merged.samples[sample].stats[stat] += \
-                                  iterass.samples[sample].stats[stat]
-                    ## merge file references
-                    ## ToDO: THIS is broken for clusters
-                    for filetype in ["fastqs", "edits", "clusters", "consens"]:
-                        merged.samples[sample].files[filetype] += \
-                                  iterass.samples[sample].files[filetype]
+                                iterass.samples[sample].stats[stat]
+                ## merge file references into a list
+                for filetype in ['fastqs', 'edits']:
+                    merged.samples[sample].files[filetype] += \
+                                iterass.samples[sample].files[filetype]
+                if iterass.samples[sample].files["clusters"]:
+                    warning += 1
+
+    ## print warning if clusters or later was present in merged assembly
+    if warning:
+        print("""\
+    Warning: the merged Assemblies contained Samples that are identically named,
+    and so ipyrad has attempted to merge these Samples. This is perfectly fine to
+    do up until step 3, but not after, because at step 3 all reads for a Sample 
+    should be included during clustering/mapping. Take note, you can merge Assemblies 
+    at any step *if they do not contain the same Samples*, however, here that is not
+    the case. If you wish to proceed with this merged Assembly you will have to 
+    start from step 3, therefore the 'state' of the Samples in this new merged 
+    Assembly ({}) have been set to 2. 
+    """.format(name))
+        for sample in merged.samples:
+            merged.samples[sample].stats.state = 2
+            ## clear stats
+            for stat in ["refseq_mapped_reads", "refseq_unmapped_reads", 
+                         "clusters_total", "clusters_hidepth", "hetero_est", 
+                         "error_est", "reads_consens"]:
+                merged.samples[sample].stats[stat] = 0
+            ## clear files
+            for ftype in ["mapped_reads", "unmapped_reads", "clusters", 
+                          "consens", "database"]:
+                merged.samples[sample].files[ftype] = []
 
     ## return the new Assembly object
     merged.save()
@@ -1370,8 +1408,9 @@ def merge(name, assemblies):
 
 
 def bufcountlines(filename, gzipped):
-    """ fast line counter. Used to quickly sum number of input reads
-    when running link_fastqs to append files. """
+    """ 
+    fast line counter. Used to quickly sum number of input reads when running 
+    link_fastqs to append files. """
     if gzipped:
         fin = gzip.open(filename)
     else:
@@ -1385,6 +1424,25 @@ def bufcountlines(filename, gzipped):
         buf = read_f(buf_size)
     fin.close()
     return nlines
+
+
+## Tried this out but it's slower than bufcountlines
+# def zbufcountlines(filename, gzipped):
+#     """ faster line counter """
+#     if gzipped:
+#         cmd1 = ["gunzip", "-c", filename]
+#     else:
+#         cmd1 = ["cat", filename]
+#     cmd2 = ["wc"]
+
+#     proc1 = sps.Popen(cmd1, stdout=sps.PIPE, stderr=sps.PIPE)
+#     proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, stderr=sps.PIPE)
+#     res = proc2.communicate()[0]
+#     if proc2.returncode:
+#         raise IPyradWarningExit("error zbufcountlines {}:".format(res))
+#     LOGGER.info(res)
+#     nlines = int(res.split()[0])
+#     return nlines
 
 
 
@@ -1841,7 +1899,7 @@ NO_SEQ_PATH_FOUND = """\
         (2) a raw_fastq_path + barcodes_path
     """
 PARAMS_EXISTS = """\
-    **Aborting** File exists: {}
+    Params file already exists: {}
     Use force argument to overwrite.
     """
 SAMPLES_EXIST = """\
