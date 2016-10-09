@@ -880,32 +880,41 @@ def data_cleanup(data):
 
 
 
-def concat_edits(data, sample):
+
+def concat_multiple_edits(data, sample):
     """ 
-    Concatenate if multiple edits files for a sample. This should only happen
-    if a user merged two assemblies that were both past step2. 
+    if multiple fastq files were appended into the list of fastqs for samples
+    then we merge them here before proceeding. 
     """
 
-    LOGGER.debug("Entering concat_edits: %s", sample.name)
-    ## if more than one tuple in the list
+    ## if more than one tuple in fastq list
     if len(sample.files.edits) > 1:
-        ## create temporary concat file
-        out1 = os.path.join(data.dirs.edits, "tmp1_"+sample.name+".concat")       
-        with gzip.open(out1, 'wb') as out:
-            for editstuple in sample.files.edits:
-                with gzip.open(editstuple[0]) as ins:
-                    out.write(ins)
+        ## create a cat command to append them all (doesn't matter if they 
+        ## are gzipped, cat still works). Grab index 0 of tuples for R1s.
+        cmd1 = ["cat"] + [i[0] for i in sample.files.edits]
 
-        if 'pair' in data.paramsdict['datatype']:
-            out2 = os.path.join(data.dirs.edits, "tmp2_"+sample.name+".concat")       
-            with gzip.open(out2, 'wb') as out:
-                for editstuple in sample.files.edits:
-                    with gzip.open(editstuple[1]) as ins:
-                        out.write(ins)
-            sample.files.edits = [(out1, out2)]
-        else:
-            sample.files.edits = [(out1, )]
-    return sample
+        ## write to new concat handle
+        conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concatedit.fq.gz")
+        with open(conc1, 'w') as cout1:
+            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1)
+            res1 = proc1.communicate()[0]
+        if proc1.returncode:
+            raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
+
+        ## Only set conc2 if R2 actually exists
+        conc2 = 0
+        if os.path.exists(str(sample.files.edits[0][1])):
+            cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
+            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concatedit.fq.gz")
+            with gzip.open(conc2, 'w') as cout2:
+                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2)
+                res2 = proc2.communicate()[0]
+            if proc2.returncode:
+                raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
+
+        ## store new file handles
+        sample.files.edits = [(conc1, conc2)]
+    return sample.files.edits
 
 
 
@@ -979,8 +988,8 @@ def cluster(data, sample, nthreads):
     ## might improve indel detection on left side, but we don't want to enforce
     ## aligning on left side if not necessarily, since quality trimmed reads 
     ## might lose bases on left side in step2 and no longer align.
-    if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
-        cmd += ["-leftjust"]
+    #if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
+    #    cmd += ["-leftjust"]
 
     ## run vsearch
     LOGGER.debug("%s", cmd)
@@ -1068,7 +1077,8 @@ def derep_concat_split(data, sample, nthreads):
     ## concatenate edits files within Samples if an Assembly was formed from 
     ## merging several assemblies. This returns a new sample.files.edits with 
     ## the concat file. No change if not merged Assembly. 
-    sample = concat_edits(data, sample)
+    #sample = concat_edits(data, sample)
+    sample.files.edits = concat_multiple_edits(data, sample)
     LOGGER.info("Passed concat edits")
 
     ## Denovo: merge or concat fastq pairs [sample.files.pairs]

@@ -568,14 +568,15 @@ def multicat(data, samples, ipyclient):
         raise IPyradWarningExit("error in fill_dups: %s", async2.exception())
 
     ## make a limited njobs view based on mem limits
-    smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
+    #smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
 
     ## make a list of jobs
     jobs = {}
     for sample in samples:
         ## grab just the hits for this sample
         sidx = snames.index(sample.name)
-        jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
+        #jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
+        jobs[sample.name] = lbview.apply(singlecat, *(data, sample, bseeds, sidx))
 
     ## check for finished and submit disk-writing job when finished
     allwait = len(jobs)
@@ -592,8 +593,8 @@ def multicat(data, samples, ipyclient):
                     fwait += 1
                     # submit writing job
                     LOGGER.info("sending %s:%s after %s", snames.index(name), name, last_sample)
-                    with smallview.temp_flags(after=cleanups[last_sample]):
-                        cleanups[name] = smallview.apply(write_to_fullarr, *args)
+                    with lbview.temp_flags(after=cleanups[last_sample]):
+                        cleanups[name] = lbview.apply(write_to_fullarr, *args)
                     last_sample = name
                     del jobs[name]
                 else:
@@ -1260,7 +1261,9 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## if no info we use detect_cpus to get info for this node. 
     data.cpus = data._ipcluster["cores"]
     if not data.cpus:
-        data.cpus = detect_cpus()
+        ## should this use detect_cpus? more appropriate would be len ipyclient
+        #data.cpus = detect_cpus()
+        data.cpus = len(ipyclient)
     
     ## make a vsearch input fasta file with all samples reads concat
     binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
