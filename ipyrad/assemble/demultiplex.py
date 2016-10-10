@@ -491,9 +491,9 @@ def prechecks(data, preview, force):
 
     ## set optim chunk size
     if preview:
-        optim = ((data._hackersonly["preview_step1"]) // (data._ipcluster["cores"]))
+        optim = ((data._hackersonly["preview_step1"]) // (data.cpus))
     else:
-        optim = estimate_optim(raws[0][0], data._ipcluster["cores"])
+        optim = estimate_optim(raws[0][0], data.cpus)
 
     ## Build full inverse barcodes dictionary
     matchdict = {}
@@ -599,8 +599,10 @@ def run(data, preview, ipyclient, force):
     carry-through ensures that interrupts raise an error that kills subprocess.
     """
     try:
-        tmpdir = os.path.join(
-                    data.paramsdict["project_dir"], "tmp-chunks-"+data.name)
+        data.cpus = data._ipcluster["cores"]
+        if not data.cpus:
+            data.cpus = len(ipyclient)
+        tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks-"+data.name)
         wrapped_run(data, preview, ipyclient, force)
     except KeyboardInterrupt:
         try:
@@ -627,7 +629,7 @@ def wrapped_run(data, preview, ipyclient, force):
     ## file, assumes others are the same size. Creates tmpdir
     args = prechecks(data, preview, force)
     raws, longbar, cutters, optim, matchdict, tmpdir = args
-    LOGGER.info('ncpus %s', data._ipcluster["cores"])
+    LOGGER.info('ncpus %s', data.cpus)
     LOGGER.info('optim %s', optim)
 
     ## Truncate the input fq so it'll run faster. 
@@ -672,7 +674,7 @@ def wrapped_run(data, preview, ipyclient, force):
 
     ### progress
     LOGGER.info("chunks size = %s lines, on %s cpus", 
-                optim, data._ipcluster["cores"])
+                optim, data.cpus)
 
     ## dictionary to store asyncresults for sorting jobs
     filesort = {}
@@ -685,7 +687,7 @@ def wrapped_run(data, preview, ipyclient, force):
     #####################################################################
 
     ## if more files than cpus: no chunking
-    if len(raws) > data._ipcluster["cores"]:
+    if len(raws) > data.cpus:
         splitlimit = int(12e9)
     else:
         ## a general good rule for splitting
@@ -703,7 +705,7 @@ def wrapped_run(data, preview, ipyclient, force):
 
     for fidx, tups in enumerate(raws):
         ## if number of lines is > 20M then just submit it
-        if optim * data._ipcluster["cores"] < int(splitlimit):
+        if optim * data.cpus < int(splitlimit):
             chunkfiles[fidx] = [tups]
             ## make an empty list for when we analyze this chunk            
             filesort[fidx] = []
@@ -721,7 +723,7 @@ def wrapped_run(data, preview, ipyclient, force):
             ## be created.
             while not async.ready():
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(data._ipcluster["cores"], fidx, 
+                progressbar(data.cpus, fidx, 
                     ' chunking large files  | {} | s1 |'.format(elapsed))        
                 time.sleep(0.1)
             chunkfiles[fidx] = async.result()
