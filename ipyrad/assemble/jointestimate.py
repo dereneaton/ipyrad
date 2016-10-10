@@ -63,22 +63,6 @@ def likelihood1(errors, bfreqs, ustacks):
     return np.sum(bfreqs*prob, axis=1)
 
 
-# @jit(['float32[:](float32, float32[:], int16[:,:])'])
-# def jlikelihood2(errors, bfreqs, ustacks):
-#     """probability of heterozygous. Very minimal speedup w/ numba."""
-#     returns = np.zeros(len(ustacks), dtype=np.float32)
-#     for idx, ustack in enumerate(ustacks):
-#         spair = np.array(list(itertools.combinations(ustack, 2)))
-#         bpair = np.array(list(itertools.combinations(bfreqs, 2)))
-#         one = 2.*bpair.prod(axis=1)
-#         tot = ustack.sum()
-#         atwo = tot - spair[:, 0] - spair[:, 1]
-#         two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
-#         three = scipy.stats.binom.pmf(\
-#                     spair[:, 0], spair.sum(axis=1), 0.5)
-#         four = 1.-np.sum(bfreqs**2)
-#         returns[idx] = np.sum(one*two*(three/four))
-#     return np.array(returns)
 
 
 def likelihood2(errors, bfreqs, ustacks):
@@ -96,6 +80,23 @@ def likelihood2(errors, bfreqs, ustacks):
         four = 1.-np.sum(bfreqs**2)
         returns[idx] = np.sum(one*two*(three/four))
     return np.array(returns)
+
+
+
+def liketest2(errors, bfreqs, ustacks):
+    """probability of heterozygous"""
+    returns = np.zeros([len(ustacks)])
+    for idx, ustack in enumerate(ustacks):
+        spair = np.array(list(itertools.combinations(ustack, 2)))
+        bpair = np.array(list(itertools.combinations(bfreqs, 2)))
+        one = 2.*bpair.prod(axis=1)
+        tot = ustack.sum()
+        atwo = tot - spair[:, 0] - spair[:, 1]
+        two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
+        three = scipy.stats.binom.pmf(\
+                    spair[:, 0], spair.sum(axis=1), 0.5)
+        four = 1.-np.sum(bfreqs**2)
+        returns[idx] = np.sum(one*two*(three/four))
 
 
 
