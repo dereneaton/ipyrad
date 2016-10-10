@@ -1132,7 +1132,7 @@ class Assembly(object):
                 self.save()
 
             if '4' in steps:
-                self._step4func(samples=None, subsample=2000, force=force,
+                self._step4func(samples=None, subsample=9999999, force=force,
                                 ipyclient=ipyclient)
                 self.save()
 

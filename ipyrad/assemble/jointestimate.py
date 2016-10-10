@@ -3,8 +3,6 @@
 """ jointly infers heterozygosity and error rate from stacked sequences """
 
 from __future__ import print_function
-# pylint: disable=E1101
-# pylint: disable=W0212
 
 import scipy.stats
 import scipy.optimize
@@ -19,49 +17,22 @@ from collections import Counter
 from util import *
 
 
-#from numba import jit
-# try: 
-#     
-#     NUMBA = 1
-# except ImportError:
-#     NUMBA = 0
+# pylint: disable=E1101
+# pylint: disable=W0212
+# pylint: disable=W0142
 
-
-
-def frequencies(stacked):
-    """ return frequency counts """
-    totals = stacked.sum(axis=1)
-    totals = totals.sum(axis=0)
-    freqs = totals/np.float32(totals.sum())
-    return freqs
-
-
-def get_frequencies(stacked):
-    """ return frequency counts """
-    freqs = stacked.sum(axis=0) / np.float32(stacked.sum())
-    return freqs
-
-
-# @jit(['float32[:,:](float32, float32, int16[:,:])'], nopython=True)
-# def jlikelihood1(errors, bfreqs, ustacks):
-#     """Probability homozygous. All numpy and no loop so there was 
-#     no numba improvement to speed when tested. """
-#     ## make sure base_frequencies are in the right order
-#     #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
-#     totals = np.array([ustacks.sum(axis=1)]*4).T
-#     prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
-#     return np.sum(bfreqs*prob, axis=1)
 
 
 def likelihood1(errors, bfreqs, ustacks):
-    """Probability homozygous. All numpy and no loop so there was 
-    no numba improvement to speed when tested. """
+    """
+    Probability homozygous. """
     ## make sure base_frequencies are in the right order
     #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
+    #totals = np.array([ustacks.sum(axis=1)]*4).T
     totals = np.array([ustacks.sum(axis=1)]*4).T
     prob = scipy.stats.binom.pmf(totals-ustacks, totals, errors)
-    return np.sum(bfreqs*prob, axis=1)
-
+    lik1 = np.sum(bfreqs*prob, axis=1)
+    return lik1
 
 
 
@@ -115,22 +86,6 @@ def get_diploid_lik(pstart, bfreqs, ustacks, counts):
     return score
 
 
-# @jit
-# def j_diploid_lik(pstart, bfreqs, ustacks, counts):
-#     """ Log likelihood score given values [H,E]. """
-#     hetero, errors = pstart
-#     ## tell it to score terribly if scores are negative
-#     if (hetero <= 0.) or (errors <= 0.):
-#         score = np.exp(100)
-#     else:
-#         ## get likelihood for all sites
-#         lik1 = (1.-hetero)*jlikelihood1(errors, bfreqs, ustacks)
-#         lik2 = (hetero)*jlikelihood2(errors, bfreqs, ustacks)
-#         liks = lik1+lik2
-#         logliks = np.log(liks[liks > 0])*counts[liks > 0]
-#         score = -logliks.sum()
-#     return score
-
 
 def get_haploid_lik(errors, bfreqs, ustacks, counts):
     """ Log likelihood score given values [E]. This can be written to run much
@@ -150,49 +105,31 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
 
 
 
-def tablestack(rstack):
-    """ makes a count dict of each unique array element """
-    ## goes by 10% at a time to minimize memory overhead. 
-    ## Check on the last chunk.
-    # table = Counter()
-    # for i in xrange(0, rstack.shape[0], rstack.shape[0]//10):
-    #     tmp = Counter([j.tostring() for j in rstack[i:i+rstack.shape[0]//10]])
-    #     table.update(tmp)
-    # return table
-    table = Counter([j.tostring() for j in rstack])
-    #LOGGER.info('table %s', table)
-    return table
+def stackarray(data, sample, subloci):
+    """ 
+    Stacks clusters into arrays
+    """
 
-
-
-def stackarray(data, sample, sub):
-    """ makes a list of lists of reads at each site """
-    
-    LOGGER.info("Entering stackarray - {}".format(sample.name))
-    ## get clusters file
+    ## get clusters file    
+    #LOGGER.info("Entering stackarray - {}".format(sample.name))
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
     ## array will be (nclusters, readlen, 4)
     maxlen = data._hackersonly["max_fragment_length"]
 
-    ## we subsample, else use first 10000 loci. 
-    if sub:
-        dims = (int(sub), maxlen, 4)
-    else:
-        dims = (10000, maxlen, 4)
-    stacked = np.zeros(dims, dtype=np.uint32)
+    ## we subsample, else use first 10000 loci.
+    dims = (data.stats.clusters_hidepth.max(), maxlen, 4)
+    stacked = np.zeros(dims, dtype=np.uint64)
 
     ## don't use sequence edges / restriction overhangs
-    cutlens = [None, None, None, None]
-    for cidx, cut in enumerate(data.paramsdict["restriction_overhang"]):
-        if cut:
-            cutlens[cidx] = len(cut)
+    cutlens = [None, None]
     try:
-        cutlens[1] = -1*cutlens[1]
+        cutlens[0] = len(data.paramsdict["restriction_overhang"][0])
+        cutlens[1] = maxlen - len(data.paramsdict["restriction_overhang"][1])
     except TypeError:
         pass
-    LOGGER.info(cutlens)
+    #LOGGER.info("cutlens: %s", cutlens)
 
     ## fill stacked
     done = 0
@@ -201,7 +138,7 @@ def stackarray(data, sample, sub):
         try:
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
-            raise IPyradError("clustfile formatting error in %s", chunk)
+            raise IPyradError("  clustfile formatting error in %s", chunk)
 
         if chunk:
             piece = chunk[0].strip().split("\n")
@@ -209,18 +146,16 @@ def stackarray(data, sample, sub):
             seqs = piece[1::2]
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
-            ## double reps if the read was fully merged.
+            
+            ## double reps if the read was fully merged... (TODO: Test this!)
             merged = ["_m1;s" in sname for sname in names]
             if any(merged):
                 reps = [i*2 if j else i for i, j in zip(reps, merged)]
 
+            ## get all reps
             sseqs = [list(seq) for seq in seqs]
-            try:
-                arrayed = np.concatenate(
-                      [[seq]*rep for seq, rep in zip(sseqs, reps)])
-            except ValueError:
-                LOGGER.info("sseqs %s, reps %s", 
-                    "\n".join(["".join(i) for i in sseqs]), reps)
+            arrayed = np.concatenate(
+                          [[seq]*rep for seq, rep in zip(sseqs, reps)])
             
             ## enforce minimum depth for estimates
             if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
@@ -234,76 +169,61 @@ def stackarray(data, sample, sub):
                 ## store in stacked dict
                 catg = np.array(\
                     [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
-                    dtype=np.uint32).T
-                
-                try:
-                    stacked[nclust, :catg.shape[0], :] = catg
-                    nclust += 1
-                except IndexError:
-                    LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
-                ## Catch any loci that are longer than max_fragment_length
-                except Exception as inst:
-                    np.set_printoptions(threshold=np.inf)
-                    LOGGER.error("arrayed - {}".format(arrayed))
-                    LOGGER.error("nclust=%s, sname=%s, ", nclust, sample.name)
-                    LOGGER.error("inst - {}".format(inst))
-                    LOGGER.error("max_frag - {} : array_len - {}".format(\
-                        data._hackersonly["max_fragment_length"], len(arrayed[0])))
-                    raise
+                    dtype=np.uint64).T
 
-                ## finish early if subsampling
-                if nclust == sub:
-                    done = 1
+                stacked[nclust, :catg.shape[0], :] = catg
+                nclust += 1
+
+        ## finish early if subsampling
+        if nclust == subloci:
+            done = 1
+
     ## drop the empty rows in case there are fewer loci than the size of array
-    #tots = sum(stacked.sum(axis=1) == 0)
-    #newstack = np.zeros((tots, readlen, 4), dtype=np.uint32)
     newstack = stacked[stacked.sum(axis=2) > 0]
-    LOGGER.info(newstack)
-    assert np.all(newstack.sum(axis=1) > 0), "not all zeros!"
+    assert not np.any(newstack.sum(axis=1) == 0), "no zero rows"
 
     return newstack
 
 
 
-def optim(args):
+def optim(data, sample, subloci):
     """ func scipy optimize to find best parameters"""
 
-    ## split args
-    data, sample, sub = args
-
     ## get array of all clusters data
-    stacked = stackarray(data, sample, sub)
-    LOGGER.info('stack %s', stacked)
+    stacked = stackarray(data, sample, subloci)
+    #LOGGER.info('stack %s', stacked)
 
     ## get base frequencies
-    bfreqs = get_frequencies(stacked)
+    bfreqs = stacked.sum(axis=0) / float(stacked.sum())
+    bfreqs = bfreqs**2
+    
     #LOGGER.debug(bfreqs)
     if np.isnan(bfreqs).any():
-        LOGGER.error("Caught sample with bad stack - {} {}".\
-                          format(sample.name, bfreqs))
+        #LOGGER.error("  Caught sample with bad stack: %s %s", 
+        #                sample.name, bfreqs)
+        raise IPyradWarningExit(" Bad stack in getfreqs; {} {}"\
+               .format(sample.name, bfreqs))
 
-    ## reshape to concatenate all site rows
-    #rstack = stacked.reshape(stacked.shape[0]*stacked.shape[1],
-    #                         stacked.shape[2])
-    rstack = stacked.astype(np.uint32)
     ## put into array, count array items as Byte strings
-    tstack = tablestack(rstack)
-    ## drop emtpy count [0,0,0,0] <- no longer needed, since we drop 0s earlier
-    #tstack.pop(np.zeros(4, dtype=np.uint32).tostring())
+    tstack = Counter([j.tostring() for j in stacked])
     ## get keys back as arrays and store vals as separate arrays
-    ustacks = np.array([np.fromstring(i, dtype=np.uint32) \
+    ustacks = np.array([np.fromstring(i, dtype=np.uint64) \
                         for i in tstack.iterkeys()])
+    ## make bi-allelic only
+    #tris = np.where(np.sum(ustacks > 0, axis=1) > 2)
+    #for tri in tris:
+    #    minv = np.min(ustacks[tri][ustacks[tri] > 0])
+    #    delv = np.where(ustacks[tri] == minv)[0][0]
+    #    ustacks[tri, delv] = 0
+
     counts = np.array(tstack.values())
     ## cleanup    
-    del rstack
     del tstack
-    LOGGER.info(bfreqs)
-    LOGGER.info(ustacks)
-    LOGGER.info(counts)    
+
 
     ## if data are haploid fix H to 0
-    if data.paramsdict["max_alleles_consens"] == 1:
-        pstart = np.array([0.001], dtype=np.float32)
+    if int(data.paramsdict["max_alleles_consens"]) == 1:
+        pstart = np.array([0.001], dtype=np.float64)
         hetero = 0.
         errors = scipy.optimize.fmin(get_haploid_lik, pstart,
                                     (bfreqs, ustacks, counts),
@@ -311,7 +231,7 @@ def optim(args):
                                      full_output=False)
     ## or do joint diploid estimates
     else:
-        pstart = np.array([0.01, 0.001], dtype=np.float32)
+        pstart = np.array([0.01, 0.001], dtype=np.float64)
         hetero, errors = scipy.optimize.fmin(get_diploid_lik, pstart,
                                             (bfreqs, ustacks, counts), 
                                              disp=False,
@@ -320,7 +240,7 @@ def optim(args):
 
 
 
-def run(data, samples, subsample, force, ipyclient):
+def run(data, samples, subloci, force, ipyclient):
     """ calls the main functions """
 
     ## speed hack == use only the first 2000 high depth clusters for estimation.
@@ -342,7 +262,7 @@ def run(data, samples, subsample, force, ipyclient):
                 print("    skipping {}; ".format(sample.name)+\
                       "not clustered yet. Run step3() first.")
             else:
-                submitted_args.append([data, sample, subsample])
+                submitted_args.append([sample, subloci])
         else:
             if sample.stats.state < 3:
                 print("    "+sample.name+" not clustered. Run step3() first.")
@@ -350,99 +270,59 @@ def run(data, samples, subsample, force, ipyclient):
                 print("    skipping {}. Too few high depth reads ({}). "\
                       .format(sample.name, sample.stats.clusters_hidepth))
             else:
-                submitted_args.append([data, sample, subsample])
+                submitted_args.append([sample, subloci])
 
     if submitted_args:    
         ## submit jobs to parallel client
         submit(data, submitted_args, ipyclient)
-    #else:
-    #    print("  no samples selected")
 
 
 
 def submit(data, submitted_args, ipyclient):
     """ 
-    sends jobs to engines and cleans up failures. Print progress. 
+    Sends jobs to engines and cleans up failures. Print progress. 
     """
 
     ## first sort by cluster size
-    submitted_args.sort(key=lambda x: x[1].stats.clusters_hidepth, reverse=True)
+    submitted_args.sort(key=lambda x: x[0].stats.clusters_hidepth, reverse=True)
                                            
     ## send all jobs to a load balanced client
     lbview = ipyclient.load_balanced_view()
     jobs = {}
-    for args in submitted_args:
-        #LOGGER.info("submitting duh %s", args)
+    for sample, subloci in submitted_args:
         ## stores async results using sample names
-        jobs[args[1].name] = lbview.apply(optim, args)
+        jobs[sample.name] = lbview.apply(optim, *(data, sample, subloci))
 
     ## dict to store cleanup jobs
     start = time.time()
-    fwait = 0
-    error = 0
 
-    ## List to store failed samples for reporting
-    failed = []
-
+    ## wrap in a try statement so that stats are saved for finished samples.
     ## each job is submitted to cleanup as it finishes
-    allwait = len(jobs)
     try:
+        ## wait for jobs to finish
         while 1:
+            fin = [i.ready() for i in jobs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time() - start))
-            progressbar(allwait, fwait,
-                    " inferring [H, E]      | {} | s4 |".format(elapsed))
- 
-            ## get job keys
-            keys = jobs.keys()
-            for sname in keys:
-                if jobs[sname].ready():
-                    if jobs[sname].successful():
-                        ## get the results
-                        hest, eest = jobs[sname].get()
-                        sample_cleanup(data.samples[sname], hest, eest)
-                        del jobs[sname]
-                        fwait += 1
-
-                    else:
-                        ## grab metadata                
-                        meta = jobs[sname].metadata
-                        ## if not done do nothing, if failure print error
-                        LOGGER.error('  sample %s did not finish', sname)
-                        failed.append(sname)
-                        if meta.error:
-                            LOGGER.error("""\
-                        stdout: %s
-                        stderr: %s 
-                        error: %s""", meta.stdout, meta.stderr, meta.error)
-                        del jobs[sname]
-                        fwait += 1
-
-            ## wait
-            if fwait == allwait:
-                break
-            else:
-                time.sleep(0.5)
-
-        ## print final statement
-        elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(20, 20, 
+            progressbar(len(fin), sum(fin), 
                 " inferring [H, E]      | {} | s4 |".format(elapsed))
-        print("")
-        if failed:
-            msg = """
-    The following samples failed joint estimation, probably because 
-    of low read depth. You may continue steps 5-7 but these samples
-    will be ignored:\n\t{}""".format(failed)
-            print(msg)
+            time.sleep(0.1)
+            if len(fin) == sum(fin):
+                print("")
+                break
 
-    except KeyboardInterrupt as kbt:
-        ## reraise kbt after cleanup
-        error = 1
+        ## cleanup
+        for job in jobs:
+            if jobs[job].successful():
+                hest, eest = jobs[job].result()
+                sample_cleanup(data.samples[job], hest, eest)
+            else:
+                LOGGER.error("  Sample %s failed with error %s", 
+                             job, jobs[job].exception())
+                raise IPyradWarningExit("  Sample {} failed step 4"\
+                                        .format(job))
 
     finally:
         assembly_cleanup(data)
-        if error:
-            raise kbt
 
 
 
