@@ -53,21 +53,25 @@ def likelihood2(errors, bfreqs, ustacks):
     return np.array(returns)
 
 
-
-def liketest2(errors, bfreqs, ustacks):
+## more verbose and slow form of the function above
+def liketest2(errors, bfreqs, ustack):
     """probability of heterozygous"""
-    returns = np.zeros([len(ustacks)])
-    for idx, ustack in enumerate(ustacks):
-        spair = np.array(list(itertools.combinations(ustack, 2)))
-        bpair = np.array(list(itertools.combinations(bfreqs, 2)))
-        one = 2.*bpair.prod(axis=1)
-        tot = ustack.sum()
-        atwo = tot - spair[:, 0] - spair[:, 1]
-        two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
-        three = scipy.stats.binom.pmf(\
-                    spair[:, 0], spair.sum(axis=1), 0.5)
-        four = 1.-np.sum(bfreqs**2)
-        returns[idx] = np.sum(one*two*(three/four))
+
+    fullsum = 0
+    for idx in xrange(4):
+        subsum = 0
+        for jdx in xrange(4):
+            one = 2. * bfreqs[idx] * bfreqs[jdx]
+            tot = ustack.sum()
+            two = scipy.stats.binom.pmf(tot - ustack[idx] - ustack[jdx], 
+                                        tot, (2.*errors)/3.)
+            three = scipy.stats.binom.pmf(ustack[idx], 
+                                          ustack[idx] + ustack[jdx], 0.5)
+            four = 1 - np.sum(bfreqs**2)
+            subsum += one * two * (three / four)
+        fullsum += subsum
+    return fullsum
+
 
 
 
@@ -159,8 +163,9 @@ def stackarray(data, sample, subloci):
             
             ## enforce minimum depth for estimates
             if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
-                ## remove edge columns
-                arrayed = arrayed[:, cutlens[0]:cutlens[1]]
+                ## remove edge columns and select only the first 500 
+                ## derep reads, just like in step 5
+                arrayed = arrayed[:500, cutlens[0]:cutlens[1]]
                 ## remove cols that are pair separator
                 arrayed = arrayed[:, ~np.any(arrayed == "n", axis=0)]
                 ## remove cols that are all Ns after converting -s to Ns
@@ -195,7 +200,7 @@ def optim(data, sample, subloci):
 
     ## get base frequencies
     bfreqs = stacked.sum(axis=0) / float(stacked.sum())
-    bfreqs = bfreqs**2
+    #bfreqs = bfreqs**2
     
     #LOGGER.debug(bfreqs)
     if np.isnan(bfreqs).any():
