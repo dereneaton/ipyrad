@@ -201,6 +201,8 @@ class Assembly(object):
                         ("max_inner_mate_distance", 60),
                         ("p5_adapter", "AGATCGGAAGAGC"), 
                         ("p3_adapter", "AGATCGGAAGAGC"),
+                        ("p3_adapters_extra", []),
+                        ("p5_adapters_extra", []),                        
                         ("preview_step1", 4000000),
                         ("preview_step2", 100000),
                         ("output_loci_name_buffer", 5),

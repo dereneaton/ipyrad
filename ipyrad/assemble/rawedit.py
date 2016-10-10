@@ -193,12 +193,16 @@ def cutadaptit_single(data, sample):
     if int(data.paramsdict["filter_adapters"]):
         cmdf1.insert(1, "20,20")
         cmdf1.insert(1, "--quality-cutoff")
-        #cmdf1.insert(1, str(data.paramsdict["max_low_qual_bases"]))
-        #cmdf1.insert(1, "--max-n")
 
     if int(data.paramsdict["filter_adapters"]) > 1:
+        ## first enter extra cuts
+        for extracut in data._hackersonly["p3_adapters_extra"][::-1]:
+            cmdf1.insert(1, extracut)
+            cmdf1.insert(1, "-a")
+        ## then put the main cut first
         cmdf1.insert(1, adapter)
         cmdf1.insert(1, "-a")
+
 
     ## do modifications to read1 and write to tmp file
     LOGGER.info(cmdf1)
@@ -472,159 +476,6 @@ def concat_multiple_inputs(data, sample):
         sample.files.concat = [(conc1, conc2)]
     return sample.files.concat
 
-
-
-# def run(data, samples, nreplace, force, preview, ipyclient):
-#     """ run the major functions for editing raw reads """
-
-#     ## hold samples that pass
-#     subsamples = []
-#     asyncs = []
-
-#     ## filter the samples again
-#     if not force:
-#         for sample in samples:
-#             if sample.stats.state >= 2:
-#                 print("""\
-#     Skipping Sample {}; Already filtered. Use force argument to overwrite.\
-#     """.format(sample.name))
-#             elif not sample.stats.reads_raw:
-#                 print("""\
-#     Skipping Sample {}; No reads found in file {}\
-#     """.format(sample.name, sample.files.fastqs))
-#             else:
-#                 subsamples.append(sample)
-
-#     else:
-#         for sample in samples:
-#             if not sample.stats.reads_raw:
-#                 print("""\
-#     Skipping Sample {}; No reads found in file {}\
-#     """.format(sample.name, sample.files.fastqs))
-#             else:
-#                 subsamples.append(sample)
-
-#     ## get optim which is used to slice a sample into 10 equal sized chunks
-#     ## if preview-mode then 10 chunks are made out of 'preview' reads.
-#     optims = {}
-#     for sample in subsamples:
-#         if preview:
-#             tots = data._hackersonly["preview_step2"]
-#             assert not tots % 4, \
-#             "_hackersonly preview_step2 value (nlines) must be divisible by 4."
-#             optims[sample.name] = (tots // 10) + (tots % 10)
-#         else:
-#             tots = int(sample.stats.reads_raw)
-#             optims[sample.name] = (tots // 10) + (tots % 10)
-
-#     if preview:
-#         if data._headers:
-#             print("""\
-#     Running preview mode: subselecting maximum of {} reads per sample\
-#     """.format(data._hackersonly["preview_step2"]))
-
-#     ## link output directories 
-#     data.dirs.edits = os.path.join(os.path.realpath(
-#                                    data.paramsdict["project_dir"]), 
-#                                    data.name+"_edits")
-
-#     ## create output directory if doesn't exist
-#     if not os.path.exists(data.dirs.edits):
-#         os.makedirs(data.dirs.edits)
-
-#     ## client
-#     lbview = ipyclient.load_balanced_view()
-
-#     ## start progress
-#     start = time.time()
-#     elapsed = datetime.timedelta(seconds=int(0))
-#     progressbar(len(subsamples), 0, 
-#                " processing reads      | {}".format(elapsed))            
-
-#     ## save sliced asyncs
-#     sliced = {i.name:[] for i in subsamples}    
-
-#     ## send jobs to queue to get slices and process them
-#     for sample in subsamples:
-#         ## get optim slice size for this sample
-#         optim = optims[sample.name]
-#         ## if multiple fastq files for this sample, create a tmp concat file
-#         ## TODO: This could be parallelized, for merged real data, but only if 
-#         ## disk-writing is parallelized...
-#         if len(sample.files.fastqs) > 1:
-#             ## just copy as a temporary placeholder for fastqs
-#             conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq")
-#             with open(conc1, 'w') as cout1:
-#                 for tups in sample.files.fastqs:
-#                     cout1.write(gzip.open(tups[0]).read())
-
-#             ## Only set conc2 if R2 actually exists
-#             conc2 = 0
-#             try:
-#                 if os.path.exists(sample.files.fastqs[0][1]):
-#                     conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq")
-#                     with open(conc2, 'w') as cout2:
-#                         for tups in sample.files.fastqs:
-#                             cout2.write(gzip.open(tups[1]).read())
-#             except IndexError as _:
-#                 ## if SE then no R2 files
-#                 pass
-
-#             sample.files.concat = [(conc1, conc2)]
-#         else:
-#             ## just copy as a temporary placeholder for fastqs
-#             sample.files.concat = sample.files.fastqs
-
-#         for job in range(10):
-#             args = [data, sample, job, nreplace, optim]
-#             async = lbview.apply(rawedit, args)
-#             sliced[sample.name].append(async)
-
-#     ## print progress
-#     try:
-#         while 1:
-#             asyncs = list(itertools.chain(*sliced.values()))
-#             tots = len(asyncs)
-#             done = sum([i.ready() for i in asyncs])
-#             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-#             if tots != done:
-#                 progressbar(tots, done,
-#                            " processing reads      | {}".format(elapsed))            
-#                 time.sleep(1)
-#             else:
-#                 progressbar(tots, done,
-#                            " processing reads      | {}".format(elapsed))
-#                 #if data._headers:
-#                 print("")
-#                 break
-
-#     except (KeyboardInterrupt, SystemExit):
-#         print('\n  Interrupted! Cleaning up... ')
-#         raise 
-
-#     ## enforced cleanup
-#     finally:
-#         ## if all jobs were successful in a sample then cleanup
-#         if asyncs:
-#             for sample in subsamples:
-#                 ## if finished
-#                 if all([i.ready() for i in sliced[sample.name]]):
-#                     ## if no errors
-#                     if all([i.successful() for i in sliced[sample.name]]):                
-#                         results = [i.get() for i in sliced[sample.name]]
-#                         sample_cleanup(data, sample, results)
-#                     ## print errors if they occurred
-#                     else:
-#                         for async in sliced[sample.name]:
-#                             if not async.successful():
-#                                 print("Error: %s", async.metadata.error)
-#         if all([i.completed for i in asyncs]):
-#             ## do final stats and cleanup
-#             assembly_cleanup(data)
-#         ## clean up concat files (if any)
-#         concats = glob.glob(os.path.join(data.dirs.edits, "*_concat.fq"))
-#         for concat in concats:
-#             os.remove(concat)
 
 
 ## GLOBALS
