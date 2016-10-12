@@ -7,6 +7,9 @@ Release Notes
 
 0.4.3
 -----
+
+0.4.3
+-----
 - making smoother progress bar in write vcfs
 - bugfix for jointestimate
 - testing bugfixes to jointestimate
