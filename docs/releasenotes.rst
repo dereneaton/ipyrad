@@ -7,6 +7,10 @@ Release Notes
 
 0.4.3
 -----
+-  "Updating ipyrad/__init__.py to version - 0.4.3
+
+0.4.3
+-----
 
 0.4.3
 -----
