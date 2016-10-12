@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.4.4
+-----
+- Handle blank lines at the top of the params file.
+-  "Updating ipyrad/__init__.py to version - 0.4.3
+-  "Updating ipyrad/__init__.py to version - 0.4.3
+
 0.4.3
 -----
 -  "Updating ipyrad/__init__.py to version - 0.4.3
