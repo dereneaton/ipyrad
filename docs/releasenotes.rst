@@ -5,6 +5,25 @@
 Release Notes
 =============
 
+0.4.3
+-----
+- making smoother progress bar in write vcfs
+- bugfix for jointestimate
+- testing bugfixes to jointestimate
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic
+- default to no subsampling in jointestimate call
+- testing bugfixes to jointestimate
+- added hackersonly option for additional adapters to be filtered
+- bug fix to joint H,E estimate for large data sets introduced in v.0.3.14 that was yielding inflated rates.
+- fix for core count when using API
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Added plots of snp depth across loci, as well as loci counts per sample to results notebook.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- phylogenetic_invariants notebook up
+- some notes on output formats plans
+- removed leftjust arg b/c unnecessary and doesn't work well with left trimmed data
+
 0.4.2
 -----
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
