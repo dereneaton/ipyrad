@@ -1663,12 +1663,14 @@ def make_vcf(data, samples, ipyclient):
     start = time.time()
     res = lbview.apply(concat_vcf, *(data, names))
     ogchunks = len(glob.glob(data.outfiles.vcf+".*"))
-    while not res.ready():
+    while 1:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         curchunks = len(glob.glob(data.outfiles.vcf+".*"))
         progressbar(ogchunks, ogchunks-curchunks,
                     " writing vcf file      | {} | s7 |".format(elapsed))        
-        time.sleep(1)
+        time.sleep(0.1)
+        if res.ready():
+            break
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(1, 1, " writing vcf file      | {} | s7 |".format(elapsed))        
     print("")   
