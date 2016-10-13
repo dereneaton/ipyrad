@@ -39,7 +39,7 @@ to be transferred by SSH from the compute node to our local machine, using the l
     user@login$ qsub -I -l nodes=4:ppn=8 
 
     ## from the compute node launch ipcluster to connect all accessable nodes
-    user@compute$ ipcluster start --n=32 --engines=MPI --ip=* --daemonize --profile=ipyrad
+    user@compute$ ipcluster start --n=32 --engines=MPI --ip=* --daemonize
 
     ## from the compute node start a Jupyter-notebook sending data to port 8888
     user@compute$ jupyter-notebook --no-browser --port=8888  
