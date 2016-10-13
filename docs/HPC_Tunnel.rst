@@ -6,27 +6,25 @@ Tunnel Jupyter notebook to an HPC cluster
 
 The *ipyrad* API was designed with the intention of being used inside Jupyter 
 notebooks, which provide a convenient way of executing interactive code, and
-documenting it with embedded with Markdown, to create highly reproducible workflows.
+documenting it with embedded Markdown, to create highly reproducible workflows.
 Running ipyrad interactively in this way is simple to do on a normal 
 laptop or workstation. Simply call `jupyter-notebook` from a terminal
-to open a notebook in your browser. You can setup your local cluster setup using
-`ipcluster`. 
+to open a notebook in your browser, and setup a local cluster using
+`ipcluster`, and follow the normal *ipyrad* API tutorial. 
 
 Running Jupyter notebooks is more difficult, however, when you want to execute
-code remotely on a HPC cluster. This tutorial explains how to setup an SSH Tunnel 
+code remotely on a HPC cluster. This tutorial explains how to setup a SSH Tunnel 
 so that you can execute code through a Jupyter notebook on your local computer 
 (i.e., your laptop) while having the actual heavy computation be executed remotely
-on compute nodes of your cluster. 
+on compute nodes of your cluster. We make use of the unix 'screen' command as well, so that you can disconnect from the cluster and reconnect without having to stop your job from executing. 
 
 
-#### Step 1: Set up SSH tunneling  
-The instructions below are for connecting to multiple compute nodes interactively, 
-however, you could similarly execute the code on compute nodes through a 
-submission script. The main thing we are trying to do is to tunnel information 
-using SSH from the compute node to our local machine, using the login node as 
-an intermediate. 
-
-.. .. parsed-literal::
+Step 1: Set up SSH tunneling  
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+These instructions are for connecting to multiple compute nodes interactively, 
+however, you could similarly execute the code on compute nodes as a 
+submission script. What we are doing here is creating a tunnel for information 
+to be transferred by SSH from the compute node to our local machine, using the login node as an intermediate. Substitute your username and credentials into the code below. 
 
 .. code-block:: bash
 
@@ -49,7 +47,8 @@ an intermediate.
     user@compute$ <- it will be in place of 'compute' here.
 
 
-#### Step 2: Go back to login node (use ctrl-d to disconnect from 'screen')  
+Step 2: Go back to login node (use ctrl-d to disconnect from 'screen')  
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -61,19 +60,15 @@ an intermediate.
 
 
 
-#### Step 3: Open a browser to http://localhost:8887  
+Step 3: Open a browser to http://localhost:8887  
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You should see a Jupyter notebook view of the files in your home directory 
-on the HPC cluster. You can open an existing notebook, or start a new one. The notebooks
-are located on your cluster, meaning all of your data and results will be saved there. 
-I like to store my notebook in a git repo in my home directory, and to store all of 
-my data that I am working on at the time in a scratch directory. This way, all of the
-code you execute in your notebook can be saved to your git repo, and you basically have
-a perfect supplementary materials document for your study. When finished with my assembly, 
-I might upload the final outfiles to somewhere more permanent than the scratch dir, until they can be archived for publication. They may be too big for github, in which case Zenodo is another good choice. 
+on the HPC cluster. You can open an existing notebook, or start a new one. The notebooks are located on your cluster, meaning all of your data and results will be saved there. I like to store my notebook in a git repo in my home directory, and to store all of my data that I am working on at the time in a scratch directory. This way, all of the code you execute in your notebook can be saved to your git repo, and you basically have a perfect supplementary materials document for your study. When finished with my assembly, I might upload the final outfiles to somewhere more permanent than the scratch dir, until they can be archived for publication. They may be too big for github, in which case Zenodo is another good choice. 
 
 
-#### Other SSH notes:  
+Other SSH notes:  
+^^^^^^^^^^^^^^^^
 
 If you try to form the SSH tunnel but the port is already being used, first check whether it is one of your previous jobs using the port, in case you may want to close it. You can see which PID is associated with the port by using the command:  
 
