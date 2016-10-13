@@ -366,6 +366,9 @@ def cluster(data, noreverse):
     except subprocess.CalledProcessError as inst:
         raise IPyradWarningExit("""
         Error in vsearch: \n{}\n{}""".format(inst, subprocess.STDOUT))
+    except OSError as inst:
+        raise IPyradWarningExit("""
+        Failed to allocate pty: \n{}""".format(inst))
 
     finally:
         ## progress bar
