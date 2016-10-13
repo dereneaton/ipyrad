@@ -259,7 +259,7 @@ def cutadaptit_pairs(data, sample):
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
         adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1]+\
-                   fullcomp(data.barcodes[sample.name])+\
+                   fullcomp(data.barcodes[sample.name])[::-1]+\
                    data._hackersonly["p5_adapter"]
     else:
         print(NO_BARS_GBS_WARNING)
