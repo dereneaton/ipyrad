@@ -20,7 +20,8 @@ on compute nodes of your cluster. We make use of the unix 'screen' command as we
 
 
 Step 1: Set up SSH tunneling  
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 These instructions are for connecting to multiple compute nodes interactively, 
 however, you could similarly execute the code on compute nodes as a 
 submission script. What we are doing here is creating a tunnel for information 
@@ -48,7 +49,7 @@ to be transferred by SSH from the compute node to our local machine, using the l
 
 
 Step 2: Go back to login node (use ctrl-d to disconnect from 'screen')  
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
@@ -61,14 +62,14 @@ Step 2: Go back to login node (use ctrl-d to disconnect from 'screen')
 
 
 Step 3: Open a browser to http://localhost:8887  
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You should see a Jupyter notebook view of the files in your home directory 
 on the HPC cluster. You can open an existing notebook, or start a new one. The notebooks are located on your cluster, meaning all of your data and results will be saved there. I like to store my notebook in a git repo in my home directory, and to store all of my data that I am working on at the time in a scratch directory. This way, all of the code you execute in your notebook can be saved to your git repo, and you basically have a perfect supplementary materials document for your study. When finished with my assembly, I might upload the final outfiles to somewhere more permanent than the scratch dir, until they can be archived for publication. They may be too big for github, in which case Zenodo is another good choice. 
 
 
 Other SSH notes:  
-^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~
 
 If you try to form the SSH tunnel but the port is already being used, first check whether it is one of your previous jobs using the port, in case you may want to close it. You can see which PID is associated with the port by using the command:  
 
