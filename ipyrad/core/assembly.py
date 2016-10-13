@@ -423,7 +423,7 @@ class Assembly(object):
                     gzipped = bool(fastqtuple[0].endswith(".gz"))
                     nreads = 0
                     for alltuples in self.samples[sname].files.fastqs:
-                        nreads += bufcountlines(alltuples[0], gzipped)
+                        nreads += zbufcountlines(alltuples[0], gzipped)
                     self.samples[sname].stats.reads_raw = nreads/4
                     LOGGER.debug("Got reads for sample - {} {}".format(sname,\
                                     self.samples[sname].stats.reads_raw))
@@ -1429,22 +1429,22 @@ def bufcountlines(filename, gzipped):
 
 
 ## Tried this out but it's slower than bufcountlines
-# def zbufcountlines(filename, gzipped):
-#     """ faster line counter """
-#     if gzipped:
-#         cmd1 = ["gunzip", "-c", filename]
-#     else:
-#         cmd1 = ["cat", filename]
-#     cmd2 = ["wc"]
+def zbufcountlines(filename, gzipped):
+    """ faster line counter """
+    if gzipped:
+        cmd1 = ["gunzip", "-c", filename]
+    else:
+        cmd1 = ["cat", filename]
+    cmd2 = ["wc"]
 
-#     proc1 = sps.Popen(cmd1, stdout=sps.PIPE, stderr=sps.PIPE)
-#     proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, stderr=sps.PIPE)
-#     res = proc2.communicate()[0]
-#     if proc2.returncode:
-#         raise IPyradWarningExit("error zbufcountlines {}:".format(res))
-#     LOGGER.info(res)
-#     nlines = int(res.split()[0])
-#     return nlines
+    proc1 = sps.Popen(cmd1, stdout=sps.PIPE, stderr=sps.PIPE)
+    proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, stderr=sps.PIPE)
+    res = proc2.communicate()[0]
+    if proc2.returncode:
+        raise IPyradWarningExit("error zbufcountlines {}:".format(res))
+    LOGGER.info(res)
+    nlines = int(res.split()[0])
+    return nlines
 
 
 
