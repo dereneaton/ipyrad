@@ -1,8 +1,8 @@
 
 .. _HPCscript:
 
-Tunnel Jupyter notebook to an HPC cluster
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SSH Tunnel Jupyter notebook to an HPC cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The *ipyrad* API was designed with the intention of being used inside Jupyter 
 notebooks, which provide a convenient way of executing interactive code, and
@@ -19,13 +19,13 @@ so that you can execute code through a Jupyter notebook on your local computer
 on compute nodes of your cluster. We make use of the unix 'screen' command as well, so that you can disconnect from the cluster and reconnect without having to stop your job from executing. 
 
 
-Step 1: Set up SSH tunneling  
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 1: Set up SSH tunnel on HPC
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 These instructions are for connecting to multiple compute nodes interactively, 
 however, you could similarly execute the code on compute nodes as a 
 submission script. What we are doing here is creating a tunnel for information 
-to be transferred by SSH from the compute node to our local machine, using the login node as an intermediate. Substitute your username and credentials into the code below. 
+to be transferred by SSH from the compute node to our local machine, using the login node as an intermediate. Substitute your username and credentials into the code below. This includes a call to *ipcluster* which you should modify for however many cores you have available.  
 
 .. code-block:: bash
 
@@ -48,8 +48,10 @@ to be transferred by SSH from the compute node to our local machine, using the l
     user@compute$ <- it will be in place of 'compute' here.
 
 
-Step 2: Go back to login node (use ctrl-d to disconnect from 'screen')  
+Step 2: Go back to login node 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because we are connected to the compute node in a detachable screen, we can simply use the 'ctrl-d' hotkey to disconnect from it and leave it running in the background. This will put you back at the login node. You can run the code below as is, or create another screen to put it in so that you can disconnect from the cluster altogether without having to stop the job that is running. The code below till tell our login node to act as a bridge by reading data from port 8888 and sending it out from port 8888. Then on our local computer we read in data from port 8888 and copy it to 8887. 
 
 .. code-block:: bash
 
