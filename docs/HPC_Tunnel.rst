@@ -51,7 +51,7 @@ to be transferred by SSH from the compute node to our local machine, using the l
 Step 2: Go back to login node 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because we are connected to the compute node in a detachable screen, we can simply use the 'ctrl-d' hotkey to disconnect from it and leave it running in the background. This will put you back at the login node. You can run the code below as is, or create another screen to put it in so that you can disconnect from the cluster altogether without having to stop the job that is running. The code below till tell our login node to act as a bridge by reading data from port 8888 and sending it out from port 8888. Then on our local computer we read in data from port 8888 and copy it to 8887. 
+Because we are connected to the compute node in a detachable screen, we can simply use the 'ctrl-d' hotkey to disconnect from it and leave it running in the background. This will put you back at the login node. You can run the code below as is, or create another screen to put it in so that you can disconnect from the cluster altogether without having to stop the job that is running. The code below till tell our login node to act as a bridge by reading data from port 8888 and sending it out from port 8888. Then on our local computer we retrieve the data at 8887 and send queries back at 8888.
 
 .. code-block:: bash
 
