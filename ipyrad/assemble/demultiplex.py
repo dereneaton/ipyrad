@@ -389,20 +389,26 @@ def collate_files(data, sname, tmp1s, tmp2s):
     Collate temp fastq files in tmp-dir into 1 gzipped sample.
     """
     ## out handle
-    out1 = os.path.join(data.dirs.fastqs, "{}_R1_.fastq.gz".format(sname))
+    out1 = os.path.join(data.dirs.fastqs, "{}_R1_.fastq".format(sname))
 
-    ## a command to cat all R1 tmp files together, compression will not be optimal, 
-    ## b/c we do not unzip, write, and rezip, but who cares, this is faster.
+    ## a command to cat all R1 tmp files together, and then to compress the 
+    ## finished concat file.
     cmd1 = ['cat']
     for tmpfile in tmp1s:
         cmd1 += [tmpfile]
-    out = io.BufferedWriter(gzip.open(out1, 'wb'))
+    out = io.BufferedWriter(open(out1, 'wb'))
     proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=out)
     err = proc1.communicate()
     out.close()
-
     ## check for errors
     if proc1.returncode:
+        raise IPyradWarningExit("error in collate_files R1 %s", err)
+
+    ## compress the final file
+    proc2 = sps.Popen(["gzip", out1], stderr=sps.PIPE, stdout=sps.PIPE)
+    err = proc2.communicate()    
+    ## check for errors
+    if proc2.returncode:
         raise IPyradWarningExit("error in collate_files R1 %s", err)
 
     ## then cleanup
@@ -414,18 +420,25 @@ def collate_files(data, sname, tmp1s, tmp2s):
     #err = proc2.communicate()
 
     if 'pair' in data.paramsdict["datatype"]:
-        ## out handles
-        out2 = os.path.join(data.dirs.fastqs, "{}_R2_.fastq.gz".format(sname))
+        ## out handle
+        out2 = os.path.join(data.dirs.fastqs, "{}_R2_.fastq".format(sname))
 
-        ## a command to cat all R2 tmp files together. 
-        cmd2 = ['cat']
+        ## a command to cat all R1 tmp files together, and then to compress the 
+        ## finished concat file.
+        cmd1 = ['cat']
         for tmpfile in tmp2s:
-            cmd2 += [tmpfile]
-        out = io.BufferedWriter(gzip.open(out2, 'wb'))        
-        proc2 = sps.Popen(cmd2, stderr=sps.PIPE, stdout=out)
-        err = proc2.communicate()
+            cmd1 += [tmpfile]
+        out = io.BufferedWriter(open(out2, 'wb'))
+        proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=out)
+        err = proc1.communicate()
         out.close()
+        ## check for errors
+        if proc1.returncode:
+            raise IPyradWarningExit("error in collate_files R2 %s", err)
 
+        ## compress the final file
+        proc2 = sps.Popen(["gzip", out2], stderr=sps.PIPE, stdout=sps.PIPE)
+        err = proc2.communicate()    
         ## check for errors
         if proc2.returncode:
             raise IPyradWarningExit("error in collate_files R2 %s", err)
@@ -433,24 +446,6 @@ def collate_files(data, sname, tmp1s, tmp2s):
         ## then cleanup
         for tmpfile in tmp2s:
             os.remove(tmpfile)
-
-
-    # with gzip.open(out1, 'w') as tmpout:
-    #     for incol in tmp1s:
-    #         with open(incol, 'r') as tmpin:
-    #             tmpout.write(tmpin.read())
-    #     tmpout.flush()
-    #     os.fsync(tmpout.fileno())
-
-    # if 'pair' in data.paramsdict["datatype"]:
-    #     out2 = os.path.join(data.dirs.fastqs, "{}_R2_.fastq.gz".format(sname))
-    #     with gzip.open(out2, 'w') as tmpout:
-    #         #tmp2s.sort(key=lambda x: int(x.split("_")[-3]))
-    #         for incol in tmp2s:
-    #             with open(incol, 'r') as tmpin:
-    #                 tmpout.write(tmpin.read())
-    #         tmpout.flush()
-    #         os.fsync(tmpout.fileno())
 
 
 
