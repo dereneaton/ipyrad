@@ -9,6 +9,7 @@ from __future__ import print_function
 # pylint: disable=C0301
 
 import os
+import io
 import gzip
 import glob
 import time
@@ -395,7 +396,7 @@ def collate_files(data, sname, tmp1s, tmp2s):
     cmd1 = ['cat']
     for tmpfile in tmp1s:
         cmd1 += [tmpfile]
-    out = open(out1, 'w')
+    out = io.BufferedWriter(gzip.open(out1, 'wb'))
     proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=out)
     err = proc1.communicate()
     out.close()
@@ -404,6 +405,13 @@ def collate_files(data, sname, tmp1s, tmp2s):
     if proc1.returncode:
         raise IPyradWarningExit("error in collate_files R1 %s", err)
 
+    ## then cleanup
+    for tmpfile in tmp1s:
+        os.remove(tmpfile)
+
+    ## gzip the concatenated file
+    #proc2 = sps.Popen(["gzip", out1], stderr=sps.PIPE, stdout=sps.PIPE)
+    #err = proc2.communicate()
 
     if 'pair' in data.paramsdict["datatype"]:
         ## out handles
@@ -413,7 +421,7 @@ def collate_files(data, sname, tmp1s, tmp2s):
         cmd2 = ['cat']
         for tmpfile in tmp2s:
             cmd2 += [tmpfile]
-        out = open(out2, 'w')
+        out = io.BufferedWriter(gzip.open(out2, 'wb'))        
         proc2 = sps.Popen(cmd2, stderr=sps.PIPE, stdout=out)
         err = proc2.communicate()
         out.close()
@@ -421,6 +429,11 @@ def collate_files(data, sname, tmp1s, tmp2s):
         ## check for errors
         if proc2.returncode:
             raise IPyradWarningExit("error in collate_files R2 %s", err)
+
+        ## then cleanup
+        for tmpfile in tmp2s:
+            os.remove(tmpfile)
+
 
     # with gzip.open(out1, 'w') as tmpout:
     #     for incol in tmp1s:
@@ -844,7 +857,7 @@ def wrapped_run(data, preview, ipyclient, force):
     for sname in data.barcodes:
         tmp1s = sorted(r1dict[sname])
         tmp2s = sorted(r2dict[sname])
-        #async = ipyclient[0].apply(collate_files, *[data, sname, tmp1s, tmp2s])
+        #writers.append(ipyclient[0].apply(collate_files, *[data, sname, tmp1s, tmp2s]))
         writers.append(lbview.apply(collate_files, 
                        *[data, sname, tmp1s, tmp2s]))
 
