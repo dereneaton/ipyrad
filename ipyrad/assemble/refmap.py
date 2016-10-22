@@ -81,10 +81,11 @@ def index_reference_sequence(data, force=False):
     ## error handling
     if proc1.returncode:
         raise IPyradWarningExit(error1)
-    if "please use bgzip" in error2:
-        raise IPyradWarningExit(NO_ZIP_BINS.format(refseq_file))
-    else:
-        raise IPyradWarningExit(error2)
+    if error2:
+        if "please use bgzip" in error2:
+            raise IPyradWarningExit(NO_ZIP_BINS.format(refseq_file))
+        else:
+            raise IPyradWarningExit(error2)
 
     ## print finished message
     if data._headers:
