@@ -123,7 +123,9 @@ def stackarray(data, sample, subloci):
     maxlen = data._hackersonly["max_fragment_length"]
 
     ## we subsample, else use first 10000 loci.
-    dims = (data.stats.clusters_hidepth.max(), maxlen, 4)
+    ## if this fix gives too many memory errors maybe 
+    ## data.stats.clusters_hidepth.max()*2 could also work
+    dims = (data.stats.clusters_total.max(), maxlen, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
     ## don't use sequence edges / restriction overhangs
