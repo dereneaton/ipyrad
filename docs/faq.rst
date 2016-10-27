@@ -69,3 +69,17 @@ The result should look something like this:
 Don't forget to stop the ipcluster when you are done.
 .. code-block:: bash
     ipcluster stop
+
+Other random problems with solutions
+------------------------------------
+..parsed_literal::
+    Failed at nopython (nopython frontend)
+    UntypedAttributeError: Unknown attribute "any" of type Module(<module 'numpy' from...
+
+In some instances if you already have conda/python installed the local environment
+variable PYTHONPATH will be set, causing python to use versions of modules 
+outside the miniconda path set during ipyrad installation. This error can be fixed by 
+blanking the PYTHONPATH variable during execution (as below), or by adding the export
+to your ~/.bashrc file.
+.. code-block:: bash
+    export PYTHONPATH=""; ipyrad -p params.txt -s 1
