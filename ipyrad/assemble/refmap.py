@@ -641,10 +641,14 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
 
     ## if PE then you have to merge the reads here
     if "pair" in data.paramsdict["datatype"]:
-        ## TODO: Can we include the reference sequence in the PE clust.gz?
-        ## if it's longer than the merged pairs it makes hella indels
+        ## PE R1 can either be on the forward or the reverse strand.
+        ## Samtools view always outputs reads with respect to the
+        ## forward strand. This means that reads with R1 on reverse
+        ## end up with the R1 and R2 reference sequences swapped
+        ## in the clust.gz file. There is a way to fix it but it's
+        ## very annoying and i'm not sure if it's worth it...
         ## Drop the reference sequence for now...
-        #fasta = []
+        fasta = []
 
         ## Create temporary files for R1, R2 and merged, which we will pass to
         ## the function merge_pairs() which calls vsearch to test merging.
