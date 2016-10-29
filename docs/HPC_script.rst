@@ -163,4 +163,12 @@ instance with `profile=ipryad`. It's up to you to remember to run
     ## that specific ipcluster instance
     $ ipyrad -p params-test.txt -s 2 --ipcluster
 
+In the event that you want to run ipcluster by hand _and_ take
+advantage of MPI you need to add a couple more arguments.
 
+.. parsed-literal::
+    ## start ipcluster with MPI enabled
+    $ ipcluster start --n 48 --profile=ipyrad --daemonize --ip=* --engines=MPI
+
+    ## run ipyrad and talk to the MPI enabled ipcluster you just started
+    $ ipyrad -p params-test.txt -s 2 --ipcluster
