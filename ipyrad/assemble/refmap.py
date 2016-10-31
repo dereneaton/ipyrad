@@ -703,7 +703,7 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
             ## Failed merging, probably unequal number of reads in R1 and R2
             ## Skip this locus?
             LOGGER.debug("Failed to merge reads, continuing; %s", inst)
-		finally:
+        finally:
             ## clean up
             os.remove(merged)
             os.remove(read1)
