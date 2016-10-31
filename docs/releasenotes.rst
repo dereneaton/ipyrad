@@ -5,6 +5,30 @@
 Release Notes
 =============
 
+0.4.5
+-----
+- Add docs for running ipcluster by hand w/ MPI enabled.
+- Fix PE refmap bug #148
+- Documenting PYTHONPATH bug that crops up occasionally.
+- Adjusted fix to bgzip test.
+- Fixed a bug w/ testing for bgzip reference sequence. Also add code to fix how PE ref is handled to address #148.
+- fix for last fix
+- fix for last push gzip
+- collate with io.bufferedwriter is faster
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- faster collating of files
+- Continuing work on sim and empirical analysis.
+- rev on barcode in step2 filter pairgbs
+- faster readcounter for step1 and fullcomp on gbs filter=2 barcode in step2
+- tunnel docs update
+- tunnel docs update
+- tunnel docs update
+- tunnel docs update
+- tunnel docs update
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- working on a SSH tunnel doc page
+- Handle OSError in the case that openpty() fails.
+
 0.4.4
 -----
 - Handle blank lines at the top of the params file.
