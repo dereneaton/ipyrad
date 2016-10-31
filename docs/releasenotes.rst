@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.4.6
+-----
+- Nicely clean up temp files if refmap merge fails.
+
 0.4.5
 -----
 - Add docs for running ipcluster by hand w/ MPI enabled.
