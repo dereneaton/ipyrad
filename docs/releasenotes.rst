@@ -7,6 +7,10 @@ Release Notes
 
 0.4.7
 -----
+- hotfix for step5 sample save bug. pushed to soon
+
+0.4.7
+-----
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - make compatible with changes to s6
 - allow sample to fail without crashing
