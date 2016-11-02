@@ -86,18 +86,17 @@ torque_launch_jupyter_cluster.sh.
 Step 2: Open ssh connection to your cluster from local
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This is similar to the normal way you would login to your HPC cluster, except that
-you tell it to forward all information that it receives from port 8181 on the 
-cluster and to send it to your local port 8887. Change the login credentials
-to your name and host. 
+you tell it to forward all information it receives on port 8181 to your 
+local port 8181. Also change the login credentials to your name and host. 
 
 .. code-block:: bash
     
-    ssh -N -L localhost:8887:localhost:8181 user@hpc_login_node.edu
+    ssh -N -L localhost:8181:localhost:8181 user@hpc_login_node.edu
 
 
 Step 3: Tunnel from local computer to notebook 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Now we simply open a browser to http://localhost:8887  
+Now we simply open a browser to http://localhost:8181
 
 You should see the Jupyter notebook view of your filesystem on the HPC cluster. 
 You can open an existing notebook, or start a new one. The notebooks are located
