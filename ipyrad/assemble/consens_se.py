@@ -707,7 +707,7 @@ def run(data, samples, force, ipyclient):
     try:
         ## first progress bar 
         elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-        progressbar(10, 0, " chunking clusters   | {} | s5 |".format(elapsed))
+        progressbar(10, 0, " chunking clusters     | {} | s5 |".format(elapsed))
 
         ## send off samples to be chunked
         lasyncs = {}
@@ -719,7 +719,7 @@ def run(data, samples, force, ipyclient):
             ready = [i.ready() for i in lasyncs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(ready), sum(ready), 
-                        " chunking clusters   | {} | s5 |".format(elapsed))
+                        " chunking clusters     | {} | s5 |".format(elapsed))
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 print("")
@@ -741,13 +741,15 @@ def run(data, samples, force, ipyclient):
             for optim, chunkhandle in clist:
                 args = (data, sample, chunkhandle, optim)
                 asyncs[sample.name].append(lbview.apply_async(consensus, *args))
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                progressbar(10, 0, " consens calling       | {} | s5 |".format(elapsed))
 
         while 1:
             allsyncs = list(itertools.chain(*[asyncs[i.name] for i in subsamples]))
             ready = [i.ready() for i in allsyncs]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(ready), sum(ready), 
-                        " consens calling     | {} | s5 |".format(elapsed))
+                        " consens calling       | {} | s5 |".format(elapsed))
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
@@ -761,7 +763,7 @@ def run(data, samples, force, ipyclient):
         while 1:
             ready = [i.ready() for i in casyncs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 10, " consens calling     | {} | s5 |".format(elapsed))
+            progressbar(10, 10, " consens calling       | {} | s5 |".format(elapsed))
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 print("")
@@ -776,6 +778,11 @@ def run(data, samples, force, ipyclient):
         for job in casyncs.values():
             if not job.successful():
                 LOGGER.error("  error: %s \n%s", job, job.exception())
+
+        ## get samples back
+        subsamples = [i.result() for i in casyncs.values()]
+        for sample in subsamples:
+            data.samples[sample.name] = sample
 
         ## build Assembly stats
         data.stats_dfs.s5 = data.build_stat("s5")
