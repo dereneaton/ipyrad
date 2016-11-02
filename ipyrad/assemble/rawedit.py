@@ -402,7 +402,8 @@ def run2(data, samples, force, ipyclient):
             else:
                 parse_pair_results(data, data.samples[async], res)
         else:
-            raise IPyradWarningExit(rawedits[async].exception())
+            print("  found an error in step2; see ipyrad_log.txt")
+            LOGGER.info("error in step2: %s", rawedits[async].exception())
 
     ## store sample results in data stats
     assembly_cleanup(data)
