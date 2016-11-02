@@ -5,6 +5,28 @@
 Release Notes
 =============
 
+0.4.7
+-----
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- make compatible with changes to s6
+- allow sample to fail without crashing
+- cosmetic
+- cleaner progress bar and enforced maxlen trimming of longer reads
+- lowered maxlen addon, enforced maxlen trimming in singlecat
+- Cosmetic docs change
+- cosmetic docs change
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic docs change
+- updates to doc
+- updates to doc
+- updates to doc
+- updates to doc
+- updates to doc
+- testing new maxlen calculation to better acommodate messy variable len paired data sets.
+- update to docs about pre-filtering
+- temporary fix for mem limit in step 6 until maxlen is more refined
+- Fix bug in refmap.
+
 0.4.6
 -----
 - Nicely clean up temp files if refmap merge fails.
