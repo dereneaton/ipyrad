@@ -85,9 +85,10 @@ torque_launch_jupyter_cluster.sh.
 
 Step 2: Open ssh connection to your cluster from local
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-This is similar to the normal way of logging in to your HPC cluster, except that
+This is similar to the normal way you would login to your HPC cluster, except that
 you tell it to forward all information that it receives from port 8181 on the 
-cluster and to send it to port 8887 locally.
+cluster and to send it to your local port 8887. Change the login credentials
+to your name and host. 
 
 .. code-block:: bash
     
@@ -103,7 +104,7 @@ You can open an existing notebook, or start a new one. The notebooks are located
 on your cluster, meaning all of your data and results will be saved there. I 
 like to store my notebooks inside directories that are each separate git repos
 in my home directory, and to store all of my big data in a scratch directory. 
-You can see an example like that [here](http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb). This way, the notebook records all of 
+You can see an example like that :ref:`here<http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`. This way, the notebook records all of 
 the code you execute in your notebook which can be saved to your git repo, 
 but all of the giant data is still saved in scratch. 
 
