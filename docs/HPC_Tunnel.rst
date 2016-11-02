@@ -91,7 +91,7 @@ local port 8181. Also change the login credentials to your name and host.
 
 .. code-block:: bash
     
-    ssh -N -L localhost:8181:localhost:8181 user@hpc_login_node.edu
+    ssh -N -L 8181:localhost:8181 user@hpc_login_node.edu
 
 
 Step 3: Tunnel from local computer to notebook 
@@ -116,7 +116,7 @@ they will be sharing the same ipcluster instance, and thus fight over the
 available engines. Instead start a second ipcluster by submitting a second 
 submission script to your cluster to launch a different ipcluster instance and 
 jupyter-notebook. Make sure you designate a *different* port number. 
-You can use any port number between 8000-9000. 
+You can use any port number between 8000-9999. 
 
 
 Terminating the connection
