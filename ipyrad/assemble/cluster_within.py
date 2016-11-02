@@ -460,7 +460,12 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
     ## for HPC systems this should be done to make sure targets are spread
     ## among different nodes. 
     if nthreads:
-        thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::nthreads])
+        if nthreads < len(ipyclient.ids):
+            thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::nthreads])
+        elif nthreads == 1:
+            thview = ipyclient.load_balanced_view()
+        else:
+            thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
     snames = [i.name for i in samples]
 
     ## Create DAGs for the assembly method being used, store jobs in nodes

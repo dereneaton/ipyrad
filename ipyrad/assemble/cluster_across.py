@@ -54,7 +54,7 @@ def muscle_align_across(data, samples, chunk):
     ## tmparray to store indel information, for super huge data it may
     ## be necessary to build h5 here instead of below. Quick test shows that
     ## (300, 2M, 300) will give a memory error. 
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
     indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool_)
     duples = np.zeros(len(clusts), dtype=np.bool_)
 
@@ -231,7 +231,7 @@ def build_indels(data, samples, ipyclient):
         time.sleep(0.1)
 
     ## get dims for full indel array
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
     LOGGER.info("maxlen inside build is %s", maxlen)
 
     ## INIT TEMP INDEL ARRAY
@@ -393,7 +393,7 @@ def build_h5_array(data, samples, ipyclient):
     samples.sort(key=lambda x: x.name)
 
     ## get maxlen dim
-    maxlen = data._hackersonly["max_fragment_length"] + 30    
+    maxlen = data._hackersonly["max_fragment_length"] + 20    
     LOGGER.info("maxlen inside build_h5_array is %s", maxlen)
 
     ## open new h5 handle
@@ -673,7 +673,7 @@ def singlecat(data, sample, bseeds, sidx):
 
     ## still using max+30 len limit, rare longer merged reads get trimmed
     ## we need to allow room for indels to be added too
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
 
     ## we'll fill a new catg and alleles arr for this sample in locus order, 
     ## which is known from seeds and hits
@@ -685,8 +685,12 @@ def singlecat(data, sample, bseeds, sidx):
     with h5py.File(sample.files.database, 'r') as io5:
         ## get it and delete it
         catarr = io5["catg"][:]
-        ocatg[full[:, 0], :catarr.shape[1], :] = catarr[full[:, 2], :]
+        #LOGGER.info("catarr shape %s", catarr.shape)
+        #LOGGER.info("ocatg shape %s", ocatg.shape)
+        tmp = catarr[full[:, 2], :maxlen, :]
         del catarr
+        ocatg[full[:, 0], :tmp.shape[1], :] = tmp
+        del tmp
 
         ## get it and delete it
         nall = io5["nalleles"][:]
@@ -696,7 +700,9 @@ def singlecat(data, sample, bseeds, sidx):
     ## get indel locations for this sample
     ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
     with h5py.File(ipath, 'r') as ih5:
-        indels = ih5["indels"][sidx, :, :]
+        indels = ih5["indels"][sidx, :, :maxlen]
+        #LOGGER.info("h5 indels shape %s", ih5["indels"].shape)
+        #LOGGER.info("indels shape %s", indels.shape)
 
     ## insert indels into ocatg
     newcatg = inserted_indels(indels, ocatg)
@@ -915,7 +921,7 @@ def fill_superseqs(data, samples):
     LOGGER.info("snames %s", snames)
 
     ## get maxlen again
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
     LOGGER.info("maxlen inside fill_superseqs is %s", maxlen)
 
     ## data has to be entered in blocks
