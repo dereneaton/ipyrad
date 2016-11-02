@@ -84,3 +84,4 @@ to your ~/.bashrc file.
 
 .. code-block:: bash
     export PYTHONPATH=""; ipyrad -p params.txt -s 1
+
