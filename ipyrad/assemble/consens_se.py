@@ -5,7 +5,8 @@
 from __future__ import print_function
 # pylint: disable=E1101
 # pylint: disable=W0212
-
+# pylint: disable=W0142
+# pylint: disable=C0301
 
 import scipy.stats
 import scipy.misc
@@ -150,15 +151,12 @@ def removerepeats(consens, arrayed):
 
 
 
-def consensus(args):
+def consensus(data, sample, tmpchunk, optim):
     """
     from a clust file handle, reads in all copies at a locus and sorts
     bases at each site, tests for errors at the site according to error 
     rate, calls consensus.
     """
-
-    ## unpack args
-    data, sample, tmpchunk, optim = args
 
     ## temporarily store the mean estimates to Assembly
     data._este = data.stats.error_est.mean()
@@ -232,7 +230,7 @@ def consensus(args):
                 sseqs = [list(seq) for seq in seqs]
                 arrayed = np.concatenate(
                           [[seq]*rep for seq, rep in zip(sseqs, reps)])
-
+                arrayed = arrayed[:, :maxlen]
                 ## get consens call for each site, applies paralog-x-site filter
                 consens = np.apply_along_axis(basecall, 0, arrayed, data)
 
@@ -491,14 +489,11 @@ def basecaller(data, base1, base2, comms):
     return cons
 
 
-## TODO: Why isn't this parallelized?
-def cleanup(args):
+
+def cleanup(data, sample, statsdicts):
     """ 
     cleaning up. optim is the size (nloci) of tmp arrays 
     """
-
-    ## parse args list
-    data, sample, statsdicts = args
     LOGGER.info("in cleanup for: %s", sample.name)
 
     ## collect consens chunk files
@@ -597,7 +592,7 @@ def cleanup(args):
 
 
 
-def run_full(data, sample, lbview):
+def chunk_clusters(data, sample):
     """ split job into bits and pass to the client """
 
     ## counter for split job submission
@@ -606,51 +601,37 @@ def run_full(data, sample, lbview):
     ## set optim size for chunks in N clusters. The first few chunks take longer
     ## because they contain larger clusters, so we create 4X as many chunks as
     ## processors so that they are split more evenly.
-    ncpus = detect_cpus()
-    optim = int((sample.stats.clusters_total // ncpus) + \
-                (sample.stats.clusters_total % ncpus))
-    #LOGGER.info("ncpus %s, optim %s", ncpus, optim)
+    optim = int((sample.stats.clusters_total // data.cpus) + \
+                (sample.stats.clusters_total % data.cpus))
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
     chunkslist = []
 
     ## open to clusters
-    clusters = gzip.open(sample.files.clusters, 'rb')
-    ## create iterator to sample 2 lines at a time
-    pairdealer = itertools.izip(*[iter(clusters)]*2)
+    with gzip.open(sample.files.clusters, 'rb') as clusters:
+        ## create iterator to sample 2 lines at a time
+        pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-    ## Use iterator to sample til end of cluster
-    done = 0
-    while not done:
-        ## grab optim clusters and write to file. Clustdealer breaks by clusters
-        done, chunk = clustdealer(pairdealer, optim)
-        chunkhandle = os.path.join(data.dirs.clusts, 
-                                   "tmp_"+str(sample.name)+"."+str(num*optim))
-        if chunk:
-            chunkslist.append(chunkhandle)            
-            with open(chunkhandle, 'wb') as outchunk:
-                outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
-            num += 1
+        ## Use iterator to sample til end of cluster
+        done = 0
+        while not done:
+            ## grab optim clusters and write to file. 
+            done, chunk = clustdealer(pairdealer, optim)
+            chunkhandle = os.path.join(data.dirs.clusts, 
+                                    "tmp_"+str(sample.name)+"."+str(num*optim))
+            if chunk:
+                chunkslist.append((optim, chunkhandle))
+                with open(chunkhandle, 'wb') as outchunk:
+                    outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
+                num += 1
 
-    ## close clusters handle
-    clusters.close()
-
-    ## send chunks across engines, will delete tmps if failed
-    asyncs = []
-    for chunkhandle in chunkslist:
-        ## used to increment names across processors
-        args = [data, sample, chunkhandle, optim]
-        async = lbview.apply_async(consensus, args)
-        asyncs.append(async)
-
-    return asyncs
+    return chunkslist
 
 
 
 def run(data, samples, force, ipyclient):
     """ checks if the sample should be run and passes the args """
-
     ## prepare dirs
     data.dirs.consens = os.path.join(data.dirs.project, data.name+"_consens")
     if not os.path.exists(data.dirs.consens):
@@ -717,58 +698,91 @@ def run(data, samples, force, ipyclient):
     start = time.time()
     lbview = ipyclient.load_balanced_view()
 
-    ## store asyncs for consens call functions
-    lasyncs = {}
+    ## how many cores?
+    data.cpus = data._ipcluster["cores"]
+    if not data.cpus:
+        data.cpus = len(ipyclient.ids)
 
-    ## first progress bar 
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-    progressbar(10, 0, " consensus calling     | {} | s5 |".format(elapsed))
-
-    ## send off jobs to be processed
-    njobs = 0
-    for sample in subsamples:
-        ## make chunks and submit them to apply queue
-        lasyncs[sample.name] = run_full(data, sample, lbview)
-        njobs += len(lasyncs[sample.name])
-
-        ## print progress post-slice
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-        progressbar(10, 0, " consensus calling     | {} | s5 |".format(elapsed))
-
-    ## create a waiting object
-    tmpids = lbview.history
-    with lbview.temp_flags(after=tmpids):
-        res = lbview.apply(time.sleep, 0.1)
-
+    ## wrap everything to ensure destruction of temp files
     try:
+        ## first progress bar 
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+        progressbar(10, 0, " chunking clusters   | {} | s5 |".format(elapsed))
+
+        ## send off samples to be chunked
+        lasyncs = {}
+        for sample in subsamples:
+            lasyncs[sample.name] = lbview.apply(chunk_clusters, *(data, sample))
+
+        ## block until finished
         while 1:
-            if not res.ready():
-                time.sleep(1)
+            ready = [i.ready() for i in lasyncs.values()]
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(ready), sum(ready), 
+                        " chunking clusters   | {} | s5 |".format(elapsed))
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                print("")
+                break
 
-                ## count how many finished for the progress bar
-                nfinished = 0
-                for joblist in lasyncs.values():
-                    nfinished += sum([i.ready() for i in joblist])
+        ## check for failures
+        for job in lasyncs:
+            if not lasyncs[job].successful():
+                LOGGER.error("  sample %s failed: %s", job, job.exception())
 
-                ## print progress bars while we wait
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(njobs, nfinished,
-                    " consensus calling     | {} | s5 |".format(elapsed))
+        ## send chunks to be processed
+        start = time.time()
+        asyncs = {}
 
-            else:
+        ## get chunklist from results
+        for sample in subsamples:
+            asyncs[sample.name] = []
+            clist = lasyncs[sample.name].result()
+            for optim, chunkhandle in clist:
+                args = (data, sample, chunkhandle, optim)
+                asyncs[sample.name].append(lbview.apply_async(consensus, *args))
+
+        while 1:
+            allsyncs = list(itertools.chain(*[asyncs[i.name] for i in subsamples]))
+            ready = [i.ready() for i in allsyncs]
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(ready), sum(ready), 
+                        " consens calling     | {} | s5 |".format(elapsed))
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
                 break
 
         ## get clean samples
+        casyncs = {}
         for sample in subsamples:
-            statsdicts = [i.get() for i in lasyncs[sample.name]]
-            cleanup([data, data.samples[sample.name], statsdicts])
+            rlist = asyncs[sample.name]
+            statsdicts = [i.result() for i in rlist]
+            casyncs[sample.name] = lbview.apply(cleanup, *(data, sample, statsdicts))
+        while 1:
+            ready = [i.ready() for i in casyncs.values()]
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(10, 10, " consens calling     | {} | s5 |".format(elapsed))
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                print("")
+                break
+
+        ## check for failure:
+        for key in asyncs:
+            jobs = asyncs[key]
+            for job in jobs:
+                if not job.successful():
+                    LOGGER.error("  error: %s \n%s", job, job.exception())
+        for job in casyncs.values():
+            if not job.successful():
+                LOGGER.error("  error: %s \n%s", job, job.exception())
 
         ## build Assembly stats
         data.stats_dfs.s5 = data.build_stat("s5")
 
         ## write stats file
         data.stats_files.s5 = os.path.join(data.dirs.consens, 
-                                               's5_consens_stats.txt')
+                                            's5_consens_stats.txt')
         with open(data.stats_files.s5, 'w') as out:
             out.write(data.stats_dfs.s5.to_string())
 
@@ -779,10 +793,6 @@ def run(data, samples, force, ipyclient):
         tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
         for tmpchunk in tmpcons:
             os.remove(tmpchunk)
-
-        progressbar(20, 20, " consensus calling     | {} | s5 |".format(elapsed))            
-        #if data._headers:
-        print("")
 
 
 
