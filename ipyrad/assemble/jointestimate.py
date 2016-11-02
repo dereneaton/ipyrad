@@ -172,6 +172,7 @@ def stackarray(data, sample, subloci):
                 arrayed[arrayed == "-"] = "N"
                 arrayed = arrayed[:, ~np.all(arrayed == "N", axis=0)]
                 ## store in stacked dict
+
                 catg = np.array(\
                     [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
                     dtype=np.uint64).T
