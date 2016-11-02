@@ -35,12 +35,22 @@ section provides more complex methods for combining data from multiple
 sequencing runs into the same individual, or for using multiple barcodes file.
 
 
-Should you pre-filter data?
----------------------------
-ipyrad has methods for filtering based on Q-scores, and for detecting and 
-removing barcodes+adapters. For paired-end data ipyrad uses vsearch to test
-for merged reads following the similar protocol as the program PEAR. The 
-merged and non-merged reads are combined into a single downstream analysis. 
+Should you pre-filter your data?
+--------------------------------
+We would recommend you start by running the program (fastqc)[fastqc] on your data
+to produce output files with information about the distribution of quality 
+scores, and the occurrence of Illumina adapter sequences. If your 
+data contain adapters, then it is *very* important that these are removed, especially
+for paired-end data. There is a variety of software available to filter your data 
+before starting an ipyrad analysis, such as trimmomatic or cutadapt. We prefer 
+cutadapt. However, you can also filter your data directly in ipyrad, which 
+uses cutadapt. Step 2 of the ipyrad analysis will apply different filters depending
+on the parameter settings you enter, to filter and trim data based on quality scores, 
+and the occurrence of barcode+adapter combinations. Further, for paired-end 
+data ipyrad uses vsearch to merge trimmed paired-end reads, which uses an algorithm
+similar to that in PEAR. The merged and non-merged reads are combined into a 
+single downstream analysis. For more details on how quality and adapter trimming
+are performed in ipyrad (using cutadapt) [see here (link coming soon)](). 
 
 
 .. _file_names:
