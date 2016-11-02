@@ -81,5 +81,6 @@ variable PYTHONPATH will be set, causing python to use versions of modules
 outside the miniconda path set during ipyrad installation. This error can be fixed by 
 blanking the PYTHONPATH variable during execution (as below), or by adding the export
 to your ~/.bashrc file.
+
 .. code-block:: bash
     export PYTHONPATH=""; ipyrad -p params.txt -s 1
