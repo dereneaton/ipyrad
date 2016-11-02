@@ -24,7 +24,7 @@ as well as SLURM (i.e., sbatch based systems).
 Step 1: Launch jupyter-notebook and ipcluster on a compute node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For SLURM I save the following script as slurm_launch_jupyter_cluster.sh, and 
+For SLURM I save the following script as `slurm_launch_jupyter_cluster.sh`, and 
 submit it with the sbatch command. This will need to be edited slightly to 
 conform to your cluster, by changing the name of the partition (queue), 
 changing the number of nodes to whatever works best for you, and setting 
@@ -60,7 +60,7 @@ for that amount of time.
 
 Alternatively, if you are using TORQUE, then submit the following script using 
 the qsub command instead, which I save under the name 
-torque_launch_jupyter_cluster.sh. 
+`torque_launch_jupyter_cluster.sh`. 
 
 .. code-block:: bash
 
