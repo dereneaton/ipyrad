@@ -18,7 +18,6 @@ from __future__ import print_function
 
 import pandas as pd
 import numpy as np
-import itertools
 import datetime
 import shutil
 import numba
@@ -430,6 +429,7 @@ def filter_all_clusters(data, samples, ipyclient):
             ## load in the array w/ shape (hslice, maxlen, 2)
             arr = np.load(ffile)
             ## store slice into full array
+            LOGGER.info("shapes, %s %s", supersnps.shape, arr.shape)
             supersnps[hslice:hslice+optim, :, :] = arr
         io5["snps"][:] = supersnps            
         del arr
@@ -502,10 +502,10 @@ def make_loci_and_stats(data, samples, ipyclient):
         loci_asyncs[istart] = lbview.apply(locichunk, args)
 
     ### FOR DEBUGGING
-    # ipyclient.wait()
-    # for job in loci_asyncs:
-    #     if not job.successful():
-    #         print(job.metadata)
+    #ipyclient.wait()
+    #for job in loci_asyncs:
+    #    if not job.successful():
+    #        LOGGER.error("error %s", job.exception())
 
     # ## just a waiting function for chunks to finish
     # tmpids = list(itertools.chain(*[i.msg_ids for i in loci_asyncs]))
@@ -712,7 +712,7 @@ def init_arrays(data):
     io5 = h5py.File(data.database, 'w')
 
     ## get maxlen and chunk len
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
     chunks = co5["seqs"].attrs["chunksize"][0]
     nloci = co5["seqs"].shape[0]
 
@@ -768,6 +768,7 @@ def filter_stacks(data, sidx, hslice):
     #superseqs = io5["seqs"][hslice[0]:hslice[1], sidx,]
     ## get an int view of the seq array
     superints = io5["seqs"][hslice[0]:hslice[1], sidx,].view(np.int8)
+    LOGGER.info("superints shape %s", superints)
 
     ## fill edge filter
     ## get edges of superseqs and supercats, since edges need to be trimmed 
@@ -1359,7 +1360,7 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
     """
 
     ## make empty arrays for filling
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
     maxsnp = co5["snps"][:].sum()
 
     ## shape of arrays is sidx, we will subsample h5 w/ sidx to match. Seqarr
@@ -1707,7 +1708,7 @@ def vcfchunk(data, optim, sidx, start):
     """
     ## empty array to be filled before writing 
     ## will not actually be optim*maxlen, extra needs to be trimmed
-    maxlen = data._hackersonly["max_fragment_length"] + 30
+    maxlen = data._hackersonly["max_fragment_length"] + 20
 
     ## get data sliced (optim chunks at a time)
     hslice = [start, start+optim]
