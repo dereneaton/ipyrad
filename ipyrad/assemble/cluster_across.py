@@ -571,15 +571,15 @@ def multicat(data, samples, ipyclient):
         raise IPyradWarningExit("error in fill_dups: %s", async2.exception())
 
     ## make a limited njobs view based on mem limits
-    #smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
+    smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
 
     ## make a list of jobs
     jobs = {}
     for sample in samples:
         ## grab just the hits for this sample
         sidx = snames.index(sample.name)
-        #jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
-        jobs[sample.name] = lbview.apply(singlecat, *(data, sample, bseeds, sidx))
+        jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
+        #jobs[sample.name] = lbview.apply(singlecat, *(data, sample, bseeds, sidx))
 
     ## check for finished and submit disk-writing job when finished
     allwait = len(jobs)
