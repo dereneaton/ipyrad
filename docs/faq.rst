@@ -72,7 +72,7 @@ Don't forget to stop the ipcluster when you are done.
 
 Other random problems with solutions
 ------------------------------------
-..parsed_literal::
+.. parsed_literal::
     Failed at nopython (nopython frontend)
     UntypedAttributeError: Unknown attribute "any" of type Module(<module 'numpy' from...
 
