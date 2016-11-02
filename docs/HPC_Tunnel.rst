@@ -40,9 +40,14 @@ for that amount of time.
     #SBATCH --nodes 4
     #SBATCH --ntasks-per-node 8
     #SBATCH --exclusive
-    #SBATCH --time 30:00:00
+    #SBATCH --time 30-00:00:00
+    #SBATCH --mem-per-cpu 2000
     #SBATCH --job-name jupyter-ipcluster
     #SBATCH --output jupyterlog.txt
+
+    ## notify me when it's ready
+    #SBATCH -m abe
+    #SBATCH -M deren.eaton@yale.edu
 
     ## launch ipcluster engines across available cpus
     ipcluster start --n=32 --engines=MPI --ip=* --daemonize
@@ -56,6 +61,13 @@ for that amount of time.
 
     ## launch notebook
     jupyter-notebook --no-browser --port=$NOTEBOOKPORT
+
+
+On the login node of your cluster submit the submission script. 
+
+.. code-block:: bash
+
+    user@login-node$ sbatch slurm_launch_jupyter_cluster.sh
 
 
 Alternatively, if you are using TORQUE, then submit the following script using 
@@ -83,6 +95,12 @@ the qsub command instead, which I save under the name
     jupyter-notebook --no-browser --port=$NOTEBOOKPORT
 
 
+.. code-block:: bash
+
+    ## submit the submission script
+    user@login-node$ qsub torque_launch_jupyter_cluster.sh
+
+
 Step 2: Open ssh connection to your cluster from local
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This is similar to the normal way you would login to your HPC cluster, except that
@@ -91,7 +109,7 @@ local port 8181. Also change the login credentials to your name and host.
 
 .. code-block:: bash
     
-    ssh -N -L 8181:localhost:8181 user@hpc_login_node.edu
+    user@local$ ssh -N -L 8181:localhost:8181 user@hpc_login_node.edu
 
 
 Step 3: Tunnel from local computer to notebook 
@@ -131,8 +149,8 @@ open port (e.g., 8181). Then simply call 'kill' to terminate that process id.
 .. code-block:: bash
 
     ## which PID is using port 8181?
-    user@login$ lsof -ti:8181
+    user@local$ lsof -ti:8181
 
     ## let's say it returned pid=31189. To kill it do the following:
-    user@login$ kill 31189
+    user@local$ kill 31189
 
