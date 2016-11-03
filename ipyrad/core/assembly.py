@@ -171,16 +171,9 @@ class Assembly(object):
                        ("max_shared_Hs_locus", 0.50),
                        ("edit_cutsites", (0, 0)),
                        ("trim_overhang", (0, 0, 0, 0)),
-                       ("output_formats", "*"),
+                       ("output_formats", ['l', 'p', 's', 'v']),
                        ("pop_assign_file", ""),
         ])
-
-        ### TODO: cleanup/simplify output args:
-        ### - always make loci file ('l')
-        ### - others: (phy, snps, nex, struct, fineradstruct, geno, usnps, 
-        ###            vcfSNPs, vcfFull, treemix, migrate-n)
-        ### - shortnames: * = ('p', 's', 'n', 'k', 'f', 'g', 'u', 'v', 'V', 't', 'm')
-        ### - default: ('l', 'p', 's', 'v')
 
         ## Store data directories for this Assembly. Init with default project
         self.dirs = ObjDict({"project":
@@ -1755,8 +1748,8 @@ def paramschecker(self, param, newvalue):
                 try:
                     newvalue = float(newvalue)
                 except Exception as inst:
-                    sys.exit("max_shared_Hs_locus must be int or float, you put: "\
-                            + newvalue)
+                    raise IPyradParamsError("""
+    max_shared_Hs_locus must be int or float, you put: {}""".format(newvalue))
         self.paramsdict['max_shared_Hs_locus'] = newvalue
 
     elif param == 'max_SNPs_locus':
@@ -1795,34 +1788,30 @@ def paramschecker(self, param, newvalue):
         newvalue = tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), \
         "trim_overhang should be a tuple e.g., (4, *, *, 4)"
-        self.paramsdict['trim_overhang'] = newvalue
+        self.paramsdict['trim_overhang'] = tuple([int(i) for i in newvalue])
 
 
     elif param == 'output_formats':
-        ## Get all allowed file types from assembly.write_outfiles
-        output_formats = assemble.write_outfiles.OUTPUT_FORMATS
+        ## let's get whatever the user entered as a tuple of letters
+        allowed = assemble.write_outfiles.OUTPUT_FORMATS.keys()
 
-        if isinstance(newvalue, list):
-            newvalue = ",".join(newvalue)
-
-        ## If wildcard, then just do them all
         if "*" in newvalue:
-            requested_formats = output_formats
-            #"".join([i[0] for i in output_formats])
-        else:
-            #newvalue = newvalue.replace(",", "")
-            #requested_formats = "".join([i[0] for i in newvalue.split()])
-            requested_formats = [i for i in \
-                                 newvalue.replace(" ", "").split(",")]
+            newvalue = allowed
+        if isinstance(newvalue, tuple):
+            newvalue = list(newvalue)
+        if isinstance(newvalue, str):
+            newvalue = [i.strip() for i in newvalue.split(",")]
+        if isinstance(newvalue, list):
+            ## if more than letters, raise an warning
+            if any([len(i) > 1 for i in newvalue]):
+                LOGGER.warning("""
+    'output_formats' params entry is malformed. Setting to * to avoid errors.""")
+                newvalue = allowed
+            newvalue = tuple(newvalue)
+            #newvalue = tuple([i for i in newvalue if i in allowed])
 
-            ## Exit if requested formats are bad
-            for form in requested_formats:
-                if form not in [i for i in output_formats]:
-                    raise IPyradWarningExit("""
-    File format [{}] not recognized, must be one of: {}.
-    """.format(form, output_formats))
         ## set the param
-        self.paramsdict['output_formats'] = requested_formats
+        self.paramsdict['output_formats'] = newvalue
 
 
     elif param == 'pop_assign_file':
