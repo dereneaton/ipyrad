@@ -65,6 +65,7 @@ class Sample(object):
 
               "s3": pd.Series(index=["merged_pairs",
                                      "clusters_total",
+                                     "hidepth_min",
                                      "clusters_hidepth",
                                      "avg_depth_total",
                                      "avg_depth_mj",
