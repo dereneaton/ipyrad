@@ -45,10 +45,6 @@ for that amount of time.
     #SBATCH --job-name jupyter-ipcluster
     #SBATCH --output jupyterlog.txt
 
-    ## notify me when it's ready
-    #SBATCH -m abe
-    #SBATCH -M deren.eaton@yale.edu
-
     ## launch ipcluster engines across available cpus
     ipcluster start --n=32 --engines=MPI --ip=* --daemonize
 
