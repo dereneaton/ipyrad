@@ -346,10 +346,10 @@ def filter_all_clusters(data, samples, ipyclient):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(readies), sum(readies), 
                 " filtering loci        | {} | s7 |".format(elapsed))
-            time.sleep(1)
-            if all(readies):
+            time.sleep(0.1)
+            if sum(readies) == len(readies):
+                print("")
                 break
-        print("")
 
         ## raise error if any jobs failed
         for async in fasyncs:
@@ -527,7 +527,7 @@ def make_loci_and_stats(data, samples, ipyclient):
         if loci_asyncs[job].ready() and not loci_asyncs[job].successful():
             LOGGER.error("error in building loci [%s]: %s", 
                          job, loci_asyncs[job].exception())
-            raise IPyradWarningExit
+            raise IPyradWarningExit(loci_asyncs[job].exception())
 
     ## concat and cleanup
     results = [i.get() for i in loci_asyncs.values()]
