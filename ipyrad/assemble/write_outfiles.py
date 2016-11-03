@@ -43,9 +43,19 @@ LOGGER = logging.getLogger(__name__)
 
 #OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
 #                  'str', 'geno', 'treemix', 'migrate', 'gphocs']
-
-OUTPUT_FORMATS = ['phy', 'nex', 'snps', 'usnps', 'str', 'geno', 'vcf']
-
+#OUTPUT_FORMATS = ['phy', 'nex', 'snps', 'usnps', 'str', 'geno', 'vcf']
+OUTPUT_FORMATS = {'l': 'loci',
+                  'p': 'phy', 
+                  's': 'snps', 
+                  'n': 'nex', 
+                  'k': 'struct', 
+                  'a': 'alleles', 
+                  'g': 'geno', 
+                  'u': 'usnps', 
+                  'v': 'vcf', 
+                  't': 'treemix',
+                  'm': 'migrate-n'}
+                  #'V': 'vcfFull',   ## currently hidden
 
 
 def run(data, samples, force, ipyclient):
@@ -75,17 +85,12 @@ def run(data, samples, force, ipyclient):
     data.outfiles.loci = os.path.join(data.dirs.outfiles, data.name+".loci")
     make_loci_and_stats(data, samples, ipyclient)
 
-    ## OPTIONAL OUTPUTS -- grab from params as a string, if commas then split 
-    ## to a list, e.g., [phy, nex, str]. 
-    output_formats = data.paramsdict["output_formats"]
-    if "," in output_formats:
-        output_formats = [i.strip() for i in output_formats.split(",")]
-    if "*" in output_formats:
-        output_formats = OUTPUT_FORMATS
-
+    ## OPTIONAL OUTPUTS:
     ## held separate from *output_formats cuz it's big and parallelized 
-    if 'vcf' in output_formats:
-        make_vcf(data, samples, ipyclient)
+    output_formats = data.paramsdict["output_formats"]
+    if 'V' or 'v' in output_formats:
+        full = "V" in output_formats
+        make_vcf(data, samples, ipyclient, full=full)
 
     ## make other array-based formats, recalcs keeps and arrays
     make_outfiles(data, samples, output_formats, ipyclient)
@@ -1273,7 +1278,6 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     #sindx = [list(anames).index(i) for i in snames]
 
     ## build arrays and outputs from arrays. 
-    ## TODO: make faster with numba, dask, and/or parallel
     arrs = make_arrays(data, sidx, optim, nloci, io5, co5)
     seqarr, snparr, bisarr, maparr = arrs
 
@@ -1283,37 +1287,31 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     results = []
 
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
-    if "phy" in output_formats:
+    if "p" in output_formats:
         async = lbview.apply(write_phy, *[data, seqarr, sidx, pnames])
         results.append(async)
-        #write_phy(data, seqarr, sidx, pnames)
 
-    ## other outputs
     ## nexus format includes ... additional information ({}.nex)
-    if 'nexus' in output_formats:
+    if "n" in output_formats:
         async = lbview.apply(write_nex, *[data, seqarr, sidx, pnames])
         results.append(async)
-        #write_nex(data, seqarr, sidx, pnames)
 
     ## snps is actually all snps written in phylip format ({}.snps.phy)
-    if 'snps' in output_formats:
+    if "s" in output_formats:
         async = lbview.apply(write_snps, *[data, snparr, sidx, pnames])
         results.append(async)
         write_snps_map(data, maparr)
-        #write_snps(data, snparr, sidx, pnames)
 
     ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
-    if 'usnps' in output_formats:
+    if "u" in output_formats:
         async = lbview.apply(write_usnps, *[data, bisarr, sidx, pnames])
         results.append(async)
-        #write_usnps(data, bisarr, sidx, pnames)
 
     ## str and ustr are for structure analyses. A fairly outdated format, six
     ## columns of empty space. Full and subsample included ({}.str, {}.u.str)
-    if 'str' in output_formats:
+    if "k" in output_formats:
         async = lbview.apply(write_str, *[data, snparr, bisarr, sidx, pnames])
         results.append(async)
-        #write_str(data, snparr, bisarr, sidx, pnames)
 
     ## geno output is for admixture and other software. We include all SNPs, 
     ## but also a .map file which has "distances" between SNPs.
@@ -1606,7 +1604,7 @@ def write_geno(data, snparr, bisarr, sidx, inh5):
 
 
 
-def make_vcf(data, samples, ipyclient):
+def make_vcf(data, samples, ipyclient, full=0):
     """ 
     Write the full VCF for loci passing filtering. Other vcf formats are 
     possible, like SNPs-only, or with filtered loci included but the filter
@@ -1618,8 +1616,10 @@ def make_vcf(data, samples, ipyclient):
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(20, 0, " building vcf file     | {} | s7 |".format(elapsed))
 
-    ## create output, gzip it to be disk friendly
-    data.outfiles.vcf = os.path.join(data.dirs.outfiles, data.name+".vcf.gz")
+    ## create outputs for v and V, gzip V to be friendly
+    data.outfiles.vcf = os.path.join(data.dirs.outfiles, data.name+".vcf")
+    if full:
+        data.outfiles.VCF = os.path.join(data.dirs.outfiles, data.name+".vcf.gz")    
 
     ## get some db info
     with h5py.File(data.clust_database, 'r') as io5:
@@ -1641,7 +1641,7 @@ def make_vcf(data, samples, ipyclient):
     ## send jobs in chunks
     vasyncs = {}
     for init in xrange(0, nloci, optim):
-        vasyncs[init] = lbview.apply(vcfchunk, *(data, optim, sidx, init))
+        vasyncs[init] = lbview.apply(vcfchunk, *(data, optim, sidx, init, full))
 
     ## wait and show progress bar
     while 1:
@@ -1662,7 +1662,7 @@ def make_vcf(data, samples, ipyclient):
 
     ## writing full vcf file to disk
     start = time.time()
-    res = lbview.apply(concat_vcf, *(data, names))
+    res = lbview.apply(concat_vcf, *(data, names, full))
     ogchunks = len(glob.glob(data.outfiles.vcf+".*"))
     while 1:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -1678,31 +1678,40 @@ def make_vcf(data, samples, ipyclient):
 
 
 
-def concat_vcf(data, names):
+def concat_vcf(data, names, full):
     """ 
     Sorts, concatenates, and gzips VCF chunks. Also cleans up chunks.
     """
     ## open handle and write headers
-    with gzip.open(data.outfiles.vcf, 'w') as vout:
-        vcfheader(data, names, vout)
+    if not full:
+        writer = open(data.outfiles.vcf, 'w')
+    else:
+        writer = gzip.open(data.outfiles.VCF, 'w')
+    vcfheader(data, names, writer)
+    writer.close()
 
     ## get vcf chunks
     vcfchunks = glob.glob(data.outfiles.vcf+".*")
     vcfchunks.sort(key=lambda x: int(x.rsplit(".")[-1]))
 
     ## concatenate
-    with gzip.open(data.outfiles.vcf, 'a') as vout:
-        proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=vout)
-        err = proc.communicate()[0]
-        if proc.returncode:
-            raise IPyradWarningExit("err in concat_vcf: %s", err)
+    if not full:
+        writer = open(data.outfiles.vcf, 'a')
+    else:
+        writer = gzip.open(data.outfiles.VCF, 'a')
+
+    proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=writer)
+    err = proc.communicate()[0]
+    if proc.returncode:
+        raise IPyradWarningExit("err in concat_vcf: %s", err)
+    writer.close()
 
     for chunk in vcfchunks:
         os.remove(chunk)
 
 
 
-def vcfchunk(data, optim, sidx, start):
+def vcfchunk(data, optim, sidx, start, full):
     """ 
     Function called within make_vcf to run chunks on separate engines. 
     """
@@ -1736,6 +1745,15 @@ def vcfchunk(data, optim, sidx, start):
     LOGGER.info('acatg.shape %s', acatg.shape)
 
     ## to save memory some columns are stored in diff dtypes until printing
+    if not full:
+        with h5py.File(data.database, 'r') as co5:
+            snps = co5["snps"][hslice[0]:hslice[1], :]
+            snps = snps[keepmask, :]
+            snps = snps.sum(axis=2)
+        snpidxs = snps > 0
+        maxlen = snps.sum()
+
+    ## vcf info to fill, this is bigger than the actual array
     nrows = (keepmask.sum()*maxlen)
     cols01 = np.zeros((nrows, 2), dtype=np.uint32)
     cols34 = np.zeros((nrows, 2), dtype="S3")
@@ -1751,10 +1769,25 @@ def vcfchunk(data, optim, sidx, start):
         edg = aedge[iloc]
         LOGGER.info('edg %s', edg)
         ## grab all seqs between edges
-        seq = aseqs[iloc, :, edg[0]:edg[1]+1]
-        catg = acatg[iloc, :, edg[0]:edg[1]+1]
-        #genos = np.zeros((seq.shape[1], 2*sum(sidx)), dtype=np.uint8)
+        if not 'pair' in data.paramsdict["datatype"]:
+            seq = aseqs[iloc, :, edg[0]:edg[1]+1]
+            catg = acatg[iloc, :, edg[0]:edg[1]+1]
+            if not full:
+                snpidx = snpidxs[iloc, edg[0]:edg[1]+1]
+                seq = seq[:, snpidx]
+                catg = catg[:, snpidx]
+        else:
+            seq = np.hstack([aseqs[iloc, :, edg[0]:edg[1]+1], 
+                             aseqs[iloc, :, edg[2]:edg[3]+1]])
+            catg = np.hstack([acatg[iloc, :, edg[0]:edg[1]+1], 
+                              acatg[iloc, :, edg[2]:edg[3]+1]])
+            if not full:
+                snpidx = np.hstack([snpidxs[iloc, edg[0]:edg[1]+1], 
+                                    snpidxs[iloc, edg[2]:edg[3]+1]]) 
+                seq = seq[:, snpidx]
+                catg = catg[:, snpidx]   
 
+        ## 
         alleles = np.zeros((nrows, 4), dtype=np.uint8)
         genos = np.zeros((seq.shape[1], sum(sidx)), dtype="S4")
         genos[:] = "./.:"
@@ -1765,11 +1798,14 @@ def vcfchunk(data, optim, sidx, start):
         cols01[init:init+seq.shape[1], 0] = start+locindex[iloc]+1
 
         ## fill (POS) position
-        cols01[init:init+seq.shape[1], 1] = np.arange(seq.shape[1]) + 1 
+        if full:
+            cols01[init:init+seq.shape[1], 1] = np.arange(seq.shape[1]) + 1 
+        else:
+            cols01[init:init+seq.shape[1], 1] = np.where(snpidx)[0] + 1
 
         ## fill reference base
         alleles = reftrick(seq, GETCONS)
-        LOGGER.info("aleles %s", alleles)
+        LOGGER.info("alleles %s", alleles)
 
         ## get the info string column
         tmp0 = np.sum(catg, axis=2)
@@ -1777,8 +1813,9 @@ def vcfchunk(data, optim, sidx, start):
         tmp2 = tmp1.sum(axis=1) > 0
         nsamp = np.sum(tmp1, axis=0)
         depth = np.sum(tmp0, axis=0)
-        cols7[init:init+seq.shape[1]] = [["NS={};DP={}".format(i, j)] for i, j \
-                                         in zip(nsamp, depth)]
+        list7 = [["NS={};DP={}".format(i, j)] for i, j in zip(nsamp, depth)]
+        if list7:
+            cols7[init:init+seq.shape[1]] = list7
 
         ## fill cons sites where no variants
         #whoisgeno = np.invert(np.all(tmp0 == 0, axis=1))
@@ -1807,8 +1844,9 @@ def vcfchunk(data, optim, sidx, start):
         ## for each taxon enter 4 catg values
         for cidx in xrange(catg.shape[0]):
             ## fill catgs from catgs
+            tmp0 = [str(i.sum()) for i in catg[cidx]]
             tmp1 = [",".join(i) for i in catg[cidx].astype("S4").tolist()]
-            tmp2 = ["".join(i+j) for i, j in zip(genos[:, cidx], tmp1)]
+            tmp2 = ["".join(i+j+":"+k) for i, j, k in zip(genos[:, cidx], tmp0, tmp1)]
             cols9up[init:init+seq.shape[1], cidx] = tmp2
 
         cols34[init:init+seq.shape[1], 0] = alleles[:, 0].view("S1")
@@ -1826,29 +1864,22 @@ def vcfchunk(data, optim, sidx, start):
     ## the full string to file so we can just cat them later, this way 
     ## gzipping will be parallelized, though on serial writing machines
     ## we'll suffer some slowdown from engines fighting to write to disk.
-    with gzip.open(data.outfiles.vcf+".{}".format(start), 'w') as vout:
-        np.savetxt(vout, 
+    if not full:
+        writer = open(data.outfiles.vcf+".{}".format(start), 'w')
+    else:
+        writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
+
+    np.savetxt(writer,
                 np.concatenate((cols01[:tot, :].astype("S"),
                     np.array([["."]]*tot, dtype="S1"),
                     cols34[:tot, :],
                     np.array([["13", "PASS"]]*tot, dtype="S4"),
                     cols7[:tot, :],
-                    np.array([["GT:CATG"]]*tot, dtype="S7"),
+                    np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
                     cols9up[:tot, :],
                     ), 
                     axis=1),
-                delimiter="\t", fmt="%s")                
-        # np.save(vout, 
-        #         np.concatenate((cols01[:tot, :].astype("S"),
-        #             np.array([["."]]*tot, dtype="S1"),
-        #             cols34[:tot, :],
-        #             np.array([["13", "PASS"]]*tot, dtype="S4"),
-        #             cols7[:tot, :],
-        #             np.array([["GT:CATG"]]*tot, dtype="S7"),
-        #             cols9up[:tot, :],
-        #             ), 
-        #             axis=1)
-        #         )
+                delimiter="\t", fmt="%s")
 
 
 
@@ -1970,6 +2001,7 @@ def vcfheader(data, names, ofile):
 ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
 ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
 ##FORMAT=<ID=CATG,Number=1,Type=String,Description="Base Counts (CATG)">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{names}
 """.format(date=time.strftime("%Y/%m/%d"),
