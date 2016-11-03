@@ -18,6 +18,7 @@ import h5py
 import gzip
 import glob
 import os
+from ipyrad.assemble.jointestimate import recal_hidepth
 from util import *
 
 from collections import Counter
@@ -642,6 +643,18 @@ def run(data, samples, force, ipyclient):
     tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
     for tmpfile in tmpcons+tmpcats:
         os.remove(tmpfile)
+
+    ## check whether mindepth has changed, and thus whether clusters_hidepth
+    ## needs to be recalculated, and get new maxlen for new highdepth clusts.
+    ## if mindepth not changed then nothing changes.
+    maxlens = []
+    for sname in data.samples:
+        modsample, maxlen = recal_hidepth(data, data.samples[sname])
+        data.samples[sname] = modsample
+        maxlens.append(maxlen)
+
+    ## reset global maxlen if something changed
+    data._hackersonly["max_fragment_length"] = max(maxlens) + 4
 
     ## filter through samples for those ready
     subsamples = []

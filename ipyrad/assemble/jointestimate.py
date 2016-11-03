@@ -13,6 +13,8 @@ import time
 import gzip
 import os
 
+from ipyrad.assemble.cluster_within import get_quick_depths
+
 from collections import Counter
 from util import *
 
@@ -20,6 +22,7 @@ from util import *
 # pylint: disable=E1101
 # pylint: disable=W0212
 # pylint: disable=W0142
+# pylint: disable=C0301
 
 
 
@@ -109,6 +112,36 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
 
 
 
+def recal_hidepth(data, sample):
+    """
+    if mindepth setting were changed then 'clusters_hidepth' needs to be 
+    recalculated. Check and recalculate if necessary.
+    """
+    ## if nothing changes return existing maxlen value
+    maxlen = data._hackersonly["max_fragment_length"]
+
+    ## if coming from older version of ipyrad this attr is new
+    if not hasattr(sample.stats_dfs.s3, "hidepth_min"):
+        sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
+
+    ## if old value not the same as current value then recalc
+    if not sample.stats_dfs.s3["hidepth_min"] == data.paramsdict["mindepth_majrule"]:
+        LOGGER.info(" mindepth setting changed: recalculating clusters_hidepth and maxlen")
+        maxlens, depths = get_quick_depths(data, sample)
+        hidepths = depths >= data.paramsdict["mindepth_majrule"]
+        keepmj = depths[hidepths]
+
+        ## set assembly maxlen if now lfor sample
+        maxlens = maxlens[hidepths]
+        maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+
+        sample.stats["clusters_hidepth"] = keepmj.shape[0]
+        sample.stats_dfs.s3["clusters_hidepth"] = keepmj.shape[0]        
+
+    return sample, maxlen
+
+
+
 def stackarray(data, sample, subloci):
     """ 
     Stacks clusters into arrays
@@ -119,11 +152,11 @@ def stackarray(data, sample, subloci):
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-    ## array will be (nclusters, readlen, 4)
-    maxlen = data._hackersonly["max_fragment_length"]
+     ## recalculate clusters-hidepth if mindepth setting changed
+    sample, maxlen = recal_hidepth(data, sample)
 
     ## we subsample, else use first 10000 loci.
-    dims = (data.stats.clusters_hidepth.max(), maxlen, 4)
+    dims = (sample.stats.clusters_hidepth, maxlen, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
     ## don't use sequence edges / restriction overhangs

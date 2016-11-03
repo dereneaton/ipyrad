@@ -36,50 +36,60 @@ LOGGER = logging.getLogger(__name__)
 
 
 
-def sample_cleanup(data, sample):
-    """ stats, cleanup, and link to samples """
-    
+def get_quick_depths(data, sample):
+    """ iterate over clustS files to get data """
     ## set cluster file handles
     sample.files.clusters = os.path.join(data.dirs.clusts,
                                          sample.name+".clustS.gz")
     
     ## get new clustered loci 
-    infile = gzip.open(data.samples[sample.name].files.clusters)
-    loci = infile.read().strip("//\n//\n").split("//\n//\n")
+    with gzip.open(data.samples[sample.name].files.clusters, 'r') as infile:
+        loci = infile.read().strip("//\n//\n").split("//\n//\n")
 
-    ## get number of merged reads, updated dynamically
-    ## TODO: this won't capture merged reads that are merged during refmap
-    if 'pair' in data.paramsdict["datatype"]:
-        sample.files.merged = os.path.join(data.dirs.edits,
+        ## get number of merged reads, updated dynamically
+         ## TODO: this won't capture merged reads that are merged during refmap
+        if 'pair' in data.paramsdict["datatype"]:
+            sample.files.merged = os.path.join(data.dirs.edits,
                                            sample.name+"_merged_.fastq")
-        ## record how many read pairs were merged
-        with open(sample.files.merged, 'r') as tmpf:
-            sample.stats.reads_merged = len(tmpf.readlines()) // 4
+            ## record how many read pairs were merged
+            with open(sample.files.merged, 'r') as tmpf:
+                sample.stats.reads_merged = len(tmpf.readlines()) // 4
 
-    ## arrays for storing data
-    maxlen = np.zeros(len(loci), dtype=np.uint32)
-    depths = np.zeros(len(loci), dtype=np.uint32)
+        ## arrays for storing data
+        maxlen = np.zeros(len(loci), dtype=np.uint32)
+        depths = np.zeros(len(loci), dtype=np.uint32)
 
-    ## get depth stats
-    for iloc in xrange(depths.shape[0]):
-        lines = loci[iloc].strip().split("\n")
-        maxlen[iloc] = np.uint32(len(lines[1]))
-        tdepth = np.uint32(0)
-        for line in lines[::2]:
-            tdepth += np.uint32(line.split(";")[-2][5:])
-        depths[iloc] = tdepth
+        ## get depth stats
+        for iloc in xrange(depths.shape[0]):
+            lines = loci[iloc].strip().split("\n")
+            maxlen[iloc] = np.uint32(len(lines[1]))
+            tdepth = np.uint32(0)
+            for line in lines[::2]:
+                tdepth += np.uint32(line.split(";")[-2][5:])
+            depths[iloc] = tdepth
+    return maxlen, depths    
 
-    infile.close()
 
-    ## If our longest sequence is longer than the current max_fragment_length
-    ## then update max_fragment_length. For assurance we require that 
-    ## max len is 4 greater than maxlen, to allow for pair separators.
-    #max_len = maxlen.max()
-    max_len = int(maxlen.mean() + (2.*maxlen.std()))
-    if max_len > data._hackersonly["max_fragment_length"]:
-        data._hackersonly["max_fragment_length"] = max_len + 4
+
+def sample_cleanup(data, sample):
+    """ stats, cleanup, and link to samples """
+    
+    ## get maxlen and depths array from clusters
+    maxlens, depths = get_quick_depths(data, sample)
 
     if depths.max():
+        ## store which min was used to calculate hidepth here
+        sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
+        
+        ## If our longest sequence is longer than the current max_fragment_length
+        ## then update max_fragment_length. For assurance we require that 
+        ## max len is 4 greater than maxlen, to allow for pair separators.
+        hidepths = depths >= data.paramsdict["mindepth_majrule"]
+        maxlens = maxlens[hidepths]
+        maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+        if maxlen > data._hackersonly["max_fragment_length"]:
+            data._hackersonly["max_fragment_length"] = maxlen + 4
+
         ## make sense of stats
         keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]    
         keepstat = depths[depths >= data.paramsdict["mindepth_statistical"]]
@@ -87,12 +97,11 @@ def sample_cleanup(data, sample):
         ## sample summary stat assignments
         sample.stats["state"] = 3
         sample.stats["clusters_total"] = depths.shape[0]
-        sample.stats["clusters_hidepth"] = \
-                                max([i.shape[0] for i in (keepmj, keepstat)])
+        sample.stats["clusters_hidepth"] = keepmj.shape[0]
 
         ## store depths histogram as a dict. Limit to first 25 bins
         bars, bins = np.histogram(depths, bins=range(1, 26))
-        sample.depths = {i:v for i, v in zip(bins, bars) if v}
+        sample.depths = {int(i):v for i, v in zip(bins, bars) if v}
 
         ## sample stat assignments
         ## Trap numpy warnings ("mean of empty slice") printed by samples
@@ -882,7 +891,20 @@ def data_cleanup(data):
     data.stats_dfs.s3 = data.build_stat("s3")
     data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
     with open(data.stats_files.s3, 'w') as outfile:
-        data.stats_dfs.s3.to_string(outfile)
+        data.stats_dfs.s3.to_string(
+            buf=outfile,
+            formatters={
+                'merged_pairs':'{:.0f}'.format,
+                'clusters_total':'{:.0f}'.format,
+                'clusters_hidepth':'{:.0f}'.format,
+                'filtered_bad_align':'{:.0f}'.format, 
+                'avg_depth_stat':'{:.2f}'.format,
+                'avg_depth_mj':'{:.2f}'.format,
+                'avg_depth_total':'{:.2f}'.format,
+                'sd_depth_stat':'{:.2f}'.format,
+                'sd_depth_mj':'{:.2f}'.format,
+                'sd_depth_total':'{:.2f}'.format
+            })
 
 
 
