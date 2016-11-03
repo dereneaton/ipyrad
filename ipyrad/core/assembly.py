@@ -1048,7 +1048,6 @@ class Assembly(object):
             mystep is the state produced by the current step.
         """
         subsample = []
-
         ## filter by state
         for sample in samples:
             if sample.stats.state < mystep - 1:
@@ -1056,8 +1055,24 @@ class Assembly(object):
                              .format(sample.name))
             else:
                 subsample.append(sample)
-
         return subsample
+
+
+    def compatible_params_check(self):
+        """ check for mindepths after all params are set, b/c doing it while each
+        is being set becomes complicated """
+
+        ## do not allow statistical < majrule
+        val1 = self.paramsdict["mindepth_statistical"]
+        val2 = self.paramsdict['mindepth_majrule']
+        if val1 < val2:
+            msg = """
+    Warning: mindepth_statistical cannot not be < mindepth_majrule.
+    Forcing mindepth_majrule = mindepth_statistical = {}
+    """.format(val1)
+            LOGGER.warning(msg)
+            print(msg)
+            self.paramsdict["mindepth_majrule"] = val1
 
 
 
@@ -1069,6 +1084,8 @@ class Assembly(object):
         connection is made using information from the _ipcluster dict of the
         Assembly class object.
         """
+        ## check that mindepth params are compatible, fix and report warning.
+        self.compatible_params_check()
 
         ## wrap everything in a try statement to ensure that we save the
         ## Assembly object if it is interrupted at any point, and also
@@ -1690,32 +1707,13 @@ def paramschecker(self, param, newvalue):
             raise IPyradError("""
     mindepth statistical cannot be set < 5. Use mindepth_majrule.""")
         else:
-            ## do not allow majrule to be > statistical
-            if int(newvalue) < self.paramsdict["mindepth_majrule"]:
-                msg = """
-    NB: mindepth_statistical may not be < mindepth_majrule.
-        Forcing mindepth_majrule = mindepth_statistical = {}""".format(newvalue)
-                print(msg)
-                self.paramsdict['mindepth_majrule'] = int(newvalue)
             self.paramsdict['mindepth_statistical'] = int(newvalue)
-
-            ## TODO: calculate new clusters_hidepth if passed step3
 
     elif param == 'mindepth_majrule':
         assert isinstance(int(newvalue), int), \
             "mindepth_majrule must be an integer."
-        if int(newvalue) > self.paramsdict["mindepth_statistical"]:
-            msg = """
-    NB: mindepth_majrule cannot be > mindepth_statistical.
-        Forcing mindepth_majrule = mindepth_statistical = {}"""\
-        .format(self.paramsdict["mindepth_statistical"])
-            self.paramsdict['mindepth_majrule'] = self.paramsdict["mindepth_statistical"]
-        else:
-            ## TODO: calculate new clusters_hidepth if passed step3
-            self.paramsdict['mindepth_majrule'] = int(newvalue)
+        self.paramsdict['mindepth_majrule'] = int(newvalue)
 
-
-    ## TODO: not yet implemented
     elif param == 'maxdepth':
         self.paramsdict['maxdepth'] = int(newvalue)
 
