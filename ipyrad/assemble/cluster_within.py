@@ -39,35 +39,44 @@ LOGGER = logging.getLogger(__name__)
 def get_quick_depths(data, sample):
     """ iterate over clustS files to get data """
     ## set cluster file handles
-    sample.files.clusters = os.path.join(data.dirs.clusts,
-                                         sample.name+".clustS.gz")
+    sample.files.clusters = os.path.join(
+                                data.dirs.clusts, sample.name+".clustS.gz")
     
     ## get new clustered loci 
-    with gzip.open(data.samples[sample.name].files.clusters, 'r') as infile:
-        loci = infile.read().strip("//\n//\n").split("//\n//\n")
-
-        ## get number of merged reads, updated dynamically
-         ## TODO: this won't capture merged reads that are merged during refmap
-        if 'pair' in data.paramsdict["datatype"]:
-            sample.files.merged = os.path.join(data.dirs.edits,
-                                           sample.name+"_merged_.fastq")
-            ## record how many read pairs were merged
-            with open(sample.files.merged, 'r') as tmpf:
-                sample.stats.reads_merged = len(tmpf.readlines()) // 4
-
-        ## arrays for storing data
-        maxlen = np.zeros(len(loci), dtype=np.uint32)
-        depths = np.zeros(len(loci), dtype=np.uint32)
-
-        ## get depth stats
-        for iloc in xrange(depths.shape[0]):
-            lines = loci[iloc].strip().split("\n")
-            maxlen[iloc] = np.uint32(len(lines[1]))
-            tdepth = np.uint32(0)
-            for line in lines[::2]:
-                tdepth += np.uint32(line.split(";")[-2][5:])
-            depths[iloc] = tdepth
-    return maxlen, depths    
+    fclust = data.samples[sample.name].files.clusters
+    clusters = gzip.open(fclust, 'r')
+    pairdealer = itertools.izip(*[iter(clusters)]*2)
+    
+    ## storage
+    depths = []
+    maxlen = []
+    
+    ## start with cluster 0
+    tdepth = 0
+    tlen = 0
+    
+    ## iterate until empty
+    while 1:
+        ## grab next 
+        try:
+            name, seq = pairdealer.next() 
+        except StopIteration:
+            break
+        
+        ## if not the end of a cluster
+        #print name.strip(), seq.strip()
+        if name.strip() == seq.strip():
+            depths.append(tdepth)
+            maxlen.append(tlen)
+            tlen = 0
+            tdepth = 0
+        
+        else:       
+            tdepth += int(name.split(";")[-2][5:])
+            tlen = len(seq)
+            
+    ## return    
+    return np.array(maxlen), np.array(depths)
 
 
 

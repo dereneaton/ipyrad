@@ -119,7 +119,7 @@ def recal_hidepth(data, sample):
     """
     ## the minnest depth
     majrdepth = data.paramsdict["mindepth_majrule"]
-    statdepth = data.paramsdict["mindepth_majrule"]    
+    statdepth = data.paramsdict["mindepth_statistical"]    
 
     ## if nothing changes return existing maxlen value
     maxlen = data._hackersonly["max_fragment_length"]
@@ -129,7 +129,7 @@ def recal_hidepth(data, sample):
         sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
 
     ## if old value not the same as current value then recalc
-    if not sample.stats_dfs.s3["hidepth_min"] == majrdepth:
+    if 1: #not sample.stats_dfs.s3["hidepth_min"] == majrdepth:
         LOGGER.info(" mindepth setting changed: recalculating clusters_hidepth and maxlen")
         ## get arrays of data
         maxlens, depths = get_quick_depths(data, sample)
@@ -145,6 +145,7 @@ def recal_hidepth(data, sample):
         statlens = maxlens[stathidepths]        
         statlen = int(statlens.mean() + (2.*statlens.std()))        
 
+        LOGGER.info("%s %s %s", maxlens.shape, maxlens.mean(), maxlens.std())
         maxlens = maxlens[hidepths]
         maxlen = int(maxlens.mean() + (2.*maxlens.std()))
 
@@ -152,7 +153,7 @@ def recal_hidepth(data, sample):
         sample.stats["clusters_hidepth"] = keepmj.shape[0]
         sample.stats_dfs.s3["clusters_hidepth"] = keepmj.shape[0]        
 
-    return sample, keepmj.sum(), maxlen, keepst.sum(), statlen
+    return sample, keepmj.shape[0], maxlen, keepst.shape[0], statlen
 
 
 
@@ -162,11 +163,11 @@ def stackarray(data, sample, subloci):
     """
 
     ## get clusters file    
-    #LOGGER.info("Entering stackarray - {}".format(sample.name))
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
     ## only use clusters with depth > mindepth_statistical for param estimates
+    LOGGER.info("doing this now")
     sample, _, _, nhidepth, maxlen = recal_hidepth(data, sample)
 
     ## we subsample, else use first 10000 loci.

@@ -670,33 +670,11 @@ def chunk_clusters(data, sample):
 
 
 
-def run(data, samples, force, ipyclient):
-    """ checks if the sample should be run and passes the args """
-    ## prepare dirs
-    data.dirs.consens = os.path.join(data.dirs.project, data.name+"_consens")
-    if not os.path.exists(data.dirs.consens):
-        os.mkdir(data.dirs.consens)
+def get_subsamples(data, samples, force):
+    """ 
+    Apply state, ncluster, and force filters to select samples to be run.
+    """
 
-    ## zap any tmp files that might be leftover
-    tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-    tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-    for tmpfile in tmpcons+tmpcats:
-        os.remove(tmpfile)
-
-    ## check whether mindepth has changed, and thus whether clusters_hidepth
-    ## needs to be recalculated, and get new maxlen for new highdepth clusts.
-    ## if mindepth not changed then nothing changes.
-    maxlens = []
-    for sname in data.samples:
-        #modsample, maxlen = recal_hidepth(data, data.samples[sname])
-        modsample, maxlen, _, _, _ = recal_hidepth(data, data.samples[sname])
-        data.samples[sname] = modsample
-        maxlens.append(maxlen)
-
-    ## reset global maxlen if something changed
-    data._hackersonly["max_fragment_length"] = max(maxlens) + 4
-
-    ## filter through samples for those ready
     subsamples = []
     for sample in samples:
         if not force:
@@ -747,104 +725,42 @@ def run(data, samples, force, ipyclient):
   .format(data.stats.error_est.mean(), data.stats.error_est.std(), 
           data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
-    ## start a client
-    start = time.time()
-    lbview = ipyclient.load_balanced_view()
+    return subsamples
 
-    ## how many cores?
+
+
+def run(data, samples, force, ipyclient):
+    """ checks if the sample should be run and passes the args """
+    ## prepare dirs
+    data.dirs.consens = os.path.join(data.dirs.project, data.name+"_consens")
+    if not os.path.exists(data.dirs.consens):
+        os.mkdir(data.dirs.consens)
+
+    ## zap any tmp files that might be leftover
+    tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
+    tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
+    for tmpfile in tmpcons+tmpcats:
+        os.remove(tmpfile)
+
+    ## filter through samples for those ready
+    samples = get_subsamples(data, samples, force)
+
+    ## set up parallel client: how many cores?
+    lbview = ipyclient.load_balanced_view()        
     data.cpus = data._ipcluster["cores"]
     if not data.cpus:
         data.cpus = len(ipyclient.ids)
 
-    ## wrap everything to ensure destruction of temp files
+    ## wrap everything to ensure destruction of temp files    
     try:
-        ## first progress bar 
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
-        progressbar(10, 0, " chunking clusters     | {} | s5 |".format(elapsed))
+        ## calculate depths, if they changed.
+        samples = calculate_depths(data, samples, lbview)
 
-        ## send off samples to be chunked
-        lasyncs = {}
-        for sample in subsamples:
-            lasyncs[sample.name] = lbview.apply(chunk_clusters, *(data, sample))
+        ## chunk clusters into bits for parallel processing
+        lasyncs = make_chunks(data, samples, lbview)
 
-        ## block until finished
-        while 1:
-            ready = [i.ready() for i in lasyncs.values()]
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(ready), sum(ready), 
-                        " chunking clusters     | {} | s5 |".format(elapsed))
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                print("")
-                break
-
-        ## check for failures
-        for job in lasyncs:
-            if not lasyncs[job].successful():
-                LOGGER.error("  sample %s failed: %s", job, job.exception())
-
-        ## send chunks to be processed
-        start = time.time()
-        asyncs = {}
-
-        ## get chunklist from results
-        for sample in subsamples:
-            asyncs[sample.name] = []
-            clist = lasyncs[sample.name].result()
-            for optim, chunkhandle in clist:
-                args = (data, sample, chunkhandle, optim)
-                asyncs[sample.name].append(lbview.apply_async(consensus, *args))
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(10, 0, " consens calling       | {} | s5 |".format(elapsed))
-
-        while 1:
-            allsyncs = list(itertools.chain(*[asyncs[i.name] for i in subsamples]))
-            ready = [i.ready() for i in allsyncs]
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(ready), sum(ready), 
-                        " consens calling       | {} | s5 |".format(elapsed))
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-
-        ## get clean samples
-        casyncs = {}
-        for sample in subsamples:
-            rlist = asyncs[sample.name]
-            statsdicts = [i.result() for i in rlist]
-            casyncs[sample.name] = lbview.apply(cleanup, *(data, sample, statsdicts))
-        while 1:
-            ready = [i.ready() for i in casyncs.values()]
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 10, " consens calling       | {} | s5 |".format(elapsed))
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                print("")
-                break
-
-        ## check for failure:
-        for key in asyncs:
-            jobs = asyncs[key]
-            for job in jobs:
-                if not job.successful():
-                    LOGGER.error("  error: %s \n%s", job, job.exception())
-        for job in casyncs.values():
-            if not job.successful():
-                LOGGER.error("  error: %s \n%s", job, job.exception())
-
-        ## get samples back
-        subsamples = [i.result() for i in casyncs.values()]
-        for sample in subsamples:
-            data.samples[sample.name] = sample
-
-        ## build Assembly stats
-        data.stats_dfs.s5 = data.build_stat("s5")
-
-        ## write stats file
-        data.stats_files.s5 = os.path.join(data.dirs.consens, 
-                                            's5_consens_stats.txt')
-        with open(data.stats_files.s5, 'w') as out:
-            out.write(data.stats_dfs.s5.to_string())
+        ## process chunks and cleanup
+        process_chunks(data, samples, lasyncs, lbview)
 
     finally:
         ## if process failed at any point delete tmp files
@@ -854,6 +770,162 @@ def run(data, samples, force, ipyclient):
         for tmpchunk in tmpcons:
             os.remove(tmpchunk)
 
+
+
+def calculate_depths(data, samples, lbview):
+    """ 
+    check whether mindepth has changed, and thus whether clusters_hidepth
+    needs to be recalculated, and get new maxlen for new highdepth clusts.
+    if mindepth not changed then nothing changes.
+    """
+
+    ## send jobs to be processed on engines
+    start = time.time()    
+    recaljobs = {}
+    maxlens = []
+    for sample in samples:
+        recaljobs[sample.name] = lbview.apply(recal_hidepth, *(data, sample))
+
+    ## block until finished
+    while 1:
+        ready = [i.ready() for i in recaljobs.values()]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(ready), sum(ready), 
+                    " calculating depths    | {} | s5 |".format(elapsed))
+        time.sleep(0.1)
+        if len(ready) == sum(ready):
+            print("")
+            break
+
+    ## check for failures and collect results
+    modsamples = []
+    for sample in samples:
+        if not recaljobs[sample.name].successful():
+            LOGGER.error("  sample %s failed: %s", sample.name, recaljobs[sample.name].exception())
+        else:
+            modsample, _, maxlen, _, _ = recaljobs[sample.name].result()
+            modsamples.append(modsample)
+            maxlens.append(maxlen)
+
+    ## reset global maxlen if something changed
+    data._hackersonly["max_fragment_length"] = int(max(maxlens)) + 4
+
+    return samples
+
+
+
+def make_chunks(data, samples, lbview):
+    """ 
+    breaks clusters into N chunks for processing based on ncpus.
+    """
+
+    ## first progress bar 
+    start = time.time()        
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+    progressbar(10, 0, " chunking clusters     | {} | s5 |".format(elapsed))
+
+    ## send off samples to be chunked
+    lasyncs = {}
+    for sample in samples:
+        lasyncs[sample.name] = lbview.apply(chunk_clusters, *(data, sample))
+
+    ## block until finished
+    while 1:
+        ready = [i.ready() for i in lasyncs.values()]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(ready), sum(ready), 
+                    " chunking clusters     | {} | s5 |".format(elapsed))
+        time.sleep(0.1)
+        if len(ready) == sum(ready):
+            print("")
+            break
+
+    ## check for failures
+    for sample in samples:
+        if not lasyncs[sample.name].successful():
+            LOGGER.error("  sample %s failed: %s", sample.name, lasyncs[sample.name].exception())
+
+    return lasyncs
+
+
+
+def process_chunks(data, samples, lasyncs, lbview):
+    """ 
+    submit chunks to consens func and ...
+    """
+
+    ## send chunks to be processed
+    start = time.time()
+    asyncs = {sample.name:[] for sample in samples}
+
+    ## get chunklist from results
+    for sample in samples:
+        clist = lasyncs[sample.name].result()
+        for optim, chunkhandle in clist:
+            args = (data, sample, chunkhandle, optim)
+            asyncs[sample.name].append(lbview.apply_async(consensus, *args))
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(10, 0, " consens calling       | {} | s5 |".format(elapsed))
+
+    while 1:
+        allsyncs = list(itertools.chain(*[asyncs[i.name] for i in samples]))
+        ready = [i.ready() for i in allsyncs]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(ready), sum(ready), 
+                    " consens calling       | {} | s5 |".format(elapsed))
+        time.sleep(0.1)
+        if len(ready) == sum(ready):
+            break
+
+    ## get clean samples
+    casyncs = {}
+    for sample in samples:
+        rlist = asyncs[sample.name]
+        statsdicts = [i.result() for i in rlist]
+        casyncs[sample.name] = lbview.apply(cleanup, *(data, sample, statsdicts))
+    while 1:
+        ready = [i.ready() for i in casyncs.values()]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(10, 10, " consens calling       | {} | s5 |".format(elapsed))
+        time.sleep(0.1)
+        if len(ready) == sum(ready):
+            print("")
+            break
+
+    ## check for failures:
+    for key in asyncs:
+        asynclist = asyncs[key]
+        for async in asynclist:
+            if not async.successful():
+                LOGGER.error("  async error: %s \n%s", key, async.exception())
+    for key in casyncs:
+        if not casyncs[key].successful():
+            LOGGER.error("  casync error: %s \n%s", key, casyncs[key].exception())
+
+    ## get samples back
+    subsamples = [i.result() for i in casyncs.values()]
+    for sample in subsamples:
+        data.samples[sample.name] = sample
+
+    ## build Assembly stats
+    data.stats_dfs.s5 = data.build_stat("s5")
+
+    ## write stats file
+    data.stats_files.s5 = os.path.join(data.dirs.consens, 's5_consens_stats.txt')
+    with open(data.stats_files.s5, 'w') as out:
+        #out.write(data.stats_dfs.s5.to_string())
+        data.stats_dfs.s5.to_string(
+            buf=out, 
+            formatters={
+                'cluster_total':'{:.0f}'.format,
+                'filtered_by_depth':'{:.0f}'.format,
+                'filtered_by_maxH':'{:.0f}'.format,
+                'filtered_by_maxN':'{:.0f}'.format, 
+                'reads_consens':'{:.0f}'.format,
+                'nsites':'{:.0f}'.format,
+                'nhetero':'{:.0f}'.format,
+                'heterozygosity':'{:.5f}'.format
+            })
 
 
 
