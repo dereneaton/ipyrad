@@ -5,6 +5,24 @@
 Release Notes
 =============
 
+0.4.8
+-----
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- fix for geno output
+- bug fix to measure array dims from mindepth settings, uses statistical for s4, and majrule for s5
+- adding mac bwa binary
+- Adding bwa binary for linux.
+- improved N removal from edges of paired reads with variable lengths
+- new parsing of output formats, and fewer defaults
+- only snps in the vcf is new default. Added pair support but still need to decide on spacer default. New cleaner output-formats stored as a tuple
+- small fix for better error catching
+- new hidepth_min attr to save the mindepth setting at the time when it is used
+- mindepth settings are now checked separately from other parameters before 'run' to see if they are incompatible. Avoids race between the two being compared individually in set-params.
+- new functions in steps 3-5 to accomodate changes to mindepth settings so that clusters-hidepth can be dynamically recalculated
+- fix to tunnel doc
+-  "Updating ipyrad/__init__.py to version - 0.4.7
+- hotfix for step5 sample save bug. pushed to soon
+
 0.4.7
 -----
 - hotfix for step5 sample save bug. pushed to soon

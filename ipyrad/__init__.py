@@ -6,7 +6,7 @@ import atexit
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.4.7"
+__version__ = "0.4.8"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
@@ -155,6 +155,9 @@ def _getbins():
         smalt = _os.path.join(
                        _os.path.abspath(bin_path),
                        "smalt-linux-x86_64")
+        bwa = _os.path.join(
+                       _os.path.abspath(bin_path),
+                       "bwa-linux-x86_64")
         samtools = _os.path.join(
                        _os.path.abspath(bin_path),
                        "samtools-linux-x86_64")
@@ -174,6 +177,9 @@ def _getbins():
         smalt = _os.path.join(
                        _os.path.abspath(bin_path),
                        "smalt-osx-x86_64")
+        bwa = _os.path.join(
+                       _os.path.abspath(bin_path),
+                       "bwa-osx-x86_64")
         samtools = _os.path.join(
                        _os.path.abspath(bin_path),
                        "samtools-osx-x86_64")
@@ -189,15 +195,16 @@ def _getbins():
     assert _cmd_exists(muscle), "muscle not found here: "+muscle
     assert _cmd_exists(vsearch), "vsearch not found here: "+vsearch
     assert _cmd_exists(smalt), "smalt not found here: "+smalt
+    assert _cmd_exists(bwa), "bwa not found here: "+bwa
     assert _cmd_exists(samtools), "samtools not found here: "+samtools
     assert _cmd_exists(bedtools), "bedtools not found here: "+bedtools
     #assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
-    return vsearch, muscle, smalt, samtools, bedtools, qmc
+    return vsearch, muscle, smalt, bwa, samtools, bedtools, qmc
 
 
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
-binnames = ["vsearch", "muscle", "smalt", "samtools", "bedtools", "qmc"]
+binnames = ["vsearch", "muscle", "smalt", "bwa", "samtools", "bedtools", "qmc"]
 for binn, binx in zip(binnames, _getbins()):
     bins[binn] = binx
 ## clean up for the API
