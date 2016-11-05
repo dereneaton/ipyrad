@@ -1316,10 +1316,9 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## geno output is for admixture and other software. We include all SNPs, 
     ## but also a .map file which has "distances" between SNPs.
     ## ({}.geno, {}.map)
-    if 'geno' in output_formats:
+    if 'g' in output_formats:
         async = lbview.apply(write_geno, *[data, snparr, bisarr, sidx, pnames])
         results.append(async)
-        #write_geno(data, snparr, bisarr, sidx, pnames)
 
     ## wait for finished outfiles
     while 1:
@@ -1561,8 +1560,8 @@ def write_geno(data, snparr, bisarr, sidx, inh5):
 
     ## get most common base at each SNP as a pseudo-reference 
     ## and record 0,1,2 or missing=9 for counts of the ref allele
-    snpref = np.apply_along_axis(fakeref, 0, snparr)
-    bisref = np.apply_along_axis(fakeref, 0, bisarr)
+    snpref = np.apply_along_axis(reftrick, 0, snparr)
+    bisref = np.apply_along_axis(reftrick, 0, bisarr)
 
     ## geno is printed as a matrix where columns are individuals
     ## I order them by same order as in .loci, which is alphanumeric
