@@ -117,6 +117,10 @@ def recal_hidepth(data, sample):
     if mindepth setting were changed then 'clusters_hidepth' needs to be 
     recalculated. Check and recalculate if necessary.
     """
+    ## the minnest depth
+    majrdepth = data.paramsdict["mindepth_majrule"]
+    statdepth = data.paramsdict["mindepth_majrule"]    
+
     ## if nothing changes return existing maxlen value
     maxlen = data._hackersonly["max_fragment_length"]
 
@@ -125,20 +129,30 @@ def recal_hidepth(data, sample):
         sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
 
     ## if old value not the same as current value then recalc
-    if not sample.stats_dfs.s3["hidepth_min"] == data.paramsdict["mindepth_majrule"]:
+    if not sample.stats_dfs.s3["hidepth_min"] == majrdepth:
         LOGGER.info(" mindepth setting changed: recalculating clusters_hidepth and maxlen")
+        ## get arrays of data
         maxlens, depths = get_quick_depths(data, sample)
-        hidepths = depths >= data.paramsdict["mindepth_majrule"]
-        keepmj = depths[hidepths]
 
-        ## set assembly maxlen if now lfor sample
+        ## calculate how many are hidepth
+        hidepths = depths >= majrdepth
+        stathidepths = depths >= statdepth
+        
+        keepmj = depths[hidepths]
+        keepst = depths[stathidepths]
+
+        ## set assembly maxlen for sample
+        statlens = maxlens[stathidepths]        
+        statlen = int(statlens.mean() + (2.*statlens.std()))        
+
         maxlens = maxlens[hidepths]
         maxlen = int(maxlens.mean() + (2.*maxlens.std()))
 
+        ## saved stat values are for majrule min
         sample.stats["clusters_hidepth"] = keepmj.shape[0]
         sample.stats_dfs.s3["clusters_hidepth"] = keepmj.shape[0]        
 
-    return sample, maxlen
+    return sample, keepmj.sum(), maxlen, keepst.sum(), statlen
 
 
 
@@ -152,11 +166,11 @@ def stackarray(data, sample, subloci):
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-     ## recalculate clusters-hidepth if mindepth setting changed
-    sample, maxlen = recal_hidepth(data, sample)
+    ## only use clusters with depth > mindepth_statistical for param estimates
+    sample, _, _, nhidepth, maxlen = recal_hidepth(data, sample)
 
     ## we subsample, else use first 10000 loci.
-    dims = (sample.stats.clusters_hidepth, maxlen, 4)
+    dims = (nhidepth, maxlen, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
     ## don't use sequence edges / restriction overhangs
@@ -169,8 +183,8 @@ def stackarray(data, sample, subloci):
     #LOGGER.info("cutlens: %s", cutlens)
 
     ## fill stacked
-    done = 0
     nclust = 0
+    done = 0
     while not done:
         try:
             done, chunk = clustdealer(pairdealer, 1)
@@ -212,10 +226,6 @@ def stackarray(data, sample, subloci):
 
                 stacked[nclust, :catg.shape[0], :] = catg
                 nclust += 1
-
-        ## finish early if subsampling
-        if nclust == subloci:
-            done = 1
 
     ## drop the empty rows in case there are fewer loci than the size of array
     newstack = stacked[stacked.sum(axis=2) > 0]

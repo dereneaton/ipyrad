@@ -688,7 +688,8 @@ def run(data, samples, force, ipyclient):
     ## if mindepth not changed then nothing changes.
     maxlens = []
     for sname in data.samples:
-        modsample, maxlen = recal_hidepth(data, data.samples[sname])
+        #modsample, maxlen = recal_hidepth(data, data.samples[sname])
+        modsample, maxlen, _, _, _ = recal_hidepth(data, data.samples[sname])
         data.samples[sname] = modsample
         maxlens.append(maxlen)
 
