@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.4.9
+-----
+- hotfix for large array size bug introduced in last update
+
 0.4.8
 -----
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
