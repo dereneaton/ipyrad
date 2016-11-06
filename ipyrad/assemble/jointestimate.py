@@ -162,13 +162,12 @@ def stackarray(data, sample, subloci):
     Stacks clusters into arrays
     """
 
+    ## only use clusters with depth > mindepth_statistical for param estimates
+    sample, _, _, nhidepth, maxlen = recal_hidepth(data, sample)
+
     ## get clusters file    
     clusters = gzip.open(sample.files.clusters)
     pairdealer = itertools.izip(*[iter(clusters)]*2)
-
-    ## only use clusters with depth > mindepth_statistical for param estimates
-    LOGGER.info("doing this now")
-    sample, _, _, nhidepth, maxlen = recal_hidepth(data, sample)
 
     ## we subsample, else use first 10000 loci.
     dims = (nhidepth, maxlen, 4)
@@ -200,9 +199,9 @@ def stackarray(data, sample, subloci):
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
             
             ## double reps if the read was fully merged... (TODO: Test this!)
-            merged = ["_m1;s" in sname for sname in names]
-            if any(merged):
-                reps = [i*2 if j else i for i, j in zip(reps, merged)]
+            #merged = ["_m1;s" in sname for sname in names]
+            #if any(merged):
+            #    reps = [i*2 if j else i for i, j in zip(reps, merged)]
 
             ## get all reps
             sseqs = [list(seq) for seq in seqs]
