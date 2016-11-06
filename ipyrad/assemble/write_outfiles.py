@@ -1816,28 +1816,37 @@ def vcfchunk(data, optim, sidx, start, full):
         if list7:
             cols7[init:init+seq.shape[1]] = list7
 
-        ## fill cons sites where no variants
-        #whoisgeno = np.invert(np.all(tmp0 == 0, axis=1))
-        #whichisgeno = depth > 0
-        #axy, axx = np.ix_(whoisgeno, whichisgeno)
+        ## default fill cons sites where no variants
         genos[tmp1.T] = "0/0:"
 
         ## fill cons genotypes for sites with alt alleles for taxa in order
         mask = alleles[:, 1] == 46
+        mask += alleles[:, 1] == 45
+
         obs = alleles[~mask, :]
         alts = seq[:, ~mask]
         who = np.where(mask == False)[0]
+        ## fill variable sites
+        #LOGGER.info("cols01 %s", cols01)
         for site in xrange(alts.shape[1]):
             bases = alts[:, site]
+            #LOGGER.info("bases %s", bases)
             ohere = obs[site][obs[site] != 0]
+            #LOGGER.info("ohere %s", ohere)
             alls = np.array([DCONS[i] for i in bases], dtype=np.uint32)
+            #LOGGER.info("all %s", alls)              
             for jdx in xrange(ohere.shape[0]):
                 alls[alls == ohere[jdx]] = jdx
 
+            #LOGGER.info("all2 %s", alls)            
             ## fill into array
             for cidx in xrange(catg.shape[0]):
                 if tmp2[cidx]:
-                    genos[who[site], cidx] = "/".join(alls[cidx].astype("S1").tolist())+":"
+                    if alls[cidx][0] < 5:
+                        genos[who[site], cidx] = "/".join(alls[cidx].astype("S1").tolist())+":"
+                    else:
+                        genos[who[site], cidx] = "./.:"
+                    #LOGGER.info("genos filled: %s %s %s", who[site], cidx, genos)
 
         ## build geno+depth strings
         ## for each taxon enter 4 catg values
