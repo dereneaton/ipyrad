@@ -917,7 +917,7 @@ def process_chunks(data, samples, lasyncs, lbview):
         data.stats_dfs.s5.to_string(
             buf=out, 
             formatters={
-                'cluster_total':'{:.0f}'.format,
+                'clusters_total':'{:.0f}'.format,
                 'filtered_by_depth':'{:.0f}'.format,
                 'filtered_by_maxH':'{:.0f}'.format,
                 'filtered_by_maxN':'{:.0f}'.format, 
