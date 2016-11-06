@@ -200,7 +200,8 @@ class Assembly(object):
                         ("preview_step2", 100000),
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
-                        ("smalt_index_wordlen", 8)
+                        ("smalt_index_wordlen", 8),
+                        ("aligner", "bwa")
         ])
 
     def __str__(self):

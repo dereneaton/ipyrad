@@ -32,47 +32,58 @@ LOGGER = logging.getLogger(__name__)
 
 def index_reference_sequence(data, force=False):
     """ 
-    Index the reference sequence, let smalt bail out if it already exists.
+    Index the reference sequence, out if it already exists.
     """
 
     ## get ref file from params
     refseq_file = data.paramsdict['reference_sequence']
 
-    # These are smalt specific index files. We don't ever reference them 
-    # directly except here to make sure they exist, so we don't need to keep em
-    index_sma = refseq_file+".sma"
-    index_smi = refseq_file+".smi"
-    # samtools specific index
-    index_fai = refseq_file+".fai"
+    index_files = []
 
-    if all([os.path.isfile(i) for i in [index_sma, index_smi, index_fai]]):
-        if force:
-            print("    Force reindexing of reference sequence")
-        else:
-            print("    Reference sequence index exists")
-            return
+    ## Check for existence of index files. Default to bwa unless you specify smalt
+    if "smalt" in data._hackersonly["aligner"]:
+        # These are smalt specific index files. We don't ever reference them 
+        # directly except here to make sure they exist.
+        index_files.extend([".sma", ".smi"])
+    else:
+        index_files.extend([".amb", ".ann", ".bwt", ".pac", ".sa"])
+
+    # samtools specific index
+    index_files.extend([".fai"])
+
+    if all([os.path.isfile(refseq_file+i) for i in index_files]):
+        ## Reference sequence already exists so bail out.
+        return
 
     msg = """\
     *************************************************************
-    Indexing reference sequence. 
+    Indexing reference sequence with {}. 
     This only needs to be done once, and takes just a few minutes
-    ************************************************************* """
+    ************************************************************* """\
+    .format(data._hackersonly["aligner"])
+
     if data._headers:
         print(msg)
 
-    ## Create smalt index for mapping
-    ## smalt index [-k <wordlen>] [-s <stepsiz>]  <index_name> <reference_file>
-    cmd1 = [ipyrad.bins.smalt, "index", 
-            "-k", str(data._hackersonly["smalt_index_wordlen"]), 
-            refseq_file, 
-            refseq_file]
+    if "smalt" in data._hackersonly["aligner"]:
+        ## Create smalt index for mapping
+        ## smalt index [-k <wordlen>] [-s <stepsiz>]  <index_name> <reference_file>
+        cmd1 = [ipyrad.bins.smalt, "index", 
+                "-k", str(data._hackersonly["smalt_index_wordlen"]), 
+                refseq_file, 
+                refseq_file]
+    else:
+        ## bwa index <reference_file>
+        cmd1 = [ipyrad.bins.bwa, "index", refseq_file]
 
     ## call the command
+    LOGGER.info(" ".join(cmd1))
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     error1 = proc1.communicate()[0]
 
     ## simple samtools index for grabbing ref seqs
     cmd2 = [ipyrad.bins.samtools, "faidx", refseq_file]
+    LOGGER.info(" ".join(cmd2))
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
 
     ## call the command:
@@ -149,12 +160,23 @@ def mapreads(data, sample, nthreads):
     ##               : Input file(s), in a list. One for R1 and one for R2
     ##  -c #         : proportion of the query read length that must be covered
 
+    ## (cmd1) bwa mem [OPTIONS] <index_name> <file_name_A> [<file_name_B>] > <output_file>
+    ##  -t #         : Number of threads
+
     ## (cmd2) samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...] 
     ##   -b = write to .bam
     ##   -F = Select all reads that DON'T have this flag. 
     ##         0x4 (segment unmapped)
+    ##         0x800 (supplementary alignment)
     ##   -U = Write out all reads that don't pass the -F filter 
     ##        (all unmapped reads go to this file).
+    ##
+    ## TODO: Should eventually add `-q 13` to filter low confidence mapping.
+    ## If you do this it will throw away some fraction of reads. Ideally you'd
+    ## catch these and throw them in with the rest of the unmapped reads, but
+    ## I can't think of a straightforward way of doing that. There should be 
+    ## a `-Q` flag to only keep reads below the threshold, but i realize that
+    ## would be of limited use besides for me.
 
     ## (cmd3) samtools sort [options...] [in.bam]
     ##   -T = Temporary file name, this is required by samtools, ignore it
@@ -162,22 +184,32 @@ def mapreads(data, sample, nthreads):
     ##   -O = Output file format, in this case bam
     ##   -o = Output file name
 
-    ## The output SAM data is written to file (-o)
-    ## input is either (derep) or (derep-split1, derep-split2)
-    cmd1 = [ipyrad.bins.smalt, "map", 
-            "-f", "sam", 
-            "-n", str(max(1, nthreads)),
-            "-y", str(data.paramsdict['clust_threshold']), 
-            "-o", os.path.join(data.dirs.refmapping, sample.name+".sam"),
-            "-x",
-            data.paramsdict['reference_sequence']
-            ] + sample.files.dereps
+    if "smalt" in data._hackersonly["aligner"]:
+        ## The output SAM data is written to file (-o)
+        ## input is either (derep) or (derep-split1, derep-split2)
+        cmd1 = [ipyrad.bins.smalt, "map", 
+                "-f", "sam", 
+                "-n", str(max(1, nthreads)),
+                "-y", str(data.paramsdict['clust_threshold']), 
+                "-o", os.path.join(data.dirs.refmapping, sample.name+".sam"),
+                "-x",
+                data.paramsdict['reference_sequence']
+                ] + sample.files.dereps
+        cmd1_stdout = sps.PIPE
+        cmd1_stderr = sps.STDOUT
+    else:
+        cmd1 = [ipyrad.bins.bwa, "mem",
+                "-t", str(max(1, nthreads)),
+                data.paramsdict['reference_sequence']
+                ] + sample.files.dereps
+        cmd1_stdout = open(os.path.join(data.dirs.refmapping, sample.name+".sam"), 'w')
+        cmd1_stderr = None
 
     ## Reads in the SAM file from cmd1. It writes the unmapped data to file
     ## and it pipes the mapped data to be used in cmd3
     cmd2 = [ipyrad.bins.samtools, "view", 
            "-b", 
-           "-F", "0x4", 
+           "-F", "0x804", 
            "-U", os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam"), 
            os.path.join(data.dirs.refmapping, sample.name+".sam")]
 
@@ -199,12 +231,19 @@ def mapreads(data, sample, nthreads):
     ## We assume Illumina paired end reads for the orientation 
     ## of mate pairs (orientation: ---> <----). 
     if 'pair' in data.paramsdict["datatype"]:
-        ## add paired flag (-l pe) to cmd1 right after (smalt map ...) 
-        cmd1.insert(2, "pe")
-        cmd1.insert(2, "-l")
+        if "smalt" in data._hackersonly["aligner"]:
+            ## add paired flag (-l pe) to cmd1 right after (smalt map ...)
+            cmd1.insert(2, "pe")
+            cmd1.insert(2, "-l")
+        else:
+            ## No special PE flags for bwa
+            pass
         ## add samtools filter for only keep if both pairs hit
-        cmd2.insert(2, "0x2")
+        ## 0x1 - Read is paired
+        ## 0x2 - Each read properly aligned
+        cmd2.insert(2, "0x3")
         cmd2.insert(2, "-f")
+
         ## tell bam2fq that there are output files for each read pair
         cmd5.insert(2, umap1file)
         cmd5.insert(2, "-1")
@@ -216,7 +255,7 @@ def mapreads(data, sample, nthreads):
 
     ## Running cmd1 creates ref_mapping/sname.sam, 
     LOGGER.debug(" ".join(cmd1))
-    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmd1, stderr=cmd1_stderr, stdout=cmd1_stdout)
 
     ## This is really long running job so we wrap it to ensure it dies. 
     try:
@@ -693,21 +732,30 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
                         e=bits[1].strip())
                     #,e=bits[9])
                     fasta.append(fullfast)
+
+                ## TODO: If you ever figure out a good way to get the reference
+                ## sequence included w/ PE then this commented call is useful
+                ## for trimming the reference sequence to be the right length.
                 ## If doing PE and R1/R2 don't overlap then the reference sequence
                 ## will be quite long and will cause indel hell during the 
                 ## alignment stage. Here trim the reference sequence to the length
-                ## of the merged reads
-                fasta = trim_reference_sequence(fasta)
+                ## of the merged reads.
+                ## This is commented out because we aren't currently including the
+                ## ref seq for PE alignment.
+                #fasta = trim_reference_sequence(fasta)
 
         except Exception as inst:
             ## Failed merging, probably unequal number of reads in R1 and R2
             ## Skip this locus?
             LOGGER.debug("Failed to merge reads, continuing; %s", inst)
         finally:
-            ## clean up
-            os.remove(merged)
-            os.remove(read1)
-            os.remove(read2)
+            ## Only clean up the files if they exist otherwise it'll raise.
+            if os.path.exists(merged):
+                os.remove(merged)
+            if os.path.exists(read1):
+                os.remove(read1)
+            if os.path.exists(read2):
+                os.remove(read2)
        
     else:
         ## SE if faster than PE cuz it skips writing intermedidate files
