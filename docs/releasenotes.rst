@@ -9,19 +9,14 @@ Release Notes
 -----
 - fix for array error that was hitting in Ed's data, related to 2X count for merged reads. This is now removed.
 - bug fix for 4/4 entries in vcf when -N at variable site.
-- prettier printing of stats file
+- prettier printing in s5 stats file
+- hotfix for large array size bug introduced in 0.4.8
 
-0.4.9
------
-- hotfix for large array size bug introduced in last update
 
 0.4.8
 -----
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- fix for geno output
 - bug fix to measure array dims from mindepth settings, uses statistical for s4, and majrule for s5
-- adding mac bwa binary
-- Adding bwa binary for linux.
+- adding bwa binary for mac and linux
 - improved N removal from edges of paired reads with variable lengths
 - new parsing of output formats, and fewer defaults
 - only snps in the vcf is new default. Added pair support but still need to decide on spacer default. New cleaner output-formats stored as a tuple
@@ -29,31 +24,16 @@ Release Notes
 - new hidepth_min attr to save the mindepth setting at the time when it is used
 - mindepth settings are now checked separately from other parameters before 'run' to see if they are incompatible. Avoids race between the two being compared individually in set-params.
 - new functions in steps 3-5 to accomodate changes to mindepth settings so that clusters-hidepth can be dynamically recalculated
-- fix to tunnel doc
--  "Updating ipyrad/__init__.py to version - 0.4.7
+- fix to SSH tunnel docs
 - hotfix for step5 sample save bug. pushed to soon
 
 0.4.7
 -----
-- hotfix for step5 sample save bug. pushed to soon
-
-0.4.7
------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - make compatible with changes to s6
-- allow sample to fail without crashing
-- cosmetic
+- allow sample to fail s2 without crashing
 - cleaner progress bar and enforced maxlen trimming of longer reads
 - lowered maxlen addon, enforced maxlen trimming in singlecat
-- Cosmetic docs change
-- cosmetic docs change
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- cosmetic docs change
-- updates to doc
-- updates to doc
-- updates to doc
-- updates to doc
-- updates to doc
+- updates to docs
 - testing new maxlen calculation to better acommodate messy variable len paired data sets.
 - update to docs about pre-filtering
 - temporary fix for mem limit in step 6 until maxlen is more refined
@@ -79,26 +59,12 @@ Release Notes
 - rev on barcode in step2 filter pairgbs
 - faster readcounter for step1 and fullcomp on gbs filter=2 barcode in step2
 - tunnel docs update
-- tunnel docs update
-- tunnel docs update
-- tunnel docs update
-- tunnel docs update
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - working on a SSH tunnel doc page
 - Handle OSError in the case that openpty() fails.
 
 0.4.4
 -----
 - Handle blank lines at the top of the params file.
--  "Updating ipyrad/__init__.py to version - 0.4.3
--  "Updating ipyrad/__init__.py to version - 0.4.3
-
-0.4.3
------
--  "Updating ipyrad/__init__.py to version - 0.4.3
-
-0.4.3
------
 
 0.4.3
 -----
