@@ -210,6 +210,7 @@ def muscle_align(data, sample, chunk, maxindels):
                               """, aseqs[i], intindels1, intindels2, maxindels)
 
             except IndexError:
+                seqs = [i.replace('nnnn','') for i in seqs]
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(data, string1)
 
