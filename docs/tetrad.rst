@@ -152,6 +152,12 @@ do 10 bootstrap replicates.
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
           
 
+.. line-block::
+            /-100.0, 33588_przewalskii
+     /100.0, 
+    |       \\-100.0, 32082_przewalskii
+
+
 
 .. parsed-literal::        
             /-100.0, 33588_przewalskii
