@@ -5,6 +5,26 @@
 Release Notes
 =============
 
+0.5.1
+-----
+- docs update
+- docs update
+- docs update
+- cosmetic changes
+- cosmetic changes
+- updating docs
+- updating docs
+- updating docs
+- updating docs
+- updating docs
+- updating docs
+- updating docs
+- updating docs
+- updating docs
+- added some tetrad docs
+- make tetrad work through API
+- added tetrad notebook
+
 0.5.0
 -----
 - Swap out smalt for bwa inside refmapping. Also removes reindexing of reference sequence on -f in step 3.

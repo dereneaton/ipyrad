@@ -229,15 +229,15 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
 
 .. code:: python
 
-    from ipyrad.analysis.tetrad import Tetrad
+    > from ipyrad.analysis.tetrad import Tetrad
 
 .. code:: python
 
     ## Create a Quartet Class object and enter default params
-    data = Tetrad(name="api2",
-                  wdir="testdir",
-                  mapfile="pedicularis/pedic_outfiles/pedic.snps.map",
-                  seqfile="pedicularis/pedic_outfiles/pedic.snps.phy")
+    > data = Tetrad(name="api2",
+                    wdir="testdir",
+                    mapfile="pedicularis/pedic_outfiles/pedic.snps.map",
+                    seqfile="pedicularis/pedic_outfiles/pedic.snps.phy")
 
 
 .. parsed-literal::
@@ -248,7 +248,7 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
 .. code:: python
 
     ## Infer the best tree
-    data.run()
+    > data.run()
 
 
 .. parsed-literal::
@@ -269,8 +269,8 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
 .. code:: python
 
     ## run additional bootstrap replicates
-    data.nboots = 10
-    data.run()
+    > data.nboots = 10
+    > data.run()
 
 
 .. parsed-literal::
@@ -308,16 +308,16 @@ Alternatively, sample a subset of quartets
 .. code:: python
 
     ## Create a Quartet Class object and enter params
-    sub = Tetrad(name="api",
-                 wdir="testdir",
-                 method="random", 
-                 nquartets=400, 
-                 nboots=10,
-                 mapfile="pedicularis/pedic_outfiles/pedic.snps.map",
-                 seqfile="pedicularis/pedic_outfiles/pedic.snps.phy")
+    > sub = Tetrad(name="api",
+                   wdir="testdir",
+                   method="random", 
+                   nquartets=400, 
+                   nboots=10,
+                   mapfile="pedicularis/pedic_outfiles/pedic.snps.map",
+                   seqfile="pedicularis/pedic_outfiles/pedic.snps.phy")
     
     ## run inference
-    sub.run()
+    > sub.run()
 
 
 .. parsed-literal::
@@ -369,16 +369,16 @@ matter how you re-root the tree.
 .. code:: python
     
     ## load ape
-    library(ape)
+    > library(ape)
     
     ## read in the tree, root it, and ladderize
-    tre <- read.tree("~/Documents/ipyrad/tests/testdir/api.consensus.tre")
-    rtre <- root(tre, c("33588_przewalskii", "32082_przewalskii"))
-    ltre <- ladderize(rtre)
+    > tre <- read.tree("~/Documents/ipyrad/tests/testdir/api.consensus.tre")
+    > rtre <- root(tre, c("33588_przewalskii", "32082_przewalskii"))
+    > ltre <- ladderize(rtre)
     
     ## plot the tre
-    plot(ltre, use.edge.length=FALSE, edge.width=2, cex=1.25, label.offset=0.75)
-    edgelabels(ltre$edge.length, frame='none')
+    > plot(ltre, use.edge.length=FALSE, edge.width=2, cex=1.25, label.offset=0.75)
+    > edgelabels(ltre$edge.length, frame='none')
 
 
 .. image:: images/cookbook-quartet-species-tree_17_0.png
