@@ -7,12 +7,39 @@ Analysis tools
 ==============
 
 ipyrad_ includes a suite of analysis tools for comparing and visualizing
-the size and completeness of assembled RAD-seq data sets, and also for 
-calculating population-genetic statistics or performing several comparative
-genomic analyses. Many of these tools are still in development and will 
-be expanded with time.
+the size and completeness of assembled RAD-seq data sets, for 
+calculating population-genetic statistics, and for performing comparative
+genomic analyses. In addition, there of course countless other tools available
+for the downstream analysis of RAD-seq data. In this section of the documentation
+we hope to provide many examples to guide users through such analyses. Many
+examples are shared in the form of Jupyter Notebooks, which are a useful tool
+for doing reproducible science, and our first tutorial provides a crash course
+if using Jupyter with ipyrad. 
 
-Some of the tools are available as separate command line programs (e.g., tetrad)
+
+Using Jupyter notebooks
+^^^^^^^^^^^^^^^^^^^^^^^^^
++ .._introduction-to
++ .._HPC_Tunnel
++ <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
+
+ipyrad API Cookbooks
+^^^^^^^^^^^^^^^^^^^^^^^^^^
++ .._API_introduction
++ .._API-quantify-and-visualize-shared-RAD-loci
++ .._RAD-example
++ .._Paired-GBS-example
+
+
+Downstream analysis tools
+^^^^^^^^^^^^^^^^^^^^^^^^^^
++ .._tetrad-species-tree
++ .._BUCKy-population-tree
++ .._ABBA-BABA-test-for-introgression
++ .._PCA-analysis-of-genetic-structure
++ .._STRUCTURE-parallelized-analysis-of-genetic-structure
+
+
 while others are accessed through the ipyrad_ Python API (e.g., plotting functions).
 For the latter, a bit of familiarity with Python programming will generally help. 
 However, we are working to develop a suite of examples in the form of 

@@ -5,9 +5,27 @@ Inferring species trees with *tetrad*
 When you install *ipyrad* a number of analysis tools are installed as
 well. This includes the program **tetrad**, which applies the theory of
 phylogenetic invariants (see Lake 1987) to infer quartet trees based on
-a SNP alignment. It then uses the software wQMC to join the quartets
-into a species tree. This combined approach was first developed by
-Chifman and Kubatko (2015) in the software *SVDQuartets*.
+a SNP alignment. Given all of these quartet trees, *tetrad* then uses the 
+software wQMC to join all quartets into a species tree that is consistent 
+under the multi-species coalescent. This combined approach was first developed 
+by Chifman and Kubatko (2015) in their software *SVDQuartets*.
+
+
+What does *tetrad* do differently from *svdquartets*?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Not all that much currently. But we have several plans for future differences. 
+Importantly, though, the code is free and open source, easy to install, 
+and can be highly parallelized on a HPC cluster. The *tetrad* software is new 
+and still has a lot of room for improvements in terms of speed, so stay tuned
+as we work on it. Currently, for smallish trees it is fast enough to finish in a 
+few seconds. It can handle enormous sized data sets in terms of the number of SNPs, 
+but it slows down quite a lot when the number of tips becomes large (e.g., >100). 
+
+
+.. note:: 
+
+    tetrad is currently supported only on Linux, Mac support will be available soon.
+
 
 CLI Reference
 -------------
@@ -25,9 +43,9 @@ information in a species tree analysis.
 
 .. code:: python
 
-    %%bash
+    ## Code starting with >>> is intended to be run in a terminal (e.g., bash)
     ## print the help screen
-    tetrad -h
+    >>> tetrad -h
 
 
 .. parsed-literal::
@@ -92,81 +110,79 @@ do 10 bootstrap replicates.
 
 .. code:: python
 
-    %%bash
-    
     ## Let's run the Pedicularis example data set through tetrad
-    tetrad -s pedicularis/pedic_outfiles/pedic.snps.phy \
-           -l pedicularis/pedic_outfiles/pedic.snps.map \
-           -n pedictest -o testdir -c 4 -b 10
+    >>> tetrad -s pedicularis/pedic_outfiles/pedic.snps.phy \
+               -l pedicularis/pedic_outfiles/pedic.snps.map \
+               -n pedictest -o testdir -c 4 -b 10
 
 
 .. parsed-literal::
 
-    
-     ----------------------------------------------------------------------
-      tetrad [v.0.5.0]
-      Quartet inference from phylogenetic invariants
-      Distributed as part of the ipyrad.analysis toolkit
-     ----------------------------------------------------------------------  
-      loading seq array [13 taxa x 173439 bp]
-      max unlinked SNPs per quartet: 37581
-      new Tetrad instance: pedictest
-      local compute node: [4 cores] on tinus
-    
-      inferring 715 induced quartet trees
-      [####################] 100%  initial tree | 0:00:18 |  
-      running 10 bootstrap replicates
-      [####################] 100%  boot 1       | 0:00:08 |  
-      [####################] 100%  boot 2       | 0:00:10 |  
-      [####################] 100%  boot 3       | 0:00:08 |  
-      [####################] 100%  boot 4       | 0:00:09 |  
-      [####################] 100%  boot 5       | 0:00:08 |  
-      [####################] 100%  boot 6       | 0:00:08 |  
-      [####################] 100%  boot 7       | 0:00:08 |  
-      [####################] 100%  boot 8       | 0:00:08 |  
-      [####################] 100%  boot 9       | 0:00:08 |  
-    
-      Statistics for sampling, discordance, and tree support:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.stats.txt
+  
+   ----------------------------------------------------------------------
+    tetrad [v.0.5.0]
+    Quartet inference from phylogenetic invariants
+    Distributed as part of the ipyrad.analysis toolkit
+   ----------------------------------------------------------------------  
+    loading seq array [13 taxa x 173439 bp]
+    max unlinked SNPs per quartet: 37581
+    new Tetrad instance: pedictest
+    local compute node: [4 cores] on tinus
+  
+    inferring 715 induced quartet trees
+    [####################] 100%  initial tree | 0:00:18 |  
+    running 10 bootstrap replicates
+    [####################] 100%  boot 1       | 0:00:08 |  
+    [####################] 100%  boot 2       | 0:00:10 |  
+    [####################] 100%  boot 3       | 0:00:08 |  
+    [####################] 100%  boot 4       | 0:00:09 |  
+    [####################] 100%  boot 5       | 0:00:08 |  
+    [####################] 100%  boot 6       | 0:00:08 |  
+    [####################] 100%  boot 7       | 0:00:08 |  
+    [####################] 100%  boot 8       | 0:00:08 |  
+    [####################] 100%  boot 9       | 0:00:08 |  
+  
+    Statistics for sampling, discordance, and tree support:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.stats.txt
+      
+    Best tree inferred from the full SNP array:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.full.tre
+      
+    Extended majority-rule consensus over bootstraps w/ support as edge lengths:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.consensus.tre
+  
+    All bootstrap trees:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
         
-      Best tree inferred from the full SNP array:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.full.tre
-        
-      Extended majority-rule consensus over bootstraps w/ support as edge lengths:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.consensus.tre
-    
-      All bootstrap trees:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
-        
-    
-                /-100.0, 33588_przewalskii
-         /100.0, 
-        |       \-100.0, 32082_przewalskii
-        |
-        |              /-100.0, 30686_cyathophylla
-        |       /100.0, 
-        |      |       \-100.0, 29154_superba
-        |-100.0, 
-    -0.0,      |       /-100.0, 41954_cyathophylloides
-        |       \100.0, 
-        |              \-100.0, 41478_cyathophylloides
-        |
-        |       /-100.0, 33413_thamno
-        |      |
-        |      |            /-100.0, 35236_rex
-         \100.0,      /80.0, 
-               |     |      \-100.0, 30556_thamno
-               |     |
-                \90.0,             /-100.0, 35855_rex
-                     |      /100.0, 
-                     |     |       \-100.0, 40578_rex
-                      \80.0, 
-                           |       /-100.0, 38362_rex
-                            \100.0, 
-                                   \-100.0, 39618_rex
-    
-      * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-      * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
+  
+              /-100.0, 33588_przewalskii
+       /100.0, 
+      |       \-100.0, 32082_przewalskii
+      |
+      |              /-100.0, 30686_cyathophylla
+      |       /100.0, 
+      |      |       \-100.0, 29154_superba
+      |-100.0, 
+  -0.0,      |       /-100.0, 41954_cyathophylloides
+      |       \100.0, 
+      |              \-100.0, 41478_cyathophylloides
+      |
+      |       /-100.0, 33413_thamno
+      |      |
+      |      |            /-100.0, 35236_rex
+       \100.0,      /80.0, 
+             |     |      \-100.0, 30556_thamno
+             |     |
+              \90.0,             /-100.0, 35855_rex
+                   |      /100.0, 
+                   |     |       \-100.0, 40578_rex
+                    \80.0, 
+                         |       /-100.0, 38362_rex
+                          \100.0, 
+                                 \-100.0, 39618_rex
+  
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
+    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
         
 
 
@@ -182,8 +198,8 @@ designated.
 
 .. code:: python
 
-    %%bash
-    tetrad -j testdir/pedictest.tet.json -b 20 -c 4
+    ## continue from an existing analysis
+    >>> tetrad -j testdir/pedictest.tet.json -b 20 -c 4
 
 
 .. parsed-literal::
@@ -488,16 +504,6 @@ Alternatively, sample a subset of quartets
       * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
       * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
         
-
-
-What does *tetrad* do differently from *svdquartets*?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Not too much currently. But we have plans to expand it. Importantly,
-however, the code is open source meaning that anybody can read it and
-contribute it, which is not the case for Paup\*. *tetrad* is also easier
-to install usign conda and therefore easier to setup on an HPC cluster
-or local machine.
 
 Plot the resulting tree in R
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
