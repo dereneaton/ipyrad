@@ -49,7 +49,6 @@ information in a species tree analysis.
 
 
 .. parsed-literal::
-
     usage: tetrad [-h] [-v] [-f] [-s seq] [-j json] [-m method] [-q nquartets]
                   [-b boots] [-l map_file] [-r resolve] [-n name] [-o outdir]
                   [-t starting_tree] [-c CPUs/cores] [-x random_seed] [-d] [--MPI]
@@ -117,8 +116,6 @@ do 10 bootstrap replicates.
 
 
 .. parsed-literal::
-
-  
    ----------------------------------------------------------------------
     tetrad [v.0.5.0]
     Quartet inference from phylogenetic invariants
@@ -188,7 +185,6 @@ do 10 bootstrap replicates.
 
 Run more bootstrap replicates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 Bootstrap resampling samples loci with replacement to the same number of
 loci as in the original data set. You can turn on bootstrapping by using
 the -b flag. In addition, you can continue a previous run by loading the
@@ -203,91 +199,93 @@ designated.
 
 
 .. parsed-literal::
-
-    
-     ----------------------------------------------------------------------
-      tetrad [v.0.5.0]
-      Quartet inference from phylogenetic invariants
-      Distributed as part of the ipyrad.analysis toolkit
-     ----------------------------------------------------------------------  
-      Continuing checkpointed analysis: pedictest
-        sampling method: all
-        bootstrap checkpoint: 9
-        array checkpoint: 0
-    
-      local compute node: [4 cores] on tinus
-    
-      running 20 bootstrap replicates
-      [####################] 100%  boot 10      | 0:00:18  
-      [####################] 100%  boot 11      | 0:00:08  
-      [####################] 100%  boot 12      | 0:00:07  
-      [####################] 100%  boot 13      | 0:00:08  
-      [####################] 100%  boot 14      | 0:00:08  
-      [####################] 100%  boot 15      | 0:00:09  
-      [####################] 100%  boot 16      | 0:00:09  
-      [####################] 100%  boot 17      | 0:00:08  
-      [####################] 100%  boot 18      | 0:00:08  
-      [####################] 100%  boot 19      | 0:00:08  
-    
-      Statistics for sampling, discordance, and tree support:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.stats.txt
-        
-      Best tree inferred from the full SNP array:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.full.tre
-        
-      Extended majority-rule consensus over bootstraps w/ support as edge lengths:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.consensus.tre
-    
-      All bootstrap trees:
-        > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
-        
-    
-                /-100.0, 33588_przewalskii
-         /100.0, 
-        |       \-100.0, 32082_przewalskii
-        |
-        |              /-100.0, 30686_cyathophylla
-        |       /100.0, 
-        |      |       \-100.0, 29154_superba
-        |-100.0, 
-    -0.0,      |       /-100.0, 41954_cyathophylloides
-        |       \100.0, 
-        |              \-100.0, 41478_cyathophylloides
-        |
-        |       /-100.0, 33413_thamno
-        |      |
-        |      |            /-100.0, 35236_rex
-         \100.0,      /90.0, 
-               |     |      \-100.0, 30556_thamno
-               |     |
-                \95.0,             /-100.0, 35855_rex
-                     |      /100.0, 
-                     |     |       \-100.0, 40578_rex
-                      \60.0, 
-                           |       /-100.0, 38362_rex
-                            \100.0, 
-                                   \-100.0, 39618_rex
-    
-      * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-      * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
+   ----------------------------------------------------------------------
+    tetrad [v.0.5.0]
+    Quartet inference from phylogenetic invariants
+    Distributed as part of the ipyrad.analysis toolkit
+   ----------------------------------------------------------------------  
+    Continuing checkpointed analysis: pedictest
+      sampling method: all
+      bootstrap checkpoint: 9
+      array checkpoint: 0
+  
+    local compute node: [4 cores] on tinus
+  
+    running 20 bootstrap replicates
+    [####################] 100%  boot 10      | 0:00:18  
+    [####################] 100%  boot 11      | 0:00:08  
+    [####################] 100%  boot 12      | 0:00:07  
+    [####################] 100%  boot 13      | 0:00:08  
+    [####################] 100%  boot 14      | 0:00:08  
+    [####################] 100%  boot 15      | 0:00:09  
+    [####################] 100%  boot 16      | 0:00:09  
+    [####################] 100%  boot 17      | 0:00:08  
+    [####################] 100%  boot 18      | 0:00:08  
+    [####################] 100%  boot 19      | 0:00:08  
+  
+    Statistics for sampling, discordance, and tree support:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.stats.txt
+      
+    Best tree inferred from the full SNP array:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.full.tre
+      
+    Extended majority-rule consensus over bootstraps w/ support as edge lengths:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.consensus.tre
+  
+    All bootstrap trees:
+      > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
+      
+  
+              /-100.0, 33588_przewalskii
+       /100.0, 
+      |       \-100.0, 32082_przewalskii
+      |
+      |              /-100.0, 30686_cyathophylla
+      |       /100.0, 
+      |      |       \-100.0, 29154_superba
+      |-100.0, 
+  -0.0,      |       /-100.0, 41954_cyathophylloides
+      |       \100.0, 
+      |              \-100.0, 41478_cyathophylloides
+      |
+      |       /-100.0, 33413_thamno
+      |      |
+      |      |            /-100.0, 35236_rex
+       \100.0,      /90.0, 
+             |     |      \-100.0, 30556_thamno
+             |     |
+              \95.0,             /-100.0, 35855_rex
+                   |      /100.0, 
+                   |     |       \-100.0, 40578_rex
+                    \60.0, 
+                         |       /-100.0, 38362_rex
+                          \100.0, 
+                                 \-100.0, 39618_rex
+  
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
+    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
         
 
 
 API Reference
 ~~~~~~~~~~~~~
 
-A more fun way to run *tetrad* is using the *ipyrad* API. Here you can
-access the underlying Class objects in Python. As you'll see below, this
-can be particularly nice because *ipyrad* has some additional tools for
-downstream analysis of the *tetrad* results. For example, *tetrad* saves
-information that can be used to calculate ABBA-BABA test results.
+.. note:: 
 
-If you are running the API then you must have an ipcluster instance
+    The ipyrad Python API code is intended to be run in IPython or in a Jupyter Notebook.
+
+A more fun way to run *tetrad* is using the *ipyrad* Python API. Here you can
+access the underlying Class objects in Python or IPython. As you'll see below, 
+this can be particularly nice because *ipyrad* has some additional tools for
+downstream analysis of the *tetrad* results. For example, *tetrad* saves
+information that can be used to calculate ABBA-BABA test results. For more information
+about using the *ipyrad* API `see this tutorial <http://ipyrad.readthedocs.io/tutorial-API.html>__.
+
+If you are using the API then you must have an ipcluster instance
 started in order to parallelize your code. This can be started locally
 by opening a separate terminal and running (``ipcluster start -n=10``)
 to start 10 engines. Or, to run your code on a remote cluster set up
-your ipcluster instance following `this
-tutorial <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__.
+your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__.
 
 .. code:: python
 
