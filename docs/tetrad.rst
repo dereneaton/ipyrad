@@ -152,49 +152,6 @@ do 10 bootstrap replicates.
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
           
 
-.. line-block::
-            /-100.0, 33588_przewalskii
-     /100.0, 
-    |       \\-100.0, 32082_przewalskii
-
-
-
-.. parsed-literal::        
-            /-100.0, 33588_przewalskii
-     /100.0, 
-    |       \\-100.0, 32082_przewalskii
-
-
-
-.. parsed-literal::                
-        |
-        |              /-100.0, 30686_cyathophylla
-        |       /100.0, 
-        |      |       \-100.0, 29154_superba
-        |-100.0, 
-    -0.0,      |       /-100.0, 41954_cyathophylloides
-        |       \100.0, 
-        |              \-100.0, 41478_cyathophylloides
-        |
-        |       /-100.0, 33413_thamno
-        |      |
-        |      |            /-100.0, 35236_rex
-         \100.0,      /80.0, 
-               |     |      \-100.0, 30556_thamno
-               |     |
-                \90.0,             /-100.0, 35855_rex
-                     |      /100.0, 
-                     |     |       \-100.0, 40578_rex
-                      \80.0, 
-                           |       /-100.0, 38362_rex
-                            \100.0, 
-                                   \-100.0, 39618_rex
-  
-    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
-        
-
-
 Run more bootstrap replicates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Bootstrap resampling samples loci with replacement to the same number of
@@ -247,36 +204,7 @@ designated.
     All bootstrap trees:
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
         
-    
-                /-100.0, 33588_przewalskii
-         /100.0, 
-        |       \-100.0, 32082_przewalskii
-        |
-        |              /-100.0, 30686_cyathophylla
-        |       /100.0, 
-        |      |       \-100.0, 29154_superba
-        |-100.0, 
-    -0.0,      |       /-100.0, 41954_cyathophylloides
-        |       \100.0, 
-        |              \-100.0, 41478_cyathophylloides
-        |
-        |       /-100.0, 33413_thamno
-        |      |
-        |      |            /-100.0, 35236_rex
-         \100.0,      /90.0, 
-               |     |      \-100.0, 30556_thamno
-               |     |
-                \95.0,             /-100.0, 35855_rex
-                     |      /100.0, 
-                     |     |       \-100.0, 40578_rex
-                      \60.0, 
-                           |       /-100.0, 38362_rex
-                            \100.0, 
-                                   \-100.0, 39618_rex
-  
-    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
-        
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/tetrad.html     
 
 
 API Reference
@@ -335,36 +263,7 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
     Best tree inferred from the full SNP array:
       > /home/deren/Documents/ipyrad/tests/testdir/api2.full.tre
       
-    
-                   /-38362_rex
-                /-|
-               |   \-39618_rex
-             /-|
-            |  |   /-35855_rex
-            |   \-|
-          /-|      \-40578_rex
-         |  |
-         |  |   /-30556_thamno
-       /-|   \-|
-      |  |      \-35236_rex
-      |  |
-      |   \-33413_thamno
-      |
-      |      /-29154_superba
-      |   /-|
-    --|  |   \-30686_cyathophylla
-      |--|
-      |  |   /-41478_cyathophylloides
-      |   \-|
-      |      \-41954_cyathophylloides
-      |
-      |   /-32082_przewalskii
-       \-|
-          \-33588_przewalskii
-    
-    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
-        
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/tetrad.html     
 
 
 .. code:: python
@@ -399,37 +298,8 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
   
     All bootstrap trees:
       > /home/deren/Documents/ipyrad/tests/testdir/api2.boots
-        
     
-                /-100.0, 33588_przewalskii
-         /100.0, 
-        |       \-100.0, 32082_przewalskii
-        |
-        |              /-100.0, 30686_cyathophylla
-        |       /100.0, 
-        |      |       \-100.0, 29154_superba
-        |-100.0, 
-    -0.0,      |       /-100.0, 41954_cyathophylloides
-        |       \100.0, 
-        |              \-100.0, 41478_cyathophylloides
-        |
-        |       /-100.0, 33413_thamno
-        |      |
-        |      |              /-100.0, 35236_rex
-         \100.0,       /100.0, 
-               |      |       \-100.0, 30556_thamno
-               |      |
-                \100.0,             /-100.0, 35855_rex
-                      |      /100.0, 
-                      |     |       \-100.0, 40578_rex
-                       \80.0, 
-                            |       /-100.0, 38362_rex
-                             \100.0, 
-                                    \-100.0, 39618_rex
-    
-    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
-        
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/tetrad.html     
 
 
 Alternatively, sample a subset of quartets
@@ -480,44 +350,17 @@ Alternatively, sample a subset of quartets
     All bootstrap trees:
       > /home/deren/Documents/ipyrad/tests/testdir/api.boots
         
-    
-         /-100.0, 33413_thamno
-        |
-        |              /-100.0, 35236_rex
-        |       /100.0, 
-        |      |       \-100.0, 30556_thamno
-        |      |
-        |-100.0,             /-100.0, 35855_rex
-        |      |      /100.0, 
-        |      |     |       \-100.0, 40578_rex
-    -0.0,       \80.0, 
-        |            |       /-100.0, 38362_rex
-        |             \100.0, 
-        |                    \-100.0, 39618_rex
-        |
-        |              /-100.0, 33588_przewalskii
-        |       /100.0, 
-        |      |       \-100.0, 32082_przewalskii
-        |      |
-         \100.0,              /-100.0, 30686_cyathophylla
-               |       /100.0, 
-               |      |       \-100.0, 29154_superba
-                \100.0, 
-                      |       /-100.0, 41954_cyathophylloides
-                       \100.0, 
-                              \-100.0, 41478_cyathophylloides
-    
-    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/tetrad.html     
         
 
 Plot the resulting tree in R
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The trees are unrooted and support values are on the edges. This can be
-a bit confusing, but is in fact a recommended way to store support
-values as it is more secure from being confused when trees are
-re-rooted.
+The trees are unrooted with support values saved as edge lengths. This can be
+a bit confusing compared to the standard way that support is often stored, 
+which is as node values. Storing it on the edges is actually kind of nice, 
+though, because it is the values will always have the same meaning no 
+matter how you re-root the tree. 
 
 .. note::
 
@@ -534,9 +377,8 @@ re-rooted.
     ltre <- ladderize(rtre)
     
     ## plot the tre
-    plot(ltre, use.edge.length=FALSE)
-    edgelabels(ltre$edge.length)
-
+    plot(ltre, use.edge.length=FALSE, edge.width=2, cex=1.25, label.offset=0.75)
+    edgelabels(ltre$edge.length, frame='none')
 
 
 .. image:: images/cookbook-quartet-species-tree_17_0.png
