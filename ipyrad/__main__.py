@@ -484,7 +484,6 @@ def main():
             else:
                 data = register_ipcluster(data)
 
-
             ## set to print headers
             data._headers = 1
 
