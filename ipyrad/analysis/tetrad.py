@@ -26,6 +26,7 @@ Theoretical Biology 374: 35-47
 
 from __future__ import print_function, division
 import os
+import sys
 import json
 import h5py
 import time
@@ -40,7 +41,7 @@ import ipyrad as ip
 from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
-from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
+from ipyrad.assemble.util import ObjDict, IPyradWarningExit
 
 ## for our desired form of parallelism we will limit 1 thread per cpu
 numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
@@ -63,16 +64,6 @@ except ImportError:
     ipyrad installation eventually.
     """)
 
-# try:
-#     import skbio.tree as sktree
-#     from io import StringIO
-# except ImportError:
-#     raise IPyradWarningExit("""
-#     tetrad requires the dependency `biopython`. You can install
-#     it with the command `conda install -c anaconda biopython`. 
-#     Sorry for the inconvenience, this will be incorporated into the
-#     ipyrad installation eventuall.
-#     """)        
 
 ## set the logger
 import logging
@@ -105,19 +96,21 @@ PHYLO_INVARIANTS = """
 
 #############################################################################
 #############################################################################
-## Quartet inference Class Object
+## Tetrad inference Class Object
 #############################################################################
 #############################################################################
 
 
-class Quartet(object):
+class Tetrad(object):
     """
     The main tetrad object for storing data and checkpointing. It is 
     initialized with a name, and args to command line (e.g., sampling method, 
     starting tree, nboots, etc.). 
     """
 
-    def __init__(self, name, wdir=os.path.curdir, method='all'):
+    def __init__(self, name, seqfile, wdir=os.path.curdir, method='all', 
+                 mapfile=None, treefile=None, resolve=1, nboots=0, 
+                 nquartets=0, initarr=1):
         ## version is ipyrad version
         self._version = ip.__version__
 
@@ -134,14 +127,14 @@ class Quartet(object):
             "engines" : "Local", 
             "quiet" : 0, 
             "timeout" : 60, 
-            "cores" : ip.assemble.util.detect_cpus()}
+            "cores" : 0}     #ip.assemble.util.detect_cpus()}
 
         ## Sampling method attributes
         self.method = method
-        self.nboots = 0
-        self.nquartets = 0
+        self.nboots = nboots
+        self.nquartets = nquartets
         self.chunksize = 0
-        self.resolve = 0
+        self.resolve = resolve
 
         ## store samples from the seqarray
         self.samples = []
@@ -155,9 +148,9 @@ class Quartet(object):
 
         ## input files
         self.files = ObjDict()
-        self.files.seqfile = None
-        self.files.mapfile = None
-        self.files.treefile = None
+        self.files.seqfile = seqfile
+        self.files.mapfile = mapfile
+        self.files.treefile = treefile
         self.files.qdump = None
 
         ## store tree file paths
@@ -177,12 +170,30 @@ class Quartet(object):
         self.checkpoint.boots = 0
         self.checkpoint.arr = 0
 
+        ## init the seq data and samples
+        if initarr:
+            self.init_seqarray()
+            self.parse_names()
+
+        ## if quartets not entered then sample all
+        total = n_choose_k(len(self.samples), 4)
+        if self.method != "all":
+            if int(self.nquartets) >= total:
+                self.method = "all"
+                self.nquartets = total
+                print("  nquartets > total: switching to method='all' ")
+            if not self.nquartets:
+                raise IPyradWarningExit("  must enter nquartets value w/ method='random'")
+        else:
+            self.nquartets = total
+            
+        
 
 
     def refresh(self):
         """ 
         Remove all existing results files and reinit the h5 arrays 
-        so that the Quartet object is just like fresh from a CLI start
+        so that the Tetrad object is just like fresh from a CLI start
         """
 
         ## clear any existing results files
@@ -393,7 +404,7 @@ class Quartet(object):
 
 
     ## Functions to fill h5in with samples
-    def store_N_samples(self):
+    def store_N_samples(self, ncpus):
         """ Find all quartets of samples and store in a large array """
         ## create a chunk size for sampling from the array of quartets. This should
         ## be relatively large so that we don't spend a lot of time doing I/O, but
@@ -406,9 +417,9 @@ class Quartet(object):
         if self.nquartets > 500000:
             breaks = 8
 
-        cpus = self._ipcluster["cores"]
-        self.chunksize = (self.nquartets // (breaks * cpus) + \
-                         (self.nquartets % (breaks * cpus)))
+        ## chunk up the data
+        self.chunksize = (self.nquartets // (breaks * ncpus) + \
+                         (self.nquartets % (breaks * ncpus)))
         LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
 
         ## 'samples' stores the indices of the quartet. 
@@ -459,7 +470,7 @@ class Quartet(object):
 
 
 
-    def store_equal_samples(self):
+    def store_equal_samples(self, ncpus):
         """ 
         sample quartets evenly across splits of the starting tree, and fills
         in remaining samples with random quartet samples. Uses a hash dict to 
@@ -476,9 +487,8 @@ class Quartet(object):
         if self.nquartets > 500000:
             breaks = 8
 
-        cpus = self._ipcluster["cores"]
-        self.chunksize = (self.nquartets // (breaks * cpus) + \
-                         (self.nquartets % (breaks * cpus)))
+        self.chunksize = (self.nquartets // (breaks * ncpus) + \
+                         (self.nquartets % (breaks * ncpus)))
         LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
 
         ## create h5 OUT empty arrays
@@ -760,7 +770,7 @@ class Quartet(object):
         ## build stats file
         with open(self.trees.stats, 'w') as ostats:
 
-            ## print Quartet info
+            ## print Tetrad info
             ostats.write("## Analysis info\n")
             ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
             ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
@@ -770,8 +780,8 @@ class Quartet(object):
             ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
             ostats.write("\n")
 
-            ## get Quartet stats
-            ostats.write("## Quartet statistics (coming soon)\n")
+            ## get Tetrad stats
+            ostats.write("## quartet statistics (coming soon)\n")
             ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
             proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
             ostats.write("{:<30}  {:<20.1f}\n".format("percent_sampled_of_total", proportion))
@@ -858,7 +868,7 @@ class Quartet(object):
 
 
     def save(self):
-        """ save a JSON file representation of Quartet Class for checkpoint"""
+        """ save a JSON file representation of Tetrad Class for checkpoint"""
 
         ## save each attribute as dict
         fulldumps = json.dumps(self.__dict__, 
@@ -927,26 +937,18 @@ class Quartet(object):
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
-            ## if MPI setup then we are going to wait until all engines are
-            ## ready so that we can print how many cores started on each 
-            ## host machine exactly. 
-            if not quiet:
-                if self._ipcluster["engines"] == "MPI":
-                    hosts = ipyclient[:].apply_sync(socket.gethostname)
-                    for hostname in set(hosts):
-                        print("  host compute node: [{} cores] on {}"\
-                              .format(hosts.count(hostname), hostname))
-                    print("")
-                ## if Local setup then we know that we can get all the cores for 
-                ## sure and we won't bother waiting for them to start, since 
-                ## they'll start grabbing jobs once they're started. 
-                else:
-                    _cpus = min(ip.assemble.util.detect_cpus(), 
-                                self._ipcluster["cores"])
-                    print("  local compute node: [{} cores] on {}\n"\
-                          .format(_cpus, socket.gethostname()))
+            report_cluster(self, ipyclient, quiet)
 
-            ## run the full inference or print finished prog bar if it's done
+            ## get or init quartet sampling
+            if not self.chunksize:
+                self.nquartets = n_choose_k(len(self.samples), 4)
+                if self.method != 'equal':
+                    ## store N sampled quartets into the h5 array
+                    self.store_N_samples(ncpus=len(ipyclient.ids))
+                else:
+                    self.store_equal_samples(ncpus=len(ipyclient.ids))
+
+            ## calculate invariants for the full array
             if not os.path.exists(self.trees.tre):
                 print("  inferring {} induced quartet trees".format(self.nquartets))
                 self.inference(0, ipyclient)
@@ -1010,6 +1012,7 @@ class Quartet(object):
                         ipyclient.close()
                     ## if API, stop jobs and clean queue
                     else:
+                        ## TODO: Look into using cancel on engine ids...
                         ipyclient.abort()#ipyclient.outstanding)
                         ipyclient.purge_results(ipyclient.ids)
             
@@ -1025,6 +1028,7 @@ class Quartet(object):
         Inference sends slices of jobs to the parallel engines for computing
         and collects the results into the output hdf5 array as they finish. 
         """
+
         ## an iterator to distribute sampled quartets in chunks
         njobs = sum(1 for _ in \
                 xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
@@ -1041,10 +1045,8 @@ class Quartet(object):
                                              dtype=np.uint32, 
                                              chunks=(self.chunksize, 4))
 
-        ## a distributor for engine jobs
+        ## A distributor for engine jobs. Get a threaded view. 
         lbview = ipyclient.load_balanced_view()
-
-
 
         ## start progress bar timer and submit initial n jobs
         start = time.time()
@@ -1063,9 +1065,9 @@ class Quartet(object):
             ## print progress unless bootstrapping, diff progbar for that.
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             if not bidx:
-                progressbar(njobs, done, " initial tree | {}".format(elapsed))
+                progressbar(njobs, done, " initial tree | {} | ".format(elapsed))
             else:
-                progressbar(njobs, done, " boot {:<7} | {}".format(bidx, elapsed))
+                progressbar(njobs, done, " boot {:<7} | {} | ".format(bidx, elapsed))
 
             ## check for finished jobs
             curkeys = res.keys()
@@ -1087,13 +1089,8 @@ class Quartet(object):
                             del res[ikey]
                         else:
                             ## print error if something went wrong
-                            meta = res[ikey].metadata
-                            if meta.error:
-                                LOGGER.error("""\
-                            stdout: %s
-                            stderr: %s 
-                            error: %s""", meta.stdout, meta.stderr, meta.error)
-                            del res[ikey]
+                            raise IPyradWarningExit(""" error in 'inference'\n{}
+                                """.format(res[ikey].exception()))
 
                     ## submit new jobs
                     try:
@@ -1116,9 +1113,9 @@ class Quartet(object):
         ## final progress bar
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         if not bidx:
-            progressbar(njobs, done, " initial tree | {}".format(elapsed))
+            progressbar(njobs, done, " initial tree | {} | ".format(elapsed))
         else:
-            progressbar(njobs, done, " boot {:<7} | {}".format(bidx, elapsed))
+            progressbar(njobs, done, " boot {:<7} | {} | ".format(bidx, elapsed))
         print("")
 
         ## dump quartets to a file
@@ -1335,81 +1332,25 @@ def chunk_to_matrices(narr, mapcol, nmask):
     mats = np.zeros((3, 16, 16), dtype=np.uint32)
 
     ## replace ints with small ints that index their place in the 
-    ## 16x16. If not replaced, the existing ints are all very large
-    ## and the column will be excluded.
+    ## 16x16. This no longer checks for big ints to exclude, so resolve=True
+    ## is now the default, TODO. 
     last_loc = -1
     for idx in xrange(mapcol.shape[0]):
         if not nmask[idx]:
             if not mapcol[idx] == last_loc:
                 i = narr[:, idx]
-                #if np.max(i) < 4:
-                #mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
-                mats[0, i[0]*4:(i[0]+4)*4]\
-                        [i[1]]\
-                        [i[2]*4:(i[2]+4)*4]\
-                        [i[3]] += 1
+                mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1      
                 last_loc = mapcol[idx]
-                
-    ## set invariant (AAAA, CCCC, GGGG, TTTT) arbitrarily high since we 
-    ## only used variable sites.
-    #mats[0, 0, 0] = mats[0, 5, 5] = mats[0, 10, 10] = mats[0, 15, 15] = mats[0].max()*100
-                
 
-    # for idx in xrange(narr.shape[1]):
-    #     if not rmask[idx]:
-    #         i = narr[:, idx]
-    #         if np.sum(i) < 16:
-    #             mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1
-            # mats[0, i[0]*4:(i[0]+4)*4]\
-            #         [i[1]]\
-            #         [i[2]*4:(i[2]+4)*4]\
-            #         [i[3]] += 1
-                
-    ## get matrix 2
-    mats[1, 0:4, 0:4] = mats[0, 0].reshape(4, 4)
-    mats[1, 0:4, 4:8] = mats[0, 1].reshape(4, 4)
-    mats[1, 0:4, 8:12] = mats[0, 2].reshape(4, 4)
-    mats[1, 0:4, 12:16] = mats[0, 3].reshape(4, 4)
-    mats[1, 4:8, 0:4] = mats[0, 4].reshape(4, 4)
-    mats[1, 4:8, 4:8] = mats[0, 5].reshape(4, 4)
-    mats[1, 4:8, 8:12] = mats[0, 6].reshape(4, 4)
-    mats[1, 4:8, 12:16] = mats[0, 7].reshape(4, 4)
-    mats[1, 8:12, 0:4] = mats[0, 8].reshape(4, 4)
-    mats[1, 8:12, 4:8] = mats[0, 9].reshape(4, 4)
-    mats[1, 8:12, 8:12] = mats[0, 10].reshape(4, 4)
-    mats[1, 8:12, 12:16] = mats[0, 11].reshape(4, 4)
-    mats[1, 12:16, 0:4] = mats[0, 12].reshape(4, 4)
-    mats[1, 12:16, 4:8] = mats[0, 13].reshape(4, 4)
-    mats[1, 12:16, 8:12] = mats[0, 14].reshape(4, 4)
-    mats[1, 12:16, 12:16] = mats[0, 15].reshape(4, 4)
-    
-    ## get matrix 3
-    mats[2, 0:4, 0:4] = mats[0, 0].reshape(4, 4).T
-    mats[2, 0:4, 4:8] = mats[0, 1].reshape(4, 4).T
-    mats[2, 0:4, 8:12] = mats[0, 2].reshape(4, 4).T
-    mats[2, 0:4, 12:16] = mats[0, 3].reshape(4, 4).T
-    mats[2, 4:8, 0:4] = mats[0, 4].reshape(4, 4).T
-    mats[2, 4:8, 4:8] = mats[0, 5].reshape(4, 4).T
-    mats[2, 4:8, 8:12] = mats[0, 6].reshape(4, 4).T
-    mats[2, 4:8, 12:16] = mats[0, 7].reshape(4, 4).T
-    mats[2, 8:12, 0:4] = mats[0, 8].reshape(4, 4).T
-    mats[2, 8:12, 4:8] = mats[0, 9].reshape(4, 4).T
-    mats[2, 8:12, 8:12] = mats[0, 10].reshape(4, 4).T
-    mats[2, 8:12, 12:16] = mats[0, 11].reshape(4, 4).T
-    mats[2, 12:16, 0:4] = mats[0, 12].reshape(4, 4).T
-    mats[2, 12:16, 4:8] = mats[0, 13].reshape(4, 4).T
-    mats[2, 12:16, 8:12] = mats[0, 14].reshape(4, 4).T
-    mats[2, 12:16, 12:16] = mats[0, 15].reshape(4, 4).T  
+    ## fill the alternates
+    x = np.uint8(0)
+    for y in np.array([0, 4, 8, 12], dtype=np.uint8):
+        for z in np.array([0, 4, 8, 12], dtype=np.uint8):
+            mats[1, y:y+np.uint8(4), z:z+np.uint8(4)] = mats[0, x].reshape(4, 4)
+            mats[2, y:y+np.uint8(4), z:z+np.uint8(4)] = mats[0, x].reshape(4, 4).T
+            x += np.uint8(1)
 
     return mats
-
-#     LOGGER.info("""
-#         matrix
-# %s
-#         """, mats)
-                
-#     return mats
-
 
 
 
@@ -1422,26 +1363,26 @@ def calculate(seqnon, mapcol, nmask, tests):
     #LOGGER.info('seqnon[[tests[0]]] %s', seqnon[[tests[0]]])
     mats = chunk_to_matrices(seqnon, mapcol, nmask)
 
-    ## epmty svdscores for each arrangement of seqchunk
+    ## empty svdscores for each arrangement of seqchunk
+    svds = np.zeros((3, 16), dtype=np.float64)
     qscores = np.zeros(3, dtype=np.float64)
+    ranks = np.zeros(3, dtype=np.float64)
 
     for test in range(3):
         ## get svd scores
-        tmpscore = np.linalg.svd(mats[test].astype(np.float64))[1]
-        qscores[test] = np.sqrt(np.sum(tmpscore[11:]**2))
+        svds[test] = np.linalg.svd(mats[test].astype(np.float64))[1]
+        ranks[test] = np.linalg.matrix_rank(mats[test].astype(np.float64))
+
+    ## get minrank, or 11
+    minrank = min(11, ranks.min())
+    for test in range(3):
+        qscores[test] = np.sqrt(np.sum(svds[test, minrank:]**2))
 
     ## sort to find the best qorder
     best = np.where(qscores == qscores.min())[0]
     bidx = tests[best][0]
     qsnps = count_snps(mats[best][0])
 
-    # LOGGER.info("""
-    #     best: %s, 
-    #     bidx: %s, 
-    #     qscores: %s, 
-    #     qsnps: %s
-    #     mats \n %s
-    #     """, best, bidx, qscores, qsnps, mats)
     return bidx, qsnps  #, qscores
     #return bidx, qscores, qsnps
 
@@ -1466,7 +1407,6 @@ def nworker(data, smpchunk, tests):
 
     ## get the input arrays ready
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
-    #rweights = np.zeros(smpchunk.shape[0], dtype=np.float64)
     rweights = np.ones(smpchunk.shape[0], dtype=np.float64)
     rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
 
@@ -1486,29 +1426,11 @@ def nworker(data, smpchunk, tests):
         #bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
         bidx, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)        
         
-        #LOGGER.info("seqchunk to scores: %s", 
-        #times.append(1000*(time.time()-ctime))
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
         rdstats[idx] = qstats 
         rquartets[idx] = smpchunk[idx][bidx]
 
-        # iwgt = get_weights(qscores)
-        # if iwgt:
-        #     rweights[idx] = iwgt
-        #     rquartets[idx] = smpchunk[idx][bidx]            
-        #     LOGGER.info("""\n
-        #             ------------------------------------
-        #             bidx: %s
-        #             qstats: %s, 
-        #             weight: %s, 
-        #             scores: %s
-        #             ------------------------------------
-        #             """,
-        #             bidx, qstats, rweights[idx], qscores)
-
-    #LOGGER.warning("average time: %s", np.mean(times))
-    #return 
     return rquartets, rweights, rdstats 
     #return rquartets, rweights, rdstats 
 
@@ -1659,7 +1581,7 @@ def fill_boot(seqarr, newboot, newmap, spans, loci):
 ## thoughts on this... we need to re-estimate chunksize given whatever
 ## new parallel setup is passed in. Start from arr checkpoint to end. 
 def load_json(path):
-    """ Load a json serialized Quartet Class object """
+    """ Load a json serialized Tetrad Class object """
 
     ## load the JSON string and try with name+.json
     if not path.endswith(".tet.json"):
@@ -1678,8 +1600,11 @@ def load_json(path):
         raise IPyradWarningExit("""\
     Cannot find checkpoint (.tet.json) file at: {}""".format(path))
 
-    ## create a new Quartet Class
-    newobj = Quartet(fullj["name"], fullj["dirs"], fullj["method"])
+    ## create a new Tetrad Class
+    newobj = Tetrad(fullj["name"], 
+                    fullj["dirs"], 
+                    fullj["method"], 
+                    initarr=0)
 
     ## fill in the same attributes
     for key in fullj:
@@ -1884,7 +1809,7 @@ def _build_trees(fclade_counts, namedict):
         if not node.is_leaf():
             node.dist = int(round(100*countdict[clade]))
         else:
-            node.dist = int(0) 
+            node.dist = int(100) 
         
         nodes[clade] = node
         queue = new_queue
@@ -1931,6 +1856,43 @@ def _get_sampled(data, tots, node, names):
 
 
 
+def report_cluster(self, ipyclient, quiet):
+    """ report the ipcluster setup """
+    ## if MPI setup then we are going to wait until all engines are
+    ## ready so that we can print how many cores started on each 
+    ## host machine exactly. 
+    if not quiet:
+        if self._ipcluster["engines"] == "MPI":
+            hosts = ipyclient[:].apply_sync(socket.gethostname)
+            for hostname in set(hosts):
+                print("  host compute node: [{} cores] on {}"\
+                      .format(hosts.count(hostname), hostname))
+            print("")
+        ## if Local setup then we know that we can get all the cores for 
+        ## sure and we won't bother waiting for them to start, since 
+        ## they'll start grabbing jobs once they're started. 
+        else:
+            if self._ipcluster["cores"]:
+                _cpus = self._ipcluster["cores"]
+            else:
+                _cpus = len(ipyclient.ids)
+            print("  local compute node: [{} cores] on {}\n"\
+                  .format(_cpus, socket.gethostname()))
+
+
+def progressbar(njobs, finished, msg=""):
+    """ prints a progress bar """
+    progress = 100*(finished / float(njobs))
+    hashes = '#'*int(progress/5.)
+    nohash = ' '*int(20-len(hashes))
+    #if not ipyrad.__interactive__:
+    #    msg = msg.rsplit("|", 2)[0]
+    print("\r  [{}] {:>3}% {} "\
+          .format(hashes+nohash, int(progress), msg), end="")
+    sys.stdout.flush()
+
+
+
 ## GLOBALS #############################################################
 
 STATSOUT = """
@@ -1939,12 +1901,12 @@ STATSOUT = """
     """
 
 FINALTREES = """\
-  Full tree inferred from by weighted quartet-joining of the SNP supermatrix
+  Best tree inferred from the full SNP array:
     > {}
     """
 
 BOOTTREES = """\
-  Extended majority-rule consensus with support as edge lengths:
+  Extended majority-rule consensus over bootstraps w/ support as edge lengths:
     > {}
 
   All bootstrap trees:

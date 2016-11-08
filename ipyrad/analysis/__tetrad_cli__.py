@@ -187,74 +187,53 @@ def main():
         ip.debug_on()
         atexit.register(ip.debug_off)      
 
-    ## if JSON, load existing Quartet analysis -----------------------
+    ## if JSON, load existing Tetrad analysis -----------------------
     if args.json:
         data = ipa.tetrad.load_json(args.json)
-        ## loading message?
-
         ## if force then remove all results
         if args.force:
             data.refresh()
 
     ## else create a new tmp assembly for the seqarray-----------------
     else:
-        ## create new Quartet class Object if it doesn't exist
+        ## create new Tetrad class Object if it doesn't exist
         newjson = os.path.join(args.outdir, args.name+'.tet.json')
         if (not os.path.exists(newjson)) or args.force:
-            data = ipa.tetrad.Quartet(args.name, args.outdir, args.method)
-            print("  new Quartet instance: {}".format(args.name))
+            data = ipa.tetrad.Tetrad(name=args.name, 
+                                     wdir=args.outdir, 
+                                     method=args.method, 
+                                     seqfile=args.seq, 
+                                     resolve=args.resolve,
+                                     mapfile=args.map, 
+                                     treefile=args.tree, 
+                                     nboots=args.boots, 
+                                     nquartets=args.nquartets)
+            print("  new Tetrad instance: {}".format(args.name))
         else:
             raise IPyradWarningExit(QUARTET_EXISTS\
             .format(args.name, args.outdir, args.outdir, args.name, args.name))
-
-        ## if input files
-        if args.map: 
-            data.files.mapfile = args.map
-        if args.tree:
-            data.files.treefile = args.tree
-
-        ## get seqfile and names from seqfile
-        data.files.seqfile = args.seq
-        data.resolve = args.resolve
-        data.init_seqarray()
-        data.parse_names()
-
-        ## if quartets not entered then sample all
-        data.nquartets = ipa.tetrad.n_choose_k(len(data.samples), 4)
-        if args.nquartets:
-            ## if sampling N > all, then switch to method='all'
-            if int(args.nquartets) >= data.nquartets:
-                data.method = "all"
-                print("  nquartets > total: switching to method='all' ")
-
-            if int(args.nquartets) < data.nquartets:
-                data.nquartets = int(args.nquartets)
-
-        if data.method != 'equal':
-            ## store N sampled quartets into the h5 array
-            data.store_N_samples()
-
-        else:
-            data.store_equal_samples()
 
     ## boots can be set either for a new object or loaded JSON to continue it
     if args.boots:
         data.nboots = int(args.boots)
 
     ## set CLI ipcluster terms
-    if args.cores:
-        data._ipcluster["cores"] = min(args.cores, detect_cpus())
-    else:
-        data._ipcluster["cores"] = detect_cpus()
+    data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
 
-    ## set MPI flag
+    ## if more ipcluster args from command-line then use those
     if args.MPI:
         data._ipcluster["engines"] = "MPI"
+    else:
+        data._ipcluster["engines"] = "Local"
 
-    ## start ipcluster and register cluster_id for later destruction.
+    ## launch a NEW ipcluster instance and register "cluster_id" 
+    ## for later destruction, and to avoid conflicts between 
+    ## simultaneous ipcluster instances. If a user wanted to use 
+    ## an ipcluster instance that is already running instead then 
+    ## they have to use the API, or to have set args.ipcluster
     if args.ipcluster:
         data._ipcluster["profile"] = "ipyrad"
-        data._ipcluster["cluster_id"] = ""
+        #ip.__interactive__ = 1
     else:
         data = register_ipcluster(data)
 
