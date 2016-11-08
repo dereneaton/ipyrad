@@ -116,11 +116,11 @@ do 10 bootstrap replicates.
 
 
 .. parsed-literal::
-   ----------------------------------------------------------------------
+    ----------------------------------------------------------------------
     tetrad [v.0.5.0]
     Quartet inference from phylogenetic invariants
     Distributed as part of the ipyrad.analysis toolkit
-   ----------------------------------------------------------------------  
+    ----------------------------------------------------------------------  
     loading seq array [13 taxa x 173439 bp]
     max unlinked SNPs per quartet: 37581
     new Tetrad instance: pedictest
@@ -150,33 +150,33 @@ do 10 bootstrap replicates.
   
     All bootstrap trees:
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
-        
-  
-              /-100.0, 33588_przewalskii
-       /100.0, 
-      |       \-100.0, 32082_przewalskii
-      |
-      |              /-100.0, 30686_cyathophylla
-      |       /100.0, 
-      |      |       \-100.0, 29154_superba
-      |-100.0, 
-  -0.0,      |       /-100.0, 41954_cyathophylloides
-      |       \100.0, 
-      |              \-100.0, 41478_cyathophylloides
-      |
-      |       /-100.0, 33413_thamno
-      |      |
-      |      |            /-100.0, 35236_rex
-       \100.0,      /80.0, 
-             |     |      \-100.0, 30556_thamno
-             |     |
-              \90.0,             /-100.0, 35855_rex
-                   |      /100.0, 
-                   |     |       \-100.0, 40578_rex
-                    \80.0, 
-                         |       /-100.0, 38362_rex
-                          \100.0, 
-                                 \-100.0, 39618_rex
+          
+    
+                /-100.0, 33588_przewalskii
+         /100.0, 
+        |       \-100.0, 32082_przewalskii
+        |
+        |              /-100.0, 30686_cyathophylla
+        |       /100.0, 
+        |      |       \-100.0, 29154_superba
+        |-100.0, 
+    -0.0,      |       /-100.0, 41954_cyathophylloides
+        |       \100.0, 
+        |              \-100.0, 41478_cyathophylloides
+        |
+        |       /-100.0, 33413_thamno
+        |      |
+        |      |            /-100.0, 35236_rex
+         \100.0,      /80.0, 
+               |     |      \-100.0, 30556_thamno
+               |     |
+                \90.0,             /-100.0, 35855_rex
+                     |      /100.0, 
+                     |     |       \-100.0, 40578_rex
+                      \80.0, 
+                           |       /-100.0, 38362_rex
+                            \100.0, 
+                                   \-100.0, 39618_rex
   
     * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
     * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
@@ -199,11 +199,11 @@ designated.
 
 
 .. parsed-literal::
-   ----------------------------------------------------------------------
+    ----------------------------------------------------------------------
     tetrad [v.0.5.0]
     Quartet inference from phylogenetic invariants
     Distributed as part of the ipyrad.analysis toolkit
-   ----------------------------------------------------------------------  
+    ----------------------------------------------------------------------  
     Continuing checkpointed analysis: pedictest
       sampling method: all
       bootstrap checkpoint: 9
@@ -234,33 +234,33 @@ designated.
   
     All bootstrap trees:
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
-      
-  
-              /-100.0, 33588_przewalskii
-       /100.0, 
-      |       \-100.0, 32082_przewalskii
-      |
-      |              /-100.0, 30686_cyathophylla
-      |       /100.0, 
-      |      |       \-100.0, 29154_superba
-      |-100.0, 
-  -0.0,      |       /-100.0, 41954_cyathophylloides
-      |       \100.0, 
-      |              \-100.0, 41478_cyathophylloides
-      |
-      |       /-100.0, 33413_thamno
-      |      |
-      |      |            /-100.0, 35236_rex
-       \100.0,      /90.0, 
-             |     |      \-100.0, 30556_thamno
-             |     |
-              \95.0,             /-100.0, 35855_rex
-                   |      /100.0, 
-                   |     |       \-100.0, 40578_rex
-                    \60.0, 
-                         |       /-100.0, 38362_rex
-                          \100.0, 
-                                 \-100.0, 39618_rex
+        
+    
+                /-100.0, 33588_przewalskii
+         /100.0, 
+        |       \-100.0, 32082_przewalskii
+        |
+        |              /-100.0, 30686_cyathophylla
+        |       /100.0, 
+        |      |       \-100.0, 29154_superba
+        |-100.0, 
+    -0.0,      |       /-100.0, 41954_cyathophylloides
+        |       \100.0, 
+        |              \-100.0, 41478_cyathophylloides
+        |
+        |       /-100.0, 33413_thamno
+        |      |
+        |      |            /-100.0, 35236_rex
+         \100.0,      /90.0, 
+               |     |      \-100.0, 30556_thamno
+               |     |
+                \95.0,             /-100.0, 35855_rex
+                     |      /100.0, 
+                     |     |       \-100.0, 40578_rex
+                      \60.0, 
+                           |       /-100.0, 38362_rex
+                            \100.0, 
+                                   \-100.0, 39618_rex
   
     * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
     * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
@@ -301,9 +301,8 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
 
 
 .. parsed-literal::
-
-      loading seq array [13 taxa x 173439 bp]
-      max unlinked SNPs per quartet: 37581
+    loading seq array [13 taxa x 173439 bp]
+    max unlinked SNPs per quartet: 37581
 
 
 .. code:: python
@@ -313,18 +312,17 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
 
 
 .. parsed-literal::
-
-      local compute node: [4 cores] on tinus
-    
-      inferring 715 induced quartet trees
-      [####################] 100%  initial tree | 0:00:20 |  
-    
-      Statistics for sampling, discordance, and tree support:
-        > /home/deren/Documents/ipyrad/tests/testdir/api2.stats.txt
-        
-      Best tree inferred from the full SNP array:
-        > /home/deren/Documents/ipyrad/tests/testdir/api2.full.tre
-        
+    local compute node: [4 cores] on tinus
+  
+    inferring 715 induced quartet trees
+    [####################] 100%  initial tree | 0:00:20 |  
+  
+    Statistics for sampling, discordance, and tree support:
+      > /home/deren/Documents/ipyrad/tests/testdir/api2.stats.txt
+      
+    Best tree inferred from the full SNP array:
+      > /home/deren/Documents/ipyrad/tests/testdir/api2.full.tre
+      
     
                    /-38362_rex
                 /-|
@@ -352,8 +350,8 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
        \-|
           \-33588_przewalskii
     
-      * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-      * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
+    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
         
 
 
@@ -365,31 +363,30 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
 
 
 .. parsed-literal::
-
-      local compute node: [4 cores] on tinus
-    
-      running 10 bootstrap replicates
-      [####################] 100%  boot 1       | 0:00:08 |  
-      [####################] 100%  boot 2       | 0:00:09 |  
-      [####################] 100%  boot 3       | 0:00:08 |  
-      [####################] 100%  boot 4       | 0:00:09 |  
-      [####################] 100%  boot 5       | 0:00:09 |  
-      [####################] 100%  boot 6       | 0:00:07 |  
-      [####################] 100%  boot 7       | 0:00:08 |  
-      [####################] 100%  boot 8       | 0:00:08 |  
-      [####################] 100%  boot 9       | 0:00:08 |  
-    
-      Statistics for sampling, discordance, and tree support:
-        > /home/deren/Documents/ipyrad/tests/testdir/api2.stats.txt
-        
-      Best tree inferred from the full SNP array:
-        > /home/deren/Documents/ipyrad/tests/testdir/api2.full.tre
-        
-      Extended majority-rule consensus over bootstraps w/ support as edge lengths:
-        > /home/deren/Documents/ipyrad/tests/testdir/api2.consensus.tre
-    
-      All bootstrap trees:
-        > /home/deren/Documents/ipyrad/tests/testdir/api2.boots
+    local compute node: [4 cores] on tinus
+  
+    running 10 bootstrap replicates
+    [####################] 100%  boot 1       | 0:00:08 |  
+    [####################] 100%  boot 2       | 0:00:09 |  
+    [####################] 100%  boot 3       | 0:00:08 |  
+    [####################] 100%  boot 4       | 0:00:09 |  
+    [####################] 100%  boot 5       | 0:00:09 |  
+    [####################] 100%  boot 6       | 0:00:07 |  
+    [####################] 100%  boot 7       | 0:00:08 |  
+    [####################] 100%  boot 8       | 0:00:08 |  
+    [####################] 100%  boot 9       | 0:00:08 |  
+  
+    Statistics for sampling, discordance, and tree support:
+      > /home/deren/Documents/ipyrad/tests/testdir/api2.stats.txt
+      
+    Best tree inferred from the full SNP array:
+      > /home/deren/Documents/ipyrad/tests/testdir/api2.full.tre
+      
+    Extended majority-rule consensus over bootstraps w/ support as edge lengths:
+      > /home/deren/Documents/ipyrad/tests/testdir/api2.consensus.tre
+  
+    All bootstrap trees:
+      > /home/deren/Documents/ipyrad/tests/testdir/api2.boots
         
     
                 /-100.0, 33588_przewalskii
@@ -418,8 +415,8 @@ your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/H
                              \100.0, 
                                     \-100.0, 39618_rex
     
-      * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-      * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
+    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
         
 
 
@@ -442,35 +439,34 @@ Alternatively, sample a subset of quartets
 
 
 .. parsed-literal::
-
-      loading seq array [13 taxa x 173439 bp]
-      max unlinked SNPs per quartet: 37581
-      local compute node: [4 cores] on tinus
-    
-      inferring 715 induced quartet trees
-      [####################] 100%  initial tree | 0:00:09 |  
-      running 10 bootstrap replicates
-      [####################] 100%  boot 1       | 0:00:09 |  
-      [####################] 100%  boot 2       | 0:00:09 |  
-      [####################] 100%  boot 3       | 0:00:08 |  
-      [####################] 100%  boot 4       | 0:00:08 |  
-      [####################] 100%  boot 5       | 0:00:08 |  
-      [####################] 100%  boot 6       | 0:00:08 |  
-      [####################] 100%  boot 7       | 0:00:09 |  
-      [####################] 100%  boot 8       | 0:00:08 |  
-      [####################] 100%  boot 9       | 0:00:09 |  
-    
-      Statistics for sampling, discordance, and tree support:
-        > /home/deren/Documents/ipyrad/tests/testdir/api.stats.txt
-        
-      Best tree inferred from the full SNP array:
-        > /home/deren/Documents/ipyrad/tests/testdir/api.full.tre
-        
-      Extended majority-rule consensus over bootstraps w/ support as edge lengths:
-        > /home/deren/Documents/ipyrad/tests/testdir/api.consensus.tre
-    
-      All bootstrap trees:
-        > /home/deren/Documents/ipyrad/tests/testdir/api.boots
+    loading seq array [13 taxa x 173439 bp]
+    max unlinked SNPs per quartet: 37581
+    local compute node: [4 cores] on tinus
+  
+    inferring 715 induced quartet trees
+    [####################] 100%  initial tree | 0:00:09 |  
+    running 10 bootstrap replicates
+    [####################] 100%  boot 1       | 0:00:09 |  
+    [####################] 100%  boot 2       | 0:00:09 |  
+    [####################] 100%  boot 3       | 0:00:08 |  
+    [####################] 100%  boot 4       | 0:00:08 |  
+    [####################] 100%  boot 5       | 0:00:08 |  
+    [####################] 100%  boot 6       | 0:00:08 |  
+    [####################] 100%  boot 7       | 0:00:09 |  
+    [####################] 100%  boot 8       | 0:00:08 |  
+    [####################] 100%  boot 9       | 0:00:09 |  
+  
+    Statistics for sampling, discordance, and tree support:
+      > /home/deren/Documents/ipyrad/tests/testdir/api.stats.txt
+      
+    Best tree inferred from the full SNP array:
+      > /home/deren/Documents/ipyrad/tests/testdir/api.full.tre
+      
+    Extended majority-rule consensus over bootstraps w/ support as edge lengths:
+      > /home/deren/Documents/ipyrad/tests/testdir/api.consensus.tre
+  
+    All bootstrap trees:
+      > /home/deren/Documents/ipyrad/tests/testdir/api.boots
         
     
          /-100.0, 33413_thamno
@@ -499,8 +495,8 @@ Alternatively, sample a subset of quartets
                        \100.0, 
                               \-100.0, 41478_cyathophylloides
     
-      * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
-      * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
+    * For tips on plotting trees in R: ipyrad.readthedocs.org/cookbook.html     
+    * For tips on citing this software: ipyrad.readthedocs.org/tetrad.html 
         
 
 Plot the resulting tree in R
@@ -511,14 +507,11 @@ a bit confusing, but is in fact a recommended way to store support
 values as it is more secure from being confused when trees are
 re-rooted.
 
+.. note::
+
+    The code below should be run in R to produce a tree plot
+
 .. code:: python
-
-    ## this command allows us to run R code in a Jupyter notebook.
-    %load_ext rpy2.ipython
-
-.. code:: python
-
-    %%R -w 500 -h 500
     
     ## load ape
     library(ape)
@@ -534,7 +527,7 @@ re-rooted.
 
 
 
-.. image:: cookbook-quartet-species-tree_files/cookbook-quartet-species-tree_17_0.png
+.. image:: images/cookbook-quartet-species-tree_17_0.png
 
 
 Introgression analysis from *tetrad* results
