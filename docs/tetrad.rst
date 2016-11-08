@@ -121,15 +121,11 @@ do 10 bootstrap replicates.
     Quartet inference from phylogenetic invariants
     Distributed as part of the ipyrad.analysis toolkit
     ----------------------------------------------------------------------  
-
-.. parsed-literal::    
     loading seq array [13 taxa x 173439 bp]
     max unlinked SNPs per quartet: 37581
     new Tetrad instance: pedictest
     local compute node: [4 cores] on tinus
   
-
-.. parsed-literal::      
     inferring 715 induced quartet trees
     [####################] 100%  initial tree | 0:00:18 |  
     running 10 bootstrap replicates
@@ -143,8 +139,6 @@ do 10 bootstrap replicates.
     [####################] 100%  boot 8       | 0:00:08 |  
     [####################] 100%  boot 9       | 0:00:08 |  
 
-
-.. parsed-literal::      
     Statistics for sampling, discordance, and tree support:
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.stats.txt
       
@@ -160,9 +154,11 @@ do 10 bootstrap replicates.
 
 
 .. parsed-literal::        
-                /-100.0, 33588_przewalskii
-         /100.0, 
-        |       \\-100.0, 32082_przewalskii
+            /-100.0, 33588_przewalskii
+     /100.0, 
+    |       \\-100.0, 32082_przewalskii
+
+
 
 .. parsed-literal::                
         |
