@@ -12,7 +12,6 @@ code below and you will be ready to go.
 
 Conda install
 -------------
-
 The easiest way to install ipyrad_ and all of its dependencies is with conda_,
 a command line program for installing Python packages. If you already have
 conda installed skip to the `ipyrad install`_ section below. Otherwise, follow
@@ -22,27 +21,22 @@ Conda comes in two flavors, anaconda_ and miniconda_. The only difference
 between the two is that anaconda_ installs a large suite of commonly used
 Python packages along with the base installer, whereas miniconda_ installs
 only a bare bones version that includes just the framework for installing
-new packages. We'll use miniconda for the example installation here.
+new packages. I recommend miniconda, and that's what we'll use here. 
 
-First, let's download the conda_ installer. There are separate installers for
-Linux and Mac, so follow the instructions below for the appropriate system.
-If you are working on an :ref:`HPC<HPC_installation>` us the Linux instructions.
+The code below includes a line that will download the conda_ installer. 
+Make sure you follow either the Linux or Mac instructions, whichever is 
+appropriate for your system. If you are working on an HPC cluster it is 
+almost certainly Linux.
 
-During installation you will be asked whether it can append the newly created
-miniconda/ (or anaconda/) directory to your $PATH, say **yes**. What this does
-is add a line to your **~/.bashrc** (or **~/.bash_profile on Mac**)
-file so that the anaconda directory becomes the default location to search
-for Python modules, and also so that it can find executables in this
-directory. If you find that setting this path
-interferes with any of your other software you can always comment out the appended
-line from **~/.bashrc**. However, the whole point of conda_ is to create
-unique environments in which software packages are protected from conflicting
-with each other, so if you run into problems it can likely be fixed by
-learning more about conda_.
+While conda is installing it will ask you to answer **yes** to a few questions. 
+This includes whether it can append the newly created miniconda/ (or anaconda/) 
+directory to your $PATH, say **yes**. What this does is add a line to your 
+**~/.bashrc** (or **~/.bash_profile on Mac**) file so that the software in your
+conda directory can be automatically found by the systems whenever you login. 
 
 
-Mac install of conda
-^^^^^^^^^^^^^^^^^^^^
+Mac install instructions for *conda*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -55,19 +49,18 @@ Mac install of conda
     ## When asked yes/no to append the miniconda directory to $PATH, say yes.
     bash Miniconda-latest-MacOSX-x86_64.sh
 
-    ## Now either quit and reopen the terminal, or run the following command
-    ## to reload your ~/.bash_profile so that miniconda will be in your path.
-    ## This is necessary so that the conda program can be found from the
-    ## terminal by simply typing conda. If a ~/.bash_profile does not exist
-    ## it might alternatively be named ~/.bashrc.
+    ## Now run the following command to reload your ~/.bash_profile so that 
+    ## miniconda will be in your path. This is necessary so that the conda 
+    ## program can be found from the terminal by simply typing conda. If a 
+    ## ~/.bash_profile does not exist it might alternatively be named ~/.bashrc.
     source ~/.bash_profile
 
     ## test that conda is installed. This will print info about your conda install.
     conda info
 
 
-Linux install of conda
-^^^^^^^^^^^^^^^^^^^^^^^
+Linux install instructions for conda
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -119,20 +112,39 @@ commands:
 
 .. _HPC_installation:
 
-HPC installation
------------------
-If you're working on an :ref:`HPC <HPC_installation>` system you can install
-conda_ into a locally owned directory (e.g., /home/user) without need for
-administrative privileges. This is useful because it then allows you to install
-and access ipyrad_ and all its dependencies (other Python modules and
-executables) locally, without needing to load them from the system-wide
-software. One drawback, however, is that there is sometimes a slight delay
-the first time ipyrad is called since the system has to search a large shared
-disk space to find your local conda directory.
+How does this work on a HPC cluster?
+------------------------------------
+If you're working on an HPC cluster you should still follow the exact same 
+instructions above to install conda_ into your local home directory 
+(e.g., /home/user). This does not require administrative privileges. In fact, 
+the whole point is to create a local repository for software that you control
+yourself, separate from the system-wide software. 
+
+This is useful because it then allows you to install and access ipyrad_ and all 
+its dependencies (other Python modules and executables), and to update them 
+yourself. Lot's of useful software is available on conda, which you can find 
+and install by googling conda and the software name. Beware, however, that your
+local version will not be optimized to the extent that system-wide software is, 
+and may thus run slower. This is not a problem for ipyrad, as it was written with
+this in mind. But for something like RAxML, you will be better off with a system
+installed version. 
 
 
-Included dependencies
-------------
+How do I ignore or remove conda?
+------------------------
+Conda is easy to remove if you ever decided that it was messed up in some way. 
+All of the software is located in the miniconda directory. You could remove it 
+all by using the command (but be careful that you have the path to the conda 
+directory entered correctly!) `rm -rf miniconda/`. Instead of removing it, however,
+I would say first that if you just want to just temporarily avoid using the 
+conda installed software then you can instead simply open the *.bashrc* file 
+in your home directory and comment out the line in that file that appends conda 
+to your PATH. Then run `source .bashrc` once again to reset the PATH. 
+Now your system will have totally forgotten about conda. 
+
+
+Included dependencies in ipyrad
+--------------------------------
 The conda_ installation will install the following required dependencies:
 
 **Python Packages**:
@@ -152,15 +164,16 @@ The conda_ installation will install the following required dependencies:
 
 * vsearch_ -- used for de novo clustering
 * muscle_ -- used for sequence alignment
-* smalt_ -- used for reference mapping
+* bwa_ -- used for reference mapping  
+* smalt_ -- alternatively can used for reference mapping
 * samtools_ -- used for reference mapping
 * bedtools_ -- used for reference mapping
 * hdf5_ -- used for large array storage/access
 * mpich_ -- used for parallelization (mpirun, mpiexec)
 
 
-Troubleshooting note
-------------
+Installation Troubleshooting note
+------------------------------------
 If after installing ipyrad via conda you are getting errors like this:
 
 .. code-block:: bash
