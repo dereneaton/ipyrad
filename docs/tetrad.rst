@@ -162,7 +162,9 @@ do 10 bootstrap replicates.
 .. parsed-literal::        
                 /-100.0, 33588_przewalskii
          /100.0, 
-        |       \-100.0, 32082_przewalskii
+        |       \\-100.0, 32082_przewalskii
+
+.. parsed-literal::                
         |
         |              /-100.0, 30686_cyathophylla
         |       /100.0, 
