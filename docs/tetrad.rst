@@ -121,11 +121,15 @@ do 10 bootstrap replicates.
     Quartet inference from phylogenetic invariants
     Distributed as part of the ipyrad.analysis toolkit
     ----------------------------------------------------------------------  
+
+.. parsed-literal::    
     loading seq array [13 taxa x 173439 bp]
     max unlinked SNPs per quartet: 37581
     new Tetrad instance: pedictest
     local compute node: [4 cores] on tinus
   
+
+.. parsed-literal::      
     inferring 715 induced quartet trees
     [####################] 100%  initial tree | 0:00:18 |  
     running 10 bootstrap replicates
@@ -138,7 +142,9 @@ do 10 bootstrap replicates.
     [####################] 100%  boot 7       | 0:00:08 |  
     [####################] 100%  boot 8       | 0:00:08 |  
     [####################] 100%  boot 9       | 0:00:08 |  
-  
+
+
+.. parsed-literal::      
     Statistics for sampling, discordance, and tree support:
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.stats.txt
       
@@ -151,7 +157,9 @@ do 10 bootstrap replicates.
     All bootstrap trees:
       > /home/deren/Documents/ipyrad/tests/testdir/pedictest.boots
           
-    
+
+
+.. parsed-literal::        
                 /-100.0, 33588_przewalskii
          /100.0, 
         |       \-100.0, 32082_przewalskii
@@ -279,7 +287,7 @@ access the underlying Class objects in Python or IPython. As you'll see below,
 this can be particularly nice because *ipyrad* has some additional tools for
 downstream analysis of the *tetrad* results. For example, *tetrad* saves
 information that can be used to calculate ABBA-BABA test results. For more information
-about using the *ipyrad* API `see this tutorial <http://ipyrad.readthedocs.io/tutorial-API.html>__.
+about using the *ipyrad* API `see this tutorial <http://ipyrad.readthedocs.io/tutorial-API.html>`__.
 
 If you are using the API then you must have an ipcluster instance
 started in order to parallelize your code. This can be started locally
