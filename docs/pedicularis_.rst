@@ -7,28 +7,24 @@
 Eaton & Ree (2013) single-end RAD data set
 ==========================================
 
-**This tutorial is in the process of being updated.**  
+Here we demonstrate a *denovo* assembly for an empirical RAD data set to 
+give a general idea of the results you might expect to recover. 
+This example was run on a 4-core laptop with 8GB RAM, and takes about 2.25 hours
+to run completely, showing that you do not need a super computer to assemble 
+many data sets. However, using more cores will improve the speed of ipyrad 
+approximately linearly, so if you have access to a large cluster go ahead and use it.
 
-Here we demonstrate a denovo assembly for an empirical RAD data set to 
-give a general idea of the typical results you might expect to recover 
-and typical run times. This example was run on a 4-core laptop with 8GB RAM, 
-and takes about 2.25 to run completely, showing that you do not need
-a super computer to assemble many data sets. However, using more cores 
-will improve the speed of ipyrad approximately linearly, so if you have 
-access to a large cluster go ahead and use it.
-
-We will use the 13 taxa *Pedicularis* data set from **Eaton and Ree (2013)**.
+We will use the 13 taxa *Pedicularis* data set from Eaton and Ree (2013) 
+(`open access link <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3739883/pdf/syt032.pdf>`__).
 This data set is composed of single-end 75bp reads from a RAD-seq library 
-prepared with the PstI enzyme for 13 individuals. The original paper is 
-available open-access: (:ref:`Eaton & Ree<eatonAndRee>`). 
-
-This data set also serves as an example for several of our **cookbook recipes** that 
-demonstrate downstream analyses methods. So after you finish this assembly head over
-there to check out fun ways to analyze the resulting data files.
+prepared with the PstI enzyme. This data set also serves as an example for several 
+of our `analysis cookbooks <http://ipyrad.readthedocs.io/analysis.html>`__ 
+that demonstrate methods for analyzing RAD-seq results. So after you finish this
+assembly head over there to check out fun ways to analyze the data. 
 
 
-Download the empirical example data set (*Pedicularis*)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Download the data set (*Pedicularis*)
+---------------------------------------
 These data are archived on the NCBI sequence read archive (SRA) under 
 accession id SRP021469. For convenience, the data are also hosted at a 
 public Dropbox link which is a bit easier to access. Run the code below to 
@@ -47,23 +43,25 @@ approximately 1.1GB.
 
 
 Setup a params file
-~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------
 Always start by using the ``-n {name}`` argument to create a new named Assembly. 
-I'll use the name ``base`` to indicate that this is the base assembly from which
+I'll use the name ``base`` to indicate this is the base assembly from which
 we will later create several branches. 
 
 .. code:: bash
 
     >>> ipyrad -n "base"
 
+This will print the message:
+
 .. parsed-literal::
     New file 'params-base.txt' created in /home/deren/tests
 
 
-The data come to us already demultiplexed so we are going to simply set the 
+In this case, the data come to us already demultiplexed so we are going to simply set the 
 **sorted\_fastq\_path** to tell ipyrad the location of the data files. You can 
 select multiple files at once using regular expressions, in this example we
-use an asterisk (`*.gz`) to select all files in the directory ending in .gz. We also
+use an asterisk (`*.gz`) to select all files in the directory ending in *.gz*. We also
 set a **project\_dir**, which is useful for grouping all our results into a single 
 directory. For this we'll use the name of our study organism, "pedicularis". 
 Take note when entering the values below into your params file that they 
@@ -77,7 +75,6 @@ correspond to parameters 1 and 4, respectively.
 
 
 For now we'll leave the remaining parameters at their default values. 
-.. See some of the cookbook recipes to see this data set assembled with other params. 
 
 
 Step 1: Load the fastq data
