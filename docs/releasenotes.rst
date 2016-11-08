@@ -7,29 +7,13 @@ Release Notes
 
 0.5.1
 -----
-- docs update
-- docs update
-- docs update
-- cosmetic changes
-- cosmetic changes
-- updating docs
-- updating docs
-- updating docs
-- updating docs
-- updating docs
-- updating docs
-- updating docs
-- updating docs
-- updating docs
-- added some tetrad docs
+- added tetrad docs
 - make tetrad work through API
 - added tetrad notebook
 
 0.5.0
 -----
 - Swap out smalt for bwa inside refmapping. Also removes reindexing of reference sequence on -f in step 3.
-- .
--  "Updating ipyrad/__init__.py to version - 0.4.9
 - fix for array error that was hitting in Ed's data, related to 2X count for merged reads. This is now removed.
 - bug fix for 4/4 entries in vcf when -N at variable site.
 - prettier printing of stats file

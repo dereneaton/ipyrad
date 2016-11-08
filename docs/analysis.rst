@@ -19,12 +19,12 @@ if using Jupyter with ipyrad.
 
 Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-+ `Intro to using Jupyter Notebook <HPC_Tunnel>`__
++ Intro to using Jupyter Notebook <HPC_Tunnel>`__
 + `setup SSH Tunneling to a HPC Cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
 
 *ipyrad* API Cookbooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
-+ `Intro to the ipyrad API <tutorial_API.html>`__  
++ Intro to the ipyrad API <tutorial_API.html>`__  
 + `Quantify and plot shared RAD data with ipyrad <visualize.html>`__    
 + `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__  
 + `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__  
@@ -32,7 +32,7 @@ Using Jupyter notebooks
 Downstream analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 + `tetrad quartet species tree inference <http://ipyrad.readthedocs.io/tetrad.html>`__  
-+ `BUCKy population tree inference parallelized <http://ipyrad.readthedocs.io/cookbook-bucky.html>`__  
-+ `ABBA BABA test for introgression <cookbook-dstats>`__    
-+ `PCA analysis of genetic structure <cookbook-PCA>`__  
-+ `STRUCTURE analysis of genetic structure parallelized <cookbook-structure>`__  
++ `BUCKy population tree inference parallelized <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
++ ABBA BABA test for introgression <cookbook-dstats>`__    
++ PCA analysis of genetic structure <cookbook-PCA>`__  
++ STRUCTURE analysis of genetic structure parallelized <cookbook-structure>`__  
