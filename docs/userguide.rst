@@ -24,25 +24,13 @@ Introductory tutorials
 ---------------------
 Start here to learn the basics. We run through an example simulated single-end 
 RAD-seq data set and give detailed descriptions of files and statistics 
-produced by each step of an assembly. 
+produced by each step of an assembly. Next, try some advanced methods, 
+like using branching to assemble data sets under a range of parameter settings, 
+and assemble data with respect to a reference genome.
 
-.. toctree::
-   :maxdepth: 1
-
-   tutorial_intro_cli.rst
-
-
-.. .. _advanced_tutorial:
-.. Advanced tutorials
-.. ----------------------
-Next, try some advanced methods, like using branching to
-assemble data sets under a range of parameter settings. Here we assemble a
-data set using both denovo and reference assembly methods.
-
-.. toctree::
-   :maxdepth: 1
-
-   tutorial_advanced_cli.rst
+   + `Introductory tutorial <tutorial_intro_cli.html>`__
+   + `Advanced tutorial <tutorial_intro_cli.html>`__   
+   + `Running on ipyrad on HPC <HPC_script.html>`__
 
 
 .. _empirical_example:
@@ -50,30 +38,16 @@ data set using both denovo and reference assembly methods.
 Empirical examples
 -----------------
 The following tutorials demonstrate assemblies of publicly available 
-empirical data sets representing different data types. 
-The first analysis (Eaton and Ree, 2013) can be assembled very quickly, 
-and is re-used in our analysis cookbook recipes, below. The others include
-tips for optimizing ipyrad for use with that data type. 
-
-.. toctree::
-    :maxdepth: 1
-
-    pedicularis_.rst
-    pairddrad_.rst
-    pairgbs_.rst
-    xxxpedicularis_cli.rst
+empirical data sets representing different data types. The first analysis 
+(Eaton and Ree, 2013) can be assembled very quickly, and is re-used in our 
+analysis cookbook recipes, below. The others include tips for optimizing 
+ipyrad for use with that data type. 
 
 
-Cookbook recipes
------------------
-Many more tutorials coming soon. 
+   + `Pedicularis (datatype=RAD) <pedicularis.html>`__  
+   + more coming soon...
 
-
-.. toctree::
-    :maxdepth: 1
-
-    HPC_script.rst
-    pedicularis_api.rst
-    viburnum.rst
-    cleaning_up_pairs.rst
+    .. pedicularis_api.rst
+    .. viburnum.rst
+    .. cleaning_up_pairs.rst
 
