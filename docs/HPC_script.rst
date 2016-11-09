@@ -47,7 +47,7 @@ progress more easily, but either way is fine.
 General notes on running ipyrad on HPC
 ---------------------------------------
 When running ipyrad on a cluster you should make sure to tell it explicitly how many 
-cores you plan to connect to with the `-c` flag, and also use the `--MPI` flag
+cores you plan to connect to with the ``-c`` flag, and also use the ``--MPI`` flag
 to allow it to efficiently access cores across multiple nodes. 
 
 
@@ -161,5 +161,5 @@ the system to wait a few minutes, and then the ipyrad command.
 
     ## Then run ipyrad like normal but with --ipcluster so it knows to look for 
     ## your specific ipcluster instance.
-    $ ipyrad -p params-test.txt -s 2 -c 48 --ipcluster
+    user@compute$ ipyrad -p params-test.txt -s 2 -c 48 --ipcluster
 

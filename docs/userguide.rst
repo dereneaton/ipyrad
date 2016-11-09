@@ -44,8 +44,10 @@ analysis cookbook recipes, below. The others include tips for optimizing
 ipyrad for use with that data type. 
 
 
-   + `Pedicularis (datatype=RAD) <pedicularis.html>`__  
+   + `Pedicularis CLI <pedicularis.html>`__  
+   + `see ipyrad API cookbooks <http://ipyrad.readthedocs.io/analysis.html>`__  
    + more coming soon...
+
 
     .. pedicularis_api.rst
     .. viburnum.rst
