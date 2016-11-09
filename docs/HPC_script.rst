@@ -8,37 +8,107 @@ Running ipyrad on a cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 High performance computing (HPC) clusters are accessible to most 
-users with University affiliations, providing cheap or free access
-to dozens or hundreds of computing cores, which is key for 
-assembling genomic data set quickly. The HPC software set up often varies 
-between different institutions but we provide here a general workflow 
-for running ipyrad on TORQUE systems, which are those that 
-use the ``qsub`` submission format. 
+users with a University affiliation. The HPC software set up often varies 
+among different institutions, so we provide here a general workflow 
+for running ipyrad on TORQUE or SLURM submission software.
 
-When you login to an HPC cluster you will be connected to a
-``login`` node, and from there you can submit ``jobs`` which 
-are sent to processing nodes. That's where the heavy computing happens.
-Here we show two ways to run ipyrad, interactively, and by submitting job
-scripts. If it's available, interactive jobs are easier to run, 
-but job scripts are usually better suited for very long running jobs. 
-I suggest that you start by trying interactive mode, since it
-is much better for trouble shooting.
+We designed ipyrad from the beginning to work seamlessly on HPC setups. This 
+begins with the fact that the software is installed locally (in your miniconda directory)
+and thus does not require you to locate or load any other software on the HPC system. 
+Secondly, ipyrad can distribute work across as many cores and nodes as you have 
+access to with just a few simple commands. 
 
-We've designed ipyrad to be very easy to run on HPC setups. 
-Because the software is installed locally (in your miniconda directory)
-you can simply call ipyrad the same as you would on your local
-machine. No need to ask you administrator to install the software
-globally, and no need to load software modules before running 
-ipyrad. 
 
-The first step to running ipyrad on an HPC is to connect 
-from your local terminal to 
-the HPC cluster, usually involving an `ssh` script. 
+Basics of HPC
+----------------
+The first step to doing work on a HPC cluster is to connect from your local 
+terminal to the HPC cluster using SSH.
 
 .. parsed-literal::
 
     ## connect to the login node from your computer
     >>> ssh user@address_of_HPC_cluster
+
+You will then be connected to the ``login``, which is *not* where you should run 
+ipyrad or any other software. It is just a landing point from which you can access
+your files on the system, and from where you should submit jobs to processing nodes.
+Jobs can be submitted using either the *sbatch* or *qsub* commands, depending on your
+system. Here we show two ways to run ipyrad, either interactively, or by submitting job
+scripts. If possible, I prefer interactive jobs because you can watch the 
+progress more easily, but either way is fine. 
+
+.. note::
+
+    After you master using HPC with simple submission scripts, check out our
+    `tutorials on using ipyrad in Jupyter Notebooks with SSH tunneling <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__, it's kind of advanced stuff, but a really effective way to run interactive 
+    code once you have it working. 
+
+
+General notes on running ipyrad on HPC
+---------------------------------------
+When running ipyrad on a cluster you should make sure to tell it explicitly how many 
+cores you plan to connect to with the `-c` flag, and also use the `--MPI` flag
+to allow it to efficiently access cores across multiple nodes. 
+
+
+Submitting job scripts
+----------------------
+Below is an example *qsub* script, which is used to submit jobs on a TORQUE system, 
+as well as an example *sbatch* script that is used to submit jobs on a SLURM system. 
+As you can see they're pretty similar. 
+
+
+.. parsed-literal::
+
+    #!/bin/sh
+
+    #PBS -N ipyrad
+    #PBS -j oe
+    #PBS -m ae
+    #PBS -M youremail@institution.edu
+    #PBS -q queue_name
+    #PBS -l nodes=2:ppn=8
+
+    ## change into your home dir, or a specific place from there
+    cd $PBS_O_WORKDIR/myanalysis/
+
+    ## call some ipyrad commands
+    ipyrad -p params-demux.txt -s 1 -c 16 --MPI
+    ipyrad -p params-test.txt -b newbranch
+    ipyrad -p params-newbranch.txt -s 2345 -c 16 --MPI
+    ipyrad -p params-newbranch.txt -r 
+
+
+.. parsed-literal::
+    ## submit the qsub script
+    >>> qsub qsub_script.sh
+
+
+And here is an example *sbatch* script:
+
+.. parsed-literal::
+
+    #!/bin/sh
+
+    #PBS -N ipyrad-test
+    #PBS -j oe
+    #PBS -m ae
+    #http://ipyrad.readthedocs.io/HPC_Tunnel.htmlPBS -M youremail@institution.edu
+    #PBS -q queue_name
+    #PBS -l nodes=8:ppn=8
+
+    ## change into whichever directory you which to run code from
+    cd $PBS_O_WORKDIR
+
+    ## call ipyrad on your params file
+    ipyrad -p params-test.txt -s 1 -c 64 --MPI
+
+
+.. parsed-literal::
+
+    ## submit the qsub script
+    >>> qsub qsub_script.sh
+
 
 
 Running interactive jobs
@@ -79,68 +149,10 @@ will access 64 cores spread across 8 8-core nodes.
     ## On SLURM systems the command is somewhat different.
     >>> srun -A lfg_lab -p serial -t 120:00:00 -N 1 -n 5 --pty --mem-per-cpu=6000 /bin/bash
 
-Submitting job scripts
-----------------------
-Because it sometimes takes a while to connect to an interactive
-node, it is common practice to instead submit scripts that will
-be run whenever the node becomes available. Here is an example
-qsub script that could make with a text editor and then 
-save with a name such as ``qsub_script.sh``:
-
-.. parsed-literal::
-
-    #!/bin/sh
-
-    #PBS -N ipyrad-test
-    #PBS -j oe
-    #PBS -m ae
-    #PBS -M youremail@institution.edu
-    #PBS -q queue_name
-    #PBS -l nodes=1:ppn=8
-
-    ## change into whichever directory you will run code from
-    cd $PBS_O_WORKDIR
-
-    ## call ipyrad on your params file
-    ipyrad -p params-test.txt -s 1 
 
 
-Then you submit this script to a queue with a qsub command such as:
-
-.. parsed-literal::
-
-    ## submit the qsub script
-    >>> qsub qsub_script.sh
-
-
-Here is another example script that would connect to more processors
-spread across multiple nodes:
-
-.. parsed-literal::
-
-    #!/bin/sh
-
-    #PBS -N ipyrad-test
-    #PBS -j oe
-    #PBS -m ae
-    #PBS -M youremail@institution.edu
-    #PBS -q queue_name
-    #PBS -l nodes=8:ppn=8
-
-    ## change into whichever directory you which to run code from
-    cd $PBS_O_WORKDIR
-
-    ## call ipyrad on your params file
-    ipyrad -p params-test.txt -s 1 -c 64 --MPI
-
-
-.. parsed-literal::
-
-    ## submit the qsub script
-    >>> qsub qsub_script.sh
-
-Running ipcluster by hand
--------------------------
+Optional: Running ipcluster by hand
+------------------------------------
 
 On some hpc compute nodes ipcluster does not spin up fast enough
 and ipyrad times out. To work around this it is possible to start
