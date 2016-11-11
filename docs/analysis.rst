@@ -31,8 +31,9 @@ Using Jupyter notebooks
 
 Downstream analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
++ `ML phylogenetic inference in RAxML <http://ipyrad.readthedocs.io/raxml.html>`__    
 + `tetrad quartet species tree inference <http://ipyrad.readthedocs.io/tetrad.html>`__  
-+ `BUCKy population tree inference parallelized <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
-+ ABBA BABA test for introgression <cookbook-dstats>`__    
++ `BUCKy population tree inference parallelized <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__  
++ ABBA BABA test for introgression <cookbook-dstats>`__     
 + PCA analysis of genetic structure <cookbook-PCA>`__  
 + STRUCTURE analysis of genetic structure parallelized <cookbook-structure>`__  
