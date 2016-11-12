@@ -579,14 +579,9 @@ Affected steps = 7. Example entries to params.txt
 --------------------
 Sometimes you can look at your demultiplexed data and see that there was a problem
 with the sequencing such that the cut site which should occur at the beginning of
-your reads is either offset by one or more bases, or contains many errors.
-If it is offset you can choose to trim off the extra bases by entering a number
-for how many bases to trim off. If you want to correct the sequences so that they
-do not contain errors, since they should all be the same sequence you can enter
-the sequence here. Default is 0, 0.
-For single end data only the first value is used, for paired data the first
-value affects R1s and the second value affects R2s.
-
+your reads is either offset by one or more bases, or contains many errors. You 
+can trim off N bases from the beginning of R1 and R2 reads during step 2 
+by setting the number of bases here. 
 
 Affected steps = 2. Example entries to params.txt
 
@@ -595,21 +590,23 @@ Affected steps = 2. Example entries to params.txt
     0, 0             ## [25] does nothing
     6, 0             ## [25] trims the first 6 bases from R1s
     6, 6             ## [25] trims the first 6 bases from R1s and R2s
-    TGCAG, 0         ## [25] replaces first 5 bases of R1s with TGCAG
 
 
 .. _trim_overhang:
 
 26. trim_overhang
 ------------------
-long description coming soon...
+Trim N bases from the edges of final aligned loci. This can be useful in denovo
+data sets in particular, where the 3' edge of reads is less well aligned than the
+5' edge, and thus error rates are sometimes higher at the ends of reads. 
 
-Affected steps = 2. Example entries to params.txt
+Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    1, 2, 2, 1           ## [26] example...
-
+    0,0,0,0        ## [26] no locus edge trimming
+    0,5,0,0        ## [26] trim 5 bases from right edge of R1 reads in locus
+    0,5,5,0        ## [26] trim 5 bases from right edge of R1 and left edge of R2
 
 
 .. _output_formats:

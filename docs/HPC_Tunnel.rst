@@ -150,3 +150,13 @@ open port (e.g., 8181). Then simply call 'kill' to terminate that process id.
     ## let's say it returned pid=31189. To kill it do the following:
     user@local$ kill 31189
 
+
+FAQS
+~~~~~~~~~~~~~~~~~~~~
+1. I'm seeing the error `channel 2: open failed: connect failed: Connection refused`
+when I try to connect locally.  
+
+This is likely because the PORT number you selected is in use. Try selecting a 
+different port. 
+
+

@@ -74,7 +74,7 @@ def get_quick_depths(data, sample):
         else:       
             tdepth += int(name.split(";")[-2][5:])
             tlen = len(seq)
-            
+     
     ## return    
     return np.array(maxlen), np.array(depths)
 

@@ -1278,6 +1278,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     #sindx = [list(anames).index(i) for i in snames]
 
     ## build arrays and outputs from arrays. 
+    ## TODO, don't block during make-arrays
     arrs = make_arrays(data, sidx, optim, nloci, io5, co5)
     seqarr, snparr, bisarr, maparr = arrs
 
