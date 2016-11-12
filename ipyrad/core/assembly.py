@@ -1655,7 +1655,8 @@ def paramschecker(self, param, newvalue):
             ## the multiplexed barcodes for 3rad. This seems
             ## a little annoying, but it was better than any
             ## alternatives I could think of.
-            if "3rad" in self.paramsdict['datatype']:
+            if "3rad" in self.paramsdict['datatype'] and not \
+            self.paramsdict['sorted_fastq_path'].strip():
                 self._link_barcodes()
 
     elif param == 'restriction_overhang':
