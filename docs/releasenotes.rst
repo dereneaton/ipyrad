@@ -5,6 +5,26 @@
 Release Notes
 =============
 
+0.5.2
+-----
+- Handle sample cleanup if the sample has no hidepth clusters.
+- Fix for declone_3rad on merged reads.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better support for 3rad lining presorted fastqs.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- bucky cookbook updated
+- docs update
+- docs update
+- dstat updates
+- docs update
+- docs update
+- docs update
+- docs update
+- docs update
+- docs updates
+- docs update
+- bucky cookbook uploaded
+
 0.5.1
 -----
 - added tetrad docs
