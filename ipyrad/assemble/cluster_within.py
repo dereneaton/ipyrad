@@ -95,7 +95,12 @@ def sample_cleanup(data, sample):
         ## max len is 4 greater than maxlen, to allow for pair separators.
         hidepths = depths >= data.paramsdict["mindepth_majrule"]
         maxlens = maxlens[hidepths]
-        maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+
+        ## Handle the case where there are no hidepth clusters
+        if maxlens.any():
+            maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+        else:
+            maxlen = 0
         if maxlen > data._hackersonly["max_fragment_length"]:
             data._hackersonly["max_fragment_length"] = maxlen + 4
 
