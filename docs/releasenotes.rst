@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.5.3
+-----
+- Catch sample names that don't match barcode names when importing demux'd pair data.
+- Serious errors now print to ipyrad_log.txt by default.
+
 0.5.2
 -----
 - Handle sample cleanup if the sample has no hidepth clusters.
