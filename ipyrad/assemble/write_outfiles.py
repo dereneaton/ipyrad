@@ -88,7 +88,7 @@ def run(data, samples, force, ipyclient):
     ## OPTIONAL OUTPUTS:
     ## held separate from *output_formats cuz it's big and parallelized 
     output_formats = data.paramsdict["output_formats"]
-    if 'V' or 'v' in output_formats:
+    if any([x in output_formats for x in ["v", "V"]]):
         full = "V" in output_formats
         make_vcf(data, samples, ipyclient, full=full)
 
