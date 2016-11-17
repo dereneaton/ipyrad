@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.5.5
+-----
+- Better handling for PE with loci that have some merged and some unmerged reads.
+- Allow other output formats to try to build if vcf fails.
+- Fixed bug that was forcing creation of the vcf even if it wasn't requested.
+
 0.5.4
 -----
 - More improved handling for low/no depth samples.
