@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.5.4
+-----
+- More improved handling for low/no depth samples.
+- Better handling for cleanup of samples with very few reads.
+
 0.5.3
 -----
 - Catch sample names that don't match barcode names when importing demux'd pair data.
