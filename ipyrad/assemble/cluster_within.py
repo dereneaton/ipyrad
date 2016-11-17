@@ -632,7 +632,14 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         ## store the result
         sample.stats_dfs.s3.filtered_bad_align = badaligns[sample]
         ## store all results
-        sample_cleanup(data, sample)
+        try:
+            sample_cleanup(data, sample)
+        except Exception as inst:
+            msg = """
+  Sample failed this step. See ipyrad_log.txt for details - {}
+""".format(sample.name)
+            print(msg)
+            LOGGER.error("{} - {}".format(sample.name, inst))
 
     ## store the results to data
     data_cleanup(data)
