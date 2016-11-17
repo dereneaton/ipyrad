@@ -86,6 +86,14 @@ def sample_cleanup(data, sample):
     ## get maxlen and depths array from clusters
     maxlens, depths = get_quick_depths(data, sample)
 
+    try:
+        depths.max()
+    except ValueError:
+        ## If depths is an empty array max() will raise
+        print("    no clusters found for {}".format(sample.name))
+        return
+
+    ## Test if depths is non-empty, but just full of zeros.
     if depths.max():
         ## store which min was used to calculate hidepth here
         sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
@@ -124,7 +132,11 @@ def sample_cleanup(data, sample):
             warnings.simplefilter("ignore", category=RuntimeWarning)
             sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
             sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
-            sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
+            try:
+                sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
+            except ValueError:
+                ## Handle clusters_hidepth == NaN
+                sample.stats_dfs.s3["clusters_hidepth"] = 0
             sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
             sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
             sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
@@ -133,7 +145,7 @@ def sample_cleanup(data, sample):
             sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
 
     else:
-        print("no clusters found for {}".format(sample.name))
+        print("    no clusters found for {}".format(sample.name))
 
     ## Get some stats from the bam files
     ## This is moderately hackish. samtools flagstat returns
@@ -141,8 +153,8 @@ def sample_cleanup(data, sample):
     ## of the first line, this call makes this assumption.
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
-    
-    
+
+
 
 def muscle_align(data, sample, chunk, maxindels):
     """ aligns reads, does split then aligning for paired reads """
