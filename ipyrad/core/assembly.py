@@ -1378,6 +1378,7 @@ def merge(name, assemblies):
             ## iterate over stats, skip 'state'
             if sample not in merged.samples:
                 merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
+                merged.barcodes[sample] = iterass.barcodes[sample]
             else:
                 ## merge stats and files of the sample
                 for stat in merged.stats.keys()[1:]:
