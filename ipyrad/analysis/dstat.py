@@ -303,7 +303,8 @@ def x_dol(pdf):
 
 
 def loci2pdf(loci, where=None, ntotal=None):
-    """ takes ms output file created using dfoil_sim.py and 
+    """ 
+    takes ms output file created using dfoil_sim.py and 
     creates a table of site counts similar to what the dfoil_sim.py
     script attempts to do, but correctly. 
 
@@ -361,6 +362,7 @@ def loci2pdf(loci, where=None, ntotal=None):
     handle = os.path.join(os.path.curdir, "dstat_%s.csv") % i
     lcounts.to_csv(handle, sep="\t")
     return lcounts
+
 
 
 def ms2loci(handle, maxlen=200):
