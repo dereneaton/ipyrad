@@ -5,6 +5,42 @@
 Release Notes
 =============
 
+0.5.5
+-----
+- Better handling for PE with loci that have some merged and some unmerged reads.
+- Allow other output formats to try to build if vcf fails.
+- Fixed bug that was forcing creation of the vcf even if it wasn't requested.
+
+0.5.4
+-----
+- More improved handling for low/no depth samples.
+- Better handling for cleanup of samples with very few reads.
+
+0.5.3
+-----
+- Catch sample names that don't match barcode names when importing demux'd pair data.
+- Serious errors now print to ipyrad_log.txt by default.
+
+0.5.2
+-----
+- Handle sample cleanup if the sample has no hidepth clusters.
+- Fix for declone_3rad on merged reads.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better support for 3rad lining presorted fastqs.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- bucky cookbook updated
+- docs update
+- docs update
+- dstat updates
+- docs update
+- docs update
+- docs update
+- docs update
+- docs update
+- docs updates
+- docs update
+- bucky cookbook uploaded
+
 0.5.1
 -----
 - added tetrad docs

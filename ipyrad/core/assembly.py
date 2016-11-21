@@ -1166,12 +1166,12 @@ class Assembly(object):
             print("\n  Keyboard Interrupt by user. Cleaning up...")
 
         except IPyradWarningExit as inst:
-            LOGGER.info("IPyradWarningExit: %s", inst)
+            LOGGER.error("IPyradWarningExit: %s", inst)
             print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}"\
                   .format(inst))
 
         except Exception as inst:
-            LOGGER.info(inst)
+            LOGGER.error(inst)
             print("\n  Encountered an unexpected error (see ./ipyrad_log.txt)"+\
                   "\n  Error message is below -------------------------------"+\
                   "\n{}".format(inst))
@@ -1378,6 +1378,7 @@ def merge(name, assemblies):
             ## iterate over stats, skip 'state'
             if sample not in merged.samples:
                 merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
+                merged.barcodes[sample] = iterass.barcodes[sample]
             else:
                 ## merge stats and files of the sample
                 for stat in merged.stats.keys()[1:]:
@@ -1655,7 +1656,8 @@ def paramschecker(self, param, newvalue):
             ## the multiplexed barcodes for 3rad. This seems
             ## a little annoying, but it was better than any
             ## alternatives I could think of.
-            if "3rad" in self.paramsdict['datatype']:
+            if "3rad" in self.paramsdict['datatype'] and not \
+            self.paramsdict['sorted_fastq_path'].strip():
                 self._link_barcodes()
 
     elif param == 'restriction_overhang':

@@ -86,6 +86,14 @@ def sample_cleanup(data, sample):
     ## get maxlen and depths array from clusters
     maxlens, depths = get_quick_depths(data, sample)
 
+    try:
+        depths.max()
+    except ValueError:
+        ## If depths is an empty array max() will raise
+        print("    no clusters found for {}".format(sample.name))
+        return
+
+    ## Test if depths is non-empty, but just full of zeros.
     if depths.max():
         ## store which min was used to calculate hidepth here
         sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
@@ -95,7 +103,12 @@ def sample_cleanup(data, sample):
         ## max len is 4 greater than maxlen, to allow for pair separators.
         hidepths = depths >= data.paramsdict["mindepth_majrule"]
         maxlens = maxlens[hidepths]
-        maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+
+        ## Handle the case where there are no hidepth clusters
+        if maxlens.any():
+            maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+        else:
+            maxlen = 0
         if maxlen > data._hackersonly["max_fragment_length"]:
             data._hackersonly["max_fragment_length"] = maxlen + 4
 
@@ -119,7 +132,11 @@ def sample_cleanup(data, sample):
             warnings.simplefilter("ignore", category=RuntimeWarning)
             sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
             sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
-            sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
+            try:
+                sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
+            except ValueError:
+                ## Handle clusters_hidepth == NaN
+                sample.stats_dfs.s3["clusters_hidepth"] = 0
             sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
             sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
             sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
@@ -128,7 +145,7 @@ def sample_cleanup(data, sample):
             sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
 
     else:
-        print("no clusters found for {}".format(sample.name))
+        print("    no clusters found for {}".format(sample.name))
 
     ## Get some stats from the bam files
     ## This is moderately hackish. samtools flagstat returns
@@ -136,8 +153,8 @@ def sample_cleanup(data, sample):
     ## of the first line, this call makes this assumption.
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
-    
-    
+
+
 
 def muscle_align(data, sample, chunk, maxindels):
     """ aligns reads, does split then aligning for paired reads """
@@ -210,6 +227,7 @@ def muscle_align(data, sample, chunk, maxindels):
                               """, aseqs[i], intindels1, intindels2, maxindels)
 
             except IndexError:
+                seqs = [i.replace('nnnn','') for i in seqs]
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(data, string1)
 
@@ -627,7 +645,14 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         ## store the result
         sample.stats_dfs.s3.filtered_bad_align = badaligns[sample]
         ## store all results
-        sample_cleanup(data, sample)
+        try:
+            sample_cleanup(data, sample)
+        except Exception as inst:
+            msg = """
+  Sample failed this step. See ipyrad_log.txt for details - {}
+""".format(sample.name)
+            print(msg)
+            LOGGER.error("{} - {}".format(sample.name, inst))
 
     ## store the results to data
     data_cleanup(data)
@@ -760,9 +785,10 @@ def declone_3rad(data, sample):
                 except StopIteration:
                     break
     
-                ## Split on +, get [1], split on "_r1 and get [0] for the i5
+                ## Split on +, get [1], split on "_" (can be either _r1 or
+                ## _m1 if merged reads) and get [0] for the i5
                 ## prepend "EEEEEEEE" as qscore for the adapters
-                i5 = read[0].split("+")[1].split("_r1")[0]
+                i5 = read[0].split("+")[1].split("_")[0]
 
                 ## If any non ACGT in the i5 then drop this sequence
                 if 'N' in i5:

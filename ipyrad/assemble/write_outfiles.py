@@ -86,11 +86,19 @@ def run(data, samples, force, ipyclient):
     make_loci_and_stats(data, samples, ipyclient)
 
     ## OPTIONAL OUTPUTS:
-    ## held separate from *output_formats cuz it's big and parallelized 
     output_formats = data.paramsdict["output_formats"]
-    if 'V' or 'v' in output_formats:
+
+    ## held separate from *output_formats cuz it's big and parallelized 
+    if any([x in output_formats for x in ["v", "V"]]):
         full = "V" in output_formats
-        make_vcf(data, samples, ipyclient, full=full)
+        try:
+            make_vcf(data, samples, ipyclient, full=full)
+        except IPyradWarningExit as inst:
+            ## Something fsck vcf build. Sometimes this is simply a memory
+            ## issue, so trap the exception and allow it to try building
+            ## the other output formats.
+            print("  Error building vcf. See ipyrad_log.txt for details.")
+            LOGGER.error(inst)
 
     ## make other array-based formats, recalcs keeps and arrays
     make_outfiles(data, samples, output_formats, ipyclient)
