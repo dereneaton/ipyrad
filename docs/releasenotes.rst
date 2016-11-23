@@ -7,6 +7,10 @@ Release Notes
 
 0.5.6
 -----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
 
 0.5.6
 -----
