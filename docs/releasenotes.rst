@@ -7,6 +7,9 @@ Release Notes
 
 0.5.6
 -----
+
+0.5.6
+-----
 - notebook testing
 - purge after each step to avoid memory spillover/buildup
 - better handling of memory limits in vcf build. Now producing geno output files. Better error reporting when building output files
