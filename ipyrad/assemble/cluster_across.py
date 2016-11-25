@@ -102,6 +102,7 @@ def muscle_align_across(data, samples, chunk):
                     indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
 
             else:
+                seqs = [i.replace('nnnn','') for i in seqs]
                 string1 = muscle_call(data, names, seqs)
                 anames, aseqs = parsemuscle(data, string1)
                 ## aseqs is the length of the data
