@@ -1666,7 +1666,7 @@ def make_vcf(data, samples, ipyclient, full=0):
         for job in keys:
             if not vasyncs[job].successful():
                 ## raise exception
-                LOGGER.error(job.exception())
+                LOGGER.error(vasyncs[job].exception())
                 raise IPyradWarningExit(" error in vcf build chunk {}: {}"\
                                        .format(job, vasyncs[job].exception()))
             else:
@@ -1901,19 +1901,21 @@ def vcfchunk(data, optim, sidx, start, full):
     else:
         writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
 
-    np.savetxt(writer,
-                np.concatenate((cols01[:tot, :].astype("S"),
-                    np.array([["."]]*tot, dtype="S1"),
-                    cols34[:tot, :],
-                    np.array([["13", "PASS"]]*tot, dtype="S4"),
-                    cols7[:tot, :],
-                    np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
-                    cols9up[:tot, :],
-                    ),
-                    axis=1),
-                delimiter="\t", fmt="%s")
-
-
+    try:
+        np.savetxt(writer,
+                    np.concatenate((cols01[:tot, :].astype("S"),
+                        np.array([["."]]*tot, dtype="S1"),
+                        cols34[:tot, :],
+                        np.array([["13", "PASS"]]*tot, dtype="S4"),
+                        cols7[:tot, :],
+                        np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
+                        cols9up[:tot, :],
+                        ),
+                        axis=1),
+                    delimiter="\t", fmt="%s")
+    except ValueError as inst:
+        LOGGER.error("Error building vcf - {}".format(inst))
+        raise
 
 @numba.jit(nopython=True)
 def reftrick(iseq, consdict):
