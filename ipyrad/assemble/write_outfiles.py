@@ -1953,7 +1953,6 @@ def vcfchunk(data, optim, sidx, start, full):
     os.remove(tmph)
 
 
-
 @numba.jit(nopython=True)
 def reftrick(iseq, consdict):
     """ Returns the most common base at each site in order. """
