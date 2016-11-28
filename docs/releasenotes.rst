@@ -5,6 +5,15 @@
 Release Notes
 =============
 
+0.5.8
+-----
+- improved progress bar
+- merge fix
+- notebook testing geno build
+- Fix to memory handling on vcf build, can now handle thousands of taxa. Also, now saves filepaths to json and API object.
+- progres on dstats package
+- More progress on manuscript horserace. Analysis is done, now mostly working on gathering results.
+
 0.5.7
 -----
 - Fix error handing during writing of vcf file.
