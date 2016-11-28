@@ -1262,21 +1262,18 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     directory.
     """
 
-    ## load the h5 database
-    io5 = h5py.File(data.clust_database, 'r')
-    co5 = h5py.File(data.database, 'r')
-
     ## will iterate optim loci at a time
-    optim = io5["seqs"].attrs["chunksize"][0]
-    nloci = io5["seqs"].shape[0]
+    with h5py.File(data.clust_database, 'r') as io5:
+        optim = io5["seqs"].attrs["chunksize"][0]
+        nloci = io5["seqs"].shape[0]
 
-    ## get name and snp padding
-    anames = io5["seqs"].attrs["samples"]
-    snames = [i.name for i in samples]
-    ## get only snames in this data set sorted in the order they are in io5
-    names = [i for i in anames if i in snames]
-    pnames, _ = padnames(names)
-    #pnames.sort()
+        ## get name and snp padding
+        anames = io5["seqs"].attrs["samples"]
+        snames = [i.name for i in samples]
+        ## get only snames in this data set sorted in the order they are in io5
+        names = [i for i in anames if i in snames]
+        pnames, _ = padnames(names)
+        #pnames.sort()
 
     ## get names boolean
     sidx = np.array([i in snames for i in anames])
@@ -1285,16 +1282,29 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## get names index in order of pnames
     #sindx = [list(anames).index(i) for i in snames]
 
-    ## build arrays and outputs from arrays.
-    ## TODO, parallelize make-arrays
-    arrs = make_arrays(data, sidx, optim, nloci, io5, co5)
-    seqarr, snparr, bisarr, maparr = arrs
-
     ## send off outputs as parallel jobs
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     results = []
 
+    ## build arrays and outputs from arrays.
+    arsync = lbview.apply(make_arrays, *(data, sidx, optim, nloci))
+
+    ## wait for finished make_arrays, this prog bar should prob be INSIDE
+    ## make_arrays so it can actually track something...
+    while 1:
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(1, 0, " building arrays       | {} | s7 |".format(elapsed))
+        if arsync.ready():
+            progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
+            break
+        time.sleep(0.1)            
+    print("")
+
+    ## TODO, parallelize make-arrays
+    seqarr, snparr, bisarr, maparr = arsync.result()
+
+    start = time.time()
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "p" in output_formats:
         data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
@@ -1339,18 +1349,12 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## wait for finished outfiles
     while 1:
         readies = [i.ready() for i in results]
-        if not all(readies):
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(readies), sum(readies),
-                " writing outfiles      | {} | s7 |".format(elapsed))
-            time.sleep(0.1)
-        else:
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(len(readies), sum(readies),
+            " writing outfiles      | {} | s7 |".format(elapsed))
+        time.sleep(0.1)
+        if all(readies):
             break
-
-    ## final progress bar
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 20, " writing outfiles      | {} | s7 |".format(elapsed))
-    #if data._headers:
     print("")
 
     ## check for errors
@@ -1359,19 +1363,18 @@ def make_outfiles(data, samples, output_formats, ipyclient):
             print("  Warning: error encountered while writing an outfile: {}".format(async.exception()))
             LOGGER.error("  Warning: error in writing outfile: %s", async.exception())
 
-    ## close h5 handle
-    io5.close()
-
-
-
 
 
 ## TODO: use view(np.uint8) and compile loop as numba func
-def make_arrays(data, sidx, optim, nloci, io5, co5):
+def make_arrays(data, sidx, optim, nloci):
     """
     Builds arrays for seq, snp, and bis data after applying locus filters,
     and edge filteres for the seq data. These arrays are used to build outs.
     """
+
+    ## load the h5 database
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r')
 
     ## make empty arrays for filling
     maxlen = data._hackersonly["max_fragment_length"] + 20
@@ -1397,10 +1400,10 @@ def make_arrays(data, sidx, optim, nloci, io5, co5):
     totloc = 0
     while start < nloci:
         hslice = [start, start+optim]
-        afilt = co5["filters"][hslice[0]:hslice[1], ...]
-        aedge = co5["edges"][hslice[0]:hslice[1], ...]
-        asnps = co5["snps"][hslice[0]:hslice[1], ...]
-        aseqs = io5["seqs"][hslice[0]:hslice[1], sidx, ...]
+        afilt = co5["filters"][hslice[0]:hslice[1], :]
+        aedge = co5["edges"][hslice[0]:hslice[1], :]
+        asnps = co5["snps"][hslice[0]:hslice[1], :]
+        aseqs = io5["seqs"][hslice[0]:hslice[1], sidx, :]
 
         ## which loci passed all filters
         keep = np.where(np.sum(afilt, axis=1) == 0)[0]
