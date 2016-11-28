@@ -1297,34 +1297,42 @@ def make_outfiles(data, samples, output_formats, ipyclient):
 
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "p" in output_formats:
+        data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
         async = lbview.apply(write_phy, *[data, seqarr, sidx, pnames])
         results.append(async)
 
     ## nexus format includes ... additional information ({}.nex)
     if "n" in output_formats:
+        data.outfiles.nexus = os.path.join(data.dirs.outfiles, data.name+".nex")
         async = lbview.apply(write_nex, *[data, seqarr, sidx, pnames])
         results.append(async)
 
     ## snps is actually all snps written in phylip format ({}.snps.phy)
     if "s" in output_formats:
+        data.outfiles.snpsmap = os.path.join(data.dirs.outfiles, data.name+".snps.map")
+        data.outfiles.snpsphy = os.path.join(data.dirs.outfiles, data.name+".snps.phy")
         async = lbview.apply(write_snps, *[data, snparr, sidx, pnames])
         results.append(async)
-        write_snps_map(data, maparr)
+        async = lbview.apply(write_snps_map, *(data, maparr))
+        results.append(async)
 
     ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
     if "u" in output_formats:
+        data.outfiles.usnpsphy = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
         async = lbview.apply(write_usnps, *[data, bisarr, sidx, pnames])
         results.append(async)
 
     ## str and ustr are for structure analyses. A fairly outdated format, six
     ## columns of empty space. Full and subsample included ({}.str, {}.u.str)
     if "k" in output_formats:
+        data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
         async = lbview.apply(write_str, *[data, snparr, bisarr, sidx, pnames])
         results.append(async)
 
     ## geno output is for admixture and other software. We include all SNPs,
     ## but also a .map file which has "distances" between SNPs.
     if 'g' in output_formats:
+        data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
         async = lbview.apply(write_geno, *[data, snparr, bisarr, sidx, pnames])
         results.append(async)
 
@@ -1499,7 +1507,6 @@ def write_nex(data, seqarr, sidx, pnames):
 ## TODO: this could have much more information for reference aligned data
 def write_snps_map(data, maparr):
     """ write a map file with linkage information for SNPs file"""
-    data.outfiles.snpsmap = os.path.join(data.dirs.outfiles, data.name+".snps.map")
     with open(data.outfiles.snpsmap, 'w') as out:
         for idx in range(maparr.shape[0]):
             line = maparr[idx, :]
@@ -1659,28 +1666,43 @@ def make_vcf(data, samples, ipyclient, full=0):
         vasyncs[init] = lbview.apply(vcfchunk, *(data, optim, sidx, init, full))
         total += 1
 
-    ## wait and show progress bar
-    while 1:
-        keys = [i for (i, j) in vasyncs.items() if j.ready()]
-        ## check for failures
-        for job in keys:
-            if not vasyncs[job].successful():
-                ## raise exception
-                LOGGER.error(job.exception())
-                raise IPyradWarningExit(" error in vcf build chunk {}: {}"\
-                                       .format(job, vasyncs[job].exception()))
-            else:
-                ## free up memory
-                del vasyncs[job]
+    ## tmp files get left behind and intensive processes are left running when a
+    ## a job is killed/interrupted during vcf build, so we try/except wrap.
+    try:
+        while 1:
+            keys = [i for (i, j) in vasyncs.items() if j.ready()]
+            ## check for failures
+            for job in keys:
+                if not vasyncs[job].successful():
+                    ## raise exception
+                    LOGGER.error(vasyncs[job].exception())
+                    raise IPyradWarningExit(" error in vcf build chunk {}: {}"\
+                                         .format(job, vasyncs[job].exception()))
+                else:
+                    ## free up memory
+                    del vasyncs[job]
 
-        finished = total - len(vasyncs) #sum([i.ready() for i in vasyncs.values()])
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(total, finished,
-                " building vcf file     | {} | s7 |".format(elapsed))
-        time.sleep(0.5)
-        if not vasyncs:
-            break
-    print("")
+            finished = total - len(vasyncs) #sum([i.ready() for i in vasyncs.values()])
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(total, finished,
+                    " building vcf file     | {} | s7 |".format(elapsed))
+            time.sleep(0.5)
+            if not vasyncs:
+                break
+        print("")
+
+    except Exception as inst:
+        ## make sure all future jobs are aborted
+        for job in keys:
+            vasyncs[job].abort()
+            vasyncs[job].cancel()
+        ## make sure all tmp files are destroyed
+        vcfchunks = glob.glob(os.path.join(data.dirs.outfiles, "*.vcf.[0-9]*"))
+        h5chunks = glob.glob(os.path.join(data.dirs.outfiles, ".tmp.[0-9]*.h5"))
+        for dfile in vcfchunks+h5chunks:
+            os.remove(dfile)
+        ## reraise the error
+        raise inst
 
 
     ## writing full vcf file to disk
@@ -1781,7 +1803,12 @@ def vcfchunk(data, optim, sidx, start, full):
     cols01 = np.zeros((nrows, 2), dtype=np.uint32)
     cols34 = np.zeros((nrows, 2), dtype="S3")
     cols7 = np.zeros((nrows, 1), dtype="S20")
-    cols9up = np.zeros((nrows, sum(sidx)), dtype="S20")
+    ## when nsamples is high this blows up memory (e.g., dim=(5M x 500))
+    ## so we'll instead create a list of arrays with 10 samples at a time.
+    ## maybe later replace this with a h5 array
+    tmph = os.path.join(data.dirs.outfiles, ".tmp.{}.h5".format(hslice[0]))
+    htmp = h5py.File(tmph, 'a')
+    htmp.create_dataset("vcf", shape=(nrows, sum(sidx)), dtype="S20")
 
     ## which loci passed all filters
     init = 0
@@ -1810,7 +1837,7 @@ def vcfchunk(data, optim, sidx, start, full):
                 seq = seq[:, snpidx]
                 catg = catg[:, snpidx]
 
-        ##
+        ## empty arrs to fill
         alleles = np.zeros((nrows, 4), dtype=np.uint8)
         genos = np.zeros((seq.shape[1], sum(sidx)), dtype="S4")
         genos[:] = "./.:"
@@ -1874,12 +1901,17 @@ def vcfchunk(data, optim, sidx, start, full):
 
         ## build geno+depth strings
         ## for each taxon enter 4 catg values
+        fulltmp = np.zeros((seq.shape[1], catg.shape[0]), dtype="S20")
         for cidx in xrange(catg.shape[0]):
             ## fill catgs from catgs
             tmp0 = [str(i.sum()) for i in catg[cidx]]
             tmp1 = [",".join(i) for i in catg[cidx].astype("S4").tolist()]
             tmp2 = ["".join(i+j+":"+k) for i, j, k in zip(genos[:, cidx], tmp0, tmp1)]
-            cols9up[init:init+seq.shape[1], cidx] = tmp2
+            ## fill tmp allcidx
+            fulltmp[:, cidx] = tmp2
+
+        ## write to h5 for this locus
+        htmp["vcf"][init:init+seq.shape[1], :] = fulltmp
 
         cols34[init:init+seq.shape[1], 0] = alleles[:, 0].view("S1")
         cols34[init:init+seq.shape[1], 1] = [",".join([j for j in i if j]) \
@@ -1892,32 +1924,39 @@ def vcfchunk(data, optim, sidx, start, full):
     withdat = cols01[:, 0] != 0
     tot = withdat.sum()
 
-    ## TODO: it would be faster to have each of these engines gzip print
+    ## TODO: IF GZIPPING, it would be faster to have each of these engines gzip print
     ## the full string to file so we can just cat them later, this way
     ## gzipping will be parallelized, though on serial writing machines
     ## we'll suffer some slowdown from engines fighting to write to disk.
     if not full:
-        writer = open(data.outfiles.vcf+".{}".format(start), 'w')
+        writer = open(data.outfiles.vcf+".{}".format(start), 'a')
     else:
-        writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
+        writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'a')
 
-    np.savetxt(writer,
-                np.concatenate((cols01[:tot, :].astype("S"),
-                    np.array([["."]]*tot, dtype="S1"),
-                    cols34[:tot, :],
-                    np.array([["13", "PASS"]]*tot, dtype="S4"),
-                    cols7[:tot, :],
-                    np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
-                    cols9up[:tot, :],
+    ## write in iterations b/c it can be freakin huge.
+    inc = 1000
+    for chunk in xrange(0, tot, inc):
+        np.savetxt(writer,
+                    np.concatenate(
+                       (cols01[chunk:chunk+inc, :].astype("S"),
+                        np.array([["."]]*inc, dtype="S1"),
+                        cols34[chunk:chunk+inc, :],
+                        np.array([["13", "PASS"]]*inc, dtype="S4"),
+                        cols7[chunk:chunk+inc, :],
+                        np.array([["GT:DP:CATG"]]*inc, dtype="S10"),
+                        htmp["vcf"][chunk:chunk+inc, :],
                     ),
                     axis=1),
                 delimiter="\t", fmt="%s")
+    ## remove tmp arrays
+    htmp.close()
+    os.remove(tmph)
 
 
 
 @numba.jit(nopython=True)
 def reftrick(iseq, consdict):
-    """ make a numba compiled replacement for fakeref """
+    """ Returns the most common base at each site in order. """
 
     altrefs = np.zeros((iseq.shape[1], 4), dtype=np.uint8)
     altrefs[:, 1] = 46
