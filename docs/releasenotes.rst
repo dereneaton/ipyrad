@@ -5,6 +5,9 @@
 Release Notes
 =============
 
+0.5.9
+-----
+
 0.5.8
 -----
 - improved progress bar
