@@ -876,10 +876,12 @@ def get_edges(data, superints, splits):
     ## Cuts 3 and 4 are only for 3rad/radcap
     ## TODO: This is moderately hackish, it's not using cut3/4
     ## correctly, just assuming the length is the same as cut1/2
-    if "3rad" in data.paramsdict["datatype"]:
+    try:
         cut1, cut2, _, _ = data.paramsdict["restriction_overhang"]
-    else:
+        LOGGER.debug("Found 3Rad cut sites")
+    except ValueError:
         cut1, cut2 = data.paramsdict["restriction_overhang"]
+
     cuts = np.array([len(cut1), len(cut2)], dtype=np.int16)
 
     ## a local array for storing edge trims
