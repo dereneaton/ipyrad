@@ -1298,7 +1298,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         if arsync.ready():
             progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
             break
-        time.sleep(0.1)            
+        time.sleep(0.1)
     print("")
 
     ## TODO, parallelize make-arrays

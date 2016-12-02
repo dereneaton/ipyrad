@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 
-""" 
-de-replicates edit files and clusters de-replciated reads 
+"""
+de-replicates edit files and clusters de-replciated reads
 by sequence similarity using vsearch
 """
 
@@ -29,7 +29,7 @@ import warnings
 import networkx as nx
 
 from refmap import *
-from util import * 
+from util import *
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -41,28 +41,28 @@ def get_quick_depths(data, sample):
     ## set cluster file handles
     sample.files.clusters = os.path.join(
                                 data.dirs.clusts, sample.name+".clustS.gz")
-    
-    ## get new clustered loci 
+
+    ## get new clustered loci
     fclust = data.samples[sample.name].files.clusters
     clusters = gzip.open(fclust, 'r')
     pairdealer = itertools.izip(*[iter(clusters)]*2)
-    
+
     ## storage
     depths = []
     maxlen = []
-    
+
     ## start with cluster 0
     tdepth = 0
     tlen = 0
-    
+
     ## iterate until empty
     while 1:
-        ## grab next 
+        ## grab next
         try:
-            name, seq = pairdealer.next() 
+            name, seq = pairdealer.next()
         except StopIteration:
             break
-        
+
         ## if not the end of a cluster
         #print name.strip(), seq.strip()
         if name.strip() == seq.strip():
@@ -70,19 +70,19 @@ def get_quick_depths(data, sample):
             maxlen.append(tlen)
             tlen = 0
             tdepth = 0
-        
-        else:       
+
+        else:
             tdepth += int(name.split(";")[-2][5:])
             tlen = len(seq)
-     
-    ## return    
+
+    ## return
     return np.array(maxlen), np.array(depths)
 
 
 
 def sample_cleanup(data, sample):
     """ stats, cleanup, and link to samples """
-    
+
     ## get maxlen and depths array from clusters
     maxlens, depths = get_quick_depths(data, sample)
 
@@ -97,9 +97,9 @@ def sample_cleanup(data, sample):
     if depths.max():
         ## store which min was used to calculate hidepth here
         sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
-        
+
         ## If our longest sequence is longer than the current max_fragment_length
-        ## then update max_fragment_length. For assurance we require that 
+        ## then update max_fragment_length. For assurance we require that
         ## max len is 4 greater than maxlen, to allow for pair separators.
         hidepths = depths >= data.paramsdict["mindepth_majrule"]
         maxlens = maxlens[hidepths]
@@ -113,7 +113,7 @@ def sample_cleanup(data, sample):
             data._hackersonly["max_fragment_length"] = maxlen + 4
 
         ## make sense of stats
-        keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]    
+        keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]
         keepstat = depths[depths >= data.paramsdict["mindepth_statistical"]]
 
         ## sample summary stat assignments
@@ -127,7 +127,7 @@ def sample_cleanup(data, sample):
 
         ## sample stat assignments
         ## Trap numpy warnings ("mean of empty slice") printed by samples
-        ## with few reads. 
+        ## with few reads.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
@@ -171,7 +171,7 @@ def muscle_align(data, sample, chunk, maxindels):
         LOGGER.debug("skipping empty chunk - %s", handle)
         return 0
 
-    LOGGER.debug("aligning chunk %s", handle)        
+    LOGGER.debug("aligning chunk %s", handle)
     ## storage and a counter for discarded clusters due to poor alignment
     out = []
     highindels = 0
@@ -193,7 +193,7 @@ def muscle_align(data, sample, chunk, maxindels):
         else:
             ## split seqs if paired end seqs
             try:
-                seqs1 = [i.split("nnnn")[0] for i in seqs] 
+                seqs1 = [i.split("nnnn")[0] for i in seqs]
                 seqs2 = [i.split("nnnn")[1] for i in seqs]
                 ## muscle align
                 string1 = muscle_call(data, names[:200], seqs1[:200])
@@ -201,13 +201,13 @@ def muscle_align(data, sample, chunk, maxindels):
                 ## resort so they're in same order as original
                 anames, aseqs1 = parsemuscle(data, string1)
                 anames, aseqs2 = parsemuscle(data, string2)
-                ## get leftlimit of seed, no hits can go left of this 
+                ## get leftlimit of seed, no hits can go left of this
                 ## this can save pairgbs from garbage
                 idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
                 leftlimit = min(0, idxs)
                 aseqs1 = [i[leftlimit:] for i in aseqs1]
                 ## preserve order in ordereddict
-                aseqs = zip(aseqs1, aseqs2) 
+                aseqs = zip(aseqs1, aseqs2)
 
                 ## append to somedic if not bad align
                 for i in xrange(len(anames)):
@@ -231,8 +231,8 @@ def muscle_align(data, sample, chunk, maxindels):
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(data, string1)
 
-                ## Get left and right limits, no hits can go outside of this. 
-                ## This can save gbs overlap data significantly. 
+                ## Get left and right limits, no hits can go outside of this.
+                ## This can save gbs overlap data significantly.
                 if 'gbs' in data.paramsdict['datatype']:
 
                     ## do not allow any indels left of seed's left side
@@ -263,7 +263,7 @@ def muscle_align(data, sample, chunk, maxindels):
 
                 badalign = 0
                 for i in range(len(anames)):
-                    ## filter for max internal indels 
+                    ## filter for max internal indels
                     intind = aseqs[i].rstrip('-').lstrip('-').count('-')
                     if intind <= maxindels:
                         stack.append("{}\n{}".format(anames[i], aseqs[i]))
@@ -289,8 +289,8 @@ def muscle_align(data, sample, chunk, maxindels):
 
 
 def parsemuscle(data, out):
-    """ 
-    parse muscle string output into two *sorted* lists. 
+    """
+    parse muscle string output into two *sorted* lists.
     """
     ## remove '>' and split lines
     lines = out[1:].split("\n>")
@@ -300,7 +300,7 @@ def parsemuscle(data, out):
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
     tups = zip(names, seqs)
     ## who knew, zip(*) is the inverse of zip
-    anames, aseqs = zip(*sorted(tups, 
+    anames, aseqs = zip(*sorted(tups,
                         key=lambda x: int(x[0].split(";")[-1][1:])))
     ## remove reference if present
     if "_REF;+0" in anames[0]:
@@ -311,9 +311,9 @@ def parsemuscle(data, out):
 
 
 def muscle_call(data, names, seqs):
-    """ 
-    Makes subprocess call to muscle. A little faster than before. 
-    TODO: Need to make sure this works on super large strings and does not 
+    """
+    Makes subprocess call to muscle. A little faster than before.
+    TODO: Need to make sure this works on super large strings and does not
     overload the PIPE buffer.
     """
 
@@ -321,7 +321,7 @@ def muscle_call(data, names, seqs):
     inputstr = "\n".join(["{}\n{}".format(i, j) for i, j in zip(names, seqs)])
     cmd = [ipyrad.bins.muscle, "-quiet"]
 
-    ## increase gap penalty if reference region is included 
+    ## increase gap penalty if reference region is included
     ## This could use more testing/refining!
     if "_REF;+0" in names:
         cmd += ["-gapopen", "-1200"]
@@ -334,14 +334,14 @@ def muscle_call(data, names, seqs):
 
 
 def build_clusters(data, sample, maxindels):
-    """ 
-    Combines information from .utemp and .htemp files to create .clust files, 
-    which contain un-aligned clusters. Hits to seeds are only kept in the 
-    cluster if the number of internal indels is less than 'maxindels'. 
+    """
+    Combines information from .utemp and .htemp files to create .clust files,
+    which contain un-aligned clusters. Hits to seeds are only kept in the
+    cluster if the number of internal indels is less than 'maxindels'.
     By default, we set maxindels=6 for this step (within-sample clustering).
     """
 
-    ## derepfile 
+    ## derepfile
     derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
     ## vsearch results files
@@ -349,7 +349,7 @@ def build_clusters(data, sample, maxindels):
     usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
 
-    ## create an output file to write clusters to        
+    ## create an output file to write clusters to
     sample.files.clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
     clustsout = gzip.open(sample.files.clusters, 'wb')
 
@@ -411,7 +411,7 @@ def build_clusters(data, sample, maxindels):
             if ori == "-":
                 seq = comp(seq)[::-1]
             ## only save if not too many indels
-            if int(ind) <= maxindels:                
+            if int(ind) <= maxindels:
                 fseqs.append(">{}{}\n{}".format(hit, ori, seq))
             else:
                 LOGGER.info("filtered by maxindels: %s %s", ind, seq)
@@ -443,7 +443,7 @@ def build_clusters(data, sample, maxindels):
             ## append to list if new seed
             if nnn[1:] not in seedsseen:
                 seqlist.append("{}*\n{}".format(nnn, alldereps[nnn[1:]]))
-                seqsize += 1            
+                seqsize += 1
 
     ## write whatever is left over to the clusts file
     if seqlist:
@@ -458,7 +458,7 @@ def build_clusters(data, sample, maxindels):
 def setup_dirs(data):
     """ sets up directories for step3 data """
     ## make output folder for clusters
-    pdir = os.path.realpath(data.paramsdict["project_dir"]) 
+    pdir = os.path.realpath(data.paramsdict["project_dir"])
     data.dirs.clusts = os.path.join(pdir, "{}_clust_{}"\
                        .format(data.name, data.paramsdict["clust_threshold"]))
     if not os.path.exists(data.dirs.clusts):
@@ -481,7 +481,7 @@ def setup_dirs(data):
 
 def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
     """
-    Create a DAG of prealign jobs to be run in order for each sample. Track 
+    Create a DAG of prealign jobs to be run in order for each sample. Track
     Progress, report errors. Each assembly method has a slightly different
     DAG setup, calling different functions.
     """
@@ -494,7 +494,7 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
                 .format(PRINTSTR["derep_concat_split"], elapsed))
 
     ## for HPC systems this should be done to make sure targets are spread
-    ## among different nodes. 
+    ## among different nodes.
     if nthreads:
         if nthreads < len(ipyclient.ids):
             thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::nthreads])
@@ -537,45 +537,45 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         dag.add_node(node)
 
     ## add edges/dependencies bewteen jobs to enforce an order of operations
-    ## the pattern is (first-this, then-that). 
+    ## the pattern is (first-this, then-that).
     for sname in snames:
         ## set dependencies on all samples having finished something
         for sname2 in snames:
             ## enforce clust/map func doesn't run until all derep jobs are done
-            dag.add_edge("{}-{}-{}".format(joborder[0], 0, sname2), 
+            dag.add_edge("{}-{}-{}".format(joborder[0], 0, sname2),
                          "{}-{}-{}".format(joborder[1], 0, sname))
             ## enforce that job after clust/map doesn't run until all clust/map
             ## jobs are finished, this protect threaded view from being diluted
-            #dag.add_edge("{}-{}-{}".format(joborder[1], 0, sname2), 
+            #dag.add_edge("{}-{}-{}".format(joborder[1], 0, sname2),
             #             "{}-{}-{}".format(joborder[2], 0, sname))
 
         ## add more order restrictions to pre-align jobs. jobs 1,2 are above.
-        ## 3 and 4 (ref and muscle chunk) are single threaded, so 
+        ## 3 and 4 (ref and muscle chunk) are single threaded, so
         ## we'll just restrict that within sample the previous has to finish.
         for idx in xrange(2, len(joborder)):
             ## remaining steps of prealign jobs
-            dag.add_edge("{}-{}-{}".format(joborder[idx-1], 0, sname), 
+            dag.add_edge("{}-{}-{}".format(joborder[idx-1], 0, sname),
                          "{}-{}-{}".format(joborder[idx], 0, sname))
 
         ## add the first align job for each sample such that it cannot start
         ## until all samples have finished chunking, and then add remaining
-        ## 9 align jobs that can't start until after the first chunk is 
-        ## finished. This is nice because it makes the largest chunks go first, 
+        ## 9 align jobs that can't start until after the first chunk is
+        ## finished. This is nice because it makes the largest chunks go first,
         ## and it *greatly* simplifies the dag. However, it slows performance
-        ## if there are fewer than four samples, since it will wait on the 
+        ## if there are fewer than four samples, since it will wait on the
         ## first chunk, but such small jobs are uncommon.
         for sname2 in snames:
-            dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2), 
+            dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
                          "{}-{}-{}".format("muscle_align", 0, sname))
 
         ## add remaining 9 align jobs dependent on first (0) being finished
         for chunk in range(1, 10):
-            dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname), 
+            dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname),
                          "{}-{}-{}".format("muscle_align", chunk, sname))
 
             ## add that the final reconcat job can't start until after
             ## each chunk of its own sample has finished aligning.
-            dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname), 
+            dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
                          "{}-{}-{}".format("reconcat", 0, sname))
 
     ## dicts for storing submitted jobs and results
@@ -608,13 +608,13 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
             #LOGGER.info('submitting %s to %s-threaded view', funcstr, nthreads)
             with thview.temp_flags(after=deps, block=False):
                 results[node] = thview.apply(func, *args)
-        else:   
-            #LOGGER.info('submitting %s to single-threaded view', funcstr)            
+        else:
+            #LOGGER.info('submitting %s to single-threaded view', funcstr)
             with lbview.temp_flags(after=deps, block=False):
                 results[node] = lbview.apply(func, *args)
 
-    ## track jobs as they finish, abort if someone fails. This blocks here 
-    ## until all jobs are done. Keep track of which samples have failed so 
+    ## track jobs as they finish, abort if someone fails. This blocks here
+    ## until all jobs are done. Keep track of which samples have failed so
     ## we only print the first error message.
     sfailed = set()
     for funcstr in joborder + ["muscle_align", "reconcat"]:
@@ -626,11 +626,11 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
                 if sname not in sfailed:
                     print("  sample [{}] failed. See error in ./ipyrad_log.txt"\
                           .format(sname))
-                    LOGGER.error("sample [%s] failed in step [%s]; error: %s", 
+                    LOGGER.error("sample [%s] failed in step [%s]; error: %s",
                                   sname, errfunc, errmsg)
                     sfailed.add(sname)
 
-    ## Cleanup of successful samples, skip over failed samples 
+    ## Cleanup of successful samples, skip over failed samples
     badaligns = {}
     for sample in samples:
         ## The muscle_align step returns the number of excluded bad alignments
@@ -673,9 +673,9 @@ def _plot_dag(dag, results, snames):
 
         ## first figure is dag layout
         plt.figure("dag_layout", figsize=(10, 10))
-        nx.draw(dag, 
+        nx.draw(dag,
                 pos=nx.spring_layout(dag),
-                node_color='pink',  
+                node_color='pink',
                 with_labels=True)
         plt.savefig("./dag_layout.png", bbox_inches='tight', dpi=200)
 
@@ -684,7 +684,7 @@ def _plot_dag(dag, results, snames):
         colors = {}
 
         for node in dag:
-            #jobkey = "{}-{}".format(node, sample) 
+            #jobkey = "{}-{}".format(node, sample)
             mtd = results[node].metadata
             start = date2num(mtd.started)
             #runtime = date2num(md.completed)# - start
@@ -700,10 +700,10 @@ def _plot_dag(dag, results, snames):
         ## color is the engine that ran the job
         ## all jobs were submitted as 3 second wait times
         plt.figure("dag_starttimes", figsize=(10, 16))
-        nx.draw(dag, pos, 
-                node_list=colors.keys(), 
+        nx.draw(dag, pos,
+                node_list=colors.keys(),
                 node_color=colors.values(),
-                cmap=gist_rainbow, 
+                cmap=gist_rainbow,
                 with_labels=True)
         plt.savefig("./dag_starttimes.png", bbox_inches='tight', dpi=200)
 
@@ -713,9 +713,9 @@ def _plot_dag(dag, results, snames):
 
 
 def trackjobs(func, results):
-    """ 
+    """
     Blocks and prints progress for just the func being requested from a list
-    of submitted engine jobs. Returns whether any of the jobs failed. 
+    of submitted engine jobs. Returns whether any of the jobs failed.
     """
     LOGGER.info("inside trackjobs of %s", func)
 
@@ -728,7 +728,7 @@ def trackjobs(func, results):
         ## how many of this func have finished so far
         ready = [i[1].ready() for i in asyncs]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), 
+        progressbar(len(ready), sum(ready),
                     " {}     | {} | s3 |".format(PRINTSTR[func], elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
@@ -737,7 +737,7 @@ def trackjobs(func, results):
 
     ## did any samples fail?
     success = [i[1].successful() for i in asyncs]
-    
+
     ## return functionstring and error message on failure
     if not all(success):
         ## get error messages
@@ -751,7 +751,7 @@ def trackjobs(func, results):
 
 
 def declone_3rad(data, sample):
-    """ 
+    """
     3rad uses random adapters to identify pcr duplicates. We will
     remove pcr dupes here. Basically append the radom adapter to
     each sequence, do a regular old vsearch derep, then trim
@@ -774,17 +774,17 @@ def declone_3rad(data, sample):
     try:
         with open(sample.files.edits[0][0]) as infile:
             quarts = itertools.izip(*[iter(infile)]*4)
-    
+
             ## a list to store until writing
             writing = []
             counts = 0
-    
+
             while 1:
                 try:
                     read = quarts.next()
                 except StopIteration:
                     break
-    
+
                 ## Split on +, get [1], split on "_" (can be either _r1 or
                 ## _m1 if merged reads) and get [0] for the i5
                 ## prepend "EEEEEEEE" as qscore for the adapters
@@ -799,7 +799,7 @@ def declone_3rad(data, sample):
                                 read[2].strip(),
                                 "E"*8 + read[3].strip()]
                             ))
-    
+
                 ## Write the data in chunks
                 counts += 1
                 if not counts % 1000:
@@ -808,7 +808,7 @@ def declone_3rad(data, sample):
             if writing:
                 adapter_seqs_file.write("\n".join(writing))
                 adapter_seqs_file.close()
-    
+
         tmp_outfile = tempfile.NamedTemporaryFile(mode='wb',
                                         delete=False,
                                         dir=data.dirs.edits,
@@ -820,33 +820,33 @@ def declone_3rad(data, sample):
         ## Derep the data (adapters+seq)
         derep_and_sort(data, adapter_seqs_file.name,
                        os.path.join(data.dirs.edits, tmp_outfile.name), 2)
-    
+
         ## Remove adapters from head of sequence and write out
         ## tmp_outfile is now the input file for the next step
         ## first vsearch derep discards the qscore so we iterate
         ## by pairs
         with open(tmp_outfile.name) as infile:
             with open(os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),\
-                                'wb') as outfile: 
+                                'wb') as outfile:
                 duo = itertools.izip(*[iter(infile)]*2)
-    
+
                 ## a list to store until writing
                 writing = []
                 counts2 = 0
-    
+
                 while 1:
                     try:
                         read = duo.next()
                     except StopIteration:
                         break
-    
+
                     ## Peel off the adapters. There's probably a faster
                     ## way of doing this.
                     writing.append("\n".join([
                                     read[0].strip(),
                                     read[1].strip()[8:]]
                                 ))
-    
+
                     ## Write the data in chunks
                     counts2 += 1
                     if not counts2 % 1000:
@@ -877,17 +877,17 @@ def declone_3rad(data, sample):
 
 
 def derep_and_sort(data, infile, outfile, nthreads):
-    """ 
+    """
     Dereplicates reads and sorts so reads that were highly replicated are at
     the top, and singletons at bottom, writes output to derep file. Paired
-    reads are dereplicated as one concatenated read and later split again. 
+    reads are dereplicated as one concatenated read and later split again.
     Updated this function to take infile and outfile to support the double
     dereplication that we need for 3rad (5/29/15 iao).
     """
 
     strand = "plus"
     if "gbs" in data.paramsdict["datatype"]:
-        strand = "both"    
+        strand = "both"
 
     ## testing bailouts (comment out)
     #if "1A_0" in infile:
@@ -902,7 +902,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
 
     ## do dereplication with vsearch
     cmd = [ipyrad.bins.vsearch,
-            "-derep_fulllength", "-", 
+            "-derep_fulllength", "-",
             "-strand", strand,
             "-output", outfile,
             "-threads", str(nthreads),
@@ -932,7 +932,7 @@ def data_cleanup(data):
                 'merged_pairs':'{:.0f}'.format,
                 'clusters_total':'{:.0f}'.format,
                 'clusters_hidepth':'{:.0f}'.format,
-                'filtered_bad_align':'{:.0f}'.format, 
+                'filtered_bad_align':'{:.0f}'.format,
                 'avg_depth_stat':'{:.2f}'.format,
                 'avg_depth_mj':'{:.2f}'.format,
                 'avg_depth_total':'{:.2f}'.format,
@@ -945,14 +945,14 @@ def data_cleanup(data):
 
 
 def concat_multiple_edits(data, sample):
-    """ 
+    """
     if multiple fastq files were appended into the list of fastqs for samples
-    then we merge them here before proceeding. 
+    then we merge them here before proceeding.
     """
 
     ## if more than one tuple in fastq list
     if len(sample.files.edits) > 1:
-        ## create a cat command to append them all (doesn't matter if they 
+        ## create a cat command to append them all (doesn't matter if they
         ## are gzipped, cat still works). Grab index 0 of tuples for R1s.
         cmd1 = ["cat"] + [i[0] for i in sample.files.edits]
 
@@ -982,12 +982,12 @@ def concat_multiple_edits(data, sample):
 
 
 def cluster(data, sample, nthreads):
-    """ 
+    """
     Calls vsearch for clustering. cov varies by data type, values were chosen
-    based on experience, but could be edited by users 
+    based on experience, but could be edited by users
     """
 
-    ## get the dereplicated reads 
+    ## get the dereplicated reads
     if "reference" in data.paramsdict["assembly_method"]:
         derephandle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
     else:
@@ -1001,17 +1001,17 @@ def cluster(data, sample, nthreads):
     if not os.path.isfile(derephandle):
         LOGGER.warn("Bad derephandle - {}".format(derephandle))
         raise IPyradError("Input file for clustering doesn't exist - {}"\
-                        .format(derephandle))    
+                        .format(derephandle))
 
     ## datatype specific optimization
     ## minsl: the percentage of the seed that must be matched
-    ##    smaller values for RAD/ddRAD where we might want to combine, say 50bp 
-    ##    reads and 100bp reads in the same analysis. 
+    ##    smaller values for RAD/ddRAD where we might want to combine, say 50bp
+    ##    reads and 100bp reads in the same analysis.
     ## query_cov: the percentage of the query sequence that must match seed
     ##    smaller values are needed for gbs where only the tips might overlap
     ##    larger values for pairgbs where they should overlap near completely
     ##    small minsl and high query cov allows trimmed reads to match to untrim
-    ##    seed for rad/ddrad/pairddrad. 
+    ##    seed for rad/ddrad/pairddrad.
     strand = "plus"
     cov = 0.90
     minsl = 0.5
@@ -1030,26 +1030,26 @@ def cluster(data, sample, nthreads):
         assert data._hackersonly["query_cov"] <= 1, "query_cov must be <= 1.0"
 
     ## get call string
-    cmd = [ipyrad.bins.vsearch, 
-           "-cluster_smallmem", derephandle, 
-           "-strand", strand, 
-           "-query_cov", str(cov), 
-           "-id", str(data.paramsdict["clust_threshold"]), 
-           "-minsl", str(minsl), 
-           "-userout", uhandle, 
-           "-userfields", "query+target+id+gaps+qstrand+qcov", 
-           "-maxaccepts", "1", 
-           "-maxrejects", "0", 
-           "-threads", str(nthreads), 
-           "-notmatched", temphandle, 
-           "-fasta_width", "0", 
-           "-fastq_qmax", "100", 
-           "-fulldp", 
+    cmd = [ipyrad.bins.vsearch,
+           "-cluster_smallmem", derephandle,
+           "-strand", strand,
+           "-query_cov", str(cov),
+           "-id", str(data.paramsdict["clust_threshold"]),
+           "-minsl", str(minsl),
+           "-userout", uhandle,
+           "-userfields", "query+target+id+gaps+qstrand+qcov",
+           "-maxaccepts", "1",
+           "-maxrejects", "0",
+           "-threads", str(nthreads),
+           "-notmatched", temphandle,
+           "-fasta_width", "0",
+           "-fastq_qmax", "100",
+           "-fulldp",
            "-usersort"]
 
-    ## not sure what the benefit of this option is exactly, needs testing, 
+    ## not sure what the benefit of this option is exactly, needs testing,
     ## might improve indel detection on left side, but we don't want to enforce
-    ## aligning on left side if not necessarily, since quality trimmed reads 
+    ## aligning on left side if not necessarily, since quality trimmed reads
     ## might lose bases on left side in step2 and no longer align.
     #if data.paramsdict["datatype"] in ["rad", "ddrad", "pairddrad"]:
     #    cmd += ["-leftjust"]
@@ -1057,12 +1057,12 @@ def cluster(data, sample, nthreads):
     ## run vsearch
     LOGGER.debug("%s", cmd)
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    
+
     ## This is long running so we wrap it to make sure we can kill it
     try:
         res = proc.communicate()[0]
     except KeyboardInterrupt:
-        proc.kill()        
+        proc.kill()
 
     ## check for errors
     if proc.returncode:
@@ -1072,7 +1072,7 @@ def cluster(data, sample, nthreads):
 
 
 def muscle_chunker(data, sample):
-    """ 
+    """
     Splits the muscle alignment into chunks. Each runs on N clusters at a time.
     """
     ## log our location for debugging
@@ -1092,7 +1092,7 @@ def muscle_chunker(data, sample):
 
     idx = 0
     while grabchunk:
-        tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx)) 
+        tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx))
         with open(tmpfile, 'wb') as out:
             out.write("//\n//\n".join(grabchunk))
         idx += 1
@@ -1107,7 +1107,7 @@ def reconcat(data, sample):
     ## get chunks
     chunks = glob.glob(os.path.join(data.tmpdir,
              sample.name+"_chunk_[0-9].aligned"))
-   
+
     ## sort by chunk number, cuts off last 8 =(aligned)
     chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
     LOGGER.info("chunk %s", chunks)
@@ -1129,35 +1129,35 @@ def reconcat(data, sample):
 
 
 def derep_concat_split(data, sample, nthreads):
-    """ 
-    Running on remote Engine. Refmaps, then merges, then dereplicates, 
-    then denovo clusters reads. 
+    """
+    Running on remote Engine. Refmaps, then merges, then dereplicates,
+    then denovo clusters reads.
     """
 
     ## report location for debugging
     LOGGER.info("INSIDE derep %s", sample.name)
 
-    ## concatenate edits files within Samples if an Assembly was formed from 
-    ## merging several assemblies. This returns a new sample.files.edits with 
-    ## the concat file. No change if not merged Assembly. 
+    ## concatenate edits files within Samples if an Assembly was formed from
+    ## merging several assemblies. This returns a new sample.files.edits with
+    ## the concat file. No change if not merged Assembly.
     #sample = concat_edits(data, sample)
     sample.files.edits = concat_multiple_edits(data, sample)
     LOGGER.info("Passed concat edits")
 
     ## Denovo: merge or concat fastq pairs [sample.files.pairs]
     ## Reference: only concat fastq pairs  []
-    ## Denovo + Reference: 
+    ## Denovo + Reference:
     if 'pair' in data.paramsdict['datatype']:
-        ## merge pairs that overlap and concatenate non-overlapping pairs with 
-        ## a "nnnn" separator. merge_pairs takes the unmerged files list as an 
+        ## merge pairs that overlap and concatenate non-overlapping pairs with
+        ## a "nnnn" separator. merge_pairs takes the unmerged files list as an
         ## argument because we're reusing this code in the refmap pipeline.
         LOGGER.debug("Merging pairs - %s", sample.files.edits)
-        ## If doing any reference mapping do not merge only concatenate so the 
-        ## reads can be split later and mapped separately. 
+        ## If doing any reference mapping do not merge only concatenate so the
+        ## reads can be split later and mapped separately.
         merge = rcomp = 1
         if "reference" in data.paramsdict["assembly_method"]:
             merge = rcomp = 0
-        
+
         ## merge R1 and R2 before we derep
         mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
         nmerged = merge_pairs(data, sample.files.edits, mergefile, rcomp, merge)
@@ -1175,22 +1175,22 @@ def derep_concat_split(data, sample, nthreads):
         declone_3rad(data, sample)
         derep_and_sort(data,
                 os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),
-                os.path.join(data.dirs.edits, sample.name+"_derep.fastq"), 
+                os.path.join(data.dirs.edits, sample.name+"_derep.fastq"),
                 nthreads)
     else:
         ## convert fastq to fasta, then derep and sort reads by their size.
         ## we pass in only one file b/c paired should be merged by now.
-        derep_and_sort(data, 
-                sample.files.edits[0][0], 
+        derep_and_sort(data,
+                sample.files.edits[0][0],
                 os.path.join(data.dirs.edits, sample.name+"_derep.fastq"),
                 nthreads)
-                       
+
 
 
 
 def cleanup_and_die(async_results):
     LOGGER.debug("Entering cleanup_and_die")
-    
+
     LOGGER.debug(async_results)
     res = []
     ## Sort through msg_ids and check metadata stats to figure out what went wrong
@@ -1228,10 +1228,10 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
                     subsamples.append(sample)
         else:
             ## force to overwrite
-            if sample.stats.reads_passed_filter:            
+            if sample.stats.reads_passed_filter:
                 subsamples.append(sample)
 
-    ## run subsamples 
+    ## run subsamples
     if not subsamples:
         print("  No Samples ready to be clustered. First run step2().")
 
@@ -1255,16 +1255,16 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 
         finally:
             ## this can fail if jobs were not stopped properly and are still
-            ## writing to tmpdir. 
+            ## writing to tmpdir.
             try:
                 if os.path.exists(data.tmpdir):
                     shutil.rmtree(data.tmpdir)
                 ## get all refmap_derep.fastqs
-                rdereps = glob.glob(os.path.join(data.dirs.edits, 
+                rdereps = glob.glob(os.path.join(data.dirs.edits,
                                      "*-refmap_derep.fastq"))
                 ## Remove the unmapped fastq files
                 for rmfile in rdereps:
-                    os.remove(rmfile)                    
+                    os.remove(rmfile)
 
             except Exception as _:
                 LOGGER.warning("failed to cleanup files/dirs")
@@ -1305,49 +1305,46 @@ FUNCDICT = {
 
 ## Pre-align funcs for the four assembly methods
 DENOVO = ["derep_concat_split",
-          "cluster", 
-          "build_clusters", 
+          "cluster",
+          "build_clusters",
           "muscle_chunker"]
 
 REFERENCE = ["derep_concat_split",
-             "mapreads", 
+             "mapreads",
              "ref_muscle_chunker",
              "muscle_chunker"]
 
 DENOVO_PLUS = ["derep_concat_split",
-               "mapreads", 
-               "cluster", 
-               "build_clusters", 
+               "mapreads",
+               "cluster",
+               "build_clusters",
                "ref_muscle_chunker",
                "muscle_chunker"]
 
 DENOVO_MINUS = ["derep_concat_split",
-                "mapreads", 
-                "cluster", 
-                "build_clusters", 
+                "mapreads",
+                "cluster",
+                "build_clusters",
                 "muscle_chunker"]
 
-ALIGNFUNCS = ["muscle_align", 
+ALIGNFUNCS = ["muscle_align",
               "reconcat"]
 
 
 NO_UHITS_ERROR = """\
     No clusters (.utemp hits) found for {}. If you are running preview mode and
-    the size of the truncated input file isn't big enough try increasing the 
+    the size of the truncated input file isn't big enough try increasing the
     size of <your_assembly>._hackersonly[\"preview_truncate_length\"
     """
-    
+
 
 
 if __name__ == "__main__":
     ## test...
 
-    ## reload autosaved data. In case you quit and came back 
+    ## reload autosaved data. In case you quit and came back
     JSONPATH = "/home/deren/Documents/ipyrad/tests/cli/cli.json"
     DATA = ipyrad.load_json(JSONPATH)
 
     ## run step 6
     DATA.run('3', force=True)
-
-
-    

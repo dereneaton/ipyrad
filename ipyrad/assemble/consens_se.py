@@ -31,8 +31,8 @@ LOGGER = logging.getLogger(__name__)
 def binomprobr(base1, base2, error, het):
     """
     given two bases are observed at a site n1 and n2, and the error rate e, the
-    probability the site is truly aa,bb,ab is calculated using binomial 
-    distribution as in Li_et al 2009, 2011, and if coverage > 500, 500 
+    probability the site is truly aa,bb,ab is calculated using binomial
+    distribution as in Li_et al 2009, 2011, and if coverage > 500, 500
     dereplicated reads were randomly sampled.
     """
     ## major allele freq
@@ -54,7 +54,7 @@ def binomprobr(base1, base2, error, het):
     homob *= prior_homo
     hetro *= prior_het
 
-    ## return 
+    ## return
     probabilities = [homoa, homob, hetro]
     genotypes = ['aa', 'bb', 'ab']
     bestprob = max(probabilities)/float(sum(probabilities))
@@ -66,7 +66,7 @@ def binomprobr(base1, base2, error, het):
 def simpleconsensus(base1, base2):
     """
     majority consensus calling for sites with too low of coverage for
-    statistical calling. Only used with 'lowcounts' option. Returns 
+    statistical calling. Only used with 'lowcounts' option. Returns
     the most common base. Returns consistent alphabetical order for ties.
     """
     #qQn = ['aa','bb','ab']
@@ -95,7 +95,7 @@ def hetero(base1, base2):
             iupac = base2
         elif base2 == "N":
             iupac = base1
-        ## one or both are (-)s            
+        ## one or both are (-)s
         else:
             if base1 == "-":
                 iupac = base2
@@ -109,7 +109,7 @@ def hetero(base1, base2):
 
 
 def removerepeats(consens, arrayed):
-    """ 
+    """
     Checks for interior Ns in consensus seqs and removes those that are at
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3
     is chosen so that mindepth=6 requires 2 base calls that are not in [N,-].
@@ -147,7 +147,7 @@ def removerepeats(consens, arrayed):
     ## trim from left and right of cons2 if present
     if cons2:
         ## trim from left and right of cons1
-        edges = [None, None]        
+        edges = [None, None]
         lcons = len(cons2)
         cons2 = cons2.lstrip("N")
         edges[0] = lcons - len(cons2)
@@ -173,7 +173,7 @@ def removerepeats(consens, arrayed):
         arrayed = arr1
 
     ## get column counts of Ns and -s
-    ndepths = np.sum(arrayed == 'N', axis=0) 
+    ndepths = np.sum(arrayed == 'N', axis=0)
     idepths = np.sum(arrayed == '-', axis=0)
 
     ## get proportion of bases that are N- at each site
@@ -186,7 +186,7 @@ def removerepeats(consens, arrayed):
     ## apply filter
     consens = consens[~ridx]
     arrayed = arrayed[:, ~ridx]
-    
+
     return consens, arrayed
 
 
@@ -194,7 +194,7 @@ def removerepeats(consens, arrayed):
 def consensus(data, sample, tmpchunk, optim):
     """
     from a clust file handle, reads in all copies at a locus and sorts
-    bases at each site, tests for errors at the site according to error 
+    bases at each site, tests for errors at the site according to error
     rate, calls consensus.
     """
 
@@ -209,7 +209,7 @@ def consensus(data, sample, tmpchunk, optim):
     clusters = open(tmpchunk, 'rb')
     pairdealer = itertools.izip(*[iter(clusters)]*2)
 
-    ## array to store all the coverage data, including consens reads that are 
+    ## array to store all the coverage data, including consens reads that are
     ## excluded (for now). The reason we include the low cov data is that this
     ## Assembly might be branched and the new one use a lower depth filter.
     #### dimensions: nreads_in_this_chunk, max_read_length, 4 bases
@@ -218,7 +218,7 @@ def consensus(data, sample, tmpchunk, optim):
     #    maxlen *= 2
 
     ## write to tmp cons to file to be combined later
-    consenshandle = os.path.join(data.dirs.consens, 
+    consenshandle = os.path.join(data.dirs.consens,
                                  sample.name+"_tmpcons."+str(tmpnum))
     ## h5 for data storage
     io5 = h5py.File(consenshandle.replace("_tmpcons.", "_tmpcats."), 'w')
@@ -275,7 +275,7 @@ def consensus(data, sample, tmpchunk, optim):
                 consens = np.apply_along_axis(basecall, 0, arrayed, data)
 
                 ## apply a filter to remove low coverage sites/Ns that
-                ## are likely sequence repeat errors. This is only applied to 
+                ## are likely sequence repeat errors. This is only applied to
                 ## clusters that already passed the read-depth filter (1)
                 if "N" in consens:
                     try:
@@ -292,7 +292,7 @@ def consensus(data, sample, tmpchunk, optim):
 
                 ## filter for max number of hetero sites
                 if nfilter2(nheteros, maxhet):
-                    ## filter for maxN, & minlen 
+                    ## filter for maxN, & minlen
                     if nfilter3(consens, maxn):
                         ## get N alleles and get lower case in consens
                         consens, nhaps = nfilter4(consens, hidx, arrayed)
@@ -303,7 +303,7 @@ def consensus(data, sample, tmpchunk, optim):
                         ## store a reduced array with only CATG
                         catg = np.array(\
                             [np.sum(arrayed == i, axis=0)  \
-                            for i in list("CATG")], 
+                            for i in list("CATG")],
                             dtype='uint32').T
                         catarr[counters["nconsens"], :catg.shape[0], :] = catg
 
@@ -311,7 +311,7 @@ def consensus(data, sample, tmpchunk, optim):
                         storeseq[counters["name"]] = "".join(list(consens))
                         counters["name"] += 1
                         counters["nconsens"] += 1
-                        counters["heteros"] += nheteros                            
+                        counters["heteros"] += nheteros
                     else:
                         #LOGGER.debug("@haplo")
                         filters['maxn'] += 1
@@ -336,7 +336,7 @@ def consensus(data, sample, tmpchunk, optim):
     io5.close()
 
     ## final counts and return
-    counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])        
+    counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])
 
     return counters, filters
 
@@ -386,19 +386,19 @@ def nfilter4(consens, hidx, arrayed):
 
     ## remove any reads that have N or - base calls at hetero sites
     ## these cannot be used when calling alleles currently.
-    harray = harray[~np.any(harray == "-", axis=1)]    
+    harray = harray[~np.any(harray == "-", axis=1)]
     harray = harray[~np.any(harray == "N", axis=1)]
 
     ## get counts of each allele (e.g., AT:2, CG:2)
     ccx = Counter([tuple(i) for i in harray])
 
-    ## Two possibilities we would like to distinguish, but we can't. Therefore, 
-    ## we just throw away low depth third alleles that are within seq. error. 
+    ## Two possibilities we would like to distinguish, but we can't. Therefore,
+    ## we just throw away low depth third alleles that are within seq. error.
     ## 1) a third base came up as a sequencing error but is not a unique allele
     ## 2) a third or more unique allele is there but at low frequency
 
-    ## remove low freq alleles if more than 2, since they may reflect 
-    ## sequencing errors at hetero sites, making a third allele, or a new 
+    ## remove low freq alleles if more than 2, since they may reflect
+    ## sequencing errors at hetero sites, making a third allele, or a new
     ## allelic combination that is not real.
     if len(ccx) > 2:
         totdepth = harray.shape[0]
@@ -439,18 +439,18 @@ def storealleles(consens, hidx, alleles):
     bigallele = [i for i in alleles if i[0] == bigbase][0]
 
     ## uplow other bases relative to this one and the priority list
-    ## e.g., if there are two hetero sites (WY) and the two alleles are 
-    ## AT and TC, then since bigbase of (W) is A second hetero site should 
+    ## e.g., if there are two hetero sites (WY) and the two alleles are
+    ## AT and TC, then since bigbase of (W) is A second hetero site should
     ## be stored as y, since the ordering is swapped in this case; the priority
-    ## base (C versus T) is C, but C goes with the minor base at h site 1. 
+    ## base (C versus T) is C, but C goes with the minor base at h site 1.
     #consens = list(consens)
 
     for hsite, pbase in zip(hidx[1:], bigallele[1:]):
         if PRIORITY[consens[hsite]] != pbase:
             consens[hsite] = consens[hsite].lower()
 
-    ## return consens 
-    return consens    
+    ## return consens
+    return consens
 
 
 
@@ -484,9 +484,9 @@ def basecall(rsite, data):
             cons = comms[0][0]
 
         else:
-            ## if depth > 500 reduce to <500 at same proportion to avoid 
+            ## if depth > 500 reduce to <500 at same proportion to avoid
             ## large memerror in scipy.misc.comb function
-            if bidepth >= 500: 
+            if bidepth >= 500:
                 sbase1 = int(500 * (base1 / float(base1)))
                 sbase2 = int(500 * (base2 / float(base1)))
             else:
@@ -531,8 +531,8 @@ def basecaller(data, base1, base2, comms):
 
 
 def cleanup(data, sample, statsdicts):
-    """ 
-    cleaning up. optim is the size (nloci) of tmp arrays 
+    """
+    cleaning up. optim is the size (nloci) of tmp arrays
     """
     LOGGER.info("in cleanup for: %s", sample.name)
 
@@ -555,7 +555,7 @@ def cleanup(data, sample, statsdicts):
     handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
     ioh5 = h5py.File(handle1, 'w')
     nloci = len(tmpcats) * optim
-    dcat = ioh5.create_dataset("catg", (nloci, maxlen, 4), 
+    dcat = ioh5.create_dataset("catg", (nloci, maxlen, 4),
                                dtype=np.uint32,
                                chunks=(optim, maxlen, 4),
                                compression="gzip")
@@ -568,7 +568,7 @@ def cleanup(data, sample, statsdicts):
     start = 0
     for icat in tmpcats:
         io5 = h5py.File(icat, 'r')
-        end = start + optim        
+        end = start + optim
         dcat[start:end] = io5['cats'][:]
         dall[start:end] = io5['alls'][:]
         start += optim
@@ -581,9 +581,9 @@ def cleanup(data, sample, statsdicts):
 
     ## record results
     xcounters = {"nconsens": 0,
-                 "heteros": 0, 
+                 "heteros": 0,
                  "nsites": 0}
-    xfilters = {"depth": 0, 
+    xfilters = {"depth": 0,
                "maxh": 0,
                "maxn": 0}
 
@@ -614,7 +614,7 @@ def cleanup(data, sample, statsdicts):
     sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
     sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
     sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
-    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']    
+    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
     sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
     sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
     sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
@@ -656,9 +656,9 @@ def chunk_clusters(data, sample):
         ## Use iterator to sample til end of cluster
         done = 0
         while not done:
-            ## grab optim clusters and write to file. 
+            ## grab optim clusters and write to file.
             done, chunk = clustdealer(pairdealer, optim)
-            chunkhandle = os.path.join(data.dirs.clusts, 
+            chunkhandle = os.path.join(data.dirs.clusts,
                                     "tmp_"+str(sample.name)+"."+str(num*optim))
             if chunk:
                 chunkslist.append((optim, chunkhandle))
@@ -671,7 +671,7 @@ def chunk_clusters(data, sample):
 
 
 def get_subsamples(data, samples, force):
-    """ 
+    """
     Apply state, ncluster, and force filters to select samples to be run.
     """
 
@@ -692,7 +692,7 @@ def get_subsamples(data, samples, force):
     .format(sample.name))
             else:
                 subsamples.append(sample)
-                
+
         else:
             if not sample.stats.clusters_hidepth:
                 print("""\
@@ -722,7 +722,7 @@ def get_subsamples(data, samples, force):
         print(u"""\
   Mean error  [{:.5f} sd={:.5f}]
   Mean hetero [{:.5f} sd={:.5f}]"""\
-  .format(data.stats.error_est.mean(), data.stats.error_est.std(), 
+  .format(data.stats.error_est.mean(), data.stats.error_est.std(),
           data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
     return subsamples
@@ -746,12 +746,12 @@ def run(data, samples, force, ipyclient):
     samples = get_subsamples(data, samples, force)
 
     ## set up parallel client: how many cores?
-    lbview = ipyclient.load_balanced_view()        
+    lbview = ipyclient.load_balanced_view()
     data.cpus = data._ipcluster["cores"]
     if not data.cpus:
         data.cpus = len(ipyclient.ids)
 
-    ## wrap everything to ensure destruction of temp files    
+    ## wrap everything to ensure destruction of temp files
     try:
         ## calculate depths, if they changed.
         samples = calculate_depths(data, samples, lbview)
@@ -773,14 +773,14 @@ def run(data, samples, force, ipyclient):
 
 
 def calculate_depths(data, samples, lbview):
-    """ 
+    """
     check whether mindepth has changed, and thus whether clusters_hidepth
     needs to be recalculated, and get new maxlen for new highdepth clusts.
     if mindepth not changed then nothing changes.
     """
 
     ## send jobs to be processed on engines
-    start = time.time()    
+    start = time.time()
     recaljobs = {}
     maxlens = []
     for sample in samples:
@@ -790,7 +790,7 @@ def calculate_depths(data, samples, lbview):
     while 1:
         ready = [i.ready() for i in recaljobs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), 
+        progressbar(len(ready), sum(ready),
                     " calculating depths    | {} | s5 |".format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
@@ -815,13 +815,13 @@ def calculate_depths(data, samples, lbview):
 
 
 def make_chunks(data, samples, lbview):
-    """ 
+    """
     breaks clusters into N chunks for processing based on ncpus.
     """
 
-    ## first progress bar 
-    start = time.time()        
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))                        
+    ## first progress bar
+    start = time.time()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(10, 0, " chunking clusters     | {} | s5 |".format(elapsed))
 
     ## send off samples to be chunked
@@ -833,7 +833,7 @@ def make_chunks(data, samples, lbview):
     while 1:
         ready = [i.ready() for i in lasyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), 
+        progressbar(len(ready), sum(ready),
                     " chunking clusters     | {} | s5 |".format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
@@ -850,7 +850,7 @@ def make_chunks(data, samples, lbview):
 
 
 def process_chunks(data, samples, lasyncs, lbview):
-    """ 
+    """
     submit chunks to consens func and ...
     """
 
@@ -871,7 +871,7 @@ def process_chunks(data, samples, lasyncs, lbview):
         allsyncs = list(itertools.chain(*[asyncs[i.name] for i in samples]))
         ready = [i.ready() for i in allsyncs]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), 
+        progressbar(len(ready), sum(ready),
                     " consens calling       | {} | s5 |".format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
@@ -915,12 +915,12 @@ def process_chunks(data, samples, lasyncs, lbview):
     with open(data.stats_files.s5, 'w') as out:
         #out.write(data.stats_dfs.s5.to_string())
         data.stats_dfs.s5.to_string(
-            buf=out, 
+            buf=out,
             formatters={
                 'clusters_total':'{:.0f}'.format,
                 'filtered_by_depth':'{:.0f}'.format,
                 'filtered_by_maxH':'{:.0f}'.format,
-                'filtered_by_maxN':'{:.0f}'.format, 
+                'filtered_by_maxN':'{:.0f}'.format,
                 'reads_consens':'{:.0f}'.format,
                 'nsites':'{:.0f}'.format,
                 'nhetero':'{:.0f}'.format,
@@ -932,7 +932,7 @@ def process_chunks(data, samples, lasyncs, lbview):
 if __name__ == "__main__":
     import ipyrad as ip
 
-    ## get path to test dir/ 
+    ## get path to test dir/
     ROOT = os.path.realpath(
        os.path.dirname(
            os.path.dirname(
