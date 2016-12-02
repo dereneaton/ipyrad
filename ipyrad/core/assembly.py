@@ -113,7 +113,7 @@ class Assembly(object):
             "engines" : "Local",
             "quiet" : 0,
             "timeout" : 120,
-            "cores" : 0, #detect_cpus(), 
+            "cores" : 0, #detect_cpus(),
             "threads" : 2
             }
 
@@ -192,10 +192,10 @@ class Assembly(object):
                         ("random_seed", 42),
                         ("max_fragment_length", 50),
                         ("max_inner_mate_distance", 60),
-                        ("p5_adapter", "AGATCGGAAGAGC"), 
+                        ("p5_adapter", "AGATCGGAAGAGC"),
                         ("p3_adapter", "AGATCGGAAGAGC"),
                         ("p3_adapters_extra", []),
-                        ("p5_adapters_extra", []),                        
+                        ("p5_adapters_extra", []),
                         ("preview_step1", 4000000),
                         ("preview_step2", 100000),
                         ("output_loci_name_buffer", 5),
@@ -246,13 +246,13 @@ class Assembly(object):
 
 
 
-    def link_fastqs(self, path=None, force=False, append=False, splitnames="_", 
+    def link_fastqs(self, path=None, force=False, append=False, splitnames="_",
                     fields=None, ipyclient=None):
-        """ 
-        Create Sample objects from demultiplexed fastq files in sorted_fastq_path, 
-        or append additional fastq files to existing Samples. This provides 
-        more flexible file input through the API than available in step1 of the 
-        command line interface. If passed ipyclient it will run in parallel. 
+        """
+        Create Sample objects from demultiplexed fastq files in sorted_fastq_path,
+        or append additional fastq files to existing Samples. This provides
+        more flexible file input through the API than available in step1 of the
+        command line interface. If passed ipyclient it will run in parallel.
 
         Note
         ----
@@ -424,21 +424,21 @@ class Assembly(object):
                     created += createdinc
                     linked += linkedinc
                     appended += appendinc
-            
+
             ## do counting in parallel
             else:
                 if any([linkedinc, createdinc, appendinc]):
                     gzipped = bool(fastqtuple[0].endswith(".gz"))
                     for sidx, tup in enumerate(self.samples[sname].files.fastqs):
                         key = sname+"_{}".format(sidx)
-                        linkjobs[key] = lbview.apply(bufcountlines, 
+                        linkjobs[key] = lbview.apply(bufcountlines,
                                                     *(tup[0], gzipped))
                     LOGGER.debug("sent count job for {}".format(sname))
                     created += createdinc
                     linked += linkedinc
                     appended += appendinc
 
-        ## wait for link jobs to finish if parallel 
+        ## wait for link jobs to finish if parallel
         if ipyclient:
             start = time.time()
             while 1:
@@ -508,8 +508,13 @@ class Assembly(object):
             ## 3rad/seqcap use multiplexed barcodes
             ## We'll concatenate them with a plus and split them later
             if "3rad" in self.paramsdict["datatype"]:
-                bdf[2] = bdf[2].str.upper()
-                self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+                try:
+                    bdf[2] = bdf[2].str.upper()
+                    self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+                except KeyError as inst:
+                    msg = "    3rad assumes multiplexed barcodes. Doublecheck your barcodes file."
+                    LOGGER.error(msg)
+                    raise IPyradError(msg)
             else:
                 ## set attribute on Assembly object
                 self.barcodes = dict(zip(bdf[0], bdf[1]))
@@ -523,7 +528,6 @@ class Assembly(object):
             msg = "    Barcodes file format error."
             LOGGER.warn(msg)
             raise IPyradError(inst)
-
 
 
     def link_populations(self, popdict=None):
@@ -720,11 +724,11 @@ class Assembly(object):
 
 
     def branch(self, newname, subsamples=None, infile=None):
-        """ 
-        Returns a copy of the Assembly object. Does not allow Assembly
-        object names to be replicated in namespace or path. 
         """
-        ## subsample by removal or keeping. 
+        Returns a copy of the Assembly object. Does not allow Assembly
+        object names to be replicated in namespace or path.
+        """
+        ## subsample by removal or keeping.
         remove = 0
 
         ## is there a better way to ask if it already exists?
@@ -784,7 +788,7 @@ class Assembly(object):
 
         """
         #if self._headers:
-        #    print("") 
+        #    print("")
         ip.save_json(self)
 
 
@@ -831,7 +835,7 @@ class Assembly(object):
         else:
             ## first check if demultiplexed files exist in sorted path
             if glob.glob(sfiles):
-                self.link_fastqs(ipyclient=ipyclient)                
+                self.link_fastqs(ipyclient=ipyclient)
 
             ## otherwise do the demultiplexing
             else:
@@ -1131,33 +1135,40 @@ class Assembly(object):
             if '1' in steps:
                 self._step1func(force, preview, ipyclient)
                 self.save()
+                ipyclient.purge_everything()
 
             if '2' in steps:
                 self._step2func(samples=None, nreplace=1, force=force,
                                 preview=preview, ipyclient=ipyclient)
                 self.save()
+                ipyclient.purge_everything()
 
             if '3' in steps:
                 self._step3func(samples=None, noreverse=0, force=force,
                              maxindels=8, preview=preview, ipyclient=ipyclient)
                 self.save()
+                ipyclient.purge_everything()
 
             if '4' in steps:
                 self._step4func(samples=None, subsample=9999999, force=force,
                                 ipyclient=ipyclient)
                 self.save()
+                ipyclient.purge_everything()
 
             if '5' in steps:
                 self._step5func(samples=None, force=force, ipyclient=ipyclient)
                 self.save()
+                ipyclient.purge_everything()
 
             if '6' in steps:
                 self._step6func(samples=None, noreverse=0, randomseed=12345,
                                 force=force, ipyclient=ipyclient)
                 self.save()
+                ipyclient.purge_everything()
 
             if '7' in steps:
                 self._step7func(samples=None, force=force, ipyclient=ipyclient)
+                ipyclient.purge_everything()
 
 
         ## handle exceptions so they will be raised after we clean up below
@@ -1226,9 +1237,9 @@ class Assembly(object):
 
 def _cleanup_and_die(pids):
     """
-    When engines are running external bins like vsearch they can't hear 
-    KeyboardInterrupts, and so they aren't killed properly. We can save the 
-    pids of Engines and kill them here instead. 
+    When engines are running external bins like vsearch they can't hear
+    KeyboardInterrupts, and so they aren't killed properly. We can save the
+    pids of Engines and kill them here instead.
     """
     ## get pids of engines
     for pid in pids:
@@ -1396,22 +1407,22 @@ def merge(name, assemblies):
         print("""\
     Warning: the merged Assemblies contained Samples that are identically named,
     and so ipyrad has attempted to merge these Samples. This is perfectly fine to
-    do up until step 3, but not after, because at step 3 all reads for a Sample 
-    should be included during clustering/mapping. Take note, you can merge Assemblies 
+    do up until step 3, but not after, because at step 3 all reads for a Sample
+    should be included during clustering/mapping. Take note, you can merge Assemblies
     at any step *if they do not contain the same Samples*, however, here that is not
-    the case. If you wish to proceed with this merged Assembly you will have to 
-    start from step 3, therefore the 'state' of the Samples in this new merged 
-    Assembly ({}) have been set to 2. 
+    the case. If you wish to proceed with this merged Assembly you will have to
+    start from step 3, therefore the 'state' of the Samples in this new merged
+    Assembly ({}) have been set to 2.
     """.format(name))
         for sample in merged.samples:
             merged.samples[sample].stats.state = 2
             ## clear stats
-            for stat in ["refseq_mapped_reads", "refseq_unmapped_reads", 
-                         "clusters_total", "clusters_hidepth", "hetero_est", 
+            for stat in ["refseq_mapped_reads", "refseq_unmapped_reads",
+                         "clusters_total", "clusters_hidepth", "hetero_est",
                          "error_est", "reads_consens"]:
                 merged.samples[sample].stats[stat] = 0
             ## clear files
-            for ftype in ["mapped_reads", "unmapped_reads", "clusters", 
+            for ftype in ["mapped_reads", "unmapped_reads", "clusters",
                           "consens", "database"]:
                 merged.samples[sample].files[ftype] = []
 
@@ -1422,8 +1433,8 @@ def merge(name, assemblies):
 
 
 def bufcountlines(filename, gzipped):
-    """ 
-    fast line counter. Used to quickly sum number of input reads when running 
+    """
+    fast line counter. Used to quickly sum number of input reads when running
     link_fastqs to append files. """
     if gzipped:
         fin = gzip.open(filename)
@@ -1668,10 +1679,10 @@ def paramschecker(self, param, newvalue):
         ## restriction overhang and does not include the trailing comma
         if len(newvalue) == 1:
             ## for gbs users might not know to enter the second cut site
-            ## so we do it for them. 
+            ## so we do it for them.
             if self.paramsdict["datatype"] == "gbs":
                 newvalue += newvalue
-            else:                
+            else:
                 newvalue += ("",)
         #=======
         #    newvalue = (newvalue[0], "")

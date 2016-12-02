@@ -5,6 +5,68 @@
 Release Notes
 =============
 
+0.5.10
+------
+- Fix for 3Rad w/ only 2 cutters during filtering.
+- Better handling for malformed 3rad barcodes file.
+-  "Updating ipyrad/__init__.py to version - 0.5.9
+
+0.5.9
+-----
+
+0.5.9
+-----
+
+0.5.8
+-----
+- improved progress bar
+- merge fix
+- notebook testing geno build
+- Fix to memory handling on vcf build, can now handle thousands of taxa. Also, now saves filepaths to json and API object.
+- progres on dstats package
+- More progress on manuscript horserace. Analysis is done, now mostly working on gathering results.
+
+0.5.7
+-----
+- Fix error handing during writing of vcf file.
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+
+0.5.6
+-----
+- notebook testing
+- purge after each step to avoid memory spillover/buildup
+- better handling of memory limits in vcf build. Now producing geno output files. Better error reporting when building output files
+- added a global dict to util
+- new smaller limit of chunk sizes in h5 to avoid memory limits
+- analysis docs update
+- Document weird non-writable home directory on cluster issues.
+- docs update for filtering differences
+- merge fix
+- tetrad notebook edits
+- dstat calc script editing
+- Added code to copy barcodes during assembly merge. Barcodes are needed for all PE samples in step 2.
+
 0.5.5
 -----
 - Better handling for PE with loci that have some merged and some unmerged reads.

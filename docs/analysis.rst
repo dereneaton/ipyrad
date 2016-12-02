@@ -1,4 +1,4 @@
-.. include:: global.rst  
+.. include:: global.rst
 
 .. _analysis:
 
@@ -7,33 +7,33 @@ Analysis tools
 ==============
 
 ipyrad_ includes a suite of analysis tools for comparing and visualizing
-the size and completeness of assembled RAD-seq data sets, for 
+the size and completeness of assembled RAD-seq data sets, for
 calculating population-genetic statistics, and for performing comparative
 genomic analyses. In addition, there of course countless other tools available
 for the downstream analysis of RAD-seq data. In this section of the documentation
 we hope to provide many examples to guide users through such analyses. Many
 examples are shared in the form of Jupyter Notebooks, which are a useful tool
 for doing reproducible science, and our first tutorial provides a crash course
-if using Jupyter with ipyrad. 
+if using Jupyter with ipyrad.
 
 
 Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-+ Intro to using Jupyter Notebook <HPC_Tunnel>`__
++ `Intro to using Jupyter Notebook <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
 + `setup SSH Tunneling to a HPC Cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
 
 *ipyrad* API Cookbooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
-+ Intro to the ipyrad API <tutorial_API.html>`__  
-+ `Quantify and plot shared RAD data with ipyrad <visualize.html>`__    
-+ `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__  
-+ `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__  
++ Intro to the ipyrad API <tutorial_API.html>`__
++ `Quantify and plot shared RAD data with ipyrad <visualize.html>`__
++ `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__
++ `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__
 
 Downstream analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
-+ `ML phylogenetic inference in RAxML <http://ipyrad.readthedocs.io/raxml.html>`__    
-+ `tetrad quartet species tree inference <http://ipyrad.readthedocs.io/tetrad.html>`__  
-+ `BUCKy population tree inference parallelized <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__  
-+ ABBA BABA test for introgression <cookbook-dstats>`__     
-+ PCA analysis of genetic structure <cookbook-PCA>`__  
-+ STRUCTURE analysis of genetic structure parallelized <cookbook-structure>`__  
++ `ML phylogenetic inference in RAxML <http://ipyrad.readthedocs.io/raxml.html>`__
++ `tetrad quartet species tree inference <http://ipyrad.readthedocs.io/tetrad.html>`__
++ `BUCKy population tree inference parallelized <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
++ ABBA BABA test for introgression <cookbook-dstats>`__
++ PCA analysis of genetic structure <cookbook-PCA>`__
++ STRUCTURE analysis of genetic structure parallelized <cookbook-structure>`__

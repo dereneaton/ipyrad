@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-""" cluster across samples using vsearch with options for 
+""" cluster across samples using vsearch with options for
     hierarchical clustering """
 
 from __future__ import print_function
@@ -37,10 +37,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 def muscle_align_across(data, samples, chunk):
-    """ 
-    Reads in a chunk of the rebuilt clusters. Aligns clusters and writes 
-    tmpaligned chunk of seqs. Also fills a tmparray with indels locations. 
-    tmpchunk and tmparr will be compiled by multi_muscle_align func. 
+    """
+    Reads in a chunk of the rebuilt clusters. Aligns clusters and writes
+    tmpaligned chunk of seqs. Also fills a tmparray with indels locations.
+    tmpchunk and tmparr will be compiled by multi_muscle_align func.
     """
 
     ## snames to ensure sorted order
@@ -53,7 +53,7 @@ def muscle_align_across(data, samples, chunk):
 
     ## tmparray to store indel information, for super huge data it may
     ## be necessary to build h5 here instead of below. Quick test shows that
-    ## (300, 2M, 300) will give a memory error. 
+    ## (300, 2M, 300) will give a memory error.
     maxlen = data._hackersonly["max_fragment_length"] + 20
     indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool_)
     duples = np.zeros(len(clusts), dtype=np.bool_)
@@ -63,8 +63,8 @@ def muscle_align_across(data, samples, chunk):
     for ldx in xrange(len(clusts)):
         stack = []
         lines = clusts[ldx].strip().split("\n")
-        names = lines[::2]  
-        seqs = lines[1::2]  
+        names = lines[::2]
+        seqs = lines[1::2]
 
         ## append counter to end of names b/c muscle doesn't retain order
         names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
@@ -73,11 +73,11 @@ def muscle_align_across(data, samples, chunk):
         if len(names) <= 1:
             pass
         else:
-            ## split seqs before align if PE. If 'nnnn' not found (single end 
-            ## or merged reads) then `except` will pass it to SE alignment. 
+            ## split seqs before align if PE. If 'nnnn' not found (single end
+            ## or merged reads) then `except` will pass it to SE alignment.
             paired = 1
             try:
-                seqs1 = [i.split("nnnn")[0] for i in seqs] 
+                seqs1 = [i.split("nnnn")[0] for i in seqs]
                 seqs2 = [i.split("nnnn")[1] for i in seqs]
             except IndexError:
                 paired = 0
@@ -90,7 +90,7 @@ def muscle_align_across(data, samples, chunk):
                 ## resort so they're in same order
                 aseqs = ["{}nnnn{}".format(i, j) for i, j in zip(aseqs1, aseqs2)]
                 aseqs = np.array([list(i) for i in aseqs])
-                thislen = min(maxlen, aseqs.shape[1])                                
+                thislen = min(maxlen, aseqs.shape[1])
                 for idx in xrange(aseqs.shape[0]):
                     newn = anames[idx].rsplit(';', 1)[0]
                     ## save to aligned cluster
@@ -146,7 +146,7 @@ def muscle_align_across(data, samples, chunk):
 
 
 def multi_muscle_align(data, samples, clustbits, ipyclient):
-    """ 
+    """
     Sends the cluster bits to nprocessors for muscle alignment. They return
     with indel.h5 handles to be concatenated into a joint h5.
     """
@@ -172,7 +172,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
         finished = [i.ready() for i in jobs.values()]
         fwait = sum(finished)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(allwait, fwait, 
+        progressbar(allwait, fwait,
                     " aligning clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
         if all(finished):
@@ -200,15 +200,15 @@ def concatclusts(outhandle, alignbits):
 
 
 def build_indels(data, samples, ipyclient):
-    """ 
+    """
     Builds the indels array and catclust.gz file from the aligned clusters.
-    Building catclust is very fast. Entering indels into h5 array is a bit 
-    slow but can probably be sped up. (todo). 
+    Building catclust is very fast. Entering indels into h5 array is a bit
+    slow but can probably be sped up. (todo).
     NOT currently parallelized.
     """
 
     start = time.time()
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))    
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(100, 0, " database indels       | {} | s6 |".format(elapsed))
 
     ## get file handles
@@ -222,7 +222,7 @@ def build_indels(data, samples, ipyclient):
     LOGGER.info("alignbits %s", alignbits)
     chunksize = int(indelfiles[0].rsplit("_", 1)[-1][:-8])
 
-    ## concatenate finished seq clusters into a tmp file 
+    ## concatenate finished seq clusters into a tmp file
     outhandle = os.path.join(data.dirs.consens, data.name+"_catclust.gz")
     async = ipyclient[0].apply(concatclusts, *(outhandle, alignbits))
     while not async.ready():
@@ -235,11 +235,11 @@ def build_indels(data, samples, ipyclient):
     LOGGER.info("maxlen inside build is %s", maxlen)
 
     ## INIT TEMP INDEL ARRAY
-    ## build an indel array for ALL loci in cat.clust.gz, 
+    ## build an indel array for ALL loci in cat.clust.gz,
     ## chunked so that individual samples can be pulled out
     ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
     io5 = h5py.File(ipath, 'w')
-    iset = io5.create_dataset("indels", 
+    iset = io5.create_dataset("indels",
                               shape=(len(samples), data.nloci, maxlen),
                               dtype=np.bool_,
                               chunks=(1, chunksize, maxlen))
@@ -258,7 +258,7 @@ def build_indels(data, samples, ipyclient):
         end = int(indf.rsplit("_", 1)[-1][:-8])
         inarr = np.load(indf)
         LOGGER.info('inarr shape %s', inarr.shape)
-        LOGGER.info('iset shape %s', iset[:].shape)        
+        LOGGER.info('iset shape %s', iset[:].shape)
         iset[:, init:end, :] = inarr[:, :end-init]
         init += end-init
         done += 1
@@ -266,7 +266,7 @@ def build_indels(data, samples, ipyclient):
 
         ## continued progress bar from multi_muscle_align
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(alignbits), done, " database indels       | {} | s6 |".format(elapsed))        
+        progressbar(len(alignbits), done, " database indels       | {} | s6 |".format(elapsed))
 
     io5.close()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -276,8 +276,8 @@ def build_indels(data, samples, ipyclient):
 
 
 def cluster(data, noreverse):
-    """ 
-    Calls vsearch for clustering across samples. 
+    """
+    Calls vsearch for clustering across samples.
     """
 
     ## input and output file handles
@@ -286,7 +286,7 @@ def cluster(data, noreverse):
     hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
     logfile = os.path.join(data.dirs.consens, "s6_cluster_stats.txt")
 
-    ## parameters that vary by datatype 
+    ## parameters that vary by datatype
     ## (too low of cov values yield too many poor alignments)
     strand = "plus"
     cov = 0.90
@@ -297,24 +297,24 @@ def cluster(data, noreverse):
         strand = "both"
         cov = 0.90
 
-    ## get call string. Thread=0 means all (default) but we may want to set 
+    ## get call string. Thread=0 means all (default) but we may want to set
     ## an upper limit otherwise threads=60 could clobber RAM on large dsets.
     ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
-    cmd = [ip.bins.vsearch, 
-           "-cluster_smallmem", cathaplos, 
-           "-strand", strand, 
-           "-query_cov", str(cov), 
+    cmd = [ip.bins.vsearch,
+           "-cluster_smallmem", cathaplos,
+           "-strand", strand,
+           "-query_cov", str(cov),
            "-minsl", str(0.5),
-           "-id", str(data.paramsdict["clust_threshold"]), 
-           "-userout", uhaplos, 
-           "-notmatched", hhaplos, 
-           "-userfields", "query+target+qstrand", 
-           "-maxaccepts", "1", 
-           "-maxrejects", "0", 
-           "-fasta_width", "0", 
-           "-threads", "0", 
-           "-fulldp", 
-           "-usersort", 
+           "-id", str(data.paramsdict["clust_threshold"]),
+           "-userout", uhaplos,
+           "-notmatched", hhaplos,
+           "-userfields", "query+target+qstrand",
+           "-maxaccepts", "1",
+           "-maxrejects", "0",
+           "-fasta_width", "0",
+           "-threads", "0",
+           "-fulldp",
+           "-usersort",
            "-log", logfile]
 
     ## override reverse clustering option
@@ -325,9 +325,9 @@ def cluster(data, noreverse):
     try:
         LOGGER.info(cmd)
         start = time.time()
-        
+
         (dog, owner) = pty.openpty()
-        proc = subprocess.Popen(cmd, stdout=owner, stderr=owner, 
+        proc = subprocess.Popen(cmd, stdout=owner, stderr=owner,
                                      close_fds=True)
         done = 0
         while 1:
@@ -354,13 +354,13 @@ def cluster(data, noreverse):
                 time.sleep(0.1)
             ## print progress
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(100, done, 
+            progressbar(100, done,
                 " clustering across     | {} | s6 |".format(elapsed))
 
         ## another catcher to let vsearch cleanup after clustering is done
         proc.wait()
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 100, 
+        progressbar(100, 100,
                     " clustering across     | {} | s6 |".format(elapsed))
 
     except subprocess.CalledProcessError as inst:
@@ -383,17 +383,17 @@ def cluster(data, noreverse):
 
 
 def build_h5_array(data, samples, ipyclient):
-    """ 
-    Build full catgs file with imputed indels. catg array of prefiltered loci 
-    is 4-dimensional (Big), so one big array would overload memory, we need 
-    to it in slices. Calls multicat (singlecat), and fill_superseqs. 
+    """
+    Build full catgs file with imputed indels. catg array of prefiltered loci
+    is 4-dimensional (Big), so one big array would overload memory, we need
+    to it in slices. Calls multicat (singlecat), and fill_superseqs.
     """
 
     ## sort to ensure samples will be in alphabetical order, tho they should be.
     samples.sort(key=lambda x: x.name)
 
     ## get maxlen dim
-    maxlen = data._hackersonly["max_fragment_length"] + 20    
+    maxlen = data._hackersonly["max_fragment_length"] + 20
     LOGGER.info("maxlen inside build_h5_array is %s", maxlen)
 
     ## open new h5 handle
@@ -403,12 +403,12 @@ def build_h5_array(data, samples, ipyclient):
     ## chunk to approximately 2 chunks per core
     chunks = ((data.nloci // (data.cpus*2)) + (data.nloci % (data.cpus*2)))
 
-    ## Number of elements in hdf5 chunk may not exceed 4GB
+    ## Number of elements in hdf5 chunk may not exceed 500MB
     ## This is probably not actually optimal, to have such
     ## enormous chunk sizes, could probably explore efficiency
     ## of smaller chunk sizes on very very large datasets
     chunklen = chunks * len(samples) * maxlen * 4
-    while chunklen > 4000000000:
+    while chunklen > int(500e6):
         chunks = (chunks // 2) + (chunks % 2)
         chunklen = chunks * len(samples) * maxlen * 4
 
@@ -420,13 +420,13 @@ def build_h5_array(data, samples, ipyclient):
     ## store catgs with a .10 loci chunk size
     supercatg = io5.create_dataset("catgs", (data.nloci, len(samples), maxlen, 4),
                                     dtype=np.uint32,
-                                    chunks=(chunks, 1, maxlen, 4), 
+                                    chunks=(chunks, 1, maxlen, 4),
                                     compression="gzip")
     superseqs = io5.create_dataset("seqs", (data.nloci, len(samples), maxlen),
-                                    dtype="|S1", 
-                                    chunks=(chunks, len(samples), maxlen), 
+                                    dtype="|S1",
+                                    chunks=(chunks, len(samples), maxlen),
                                     compression='gzip')
-    superalls = io5.create_dataset("nalleles", (data.nloci, len(samples)), 
+    superalls = io5.create_dataset("nalleles", (data.nloci, len(samples)),
                                     dtype=np.uint8,
                                     chunks=(chunks, len(samples)),
                                     compression="gzip")
@@ -440,7 +440,7 @@ def build_h5_array(data, samples, ipyclient):
 
     ## array for pair splits locations, dup and ind filters
     io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
-    io5.create_dataset("duplicates", (data.nloci, ), dtype=np.bool_)    
+    io5.create_dataset("duplicates", (data.nloci, ), dtype=np.bool_)
 
     ## close the big boy
     io5.close()
@@ -458,11 +458,11 @@ def build_h5_array(data, samples, ipyclient):
 
 
 def fill_dups_arr(data):
-    """ 
+    """
     fills the duplicates array from the multi_muscle_align tmp files
     """
     ## build the duplicates array
-    duplefiles = glob.glob(os.path.join(data.tmpdir, "duples_*.tmp.npy"))    
+    duplefiles = glob.glob(os.path.join(data.tmpdir, "duples_*.tmp.npy"))
     duplefiles.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
 
     ## enter the duplicates filter into super h5 array
@@ -479,15 +479,15 @@ def fill_dups_arr(data):
         os.remove(dupf)
     #del inarr
 
-    ## continued progress bar 
+    ## continued progress bar
     LOGGER.info("all duplicates: %s", dfilter[:].sum())
     io5.close()
-    
+
 
 
 def get_seeds_and_hits(uhandle, bseeds, snames):
     """
-    builds a seeds and hits (uarr) array of ints from the utemp.sort file. 
+    builds a seeds and hits (uarr) array of ints from the utemp.sort file.
     Saves outputs to files ...
     """
     ## read in the utemp.sort file
@@ -500,7 +500,7 @@ def get_seeds_and_hits(uhandle, bseeds, snames):
                    [i.rsplit("_", 1)[0] for i in seeds],
                    [i.rsplit("_", 1)[1] for i in seeds]])
     seedsarr[:, 1] = [snames.index(i) for i in seedsarr[:, 1]]
-    seedsarr = seedsarr.astype(np.int64)    
+    seedsarr = seedsarr.astype(np.int64)
     LOGGER.info("got a seedsarr %s", seedsarr.shape)
 
     ## Get matches from usort and create an array for fast entry
@@ -530,11 +530,11 @@ def get_seeds_and_hits(uhandle, bseeds, snames):
 def multicat(data, samples, ipyclient):
     """
     Runs singlecat and cleanup jobs for each sample.
-    For each sample this fills its own hdf5 array with catg data & indels. 
+    For each sample this fills its own hdf5 array with catg data & indels.
     This is messy, could use simplifiying.
     """
 
-    ## notes for improvements: 
+    ## notes for improvements:
     LOGGER.info("in the multicat")
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
@@ -551,7 +551,7 @@ def multicat(data, samples, ipyclient):
     snames = [i.name for i in samples]
     snames.sort()
 
-    ## Build an array for quickly indexing consens reads from catg files. 
+    ## Build an array for quickly indexing consens reads from catg files.
     ## save as a npy int binary file.
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
     bseeds = os.path.join(data.dirs.consens, data.name+".tmparrs.h5")
@@ -601,7 +601,7 @@ def multicat(data, samples, ipyclient):
                     last_sample = name
                     del jobs[name]
                 else:
-                    LOGGER.error(" error in singlecat (%s) %s", 
+                    LOGGER.error(" error in singlecat (%s) %s",
                                  name, jobs[name].exception())
                     raise IPyradWarningExit(" error in singlecat ({}) {}"\
                                         .format(name), jobs[name].exception())
@@ -632,7 +632,7 @@ def multicat(data, samples, ipyclient):
     for job in cleanups:
         if cleanups[job].ready():
             if not cleanups[job].successful():
-                LOGGER.error(" error in write_to_fullarr (%s) %s", 
+                LOGGER.error(" error in write_to_fullarr (%s) %s",
                              job, cleanups[job].exception())
                 raise IPyradWarningExit(" error in write_to_fullarr ({}) {}"\
                                     .format(job, cleanups[job].exception()))
@@ -651,11 +651,11 @@ def multicat(data, samples, ipyclient):
 
 ## This is where indels are imputed
 def singlecat(data, sample, bseeds, sidx):
-    """ 
+    """
     Orders catg data for each sample into the final locus order. This allows
-    all of the individual catgs to simply be combined later. They are also in 
+    all of the individual catgs to simply be combined later. They are also in
     the same order as the indels array, so indels are inserted from the indel
-    array that is passed in. 
+    array that is passed in.
     """
 
     ## grab seeds and hits info for this sample
@@ -675,7 +675,7 @@ def singlecat(data, sample, bseeds, sidx):
     ## we need to allow room for indels to be added too
     maxlen = data._hackersonly["max_fragment_length"] + 20
 
-    ## we'll fill a new catg and alleles arr for this sample in locus order, 
+    ## we'll fill a new catg and alleles arr for this sample in locus order,
     ## which is known from seeds and hits
     ocatg = np.zeros((data.nloci, maxlen, 4), dtype=np.uint32)
     onall = np.zeros(data.nloci, dtype=np.uint8)
@@ -719,7 +719,7 @@ def singlecat(data, sample, bseeds, sidx):
                            #chunks=(chunksize, maxlen, 4), gzip=True)
     # LOGGER.info("submitting %s %s to singlecat", sidx, hits.shape)
     #del ocatg
-    #del onall    
+    #del onall
 
     #return newcatg, onall, sidx
 
@@ -736,8 +736,8 @@ def write_to_fullarr(data, sample, sidx):
         catg = io5["catgs"]
         nall = io5["nalleles"]
 
-        ## adding an axis to newcatg makes it write about 1000X faster. 
-        ## so instead of e.g., 
+        ## adding an axis to newcatg makes it write about 1000X faster.
+        ## so instead of e.g.,
         ##        newcatg (1000, 150, 4) -> catg (1000, 150, 4)
         ## we do:
         ##        newcatg (1000, 1, 150, 4) -> catg (1000, 1, 150, 4)
@@ -775,8 +775,8 @@ def write_to_fullarr(data, sample, sidx):
 
 
 # def insert_and_cleanup(data, sname, sidx, newcatg, onall):
-#     """ 
-#     Enter results from singlecat into the super h5 arrays. This is 
+#     """
+#     Enter results from singlecat into the super h5 arrays. This is
 #     not parallelized. Why isn't it faster?
 #     """
 
@@ -789,7 +789,7 @@ def write_to_fullarr(data, sample, sidx):
 #         #with h5py.File(smpio, 'r') as smp5:
 #         #    newcatg = smp5["icatg"]
 #         #    onall = smp5["inall"]
-    
+
 #             ## get this samples index in the h5
 #             sidx = list(catg.attrs["samples"]).index(sname)
 #             LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
@@ -813,7 +813,7 @@ def write_to_fullarr(data, sample, sidx):
 
 # @numba.jit(nopython=True)
 # def fill_duplicates_parallel(base, block, seedsarr, uarr, ntax):
-#     """ 
+#     """
 #     Applies filter to block of loci. Requires numba v.0.28.
 #     """
 #     ## filter for duplicates
@@ -836,9 +836,9 @@ def write_to_fullarr(data, sample, sidx):
 
 # @numba.jit(nopython=True)
 # def fill_cats_and_alleles(maxlen, seeds, hits, catarr, nall):
-#     """ 
+#     """
 #     Fill catg and nalleles data in locus sorted order and returns
-#     the filled arrays. Uses the seeds and hits arrays. Needs the entire 
+#     the filled arrays. Uses the seeds and hits arrays. Needs the entire
 #     catarr and nall arrays loaded into memory, unfortunately.
 #     """
 #     ocatg = np.zeros((10000, maxlen, 4), dtype=np.uint32)
@@ -858,21 +858,21 @@ def write_to_fullarr(data, sample, sidx):
 
 #         loc = seeds[idx, 0]
 #         cidx = seeds[idx, 2]
-        
+
 #         ## set locus with sample data
 #         ocatg[loc, :catarr.shape[1]] = catarr[cidx]
 #         onall[loc] = nall[cidx]
-        
+
 #     ## fill the locus data where sample is a hit
 #     for idx in xrange(hits.shape[0]):
 #         ## get the locus number
 #         loc = hits[idx, 0]
 #         cidx = hits[idx, 2]
-        
+
 #         ## set locus with sample data
 #         ocatg[loc, :catarr.shape[1]] = catarr[cidx]
 #         onall[loc] = nall[cidx]
-        
+
 #     return ocatg, onall
 
 
@@ -884,8 +884,8 @@ def inserted_indels(indels, ocatg):
     """
     ## return copy with indels inserted
     newcatg = np.zeros(ocatg.shape, dtype=np.uint32)
-    
-    ## iterate over loci and make extensions for indels   
+
+    ## iterate over loci and make extensions for indels
     for iloc in xrange(ocatg.shape[0]):
         ## get indels indices
         indidx = np.where(indels[iloc, :])[0]
@@ -896,7 +896,7 @@ def inserted_indels(indels, ocatg):
             for idx in indidx:
                 mask[idx] = False
             not_idx = allrows[mask == 1]
-            
+
             ## fill in new data into all other spots
             newcatg[iloc][not_idx] = ocatg[iloc, :not_idx.shape[0]]
         else:
@@ -906,8 +906,8 @@ def inserted_indels(indels, ocatg):
 
 
 def fill_superseqs(data, samples):
-    """ 
-    Fills the superseqs array with seq data from cat.clust 
+    """
+    Fills the superseqs array with seq data from cat.clust
     and fill the edges array with information about paired split locations.
     """
 
@@ -942,7 +942,7 @@ def fill_superseqs(data, samples):
         try:
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
-            raise IPyradError("clustfile formatting error in %s", chunk)    
+            raise IPyradError("clustfile formatting error in %s", chunk)
         if done:
             break
 
@@ -969,13 +969,13 @@ def fill_superseqs(data, samples):
 
             ## fill in the hits
             #LOGGER.info("seqs : %s", seqs)
-            #LOGGER.info("seqs.shape : %s", seqs.shape) 
+            #LOGGER.info("seqs.shape : %s", seqs.shape)
             shlen = seqs.shape[1]
             for name, seq in zip(names, seqs):
                 sidx = snames.index(name.rsplit("_", 1)[0])
                 fill[sidx, :shlen] = seq[:maxlen]
 
-            ## PUT seqs INTO local ARRAY 
+            ## PUT seqs INTO local ARRAY
             chunkseqs[cloc] = fill
 
         ## increase counters
@@ -1019,9 +1019,9 @@ def count_seeds(usort):
 
 
 def build_clustbits(data, ipyclient):
-    """ 
-    Reconstitutes clusters from .utemp and htemp files and writes them 
-    to chunked files for aligning in muscle. 
+    """
+    Reconstitutes clusters from .utemp and htemp files and writes them
+    to chunked files for aligning in muscle.
     """
 
     ## parallel client
@@ -1041,7 +1041,7 @@ def build_clustbits(data, ipyclient):
         progressbar(3, 0, " building clusters     | {} | s6 |".format(elapsed))
         time.sleep(0.1)
 
-    ## send count seeds job to engines. 
+    ## send count seeds job to engines.
     async2 = ipyclient[0].apply(count_seeds, usort)
     while not async2.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -1068,9 +1068,9 @@ def build_clustbits(data, ipyclient):
 
 
 def sub_build_clustbits(data, usort, nseeds):
-    """ 
+    """
     A subfunction of build_clustbits to allow progress tracking. This func
-    splits the unaligned clusters into bits for aligning on separate cores. 
+    splits the unaligned clusters into bits for aligning on separate cores.
     """
 
     ## load FULL concat fasta file into a dict. This could cause RAM issues.
@@ -1085,9 +1085,9 @@ def sub_build_clustbits(data, usort, nseeds):
             allcons[nnn[1:]] = sss
 
     ## set optim to approximately 4 chunks per core. Smaller allows for a bit
-    ## cleaner looking progress bar. 40 cores will make 160 files. 
+    ## cleaner looking progress bar. 40 cores will make 160 files.
     optim = ((nseeds // (data.cpus*4)) + (nseeds % (data.cpus*4)))
-    LOGGER.info("building clustbits, optim=%s, nseeds=%s, cpus=%s", 
+    LOGGER.info("building clustbits, optim=%s, nseeds=%s, cpus=%s",
                 optim, nseeds, data.cpus)
 
     ## iterate through usort grabbing seeds and matches
@@ -1120,7 +1120,7 @@ def sub_build_clustbits(data, usort, nseeds):
                 if seqsize >= optim:
                     if seqlist:
                         loci += seqsize
-                        with open(os.path.join(data.tmpdir, 
+                        with open(os.path.join(data.tmpdir,
                             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
                             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
@@ -1144,7 +1144,7 @@ def sub_build_clustbits(data, usort, nseeds):
         seqsize += 1
         loci += seqsize
     if seqlist:
-        with open(os.path.join(data.tmpdir, 
+        with open(os.path.join(data.tmpdir,
             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
 
@@ -1158,20 +1158,20 @@ def sub_build_clustbits(data, usort, nseeds):
 
 
 def build_input_file(data, samples, randomseed):
-    """ 
-    Make a concatenated consens file with sampled alleles (no RSWYMK/rswymk). 
+    """
+    Make a concatenated consens file with sampled alleles (no RSWYMK/rswymk).
     Orders reads by length and shuffles randomly within length classes
     """
 
     ## get all of the consens handles for samples that have consens reads
-    ## this is better than using sample.files.consens for selecting files 
-    ## b/c if they were moved we only have to edit data.dirs.consens 
+    ## this is better than using sample.files.consens for selecting files
+    ## b/c if they were moved we only have to edit data.dirs.consens
     conshandles = [os.path.join(data.dirs.consens, sample.name+".consens.gz") \
                   for sample in samples if \
                   sample.stats.reads_consens]
     conshandles.sort()
     assert conshandles, "no consensus files found"
-    
+
     ## concatenate all of the gzipped consens files
     cmd = ['cat'] + conshandles
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
@@ -1180,10 +1180,10 @@ def build_input_file(data, samples, randomseed):
         call = subprocess.Popen(cmd, stdout=output)
         call.communicate()
 
-    ## a string of sed substitutions for temporarily replacing hetero sites 
-    ## skips lines with '>', so it doesn't affect taxon names    
-    subs = ["/>/!s/W/A/g", "/>/!s/w/A/g", "/>/!s/R/A/g", "/>/!s/r/A/g", 
-            "/>/!s/M/A/g", "/>/!s/m/A/g", "/>/!s/K/T/g", "/>/!s/k/T/g", 
+    ## a string of sed substitutions for temporarily replacing hetero sites
+    ## skips lines with '>', so it doesn't affect taxon names
+    subs = ["/>/!s/W/A/g", "/>/!s/w/A/g", "/>/!s/R/A/g", "/>/!s/r/A/g",
+            "/>/!s/M/A/g", "/>/!s/m/A/g", "/>/!s/K/T/g", "/>/!s/k/T/g",
             "/>/!s/S/C/g", "/>/!s/s/C/g", "/>/!s/Y/C/g", "/>/!s/y/C/g"]
     subs = ";".join(subs)
 
@@ -1197,15 +1197,15 @@ def build_input_file(data, samples, randomseed):
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
     with open(allhaps, 'w') as output:
         LOGGER.debug(" ".join(cmd2))
-        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output) 
+        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output)
         proc2.communicate()
     proc1.stdout.close()
 
     ## now sort the file using vsearch
-    allsort = allcons.replace("_catcons.tmp", "_catsort.tmp")  
-    cmd1 = [ipyrad.bins.vsearch, 
-            "--sortbylength", allhaps, 
-            "--fasta_width", "0", 
+    allsort = allcons.replace("_catcons.tmp", "_catsort.tmp")
+    cmd1 = [ipyrad.bins.vsearch,
+            "--sortbylength", allhaps,
+            "--fasta_width", "0",
             "--output", allsort]
     LOGGER.debug(" ".join(cmd1))
     proc1 = subprocess.Popen(cmd1)
@@ -1216,7 +1216,7 @@ def build_input_file(data, samples, randomseed):
     random.seed(randomseed)
 
     ## open an iterator to lengthsorted file and grab two lines at at time
-    allshuf = allcons.replace("_catcons.tmp", "_catshuf.tmp")      
+    allshuf = allcons.replace("_catcons.tmp", "_catshuf.tmp")
     outdat = open(allshuf, 'w')
     indat = open(allsort, 'r')
     idat = itertools.izip(iter(indat), iter(indat))
@@ -1243,7 +1243,7 @@ def build_input_file(data, samples, randomseed):
                 break
 
     ## do the last chunk
-    random.shuffle(chunk)    
+    random.shuffle(chunk)
     outdat.write("".join(itertools.chain(*chunk)))
 
     indat.close()
@@ -1252,10 +1252,10 @@ def build_input_file(data, samples, randomseed):
 
 
 def run(data, samples, noreverse, force, randomseed, ipyclient):
-    """ 
+    """
     Master function to run :
-     1. build input file, 2. cluster, 3. split clusters into bits, 
-     4. align bits, 5. build h5 array. 
+     1. build input file, 2. cluster, 3. split clusters into bits,
+     4. align bits, 5. build h5 array.
     """
 
     ## clean the slate
@@ -1266,14 +1266,14 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     start = time.time()
 
     ## a chunker for writing every N loci. This uses core info, meaning that
-    ## if users do not supply -n arg then it might be poorly estimated. 
-    ## if no info we use detect_cpus to get info for this node. 
+    ## if users do not supply -n arg then it might be poorly estimated.
+    ## if no info we use detect_cpus to get info for this node.
     data.cpus = data._ipcluster["cores"]
     if not data.cpus:
         ## should this use detect_cpus? more appropriate would be len ipyclient
         #data.cpus = detect_cpus()
         data.cpus = len(ipyclient)
-    
+
     ## make a vsearch input fasta file with all samples reads concat
     binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
     while not binput.ready():
@@ -1300,7 +1300,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
         ## muscle align the consens reads and creates hdf5 indel array
         multi_muscle_align(data, samples, clustbits, ipyclient)
-    
+
         ## submit to indel entry
         build_indels(data, samples, ipyclient)
 
@@ -1313,7 +1313,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         ##   .attr['samples'] = [samples]
         ## /edges -- gets the paired split locations for now.
         ## /snps  -- left empty for now
-        
+
         ## calls singlecat func inside
         LOGGER.info("building full database")
         build_h5_array(data, samples, ipyclient)
@@ -1331,7 +1331,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
 if __name__ == "__main__":
 
-    ## get path to test dir/ 
+    ## get path to test dir/
     ROOT = os.path.realpath(
        os.path.dirname(
            os.path.dirname(
@@ -1346,5 +1346,3 @@ if __name__ == "__main__":
 
     # ## run step 6
     DATA.run("6", force=True)
-
-
