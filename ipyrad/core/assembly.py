@@ -508,8 +508,13 @@ class Assembly(object):
             ## 3rad/seqcap use multiplexed barcodes
             ## We'll concatenate them with a plus and split them later
             if "3rad" in self.paramsdict["datatype"]:
-                bdf[2] = bdf[2].str.upper()
-                self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+                try:
+                    bdf[2] = bdf[2].str.upper()
+                    self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+                except KeyError as inst:
+                    msg = "    3rad assumes multiplexed barcodes. Doublecheck your barcodes file."
+                    LOGGER.error(msg)
+                    raise IPyradError(msg)
             else:
                 ## set attribute on Assembly object
                 self.barcodes = dict(zip(bdf[0], bdf[1]))
@@ -523,7 +528,6 @@ class Assembly(object):
             msg = "    Barcodes file format error."
             LOGGER.warn(msg)
             raise IPyradError(inst)
-
 
 
     def link_populations(self, popdict=None):

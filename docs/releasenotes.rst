@@ -5,6 +5,18 @@
 Release Notes
 =============
 
+0.5.10
+------
+- Fix for 3Rad w/ only 2 cutters during filtering.
+- Better handling for malformed 3rad barcodes file.
+-  "Updating ipyrad/__init__.py to version - 0.5.9
+
+0.5.9
+-----
+
+0.5.9
+-----
+
 0.5.8
 -----
 - improved progress bar
