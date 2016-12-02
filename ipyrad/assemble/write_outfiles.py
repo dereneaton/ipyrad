@@ -133,6 +133,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #snpcounts = Counter()
     piscounts = Counter()
     varcounts = Counter()
+    ## TODO: Need to make this arbritrarily big!
     for i in range(200):
         piscounts[i] = 0
         varcounts[i] = 0
