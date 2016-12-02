@@ -20,7 +20,8 @@ else:
 
 ## main ip.functions
 from . import load
-from . import assemble 
+from . import assemble
+from . import file_conversion
 from .load import save_json
 from .load import load_json
 #from . import plotting  ## do not autoimport plotting, import as ipp
@@ -58,9 +59,9 @@ if __loglevel__ == "DEBUG":
 
 
 def debug_on():
-    """ 
-    Turns on debugging by creating hidden tmp file 
-    This is only run by the __main__ engine. 
+    """
+    Turns on debugging by creating hidden tmp file
+    This is only run by the __main__ engine.
     """
     ## make tmp file and set loglevel for top-level init
     with open(__debugflag__, 'w') as dfile:
@@ -75,8 +76,8 @@ def _set_debug_dict(__loglevel__):
     """ set the debug dict """
 
     _lconfig.dictConfig({
-    'version': 1,              
-    'disable_existing_loggers': False,  
+    'version': 1,
+    'disable_existing_loggers': False,
 
     'formatters': {
         'standard': {
@@ -118,7 +119,7 @@ def debug_off():
 def _cmd_exists(cmd):
     """ check if dependency program is there """
     return _subprocess.call("type " + cmd,
-                           shell=True, 
+                           shell=True,
                            stdout=_subprocess.PIPE,
                            stderr=_subprocess.PIPE) == 0
 
@@ -132,7 +133,7 @@ def _getbins():
     # This is straight from the python docs:
     # https://docs.python.org/2/library/platform.html#cross-platform
     if not _sys.maxsize > 2**32:
-        _sys.exit("ipyrad requires 64bit architecture") 
+        _sys.exit("ipyrad requires 64bit architecture")
 
     ## get platform mac or linux
     _platform = _sys.platform
@@ -144,7 +145,7 @@ def _getbins():
     ipyrad_path = _os.path.dirname(path)
     bin_path = _os.path.join(ipyrad_path, "bin")
 
-    ## get the correct binaries 
+    ## get the correct binaries
     if 'linux' in _platform:
         vsearch = _os.path.join(
                        _os.path.abspath(bin_path),
@@ -198,7 +199,7 @@ def _getbins():
     assert _cmd_exists(bwa), "bwa not found here: "+bwa
     assert _cmd_exists(samtools), "samtools not found here: "+samtools
     assert _cmd_exists(bedtools), "bedtools not found here: "+bedtools
-    #assert _cmd_exists(qmc), "wQMC not found here: "+qmc    
+    #assert _cmd_exists(qmc), "wQMC not found here: "+qmc
     return vsearch, muscle, smalt, bwa, samtools, bedtools, qmc
 
 

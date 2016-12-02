@@ -394,11 +394,8 @@ def loci2loci(handle, taxonlist, maxlen=200):
 
     ## read in the input file
     with open(handle, 'r') as infile:
-         indata = infile.read()
-
-    ## split on "//" for legacy compatibility
-    loci = indata.strip().split("//")[:-1]
-    loci[0] = " \n" + loci[0]
+        ## split on "//" for legacy compatibility
+        loci = infile.read().strip().split("//")[:-1]
 
     ## create emtpy array to fill
     nloci = len(loci)
