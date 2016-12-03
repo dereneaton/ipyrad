@@ -117,8 +117,8 @@ def loci2bpp(name, locifile, imap, guidetree,
     prog = 'bpp'
     if traitdict:
         prog = 'ibpp'
-    outfile = "{}.{}.seq.txt".format(name, prog)
-    mapfile = "{}.{}.imap.txt".format(name, prog)
+    outfile = os.path.join(os.path.curdir, "{}.{}.seq.txt".format(name, prog))
+    mapfile = os.path.join(os.path.curdir, "{}.{}.imap.txt".format(name, prog))
 
     ## open outhandles
     fout = open(outfile, 'w')
@@ -167,14 +167,16 @@ def loci2bpp(name, locifile, imap, guidetree,
 
             ## if not empty, write to the file
             if data:
-                fout.write("{} {}\n\n{}\n\n".format(len(data), seqlen, "\n".join(data)))
+                fout.write("{} {}\n\n{}\n\n"\
+                           .format(len(data), seqlen, "\n".join(data)))
                 nkept += 1
 
     ## close up shop
     fout.close()
 
     ## write the imap file:
-    data = ["{:<30} {}".format(val, key) for key in sorted(imap) for val in imap[key]]
+    data = ["{:<30} {}".format(val, key) for key \
+            in sorted(imap) for val in imap[key]]
     fmap.write("\n".join(data))
     fmap.close()
 
@@ -205,7 +207,7 @@ def loci2bpp(name, locifile, imap, guidetree,
 def write_ctl(name, IMAP, guidetree, nloci,
               infer_sptree, infer_delimit, delimit_alg,
               seed, burnin, nsample, sampfreq,
-              thetaprior, tauprior, traitdict, nu, kappa,
+              thetaprior, tauprior, traitdict, nu0, kappa0,
               cleandata, useseqdata, usetraitdata, verbose):
 
     """ write outfile with any args in argdict """
@@ -224,10 +226,11 @@ def write_ctl(name, IMAP, guidetree, nloci,
 
     ## write the top header info
     CTL.append("seed = {}".format(seed))
-    CTL.append("seqfile = {}.{}.seq.txt".format(name, prog))
-    CTL.append("Imapfile = {}.{}.imap.txt".format(name, prog))
-    CTL.append("mcmcfile = {}.{}.mcmc.txt".format(name, prog))
-    CTL.append("outfile = {}.{}.out.txt".format(name, prog))
+    pre = os.path.abspath(os.path.curdir)+"/"
+    CTL.append("seqfile = {}{}.{}.seq.txt".format(pre, name, prog))
+    CTL.append("Imapfile = {}{}.{}.imap.txt".format(pre, name, prog))
+    CTL.append("mcmcfile = {}{}.{}.mcmc.txt".format(pre, name, prog))
+    CTL.append("outfile = {}{}.{}.out.txt".format(pre, name, prog))
     if traitdict:
         CTL.append("traitfile = {}.{}.traits.txt".format(name, prog))
 
@@ -256,8 +259,8 @@ def write_ctl(name, IMAP, guidetree, nloci,
         CTL.append("useseqdata = {}".format(useseqdata))
 
         ## trait priors
-        CTL.append("nu0 = {}".format(nu))
-        CTL.append("kappa0 = {}".format(kappa))
+        CTL.append("nu0 = {}".format(nu0))
+        CTL.append("kappa0 = {}".format(kappa0))
 
         ## remove ibpp incompatible options
         CTL.remove("usedata = {}".format(useseqdata))
