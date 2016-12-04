@@ -2,6 +2,7 @@
 import os
 import sys
 import itertools
+import pandas as pd
 from ipyrad.assemble.util import IPyradWarningExit
 #import numpy as np
 
@@ -18,12 +19,13 @@ def loci2bpp(name, locifile, imap, guidetree,
               sampfreq=2,
               thetaprior=(5, 5),
               tauprior=(4, 2, 1),
-              traitdict=None,
+              traits_df=None,
               nu=0,
               kappa=0,
               useseqdata=1,
               usetraitdata=1,
               cleandata=0,
+              wdir=None,
               verbose=0):
     """
     Converts loci file format to bpp file format, i.e., concatenated phylip-like
@@ -83,18 +85,21 @@ def loci2bpp(name, locifile, imap, guidetree,
     sampfreq:
         How often to sample from the mcmc chain.
     thetaprior:
-        Prior on theta (4Neu), gamma distributed. mean = a/b.
+        Prior on theta (4Neu), gamma distributed. mean = a/b. e.g., (5, 5)
     tauprior
-        Prior on tau (branch lengths), gamma distributed. mean = a/b. Last number
-        is dirichlet distribution of ...
-    traitdict:
-        A trait dictionary for iBPP analyses. Keys should be sample names and
-        values should be lists of trait values. Only quantitative traits.
-        Missing values should be listed as NA.
-    nu0:
-        A prior on ? for iBPP trait analyses...
-    kappa0:
-        A prior on ? for iBPP trait analyses...
+        Prior on root tau, gamma distributed mean = a/b. Last number is dirichlet
+        prior for other taus. e.g., (4, 2, 1)
+    traits_df:
+        A pandas DataFrame with trait data properly formatted. This means only
+        quantitative traits are included, and missing values are NaN.
+        The first column contains sample names, with "Indiv" as the header.
+        The following columns have a header row with trait names. This script
+        will write a CSV trait file with trait values mean-standardized, with
+        NaN replaced by "NA", and with sample not present in IMAP removed.
+    nu:
+        A prior on phenotypic trait variance (0) for iBPP analysis.
+    kappa:
+        A prior on phenotypic trait mean (0) for iBPP analysis.
     useseqdata:
         If false inference proceeds without sequence data (can be used to test
         the effect of priors on the tree distributions).
@@ -103,7 +108,10 @@ def loci2bpp(name, locifile, imap, guidetree,
         the effect of priors on the trait distributions).
     cleandata:
         If 1 then sites with missing or hetero characters are removed.
-
+    wdir:
+        A working directory to write files to.
+    verbose:
+        If verbose=1 the ctl file text will also be written to screen (stderr).
 
     """
     ## check args
@@ -113,12 +121,20 @@ def loci2bpp(name, locifile, imap, guidetree,
         if minmap.keys() != imap.keys():
             raise IPyradWarningExit(KEYS_DIFFER)
 
-    ## if traitdict then we make '.ibpp' files
+    ## working directory, make sure it exists
+    if wdir:
+        wdir = os.path.abspath(wdir)
+        if not os.path.exists(wdir):
+            raise IPyradWarningExit(" working directory (wdir) does not exist")
+    else:
+        wdir = os.path.curdir
+
+    ## if traits_df then we make '.ibpp' files
     prog = 'bpp'
-    if traitdict:
+    if isinstance(traits_df, pd.DataFrame):
         prog = 'ibpp'
-    outfile = os.path.join(os.path.curdir, "{}.{}.seq.txt".format(name, prog))
-    mapfile = os.path.join(os.path.curdir, "{}.{}.imap.txt".format(name, prog))
+    outfile = os.path.join(wdir, "{}.{}.seq.txt".format(name, prog))
+    mapfile = os.path.join(wdir, "{}.{}.imap.txt".format(name, prog))
 
     ## open outhandles
     fout = open(outfile, 'w')
@@ -184,8 +200,8 @@ def loci2bpp(name, locifile, imap, guidetree,
     write_ctl(name, imap, guidetree, nkept,
               infer_sptree, infer_delimit, delimit_alg,
               seed, burnin, nsample, sampfreq,
-              thetaprior, tauprior, traitdict, nu, kappa,
-              cleandata, useseqdata, usetraitdata, verbose)
+              thetaprior, tauprior, traits_df, nu, kappa,
+              cleandata, useseqdata, usetraitdata, wdir, verbose)
 
     ## print message?
     sys.stderr.write("new files created ({} loci, {} species, {} samples)\n"\
@@ -194,21 +210,20 @@ def loci2bpp(name, locifile, imap, guidetree,
     sys.stderr.write("  {}.{}.seq.txt\n".format(name, prog))
     sys.stderr.write("  {}.{}.imap.txt\n".format(name, prog))
     sys.stderr.write("  {}.{}.ctl.txt\n".format(name, prog))
-    if traitdict:
+    if isinstance(traits_df, pd.DataFrame):
         sys.stderr.write("  {}.{}.traits.txt\n".format(name, prog))
 
     ## return the ctl file string
-    return os.path.abspath(os.path.join(
-        os.path.curdir, "{}.{}.ctl.txt".format(name, prog))
-        )
+    return os.path.abspath(
+        "{}.{}.ctl.txt".format(os.path.join(wdir, name), prog))
 
 
 
-def write_ctl(name, IMAP, guidetree, nloci,
+def write_ctl(name, imap, guidetree, nloci,
               infer_sptree, infer_delimit, delimit_alg,
               seed, burnin, nsample, sampfreq,
-              thetaprior, tauprior, traitdict, nu0, kappa0,
-              cleandata, useseqdata, usetraitdata, verbose):
+              thetaprior, tauprior, traits_df, nu0, kappa0,
+              cleandata, useseqdata, usetraitdata, wdir, verbose):
 
     """ write outfile with any args in argdict """
 
@@ -219,20 +234,19 @@ def write_ctl(name, IMAP, guidetree, nloci,
     if not guidetree.endswith(";"):
         guidetree += ";"
 
-    ## if traitdict then we make '.ibpp' files
+    ## if traits_df then we make '.ibpp' files
     prog = 'bpp'
-    if traitdict:
+    if isinstance(traits_df, pd.DataFrame):
         prog = 'ibpp'
 
     ## write the top header info
     CTL.append("seed = {}".format(seed))
-    pre = os.path.abspath(os.path.curdir)+"/"
-    CTL.append("seqfile = {}{}.{}.seq.txt".format(pre, name, prog))
-    CTL.append("Imapfile = {}{}.{}.imap.txt".format(pre, name, prog))
-    CTL.append("mcmcfile = {}{}.{}.mcmc.txt".format(pre, name, prog))
-    CTL.append("outfile = {}{}.{}.out.txt".format(pre, name, prog))
-    if traitdict:
-        CTL.append("traitfile = {}.{}.traits.txt".format(name, prog))
+    CTL.append("seqfile = {}.{}.seq.txt".format(os.path.join(wdir, name), prog))
+    CTL.append("Imapfile = {}.{}.imap.txt".format(os.path.join(wdir, name), prog))
+    CTL.append("mcmcfile = {}.{}.mcmc.txt".format(os.path.join(wdir, name), prog))
+    CTL.append("outfile = {}.{}.out.txt".format(os.path.join(wdir, name), prog))
+    if isinstance(traits_df, pd.DataFrame):
+        CTL.append("traitfile = {}.{}.traits.txt".format(os.path.join(wdir, name), prog))
 
     ## number of loci (checks that seq file exists and parses from there)
     CTL.append("nloci = {}".format(nloci))
@@ -250,11 +264,60 @@ def write_ctl(name, IMAP, guidetree, nloci,
                .format(infer_delimit, delimit_alg[0],
                        " ".join([str(i) for i in delimit_alg[1:]])))
 
-    ## if using iBPP (if not traits, we assume you're using normal bpp (v.3.3+)
-    if traitdict:
+    ## if using iBPP (if not traits_df, we assume you're using normal bpp (v.3.3+)
+    if isinstance(traits_df, pd.DataFrame):
+        ## check that the data frame is properly formatted
+        try:
+            traits_df.values.astype(float)
+        except Exception:
+            raise IPyradWarningExit(PDREAD_ERROR)
+
+        ## subsample to keep only samples that are in IMAP
+        samples = sorted(list(itertools.chain(*imap.values())))
+        didx = [list(traits_df.index).index(i) for i in traits_df.index if i not in samples]
+        dtraits = traits_df.drop(traits_df.index[didx])
+
+        ## mean standardize traits values after excluding samples
+        straits = dtraits.apply(lambda x: (x - x.mean()) / (x.std()))
+
+        ## convert NaN to "NA" cuz that's what ibpp likes, and write to file
+        ftraits = straits.fillna("NA")
+        traitdict = ftraits.T.to_dict("list")
+
+        ## get reverse imap dict
+        rev = {val:key for key in sorted(imap) for val in imap[key]}
+
+        ## write trait file
+        traitfile = "{}.{}.traits.txt".format(os.path.join(wdir, name), prog)
+        with open(traitfile, 'w') as tout:
+            tout.write("Indiv\n")
+            tout.write("\t".join(
+                ['Species'] + list(ftraits.columns))+"\n"
+                )
+            #for key in sorted(traitdict):
+            #    tout.write("\t".join([key, rev[key]] + \
+            #        ["^"+str(i) for i in traitdict[key]])+"\n"
+            #        )
+            nindT = 0
+            for ikey in sorted(imap.keys()):
+                samps = imap[ikey]
+                for samp in sorted(samps):
+                    if samp in traitdict:
+                        tout.write("\t".join([samp, rev[samp]] + \
+                            [str(i) for i in traitdict[samp]])+"\n"
+                        )
+                        nindT += 1
+
+        #    tout.write("Indiv\n"+"\t".join(["Species"]+\
+        #    ["t_{}".format(i) for i in range(len(traitdict.values()[0]))])+"\n")
+        #    for key in sorted(traitdict):
+        #        print >>tout, "\t".join([key, rev[key]] + \
+        #                                [str(i) for i in traitdict[key]])
+        #ftraits.to_csv(traitfile)
+
         ## write ntraits and nindT and traitfilename
-        CTL.append("ntraits = {}".format(len(traitdict.values()[0])))
-        CTL.append("nindT = {}".format(len(traitdict)))
+        CTL.append("ntraits = {}".format(traits_df.shape[1]))
+        CTL.append("nindT = {}".format(nindT))  #traits_df.shape[0]))
         CTL.append("usetraitdata = {}".format(usetraitdata))
         CTL.append("useseqdata = {}".format(useseqdata))
 
@@ -266,21 +329,10 @@ def write_ctl(name, IMAP, guidetree, nloci,
         CTL.remove("usedata = {}".format(useseqdata))
         CTL.remove("speciestree = {}".format(infer_sptree))
 
-        ## get reverse imap dict
-        rev = {val:key for key in sorted(IMAP) for val in IMAP[key]}
-
-        ## write trait file
-        with open("{}.{}.traits.txt".format(name, prog), 'w') as tout:
-            tout.write("Indiv\n"+"\t".join(["Species"]+\
-            ["t_{}".format(i) for i in range(len(traitdict.values()[0]))])+"\n")
-            for key in sorted(traitdict):
-                print >>tout, "\t".join([key, rev[key]] + \
-                                        [str(i) for i in traitdict[key]])
-
     ## get tree values
-    nspecies = str(len(IMAP))
-    species = " ".join(IMAP.keys())
-    ninds = " ".join([str(len(i)) for i in IMAP.values()])
+    nspecies = str(len(imap))
+    species = " ".join(imap.keys())
+    ninds = " ".join([str(len(i)) for i in imap.values()])
 
     ## write the tree
     CTL.append("""\
@@ -301,7 +353,7 @@ species&tree = {} {}
     CTL.append("nsample = {}".format(nsample))
 
     ## write out the ctl file
-    with open("{}.{}.ctl.txt".format(name, prog), 'w') as out:
+    with open("{}.{}.ctl.txt".format(os.path.join(wdir, name), prog), 'w') as out:
         out.write("\n".join(CTL))
 
     ## if verbose print ctl
@@ -318,5 +370,12 @@ IMAP_REQUIRED = """\
   """
 
 KEYS_DIFFER = """
-   MINMAP and IMAP keys must be identical.
-   """
+  MINMAP and IMAP keys must be identical.
+  """
+
+PDREAD_ERROR = """\
+  Error in trait file: all data must be quantitative (int or floats)
+  and missing data must be coded as NA. See the example notebook. If
+  sample names are in a data column this will cause an error, try
+  passing the argument 'index_col=0' to pandas.read_csv().
+  """
