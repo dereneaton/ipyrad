@@ -177,9 +177,9 @@ def loci2bpp(name, locifile, imap, guidetree,
 
         ## build locus as a string
         if not skip:
-            ## convert to phylip with caret starter
-            data = ["{:<30} {}".format(i, "".join(k)) for (i, k) in \
-                    zip(names, seqs) if i[1:] in samples]
+            ## convert to phylip with caret starter and replace - with N.
+            data = ["{:<30} {}".format(i, "".join(k).replace("-", "N")) for \
+                (i, k) in zip(names, seqs) if i[1:] in samples]
 
             ## if not empty, write to the file
             if data:
