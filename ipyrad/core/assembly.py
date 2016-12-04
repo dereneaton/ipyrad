@@ -1561,7 +1561,7 @@ def paramschecker(self, param, newvalue):
                 self.paramsdict['raw_fastq_path'] = fullrawpath
             ## else allow empty, tho it can still raise an error in step1
             else:
-                raise IPyradWarningExit(NO_RAW_FILE)
+                raise IPyradWarningExit(NO_RAW_FILE.format(fullrawpath))
         else:
             self.paramsdict['raw_fastq_path'] = ""
 
@@ -1967,6 +1967,7 @@ NO_RAW_FILE = """\
     Please be sure this path is correct. Double check the file name and
     the file extension. If it is a relative path be sure the path is
     correct with respect to the directory you're running ipyrad from.
+    You entered - {}
     """
 
 LINKING_TO_MSG = """\
