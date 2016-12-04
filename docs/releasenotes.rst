@@ -5,6 +5,104 @@
 Release Notes
 =============
 
+0.5.10
+------
+- Fix for 3Rad w/ only 2 cutters during filtering.
+- Better handling for malformed 3rad barcodes file.
+-  "Updating ipyrad/__init__.py to version - 0.5.9
+
+0.5.9
+-----
+
+0.5.9
+-----
+
+0.5.8
+-----
+- improved progress bar
+- merge fix
+- notebook testing geno build
+- Fix to memory handling on vcf build, can now handle thousands of taxa. Also, now saves filepaths to json and API object.
+- progres on dstats package
+- More progress on manuscript horserace. Analysis is done, now mostly working on gathering results.
+
+0.5.7
+-----
+- Fix error handing during writing of vcf file.
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+-  "Updating ipyrad/__init__.py to version - 0.5.6
+
+0.5.6
+-----
+
+0.5.6
+-----
+- notebook testing
+- purge after each step to avoid memory spillover/buildup
+- better handling of memory limits in vcf build. Now producing geno output files. Better error reporting when building output files
+- added a global dict to util
+- new smaller limit of chunk sizes in h5 to avoid memory limits
+- analysis docs update
+- Document weird non-writable home directory on cluster issues.
+- docs update for filtering differences
+- merge fix
+- tetrad notebook edits
+- dstat calc script editing
+- Added code to copy barcodes during assembly merge. Barcodes are needed for all PE samples in step 2.
+
+0.5.5
+-----
+- Better handling for PE with loci that have some merged and some unmerged reads.
+- Allow other output formats to try to build if vcf fails.
+- Fixed bug that was forcing creation of the vcf even if it wasn't requested.
+
+0.5.4
+-----
+- More improved handling for low/no depth samples.
+- Better handling for cleanup of samples with very few reads.
+
+0.5.3
+-----
+- Catch sample names that don't match barcode names when importing demux'd pair data.
+- Serious errors now print to ipyrad_log.txt by default.
+
+0.5.2
+-----
+- Handle sample cleanup if the sample has no hidepth clusters.
+- Fix for declone_3rad on merged reads.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better support for 3rad lining presorted fastqs.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- bucky cookbook updated
+- docs update
+- docs update
+- dstat updates
+- docs update
+- docs update
+- docs update
+- docs update
+- docs update
+- docs updates
+- docs update
+- bucky cookbook uploaded
+
 0.5.1
 -----
 - added tetrad docs

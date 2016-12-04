@@ -37,7 +37,7 @@ def assembly_cleanup(data):
 
     ## write stats for all samples
     with open(data.stats_files.s2, 'w') as outfile:
-        data.stats_dfs.s2.astype(np.int).to_string(outfile)
+        data.stats_dfs.s2.fillna(value=0).astype(np.int).to_string(outfile)
 
 
 
@@ -227,6 +227,7 @@ def cutadaptit_pairs(data, sample):
     positives that trim a little extra from the ends of reads. Should we add
     a warning about this when filter_adapters=2 and no barcodes?
     """
+    LOGGER.debug("Entering cutadaptit_pairs - {}".format(sample.name))
 
     sname = sample.name
 
@@ -256,11 +257,22 @@ def cutadaptit_pairs(data, sample):
             LOGGER.warning("  error adding barcodes info: %s", inst)
 
     if data.barcodes:
-        adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-                   data._hackersonly["p3_adapter"]
-        adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1]+\
-                   fullcomp(data.barcodes[sample.name])[::-1]+\
-                   data._hackersonly["p5_adapter"]
+        try:
+            adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
+                       data._hackersonly["p3_adapter"]
+            adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1]+\
+                       fullcomp(data.barcodes[sample.name])[::-1]+\
+                       data._hackersonly["p5_adapter"]
+        except KeyError as inst:
+            msg = """
+    Sample name does not exist in the barcode file. The name in the barcode file
+    for each sample must exactly equal the raw file name for the sample minus
+    `_R1`. So for example a sample called WatDo_PipPrep_R1_100.fq.gz must
+    be referenced in the barcode file as WatDo_PipPrep_100. The name in your
+    barcode file for this sample must match: {}
+""".format(sample.name)
+            LOGGER.error(msg)
+            raise IPyradWarningExit(msg)
     else:
         print(NO_BARS_GBS_WARNING)
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
@@ -294,12 +306,14 @@ def cutadaptit_pairs(data, sample):
         cmdf1.insert(1, '-A')                
 
     ## do modifications to read1 and write to tmp file
+    LOGGER.debug(cmdf1)
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
     res1 = proc1.communicate()[0]
     ## raise errors if found
     if proc1.returncode:
         raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
 
+    LOGGER.debug("Exiting cutadaptit_pairs - {}".format(sname))
     ## return results string to be parsed outside of engine
     return res1
 
@@ -415,7 +429,6 @@ def choose_samples(samples, force):
 
     ## hold samples that pass
     subsamples = []
-
     ## filter the samples again
     if not force:
         for sample in samples:

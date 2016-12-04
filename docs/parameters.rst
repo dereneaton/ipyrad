@@ -397,26 +397,29 @@ Affected steps = 1. Example entries to params.txt:
 
 16. filter_adapters
 --------------------
+It is important to remove Illumina adapters from your data if present. 
 Depending on the fidelity of the size selection procedure implemented during
-library preparation there are usually at least some proportion of sequences
+library preparation there is often at least some small proportion of sequences
 in which the read length is longer than the actual DNA fragment, such that the
-primer/adapter sequence ends up in the read. This can be a problem and should
-be filtered out. It occurs more commonly in double-digest data sets that use
-a common cutter, and can be espeically problematic for gbs data sets, in
-which short fragments are sequenced from either end.
-If filter_adapters is set to 0 then no check is performed for sequence adapters.
-If it is set to 1 then step 2 performs a fuzzy check for the reverse
-complement match of the cut site followed by the beginning of the adapter
-sequence. If it is set to 2 is performs an even fuzzier match to catch
-adapters even if there are sequencing errors or Ns in them, but has a higher
-rate of false positive matches.
+primer/adapter sequence ends up in the read. This occurs more commonly in 
+double-digest (GBS, ddRAD) data sets that use a common cutter, and can be 
+especially problematic for GBS data sets, in which short fragments are sequenced 
+from either end. The `filter_adapters` parameter has three settings (0, 1, or 2). 
+**If 0**, then reads are only removed if they contain more Ns than allowed by the
+`max_low_qual_bases` parameter. **If 1**, then reads are trimmed to the first base
+which has a Qscore < 20 (on either read for paired data), and also removed if there
+are too many Ns. **If 2**, then reads are searched for the common Illumina adapter, 
+plus the reverse complement of the second cut site (if present), plus the barcode
+(if present), and this part of the read is trimmed. This filter is applied using 
+code from the software `cutadapt`, which allows for errors within the adapter 
+sequence. 
 
 Affected steps = 2. Example entries to params.txt:
 
 .. parsed-literal::
 
     0                ## [16] No adapter filtering
-    1                ## [16] filter for adapters
+    1                ## [16] filter based on quality scores
     2                ## [16] strict filter for adapters
 
 
@@ -424,9 +427,10 @@ Affected steps = 2. Example entries to params.txt:
 
 17. filter_min_trim_len
 ------------------------
-If filter_adapters is set > 0 then reads containing adapters will be trimmed
-to a shorter length. By default ipyrad will keep trimmed reads down to a minimum
-length of 35bp. If you want to set a higher limit you can set it here.
+During step 2 if `filter_adapters` is > 0 reads may be trimmed to a shorter length
+if they are either low quality or contain Illumina adapter sequences. 
+By default ipyrad will keep trimmed reads down to a minimum length of 35bp. 
+If you want to set a higher limit you can do so here.
 
 Affected steps = 2. Example entries to params.txt
 

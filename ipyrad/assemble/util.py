@@ -14,7 +14,7 @@ import socket
 import tempfile
 import itertools
 import subprocess as sps
-import ipyrad 
+import ipyrad
 import gzip
 from collections import defaultdict
 
@@ -22,7 +22,7 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 ## a subset of functions to import when importing as *
-#__all__ = ["IPyradError", "IPyradParamsError", "IPyradWarningExit", 
+#__all__ = ["IPyradError", "IPyradParamsError", "IPyradWarningExit",
 #           "ObjDict", "comp"]
 
 
@@ -38,9 +38,9 @@ class IPyradError(Exception):
         Exception.__init__(self, *args, **kwargs)
 
 class IPyradWarningExit(SystemExit):
-    """ 
+    """
     Exception handler that does clean exit for CLI, but also prints
-    the traceback and cleaner message for API. 
+    the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
         if ipyrad.__interactive__:
@@ -51,9 +51,9 @@ class IPyradWarningExit(SystemExit):
 
 
 class ObjDict(dict):
-    """ 
-    Object dictionary allows calling dictionaries in a more 
-    pretty and Python fashion for storing Assembly data 
+    """
+    Object dictionary allows calling dictionaries in a more
+    pretty and Python fashion for storing Assembly data
     """
     def __getattr__(self, name):
         if name in self:
@@ -103,7 +103,7 @@ def memoize(func):
 CDICT = {i:j for i, j in zip("CATG", "0123")}
 
 
-## used for geno output 
+## used for geno output
 VIEW = {"R":("G", "A"),
         "K":("G", "T"),
         "S":("G", "C"),
@@ -115,7 +115,7 @@ VIEW = {"R":("G", "A"),
         "G":("X", "X"),
         "C":("X", "X"),
         "N":("X", "X"),
-        "-":("X", "X"), 
+        "-":("X", "X"),
         }
 
 ## used in hetero() func of consens_se.py
@@ -125,6 +125,21 @@ TRANS = {('G', 'A'):"R",
          ('T', 'C'):"Y",
          ('T', 'A'):"W",
          ('C', 'A'):"M"}
+
+TRANSFULL = {
+         ('G', 'A'):"R",
+         ('G', 'T'):"K",
+         ('G', 'C'):"S",
+         ('T', 'C'):"Y",
+         ('T', 'A'):"W",
+         ('C', 'A'):"M",
+         ('A', 'C'):"M",
+         ('A', 'T'):"W",
+         ('C', 'T'):"Y",
+         ('C', 'G'):"S",
+         ('T', 'G'):"K",
+         ('A', 'G'):"R"}
+
 
 ## used for resolving ambiguities
 AMBIGS = {"R":("G", "A"),
@@ -137,9 +152,9 @@ AMBIGS = {"R":("G", "A"),
 
 
 def ambigcutters(seq):
-    """ 
-    Returns both resolutions of a cut site that has an ambiguous base in 
-    it, else the single cut site 
+    """
+    Returns both resolutions of a cut site that has an ambiguous base in
+    it, else the single cut site
     """
     resos = []
     if any([i in list("RKSYWM") for i in seq]):
@@ -154,7 +169,7 @@ def ambigcutters(seq):
 
 
 def splitalleles(consensus):
-    """ takes diploid consensus alleles with phase data stored as a mixture 
+    """ takes diploid consensus alleles with phase data stored as a mixture
     of upper and lower case characters and splits it into 2 alleles """
 
     ## store two alleles, allele1 will start with bigbase
@@ -229,11 +244,11 @@ def fullcomp(seq):
 
 
 def merge_pairs(data, two_files, merged_out, revcomp, merge):
-    """ 
-    Merge PE reads. Takes in a list of unmerged files [r1, r2] and the 
-    filehandle to write merged data to, and it returns the number of reads 
-    that were merged (overlapping). If merge==0 then only concat pairs (nnnn), 
-    no merging in vsearch. 
+    """
+    Merge PE reads. Takes in a list of unmerged files [r1, r2] and the
+    filehandle to write merged data to, and it returns the number of reads
+    that were merged (overlapping). If merge==0 then only concat pairs (nnnn),
+    no merging in vsearch.
 
     If merge==1 merge_pairs() will return the number of pairs successfully
     merged, if merge==0 it will return -1.
@@ -258,10 +273,10 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
     ## if merge then catch nonmerged in a separate file
     if merge:
-        nonmerged1 = tempfile.NamedTemporaryFile(mode='wb', 
+        nonmerged1 = tempfile.NamedTemporaryFile(mode='wb',
                                             dir=data.dirs.edits,
                                             suffix="_nonmerged_R1_.fastq").name
-        nonmerged2 = tempfile.NamedTemporaryFile(mode='wb', 
+        nonmerged2 = tempfile.NamedTemporaryFile(mode='wb',
                                             dir=data.dirs.edits,
                                             suffix="_nonmerged_R2_.fastq").name
 
@@ -285,7 +300,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
         out1 = open(tmp1, 'w')
         out2 = open(tmp2, 'w')
-        gun1 = sps.Popen(["gunzip", "-c", two_files[0][0]], 
+        gun1 = sps.Popen(["gunzip", "-c", two_files[0][0]],
                           stderr=sps.STDOUT, stdout=out1)
         gun2 = sps.Popen(["gunzip", "-c", two_files[0][1]],
                           stderr=sps.STDOUT, stdout=out2)
@@ -299,20 +314,20 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
     ## If we are actually mergeing and not just joining then do vsearch
     if merge:
-        cmd = [ipyrad.bins.vsearch, 
+        cmd = [ipyrad.bins.vsearch,
                "--fastq_mergepairs", tmp1,
-               "--reverse", tmp2, 
-               "--fastqout", merged_out, 
-               "--fastqout_notmerged_fwd", nonmerged1, 
-               "--fastqout_notmerged_rev", nonmerged2, 
-               "--fasta_width", "0", 
-               "--fastq_minmergelen", minlen, 
-               "--fastq_maxns", str(maxn), 
-               "--fastq_minovlen", "20", 
-               "--fastq_maxdiffs", "4", 
-               "--label_suffix", "_m1", 
-               "--fastq_qmax", "1000", 
-               "--threads", "2", 
+               "--reverse", tmp2,
+               "--fastqout", merged_out,
+               "--fastqout_notmerged_fwd", nonmerged1,
+               "--fastqout_notmerged_rev", nonmerged2,
+               "--fasta_width", "0",
+               "--fastq_minmergelen", minlen,
+               "--fastq_maxns", str(maxn),
+               "--fastq_minovlen", "20",
+               "--fastq_maxdiffs", "4",
+               "--label_suffix", "_m1",
+               "--fastq_qmax", "1000",
+               "--threads", "2",
                "--fastq_allowmergestagger"]
 
         LOGGER.info("merge cmd: %s", cmd)
@@ -325,7 +340,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
         if proc.returncode:
             LOGGER.error("Error: %s %s", cmd, res)
             ## remove temp files
-            rmfiles = [os.path.splitext(two_files[0][0])[0]+".tmp1", 
+            rmfiles = [os.path.splitext(two_files[0][0])[0]+".tmp1",
                        os.path.splitext(two_files[0][1])[0]+".tmp2"]
             for rmfile in rmfiles:
                 if os.path.exists(rmfile):
@@ -334,7 +349,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
             ## this is going to be tooo slow to read big files!!
             data1 = open(two_files[0][0], 'r').read()
             data2 = open(two_files[0][1], 'r').read()
-            LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s", 
+            LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s",
                          two_files, merged_out, data1, data2)
             raise IPyradWarningExit("Error in merge pairs:\n %s\n%s", cmd, res)
 
@@ -400,8 +415,8 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
     ## if merged then delete the nonmerge tmp files
     if merge:
         ## remove temp files
-        rmfiles = [nonmerged1, nonmerged2, 
-                   os.path.splitext(two_files[0][0])[0]+".tmp1", 
+        rmfiles = [nonmerged1, nonmerged2,
+                   os.path.splitext(two_files[0][0])[0]+".tmp1",
                    os.path.splitext(two_files[0][1])[0]+".tmp2"]
         for rmfile in rmfiles:
             if os.path.exists(rmfile):
@@ -414,7 +429,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 # ## This is hold-over code from pyrad V3 alignable, it's only used
 # ## by loci2vcf so you could move it there if you like
 # def most_common(L):
-#     return max(itertools.groupby(sorted(L)), 
+#     return max(itertools.groupby(sorted(L)),
 #                key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
 
 
@@ -438,7 +453,7 @@ def unhetero(amb):
 
 
 
-## Alleles priority dict. The key:vals are the same as the AMBIGS dict 
+## Alleles priority dict. The key:vals are the same as the AMBIGS dict
 ## except it returns just one base, w/ the order/priority being (C>A>T>G)
 ## This dict is used to impute lower case into consens to retain allele
 ## order for phase in diploids
@@ -458,8 +473,8 @@ MINOR = {"M": "A",
          "K": "G"}
 
 
-DUCT = {"R":["G", "A"], 
-        "K":["G", "T"], 
+DUCT = {"R":["G", "A"],
+        "K":["G", "T"],
         "S":["G", "C"],
         "Y":["T", "C"],
         "W":["T", "A"],
@@ -474,7 +489,7 @@ def unstruct(amb):
     """ This is copied from pyrad.alignable, and is referenced in
     several of the loci2*.py conversion modules. It duplicates some
     of the effort of unhetero(), but i guess it's fine for now. Probably
-    could merge these two functions if you wanted to. 
+    could merge these two functions if you wanted to.
     """
     amb = amb.upper()
     ## returns bases from ambiguity code"
@@ -483,8 +498,8 @@ def unstruct(amb):
 
 
 # def getsplits(filename):
-#     """ Calculate optimum splitting based on file size. Does not unzip files, 
-#     assumes average rate of compression. This is a fast alternative to counting 
+#     """ Calculate optimum splitting based on file size. Does not unzip files,
+#     assumes average rate of compression. This is a fast alternative to counting
 #     lines which takes too long on huge files.
 #     """
 #     filesize = os.stat(filename).st_size
@@ -501,7 +516,7 @@ def unstruct(amb):
 
 
 # def zcat_make_temps(args):
-#     """ 
+#     """
 #     Call bash command 'cat' and 'split' to split large files. The goal
 #     is to create N splitfiles where N is a multiple of the number of processors
 #     so that each processor can work on a file in parallel.
@@ -513,7 +528,7 @@ def unstruct(amb):
 #     ## get optimum lines per file
 #     if not optim:
 #         optim = getsplits(raws[0])
-#     #optim = int(optim)    
+#     #optim = int(optim)
 #     LOGGER.info("zcat is using optim = %s", optim)
 
 #     ## is it gzipped
@@ -525,8 +540,8 @@ def unstruct(amb):
 #     ### The -a flag tells split how long the suffix for each split file
 #     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
 #     ### will have 26^4 possible tmp file names.
-#     cmd = cat + [raws[0], "|", "split", "-a", "4", 
-#                  "-l", str(optim), 
+#     cmd = cat + [raws[0], "|", "split", "-a", "4",
+#                  "-l", str(optim),
 #                  "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")]
 
 #     subprocess.Popen(cmd).communicate()
@@ -541,7 +556,7 @@ def unstruct(amb):
 
 #         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
 #         chunks2.sort()
-    
+
 #     else:
 #         chunks2 = [0]*len(chunks1)
 
@@ -568,7 +583,7 @@ def clustdealer(pairdealer, optim):
 
         ## load one cluster
         while 1:
-            try: 
+            try:
                 oneclust.append("".join(taker.next()))
             except StopIteration:
                 break
@@ -597,9 +612,9 @@ def get_threaded_view(ipyclient, split=True):
     """ gets optimum threaded view of ids given the host setup """
     ## engine ids
     ## e.g., [0, 1, 2, 3, 4, 5, 6, 7, 8]
-    eids = ipyclient.ids  
+    eids = ipyclient.ids
 
-    ## get host names    
+    ## get host names
     ## e.g., ['a', 'a', 'b', 'b', 'a', 'c', 'c', 'c', 'c']
     dview = ipyclient.direct_view()
     hosts = dview.apply_sync(socket.gethostname)
@@ -636,7 +651,7 @@ def get_threaded_view(ipyclient, split=True):
                 hostdict[str(key)+"_"+str(hostid)] = threaded[hostid]
 
     ## make sure split numbering is correct
-    #threaded = hostdict.values()                
+    #threaded = hostdict.values()
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
     LOGGER.info("threaded_view: %s", dict(hostdict))
     return hostdict
@@ -648,7 +663,7 @@ def get_threaded_view(ipyclient, split=True):
 def detect_cpus():
     """
     Detects the number of CPUs on a system. This is better than asking
-    ipyparallel since ipp has to wait for Engines to spin up. 
+    ipyparallel since ipp has to wait for Engines to spin up.
     """
     # Linux, Unix and MacOS:
     if hasattr(os, "sysconf"):
@@ -665,7 +680,3 @@ def detect_cpus():
         if ncpus > 0:
             return ncpus
     return 1 # Default
-
-
-
-

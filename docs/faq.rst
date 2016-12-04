@@ -33,15 +33,18 @@ Then type `ipython` top open an ipython session.
 
 The result should look something like this:
 .. parsed_literal::
+
     Out[1]: <DirectView [0, 1, 2, 3]>
 
 .. code-block:: python
+
     import ipyparallel as ipp
 
     rc = ipp.Client(profile="default")
     rc[:]
 
 .. code-block:: python
+
     import ipyrad as ip
 
     ## location of your json file here
@@ -50,6 +53,7 @@ The result should look something like this:
     print data._ipcluster
 
 .. code-block:: python
+
     data = ip.Assembly('test')
 
     data.set_params("raw_fastq_path", "path_to_data/\*.gz")
@@ -61,18 +65,37 @@ The result should look something like this:
     print data._ipcluster
 
 .. parsed_literal::
+
     {'profile': 'default', 'engines': 'Local', 'quiet': 0, 'cluster_id': '', 'timeout': 120, 'cores': 48}
 
 .. code-block:: python
+
     data.write_params('params-test.txt')
 
 Don't forget to stop the ipcluster when you are done.
 .. code-block:: bash
+
     ipcluster stop
+
+Running ipyrad on HPC that restricts write-access to /home on compute nodes
+---------------------------------------------------------------------------
+
+Some clusters forbid writing to `/home` on the compute nodes. It guarantees that users 
+only write to scratch drives or high performance high volume disk, and not the user 
+home directory (which is probably high latency/low volume). They have write access on 
+login, just not inside batch jobs. This manifests in weird ways, it's hard to debug,
+but you can fix it by adding an `export` inside your batch script.
+
+.. code-block:: bash
+
+    export HOME=/<path>/<to>/<some>/<writable>/<dir>
+
+In this way, `ipcluster` and `ipyrad` will both look in `$HOME` for the `.ipython` directory.
 
 Other random problems with solutions
 ------------------------------------
 .. parsed_literal::
+
     Failed at nopython (nopython frontend)
     UntypedAttributeError: Unknown attribute "any" of type Module(<module 'numpy' from...
 
@@ -83,5 +106,6 @@ blanking the PYTHONPATH variable during execution (as below), or by adding the e
 to your ~/.bashrc file.
 
 .. code-block:: bash
+
     export PYTHONPATH=""; ipyrad -p params.txt -s 1
 
