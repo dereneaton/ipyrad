@@ -26,6 +26,7 @@ def loci2bpp(name, locifile, imap, guidetree,
               usetraitdata=1,
               cleandata=0,
               wdir=None,
+              finetune=(0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
               verbose=0):
     """
     Converts loci file format to bpp file format, i.e., concatenated phylip-like
@@ -110,6 +111,8 @@ def loci2bpp(name, locifile, imap, guidetree,
         If 1 then sites with missing or hetero characters are removed.
     wdir:
         A working directory to write files to.
+    finetune:
+        See bpp documentation.
     verbose:
         If verbose=1 the ctl file text will also be written to screen (stderr).
 
@@ -201,7 +204,8 @@ def loci2bpp(name, locifile, imap, guidetree,
               infer_sptree, infer_delimit, delimit_alg,
               seed, burnin, nsample, sampfreq,
               thetaprior, tauprior, traits_df, nu, kappa,
-              cleandata, useseqdata, usetraitdata, wdir, verbose)
+              cleandata, useseqdata, usetraitdata, wdir,
+              finetune, verbose)
 
     ## print message?
     sys.stderr.write("new files created ({} loci, {} species, {} samples)\n"\
@@ -223,7 +227,8 @@ def write_ctl(name, imap, guidetree, nloci,
               infer_sptree, infer_delimit, delimit_alg,
               seed, burnin, nsample, sampfreq,
               thetaprior, tauprior, traits_df, nu0, kappa0,
-              cleandata, useseqdata, usetraitdata, wdir, verbose):
+              cleandata, useseqdata, usetraitdata, wdir,
+              finetune, verbose):
 
     """ write outfile with any args in argdict """
 
@@ -272,7 +277,8 @@ def write_ctl(name, imap, guidetree, nloci,
         except Exception:
             raise IPyradWarningExit(PDREAD_ERROR)
 
-        ## subsample to keep only samples that are in IMAP
+        ## subsample to keep only samples that are in IMAP, we do not need to
+        ## standarize traits b/c ibpp does that for us.
         samples = sorted(list(itertools.chain(*imap.values())))
         didx = [list(traits_df.index).index(i) for i in traits_df.index if i not in samples]
         dtraits = traits_df.drop(traits_df.index[didx])
@@ -331,8 +337,8 @@ def write_ctl(name, imap, guidetree, nloci,
 
     ## get tree values
     nspecies = str(len(imap))
-    species = " ".join(imap.keys())
-    ninds = " ".join([str(len(i)) for i in imap.values()])
+    species = " ".join(sorted(imap))
+    ninds = " ".join([str(len(imap[i])) for i in sorted(imap)])
 
     ## write the tree
     CTL.append("""\
@@ -346,7 +352,8 @@ species&tree = {} {}
     CTL.append("tauprior = {} {} {}".format(*tauprior))
 
     ## other values, fixed for now
-    CTL.append("finetune = 1: 1 0.002 0.01 0.01 0.02 0.005 1.0")
+    CTL.append("finetune = 1: {}".format(" ".join([str(i) for i in finetune])))
+    #CTL.append("finetune = 1: 1 0.002 0.01 0.01 0.02 0.005 1.0")
     CTL.append("print = 1 0 0 0")
     CTL.append("burnin = {}".format(burnin))
     CTL.append("sampfreq = {}".format(sampfreq))
