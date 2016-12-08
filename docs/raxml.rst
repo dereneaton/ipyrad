@@ -105,8 +105,8 @@ Below is an example SLURM (sbatch) submission script, you can make something sim
 but slightly different for other systems such as TORQUE (qsub). Save the file 
 with a name like *raxml-script.sh*. 
 
-SLURM (sbatch) example.      
 .. code:: python
+
     #!/bin/bash
     # set the number of nodes and processes per node
     #SBATCH --nodes 4
@@ -138,6 +138,7 @@ add additional arguments to the submission script, such as the name of the
 queue that you are submitting to. 
 
 .. code:: python 
+
     sbatch raxml_script.sh
 
 
