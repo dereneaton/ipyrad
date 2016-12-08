@@ -22,6 +22,7 @@ We will install the MPI-enabled version of raxml in a local directory, which
 you can remove at any time if you like. 
 
 .. code:: bash  
+
     ## (optional) create directories to store the software. 
     ## I use ~/local/src to store source code and 
     ## I use ~/local/bin to store binaries.
