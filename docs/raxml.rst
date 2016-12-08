@@ -48,11 +48,10 @@ you can remove at any time if you like.
 
 Running raxml 
 ----------------------------------------
-Below I show how to submit a job script to run raxml, but first let's 
-go though some of the options.
 
 .. code:: bash
 
+    ## this is an example call to run raxml tree inference w/ bootstrapping
     raxmlHPC-MPI-AVX2 -f a \                   ## do rapid-bootstrapping & full search
                       -m GTRGAMMA \            ## use GTRGAMMA model
                       -N 100 \                 ## 100 searches from parsimony start trees
@@ -64,8 +63,19 @@ go though some of the options.
                       -o outgroup1,outgroup2   ## set your outgroups!
 
 
-Should I use the GTRCAT?
-------------------------
+Because we installed the MPI version of raxml we need to call the raxml script
+with an MPI executable before it to tell it how to parallelize the code. I show 
+this below, but do not repeat the arguments to raxml, for clarity.
+
+.. code:: bash
+
+    ## use mpiexec to distribute raxml across 32 cores. 
+    mpiexec -np 32 raxmlHPC-MPI-AVX2 ...
+
+
+
+Should I use the GTRCAT model?
+------------------------------
 GTRCAT is a speed improvement for modeling rate variation under the GTRGAMMA model. 
 It is particularly designed for modeling rate heterogeneity across very large trees
 (e.g., hundreds of taxa), and is not recommended for smaller trees. In fact the raxml
