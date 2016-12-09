@@ -9,6 +9,7 @@ end of step3
 from __future__ import print_function
 
 import os
+import re
 import gzip
 import glob
 import shutil
@@ -425,10 +426,10 @@ def get_overlapping_reads(data, sample, regions):
         raise
 
     finally:
-        LOGGER.info("Total merged reads for {} - {}"\
+        if "pair" in data.paramsdict["datatype"]:
+            LOGGER.info("Total merged reads for {} - {}"\
                      .format(sample.name, reads_merged))
-        sample.stats.reads_merged = reads_merged
-
+            sample.stats.reads_merged = reads_merged
 
 
 def split_merged_reads(outhandles, input_derep):
@@ -652,12 +653,17 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
     if not os.path.exists(bamf):
         raise IPyradWarningExit("  file not found - %s", bamf)
 
+#    chrom = re.escape(repr(chrom))[1:-1].replace('\\\\', '\\')
+    chrom.replace("|", "\|")
+    chrom.replace("(", "\(")
+    chrom.replace(")", "\)")
+
     ## a string argument as input to commands, indexed at either 0 or 1, 
     ## and with pipe characters removed from chromo names
     rstring_id1 = "{}:{}-{}"\
-        .format(chrom.replace("|", "_"), str(int(region_start)+1), region_end)
+        .format(chrom, str(int(region_start)+1), region_end)
     rstring_id0 = "{}:{}-{}"\
-        .format(chrom.replace("|", "_"), str(region_start), region_end)
+        .format(chrom, str(region_start), region_end)
 
     ## The "samtools faidx" command will grab this region from reference 
     ## which we'll paste in at the top of each stack to aid alignment.
