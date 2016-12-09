@@ -53,7 +53,7 @@ for that amount of time.
 
     ## open a tunnel between compute and login nodes on port 8181
     NOTEBOOKPORT=8181
-    ssh -N -f -R $NOTEBOOKPORT:localhost:$NOTEBOOKPORT $SLURM_SUBMIT_HOST
+    ssh -N -X -f -R $NOTEBOOKPORT:localhost:$NOTEBOOKPORT $SLURM_SUBMIT_HOST
 
     ## launch notebook
     jupyter-notebook --no-browser --port=$NOTEBOOKPORT
@@ -77,7 +77,8 @@ the qsub command instead, which I save under the name
     #PBS -l nodes=4:ppn=8
     #PBS -walltime=30:00:00
     #PBS -j oe
-    #PBS -N jupyter-cluster
+    #PBS -o jupyterlog.txt
+    #PBS -N jupyter-ipcluster
     #PBS -q general
 
     ## launch ipcluster engines across all available cpus
@@ -85,7 +86,7 @@ the qsub command instead, which I save under the name
 
     ## open a tunnel between compute and login nodes on port 8181
     NOTEBOOKPORT=8181
-    ssh -N -f -R $NOTEBOOKPORT:localhost:$NOTEBOOKPORT $PBS_O_HOST
+    ssh -N -X -f -R $NOTEBOOKPORT:localhost:$NOTEBOOKPORT $PBS_O_HOST
 
     ## launch notebook
     jupyter-notebook --no-browser --port=$NOTEBOOKPORT
@@ -102,6 +103,8 @@ Step 2: Open ssh connection to your cluster from local
 This is similar to the normal way you would login to your HPC cluster, except that
 you tell it to forward all information it receives on port 8181 to your 
 local port 8181. Also change the login credentials to your name and host. 
+If you forget which port you entered in your submission script you can 
+check the log file on your cluster, which we named jupyterlog.txt.
 
 .. code-block:: bash
     
@@ -150,13 +153,10 @@ open port (e.g., 8181). Then simply call 'kill' to terminate that process id.
     ## let's say it returned pid=31189. To kill it do the following:
     user@local$ kill 31189
 
+    ## when I SSH locally I see the error `channel 2: open failed: connect failed: Connection refused`:
+    Check to make sure you are entering the correct port number. If you did and you still see this message,
+    try running the SSH script from a new terminal, and try connecting to localhost:8181 in a new browser window.
+    If that still doesn't work, try a different port number, the one you chose may already be in use. 
 
-FAQS
-~~~~~~~~~~~~~~~~~~~~
-1. I'm seeing the error `channel 2: open failed: connect failed: Connection refused`
-when I try to connect locally.  
-
-This is likely because the PORT number you selected is in use. Try selecting a 
-different port. 
 
 
