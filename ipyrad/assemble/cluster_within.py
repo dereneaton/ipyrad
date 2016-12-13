@@ -990,6 +990,10 @@ def cluster(data, sample, nthreads):
     ## get the dereplicated reads
     if "reference" in data.paramsdict["assembly_method"]:
         derephandle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+        ## In the event all reads for all samples map successfully then clustering
+        ## the unmapped reads makes no sense, so just bail out.
+        if not os.stat(derephandle).st_size:
+            return
     else:
         derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
