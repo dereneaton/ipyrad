@@ -5,6 +5,35 @@
 Release Notes
 =============
 
+0.5.11
+------
+- Refmap: Handle case where all reads map to reference sequence (skip unmapped clustering).
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- More refined handling of reference sequences with wacky characters in the chrom name like | and (. Who would do that?
+- raxml script updated
+- raxml script updated
+- raxml script updated
+- raxml script updated
+- hpc tunnel update with troubleshooting
+- Better handling of final alignments when they contain merged and unmerged sequences (#207)
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added finetune option to loci2bpp
+- More improvements to manuscript analysis.
+- loci2bpp converts - to N in seq data
+- wdir improved in loci2bpp
+- bpp cookbook ready
+- Finished simulated analysis results and plotting.
+- Improve communication if full raw path is wonky.
+- bpp notebook updates
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- comment added
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic
+- loci2bpp file conversion up
+- bpp cookbook up
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Horserace is complete for simulated and empirical. Continued improvement to gathering results and plotting.
+
 0.5.10
 ------
 - Fix for 3Rad w/ only 2 cutters during filtering.
