@@ -5,6 +5,11 @@
 Release Notes
 =============
 
+0.5.12
+------
+- Refmap: actually fix clustering when there are no unmapped reads.
+- Updated docs for  parameter.
+
 0.5.11
 ------
 - Refmap: Handle case where all reads map to reference sequence (skip unmapped clustering).
