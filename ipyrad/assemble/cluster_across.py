@@ -989,12 +989,12 @@ def fill_superseqs(data, samples):
 
     ## close super
     io5.close()
+    clusters.close()
 
     ## edges is filled with splits for paired data.
     LOGGER.info("done filling superseqs")
 
     ## close handle
-    clusters.close()
     os.remove(infile)
 
 
