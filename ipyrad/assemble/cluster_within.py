@@ -993,6 +993,13 @@ def cluster(data, sample, nthreads):
         ## In the event all reads for all samples map successfully then clustering
         ## the unmapped reads makes no sense, so just bail out.
         if not os.stat(derephandle).st_size:
+            ## In this case you do have to create empty, dummy vsearch output
+            ## files so building_clusters will not fail.
+            uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+            usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
+            hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+            for f in [uhandle, usort, hhandle]:
+                open(f, 'a').close()
             return
     else:
         derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
