@@ -59,11 +59,12 @@ This will print the message:
 
 
 In this case, the data come to us already demultiplexed so we are going to simply set the 
-**sorted\_fastq\_path** to tell ipyrad the location of the data files. You can 
+**sorted\_fastq\_path** to tell ipyrad the location of our data files. You can 
 select multiple files at once using regular expressions, in this example we
 use an asterisk (`*.gz`) to select all files in the directory ending in *.gz*. We also
 set a **project\_dir**, which is useful for grouping all our results into a single 
-directory. For this we'll use the name of our study organism, "pedicularis". 
+directory. For this we'll use the name of our study organism, "pedicularis". If
+a folder named "pedicularis" doesn't exist ipyrad will create it. 
 Take note when entering the values below into your params file that they 
 correspond to parameters 1 and 4, respectively.
 
@@ -141,11 +142,11 @@ With access to 24 cores it would take only about 20 minutes.
 
 .. parsed-literal::
   --------------------------------------------------------------------
-  ipyrad [v.0.4.1]
+  ipyrad [v.0.5.10]
   Interactive assembly and analysis of RAD-seq data
  --------------------------------------------------------------------
-  loading Assembly: pedic
-  from saved path: ~/Downloads/pedicularis/pedic.json
+  loading Assembly: base
+  from saved path: ~/Downloads/pedicularis/base.json
   local compute node: [4 cores] on oud
 
   Step 2: Filtering reads 

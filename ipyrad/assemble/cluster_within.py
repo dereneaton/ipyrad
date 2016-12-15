@@ -16,7 +16,6 @@ from __future__ import print_function
 # pylint: disable=R0912
 
 import os
-import sys
 import gzip
 import glob
 import itertools
@@ -76,6 +75,7 @@ def get_quick_depths(data, sample):
             tlen = len(seq)
 
     ## return
+    clusters.close()
     return np.array(maxlen), np.array(depths)
 
 
@@ -227,7 +227,9 @@ def muscle_align(data, sample, chunk, maxindels):
                               """, aseqs[i], intindels1, intindels2, maxindels)
 
             except IndexError:
-                seqs = [i.replace('nnnn','') for i in seqs]
+                ## if nnnn is not present in ALL seqs, then we end up here, and
+                ## so we should remove "nnnn" spacer from any seqs that had it
+                seqs = [i.replace('nnnn', '') for i in seqs]
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(data, string1)
 
@@ -565,18 +567,28 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         ## if there are fewer than four samples, since it will wait on the
         ## first chunk, but such small jobs are uncommon.
         for sname2 in snames:
-            dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
-                         "{}-{}-{}".format("muscle_align", 0, sname))
+            for chunk in range(10):
+                dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
+                             "{}-{}-{}".format("muscle_align", chunk, sname))   
+                ## add that the final reconcat job can't start until after
+                ## each chunk of its own sample has finished aligning.
+                dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
+                             "{}-{}-{}".format("reconcat", 0, sname))
 
-        ## add remaining 9 align jobs dependent on first (0) being finished
-        for chunk in range(1, 10):
-            dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname),
-                         "{}-{}-{}".format("muscle_align", chunk, sname))
+        ### old style in which first muscle-align job was prioritized...
+        # for sname2 in snames:
+        #     dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
+        #                  "{}-{}-{}".format("muscle_align", 0, sname))
 
-            ## add that the final reconcat job can't start until after
-            ## each chunk of its own sample has finished aligning.
-            dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
-                         "{}-{}-{}".format("reconcat", 0, sname))
+        # ## add remaining 9 align jobs dependent on first (0) being finished
+        # for chunk in range(1, 10):
+        #     dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname),
+        #                  "{}-{}-{}".format("muscle_align", chunk, sname))
+
+        #     ## add that the final reconcat job can't start until after
+        #     ## each chunk of its own sample has finished aligning.
+        #     dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
+        #                  "{}-{}-{}".format("reconcat", 0, sname))
 
     ## dicts for storing submitted jobs and results
     results = {}
@@ -923,7 +935,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
 
 def data_cleanup(data):
     """ cleanup / statswriting function for Assembly obj """
-    data.stats_dfs.s3 = data.build_stat("s3")
+    data.stats_dfs.s3 = data._build_stat("s3")
     data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
     with open(data.stats_files.s3, 'w') as outfile:
         data.stats_dfs.s3.to_string(
@@ -1073,15 +1085,20 @@ def cluster(data, sample, nthreads):
 
 def muscle_chunker(data, sample):
     """
-    Splits the muscle alignment into chunks. Each runs on N clusters at a time.
+    Splits the muscle alignment into chunks. Each chunk is run on a separate
+    computing core. Because the largest clusters are at the beginning of the 
+    clusters file, assigning equal clusters to each file would put all of the 
+    large cluster, that take longer to align, near the top. So instead we 
+    randomly distribute the clusters among the files. 
     """
     ## log our location for debugging
     LOGGER.info("inside muscle_chunker")
 
     ## get the number of clusters
     clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-    with gzip.open(clustfile, 'rb') as clustio:
-        tclust = clustio.read().count("//")//2
+    with iter(gzip.open(clustfile, 'rb')) as clustio:
+        tclust = sum(1 for i in clustio if "//" in i) // 2
+        #tclust = clustio.read().count("//")//2
         optim = (tclust//10) + (tclust%10)
         LOGGER.info("optim for align chunks: %s", optim)
 
