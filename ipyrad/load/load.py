@@ -336,7 +336,7 @@ def load_json(path, quiet=False):
 
     ## build the Assembly object stats_dfs
     for statskey in stats_dfs_keys:
-        indstat = null.build_stat(statskey)
+        indstat = null._build_stat(statskey)
         if not indstat.empty:
             null.stats_dfs[statskey] = indstat
 
