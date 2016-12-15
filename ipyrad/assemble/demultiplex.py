@@ -171,8 +171,9 @@ def make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars):
             print("Excluded sample: no data found for", name)
 
     ## initiate s1 key for data object
-    data.stats_dfs.s1 = data.build_stat("s1")
+    data.stats_dfs.s1 = data._build_stat("s1")
     data.stats_files.s1 = outhandle
+
 
 
 
@@ -222,10 +223,12 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
         ofunc = open
 
     ## create iterators 
-    fr1 = iter(ofunc(tups[0], 'r'))
+    ofile1 = ofunc(tups[0], 'r')
+    fr1 = iter(ofile1) #ofunc(tups[0], 'r'))
     quart1 = itertools.izip(fr1, fr1, fr1, fr1)
     if tups[1]:
-        fr2 = iter(ofunc(tups[1], 'r'))
+        ofile2 = ofunc(tups[1], 'r')
+        fr2 = iter(ofile2)  #ofunc(tups[1], 'r'))
         quart2 = itertools.izip(fr2, fr2, fr2, fr2)
         quarts = itertools.izip(quart1, quart2)
     else:
@@ -349,6 +352,11 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
                 dsort2[sample] = []
             ## reset longlist
             #longlist = np.zeros(waitchunk, dtype=np.uint32)                
+
+    ## close open files
+    ofile1.close()
+    if tups[1]:
+        ofile2.close()
 
     ## write the remaining reads to file
     writetofile(data, dsort1, 1, epid)
