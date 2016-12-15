@@ -19,7 +19,7 @@ import os
 import gzip
 import glob
 import itertools
-import subprocess as sps
+
 import numpy as np
 import ipyrad
 import time
@@ -29,6 +29,11 @@ import networkx as nx
 
 from refmap import *
 from util import *
+
+try:
+    import subprocess32 as sps
+except ImportError:
+    import subprocess as sps
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -329,7 +334,7 @@ def muscle_call(data, names, seqs):
         cmd += ["-gapopen", "-1200"]
 
     ## make a call arg
-    proc1 = sps.Popen(cmd, stdin=sps.PIPE, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmd, stdin=sps.PIPE, stdout=sps.PIPE, close_fds=True)
     ## return result
     return proc1.communicate(inputstr)[0]
 
@@ -357,7 +362,7 @@ def build_clusters(data, sample, maxindels):
 
     ## Sort the uhandle file so we can read through matches efficiently
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    proc = sps.Popen(cmd)
+    proc = sps.Popen(cmd, close_fds=True)
     _ = proc.communicate()[0]
 
     ## load ALL derep reads into a dictionary (this can be a few GB of RAM)
@@ -924,8 +929,8 @@ def derep_and_sort(data, infile, outfile, nthreads):
     LOGGER.info("derep cmd %s", cmd)
 
     ## run vsearch
-    proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+    proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc2.communicate()[0]
     if proc2.returncode:
         LOGGER.error("error inside derep_and_sort %s", errmsg)
@@ -971,7 +976,7 @@ def concat_multiple_edits(data, sample):
         ## write to new concat handle
         conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concatedit.fq.gz")
         with open(conc1, 'w') as cout1:
-            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1)
+            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
             raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
@@ -982,7 +987,7 @@ def concat_multiple_edits(data, sample):
             cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
             conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concatedit.fq.gz")
             with gzip.open(conc2, 'w') as cout2:
-                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2)
+                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
             if proc2.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
@@ -1068,7 +1073,7 @@ def cluster(data, sample, nthreads):
 
     ## run vsearch
     LOGGER.debug("%s", cmd)
-    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
 
     ## This is long running so we wrap it to make sure we can kill it
     try:
@@ -1097,23 +1102,41 @@ def muscle_chunker(data, sample):
     ## get the number of clusters
     clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
     with iter(gzip.open(clustfile, 'rb')) as clustio:
-        tclust = sum(1 for i in clustio if "//" in i) // 2
+        nloci = sum(1 for i in clustio if "//" in i) // 2
         #tclust = clustio.read().count("//")//2
-        optim = (tclust//10) + (tclust%10)
+        optim = (nloci//20) + (nloci%20)
         LOGGER.info("optim for align chunks: %s", optim)
 
     ## write optim clusters to each tmp file
     clustio = gzip.open(clustfile, 'rb')
     inclusts = iter(clustio.read().strip().split("//\n//\n"))
-    grabchunk = list(itertools.islice(inclusts, optim))
+    
 
-    idx = 0
-    while grabchunk:
+    ## splitting loci so first file is smaller and last file is bigger
+    inc = optim // 10
+    for idx in range(10):
+        ## how big is this chunk?
+        this = optim + (idx * inc)
+        left = nloci-this
+        if idx == 9:
+            ## grab everything left
+            grabchunk = list(itertools.islice(inclusts, int(1e9)))
+        else:
+            ## grab next chunks-worth of data
+            grabchunk = list(itertools.islice(inclusts, this))
+            nloci = left
+
+        ## write the chunk to file
         tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx))
         with open(tmpfile, 'wb') as out:
             out.write("//\n//\n".join(grabchunk))
-        idx += 1
-        grabchunk = list(itertools.islice(inclusts, optim))
+
+    ## write the chunk to file
+    #grabchunk = list(itertools.islice(inclusts, left))
+    #if grabchunk:
+    #    tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_9.ali")
+    #    with open(tmpfile, 'a') as out:
+    #        out.write("\n//\n//\n".join(grabchunk))
     clustio.close()
 
 
