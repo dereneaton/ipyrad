@@ -617,15 +617,29 @@ Affected steps = 7. Example entries to params.txt
 
 27. output_formats
 -------------------
-Disk space is cheap, these are quick to make, so by default we make all
-formats for now. More are coming. See :ref:`output formats<full_output_formats>` section for
-descriptions of the available formats.
+Disk space is cheap, and these are quick to make, so by default we make all
+formats. More are coming (alleles, treemix, migrate-n, finestructure). 
+The short list of available options is below but see 
+:ref:`output formats<full_output_formats>` section for full descriptions of 
+the available formats. 
+
+.. code-block:: python
+
+    p: PHYLIP (Full dataset)
+    s: PHYLIP (SNPs only)
+    u: PHYLIP (One SNP per locus)
+    n: NEXUS
+    k: STRUCTURE 
+    g: EIGENSTRAT .geno
+    v: VCF (SNPs only)
 
 Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    *                     ## [27] example...
+    *                     ## [27] Make all output datatypes (this is the default)
+    n, v, g               ## [27] Only write out nexus, vcf and geno formats
+    u,k                   ## [27] Only write out unlinked snps in phylip, and structure
 
 
 
