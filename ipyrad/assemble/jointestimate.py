@@ -230,6 +230,7 @@ def stackarray(data, sample, subloci):
     ## drop the empty rows in case there are fewer loci than the size of array
     newstack = stacked[stacked.sum(axis=2) > 0]
     assert not np.any(newstack.sum(axis=1) == 0), "no zero rows"
+    clusters.close()
 
     return newstack
 
@@ -394,7 +395,7 @@ def sample_cleanup(sample, hest, eest):
 def assembly_cleanup(data):
     """ cleanup assembly stats """
     ## Assembly assignment
-    data.stats_dfs.s4 = data.build_stat("s4")#, dtype=np.float32)
+    data.stats_dfs.s4 = data._build_stat("s4")#, dtype=np.float32)
 
     ## Update written file
     data.stats_files.s4 = os.path.join(data.dirs.clusts, 

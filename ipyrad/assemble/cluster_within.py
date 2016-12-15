@@ -16,11 +16,10 @@ from __future__ import print_function
 # pylint: disable=R0912
 
 import os
-import sys
 import gzip
 import glob
 import itertools
-import subprocess as sps
+
 import numpy as np
 import ipyrad
 import time
@@ -30,6 +29,11 @@ import networkx as nx
 
 from refmap import *
 from util import *
+
+try:
+    import subprocess32 as sps
+except ImportError:
+    import subprocess as sps
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -76,6 +80,7 @@ def get_quick_depths(data, sample):
             tlen = len(seq)
 
     ## return
+    clusters.close()
     return np.array(maxlen), np.array(depths)
 
 
@@ -227,7 +232,9 @@ def muscle_align(data, sample, chunk, maxindels):
                               """, aseqs[i], intindels1, intindels2, maxindels)
 
             except IndexError:
-                seqs = [i.replace('nnnn','') for i in seqs]
+                ## if nnnn is not present in ALL seqs, then we end up here, and
+                ## so we should remove "nnnn" spacer from any seqs that had it
+                seqs = [i.replace('nnnn', '') for i in seqs]
                 string1 = muscle_call(data, names[:200], seqs[:200])
                 anames, aseqs = parsemuscle(data, string1)
 
@@ -327,7 +334,7 @@ def muscle_call(data, names, seqs):
         cmd += ["-gapopen", "-1200"]
 
     ## make a call arg
-    proc1 = sps.Popen(cmd, stdin=sps.PIPE, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmd, stdin=sps.PIPE, stdout=sps.PIPE, close_fds=True)
     ## return result
     return proc1.communicate(inputstr)[0]
 
@@ -355,7 +362,7 @@ def build_clusters(data, sample, maxindels):
 
     ## Sort the uhandle file so we can read through matches efficiently
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    proc = sps.Popen(cmd)
+    proc = sps.Popen(cmd, close_fds=True)
     _ = proc.communicate()[0]
 
     ## load ALL derep reads into a dictionary (this can be a few GB of RAM)
@@ -565,18 +572,28 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         ## if there are fewer than four samples, since it will wait on the
         ## first chunk, but such small jobs are uncommon.
         for sname2 in snames:
-            dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
-                         "{}-{}-{}".format("muscle_align", 0, sname))
+            for chunk in range(10):
+                dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
+                             "{}-{}-{}".format("muscle_align", chunk, sname))   
+                ## add that the final reconcat job can't start until after
+                ## each chunk of its own sample has finished aligning.
+                dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
+                             "{}-{}-{}".format("reconcat", 0, sname))
 
-        ## add remaining 9 align jobs dependent on first (0) being finished
-        for chunk in range(1, 10):
-            dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname),
-                         "{}-{}-{}".format("muscle_align", chunk, sname))
+        ### old style in which first muscle-align job was prioritized...
+        # for sname2 in snames:
+        #     dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
+        #                  "{}-{}-{}".format("muscle_align", 0, sname))
 
-            ## add that the final reconcat job can't start until after
-            ## each chunk of its own sample has finished aligning.
-            dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
-                         "{}-{}-{}".format("reconcat", 0, sname))
+        # ## add remaining 9 align jobs dependent on first (0) being finished
+        # for chunk in range(1, 10):
+        #     dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname),
+        #                  "{}-{}-{}".format("muscle_align", chunk, sname))
+
+        #     ## add that the final reconcat job can't start until after
+        #     ## each chunk of its own sample has finished aligning.
+        #     dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
+        #                  "{}-{}-{}".format("reconcat", 0, sname))
 
     ## dicts for storing submitted jobs and results
     results = {}
@@ -912,8 +929,8 @@ def derep_and_sort(data, infile, outfile, nthreads):
     LOGGER.info("derep cmd %s", cmd)
 
     ## run vsearch
-    proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+    proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc2.communicate()[0]
     if proc2.returncode:
         LOGGER.error("error inside derep_and_sort %s", errmsg)
@@ -923,7 +940,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
 
 def data_cleanup(data):
     """ cleanup / statswriting function for Assembly obj """
-    data.stats_dfs.s3 = data.build_stat("s3")
+    data.stats_dfs.s3 = data._build_stat("s3")
     data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
     with open(data.stats_files.s3, 'w') as outfile:
         data.stats_dfs.s3.to_string(
@@ -959,7 +976,7 @@ def concat_multiple_edits(data, sample):
         ## write to new concat handle
         conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concatedit.fq.gz")
         with open(conc1, 'w') as cout1:
-            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1)
+            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
             raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
@@ -970,7 +987,7 @@ def concat_multiple_edits(data, sample):
             cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
             conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concatedit.fq.gz")
             with gzip.open(conc2, 'w') as cout2:
-                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2)
+                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
             if proc2.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
@@ -990,6 +1007,17 @@ def cluster(data, sample, nthreads):
     ## get the dereplicated reads
     if "reference" in data.paramsdict["assembly_method"]:
         derephandle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+        ## In the event all reads for all samples map successfully then clustering
+        ## the unmapped reads makes no sense, so just bail out.
+        if not os.stat(derephandle).st_size:
+            ## In this case you do have to create empty, dummy vsearch output
+            ## files so building_clusters will not fail.
+            uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+            usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
+            hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+            for f in [uhandle, usort, hhandle]:
+                open(f, 'a').close()
+            return
     else:
         derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
 
@@ -1056,7 +1084,7 @@ def cluster(data, sample, nthreads):
 
     ## run vsearch
     LOGGER.debug("%s", cmd)
-    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
 
     ## This is long running so we wrap it to make sure we can kill it
     try:
@@ -1073,30 +1101,53 @@ def cluster(data, sample, nthreads):
 
 def muscle_chunker(data, sample):
     """
-    Splits the muscle alignment into chunks. Each runs on N clusters at a time.
+    Splits the muscle alignment into chunks. Each chunk is run on a separate
+    computing core. Because the largest clusters are at the beginning of the 
+    clusters file, assigning equal clusters to each file would put all of the 
+    large cluster, that take longer to align, near the top. So instead we 
+    randomly distribute the clusters among the files. 
     """
     ## log our location for debugging
     LOGGER.info("inside muscle_chunker")
 
     ## get the number of clusters
     clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-    with gzip.open(clustfile, 'rb') as clustio:
-        tclust = clustio.read().count("//")//2
-        optim = (tclust//10) + (tclust%10)
+    with iter(gzip.open(clustfile, 'rb')) as clustio:
+        nloci = sum(1 for i in clustio if "//" in i) // 2
+        #tclust = clustio.read().count("//")//2
+        optim = (nloci//20) + (nloci%20)
         LOGGER.info("optim for align chunks: %s", optim)
 
     ## write optim clusters to each tmp file
     clustio = gzip.open(clustfile, 'rb')
     inclusts = iter(clustio.read().strip().split("//\n//\n"))
-    grabchunk = list(itertools.islice(inclusts, optim))
+    
 
-    idx = 0
-    while grabchunk:
+    ## splitting loci so first file is smaller and last file is bigger
+    inc = optim // 10
+    for idx in range(10):
+        ## how big is this chunk?
+        this = optim + (idx * inc)
+        left = nloci-this
+        if idx == 9:
+            ## grab everything left
+            grabchunk = list(itertools.islice(inclusts, int(1e9)))
+        else:
+            ## grab next chunks-worth of data
+            grabchunk = list(itertools.islice(inclusts, this))
+            nloci = left
+
+        ## write the chunk to file
         tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx))
         with open(tmpfile, 'wb') as out:
             out.write("//\n//\n".join(grabchunk))
-        idx += 1
-        grabchunk = list(itertools.islice(inclusts, optim))
+
+    ## write the chunk to file
+    #grabchunk = list(itertools.islice(inclusts, left))
+    #if grabchunk:
+    #    tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_9.ali")
+    #    with open(tmpfile, 'a') as out:
+    #        out.write("\n//\n//\n".join(grabchunk))
     clustio.close()
 
 

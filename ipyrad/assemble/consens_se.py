@@ -549,32 +549,33 @@ def cleanup(data, sample, statsdicts):
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
     ## get shape info from the first cat, (optim, maxlen, 4)
-    optim, maxlen, _ = h5py.File(tmpcats[0], 'r')['cats'].shape
+    with h5py.File(tmpcats[0], 'r') as io5:
+        optim, maxlen, _ = io5['cats'].shape
 
     ## save as a chunked compressed hdf5 array
     handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
-    ioh5 = h5py.File(handle1, 'w')
-    nloci = len(tmpcats) * optim
-    dcat = ioh5.create_dataset("catg", (nloci, maxlen, 4),
-                               dtype=np.uint32,
-                               chunks=(optim, maxlen, 4),
-                               compression="gzip")
-    dall = ioh5.create_dataset("nalleles", (nloci, ),
-                               dtype=np.uint8,
-                               chunks=(optim, ),
-                               compression="gzip")
+    with h5py.File(handle1, 'w') as ioh5:
+        nloci = len(tmpcats) * optim
+        dcat = ioh5.create_dataset("catg", (nloci, maxlen, 4),
+                                   dtype=np.uint32,
+                                   chunks=(optim, maxlen, 4),
+                                   compression="gzip")
+        dall = ioh5.create_dataset("nalleles", (nloci, ),
+                                   dtype=np.uint8,
+                                   chunks=(optim, ),
+                                   compression="gzip")
 
-    ## Combine all those tmp cats into the big cat
-    start = 0
-    for icat in tmpcats:
-        io5 = h5py.File(icat, 'r')
-        end = start + optim
-        dcat[start:end] = io5['cats'][:]
-        dall[start:end] = io5['alls'][:]
-        start += optim
-        io5.close()
-        os.remove(icat)
-    ioh5.close()
+        ## Combine all those tmp cats into the big cat
+        start = 0
+        for icat in tmpcats:
+            io5 = h5py.File(icat, 'r')
+            end = start + optim
+            dcat[start:end] = io5['cats'][:]
+            dall[start:end] = io5['alls'][:]
+            start += optim
+            io5.close()
+            os.remove(icat)
+    
 
     ## store the handle to the Sample
     sample.files.database = handle1
@@ -908,7 +909,7 @@ def process_chunks(data, samples, lasyncs, lbview):
         data.samples[sample.name] = sample
 
     ## build Assembly stats
-    data.stats_dfs.s5 = data.build_stat("s5")
+    data.stats_dfs.s5 = data._build_stat("s5")
 
     ## write stats file
     data.stats_files.s5 = os.path.join(data.dirs.consens, 's5_consens_stats.txt')

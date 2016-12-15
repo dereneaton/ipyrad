@@ -219,7 +219,7 @@ def getassembly(args, parsedict):
     ## used for loading existing.
     ##
     ## Be nice if the user includes the extension.
-    project_dir = ip.core.assembly.expander(parsedict['1'])
+    project_dir = ip.core.assembly._expander(parsedict['1'])
     assembly_name = parsedict['0']
     assembly_file = os.path.join(project_dir, assembly_name)
 
@@ -489,7 +489,7 @@ def main():
 
             ## run assembly steps
             steps = list(args.steps)
-            data.run(steps=steps, force=args.force, preview=args.preview, quiet=0)
+            data.run(steps=steps, force=args.force, preview=args.preview, show_cluster=1)
                      
 
         if args.results:

@@ -64,8 +64,9 @@ Running raxml
 
 
 Because we installed the MPI version of raxml we need to call the raxml script
-with an MPI executable before it to tell it how to parallelize the code. I show 
-this below, but do not repeat the arguments to raxml, for clarity.
+with an MPI executable before it to tell it how to parallelize the code. This is 
+done like below, except that you should write out all of the arguents to raxml 
+where I wrote an ellipsis.
 
 .. code:: bash
 

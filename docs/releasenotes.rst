@@ -5,14 +5,48 @@
 Release Notes
 =============
 
+0.5.13
+------
+- push 0.5.13
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- API user guide updated
+- file closures
+- new api updated
+- cleanup for hidden API funcs, bug fix to merge of assemblies without barcode information, and ipyclient.close() call inside run() to prevent too many files open bug. Big fixes.
+- fix for concatenation error in vcf chunk writer
+- compatibility with new API and closed some open files
+- compatibility with new API and closed some open files
+- compatibility with new API and closed some open files
+- closed many subprocess handles and added smarter chunking of clusters to make for faster muscle alignments
+- added file closures
+- docs update in progress
+- closed open files, and made compatible with new API hidden funcs
+- added closure for open file handle
+- cleanup of API attributes
+- raxml notes
+
+0.5.12
+------
+- Refmap: actually fix clustering when there are no unmapped reads.
+- Updated docs for parameters.
+
+0.5.11
+------
+- Refmap: Handle case where all reads map to reference sequence (skip unmapped clustering).
+- More refined handling of reference sequences with wacky characters in the chrom name like | and (. Who would do that?
+- Raxml analysis code added to Analysis Tools: http://ipyrad.readthedocs.io/analysis.html
+- HPC tunneling documentation updated with more troubleshooting
+- Better handling of final alignments when they contain merged and unmerged sequences (#207)
+- added finetune option to loci2bpp Analysis tools notebook.
+- More improvements to manuscript analysis.
+- Finished simulated analysis results and plotting.
+- Improve communication if full raw path is wonky.
+- Horserace is complete for simulated and empirical. Continued improvement to gathering results and plotting.
+
 0.5.10
 ------
 - Fix for 3Rad w/ only 2 cutters during filtering.
 - Better handling for malformed 3rad barcodes file.
--  "Updating ipyrad/__init__.py to version - 0.5.9
-
-0.5.9
------
 
 0.5.9
 -----
@@ -29,28 +63,6 @@ Release Notes
 0.5.7
 -----
 - Fix error handing during writing of vcf file.
--  "Updating ipyrad/__init__.py to version - 0.5.6
--  "Updating ipyrad/__init__.py to version - 0.5.6
--  "Updating ipyrad/__init__.py to version - 0.5.6
--  "Updating ipyrad/__init__.py to version - 0.5.6
-
-0.5.6
------
--  "Updating ipyrad/__init__.py to version - 0.5.6
--  "Updating ipyrad/__init__.py to version - 0.5.6
--  "Updating ipyrad/__init__.py to version - 0.5.6
-
-0.5.6
------
--  "Updating ipyrad/__init__.py to version - 0.5.6
--  "Updating ipyrad/__init__.py to version - 0.5.6
-
-0.5.6
------
--  "Updating ipyrad/__init__.py to version - 0.5.6
-
-0.5.6
------
 
 0.5.6
 -----
@@ -87,20 +99,9 @@ Release Notes
 -----
 - Handle sample cleanup if the sample has no hidepth clusters.
 - Fix for declone_3rad on merged reads.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Better support for 3rad lining presorted fastqs.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - bucky cookbook updated
-- docs update
-- docs update
-- dstat updates
-- docs update
-- docs update
-- docs update
-- docs update
-- docs update
-- docs updates
-- docs update
+- dstat code updates
 - bucky cookbook uploaded
 
 0.5.1

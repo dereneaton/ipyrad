@@ -24,11 +24,15 @@ import random
 import select
 import datetime
 import itertools
-import subprocess
 import numpy as np
 import ipyrad as ip
 from ipyrad.assemble.util import *
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
+
+try:
+    import subprocess32 as sps
+except ImportError:
+    import subprocess as sps
 
 
 import logging
@@ -102,7 +106,7 @@ def muscle_align_across(data, samples, chunk):
                     indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
 
             else:
-                seqs = [i.replace('nnnn','') for i in seqs]
+                seqs = [i.replace('nnnn', '') for i in seqs]
                 string1 = muscle_call(data, names, seqs)
                 anames, aseqs = parsemuscle(data, string1)
                 ## aseqs is the length of the data
@@ -328,8 +332,8 @@ def cluster(data, noreverse):
         start = time.time()
 
         (dog, owner) = pty.openpty()
-        proc = subprocess.Popen(cmd, stdout=owner, stderr=owner,
-                                     close_fds=True)
+        proc = sps.Popen(cmd, stdout=owner, stderr=owner, close_fds=True)
+                                     
         done = 0
         while 1:
             #dat = os.read(dog, 80192)
@@ -364,9 +368,9 @@ def cluster(data, noreverse):
         progressbar(100, 100,
                     " clustering across     | {} | s6 |".format(elapsed))
 
-    except subprocess.CalledProcessError as inst:
+    except sps.CalledProcessError as inst:
         raise IPyradWarningExit("""
-        Error in vsearch: \n{}\n{}""".format(inst, subprocess.STDOUT))
+        Error in vsearch: \n{}\n{}""".format(inst, sps.STDOUT))
     except OSError as inst:
         raise IPyradWarningExit("""
         Failed to allocate pty: \n{}""".format(inst))
@@ -989,12 +993,12 @@ def fill_superseqs(data, samples):
 
     ## close super
     io5.close()
+    clusters.close()
 
     ## edges is filled with splits for paired data.
     LOGGER.info("done filling superseqs")
 
     ## close handle
-    clusters.close()
     os.remove(infile)
 
 
@@ -1007,9 +1011,9 @@ def count_seeds(usort):
         cmd1 = ["cut", "-f", "2"]
         cmd2 = ["uniq"]
         cmd3 = ["wc"]
-        proc1 = subprocess.Popen(cmd1, stdin=insort, stdout=subprocess.PIPE)
-        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
-        proc3 = subprocess.Popen(cmd3, stdin=proc2.stdout, stdout=subprocess.PIPE)
+        proc1 = sps.Popen(cmd1, stdin=insort, stdout=sps.PIPE, close_fds=True)
+        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
+        proc3 = sps.Popen(cmd3, stdin=proc2.stdout, stdout=sps.PIPE, close_fds=True)
         res = proc3.communicate()
         nseeds = int(res[0].split()[0])
         proc1.stdout.close()
@@ -1036,7 +1040,7 @@ def build_clustbits(data, ipyclient):
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
     usort = os.path.join(data.dirs.consens, data.name+".utemp.sort")
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    async1 = subprocess.Popen(cmd)
+    async1 = sps.Popen(cmd, close_fds=True)
     while async1.poll() == None:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(3, 0, " building clusters     | {} | s6 |".format(elapsed))
@@ -1178,7 +1182,7 @@ def build_input_file(data, samples, randomseed):
     allcons = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
     LOGGER.debug(" ".join(cmd))
     with open(allcons, 'w') as output:
-        call = subprocess.Popen(cmd, stdout=output)
+        call = sps.Popen(cmd, stdout=output, close_fds=True)
         call.communicate()
 
     ## a string of sed substitutions for temporarily replacing hetero sites
@@ -1194,11 +1198,11 @@ def build_input_file(data, samples, randomseed):
     cmd1 = ["gunzip", "-c", allcons]
     cmd2 = ["sed", subs]
     LOGGER.debug(" ".join(cmd1))
-    proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
+    proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
     allhaps = allcons.replace("_catcons.tmp", "_cathaps.tmp")
     with open(allhaps, 'w') as output:
         LOGGER.debug(" ".join(cmd2))
-        proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=output)
+        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=output, close_fds=True)
         proc2.communicate()
     proc1.stdout.close()
 
@@ -1209,7 +1213,7 @@ def build_input_file(data, samples, randomseed):
             "--fasta_width", "0",
             "--output", allsort]
     LOGGER.debug(" ".join(cmd1))
-    proc1 = subprocess.Popen(cmd1)
+    proc1 = sps.Popen(cmd1, close_fds=True)
     proc1.communicate()
 
     ## shuffle sequences within size classes. Tested seed (8/31/2016)

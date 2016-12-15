@@ -13,10 +13,14 @@ import sys
 import socket
 import tempfile
 import itertools
-import subprocess as sps
 import ipyrad
 import gzip
 from collections import defaultdict
+
+try:
+    import subprocess32 as sps
+except ImportError:
+    import subprocess as sps
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -301,9 +305,9 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
         out1 = open(tmp1, 'w')
         out2 = open(tmp2, 'w')
         gun1 = sps.Popen(["gunzip", "-c", two_files[0][0]],
-                          stderr=sps.STDOUT, stdout=out1)
+                          stderr=sps.STDOUT, stdout=out1, close_fds=True)
         gun2 = sps.Popen(["gunzip", "-c", two_files[0][1]],
-                          stderr=sps.STDOUT, stdout=out2)
+                          stderr=sps.STDOUT, stdout=out2, close_fds=True)
         res1 = gun1.communicate()
         res2 = gun2.communicate()
         out1.close()

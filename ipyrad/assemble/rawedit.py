@@ -15,9 +15,13 @@ from __future__ import print_function
 import os
 import time
 import datetime
-import subprocess as sps
 import numpy as np
 from .util import *
+
+try:
+    import subprocess32 as sps
+except ImportError:
+    import subprocess as sps
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -32,7 +36,7 @@ def assembly_cleanup(data):
     """ cleanup for assembly object """
 
     ## build s2 results data frame
-    data.stats_dfs.s2 = data.build_stat("s2")
+    data.stats_dfs.s2 = data._build_stat("s2")
     data.stats_files.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
 
     ## write stats for all samples
@@ -206,7 +210,7 @@ def cutadaptit_single(data, sample):
 
     ## do modifications to read1 and write to tmp file
     LOGGER.info(cmdf1)
-    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res1 = proc1.communicate()[0]
 
     ## raise errors if found
@@ -307,7 +311,7 @@ def cutadaptit_pairs(data, sample):
 
     ## do modifications to read1 and write to tmp file
     LOGGER.debug(cmdf1)
-    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res1 = proc1.communicate()[0]
     ## raise errors if found
     if proc1.returncode:
@@ -470,7 +474,7 @@ def concat_multiple_inputs(data, sample):
         ## write to new concat handle
         conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz")
         with open(conc1, 'w') as cout1:
-            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1)
+            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
             raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
@@ -481,7 +485,7 @@ def concat_multiple_inputs(data, sample):
             cmd2 = ["cat"] + [i[1] for i in sample.files.fastqs]
             conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz")
             with open(conc2, 'w') as cout2:
-                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2)
+                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
             if proc2.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
