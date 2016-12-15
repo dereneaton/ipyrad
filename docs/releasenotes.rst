@@ -5,6 +5,26 @@
 Release Notes
 =============
 
+0.5.13
+------
+- push 0.5.13
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- API user guide updated
+- file closures
+- new api updated
+- cleanup for hidden API funcs, bug fix to merge of assemblies without barcode information, and ipyclient.close() call inside run() to prevent too many files open bug. Big fixes.
+- fix for concatenation error in vcf chunk writer
+- compatibility with new API and closed some open files
+- compatibility with new API and closed some open files
+- compatibility with new API and closed some open files
+- closed many subprocess handles and added smarter chunking of clusters to make for faster muscle alignments
+- added file closures
+- docs update in progress
+- closed open files, and made compatible with new API hidden funcs
+- added closure for open file handle
+- cleanup of API attributes
+- raxml notes
+
 0.5.12
 ------
 - Refmap: actually fix clustering when there are no unmapped reads.
