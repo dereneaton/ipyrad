@@ -306,8 +306,8 @@ class Assembly(object):
                                         self.name+"_fastqs")
         if not os.path.exists(self.paramsdict["project_dir"]):
             os.mkdir(self.paramsdict["project_dir"])
-        if not os.path.exists(self.dirs.fastqs):
-            os.mkdir(self.dirs.fastqs)
+        #if not os.path.exists(self.dirs.fastqs):
+        #    os.mkdir(self.dirs.fastqs)
 
         ## get path to data files
         if not path:
@@ -481,10 +481,13 @@ class Assembly(object):
                 print("  {} fastq files appended to {} existing Samples.".\
                       format(appended, len(self.samples)))
 
-        ## save as step-1 stats
+        ## save step-1 stats. We don't want to write this to the fastq dir, b/c
+        ## it is not necessarily inside our project dir. Instead, we'll write 
+        ## this file into our project dir in the case of linked_fastqs.
         self.stats_dfs.s1 = self._build_stat("s1")
-        self.stats_files.s1 = os.path.join(self.dirs.fastqs, 
-                                           's1_demultiplex_stats.txt')
+        self.stats_files.s1 = os.path.join(self.paramsdict["project_dir"],
+                                           self.name+
+                                           '_s1_demultiplex_stats.txt')
         with open(self.stats_files.s1, 'w') as outfile:
             self.stats_dfs.s1.fillna(value=0).astype(np.int).to_string(outfile)
 
