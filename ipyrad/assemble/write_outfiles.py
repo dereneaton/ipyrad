@@ -32,6 +32,11 @@ from collections import Counter, OrderedDict
 from ipyrad import __version__
 from util import *
 
+try:
+    import subprocess32 as sps
+except ImportError:
+    import subprocess as sps
+
 import logging
 LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +138,6 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #snpcounts = Counter()
     piscounts = Counter()
     varcounts = Counter()
-    ## TODO: Need to make this arbritrarily big!
     for i in range(200):
         piscounts[i] = 0
         varcounts[i] = 0
@@ -1859,7 +1863,7 @@ def make_vcf(data, samples, ipyclient, full=0):
                     ## raise exception
                     LOGGER.error(vasyncs[job].exception())
                     raise IPyradWarningExit(" error in vcf build chunk {}: {}"\
-                                         .format(job, vasyncs[job].exception()))
+                                            .format(job, vasyncs[job].exception()))
                 else:
                     ## free up memory
                     del vasyncs[job]
@@ -1875,6 +1879,7 @@ def make_vcf(data, samples, ipyclient, full=0):
 
     except Exception as inst:
         ## make sure all future jobs are aborted
+        keys = [i for (i, j) in vasyncs.items() if not j.ready()]
         for job in keys:
             vasyncs[job].abort()
             vasyncs[job].cancel()
@@ -1927,7 +1932,7 @@ def concat_vcf(data, names, full):
     else:
         writer = gzip.open(data.outfiles.VCF, 'a')
 
-    proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=writer)
+    proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=writer, close_fds=True)
     err = proc.communicate()[0]
     if proc.returncode:
         raise IPyradWarningExit("err in concat_vcf: %s", err)
@@ -1989,7 +1994,7 @@ def vcfchunk(data, optim, sidx, start, full):
     ## so we'll instead create a list of arrays with 10 samples at a time.
     ## maybe later replace this with a h5 array
     tmph = os.path.join(data.dirs.outfiles, ".tmp.{}.h5".format(hslice[0]))
-    htmp = h5py.File(tmph, 'a')
+    htmp = h5py.File(tmph, 'w')
     htmp.create_dataset("vcf", shape=(nrows, sum(sidx)), dtype="S20")
 
     ## which loci passed all filters
@@ -2111,28 +2116,43 @@ def vcfchunk(data, optim, sidx, start, full):
     ## gzipping will be parallelized, though on serial writing machines
     ## we'll suffer some slowdown from engines fighting to write to disk.
     if not full:
-        writer = open(data.outfiles.vcf+".{}".format(start), 'a')
+        writer = open(data.outfiles.vcf+".{}".format(start), 'w')
     else:
-        writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'a')
+        writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
 
     ## write in iterations b/c it can be freakin huge.
-    inc = 1000
-    for chunk in xrange(0, tot, inc):
-        np.savetxt(writer,
-                    np.concatenate(
-                       (cols01[chunk:chunk+inc, :].astype("S"),
-                        np.array([["."]]*inc, dtype="S1"),
-                        cols34[chunk:chunk+inc, :],
-                        np.array([["13", "PASS"]]*inc, dtype="S4"),
-                        cols7[chunk:chunk+inc, :],
-                        np.array([["GT:DP:CATG"]]*inc, dtype="S10"),
-                        htmp["vcf"][chunk:chunk+inc, :],
+    np.savetxt(writer,
+                np.concatenate(
+                   (cols01[:tot, :].astype("S"),
+                    np.array([["."]]*tot, dtype="S1"),
+                    cols34[:tot, :],
+                    np.array([["13", "PASS"]]*tot, dtype="S4"),
+                    cols7[:tot, :],
+                    np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
+                    htmp["vcf"][:tot, :],
                     ),
                     axis=1),
                 delimiter="\t", fmt="%s")
+
+    # inc = min(1000, tot)
+    # for chunk in xrange(0, tot, inc):
+    #     np.savetxt(writer,
+    #                 np.concatenate(
+    #                    (cols01[chunk:chunk+inc, :].astype("S"),
+    #                     np.array([["."]]*inc, dtype="S1"),
+    #                     cols34[chunk:chunk+inc, :],
+    #                     np.array([["13", "PASS"]]*inc, dtype="S4"),
+    #                     cols7[chunk:chunk+inc, :],
+    #                     np.array([["GT:DP:CATG"]]*inc, dtype="S10"),
+    #                     htmp["vcf"][chunk:chunk+inc, :],
+    #                 ),
+    #                 axis=1),
+    #             delimiter="\t", fmt="%s")
     ## remove tmp arrays
+    writer.close()
     htmp.close()
     os.remove(tmph)
+
 
 
 @numba.jit(nopython=True)

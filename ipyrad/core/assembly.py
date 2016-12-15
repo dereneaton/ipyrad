@@ -235,19 +235,18 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
 
 
-    def build_stat(self, idx):
+    def _build_stat(self, idx):
         """ Returns a data frame with Sample stats for each step """
         nameordered = self.samples.keys()
         nameordered.sort()
-        return pd.DataFrame([self.samples[i].stats_dfs[idx] \
-                      for i in nameordered],
-                      index=nameordered)\
-                      .dropna(axis=1, how='all')
+        newdat = pd.DataFrame([self.samples[i].stats_dfs[idx] \
+                               for i in nameordered], index=nameordered)\
+                               .dropna(axis=1, how='all')
+        return newdat
 
 
 
-    def link_fastqs(self, path=None, force=False, append=False, splitnames="_",
-                    fields=None, ipyclient=None):
+    def _link_fastqs(self, path=None, force=False, append=False, splitnames="_", fields=None, ipyclient=None):
         """
         Create Sample objects from demultiplexed fastq files in sorted_fastq_path,
         or append additional fastq files to existing Samples. This provides
@@ -307,8 +306,8 @@ class Assembly(object):
                                         self.name+"_fastqs")
         if not os.path.exists(self.paramsdict["project_dir"]):
             os.mkdir(self.paramsdict["project_dir"])
-        if not os.path.exists(self.dirs.fastqs):
-            os.mkdir(self.dirs.fastqs)
+        #if not os.path.exists(self.dirs.fastqs):
+        #    os.mkdir(self.dirs.fastqs)
 
         ## get path to data files
         if not path:
@@ -356,7 +355,6 @@ class Assembly(object):
             fastqs = [(i, "") for i in fastqs]
 
         ## counters for the printed output
-        created = 0
         linked = 0
         appended = 0
 
@@ -417,11 +415,14 @@ class Assembly(object):
                     gzipped = bool(fastqtuple[0].endswith(".gz"))
                     nreads = 0
                     for alltuples in self.samples[sname].files.fastqs:
-                        nreads += zbufcountlines(alltuples[0], gzipped)
+                        nreads += _zbufcountlines(alltuples[0], gzipped)
                     self.samples[sname].stats.reads_raw = nreads/4
+                    self.samples[sname].stats_dfs.s1["reads_raw"] = nreads/4
+                    self.samples[sname].state = 1
+
                     LOGGER.debug("Got reads for sample - {} {}".format(sname,\
                                     self.samples[sname].stats.reads_raw))
-                    created += createdinc
+                    #created += createdinc
                     linked += linkedinc
                     appended += appendinc
 
@@ -431,10 +432,10 @@ class Assembly(object):
                     gzipped = bool(fastqtuple[0].endswith(".gz"))
                     for sidx, tup in enumerate(self.samples[sname].files.fastqs):
                         key = sname+"_{}".format(sidx)
-                        linkjobs[key] = lbview.apply(bufcountlines,
+                        linkjobs[key] = lbview.apply(_bufcountlines,
                                                     *(tup[0], gzipped))
                     LOGGER.debug("sent count job for {}".format(sname))
-                    created += createdinc
+                    #created += createdinc
                     linked += linkedinc
                     appended += appendinc
 
@@ -460,6 +461,8 @@ class Assembly(object):
 
             for sname in sampdict:
                 self.samples[sname].stats.reads_raw = sampdict[sname]/4
+                self.samples[sname].stats_dfs.s1["reads_raw"] = sampdict[sname]/4
+                self.samples[sname].state = 1
 
         ## print if data were linked
         #print("  {} new Samples created in '{}'.".format(created, self.name))
@@ -477,6 +480,16 @@ class Assembly(object):
             if self._headers:
                 print("  {} fastq files appended to {} existing Samples.".\
                       format(appended, len(self.samples)))
+
+        ## save step-1 stats. We don't want to write this to the fastq dir, b/c
+        ## it is not necessarily inside our project dir. Instead, we'll write 
+        ## this file into our project dir in the case of linked_fastqs.
+        self.stats_dfs.s1 = self._build_stat("s1")
+        self.stats_files.s1 = os.path.join(self.paramsdict["project_dir"],
+                                           self.name+
+                                           '_s1_demultiplex_stats.txt')
+        with open(self.stats_files.s1, 'w') as outfile:
+            self.stats_dfs.s1.fillna(value=0).astype(np.int).to_string(outfile)
 
 
 
@@ -530,7 +543,8 @@ class Assembly(object):
             raise IPyradError(inst)
 
 
-    def link_populations(self, popdict=None):
+
+    def _link_populations(self, popdict=None):
         """
         Creates self.populations dictionary to save mappings of individuals to
         populations/sites, and checks that individual names match with Samples.
@@ -556,8 +570,7 @@ class Assembly(object):
             This can be done with the `popdict` argument like below:
 
             pops = {pop1: [ind1, ind2, ind3], pop2: [ind4, ind5]}
-            [Assembly].link_populations(popdict=pops).
-
+            [Assembly]._link_populations(popdict=pops).
 
         """
         if not popdict:
@@ -672,7 +685,7 @@ class Assembly(object):
 
         ## run assertions on new param
         try:
-            self = paramschecker(self, param, newvalue)
+            self = _paramschecker(self, param, newvalue)
 
         except Exception as inst:
             raise IPyradWarningExit(BAD_PARAMETER\
@@ -785,7 +798,6 @@ class Assembly(object):
         Save Assembly object to disk as a JSON file. Used for checkpointing,
         ipyrad auto-saves after every assembly step. File is saved to:
         [project_dir]/[assembly_name].json
-
         """
         #if self._headers:
         #    print("")
@@ -824,8 +836,8 @@ class Assembly(object):
             else:
                 ## overwrite existing data
                 if glob.glob(sfiles):
-                    if self._headers:
-                        self.link_fastqs(ipyclient=ipyclient)
+                    #if self._headers:
+                    self._link_fastqs(ipyclient=ipyclient, force=force)
 
                 ## otherwise do the demultiplexing
                 else:
@@ -835,7 +847,7 @@ class Assembly(object):
         else:
             ## first check if demultiplexed files exist in sorted path
             if glob.glob(sfiles):
-                self.link_fastqs(ipyclient=ipyclient)
+                self._link_fastqs(ipyclient=ipyclient)
 
             ## otherwise do the demultiplexing
             else:
@@ -893,7 +905,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         ## Check if all/none in the right state
-        if not self.samples_precheck(samples, 3, force):
+        if not self._samples_precheck(samples, 3, force):
             raise IPyradError(FIRST_RUN_2)
 
         elif not force:
@@ -920,7 +932,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         ## Check if all/none in the right state
-        if not self.samples_precheck(samples, 4, force):
+        if not self._samples_precheck(samples, 4, force):
             raise IPyradError(FIRST_RUN_3)
 
         elif not force:
@@ -946,7 +958,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         ## Check if all/none in the right state
-        if not self.samples_precheck(samples, 5, force):
+        if not self._samples_precheck(samples, 5, force):
             raise IPyradError(FIRST_RUN_4)
 
         elif not force:
@@ -966,7 +978,7 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         ## remove samples that aren't ready
-        csamples = self.samples_precheck(samples, 6, force)
+        csamples = self._samples_precheck(samples, 6, force)
 
         ## print CLI header
         if self._headers:
@@ -1038,11 +1050,10 @@ class Assembly(object):
 
 
 
-    def samples_precheck(self, samples, mystep, force):
+    def _samples_precheck(self, samples, mystep, force):
         """ Return a list of samples that are actually ready for the next step.
             Each step runs this prior to calling run, makes it easier to
             centralize and normalize how each step is checking sample states.
-
             mystep is the state produced by the current step.
         """
         subsample = []
@@ -1056,7 +1067,7 @@ class Assembly(object):
         return subsample
 
 
-    def compatible_params_check(self):
+    def _compatible_params_check(self):
         """ check for mindepths after all params are set, b/c doing it while each
         is being set becomes complicated """
 
@@ -1074,7 +1085,7 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0, force=False, preview=False, quiet=1):
+    def run(self, steps=0, force=False, preview=False, show_cluster=0):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -1083,7 +1094,7 @@ class Assembly(object):
         Assembly class object.
         """
         ## check that mindepth params are compatible, fix and report warning.
-        self.compatible_params_check()
+        self._compatible_params_check()
 
         ## wrap everything in a try statement to ensure that we save the
         ## Assembly object if it is interrupted at any point, and also
@@ -1096,7 +1107,7 @@ class Assembly(object):
             ## if MPI setup then we are going to wait until all engines are
             ## ready so that we can print how many cores started on each
             ## host machine exactly.
-            if not quiet:
+            if show_cluster:
                 if (self._ipcluster["profile"] != "default") or \
                    (self._ipcluster["engines"] == "MPI"):
                     hosts = ipyclient[:].apply_sync(socket.gethostname)
@@ -1113,7 +1124,10 @@ class Assembly(object):
                     if self._ipcluster["cores"]:
                         _cpus = self._ipcluster["cores"]
                     else:
-                        _cpus = detect_cpus()
+                        if not self._ipcluster["cluster_id"]:
+                            _cpus = len(ipyclient)
+                        else:
+                            _cpus = detect_cpus()
                     print("  local compute node: [{} cores] on {}"\
                           .format(_cpus, socket.gethostname()))
 
@@ -1168,13 +1182,14 @@ class Assembly(object):
 
             if '7' in steps:
                 self._step7func(samples=None, force=force, ipyclient=ipyclient)
+                self.save()
                 ipyclient.purge_everything()
 
 
         ## handle exceptions so they will be raised after we clean up below
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
-            print("\n  Keyboard Interrupt by user. Cleaning up...")
+            raise IPyradWarningExit("\n  Keyboard Interrupt by user. Cleaning up...")
 
         except IPyradWarningExit as inst:
             LOGGER.error("IPyradWarningExit: %s", inst)
@@ -1220,6 +1235,7 @@ class Assembly(object):
                             ## nanny: kill the engines left running, report
                             ## that some engines were killed.
                             pass
+                        ipyclient.close()
                 ## a final spacer
                 if self._headers:
                     print("")
@@ -1230,8 +1246,6 @@ class Assembly(object):
             error during ipcluster shutdown (%s)\
             some Python processes may have been orphaned and should be killed"
             , inst2)
-
-
 
 
 
@@ -1344,7 +1358,7 @@ def _read_sample_names(fname):
 
 
 
-def expander(namepath):
+def _expander(namepath):
     """ expand ./ ~ and ../ designators in location names """
     if "~" in namepath:
         namepath = os.path.expanduser(namepath)
@@ -1356,11 +1370,10 @@ def expander(namepath):
 
 def merge(name, assemblies):
     """
-    Creates and returns a new Assembly object in which
-    samples from two or more Assembly objects with matching names
-    are 'merged'. Merging does not affect the actual files written
-    on disk, but rather creates new Samples that are linked to
-    multiple data files, and with stats summed.
+    Creates and returns a new Assembly object in which samples from two or more
+    Assembly objects with matching names are 'merged'. Merging does not affect 
+    the actual files written on disk, but rather creates new Samples that are 
+    linked to multiple data files, and with stats summed.
     """
 
     ## checks
@@ -1389,7 +1402,9 @@ def merge(name, assemblies):
             ## iterate over stats, skip 'state'
             if sample not in merged.samples:
                 merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
-                merged.barcodes[sample] = iterass.barcodes[sample]
+                ## if barcodes data present then keep it
+                if iterass.barcodes.get(sample):
+                    merged.barcodes[sample] = iterass.barcodes[sample]
             else:
                 ## merge stats and files of the sample
                 for stat in merged.stats.keys()[1:]:
@@ -1432,7 +1447,7 @@ def merge(name, assemblies):
 
 
 
-def bufcountlines(filename, gzipped):
+def _bufcountlines(filename, gzipped):
     """
     fast line counter. Used to quickly sum number of input reads when running
     link_fastqs to append files. """
@@ -1451,8 +1466,8 @@ def bufcountlines(filename, gzipped):
     return nlines
 
 
-## Tried this out but it's slower than bufcountlines
-def zbufcountlines(filename, gzipped):
+## This is much faster than bufcountlines for really big files
+def _zbufcountlines(filename, gzipped):
     """ faster line counter """
     if gzipped:
         cmd1 = ["gunzip", "-c", filename]
@@ -1471,7 +1486,7 @@ def zbufcountlines(filename, gzipped):
 
 
 
-def tuplecheck(newvalue, dtype=str):
+def _tuplecheck(newvalue, dtype=str):
     """
     Takes a string argument and returns value as a tuple.
     Needed for paramfile conversion from CLI to set_params args
@@ -1505,7 +1520,7 @@ def tuplecheck(newvalue, dtype=str):
 
 
 
-def paramschecker(self, param, newvalue):
+def _paramschecker(self, param, newvalue):
     """ Raises exceptions when params are set to values they should not be"""
 
     if param == 'assembly_name':
@@ -1526,11 +1541,11 @@ def paramschecker(self, param, newvalue):
     """)
 
     elif param == 'project_dir':
-        expandpath = expander(newvalue)
+        expandpath = _expander(newvalue)
         if not expandpath.startswith("/"):
             if os.path.exists(expandpath):
                 #expandpath = "./"+expandpath
-                expandpath = expander(expandpath)
+                expandpath = _expander(expandpath)
         ## Forbid spaces in path names
         if " " in expandpath:
             raise IPyradWarningExit("""
@@ -1547,7 +1562,7 @@ def paramschecker(self, param, newvalue):
     ## value for this assembly
     elif param == 'raw_fastq_path':
         if newvalue and not "Merged:" in newvalue:
-            fullrawpath = expander(newvalue)
+            fullrawpath = _expander(newvalue)
             if os.path.isdir(fullrawpath):
                 raise IPyradWarningExit("""
     Error: You entered the path to a directory for raw_fastq_path. To
@@ -1573,7 +1588,7 @@ def paramschecker(self, param, newvalue):
         ## if a value was entered check that it exists
         if newvalue and not "Merged:" in newvalue:
             ## also allow for fuzzy match in names using glob
-            fullbarpath = glob.glob(expander(newvalue))[0]
+            fullbarpath = glob.glob(_expander(newvalue))[0]
             ## raise error if file is not found
             if not os.path.exists(fullbarpath):
                 raise IPyradWarningExit("""
@@ -1598,7 +1613,7 @@ def paramschecker(self, param, newvalue):
     ## value for this assembly
     elif param == 'sorted_fastq_path':
         if newvalue and not "Merged:" in newvalue:
-            fullsortedpath = expander(newvalue)
+            fullsortedpath = _expander(newvalue)
 
             if os.path.isdir(fullsortedpath):
                 raise IPyradWarningExit("""
@@ -1635,7 +1650,7 @@ def paramschecker(self, param, newvalue):
 
     elif param == 'reference_sequence':
         if newvalue:
-            fullrawpath = expander(newvalue)
+            fullrawpath = _expander(newvalue)
             if not os.path.isfile(fullrawpath):
                 LOGGER.info("reference sequence file not found.")
                 raise IPyradWarningExit("""
@@ -1672,7 +1687,7 @@ def paramschecker(self, param, newvalue):
                 self._link_barcodes()
 
     elif param == 'restriction_overhang':
-        newvalue = tuplecheck(newvalue, str)
+        newvalue = _tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), """
     cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
         ## Handle the special case where the user has 1
@@ -1725,7 +1740,10 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['maxdepth'] = int(newvalue)
 
     elif param == 'clust_threshold':
-        self.paramsdict['clust_threshold'] = float(newvalue)
+        newvalue = float(newvalue)
+        assert (newvalue < 1) & (newvalue > 0), \
+        "clust_threshold must be a decimal value between 0 and 1."
+        self.paramsdict['clust_threshold'] = newvalue
 
     elif param == 'max_barcode_mismatch':
         self.paramsdict['max_barcode_mismatch'] = int(newvalue)
@@ -1740,13 +1758,13 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['max_alleles_consens'] = int(newvalue)
 
     elif param == 'max_Ns_consens':
-        newvalue = tuplecheck(newvalue, int)
+        newvalue = _tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_Ns_consens should be a tuple e.g., (8, 8)"
         self.paramsdict['max_Ns_consens'] = newvalue
 
     elif param == 'max_Hs_consens':
-        newvalue = tuplecheck(newvalue, int)
+        newvalue = _tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_Hs_consens should be a tuple e.g., (5, 5)"
         self.paramsdict['max_Hs_consens'] = newvalue
@@ -1767,20 +1785,20 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['max_shared_Hs_locus'] = newvalue
 
     elif param == 'max_SNPs_locus':
-        newvalue = tuplecheck(newvalue, int)
+        newvalue = _tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_SNPs_locus should be a tuple e.g., (20, 20)"
         self.paramsdict['max_SNPs_locus'] = newvalue
 
     elif param == 'max_Indels_locus':
-        newvalue = tuplecheck(newvalue, int)
+        newvalue = _tuplecheck(newvalue, int)
         assert isinstance(newvalue, tuple), \
         "max_Indels_locus should be a tuple e.g., (5, 100)"
         self.paramsdict['max_Indels_locus'] = newvalue
 
     elif param == 'edit_cutsites':
         ## Force into a string tuple
-        newvalue = tuplecheck(newvalue)
+        newvalue = _tuplecheck(newvalue)
         ## try converting each tup element to ints
         newvalue = list(newvalue)
         for i in range(2):
@@ -1799,7 +1817,7 @@ def paramschecker(self, param, newvalue):
         self.paramsdict['edit_cutsites'] = newvalue
 
     elif param == 'trim_overhang':
-        newvalue = tuplecheck(newvalue, str)
+        newvalue = _tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), \
         "trim_overhang should be a tuple e.g., (4, *, *, 4)"
         self.paramsdict['trim_overhang'] = tuple([int(i) for i in newvalue])
@@ -1829,7 +1847,7 @@ def paramschecker(self, param, newvalue):
 
 
     elif param == 'pop_assign_file':
-        fullpoppath = expander(newvalue)
+        fullpoppath = _expander(newvalue)
 
         ## if a path is entered, raise exception if not found
         if newvalue:
@@ -1843,7 +1861,7 @@ def paramschecker(self, param, newvalue):
         ## should we add a check here that all pop samples are in samples?
 
             self.paramsdict['pop_assign_file'] = fullpoppath
-            self.link_populations()
+            self._link_populations()
         else:
             self.paramsdict['pop_assign_file'] = ""
 
