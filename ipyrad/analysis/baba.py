@@ -9,7 +9,6 @@ import pandas as pd
 import numpy as np
 import scipy.stats
 import numba
-import sys
 import os
 
 ## prettier printing
@@ -373,7 +372,7 @@ def ms2loci(handle, maxlen=200):
 
 
 
-def loci2loci(handle, taxonlist, maxlen=200):
+def _loci2loci(handle, taxonlist, maxlen=200):
     """
     Converts .loci file to a binary loci array.
     Params:
@@ -399,7 +398,7 @@ def loci2loci(handle, taxonlist, maxlen=200):
 
     ## create emtpy array to fill
     nloci = len(loci)
-    farr = np.ones((nloci, 5, maxlen), dtype="np.float64")
+    farr = np.ones((nloci, 5, maxlen), dtype=np.float64)
     taxc = np.zeros((nloci,))
 
     ## iterate over loci to find those which have taxon sampling
@@ -412,7 +411,7 @@ def loci2loci(handle, taxonlist, maxlen=200):
         taxi = sum([i in names for i in taxonlist])
         taxc[iloc] += taxi
         if taxi == len(taxonlist):
-            arr = np.zeros((5, maxlen), dtype="np.float64")
+            arr = np.zeros((5, maxlen), dtype=np.float64)
             ## find most frequent allele among outgroups and call that the
             ## outgroup allele (A). How do we break ties? For simplicity, we'll
             ## consistently choose lowest base to break ties (e.g., A over C)

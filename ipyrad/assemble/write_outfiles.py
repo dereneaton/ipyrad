@@ -1276,7 +1276,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         ## get only snames in this data set sorted in the order they are in io5
         names = [i for i in anames if i in snames]
         pnames, _ = padnames(names)
-        #pnames.sort()
+
 
     ## get names boolean
     sidx = np.array([i in snames for i in anames])
@@ -1291,21 +1291,22 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     results = []
 
     ## build arrays and outputs from arrays.
-    arsync = lbview.apply(make_arrays, *(data, sidx, optim, nloci))
+    #arsync = lbview.apply(make_arrays, *(data, sidx, optim, nloci))
+    args = (data, sidx, optim, nloci, ipyclient)
+    seqarr, snparr, bisarr, maparr = boss_make_arrays(*args)
 
     ## wait for finished make_arrays, this prog bar should prob be INSIDE
     ## make_arrays so it can actually track something...
-    while 1:
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(1, 0, " building arrays       | {} | s7 |".format(elapsed))
-        if arsync.ready():
-            progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
-            break
-        time.sleep(0.1)
-    print("")
-
+    #while 1:
+    #    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    #    progressbar(1, 0, " building arrays       | {} | s7 |".format(elapsed))
+    #    if arsync.ready():
+    #        progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
+    #        break
+    #    time.sleep(0.1)
+    #print("")
     ## TODO, parallelize make-arrays
-    seqarr, snparr, bisarr, maparr = arsync.result()
+    #seqarr, snparr, bisarr, maparr = arsync.result()
 
     start = time.time()
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
@@ -1483,6 +1484,178 @@ def make_arrays(data, sidx, optim, nloci):
 
 
 
+def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
+    
+    ## make a list of slices to distribute in parallel
+    hslices = [start for start in range(0, nloci, optim)]
+    
+    ## parallel client setup
+    lbview = ipyclient.load_balanced_view()
+        
+    ## load the h5 database and grab some needed info
+    maxlen = data._hackersonly["max_fragment_length"] + 20
+
+    ## distribute jobs in chunks of optim
+    asyncs = []
+    for hslice in hslices:
+        args = (data, sidx, hslice, optim, maxlen)
+        async = lbview.apply(worker_make_arrays, *args)
+        asyncs.append(async)
+               
+    ## shape of arrays is sidx, we will subsample h5 w/ sidx to match. Seqarr
+    ## will actually be a fair bit smaller since its being loaded with edge
+    with h5py.File(data.database, 'r') as co5:
+        maxsnp = co5["snps"][:].sum()
+        afilt = co5["filters"][:]
+        nkeeps = np.sum(np.sum(afilt, axis=1) == 0)
+
+    with h5py.File("tmp-{}.h5".format(data.name), 'w') as tmp5:
+        tmp5.create_dataset("seqarr", (sum(sidx), maxlen*nkeeps), dtype="S1", chunks=(sum(sidx), maxlen*optim))
+        tmp5.create_dataset("snparr", (sum(sidx), maxsnp), dtype="S1", chunks=(sum(sidx), optim))
+        tmp5.create_dataset('bisarr', (sum(sidx), nkeeps), dtype="S1", chunks=(sum(sidx), optim))
+        tmp5.create_dataset('maparr', (maxsnp, 4), dtype=np.uint32)
+           
+        ## track progress, catch errors, and enter results into h5 as it arrive
+        start = time.time()
+        njobs = len(asyncs)
+        ## axis1 counters
+        seqidx = snpidx = bisidx = mapidx = 0
+        
+        while 1:
+            ## we need to collect results in order!
+            if asyncs[0].ready():
+                if asyncs[0].successful():
+                    ## enter results and del async
+                    seqarr, snparr, bisarr, maparr = asyncs[0].result()
+                    tmp5["seqarr"][:, seqidx:seqidx+seqarr.shape[1]] = seqarr
+                    seqidx += seqarr.shape[1]
+                    tmp5["snparr"][:, snpidx:snpidx+snparr.shape[1]] = snparr
+                    snpidx += snparr.shape[1]
+                    tmp5["bisarr"][:, bisidx:bisidx+bisarr.shape[1]] = bisarr
+                    bisidx += bisarr.shape[1]  
+                    tmp5["maparr"][mapidx:mapidx+maparr.shape[0], :] = maparr
+                    mapidx += maparr.shape[0]
+                    
+                    del asyncs[0]
+                        
+                else:
+                    print(asyncs[0].exception())
+
+            ## print progress            
+            time.sleep(0.1)
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(njobs, njobs-len(asyncs), " building arrays     | {} | s7 |".format(elapsed))
+            
+            ## are we done?
+            if not asyncs:
+                break
+    
+
+
+    
+def worker_make_arrays(data, sidx, hslice, optim, maxlen):
+    """
+    Parallelized worker to build array chunks for output files. One main 
+    goal here is to keep seqarr to less than ~1GB RAM.
+    """
+    
+    ## big data arrays
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r')
+    
+    ## temporary storage until writing to h5 array    
+    maxsnp = co5["snps"][hslice:hslice+optim].sum()         ## concat later
+    maparr = np.zeros((maxsnp, 4), dtype=np.uint32)
+    snparr = np.zeros((sum(sidx), maxsnp), dtype="S1")
+    bisarr = np.zeros((sum(sidx), maxsnp), dtype="S1")
+    seqarr = np.zeros((sum(sidx), maxlen*optim), dtype="S1")
+
+    ## apply all filters and write loci data
+    seqleft = 0
+    snpleft = 0
+    bis = 0                     
+
+    ## edge filter has already been applied to snps, but has not yet been
+    ## applied to seqs. The locus filters have not been applied to either yet.
+    mapsnp = 0
+    totloc = 0
+
+    afilt = co5["filters"][hslice:hslice+optim, :]
+    aedge = co5["edges"][hslice:hslice+optim, :]
+    asnps = co5["snps"][hslice:hslice+optim, :]
+    aseqs = io5["seqs"][hslice:hslice+optim, sidx, :]
+
+    ## which loci passed all filters
+    keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+
+    ## write loci that passed after trimming edges, then write snp string
+    for iloc in keep:
+        ## grab r1 seqs between edges
+        edg = aedge[iloc]
+
+        ## grab SNPs from seqs already sidx subsampled and edg masked.
+        ## needs to be done here before seqs are edgetrimmed.
+        getsnps = asnps[iloc].sum(axis=1).astype(np.bool)
+        snps = aseqs[iloc, :, getsnps].T
+
+        ## trim edges and split from seqs and concatenate for pairs.
+        ## this seq array will be the phy output.
+        if not "pair" in data.paramsdict["datatype"]:
+            seq = aseqs[iloc, :, edg[0]:edg[1]+1]
+        else:
+            seq = np.concatenate([aseqs[iloc, :, edg[0]:edg[1]+1],
+                                  aseqs[iloc, :, edg[2]:edg[3]+1]], axis=1)
+
+        ## remove cols from seq (phy) array that are all N-
+        lcopy = seq
+        lcopy[lcopy == "-"] = "N"
+        bcols = np.all(lcopy == "N", axis=0)
+        seq = seq[:, ~bcols]
+
+        ## put into large array (could put right into h5?)
+        seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
+        seqleft += seq.shape[1]
+
+        ## subsample all SNPs into an array
+        snparr[:, snpleft:snpleft+snps.shape[1]] = snps
+        snpleft += snps.shape[1]
+
+        ## Enter each snp into the map file
+        for i in xrange(snps.shape[1]):
+            ## 1-indexed loci in first column
+            ## actual locus number in second column
+            ## counter for this locus in third column
+            ## snp counter total in fourth column
+            maparr[mapsnp, :] = [totloc+1, hslice+iloc, i, mapsnp+1]
+            mapsnp += 1
+
+        ## subsample one SNP into an array
+        if snps.shape[1]:
+            samp = np.random.randint(snps.shape[1])
+            bisarr[:, bis] = snps[:, samp]
+            bis += 1
+            totloc += 1
+            
+    ## clean up
+    io5.close()
+    co5.close()
+    
+    ## trim trailing edges b/c we made the array bigger than needed.
+    ridx = np.all(seqarr == "", axis=0)
+    seqarr = seqarr[:, ~ridx]
+    ridx = np.all(snparr == "", axis=0)
+    snparr = snparr[:, ~ridx]
+    ridx = np.all(bisarr == "", axis=0)
+    bisarr = bisarr[:, ~ridx]
+    ridx = np.all(maparr == 0, axis=1)
+    maparr = maparr[~ridx, :]
+
+    ## return these three arrays which are pretty small
+    ## catg array gets to be pretty huge, so we return only
+    return seqarr, snparr, bisarr, maparr
+  
+  
+
 def write_phy(data, seqarr, sidx, pnames):
     """ write the phylip output file"""
     data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
@@ -1495,7 +1668,7 @@ def write_phy(data, seqarr, sidx, pnames):
             #out.write("{}{}\n".format(name, "".join(seqarr[sidx][idx, :])))
 
 
-## TODO:
+## TODO: interleaved, w/ proper blocks for map info, and take care to label N and -.
 def write_nex(data, seqarr, sidx, pnames):
     """ not implemented yet """
     return 0
@@ -1630,7 +1803,7 @@ def write_geno(data, snparr, bisarr, sidx, inh5):
 
 
 
-
+## TODO: try to recreate error data with 4's retained in output.
 def make_vcf(data, samples, ipyclient, full=0):
     """
     Write the full VCF for loci passing filtering. Other vcf formats are
