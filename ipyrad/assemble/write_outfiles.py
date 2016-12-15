@@ -1509,7 +1509,8 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
         afilt = co5["filters"][:]
         nkeeps = np.sum(np.sum(afilt, axis=1) == 0)
 
-    with h5py.File("tmp-{}.h5".format(data.name), 'w') as tmp5:
+    h5name = "tmp-{}.h5".format(data.name)
+    with h5py.File(h5name, 'w') as tmp5:
         tmp5.create_dataset("seqarr", (sum(sidx), maxlen*nkeeps), dtype="S1", chunks=(sum(sidx), maxlen*optim))
         tmp5.create_dataset("snparr", (sum(sidx), maxsnp), dtype="S1", chunks=(sum(sidx), optim))
         tmp5.create_dataset('bisarr', (sum(sidx), nkeeps), dtype="S1", chunks=(sum(sidx), optim))
@@ -1549,6 +1550,8 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
             ## are we done?
             if not asyncs:
                 break
+
+    return 
     
 
 
