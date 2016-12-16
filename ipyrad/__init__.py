@@ -2,7 +2,7 @@
 
 # pylint: disable=C0103
 import os as _os
-import atexit
+import atexit as _atexit
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
@@ -205,11 +205,11 @@ def _getbins():
 
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
-binnames = ["vsearch", "muscle", "smalt", "bwa", "samtools", "bedtools", "qmc"]
-for binn, binx in zip(binnames, _getbins()):
+_binnames = ["vsearch", "muscle", "smalt", "bwa", "samtools", "bedtools", "qmc"]
+for binn, binx in zip(_binnames, _getbins()):
     bins[binn] = binx
 ## clean up for the API
-del binnames, binn, binx
+del _binnames
 
 
 

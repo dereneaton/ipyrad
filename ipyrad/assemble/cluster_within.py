@@ -1300,6 +1300,12 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
             nthreads = 2
             if "threads" in data._ipcluster.keys():
                 nthreads = int(data._ipcluster["threads"])
+
+                ## TODO: choose threading based on ncores and nsamples...
+                _ncpus = len(ipyclient)
+                if _ncpus > len(data.samples):
+                    pass
+
             maxindels = 8
             args = [data, subsamples, ipyclient, nthreads, maxindels]
             new_apply_jobs(*args)
