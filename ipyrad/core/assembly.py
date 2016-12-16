@@ -1211,8 +1211,8 @@ class Assembly(object):
                 ## can't close client if it was never open
                 if ipyclient:
 
-                    ## if CLI (has cluster_id), stop jobs and close
-                    if self._ipcluster["cluster_id"]:
+                    ## if CLI stop ipcluster and close client
+                    if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
                         ## protect from KBD while killing jobs?
                         LOGGER.info("  shutting down engines")
                         #_cleanup_and_die(pids)
@@ -1220,7 +1220,7 @@ class Assembly(object):
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
                         LOGGER.info("  finished shutdown")
-                    ## elif API, stop jobs and clean queue but don't close
+                    ## if API, stop jobs and clean queue
                     else:
                         ipyclient.abort()
                         ## purge fails if jobs are still running. We could do
