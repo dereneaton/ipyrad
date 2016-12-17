@@ -88,7 +88,7 @@ def register_ipcluster(data):
     from interfering with other ipcontrollers. 
     """
     ## check if this pid already has a running cluster
-    data._ipcluster["cluster_id"] = "ipyrad-"+str(os.getpid())
+    data._ipcluster["cluster_id"] = "ipyrad-cli-"+str(os.getpid())
     start_ipcluster(data)
     #atexit.register(stop_ipcluster, 
     #                data._ipcluster["profile"],

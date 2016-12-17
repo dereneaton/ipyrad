@@ -7,23 +7,13 @@ Release Notes
 
 0.5.13
 ------
-- push 0.5.13
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - API user guide updated
-- file closures
-- new api updated
-- cleanup for hidden API funcs, bug fix to merge of assemblies without barcode information, and ipyclient.close() call inside run() to prevent too many files open bug. Big fixes.
-- fix for concatenation error in vcf chunk writer
-- compatibility with new API and closed some open files
-- compatibility with new API and closed some open files
-- compatibility with new API and closed some open files
-- closed many subprocess handles and added smarter chunking of clusters to make for faster muscle alignments
-- added file closures
-- docs update in progress
-- closed open files, and made compatible with new API hidden funcs
+- Added ipyclient.close() to API run() to prevent 'too many files open' error.
+- Bug fix for concatenation error in vcf chunk writer
+- added smarter chunking of clusters to make for faster muscle alignments
+- closed many subprocess handles with close_fds=True
 - added closure for open file handle
-- cleanup of API attributes
-- raxml notes
+- cleanup of API attributes and hidden funcs with underscores
 
 0.5.12
 ------
