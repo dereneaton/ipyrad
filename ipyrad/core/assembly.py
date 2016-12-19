@@ -86,7 +86,7 @@ class Assembly(object):
      """
 
 
-    def __init__(self, name, quiet=False):
+    def __init__(self, name, quiet=False, **kwargs):
 
         ## Make sure assembly name is not empty
         if not name:
@@ -116,6 +116,9 @@ class Assembly(object):
             "cores" : 0, #detect_cpus(),
             "threads" : 2
             }
+        for key, val in kwargs.items():
+            if key in self._ipcluster:
+                self._ipcluster[key] = val
 
         ## print headers, this is used as a 'quiet' option
         ## or to control differences in printing between API and CLI
