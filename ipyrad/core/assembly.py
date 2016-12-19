@@ -547,7 +547,7 @@ class Assembly(object):
 
 
 
-    def _link_populations(self, popdict=None):
+    def _link_populations(self, popdict=None, popmins=None):
         """
         Creates self.populations dictionary to save mappings of individuals to
         populations/sites, and checks that individual names match with Samples.
@@ -572,8 +572,17 @@ class Assembly(object):
             to pass in as an argument instead of reading from an input file.
             This can be done with the `popdict` argument like below:
 
-            pops = {pop1: [ind1, ind2, ind3], pop2: [ind4, ind5]}
+            pops = {'pop1': ['ind1', 'ind2', 'ind3'], 'pop2': ['ind4', 'ind5']}
             [Assembly]._link_populations(popdict=pops).
+
+        popmins : dict
+            If you want to apply a minsamples filter based on populations
+            you can add a popmins dictionary. This indicates the number of 
+            samples in each population that must be present in a locus for 
+            the locus to be retained. Example:
+
+            popmins = {'pop1': 3, 'pop2': 2}
+            
 
         """
         if not popdict:
@@ -583,33 +592,55 @@ class Assembly(object):
                 raise IPyradError("Population assignment file not found: {}"\
                                   .format(self.paramsdict["pop_assign_file"]))
 
-            ## parse populations file
+
             try:
+                ## parse populations file
                 popdat = pd.read_csv(popfile, header=None,
                                               delim_whitespace=1,
-                                              names=["inds", "pops"])
+                                              names=["inds", "pops"], 
+                                              comment="#")
                 popdict = {key: group.inds.values.tolist() for key, group in \
                                                         popdat.groupby("pops")}
-            except ValueError:
+
+                ## parse minsamples per population if present (line with #)
+                mindat = [i.lstrip("#").lstrip().rstrip() for i in \
+                          open(popfile, 'r').readlines() if i.startswith("#")]
+                if mindat:
+                    popmins = {}
+                    for i in range(len(mindat)):
+                        minlist = mindat[i].replace(",", "").split()
+                        popmins.update({i.split(':')[0]:int(i.split(':')[1]) \
+                                        for i in minlist})
+
+            except (ValueError, IOError):
                 LOGGER.warn("Populations file may be malformed.")
-                raise IPyradError("Populations file malformed - {}"\
+                raise IPyradError("  Populations file malformed - {}"\
                                   .format(popfile))
+
         else:
             ## pop dict is provided by user
             pass
 
-        ## filter for bad samples
+        ## check popdict. Filter for bad samples
         ## Warn user but don't bail out, could be setting the pops file
         ## on a new assembly w/o any linked samples.
         badsamples = [i for i in itertools.chain(*popdict.values()) \
                       if i not in self.samples.keys()]
         if any(badsamples):
             LOGGER.warn("Some names from population input do not match Sample "\
-                + "names: ".format(", ".join(badsamples)))
+                        + "names: ".format(", ".join(badsamples)))
             LOGGER.warn("If this is a new assembly this is normal.")
 
+        ## check popmins
+        ## cannot have higher min for a pop than there are samples in the pop
+        popmax = {i: len(popdict[i]) for i in popdict}
+        if not all([popmax[i] >= popmins[i] for i in popdict]):
+            raise IPyradWarningExit(\
+                " minsample per pop value cannot be greater than the "+
+                " number of samples in the pop. Modify the populations file.")
+
         ## return dict
-        self.populations = popdict
+        self.populations = {i: (popmins[i], popdict[i]) for i in popdict}
 
 
 
@@ -681,7 +712,6 @@ class Assembly(object):
 
         ## make string
         param = str(param)
-
         ## get index if param is keyword arg (this index is now zero based!)
         if len(param) < 3:
             param = self.paramsdict.keys()[int(param)]
@@ -730,8 +760,7 @@ class Assembly(object):
                     paramvalue = str(val)
                 padding = (" "*(30-len(paramvalue)))
                 paramkey = self.paramsdict.keys().index(key)
-                paramindex = " ## [{}] "\
-                             .format(paramkey)
+                paramindex = " ## [{}] ".format(paramkey)
                 name = "[{}]: ".format(paramname(paramkey))
                 description = paraminfo(paramkey, short=True)
                 paramsfile.write("\n" + paramvalue + padding + \
@@ -802,8 +831,6 @@ class Assembly(object):
         ipyrad auto-saves after every assembly step. File is saved to:
         [project_dir]/[assembly_name].json
         """
-        #if self._headers:
-        #    print("")
         ip.save_json(self)
 
 
@@ -891,8 +918,6 @@ class Assembly(object):
         ## print headers
         if self._headers:
             print("\n  Step 3: Clustering/Mapping reads")
-        #else:
-        #    print("")
 
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
@@ -928,8 +953,6 @@ class Assembly(object):
 
         if self._headers:
             print("\n  Step 4: Joint estimation of error rate and heterozygosity")
-        #else:
-        #    print("")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1068,6 +1091,7 @@ class Assembly(object):
             else:
                 subsample.append(sample)
         return subsample
+
 
 
     def _compatible_params_check(self):
@@ -1537,10 +1561,10 @@ def _paramschecker(self, param, newvalue):
     with a new name, a sort of roundabout name change. Here's how:
 
     Command Line Interface:
-        ipyrad -p old_name-params.txt --branch new_name
+        ipyrad -p params-old-name.txt -b new-name
 
     API (Jupyter Notebook Users):
-        new_assembly = my_assembly.copy("new_name")
+        new_assembly = my_assembly.branch("new_name")
     """)
 
     elif param == 'project_dir':

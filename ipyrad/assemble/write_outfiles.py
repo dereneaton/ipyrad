@@ -116,13 +116,12 @@ def run(data, samples, force, ipyclient):
 
 def make_stats(data, samples, samplecounts, locuscounts):
     """ write the output stats file and save to Assembly obj."""
-    ## load the h5 database
-    io5 = h5py.File(data.clust_database, 'r')
-    co5 = h5py.File(data.database, 'r')
+
     ## get meta info
-    anames = io5["seqs"].attrs["samples"]
-    nloci = io5["seqs"].shape[0]
-    optim = io5["seqs"].attrs["chunksize"][0]
+    with h5py.File(data.clust_database, 'r') as io5:
+        anames = io5["seqs"].attrs["samples"]
+        nloci = io5["seqs"].shape[0]
+        optim = io5["seqs"].attrs["chunksize"][0]
 
     ## open the out handle. This will have three data frames saved to it.
     ## locus_filtering, sample_coverages, and snp_distributions
@@ -135,7 +134,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     filters = np.zeros(6, dtype=int)
     passed = 0
     start = 0
-    #snpcounts = Counter()
+
     piscounts = Counter()
     varcounts = Counter()
     for i in range(200):
@@ -155,7 +154,9 @@ def make_stats(data, samples, samplecounts, locuscounts):
         "filtered_by_max_alleles",
         "total_filtered_loci"])
 
-    #bisnps = Counter()
+    ## load the h5 database
+    co5 = h5py.File(data.database, 'r')
+
     while start < nloci:
         hslice = [start, start+optim]
         ## load each array
@@ -296,9 +297,17 @@ def make_stats(data, samples, samplecounts, locuscounts):
                                         axis=1)
     data.stats_dfs.s7_snps.to_string(buf=outstats)
 
+    ##########################################################################
+    ## print the stats summary (-r summary) with final sample loci data.
+    fullstat = data.stats
+    fullstat['state'] = 7
+    fullstat["loci_in_assembly"] = data.stats_dfs.s7_samples
+
+    print("\n\n\n## Final Sample stats summary\n", file=outstats)
+    fullstat.to_string(buf=outstats)
+
     ## close it
     outstats.close()
-    io5.close()
     co5.close()
 
 
@@ -340,6 +349,14 @@ def filter_all_clusters(data, samples, ipyclient):
 
     ## get the indices of the samples that we are going to include
     sidx = select_samples(dbsamples, samples)
+    ## do the same for the populations samples
+    if data.populations:
+        data._populations = {}
+        for pop in data.populations:
+            _samps = [data.samples[i] for i in data.populations[pop][1]]
+            data._populations[pop] = (data.populations[pop][0],
+                                      select_samples(dbsamples, _samps))
+                                                
     LOGGER.info("samples %s \n, dbsamples %s \n, sidx %s \n",
                 samples, dbsamples, sidx)
 
@@ -490,11 +507,11 @@ def make_loci_and_stats(data, samples, ipyclient):
     progressbar(20, 0, " building loci/stats   | {} | s7 |".format(elapsed))
 
     ## get some db info
-    io5 = h5py.File(data.clust_database, 'r')
-    ## will iterate optim loci at a time
-    optim = io5["seqs"].attrs["chunksize"][0]
-    nloci = io5["seqs"].shape[0]
-    anames = io5["seqs"].attrs["samples"]
+    with h5py.File(data.clust_database, 'r') as io5:
+        ## will iterate optim loci at a time
+        optim = io5["seqs"].attrs["chunksize"][0]
+        nloci = io5["seqs"].shape[0]
+        anames = io5["seqs"].attrs["samples"]
 
     ## get name and snp padding
     pnames, snppad = padnames(anames)
@@ -568,7 +585,6 @@ def make_loci_and_stats(data, samples, ipyclient):
 
     ## make stats file from data
     make_stats(data, samples, samplecov, locuscov)
-    io5.close()
 
 
 
@@ -800,7 +816,7 @@ def filter_stacks(data, sidx, hslice):
     LOGGER.info('passed edges %s', hslice[0])
 
     ## minsamp coverages filtered from superseqs
-    minfilter = filter_minsamp(data.paramsdict["min_samples_locus"], superints)
+    minfilter = filter_minsamp(data, superints)
     LOGGER.info('passed minfilt %s', hslice[0])
 
     ## maxhets per site column from superseqs after trimming edges
@@ -979,22 +995,37 @@ def edgetrim_numba(splits, ccx, edges, edgefilter, edgetrims, cuts, minedge):
 
 
 
-def filter_minsamp(minsamp, superints):
+def filter_minsamp(data, superints):
     """
     Filter minimum # of samples per locus from superseqs[chunk]. The shape
     of superseqs is [chunk, sum(sidx), maxlen]
     """
-    ## the minimum filter
-    #minsamp = data.paramsdict["min_samples_locus"]
-    ## ask which rows are not all N along seq dimension, then sum along sample
-    ## dimension to get the number of samples that are not all Ns.
-    ## minfilt is a boolean array where True means it failed the filter.
-    #minfilt = np.sum(~np.all(superseqs == "N", axis=2), axis=1) < minsamp
-    minfilt = np.sum(~np.all(superints == 78, axis=2), axis=1) < minsamp
-    #LOGGER.debug("minfilt %s", minfilt)
+    ## global minsamp
+    minsamp = data.paramsdict["min_samples_locus"]
 
-    ## print the info
-    #LOGGER.info("Filtered by min_samples_locus - {}".format(minfilt.sum()))
+    ## use population minsamps
+    if data.populations:
+        ## data._populations will look like this:
+        ## {'a': (3, [0, 1, 2, 3],
+        ##  'b': (3, [4, 5, 6, 7],
+        ##  'c': (3, [8, 9, 10, 11]}
+        LOGGER.info("POPULATIONS %s", data.populations)
+        
+        ## superints has already been subsampled by sidx
+        ## get the sidx values for each pop
+        minfilters = []
+        for pop in data._populations:
+            samps = data._populations[pop][1]
+            minsamp = data._populations[pop][0]
+            mini = np.sum(~np.all(superints[:, samps, :] == 78, axis=2), axis=1) < minsamp
+            minfilters.append(mini)
+        ## get sum across all pops for each locus
+        minfilt = np.any(minfilters, axis=0)
+
+    else:
+        ## if not pop-file use global minsamp filter
+        minfilt = np.sum(~np.all(superints == 78, axis=2), axis=1) < minsamp
+        #LOGGER.info("Filtered by min_samples_locus - {}".format(minfilt.sum()))
     return minfilt
 
 
@@ -1139,7 +1170,6 @@ def snpcount_numba(superints, snpsarr):
             if not catg[2]:
                 pass
             else:
-                ## if one var, e.g., [0, 0, 1, 8] then (-), else (*)
                 if catg[2] > 1:
                     snpsarr[iloc, site, 1] = True
                 else:
@@ -1280,7 +1310,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         ## get only snames in this data set sorted in the order they are in io5
         names = [i for i in anames if i in snames]
         pnames, _ = padnames(names)
-        #pnames.sort()
+
 
     ## get names boolean
     sidx = np.array([i in snames for i in anames])
@@ -1295,62 +1325,65 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     results = []
 
     ## build arrays and outputs from arrays.
-    arsync = lbview.apply(make_arrays, *(data, sidx, optim, nloci))
+    ## these arrays are keys in the tmp h5 array: seqarr, snparr, bisarr, maparr
+    boss_make_arrays(data, sidx, optim, nloci, ipyclient)
 
-    ## wait for finished make_arrays, this prog bar should prob be INSIDE
-    ## make_arrays so it can actually track something...
-    while 1:
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(1, 0, " building arrays       | {} | s7 |".format(elapsed))
-        if arsync.ready():
-            progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
-            break
-        time.sleep(0.1)
-    print("")
-
-    ## TODO, parallelize make-arrays
-    seqarr, snparr, bisarr, maparr = arsync.result()
+    # arsync = lbview.apply(make_arrays, *(data, sidx, optim, nloci))
+    # # wait for finished make_arrays, this prog bar should prob be INSIDE
+    # # make_arrays so it can actually track something...
+    # while 1:
+    #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    #     progressbar(1, 0, " building arrays       | {} | s7 |".format(elapsed))
+    #     if arsync.ready():
+    #         progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
+    #         break
+    #     time.sleep(0.1)
+    # print("")
+    # # TODO, parallelize make-arrays
+    # seqarr, snparr, bisarr, maparr = arsync.result()
 
     start = time.time()
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "p" in output_formats:
         data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
-        async = lbview.apply(write_phy, *[data, seqarr, sidx, pnames])
+        async = lbview.apply(write_phy, *[data, sidx, pnames])
         results.append(async)
 
     ## nexus format includes ... additional information ({}.nex)
     if "n" in output_formats:
         data.outfiles.nexus = os.path.join(data.dirs.outfiles, data.name+".nex")
-        async = lbview.apply(write_nex, *[data, seqarr, sidx, pnames])
+        async = lbview.apply(write_nex, *[data, sidx, pnames])
         results.append(async)
 
     ## snps is actually all snps written in phylip format ({}.snps.phy)
     if "s" in output_formats:
         data.outfiles.snpsmap = os.path.join(data.dirs.outfiles, data.name+".snps.map")
         data.outfiles.snpsphy = os.path.join(data.dirs.outfiles, data.name+".snps.phy")
-        async = lbview.apply(write_snps, *[data, snparr, sidx, pnames])
+        async = lbview.apply(write_snps, *[data, sidx, pnames])
         results.append(async)
-        async = lbview.apply(write_snps_map, *(data, maparr))
+        async = lbview.apply(write_snps_map, data)
         results.append(async)
 
     ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
     if "u" in output_formats:
         data.outfiles.usnpsphy = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
-        async = lbview.apply(write_usnps, *[data, bisarr, sidx, pnames])
+        async = lbview.apply(write_usnps, *[data, sidx, pnames])
         results.append(async)
 
     ## str and ustr are for structure analyses. A fairly outdated format, six
     ## columns of empty space. Full and subsample included ({}.str, {}.u.str)
     if "k" in output_formats:
         data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
-        async = lbview.apply(write_str, *[data, snparr, bisarr, sidx, pnames])
+        data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".ustr")        
+        async = lbview.apply(write_str, *[data, sidx, pnames])
         results.append(async)
 
     ## geno output is for admixture and other software. We include all SNPs,
     ## but also a .map file which has "distances" between SNPs.
     if 'g' in output_formats:
         data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
-        async = lbview.apply(write_geno, *[data, snparr, bisarr, sidx, pnames])
+        data.outfiles.ugeno = os.path.join(data.dirs.outfiles, data.name+".u.geno")
+        async = lbview.apply(write_geno, *[data, sidx])
         results.append(async)
 
     ## wait for finished outfiles
@@ -1369,6 +1402,10 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         if not async.successful():
             print("  Warning: error encountered while writing an outfile: {}".format(async.exception()))
             LOGGER.error("  Warning: error in writing outfile: %s", async.exception())
+
+    ## remove the tmparrays
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name))
+    os.remove(tmparrs)
 
 
 
@@ -1487,143 +1524,412 @@ def make_arrays(data, sidx, optim, nloci):
 
 
 
-def write_phy(data, seqarr, sidx, pnames):
-    """ write the phylip output file"""
-    data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
-    with open(data.outfiles.phy, 'w') as out:
-        ## write header
-        out.write("{} {}\n".format(seqarr.shape[0], seqarr.shape[1]))
-        ## write data rows
-        for idx, name in enumerate(pnames):
-            out.write("{}{}\n".format(name, "".join(seqarr[idx, :])))
-            #out.write("{}{}\n".format(name, "".join(seqarr[sidx][idx, :])))
+def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
+    
+    ## make a list of slices to distribute in parallel
+    hslices = [start for start in range(0, nloci, optim)]
+    
+    ## parallel client setup
+    lbview = ipyclient.load_balanced_view()
+        
+    ## load the h5 database and grab some needed info
+    maxlen = data._hackersonly["max_fragment_length"] + 20
+
+    ## distribute jobs in chunks of optim
+    asyncs = []
+    for hslice in hslices:
+        args = (data, sidx, hslice, optim, maxlen)
+        async = lbview.apply(worker_make_arrays, *args)
+        asyncs.append(async)
+               
+    ## shape of arrays is sidx, we will subsample h5 w/ sidx to match. Seqarr
+    ## will actually be a fair bit smaller since its being loaded with edge
+    with h5py.File(data.database, 'r') as co5:
+        maxsnp = co5["snps"][:].sum()
+        afilt = co5["filters"][:]
+        nkeeps = np.sum(np.sum(afilt, axis=1) == 0)
+
+    ## a tmp h5 to hold working arrays (the seq array is not filtered and trimmed
+    ## It is the phylip output, essentially.
+    h5name = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name))
+    with h5py.File(h5name, 'w') as tmp5:
+        tmp5.create_dataset("seqarr", (sum(sidx), maxlen*nkeeps), dtype="S1", chunks=(sum(sidx), maxlen*optim))
+        tmp5.create_dataset("snparr", (sum(sidx), maxsnp), dtype="S1", chunks=(sum(sidx), optim))
+        tmp5.create_dataset('bisarr', (sum(sidx), nkeeps), dtype="S1", chunks=(sum(sidx), optim))
+        tmp5.create_dataset('maparr', (maxsnp, 4), dtype=np.uint32)
+           
+        ## track progress, catch errors, and enter results into h5 as it arrive
+        start = time.time()
+        njobs = len(asyncs)
+        ## axis1 counters
+        seqidx = snpidx = bisidx = mapidx = 0
+        
+        while 1:
+            ## we need to collect results in order!
+            if asyncs[0].ready():
+                if asyncs[0].successful():
+                    ## enter results and del async
+                    seqarr, snparr, bisarr, maparr = asyncs[0].result()
+                    tmp5["seqarr"][:, seqidx:seqidx+seqarr.shape[1]] = seqarr
+                    seqidx += seqarr.shape[1]
+                    tmp5["snparr"][:, snpidx:snpidx+snparr.shape[1]] = snparr
+                    snpidx += snparr.shape[1]
+                    tmp5["bisarr"][:, bisidx:bisidx+bisarr.shape[1]] = bisarr
+                    bisidx += bisarr.shape[1]  
+                    tmp5["maparr"][mapidx:mapidx+maparr.shape[0], :] = maparr
+                    mapidx += maparr.shape[0]
+                    
+                    del asyncs[0]
+                        
+                else:
+                    print(asyncs[0].exception())
+
+            ## print progress            
+            time.sleep(0.1)
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(njobs, njobs-len(asyncs), " building arrays       | {} | s7 |".format(elapsed))
+            
+            ## are we done?
+            if not asyncs:
+                print("")
+                break
+
+    #return 
+    
+
+    
+def worker_make_arrays(data, sidx, hslice, optim, maxlen):
+    """
+    Parallelized worker to build array chunks for output files. One main 
+    goal here is to keep seqarr to less than ~1GB RAM.
+    """
+    
+    ## big data arrays
+    io5 = h5py.File(data.clust_database, 'r')
+    co5 = h5py.File(data.database, 'r')
+    
+    ## temporary storage until writing to h5 array    
+    maxsnp = co5["snps"][hslice:hslice+optim].sum()         ## concat later
+    maparr = np.zeros((maxsnp, 4), dtype=np.uint32)
+    snparr = np.zeros((sum(sidx), maxsnp), dtype="S1")
+    bisarr = np.zeros((sum(sidx), maxsnp), dtype="S1")
+    seqarr = np.zeros((sum(sidx), maxlen*optim), dtype="S1")
+
+    ## apply all filters and write loci data
+    seqleft = 0
+    snpleft = 0
+    bis = 0                     
+
+    ## edge filter has already been applied to snps, but has not yet been
+    ## applied to seqs. The locus filters have not been applied to either yet.
+    mapsnp = 0
+    totloc = 0
+
+    afilt = co5["filters"][hslice:hslice+optim, :]
+    aedge = co5["edges"][hslice:hslice+optim, :]
+    asnps = co5["snps"][hslice:hslice+optim, :]
+    aseqs = io5["seqs"][hslice:hslice+optim, sidx, :]
+
+    ## which loci passed all filters
+    keep = np.where(np.sum(afilt, axis=1) == 0)[0]
+
+    ## write loci that passed after trimming edges, then write snp string
+    for iloc in keep:
+        ## grab r1 seqs between edges
+        edg = aedge[iloc]
+
+        ## grab SNPs from seqs already sidx subsampled and edg masked.
+        ## needs to be done here before seqs are edgetrimmed.
+        getsnps = asnps[iloc].sum(axis=1).astype(np.bool)
+        snps = aseqs[iloc, :, getsnps].T
+
+        ## trim edges and split from seqs and concatenate for pairs.
+        ## this seq array will be the phy output.
+        if not "pair" in data.paramsdict["datatype"]:
+            seq = aseqs[iloc, :, edg[0]:edg[1]+1]
+        else:
+            seq = np.concatenate([aseqs[iloc, :, edg[0]:edg[1]+1],
+                                  aseqs[iloc, :, edg[2]:edg[3]+1]], axis=1)
+
+        ## remove cols from seq (phy) array that are all N-
+        lcopy = seq
+        lcopy[lcopy == "-"] = "N"
+        bcols = np.all(lcopy == "N", axis=0)
+        seq = seq[:, ~bcols]
+
+        ## put into large array (could put right into h5?)
+        seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
+        seqleft += seq.shape[1]
+
+        ## subsample all SNPs into an array
+        snparr[:, snpleft:snpleft+snps.shape[1]] = snps
+        snpleft += snps.shape[1]
+
+        ## Enter each snp into the map file
+        for i in xrange(snps.shape[1]):
+            ## 1-indexed loci in first column
+            ## actual locus number in second column
+            ## counter for this locus in third column
+            ## snp counter total in fourth column
+            maparr[mapsnp, :] = [totloc+1, hslice+iloc, i, mapsnp+1]
+            mapsnp += 1
+
+        ## subsample one SNP into an array
+        if snps.shape[1]:
+            samp = np.random.randint(snps.shape[1])
+            bisarr[:, bis] = snps[:, samp]
+            bis += 1
+            totloc += 1
+            
+    ## clean up
+    io5.close()
+    co5.close()
+    
+    ## trim trailing edges b/c we made the array bigger than needed.
+    ridx = np.all(seqarr == "", axis=0)
+    seqarr = seqarr[:, ~ridx]
+    ridx = np.all(snparr == "", axis=0)
+    snparr = snparr[:, ~ridx]
+    ridx = np.all(bisarr == "", axis=0)
+    bisarr = bisarr[:, ~ridx]
+    ridx = np.all(maparr == 0, axis=1)
+    maparr = maparr[~ridx, :]
+
+    ## return these three arrays which are pretty small
+    ## catg array gets to be pretty huge, so we return only
+    return seqarr, snparr, bisarr, maparr
+  
+  
+
+def write_phy(data, sidx, pnames):
+    """ 
+    write the phylip output file from the tmparr[seqarray] 
+    """
+
+    ## grab seq data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        seqarr = io5["seqarr"]
+
+        ## find the end (b/c it's a bit longer than the actual seqs)
+        end = np.where(np.all(seqarr[:] == "", axis=0))[0].min()
+
+        ## write to phylip 
+        with open(data.outfiles.phy, 'w') as out:
+            ## write header
+            out.write("{} {}\n".format(seqarr.shape[0], end))
+
+            ## write data rows
+            for idx, name in enumerate(pnames):
+                out.write("{}{}\n".format(name, "".join(seqarr[idx, :end])))
 
 
-## TODO:
-def write_nex(data, seqarr, sidx, pnames):
-    """ not implemented yet """
-    return 0
-    ## write the phylip string
-    data.outfiles.nex = os.path.join(data.dirs.outfiles, data.name+".nex")
-    with open(data.outfiles.nex, 'w') as out:
-        ## trim down to size
-        #ridx = np.all(seqarr == "", axis=0)
-        out.write("{} {}\n".format(seqarr.shape[0], seqarr.shape[1]))
-                                   #seqarr[:, ~ridx].shape[1]))
-        for idx, name in zip(sidx, pnames):
-            out.write("{}{}\n".format(name, "".join(seqarr[idx])))
+
+def write_nex(data, sidx, pnames):
+    """ 
+    write the nexus output file from the tmparr[seqarray] and tmparr[maparr]
+    """    
+
+    ## grab seq data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        seqarr = io5["seqarr"]
+
+        ## find the end (b/c it's a bit longer than the actual seqs)
+        end = np.where(np.all(seqarr[:] == "", axis=0))[0].min()
+
+        ## write to nexus
+        data.outfiles.nex = os.path.join(data.dirs.outfiles, data.name+".nex")
+        with open(data.outfiles.nex, 'w') as out:
+
+            ## write nexus seq header
+            out.write(NEXHEADER.format(seqarr.shape[0], seqarr.shape[1]))
+
+            ## write interleaved seqs 100 chars at a time with longname+2 before
+            for block in xrange(0, end, 100):
+                for idx, name in enumerate(pnames):
+                    stop = min(block+100, end)
+                    out.write("  {}{}\n".format(name, "".join(seqarr[idx, block:stop])))
+                out.write("\n")
+            out.write(NEXCLOSER)
+
 
 
 ## TODO: this could have much more information for reference aligned data
-def write_snps_map(data, maparr):
+def write_snps_map(data):
     """ write a map file with linkage information for SNPs file"""
-    with open(data.outfiles.snpsmap, 'w') as out:
-        for idx in range(maparr.shape[0]):
-            line = maparr[idx, :]
-            out.write("{}\trad{}_snp{}\t{}\t{}\n".format(line[0], line[1], line[2], 0, line[3]))
+
+    ## grab map data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        maparr = io5["maparr"]
+
+        ## get last data 
+        end = np.where(np.all(maparr[:] == 0, axis=1))[0].min()
+
+        ## write to map file (this is too slow...)
+        outchunk = []
+        with open(data.outfiles.snpsmap, 'w') as out:
+            for idx in xrange(end):
+                ## build to list
+                line = maparr[idx, :]
+                outchunk.append(\
+                    "{}\trad{}_snp{}\t{}\t{}\n"\
+                    .format(line[0], line[1], line[2], 0, line[3]))
+                ## clear list
+                if not idx % 10000:
+                    out.write("".join(outchunk))
+                    outchunk = []
+            ## write remaining
+            out.write("".join(outchunk))
 
 
-def write_snps(data, snparr, sidx, pnames):
+
+def write_snps(data, sidx, pnames):
     """ write the snp string """
-    data.outfiles.snps = os.path.join(data.dirs.outfiles, data.name+".snps.phy")
-    with open(data.outfiles.snps, 'w') as out:
-        out.write("{} {}\n".format(snparr.shape[0], snparr.shape[1]))
-        for idx, name in enumerate(pnames):
-            out.write("{}{}\n".format(name, "".join(snparr[idx, :])))
-            #out.write("{}{}\n".format(name, "".join(snparr[sidx][idx, :])))
+
+    ## grab snp data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        snparr = io5["snparr"]
+
+        ## trim to size b/c it was made longer than actual
+        end = np.where(np.all(snparr[:] == "", axis=0))[0].min()
+
+        ## write to snps file
+        with open(data.outfiles.snpsphy, 'w') as out:
+            out.write("{} {}\n".format(snparr.shape[0], end))
+            for idx, name in enumerate(pnames):
+                out.write("{}{}\n".format(name, "".join(snparr[idx, :end])))
 
 
-def write_usnps(data, bisarr, sidx, pnames):
+
+def write_usnps(data, sidx, pnames):
     """ write the bisnp string """
-    data.outfiles.usnps = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
-    with open(data.outfiles.usnps, 'w') as out:
-        out.write("{} {}\n".format(bisarr.shape[0], bisarr.shape[1]))
-        for idx, name in enumerate(pnames):
-            out.write("{}{}\n".format(name, "".join(bisarr[idx, :])))
-            #out.write("{}{}\n".format(name, "".join(bisarr[sidx][idx, :])))
+
+    ## grab bis data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        bisarr = io5["bisarr"]
+
+        ## trim to size b/c it was made longer than actual
+        end = np.where(np.all(bisarr[:] == "", axis=0))[0].min()
+
+        ## write to usnps file
+        with open(data.outfiles.usnpsphy, 'w') as out:
+            out.write("{} {}\n".format(bisarr.shape[0], end))
+            for idx, name in enumerate(pnames):
+                out.write("{}{}\n".format(name, "".join(bisarr[idx, :end])))
 
 
 
-def write_str(data, snparr, bisarr, sidx, pnames):
-    """ Write STRUCTURE format """
-    data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
-    data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".u.str")
-    out1 = open(data.outfiles.str, 'w')
-    out2 = open(data.outfiles.ustr, 'w')
-    numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
-    if data.paramsdict["max_alleles_consens"] > 1:
-        for idx, name in enumerate(pnames):
-            out1.write("{}\t\t\t\t\t{}\n"\
-                .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
-            out1.write("{}\t\t\t\t\t{}\n"\
-                .format(name,
-                "\t".join([numdict[DUCT[i][1]] for i in snparr[idx]])))
-            out2.write("{}\t\t\t\t\t{}\n"\
-                .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
-            out2.write("{}\t\t\t\t\t{}\n"\
-                .format(name,
-                "\t".join([numdict[DUCT[i][1]] for i in bisarr[idx]])))
-    else:
-        ## haploid output
-        for idx, name in enumerate(pnames):
-            out1.write("{}\t\t\t\t\t{}\n"\
-                .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in snparr[idx]])))
-            out2.write("{}\t\t\t\t\t{}\n"\
-                .format(name,
-                "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx]])))
-    out1.close()
-    out2.close()
+def write_str(data, sidx, pnames):
+    """ Write STRUCTURE format for all SNPs and unlinked SNPs """
+
+    ## grab snp and bis data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        snparr = io5["snparr"]
+        bisarr = io5["bisarr"]
+
+        ## trim to size b/c it was made longer than actual
+        send = np.where(np.all(snparr[:] == "", axis=0))[0].min()        
+        bend = np.where(np.all(bisarr[:] == "", axis=0))[0].min()
+
+        ## write to str and ustr
+        out1 = open(data.outfiles.str, 'w')
+        out2 = open(data.outfiles.ustr, 'w')
+        numdict = {'A': '0', 'T': '1', 'G': '2', 'C': '3', 'N': '-9', '-': '-9'}
+        if data.paramsdict["max_alleles_consens"] > 1:
+            for idx, name in enumerate(pnames):
+                out1.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in snparr[idx, :send]])))
+                out1.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][1]] for i in snparr[idx, :send]])))
+                out2.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx, :bend]])))
+                out2.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][1]] for i in bisarr[idx, :bend]])))
+        else:
+            ## haploid output
+            for idx, name in enumerate(pnames):
+                out1.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in snparr[idx, :send]])))
+                out2.write("{}\t\t\t\t\t{}\n"\
+                    .format(name,
+                    "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx, :bend]])))
+        out1.close()
+        out2.close()
 
 
 
-def write_geno(data, snparr, bisarr, sidx, inh5):
-    ## Write GENO format
-    data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
-    data.outfiles.ugeno = os.path.join(data.dirs.outfiles, data.name+".u.geno")
+def write_geno(data, sidx):
+    """
+    write the geno output formerly used by admixture, still supported by 
+    adegenet, perhaps. 
+    """
 
-    ## get most common base at each SNP as a pseudo-reference
-    ## and record 0,1,2 or missing=9 for counts of the ref allele
-    snpref = reftrick(snparr.view(np.int8), GETCONS).view("S1")
-    bisref = reftrick(bisarr.view(np.int8), GETCONS).view("S1")
+    ## grab snp and bis data from tmparr
+    tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
+    with h5py.File(tmparrs, 'r') as io5:
+        snparr = io5["snparr"]
+        bisarr = io5["bisarr"]
 
-    ## geno matrix to fill (9 is empty)
-    snpgeno = np.zeros(snparr.shape, dtype=np.uint8)
-    snpgeno.fill(9)
-    bisgeno = np.zeros(bisarr.shape, dtype=np.uint8)
-    bisgeno.fill(9)
+        ## trim to size b/c it was made longer than actual
+        send = np.where(np.all(snparr[:] == "", axis=0))[0].min()        
+        bend = np.where(np.all(bisarr[:] == "", axis=0))[0].min()
 
-    ## fill in complete hits
-    mask2 = np.array(snparr == snpref[:, 0])
-    snpgeno[mask2] = 2
+        ## get most common base at each SNP as a pseudo-reference
+        ## and record 0,1,2 or missing=9 for counts of the ref allele
+        snpref = reftrick(snparr[:, :send].view(np.int8), GETCONS).view("S1")
+        bisref = reftrick(bisarr[:, :bend].view(np.int8), GETCONS).view("S1")
 
-    ## fill in single hits (heteros)
-    ambref = np.apply_along_axis(lambda x: TRANSFULL[tuple(x)], 1, snpref[:, :2])
-    mask1 = np.array(snparr == ambref)
-    snpgeno[mask1] = 1
+        ## geno matrix to fill (9 is empty)
+        snpgeno = np.zeros((snparr.shape[0], send), dtype=np.uint8)
+        snpgeno.fill(9)
+        bisgeno = np.zeros((bisarr.shape[0], bend), dtype=np.uint8)
+        bisgeno.fill(9)
 
-    ## fill in zero hits (match to second base)
-    mask0 = np.array(snparr == snpref[:, 1])
-    snpgeno[mask0] = 0
+        ##--------------------------------------------------------------------
+        ## fill in complete hits (match to first column ref base)
+        mask2 = np.array(snparr[:, :send] == snpref[:, 0])
+        snpgeno[mask2] = 2
 
-    ## fill in complete hits
-    mask2 = np.array(bisarr == bisref[:, 0])
-    bisgeno[mask2] = 2
+        ## fill in single hits (heteros) match to hetero of first+second column
+        ambref = np.apply_along_axis(lambda x: TRANSFULL[tuple(x)], 1, snpref[:, :2])
+        mask1 = np.array(snparr[:, :send] == ambref)
+        snpgeno[mask1] = 1
 
-    ## fill in single hits (heteros)
-    ambref = np.apply_along_axis(lambda x: TRANSFULL[tuple(x)], 1, bisref[:, :2])
-    mask1 = np.array(bisarr == ambref)
-    bisgeno[mask1] = 1
+        ## fill in zero hits, meaning a perfect match to the second column base
+        ## anything else is left at 9 (missing), b/c it's either missing or it
+        ## is not bi-allelic. 
+        mask0 = np.array(snparr[:, :send] == snpref[:, 1])
+        snpgeno[mask0] = 0
 
-    ## fill in zero hits (match to second base)
-    mask0 = np.array(bisarr == bisref[:, 1])
-    bisgeno[mask0] = 0
+        ##--------------------------------------------------------------------
 
-    ## print to files
-    np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
-    np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
+        ## fill in complete hits
+        mask2 = np.array(bisarr[:, :bend] == bisref[:, 0])
+        bisgeno[mask2] = 2
+
+        ## fill in single hits (heteros)
+        ambref = np.apply_along_axis(lambda x: TRANSFULL[tuple(x)], 1, bisref[:, :2])
+        mask1 = np.array(bisarr[:, :bend] == ambref)
+        bisgeno[mask1] = 1
+
+        ## fill in zero hits (match to second base)
+        mask0 = np.array(bisarr[:, :bend] == bisref[:, 1])
+        bisgeno[mask0] = 0
+
+        ##---------------------------------------------------------------------
+        ## print to files
+        np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
+        np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
 
     ## write a map file for use in admixture with locations of SNPs
     ## for denovo data we just have evenly spaced the unlinked SNPs
@@ -1634,7 +1940,7 @@ def write_geno(data, snparr, bisarr, sidx, inh5):
 
 
 
-
+## TODO: try to recreate error data with 4's retained in output.
 def make_vcf(data, samples, ipyclient, full=0):
     """
     Write the full VCF for loci passing filtering. Other vcf formats are
@@ -1807,10 +2113,11 @@ def vcfchunk(data, optim, sidx, start, full):
             snps = snps[keepmask, :]
             snps = snps.sum(axis=2)
         snpidxs = snps > 0
-        maxlen = snps.sum()
+        maxsnplen = snps.sum()
 
     ## vcf info to fill, this is bigger than the actual array
-    nrows = (keepmask.sum()*maxlen)
+    #nrows = (keepmask.sum()*maxlen)
+    nrows = maxsnplen
     cols01 = np.zeros((nrows, 2), dtype=np.uint32)
     cols34 = np.zeros((nrows, 2), dtype="S3")
     cols7 = np.zeros((nrows, 1), dtype="S20")
@@ -2109,6 +2416,21 @@ def vcfheader(data, names, ofile):
     ## WRITE
     ofile.write(header)
 
+
+NEXHEADER = \
+"""
+#nexus
+
+begin data;
+  dimensions ntax={} nchar={};
+  format datatype=dna missing=N gap=- interleave=yes;
+  matrix
+"""
+
+NEXCLOSER = """\
+  ;
+end;
+"""
 
 
 
