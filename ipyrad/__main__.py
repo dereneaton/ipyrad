@@ -263,7 +263,6 @@ def getassembly(args, parsedict):
                 print("  Malformed params file: {}".format(args.params))
                 print("  Bad parameter {} - {}".format(param, parsedict[param]))
                 sys.exit(-1)
-
     return data
 
 
