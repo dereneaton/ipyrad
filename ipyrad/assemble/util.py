@@ -488,7 +488,10 @@ DUCT = {"R":["G", "A"],
         "G":["G", "G"],
         "C":["C", "C"],
         "N":["N", "N"],
-        "-":["-", "-"]}
+        "-":["-", "-"]
+        }
+
+
 def unstruct(amb):
     """ This is copied from pyrad.alignable, and is referenced in
     several of the loci2*.py conversion modules. It duplicates some

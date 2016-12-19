@@ -186,7 +186,6 @@ def load_json(path, quiet=False):
     ## print msg with shortpath
     if not quiet:
         oldpath = oldpath.replace(os.path.expanduser("~"), "~")
-        #print("  loading Assembly: {} [{}]".format(oldname, oldpath))
         print("  loading Assembly: {}".format(oldname))
         print("  from saved path: {}".format(oldpath))
 
