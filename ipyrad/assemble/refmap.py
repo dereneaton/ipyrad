@@ -30,6 +30,21 @@ LOGGER = logging.getLogger(__name__)
 # pylint: disable=C0301
 
 
+def sample_cleanup(data, sample):
+    """
+    Clean up a bunch of loose files.
+    """
+    umap1file = os.path.join(data.dirs.edits, sample.name+"-tmp-umap1.fastq")
+    umap2file = os.path.join(data.dirs.edits, sample.name+"-tmp-umap2.fastq")
+    unmapped = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    samplesam = os.path.join(data.dirs.refmapping, sample.name+".sam")
+    split1 = os.path.join(data.dirs.edits, sample.name+"-split1.fastq")
+    split2 = os.path.join(data.dirs.edits, sample.name+"-split2.fastq")
+    for f in [umap1file, umap2file, unmapped, samplesam, split1, split2]:
+        try:
+            os.remove(f)
+        except:
+            pass
 
 def index_reference_sequence(data, force=False):
     """ 
@@ -333,11 +348,9 @@ def ref_muscle_chunker(data, sample):
 
     if len(regions) > 0:
         get_overlapping_reads(data, sample, regions)
-
     else:
         msg = "No reads mapped to reference sequence - {}".format(sample.name)
         LOGGER.warn(msg)
-
 
 
 def get_overlapping_reads(data, sample, regions):
@@ -820,6 +833,7 @@ def refmap_stats(data, sample):
     sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
     sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
 
+    sample_cleanup(data, sample)
 
 
 def refmap_init(data, sample):

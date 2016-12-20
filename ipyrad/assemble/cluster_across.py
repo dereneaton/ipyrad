@@ -1255,7 +1255,6 @@ def build_input_file(data, samples, randomseed):
     outdat.close()
 
 
-
 def run(data, samples, noreverse, force, randomseed, ipyclient):
     """
     Master function to run :
@@ -1331,7 +1330,20 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         ## delete the tmpdir
         shutil.rmtree(data.tmpdir)
 
+        ## Cleanup loose files
+        uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
+        hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
+        uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
+        catshuf = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
+        catcons = os.path.join(data.dirs.consens, data.name+"_cathaps.tmp")
+        cathaps = os.path.join(data.dirs.consens, data.name+"_catshuf.tmp")
+        catsort = os.path.join(data.dirs.consens, data.name+"_catsort.tmp")
 
+        for f in [uhaplos, hhaplos, uhandle, catshuf, catcons, cathaps, catsort]:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 
 if __name__ == "__main__":
