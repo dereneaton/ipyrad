@@ -88,7 +88,7 @@ def register_ipcluster(data):
     from interfering with other ipcontrollers. 
     """
     ## check if this pid already has a running cluster
-    data._ipcluster["cluster_id"] = "ipyrad-"+str(os.getpid())
+    data._ipcluster["cluster_id"] = "ipyrad-cli-"+str(os.getpid())
     start_ipcluster(data)
     #atexit.register(stop_ipcluster, 
     #                data._ipcluster["profile"],
@@ -207,5 +207,7 @@ NO_IPCLUSTER_API = """
     No ipcluster instance found. See documentation for the proper way to set 
     up an ipcluster instance when running the ipyrad Python API. In short, 
     you must run 'ipcluster start' to initiate a local or remote cluster. 
+    Also, if you changed the 'profile' or 'cluster_id' setting from their 
+    default values you must enter these into the Assembly._ipcluster dictionary.
     """
 

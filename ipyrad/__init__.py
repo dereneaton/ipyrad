@@ -2,7 +2,7 @@
 
 # pylint: disable=C0103
 import os as _os
-import atexit
+import atexit as _atexit
 
 ## define state vars
 __interactive__ = 1      ## CLI __main__ changes to 0
@@ -24,6 +24,7 @@ from . import assemble
 from . import file_conversion
 from .load import save_json
 from .load import load_json
+from ipyrad.core.parallel import get_client as _get_client
 #from . import plotting  ## do not autoimport plotting, import as ipp
 #from . import analysis  ## do not autoimport analysis, import as ipa
 
@@ -31,7 +32,7 @@ from .load import load_json
 from ipyrad.core.assembly import Assembly
 from ipyrad.core.assembly import merge
 from ipyrad.core.sample import Sample
-from ipyrad.core.paramsinfo import paramsinfo
+#from ipyrad.core.paramsinfo import paramsinfo
 
 
 ####################################################################
@@ -51,11 +52,28 @@ if _os.path.exists(__debugfile__):
 ## check that all dependencies exist and are working
 import subprocess as _subprocess
 import sys as _sys
+import socket as _socket
 
 
 _LOGGER = _logging.getLogger(__name__)
 if __loglevel__ == "DEBUG":
     _LOGGER.debug("Engine init")
+
+
+def cluster_info(cluster_id="", profile="default", engines="Local", 
+                 timeout=60, cores=0, quiet=True, **kwargs):
+  """ report info on the ipcluster instance """  
+
+  ## get the client
+  ipyclient = _get_client(cluster_id, profile, engines, timeout, cores, quiet)
+
+  ## report 
+  hosts = ipyclient[:].apply_sync(_socket.gethostname)
+  for hostname in set(hosts):
+      print("host compute node: [{} cores] on {}"\
+            .format(hosts.count(hostname), hostname))
+  ipyclient.close()
+
 
 
 def debug_on():
@@ -205,11 +223,11 @@ def _getbins():
 
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
-binnames = ["vsearch", "muscle", "smalt", "bwa", "samtools", "bedtools", "qmc"]
-for binn, binx in zip(binnames, _getbins()):
+_binnames = ["vsearch", "muscle", "smalt", "bwa", "samtools", "bedtools", "qmc"]
+for binn, binx in zip(_binnames, _getbins()):
     bins[binn] = binx
 ## clean up for the API
-del binnames, binn, binx
+del _binnames
 
 
 
