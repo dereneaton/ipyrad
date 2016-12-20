@@ -44,7 +44,7 @@ import logging.config as _lconfig
 
 ## clear the logfile if it is too big
 if _os.path.exists(__debugfile__):
-    if _os.path.getsize(__debugfile__) > 5000000:
+    if _os.path.getsize(__debugfile__) > 50000000:
         with open(__debugfile__, 'w') as clear:
             clear.write("file reset")
 
