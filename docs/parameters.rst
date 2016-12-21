@@ -651,12 +651,8 @@ Affected steps = 7. Example entries to params.txt
 28. pop_assign_file
 --------------------
 Population assignment file for creating population output files, or 
-assigning min_samples_locus value to each population. Each line should
-contain a sample name followed by a population name to which that sample 
-is assigned, separated by spaces or tabs. One or more additional lines 
-should be included that start with one or more "#" characters. These 
-lines tell ipyrad how many samples must have data within each population
-for the locus to be retained in the final assembly. See the example below.
+assigning min_samples_locus value to each population. Enter a path to 
+the file. (see below for details of the file).
 
 Affected step: 7. Example entries to params.txt
 
@@ -666,7 +662,15 @@ Affected step: 7. Example entries to params.txt
 
 The population assignment file should be formatted as a plain-txt, whitespace
 delimited list of individuals and population assignments. Care should be taken
-with spelling and capitalization. 
+with spelling and capitalization. Each line should contain a sample name followed
+by a population name to which that sample is assigned. One or more additional 
+lines should be included that start with one or more "#" characters. These 
+special lines tell ipyrad how many samples must have data within each population
+for the locus to be retained in the final assembly, and thus assign different 
+min_samples_locus values to each population. This will override the global
+min_samples_locus value. 
+
+See the example below.
 
 .. parsed-literal::
 
