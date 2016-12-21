@@ -25,34 +25,36 @@ Step 1: Launch jupyter-notebook and ipcluster on a compute node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For SLURM I save the following script as `slurm_launch_jupyter_cluster.sh`, and 
-submit it with the sbatch command. This will need to be edited slightly to 
-conform to your cluster, by changing the name of the partition (queue), 
-changing the number of nodes to whatever works best for you, and setting 
-the walltime limit. Fortunately, for this cluster the walltime
-limit is 30 days, so I can submit the script and keep a connection to 32 cores
-for that amount of time. 
+submit it with the `sbatch` command. The code may need to be edited slightly to 
+conform to your cluster, which may require setting the name of the partition (queue), 
+or changing the number of nodes and walltime to within the limits that are
+allowed. 
 
 .. code-block:: bash
 
     #!/bin/bash
     # set the number of nodes and processes per node
-    #SBATCH --partition general
     #SBATCH --nodes 4
-    #SBATCH --ntasks-per-node 8
+    #SBATCH --ntasks-per-node 20
     #SBATCH --exclusive
     #SBATCH --time 30-00:00:00
-    #SBATCH --mem-per-cpu 2000
-    #SBATCH --job-name jupyter-ipcluster
+    #SBATCH --mem-per-cpu 4000
+    #SBATCH --job-name jptr
     #SBATCH --output jupyterlog.txt
 
+    ## pick a port number between 8000-9999
+    NOTEBOOKPORT=8888
+    
+    ## load MPI [the exact command may vary on your cluster!]
+    module load MPI/OpenMPI
+
     ## launch ipcluster engines across available cpus
-    ipcluster start --n=32 --engines=MPI --ip=* --daemonize
+    ipcluster start --n=80 --engines=MPI --ip=* --daemonize
 
     ## necessary fix for a slurm bug that otherwise crashes jupyter
     XDG_RUNTIME_DIR=""
 
     ## open a tunnel between compute and login nodes on port 8181
-    NOTEBOOKPORT=8181
     ssh -N -X -f -R $NOTEBOOKPORT:localhost:$NOTEBOOKPORT $SLURM_SUBMIT_HOST
 
     ## launch notebook
@@ -67,8 +69,7 @@ On the login node of your cluster submit the submission script.
 
 
 Alternatively, if you are using TORQUE, then submit the following script using 
-the qsub command instead, which I save under the name 
-`torque_launch_jupyter_cluster.sh`. 
+the qsub command instead, which I save under the name `torque_launch_jupyter_cluster.sh`. 
 
 .. code-block:: bash
 
@@ -78,14 +79,16 @@ the qsub command instead, which I save under the name
     #PBS -walltime=30:00:00
     #PBS -j oe
     #PBS -o jupyterlog.txt
-    #PBS -N jupyter-ipcluster
+    #PBS -N jptr
     #PBS -q general
+
+    ## choose a port number between 8000-9999
+    NOTEBOOKPORT=8888
 
     ## launch ipcluster engines across all available cpus
     ipcluster start --n=32 --engines=MPI --ip=* --daemonize
 
     ## open a tunnel between compute and login nodes on port 8181
-    NOTEBOOKPORT=8181
     ssh -N -X -f -R $NOTEBOOKPORT:localhost:$NOTEBOOKPORT $PBS_O_HOST
 
     ## launch notebook
@@ -101,39 +104,47 @@ the qsub command instead, which I save under the name
 Step 2: Open ssh connection to your cluster from local
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This is similar to the normal way you would login to your HPC cluster, except that
-you tell it to forward all information it receives on port 8181 to your 
-local port 8181. Also change the login credentials to your name and host. 
+you tell it to forward all information it receives on port xxxx to your 
+local port xxxx. Also change the login credentials to your name and host. 
 If you forget which port you entered in your submission script you can 
 check the log file on your cluster, which we named jupyterlog.txt.
 
 .. code-block:: bash
     
-    user@local$ ssh -N -L 8181:localhost:8181 user@hpc_login_node.edu
+    user@local$ ssh -N -L 8888:localhost:8888 user@hpc_login_node.edu
 
 
 Step 3: Tunnel from local computer to notebook 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Now we simply open a browser to http://localhost:8181
+Now simply open a browser to http://localhost:8181
 
 You should see the Jupyter notebook view of your filesystem on the HPC cluster. 
-You can open an existing notebook, or start a new one. The notebooks are located
-on your cluster, meaning all of your data and results will be saved there. I 
-like to store my notebooks inside directories that are each separate git repos
-in my home directory, and to store all of my big data in a scratch directory. 
-You can see an example like that :ref:`here<http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`. This way, the notebook records all of 
-the code you execute in your notebook which can be saved to your git repo, 
-but all of the giant data is still saved in scratch. 
+You can open an existing notebook, or start a new one. The notebooks are 
+physically located on your cluster, meaning all of your data and results will be 
+saved there. I usually sync my working directories in which notebooks reside 
+using github, which makes them easy to share. I usually set the "project_dir"
+parameter in ipyrad to be in a scratch directory. 
+You can see an example of this type of setup here:
+:ref:`here<http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`. 
+This way, the notebook records all of the code you execute in your notebook 
+which can be saved to your git repo, but all of the giant data is 
+saved in scratch. 
 
 
 Connecting multiple notebook at once
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you want to run jobs in multiple notebooks simultaneously then you should open
-a second port, rather than run both notebooks through the same port, otherwise
-they will be sharing the same ipcluster instance, and thus fight over the 
-available engines. Instead start a second ipcluster by submitting a second 
-submission script to your cluster to launch a different ipcluster instance and 
-jupyter-notebook. Make sure you designate a *different* port number. 
-You can use any port number between 8000-9999. 
+If you want to run multiple notebooks simultaneously you can do so from 
+a single port, by simply opening new notebooks from the Homepage. 
+If you started an ipcluster instance in your submission script, then 
+all notebooks can access this instance. If you would rather divide up between
+multiple notebooks you can do so by opening a terminal from the Jupyter
+homepage, and running the command `ipcluster stop` to stop the instance 
+that is running. Then you can start two separate ipcluster instances in 
+the terminal by assigning each a different number of clusters (-n=X) and 
+assigning them different IDs (cluster-id=X). In your notebooks you then 
+have to tell your Assemblies which ipcluster instance to connect to by 
+assigning a 'cluster_id' dictionary variable. For example, 
+`Assembly._ipcluster["cluster_id"] = "ip-8888". 
 
 
 Terminating the connection

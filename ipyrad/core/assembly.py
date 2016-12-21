@@ -86,7 +86,7 @@ class Assembly(object):
      """
 
 
-    def __init__(self, name, quiet=False):
+    def __init__(self, name, quiet=False, **kwargs):
 
         ## Make sure assembly name is not empty
         if not name:
@@ -116,6 +116,9 @@ class Assembly(object):
             "cores" : 0, #detect_cpus(),
             "threads" : 2
             }
+        for key, val in kwargs.items():
+            if key in self._ipcluster:
+                self._ipcluster[key] = val
 
         ## print headers, this is used as a 'quiet' option
         ## or to control differences in printing between API and CLI
@@ -321,7 +324,7 @@ class Assembly(object):
                                     or i.endswith(".fq")]
         LOGGER.debug("linking these files:\n{}".format(fastqs))
         fastqs.sort()
-        LOGGER.debug("Linking these fastq files:\n".format(fastqs))
+        LOGGER.debug("Linking these fastq files:\n{}".format(fastqs))
 
         ## raise error if no files are found
         if not fastqs:
@@ -339,6 +342,10 @@ class Assembly(object):
                        (len(r1_files) != len(r2_files)):
                     raise IPyradError("""
         Paired file names must be identical except for _R1_ and _R2_.""")
+            else:
+                raise IPyradError("""
+        Fastq filenames are malformed. R1 must contain the string _R1_ and
+        R2 must be identical to R1, excepting the replacement of _R2_ for _R1_.""")
 
             ## Test R2 files actually exist
             if not all([os.path.exists(x) for x in r2_files]):

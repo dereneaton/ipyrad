@@ -159,6 +159,21 @@ def sample_cleanup(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
 
+    ## Clean up loose files
+    ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
+
+    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+    mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
+    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+    usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
+    hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+    clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+
+    for f in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
+        try:
+            os.remove(f)
+        except:
+            pass
 
 
 def muscle_align(data, sample, chunk, maxindels):
