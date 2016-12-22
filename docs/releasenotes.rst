@@ -5,6 +5,13 @@
 Release Notes
 =============
 
+0.5.15
+------
+- bug fix to ensure chunk size of the tmparray in make-arrays is not greater than the total array size
+- fix for vcf build chunk error 'all input arrays must have the same number of dimensions'. This was raised if no loci within a chunk passed filtering
+- allow vcf build to die gracefully
+- api cleanup
+
 0.5.14
 ------
 - some api cleanup
