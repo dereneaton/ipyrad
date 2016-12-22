@@ -1555,11 +1555,17 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
     ## It is the phylip output, essentially.
     h5name = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name))
     with h5py.File(h5name, 'w') as tmp5:
-        tmp5.create_dataset("seqarr", (sum(sidx), maxlen*nkeeps), dtype="S1", chunks=(sum(sidx), maxlen*optim))
-        tmp5.create_dataset("snparr", (sum(sidx), maxsnp), dtype="S1", chunks=(sum(sidx), optim))
-        tmp5.create_dataset('bisarr', (sum(sidx), nkeeps), dtype="S1", chunks=(sum(sidx), optim))
+
+        ## ensure chunksize is not greater than array size
+        shape1 = maxlen*nkeeps
+        tmp5.create_dataset("seqarr", (sum(sidx), shape1), dtype="S1", 
+                            chunks=(sum(sidx), min(shape1, maxlen*optim)))
+        tmp5.create_dataset("snparr", (sum(sidx), maxsnp), dtype="S1", 
+                            chunks=(sum(sidx), min(maxsnp, optim)))
+        tmp5.create_dataset('bisarr', (sum(sidx), nkeeps), dtype="S1", 
+                            chunks=(sum(sidx), min(nkeeps, optim)))
         tmp5.create_dataset('maparr', (maxsnp, 4), dtype=np.uint32)
-           
+
         ## track progress, catch errors, and enter results into h5 as it arrive
         start = time.time()
         njobs = len(asyncs)
