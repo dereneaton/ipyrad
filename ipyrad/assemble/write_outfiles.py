@@ -2050,9 +2050,12 @@ def make_vcf(data, samples, ipyclient, full=0):
     except Exception as inst:
         ## make sure all future jobs are aborted
         keys = [i for (i, j) in vasyncs.items() if not j.ready()]
-        for job in keys:
-            vasyncs[job].abort()
-            vasyncs[job].cancel()
+        try:
+            for job in keys:
+                #vasyncs[job].abort()
+                vasyncs[job].cancel()
+        except Exception:
+            pass
         ## make sure all tmp files are destroyed
         vcfchunks = glob.glob(os.path.join(data.dirs.outfiles, "*.vcf.[0-9]*"))
         h5chunks = glob.glob(os.path.join(data.dirs.outfiles, ".tmp.[0-9]*.h5"))
@@ -2282,45 +2285,29 @@ def vcfchunk(data, optim, sidx, start, full):
     withdat = cols01[:, 0] != 0
     tot = withdat.sum()
 
-    ## TODO: IF GZIPPING, it would be faster to have each of these engines gzip print
-    ## the full string to file so we can just cat them later, this way
-    ## gzipping will be parallelized, though on serial writing machines
-    ## we'll suffer some slowdown from engines fighting to write to disk.
-    if not full:
-        writer = open(data.outfiles.vcf+".{}".format(start), 'w')
-    else:
-        writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
+    ## Only write if there is some data that passed filtering
+    if tot:
+        if not full:
+            writer = open(data.outfiles.vcf+".{}".format(start), 'w')
+        else:
+            writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
 
-    ## write in iterations b/c it can be freakin huge.
-    np.savetxt(writer,
-                np.concatenate(
-                   (cols01[:tot, :].astype("S"),
-                    np.array([["."]]*tot, dtype="S1"),
-                    cols34[:tot, :],
-                    np.array([["13", "PASS"]]*tot, dtype="S4"),
-                    cols7[:tot, :],
-                    np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
-                    htmp["vcf"][:tot, :],
-                    ),
-                    axis=1),
-                delimiter="\t", fmt="%s")
+        ## write in iterations b/c it can be freakin huge.
+        np.savetxt(writer,
+                    np.concatenate(
+                       (cols01[:tot, :].astype("S"),
+                        np.array([["."]]*tot, dtype="S1"),
+                        cols34[:tot, :],
+                        np.array([["13", "PASS"]]*tot, dtype="S4"),
+                        cols7[:tot, :],
+                        np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
+                        htmp["vcf"][:tot, :],
+                        ),
+                        axis=1),
+                    delimiter="\t", fmt="%s")
+        writer.close()
 
-    # inc = min(1000, tot)
-    # for chunk in xrange(0, tot, inc):
-    #     np.savetxt(writer,
-    #                 np.concatenate(
-    #                    (cols01[chunk:chunk+inc, :].astype("S"),
-    #                     np.array([["."]]*inc, dtype="S1"),
-    #                     cols34[chunk:chunk+inc, :],
-    #                     np.array([["13", "PASS"]]*inc, dtype="S4"),
-    #                     cols7[chunk:chunk+inc, :],
-    #                     np.array([["GT:DP:CATG"]]*inc, dtype="S10"),
-    #                     htmp["vcf"][chunk:chunk+inc, :],
-    #                 ),
-    #                 axis=1),
-    #             delimiter="\t", fmt="%s")
-    ## remove tmp arrays
-    writer.close()
+    ## close and remove tmp h5
     htmp.close()
     os.remove(tmph)
 

@@ -388,8 +388,8 @@ def main():
 
     if args.debug:
         print("\n  ** Enabling debug mode ** ")
-        ip.debug_on()
-        atexit.register(ip.debug_off)        
+        ip._debug_on()
+        atexit.register(ip._debug_off)        
 
     ## create new paramsfile if -n
     if args.new:
