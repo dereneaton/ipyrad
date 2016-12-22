@@ -8,18 +8,21 @@ Maximum-likelihood phylogenetic inference
 The program RAxML is a standard tool for phylogenetic inference
 popular for its speed and ease of use. It offers a huge
 variety of analysis methods, and you could spend hours exploring its 
-massive documentation. Here I list a few tips for working with 
+massive documentation. Optimizing it for use on a cluster can be a 
+bit a tricky. Here I list a few tips for working with 
 large concatenated RAD-seq alignments (.phy output file) and analyzing
-them on a HPC cluster. 
+them on a HPC cluster based on information from the 
+`v.8.0 raxml documentation <https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj4opaa1IjRAhVB1oMKHajPAMAQFggcMAA&url=https%3A%2F%2Fbioinformatics.oxfordjournals.org%2Fcontent%2Fsuppl%2F2014%2F01%2F18%2Fbtu033.DC1%2FNewManual.pdf&usg=AFQjCNH_8fbJI7fBU6yVL74UFKRzZhftFg&sig2=3GfktJYcAdFcSxRWs0TgFw>`__
 
 
 Installing raxml on a cluster
 -----------------------------
-Many old versions of raxml are floating around the internet and your cluster
-almost certainly does not have a recent version installed. So the best thing
-to do is install it yourself (you do not need administrative privileges for this.)
-We will install the MPI-enabled version of raxml in a local directory, which
-you can remove at any time if you like. 
+There are many versions of raxml, and it is updated frequently, and so the 
+version that is lying around on your cluster may be outdated, or it may
+not be the best version for what you want to do. The easiest thing
+to do is to install it yourself (you do not need administrative privileges for this.)
+We will install two versions, the PTHREADS and MPI-enabled versions, 
+and put them into a local directory.
 
 .. code:: bash  
 
@@ -40,10 +43,18 @@ you can remove at any time if you like.
     ## compile the AVX2.MPI version of raxml
     make -f Makefile.AVX2.MPI.gcc
 
+    ## compile the AVX2.PTHREADS version of raxml
+    rm *.o
+    make -f Makefile.AVX2.PTHREADS.gcc
+
     ## (optional) copy the binary to your binaries dir
     cp raxml-MPI-AVX2 ~/local/bin
-
+    cp raxml-PTHREADS-AVX2 ~/local/bin
     
+
+Why two different versions?
+---------------------------
+
 
 
 Running raxml 
