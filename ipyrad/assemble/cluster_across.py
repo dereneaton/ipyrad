@@ -729,12 +729,15 @@ def singlecat(data, sample, bseeds, sidx):
     #return newcatg, onall, sidx
 
 
-
-#def write_to_fullarr(data, newcatg, onall, sidx):
+## This func could potentially be replaced entirely by making 
+## a dask array made up concatenating all of the individual 
+## .tmp.h5 arrays. Reading from that might be a bit slower, tho.
+## Something to consider since it would be parallel, while this 
+## step is not. If this step proves to be too slow in uber
+## big assemblies then we should try the other approach.
 def write_to_fullarr(data, sample, sidx):
     """ writes arrays to h5 disk """
     ## save big arrays to disk temporarily
-
 
     with h5py.File(data.clust_database, 'r+') as io5:
         chunk = io5["catgs"].attrs["chunksize"][0]
@@ -756,129 +759,6 @@ def write_to_fullarr(data, sample, sidx):
                 catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
                 nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
         os.remove(smpio)
-
-
-            # for cidx in xrange(0, catg.shape[0], chunks):
-            #     #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
-            #     catg[init:cidx, sidx:sidx+1, :] = np.expand_dims(newcatg[init:cidx, :], axis=1)
-            #     nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
-            #     init = cidx
-    # smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
-    # if os.path.exists(smpio):
-    #     os.remove(smpio)
-    # with h5py.File(smpio, 'w') as oh5:
-    #     oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
-    #     oh5.create_dataset("inall", data=onall, dtype=np.uint8)
-
-    # with h5py.File(data.clust_database, 'r+') as io5:
-    #     catg = io5["catgs"]
-    #     nall = io5["nalleles"]
-
-    #     #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
-    #     catg[:, sidx, :] = newcatg[:]
-    #     nall[:, sidx] = onall[:]
-
-
-# def insert_and_cleanup(data, sname, sidx, newcatg, onall):
-#     """
-#     Enter results from singlecat into the super h5 arrays. This is
-#     not parallelized. Why isn't it faster?
-#     """
-
-#     ## grab supercatg from super and get index of this sample
-#     with h5py.File(data.clust_database, 'r+') as io5:
-#         catg = io5["catgs"]
-#         nall = io5["nalleles"]
-
-#         #smpio = os.path.join(data.dirs.consens, sname+".tmp.h5")
-#         #with h5py.File(smpio, 'r') as smp5:
-#         #    newcatg = smp5["icatg"]
-#         #    onall = smp5["inall"]
-
-#             ## get this samples index in the h5
-#             sidx = list(catg.attrs["samples"]).index(sname)
-#             LOGGER.info("insert & cleanup : %s sidx: %s", sname, sidx)
-
-#             ## single fill, does this crush memory? should we chunk?
-#             ## I think it's slow because it's entering into a column
-#             ## but catg is chunked by rows... C vs. F, amiright?
-#             catg[:, sidx, :] = newcatg[:]
-#             nall[:, sidx] = onall[:]
-
-            ## FILL SUPERCATG -- catg is chunked by nchunk loci
-            # chunk = catg.attrs["chunksize"]
-            # for chu in xrange(0, catg.shape[0], chunk):
-            #     catg[chu:chu+chunk, sidx, :] = newcatg[chu:chu+chunk]
-
-            # ## FILL allelic information here.
-            # for chu in xrange(0, catg.shape[0], chunk):
-            #     nall[chu:chu+chunk, sidx] = onall[chu:chu+chunk]
-
-
-
-# @numba.jit(nopython=True)
-# def fill_duplicates_parallel(base, block, seedsarr, uarr, ntax):
-#     """
-#     Applies filter to block of loci. Requires numba v.0.28.
-#     """
-#     ## filter for duplicates
-#     size = min(block, seedsarr.shape[0] - (base))
-#     dfilter = np.zeros(size, dtype=np.bool_)
-
-#     ## fill dfilter
-#     for bidx in xrange(size):
-#         idx = bidx + base
-#         ## get idx of seed and matches
-#         sidxs = uarr[uarr[:, 0] == idx, 1]
-#         seedx = seedsarr[seedsarr[:, 0] == idx, 1]
-#         bins = np.concatenate((sidxs, seedx))
-#         counts = np.bincount(bins)
-#         if counts.max() > 1:
-#             dfilter[bidx] = True
-#     return dfilter
-
-
-
-# @numba.jit(nopython=True)
-# def fill_cats_and_alleles(maxlen, seeds, hits, catarr, nall):
-#     """
-#     Fill catg and nalleles data in locus sorted order and returns
-#     the filled arrays. Uses the seeds and hits arrays. Needs the entire
-#     catarr and nall arrays loaded into memory, unfortunately.
-#     """
-#     ocatg = np.zeros((10000, maxlen, 4), dtype=np.uint32)
-#     onall = np.zeros(10000, dtype=np.uint8)
-
-#     ## fill the locus data where sample was a seed
-#     #for idx in xrange(seeds.shape[0]):
-#     for idx in xrange(hslice, hslice+10000):
-#         ## this is the samples data
-#         cidx = seeds[idx, 2]
-
-#         ## we can fill it into the array if its in this 10K chunk
-#         if cidx in seeds[:, ]
-
-#         ## is this sample the seed?
-#         if idx in seeds[:, 0]:
-
-#         loc = seeds[idx, 0]
-#         cidx = seeds[idx, 2]
-
-#         ## set locus with sample data
-#         ocatg[loc, :catarr.shape[1]] = catarr[cidx]
-#         onall[loc] = nall[cidx]
-
-#     ## fill the locus data where sample is a hit
-#     for idx in xrange(hits.shape[0]):
-#         ## get the locus number
-#         loc = hits[idx, 0]
-#         cidx = hits[idx, 2]
-
-#         ## set locus with sample data
-#         ocatg[loc, :catarr.shape[1]] = catarr[cidx]
-#         onall[loc] = nall[cidx]
-
-#     return ocatg, onall
 
 
 
