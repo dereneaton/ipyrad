@@ -14,34 +14,20 @@ Release Notes
 
 0.5.14
 ------
-- some api cleanup
-- updated docs for popfile
 - updated docs for popfile
 - fix for long endings on new outfile writing method
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- userguide updates
 - Made max size of the log file bigger by a zero.
 - Be nice and clean up a bunch of temporary files we'd been leaving around.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Better handling for malformed R1/R2 filenames.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - api notebook update
 - more verbose warning on ipcluster error
 - allow setting ipcluster during Assembly instantiation
-- baba testing notebook updated
-- working on api user guide
-- cosmetic
 - improved populations parser, and cosmetic
 - greatly reduced memory load with new func boss_make_arrays that builds the arrays into a h5 object on disk, and uses this to build the various output files. Also reduced disk load significantly by fixing the maxsnp variable bug which was making an empty array that was waay to big. Also added support for nexus file format. Still needs partition info to be added.
-- cosmetic
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- API guide update
 - CLI ipcluster cluster-id='ipyrad-cli-xxx' to more easily differentiate from API
 - added note on threading
 - API cleanup func names
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - write outfiles h5 mem limit work around for build-arrays
-- baba update
 - step 1 with sorted-fastq-path no longer creates empty fastq dirs
 
 0.5.13
