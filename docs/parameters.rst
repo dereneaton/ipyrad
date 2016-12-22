@@ -510,9 +510,9 @@ Affected steps = 5. Example entries to params.txt
 The minimum number of Samples that must have data at a given locus for it to
 be retained in the final data set. If you enter a number equal to the full
 number of samples in your data set then it will return only loci that have
-data across all samples.
-If you enter a lower value, like 4, it will return a more sparse matrix,
-including any loci for which at least four samples contain data. Default is 4.
+data shared across all samples. Whereas if you enter a lower value, like 4, 
+it will return a more sparse matrix, including any loci for which at least four samples contain data. This parameter is overridden if a min_samples values 
+are entered in the :ref:`popfile<pop_assign_file>`. Default value is 4.
 
 Affected steps = 7. Example entries to params.txt
 
@@ -520,6 +520,7 @@ Affected steps = 7. Example entries to params.txt
 
     4                ## [21] create a min4 assembly
     12               ## [21] create a min12 assembly
+
 
 .. _max_SNPs_locus:
 
@@ -541,6 +542,7 @@ Affected steps = 7. Example entries to params.txt
     20                  ## [22] allow max of 20 SNPs at a single-end locus.
     20, 30              ## [22] allow max of 20 and 30 SNPs in paired locus.
 
+
 .. _max_Indels_locus:
 
 23. max_Indels_locus
@@ -557,6 +559,7 @@ Affected steps = 7. Example entries to params.txt
 
     5                ## [23] allow max of 5 indels at a single-end locus.
     5, 10            ## [23] allow max of 5 and 10 indels in paired locus.
+
 
 .. _max_shared_Hs_locus:
 
@@ -647,10 +650,9 @@ Affected steps = 7. Example entries to params.txt
 
 28. pop_assign_file
 --------------------
-Population assignment file for creating population output files for
-the programs migrate-n and treemix, and for downstream analyses. If using
-the API this can be passed as a Python dictionary:
-e..g, {pop1: [ind1, ind2], pop2: [ind3, ind4]}.
+Population assignment file for creating population output files, or 
+assigning min_samples_locus value to each population. Enter a path to 
+the file. (see below for details of the file).
 
 Affected step: 7. Example entries to params.txt
 
@@ -660,8 +662,15 @@ Affected step: 7. Example entries to params.txt
 
 The population assignment file should be formatted as a plain-txt, whitespace
 delimited list of individuals and population assignments. Care should be taken
-with spelling and capitalization. Sample names and population assignments can
-separated by spaces or tabs. A simple example population file might look like:
+with spelling and capitalization. Each line should contain a sample name followed
+by a population name to which that sample is assigned. One or more additional 
+lines should be included that start with one or more "#" characters. These 
+special lines tell ipyrad how many samples must have data within each population
+for the locus to be retained in the final assembly, and thus assign different 
+min_samples_locus values to each population. This will override the global
+min_samples_locus value. 
+
+See the example below.
 
 .. parsed-literal::
 
@@ -670,3 +679,5 @@ separated by spaces or tabs. A simple example population file might look like:
     Sample3 pop1
     Sample4 pop2
     Sample5 pop2
+
+    # pop1:2 pop2:2

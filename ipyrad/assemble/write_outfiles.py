@@ -1322,7 +1322,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## send off outputs as parallel jobs
     lbview = ipyclient.load_balanced_view()
     start = time.time()
-    results = []
+    results = {}
 
     ## build arrays and outputs from arrays.
     ## these arrays are keys in the tmp h5 array: seqarr, snparr, bisarr, maparr
@@ -1347,28 +1347,28 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     if "p" in output_formats:
         data.outfiles.phy = os.path.join(data.dirs.outfiles, data.name+".phy")
         async = lbview.apply(write_phy, *[data, sidx, pnames])
-        results.append(async)
+        results['phy'] = async
 
     ## nexus format includes ... additional information ({}.nex)
     if "n" in output_formats:
         data.outfiles.nexus = os.path.join(data.dirs.outfiles, data.name+".nex")
         async = lbview.apply(write_nex, *[data, sidx, pnames])
-        results.append(async)
+        results['nexus'] = async
 
     ## snps is actually all snps written in phylip format ({}.snps.phy)
     if "s" in output_formats:
         data.outfiles.snpsmap = os.path.join(data.dirs.outfiles, data.name+".snps.map")
         data.outfiles.snpsphy = os.path.join(data.dirs.outfiles, data.name+".snps.phy")
         async = lbview.apply(write_snps, *[data, sidx, pnames])
-        results.append(async)
+        results['snps'] = async
         async = lbview.apply(write_snps_map, data)
-        results.append(async)
+        results['snpsmap'] = async
 
     ## usnps is one randomly sampled snp from each locus ({}.u.snps.phy)
     if "u" in output_formats:
         data.outfiles.usnpsphy = os.path.join(data.dirs.outfiles, data.name+".u.snps.phy")
         async = lbview.apply(write_usnps, *[data, sidx, pnames])
-        results.append(async)
+        results['usnps'] = async
 
     ## str and ustr are for structure analyses. A fairly outdated format, six
     ## columns of empty space. Full and subsample included ({}.str, {}.u.str)
@@ -1376,7 +1376,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         data.outfiles.str = os.path.join(data.dirs.outfiles, data.name+".str")
         data.outfiles.ustr = os.path.join(data.dirs.outfiles, data.name+".ustr")        
         async = lbview.apply(write_str, *[data, sidx, pnames])
-        results.append(async)
+        results['structure'] = async
 
     ## geno output is for admixture and other software. We include all SNPs,
     ## but also a .map file which has "distances" between SNPs.
@@ -1384,11 +1384,11 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         data.outfiles.geno = os.path.join(data.dirs.outfiles, data.name+".geno")
         data.outfiles.ugeno = os.path.join(data.dirs.outfiles, data.name+".u.geno")
         async = lbview.apply(write_geno, *[data, sidx])
-        results.append(async)
+        results['geno'] = async
 
     ## wait for finished outfiles
     while 1:
-        readies = [i.ready() for i in results]
+        readies = [i.ready() for i in results.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(readies), sum(readies),
             " writing outfiles      | {} | s7 |".format(elapsed))
@@ -1398,10 +1398,12 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     print("")
 
     ## check for errors
-    for async in results:
+    for suff, async in results.items():
         if not async.successful():
-            print("  Warning: error encountered while writing an outfile: {}".format(async.exception()))
-            LOGGER.error("  Warning: error in writing outfile: %s", async.exception())
+            print("  Warning: error encountered while writing {} outfile: {}"\
+                  .format(suff, async.exception()))
+            LOGGER.error("  Warning: error in writing %s outfile: %s", \
+                         suff, async.exception())
 
     ## remove the tmparrays
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name))
@@ -1711,8 +1713,12 @@ def write_phy(data, sidx, pnames):
     with h5py.File(tmparrs, 'r') as io5:
         seqarr = io5["seqarr"]
 
-        ## find the end (b/c it's a bit longer than the actual seqs)
-        end = np.where(np.all(seqarr[:] == "", axis=0))[0].min()
+        ## trim to size b/c it was made longer than actual
+        end = np.where(np.all(seqarr[:] == "", axis=0))[0]
+        if np.any(end):
+            end = end.min()
+        else:
+            end = seqarr.shape[1] 
 
         ## write to phylip 
         with open(data.outfiles.phy, 'w') as out:
@@ -1735,8 +1741,12 @@ def write_nex(data, sidx, pnames):
     with h5py.File(tmparrs, 'r') as io5:
         seqarr = io5["seqarr"]
 
-        ## find the end (b/c it's a bit longer than the actual seqs)
-        end = np.where(np.all(seqarr[:] == "", axis=0))[0].min()
+        ## trim to size b/c it was made longer than actual
+        end = np.where(np.all(seqarr[:] == "", axis=0))[0]
+        if np.any(end):
+            end = end.min()
+        else:
+            end = seqarr.shape[1] 
 
         ## write to nexus
         data.outfiles.nex = os.path.join(data.dirs.outfiles, data.name+".nex")
@@ -1765,7 +1775,11 @@ def write_snps_map(data):
         maparr = io5["maparr"]
 
         ## get last data 
-        end = np.where(np.all(maparr[:] == 0, axis=1))[0].min()
+        end = np.where(np.all(maparr[:] == 0, axis=1))[0]
+        if np.any(end):
+            end = end.min()
+        else:
+            end = maparr.shape[0]
 
         ## write to map file (this is too slow...)
         outchunk = []
@@ -1794,7 +1808,11 @@ def write_snps(data, sidx, pnames):
         snparr = io5["snparr"]
 
         ## trim to size b/c it was made longer than actual
-        end = np.where(np.all(snparr[:] == "", axis=0))[0].min()
+        end = np.where(np.all(snparr[:] == "", axis=0))[0]
+        if np.any(end):
+            end = end.min()
+        else:
+            end = snparr.shape[1]        
 
         ## write to snps file
         with open(data.outfiles.snpsphy, 'w') as out:
@@ -1813,7 +1831,11 @@ def write_usnps(data, sidx, pnames):
         bisarr = io5["bisarr"]
 
         ## trim to size b/c it was made longer than actual
-        end = np.where(np.all(bisarr[:] == "", axis=0))[0].min()
+        end = np.where(np.all(bisarr[:] == "", axis=0))[0]
+        if np.any(end):
+            end = end.min()
+        else:
+            end = bisarr.shape[1]        
 
         ## write to usnps file
         with open(data.outfiles.usnpsphy, 'w') as out:
@@ -1833,8 +1855,17 @@ def write_str(data, sidx, pnames):
         bisarr = io5["bisarr"]
 
         ## trim to size b/c it was made longer than actual
-        send = np.where(np.all(snparr[:] == "", axis=0))[0].min()        
-        bend = np.where(np.all(bisarr[:] == "", axis=0))[0].min()
+        bend = np.where(np.all(bisarr[:] == "", axis=0))[0]
+        if np.any(bend):
+            bend = bend.min()
+        else:
+            bend = bisarr.shape[1]        
+
+        send = np.where(np.all(snparr[:] == "", axis=0))[0]       
+        if np.any(send):
+            send = send.min()
+        else:
+            send = snparr.shape[1]        
 
         ## write to str and ustr
         out1 = open(data.outfiles.str, 'w')
@@ -1881,8 +1912,17 @@ def write_geno(data, sidx):
         bisarr = io5["bisarr"]
 
         ## trim to size b/c it was made longer than actual
-        send = np.where(np.all(snparr[:] == "", axis=0))[0].min()        
-        bend = np.where(np.all(bisarr[:] == "", axis=0))[0].min()
+        bend = np.where(np.all(bisarr[:] == "", axis=0))[0]
+        if np.any(bend):
+            bend = bend.min()
+        else:
+            bend = bisarr.shape[1]        
+
+        send = np.where(np.all(snparr[:] == "", axis=0))[0]       
+        if np.any(send):
+            send = send.min()
+        else:
+            send = snparr.shape[1]        
 
         ## get most common base at each SNP as a pseudo-reference
         ## and record 0,1,2 or missing=9 for counts of the ref allele

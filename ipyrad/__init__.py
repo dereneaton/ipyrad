@@ -1,39 +1,35 @@
 #!/usr/bin/env ipython2
 
-# pylint: disable=C0103
-import os as _os
-import atexit as _atexit
 
-## define state vars
-__interactive__ = 1      ## CLI __main__ changes to 0
-__version__ = "0.5.13"
+## dunders
+__version__ = "0.5.14"
+__author__ = "Deren Eaton & Isaac Overcast"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
 __debugflag__ = "./.debug"
 __debugfile__ = "./ipyrad_log.txt"
 
-## debug is set based on whether the flag exists
-if _os.path.exists(__debugflag__):
-    __loglevel__ = "DEBUG"
-else:
-    __loglevel__ = "ERROR"#"INFO"
+## define state vars
+__interactive__ = 1      ## CLI __main__ changes to 0
+
+# pylint: disable=C0103
+import os as _os
+import atexit as _atexit
 
 ## main ip.functions
-from . import load
-from . import assemble
+from . import load as _load
+from . import assemble 
 from . import file_conversion
-from .load import save_json
-from .load import load_json
 from ipyrad.core.parallel import get_client as _get_client
 #from . import plotting  ## do not autoimport plotting, import as ipp
 #from . import analysis  ## do not autoimport analysis, import as ipa
 
-## bring nested functions to ip.
+## bring nested functions to top for API
 from ipyrad.core.assembly import Assembly
 from ipyrad.core.assembly import merge
 from ipyrad.core.sample import Sample
-#from ipyrad.core.paramsinfo import paramsinfo
-
+from .load import save_json
+from .load import load_json
 
 ####################################################################
 ## create logger for debugging
@@ -42,9 +38,15 @@ from ipyrad.core.sample import Sample
 import logging as _logging
 import logging.config as _lconfig
 
+## debug is set based on whether the flag exists
+if _os.path.exists(__debugflag__):
+    __loglevel__ = "DEBUG"
+else:
+    __loglevel__ = "ERROR"#"INFO"
+
 ## clear the logfile if it is too big
 if _os.path.exists(__debugfile__):
-    if _os.path.getsize(__debugfile__) > 5000000:
+    if _os.path.getsize(__debugfile__) > 50000000:
         with open(__debugfile__, 'w') as clear:
             clear.write("file reset")
 
@@ -60,6 +62,7 @@ if __loglevel__ == "DEBUG":
     _LOGGER.debug("Engine init")
 
 
+
 def cluster_info(cluster_id="", profile="default", engines="Local", 
                  timeout=60, cores=0, quiet=True, **kwargs):
   """ report info on the ipcluster instance """  
@@ -69,14 +72,16 @@ def cluster_info(cluster_id="", profile="default", engines="Local",
 
   ## report 
   hosts = ipyclient[:].apply_sync(_socket.gethostname)
+  result = []
   for hostname in set(hosts):
-      print("host compute node: [{} cores] on {}"\
-            .format(hosts.count(hostname), hostname))
+      result.append("host compute node: [{} cores] on {}"\
+                    .format(hosts.count(hostname), hostname))
   ipyclient.close()
+  return "\n".join(result)
 
 
 
-def debug_on():
+def _debug_on():
     """
     Turns on debugging by creating hidden tmp file
     This is only run by the __main__ engine.
@@ -127,7 +132,7 @@ def _set_debug_dict(__loglevel__):
 _set_debug_dict(__loglevel__)
 
 
-def debug_off():
+def _debug_off():
     """ turns off debugging by removing hidden tmp file """
     if _os.path.exists(__debugflag__):
         _os.remove(__debugflag__)
@@ -224,8 +229,8 @@ def _getbins():
 ## create globals for binaries that can be accessed as: ipyrad.bins.muscle
 bins = assemble.util.ObjDict()
 _binnames = ["vsearch", "muscle", "smalt", "bwa", "samtools", "bedtools", "qmc"]
-for binn, binx in zip(_binnames, _getbins()):
-    bins[binn] = binx
+for _binn, _binx in zip(_binnames, _getbins()):
+    bins[_binn] = _binx
 ## clean up for the API
 del _binnames
 
