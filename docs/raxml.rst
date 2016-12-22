@@ -95,18 +95,19 @@ analysis. We tell it how many bootstraps with the -N option.
 
 Running raxml (HYBRID) across multiple nodes
 --------------------------------------------
-The HYBRID version of raxml is best used for large-scale bootstrapping when you 
-have access to many cores spread across multiple compute nodes. 
+The HYBRID version of raxml is best used for large-scale cluster analyses
+when you have access to many cores spread across multiple compute nodes. 
 Because this version uses MPI you must call an MPI executable 
-(e.g., mpiexec or mpirun) before the command to specify the number of nodes 
-and then -T to specify the number of threads per node. It is best that you are
-connected to many cores with the same number of cores. 
-
+(e.g., mpirun) before the command to specify the number of nodes 
+and use -T to specify the number of threads per node. It is best that you are
+connected to many cores with the same number of cores. The command below 
+spreads 4 jobs across nodes running each with 20 threads. 
 
 .. code:: bash
 
     ## this is an example call to run raxml tree inference w/ bootstrapping
-    mpiexec -bynode -np 4 raxmlHPC-HYBRID-AVX2 -f a \    ## do rapid-bootstrapping & full search
+    mpirun -np 4 --map-by ppr:1:node:pe=20 raxmlHPC-HYBRID-AVX2 \
+                      -f a \    ## do rapid-bootstrapping & full search
                       -T 20 \                    ## number of threads available
                       -m GTRGAMMA \              ## use GTRGAMMA model
                       -N 100 \                   ## 100 searches from parsimony start trees
