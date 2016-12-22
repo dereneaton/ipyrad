@@ -6,23 +6,22 @@
 Maximum-likelihood phylogenetic inference
 =========================================
 The program RAxML is a standard tool for phylogenetic inference
-popular for its speed and ease of use. It offers a huge
-variety of analysis methods, and you could spend hours exploring its 
-massive documentation. Optimizing it for use on a cluster can be a 
-bit a tricky. Here I list a few tips for working with 
-large concatenated RAD-seq alignments (.phy output file) and analyzing
-them on a HPC cluster based on information from the 
-`v.8.0 raxml documentation <https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj4opaa1IjRAhVB1oMKHajPAMAQFggcMAA&url=https%3A%2F%2Fbioinformatics.oxfordjournals.org%2Fcontent%2Fsuppl%2F2014%2F01%2F18%2Fbtu033.DC1%2FNewManual.pdf&usg=AFQjCNH_8fbJI7fBU6yVL74UFKRzZhftFg&sig2=3GfktJYcAdFcSxRWs0TgFw>`__
+popular for its speed and ease of use, and is among the most commonly 
+used software for analyzing RAD-seq alignments.
+Optimizing it to run on a cluster can be a bit a tricky. 
+Here I list a few tips for working with large concatenated RAD-seq 
+alignments (.phy output file) based on information from the 
+`v.8.0 raxml documentation <https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj4opaa1IjRAhVB1oMKHajPAMAQFggcMAA&url=https%3A%2F%2Fbioinformatics.oxfordjournals.org%2Fcontent%2Fsuppl%2F2014%2F01%2F18%2Fbtu033.DC1%2FNewManual.pdf&usg=AFQjCNH_8fbJI7fBU6yVL74UFKRzZhftFg&sig2=3GfktJYcAdFcSxRWs0TgFw>`__ as well as other tips I've come
+across from reading the `raxml forum <https://groups.google.com/forum/#!topic/raxml/>`__. 
 
 
 Installing raxml on a cluster
 -----------------------------
-There are many versions of raxml, and it is updated frequently, so the 
-version that is lying around on your cluster may very well be outdated, 
-or not the version that is best for you. You can ask your administrator
-to install the latest version, or install it yourself *locally*
+There are many versions of raxml available and the one on your
+may not be up to date. You can ask your administrator to install 
+the latest version, or install it yourself *locally*
 (you do not need administrative privileges for this.)
-The code below installs three versions, the PTHREADS (threaded version), 
+The code below installs three versions of raxml, the PTHREADS (threaded version), 
 MPI (can use processors from different nodes), and Hybrid
 (a mix of the first two). This installation will put the executables
 in a local directory called `~/local/bin/`.
@@ -107,7 +106,7 @@ connected to many cores with the same number of cores.
 .. code:: bash
 
     ## this is an example call to run raxml tree inference w/ bootstrapping
-    mpiexec -np 4 raxmlHPC-HYBRID-AVX2 -f a \    ## do rapid-bootstrapping & full search
+    mpiexec -bynode -np 4 raxmlHPC-HYBRID-AVX2 -f a \    ## do rapid-bootstrapping & full search
                       -T 20 \                    ## number of threads available
                       -m GTRGAMMA \              ## use GTRGAMMA model
                       -N 100 \                   ## 100 searches from parsimony start trees
