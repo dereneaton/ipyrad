@@ -2050,9 +2050,12 @@ def make_vcf(data, samples, ipyclient, full=0):
     except Exception as inst:
         ## make sure all future jobs are aborted
         keys = [i for (i, j) in vasyncs.items() if not j.ready()]
-        for job in keys:
-            vasyncs[job].abort()
-            vasyncs[job].cancel()
+        try:
+            for job in keys:
+                #vasyncs[job].abort()
+                vasyncs[job].cancel()
+        except Exception:
+            pass
         ## make sure all tmp files are destroyed
         vcfchunks = glob.glob(os.path.join(data.dirs.outfiles, "*.vcf.[0-9]*"))
         h5chunks = glob.glob(os.path.join(data.dirs.outfiles, ".tmp.[0-9]*.h5"))
