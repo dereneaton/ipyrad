@@ -19,6 +19,13 @@ non-standard way. Perhaps the best feature, though, is that you can
 perform entire analyses within Jupyter :ref:`notebooks<notebooks>` to create 
 documented reproducible code for your analyses. 
 
+Running ipyrad API in parallel
+==============================
+If you are using the API then you must have an ipcluster instance
+started in order to parallelize your code. This can be started locally
+by opening a separate terminal and running (``ipcluster start -n=10``)
+to start 10 engines. Or, to run your code on a remote cluster set up
+your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__.
 
 Cookbooks -- coming soon
 ----------------
