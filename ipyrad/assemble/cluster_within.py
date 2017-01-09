@@ -30,6 +30,7 @@ import networkx as nx
 from refmap import *
 from util import *
 
+## Python3 subprocess is faster for muscle-align
 try:
     import subprocess32 as sps
 except ImportError:
@@ -337,7 +338,7 @@ def muscle_call(data, names, seqs):
     Makes subprocess call to muscle. A little faster than before.
     TODO: Need to make sure this works on super large strings and does not
     overload the PIPE buffer.
-    """
+    """ 
 
     ## make input string
     inputstr = "\n".join(["{}\n{}".format(i, j) for i, j in zip(names, seqs)])
