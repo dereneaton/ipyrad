@@ -817,7 +817,7 @@ def calculate_depths(data, samples, lbview):
 
 def make_chunks(data, samples, lbview):
     """
-    breaks clusters into N chunks for processing based on ncpus.
+    calls chunk_clusters and tracks progress.
     """
 
     ## first progress bar
