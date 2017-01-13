@@ -710,8 +710,12 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
 
         ## Create temporary files for R1, R2 and merged, which we will pass to
         ## the function merge_pairs() which calls vsearch to test merging.
-        prefix = os.path.join(data.dirs.refmapping, 
-                        "{}-{}".format(sample.name, rstring_id0))
+        if os.path.exists("/dev/shm"):
+            prefix = os.path.join("/dev/shm",
+                            "{}-{}".format(sample.name, rstring_id0))
+        else:
+            prefix = os.path.join(data.dirs.refmapping, 
+                            "{}-{}".format(sample.name, rstring_id0))
         read1 = "{}-R1".format(prefix)
         read2 = "{}-R2".format(prefix)
         merged = "{}-merged".format(prefix)
