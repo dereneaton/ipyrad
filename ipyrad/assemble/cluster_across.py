@@ -79,14 +79,13 @@ def muscle_align_across(data, samples, chunk):
         else:
             ## split seqs before align if PE. If 'nnnn' not found (single end
             ## or merged reads) then `except` will pass it to SE alignment.
-            paired = 1
+            ## The other case where `except` will pass is if one or the other
+            ## of the PE reads is empty. In this case the split() won't fail
+            ## but the call to parsemuscle() will raise an index error. The
+            ## SE code downstream will strip the "nnnn" and proceed as usual.
             try:
                 seqs1 = [i.split("nnnn")[0] for i in seqs]
                 seqs2 = [i.split("nnnn")[1] for i in seqs]
-            except IndexError:
-                paired = 0
-
-            if paired:
                 string1 = muscle_call(data, names, seqs1)
                 string2 = muscle_call(data, names, seqs2)
                 anames, aseqs1 = parsemuscle(data, string1)
@@ -95,17 +94,21 @@ def muscle_align_across(data, samples, chunk):
                 aseqs = ["{}nnnn{}".format(i, j) for i, j in zip(aseqs1, aseqs2)]
                 aseqs = np.array([list(i) for i in aseqs])
                 thislen = min(maxlen, aseqs.shape[1])
+                sidxs = [snames.index(anames[idx].rsplit("_", 1)[0]) for idx \
+                         in xrange(aseqs.shape[0])]
+                ## if dups
+                if len(set(sidxs)) != aseqs.shape[0]:
+                    duples[ldx] = 1
                 for idx in xrange(aseqs.shape[0]):
                     newn = anames[idx].rsplit(';', 1)[0]
                     ## save to aligned cluster
                     stack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
                     ## name index from sorted list (indels order)
-                    sidx = snames.index(anames[idx].rsplit("_", 1)[0])
+                    sidx = sidxs[idx]
                     ## store the indels
-                    LOGGER.info(np.where(aseqs[idx, :thislen] == "-")[0])
+                    #LOGGER.info("{} - {}".format(idx, np.where(aseqs[idx, :thislen] == "-")[0]))
                     indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
-
-            else:
+            except IndexError:
                 seqs = [i.replace('nnnn', '') for i in seqs]
                 string1 = muscle_call(data, names, seqs)
                 anames, aseqs = parsemuscle(data, string1)
@@ -1000,13 +1003,13 @@ def sub_build_clustbits(data, usort, nseeds):
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
-
                 ## occasionally write to file
                 if seqsize >= optim:
                     if seqlist:
                         loci += seqsize
                         with open(os.path.join(data.tmpdir,
                             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
+                            LOGGER.error("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
                             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
                         seqlist = []
@@ -1208,7 +1211,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     finally:
         ## delete the tmpdir
-        shutil.rmtree(data.tmpdir)
+        #shutil.rmtree(data.tmpdir)
 
         ## Cleanup loose files
         uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
