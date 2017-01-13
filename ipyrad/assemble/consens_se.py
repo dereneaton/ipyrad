@@ -224,6 +224,9 @@ def consensus(data, sample, tmpchunk, optim):
     io5 = h5py.File(consenshandle.replace("_tmpcons.", "_tmpcats."), 'w')
     catarr = io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
     nallel = io5.create_dataset("alls", (optim, ), dtype=np.uint8)
+    ## Enable storing arbitrary length strings
+    dt = h5py.special_dtype(vlen=bytes)
+    chrompos = io5.create_dataset("chroms", (optim, ), dtype=dt)
     #catarr = numpy.zeros([optim, maxlen, 4], dtype='uint32')
 
     ## store data for stats counters
@@ -262,6 +265,10 @@ def consensus(data, sample, tmpchunk, optim):
             seqs = piece[1::2]
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
+            ## IF this is a reference mapped read store the chrom and pos info
+            ref_position = ""
+            if len(names[0].split(";")) == 4:
+                ref_position = names[0].split(";")[1]
 
             ## apply read depth filter
             if nfilter1(data, reps):
@@ -306,6 +313,7 @@ def consensus(data, sample, tmpchunk, optim):
                             for i in list("CATG")],
                             dtype='uint32').T
                         catarr[counters["nconsens"], :catg.shape[0], :] = catg
+                        chrompos[counters["nconsens"]] = ref_position
 
                         ## store the seqdata for tmpchunk
                         storeseq[counters["name"]] = "".join(list(consens))
@@ -564,6 +572,10 @@ def cleanup(data, sample, statsdicts):
                                    dtype=np.uint8,
                                    chunks=(optim, ),
                                    compression="gzip")
+        dchrom = ioh5.create_dataset("chroms", (nloci, ),
+                                     dtype=h5py.special_dtype(vlen=bytes),
+                                     chunks=(optim, ),
+                                     compression="gzip")
 
         ## Combine all those tmp cats into the big cat
         start = 0
@@ -572,6 +584,7 @@ def cleanup(data, sample, statsdicts):
             end = start + optim
             dcat[start:end] = io5['cats'][:]
             dall[start:end] = io5['alls'][:]
+            dchrom[start:end] = io5['chroms'][:]
             start += optim
             io5.close()
             os.remove(icat)
