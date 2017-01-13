@@ -1138,29 +1138,30 @@ class Assembly(object):
             ## if MPI setup then we are going to wait until all engines are
             ## ready so that we can print how many cores started on each
             ## host machine exactly.
-            if show_cluster:
-                if (self._ipcluster["profile"] != "default") or \
-                   (self._ipcluster["engines"] == "MPI"):
-                    hosts = ipyclient[:].apply_sync(socket.gethostname)
-                    for hostname in set(hosts):
-                        print("  host compute node: [{} cores] on {}"\
-                              .format(hosts.count(hostname), hostname))
+            if (not ip.__interactive__) or show_cluster:
+                print(ip.cluster_info())
+                #if (self._ipcluster["profile"] != "default") or \
+                #   (self._ipcluster["engines"] == "MPI"):
+                #    hosts = ipyclient[:].apply_sync(socket.gethostname)
+                #    for hostname in set(hosts):
+                #        print("  host compute node: [{} cores] on {}"\
+                #              .format(hosts.count(hostname), hostname))
 
                 ## if Local setup then we know that we can get all the cores for
                 ## sure and we won't bother waiting for them to start, since
                 ## they'll start grabbing jobs once they're started.
-                else:
-                    ## If `cores` is set then honor this request, else use all
-                    ## available cores.
-                    if self._ipcluster["cores"]:
-                        _cpus = self._ipcluster["cores"]
-                    else:
-                        if not self._ipcluster["cluster_id"]:
-                            _cpus = len(ipyclient)
-                        else:
-                            _cpus = detect_cpus()
-                    print("  local compute node: [{} cores] on {}"\
-                          .format(_cpus, socket.gethostname()))
+                # else:
+                #     ## If `cores` is set then honor this request, else use all
+                #     ## available cores.
+                #     if self._ipcluster["cores"]:
+                #         _cpus = self._ipcluster["cores"]
+                #     else:
+                #         if not self._ipcluster["cluster_id"]:
+                #             _cpus = len(ipyclient)
+                #         else:
+                #             _cpus = detect_cpus()
+                #     print("  local compute node: [{} cores] on {}"\
+                #           .format(_cpus, socket.gethostname()))
 
             ## get the list of steps to run
             if isinstance(steps, int):
