@@ -315,117 +315,121 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
     else:
         tmp1 = two_files[0][0]
         tmp2 = two_files[0][1]
+    try:
+        ## If we are actually mergeing and not just joining then do vsearch
+        if merge:
+            cmd = [ipyrad.bins.vsearch,
+                   "--fastq_mergepairs", tmp1,
+                   "--reverse", tmp2,
+                   "--fastqout", merged_out,
+                   "--fastqout_notmerged_fwd", nonmerged1,
+                   "--fastqout_notmerged_rev", nonmerged2,
+                   "--fasta_width", "0",
+                   "--fastq_minmergelen", minlen,
+                   "--fastq_maxns", str(maxn),
+                   "--fastq_minovlen", "20",
+                   "--fastq_maxdiffs", "4",
+                   "--label_suffix", "_m1",
+                   "--fastq_qmax", "1000",
+                   "--threads", "2",
+                   "--fastq_allowmergestagger"]
 
-    ## If we are actually mergeing and not just joining then do vsearch
-    if merge:
-        cmd = [ipyrad.bins.vsearch,
-               "--fastq_mergepairs", tmp1,
-               "--reverse", tmp2,
-               "--fastqout", merged_out,
-               "--fastqout_notmerged_fwd", nonmerged1,
-               "--fastqout_notmerged_rev", nonmerged2,
-               "--fasta_width", "0",
-               "--fastq_minmergelen", minlen,
-               "--fastq_maxns", str(maxn),
-               "--fastq_minovlen", "20",
-               "--fastq_maxdiffs", "4",
-               "--label_suffix", "_m1",
-               "--fastq_qmax", "1000",
-               "--threads", "2",
-               "--fastq_allowmergestagger"]
+            LOGGER.info("merge cmd: %s", cmd)
+            proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+            try:
+                res = proc.communicate()[0]
+            except KeyboardInterrupt:
+                proc.kill()
 
-        LOGGER.info("merge cmd: %s", cmd)
-        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-        try:
-            res = proc.communicate()[0]
-        except KeyboardInterrupt:
-            proc.kill()
+            if proc.returncode:
+                LOGGER.error("Error: %s %s", cmd, res)
+                ## remove temp files
+                rmfiles = [os.path.splitext(two_files[0][0])[0]+".tmp1",
+                           os.path.splitext(two_files[0][1])[0]+".tmp2",
+                           nonmerged1, nonmerged2]
+                for rmfile in rmfiles:
+                    if os.path.exists(rmfile):
+                        os.remove(rmfile)
 
-        if proc.returncode:
-            LOGGER.error("Error: %s %s", cmd, res)
+                ## this is going to be tooo slow to read big files!!
+                data1 = open(two_files[0][0], 'r').read()
+                data2 = open(two_files[0][1], 'r').read()
+                LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s",
+                             two_files, merged_out, data1, data2)
+                raise IPyradWarningExit("Error in merge pairs:\n %s\n%s", cmd, res)
+
+            ## record how many read pairs were merged
+            with open(merged_out, 'r') as tmpf:
+                nmerged = len(tmpf.readlines()) // 4
+
+        ## Combine the unmerged pairs and append to the merge file
+        with open(merged_out, 'ab') as combout:
+            ## read in paired end read files 4 lines at a time
+            if nonmerged1.endswith(".gz"):
+                fr1 = gzip.open(nonmerged1, 'rb')
+            else:
+                fr1 = open(nonmerged1, 'rb')
+            quart1 = itertools.izip(*[iter(fr1)]*4)
+            if nonmerged2.endswith(".gz"):
+                fr2 = gzip.open(nonmerged2, 'rb')
+            else:
+                fr2 = open(nonmerged2, 'rb')
+            quart2 = itertools.izip(*[iter(fr2)]*4)
+            quarts = itertools.izip(quart1, quart2)
+
+            ## a list to store until writing
+            writing = []
+            counts = 0
+
+            ## iterate until done
+            while 1:
+                try:
+                    read1s, read2s = quarts.next()
+                except StopIteration:
+                    break
+                if revcomp:
+                    writing.append("\n".join([
+                                    read1s[0].strip(),
+                                    read1s[1].strip()+\
+                                        "nnnn"+\
+                                        comp(read2s[1].strip())[::-1],
+                                    read1s[2].strip(),
+                                    read1s[3].strip()+\
+                                        "nnnn"+\
+                                        read2s[3].strip()[::-1]]
+                                ))
+                else:
+                    writing.append("\n".join([
+                                    read1s[0].strip(),
+                                    read1s[1].strip()+\
+                                        "nnnn"+\
+                                        read2s[1].strip(),
+                                    read1s[2].strip(),
+                                    read1s[3].strip()+\
+                                        "nnnn"+\
+                                        read2s[3].strip()]
+                                ))
+                counts += 1
+                if not counts % 1000:
+                    combout.write("\n".join(writing)+"\n")
+                    writing = []
+            if writing:
+                combout.write("\n".join(writing))
+                combout.close()
+    except Exception as inst:
+        LOGGER.error("Exception in merge_pairs - ".format(inst))
+        raise
+    ## No matter what happens please clean up the temp files.
+    finally:
+        ## if merged then delete the nonmerge tmp files
+        if merge:
             ## remove temp files
-            rmfiles = [os.path.splitext(two_files[0][0])[0]+".tmp1",
-                       os.path.splitext(two_files[0][1])[0]+".tmp2",
-                       nonmerged1, nonmerged2]
+            rmfiles = [nonmerged1, nonmerged2,
+                       os.path.splitext(two_files[0][0])[0]+".tmp1",
+                       os.path.splitext(two_files[0][1])[0]+".tmp2"]
             for rmfile in rmfiles:
                 if os.path.exists(rmfile):
                     os.remove(rmfile)
-
-            ## this is going to be tooo slow to read big files!!
-            data1 = open(two_files[0][0], 'r').read()
-            data2 = open(two_files[0][1], 'r').read()
-            LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s",
-                         two_files, merged_out, data1, data2)
-            raise IPyradWarningExit("Error in merge pairs:\n %s\n%s", cmd, res)
-
-        ## record how many read pairs were merged
-        with open(merged_out, 'r') as tmpf:
-            nmerged = len(tmpf.readlines()) // 4
-
-    ## Combine the unmerged pairs and append to the merge file
-    with open(merged_out, 'ab') as combout:
-        ## read in paired end read files 4 lines at a time
-        if nonmerged1.endswith(".gz"):
-            fr1 = gzip.open(nonmerged1, 'rb')
-        else:
-            fr1 = open(nonmerged1, 'rb')
-        quart1 = itertools.izip(*[iter(fr1)]*4)
-        if nonmerged2.endswith(".gz"):
-            fr2 = gzip.open(nonmerged2, 'rb')
-        else:
-            fr2 = open(nonmerged2, 'rb')
-        quart2 = itertools.izip(*[iter(fr2)]*4)
-        quarts = itertools.izip(quart1, quart2)
-
-        ## a list to store until writing
-        writing = []
-        counts = 0
-
-        ## iterate until done
-        while 1:
-            try:
-                read1s, read2s = quarts.next()
-            except StopIteration:
-                break
-            if revcomp:
-                writing.append("\n".join([
-                                read1s[0].strip(),
-                                read1s[1].strip()+\
-                                    "nnnn"+\
-                                    comp(read2s[1].strip())[::-1],
-                                read1s[2].strip(),
-                                read1s[3].strip()+\
-                                    "nnnn"+\
-                                    read2s[3].strip()[::-1]]
-                            ))
-            else:
-                writing.append("\n".join([
-                                read1s[0].strip(),
-                                read1s[1].strip()+\
-                                    "nnnn"+\
-                                    read2s[1].strip(),
-                                read1s[2].strip(),
-                                read1s[3].strip()+\
-                                    "nnnn"+\
-                                    read2s[3].strip()]
-                            ))
-            counts += 1
-            if not counts % 1000:
-                combout.write("\n".join(writing)+"\n")
-                writing = []
-        if writing:
-            combout.write("\n".join(writing))
-            combout.close()
-
-    ## if merged then delete the nonmerge tmp files
-    if merge:
-        ## remove temp files
-        rmfiles = [nonmerged1, nonmerged2,
-                   os.path.splitext(two_files[0][0])[0]+".tmp1",
-                   os.path.splitext(two_files[0][1])[0]+".tmp2"]
-        for rmfile in rmfiles:
-            if os.path.exists(rmfile):
-                os.remove(rmfile)
 
     return nmerged
 
