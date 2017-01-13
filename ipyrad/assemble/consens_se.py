@@ -62,7 +62,7 @@ def binomprobr(base1, base2, error, het):
     return [bestprob, mjaf, genotypes[probabilities.index(max(probabilities))]]
 
 
-
+@memoize
 def simpleconsensus(base1, base2):
     """
     majority consensus calling for sites with too low of coverage for
@@ -104,7 +104,6 @@ def hetero(base1, base2):
             else:
                 LOGGER.error("unrecognized sequence: %s %s", base1, base2)
     return iupac
-
 
 
 
