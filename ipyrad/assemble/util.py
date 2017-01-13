@@ -345,7 +345,8 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
             LOGGER.error("Error: %s %s", cmd, res)
             ## remove temp files
             rmfiles = [os.path.splitext(two_files[0][0])[0]+".tmp1",
-                       os.path.splitext(two_files[0][1])[0]+".tmp2"]
+                       os.path.splitext(two_files[0][1])[0]+".tmp2",
+                       nonmerged1, nonmerged2]
             for rmfile in rmfiles:
                 if os.path.exists(rmfile):
                     os.remove(rmfile)

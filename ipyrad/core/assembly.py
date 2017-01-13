@@ -94,10 +94,8 @@ class Assembly(object):
 
         ## Do some checking here to make sure the name doesn't have
         ## special characters, spaces, or path delimiters. Allow _ and -.
-        invalid_chars = string.punctuation.replace("_", "")\
-                                          .replace("-", "")+ " "
-        if any(char in invalid_chars for char in name):
-            raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
+        ## This will raise an error immediately if there are bad chars in name.
+        self._check_name(name)
 
         self.name = name
         if not quiet:
@@ -247,6 +245,13 @@ class Assembly(object):
                                .dropna(axis=1, how='all')
         return newdat
 
+
+    ## Test assembly name is valid and raise if it contains any special characters
+    def _check_name(self, name):
+        invalid_chars = string.punctuation.replace("_", "")\
+                                          .replace("-", "")+ " "
+        if any(char in invalid_chars for char in name):
+            raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
 
 
     def _link_fastqs(self, path=None, force=False, append=False, splitnames="_", fields=None, ipyclient=None):
@@ -787,6 +792,13 @@ class Assembly(object):
             print("    Assembly object named {} already exists".format(newname))
 
         else:
+            ## Make sure the new name doesn't have any wacky characters
+            self._check_name(newname)
+
+            ## Bozo-check. Carve off 'params-' if it's in the new name.
+            if newname.startswith("params-"):
+                newname = newname.split("params-")[1]
+
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
@@ -1913,9 +1925,12 @@ REQUIRE_REFERENCE_PATH = """\
     Assembly method {} requires that you enter a 'reference_sequence_path'.
     """
 BAD_ASSEMBLY_NAME = """\
-    No spaces or special characters are allowed in the assembly name. A good
-    practice is to replace spaces with underscores '_'. An example of a good
-    assembly_name is: white_crowned_sparrows. Here's what you put:
+    No spaces or special characters of any kind are allowed in the assembly 
+    name. Special characters include all punctuation except dash '-' and 
+    underscore '_'. A good practice is to replace spaces with underscores '_'.
+    An example of a good assembly_name is: white_crowned_sparrows 
+    
+    Here's what you put:
     {}
     """
 NO_FILES_FOUND_PAIRS = """\

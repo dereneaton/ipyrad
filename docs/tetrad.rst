@@ -219,7 +219,7 @@ access the underlying Class objects in Python or IPython. As you'll see below,
 this can be particularly nice because *ipyrad* has some additional tools for
 downstream analysis of the *tetrad* results. For example, *tetrad* saves
 information that can be used to calculate ABBA-BABA test results. For more information
-about using the *ipyrad* API `see this tutorial <http://ipyrad.readthedocs.io/tutorial-API.html>`__.
+about using the *ipyrad* API `see this tutorial <http://ipyrad.readthedocs.io/API.html>`__.
 
 If you are using the API then you must have an ipcluster instance
 started in order to parallelize your code. This can be started locally
