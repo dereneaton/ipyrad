@@ -372,9 +372,12 @@ def ms2loci(handle, maxlen=200):
 
 
 
-def _loci2loci(handle, taxonlist, maxlen=200):
+def _loci2loci(handle, taxonlist):
     """
-    Converts .loci file to a binary loci array.
+    Converts .loci file to a numpy array of loci with sufficient taxon sampling
+    for the test in 'taxonlist'. Returns the float array with frequency of SNP
+    in each row/taxon. 
+
     Params:
       - handle:
         A .loci file handle
@@ -436,6 +439,39 @@ def _loci2loci(handle, taxonlist, maxlen=200):
     #print(np.histogram(taxc, range(7)))
     ## return array that includes np.ones for loci w/o taxa
     return farr[taxc == len(taxonlist)], taxc
+
+
+
+
+## needs testing, not sure why I can't get it to JIT
+#@numba.jit()
+def reffreq(refseq, iseq, consdict):
+    ## empty arrays
+    freq = np.zeros((1, iseq.shape[1]), dtype=np.float64)
+    amseq = np.zeros((iseq.shape[0]*2, iseq.shape[1]), dtype=np.uint8)
+    
+    ## fill in both copies
+    for seq in xrange(iseq.shape[0]):
+        for col in xrange(iseq.shape[1]):
+            ## expand colums with ambigs and remove N-
+            base = iseq[seq][col]
+            who = np.where(consdict[:, 0] == base)[0]
+            ## resolve heteros or enter into both copies
+            if np.any(who):
+                who = who[0]
+                amseq[(seq*2)][col] = consdict[who][0]
+                amseq[(seq*2)+1][col] = consdict[who][1]
+            else:
+                amseq[(seq*2)][col] = base
+                amseq[(seq*2)+1][col] = base
+    
+    ## get as frequencies
+    amseq = (refseq == amseq).astype(np.float64)
+    for i in xrange(amseq.shape[0]):
+        freq += amseq[i]
+    return freq / np.float64(amseq.shape[0])
+
+
 
 
 

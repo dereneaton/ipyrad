@@ -14,12 +14,14 @@ for the downstream analysis of RAD-seq data. In this section of the documentatio
 we hope to provide many examples to guide users through such analyses. Many
 examples are shared in the form of Jupyter Notebooks, which are a useful tool
 for doing reproducible science, and our first tutorial provides a crash course
-if using Jupyter with ipyrad.
+if using Jupyter with ipyrad. You can follow along and use these tutorials 
+without Jupyter as well. 
 
 
 Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-+ `Intro to using Jupyter Notebook <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
++ `Intro to Jupyter Notebooks Video <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__  
++ `Jupyter Git and ipyrad <...>`__  
 + `setup SSH Tunneling to a HPC Cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
 
 *ipyrad* API Cookbooks
