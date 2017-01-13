@@ -1259,10 +1259,10 @@ class Assembly(object):
                         ## protect from KBD while killing jobs?
                         LOGGER.info("  shutting down engines")
                         #_cleanup_and_die(pids)
-                        ipyclient.abort()
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
                         LOGGER.info("  finished shutdown")
+                        
                     ## if API, stop jobs and clean queue
                     else:
                         ipyclient.abort()

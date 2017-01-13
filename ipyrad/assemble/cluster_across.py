@@ -191,7 +191,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     for idx in keys:
         if not jobs[idx].successful():
             LOGGER.error("error in muscle_align_across %s", jobs[idx].exception())
-            raise IPyradWarningExit("error in step 6 %s", jobs[idx].exception())
+            raise IPyradWarningExit("error in step 6 {}".format(jobs[idx].exception()))
         del jobs[idx]
     print("")
 
