@@ -304,10 +304,19 @@ def cutadaptit_pairs(data, sample):
         cmdf1.insert(1, "--quality-cutoff")
 
     if int(data.paramsdict["filter_adapters"]) > 1:
+        ## first enter extra cuts
+        zcut1 = data._hackersonly["p3_adapters_extra"][::-1]
+        zcut2 = data._hackersonly["p5_adapters_extra"][::-1]
+        for ecut1, ecut2 in zip(zcut1, zcut2):
+            cmdf1.insert(1, ecut1)
+            cmdf1.insert(1, "-a")
+            cmdf1.insert(1, ecut2)
+            cmdf1.insert(1, "-A")
+        ## then put the main cut first
         cmdf1.insert(1, adapter1)
         cmdf1.insert(1, '-a')        
         cmdf1.insert(1, adapter2)
-        cmdf1.insert(1, '-A')                
+        cmdf1.insert(1, '-A')         
 
     ## do modifications to read1 and write to tmp file
     LOGGER.debug(cmdf1)
@@ -421,7 +430,7 @@ def run2(data, samples, force, ipyclient):
                 parse_pair_results(data, data.samples[async], res)
         else:
             print("  found an error in step2; see ipyrad_log.txt")
-            LOGGER.info("error in step2: %s", rawedits[async].exception())
+            LOGGER.warn("error in step2: %s", rawedits[async].exception())
 
     ## store sample results in data stats
     assembly_cleanup(data)

@@ -7,6 +7,7 @@ from __future__ import print_function
 import scipy.stats
 import scipy.optimize
 import numpy as np
+import numba
 import itertools
 import datetime
 import time
@@ -39,10 +40,73 @@ def likelihood1(errors, bfreqs, ustacks):
 
 
 
-def likelihood2(errors, bfreqs, ustacks):
+@numba.jit(nopython=True)
+def nblik2_build(err, ustacks):
+
+    ## store
+    ret = np.empty(ustacks.shape[0])
+
+    ## fill for pmf later 
+    tots = np.empty((ustacks.shape[0], 1))
+    twos = np.empty((ustacks.shape[0], 6))
+    thrs = np.empty((ustacks.shape[0], 6, 2))
+
+    ## fill big arrays
+    for idx in xrange(ustacks.shape[0]):
+
+        ust = ustacks[idx]
+        tot = ust.sum()
+        tots[idx] = tot
+
+        ## fast filling of arrays
+        i = 0
+        for jdx in xrange(4):
+            for kdx in xrange(4):
+                if jdx < kdx:
+                    twos[idx][i] = tot - ust[jdx] - ust[kdx]
+                    thrs[idx][i] = ust[jdx], ust[jdx] + ust[kdx]
+                    i += 1
+
+    return tots, twos, thrs
+
+
+
+def lik2_calc(err, one, tots, twos, thrs, four):
+
+    ## calculate twos
+    #_twos = np.array([scipy.stats.binom.pmf(\
+    #        twos[i], tots[i], 0.5) for i in xrange(tots.shape[0])])
+    _twos = scipy.stats.binom.pmf(twos, tots, 0.5)
+
+    ## calculate threes
+    dim = thrs.shape
+    _thrs = thrs.reshape(thrs.shape[0] * thrs.shape[1], thrs.shape[2])
+    _thrs = scipy.stats.binom.pmf(_thrs[:, 0], _thrs[:, 1], (2.*err) / 3.)
+    _thrs = _thrs.reshape(thrs.shape[0], 6)
+
+    ## calculate return sums
+    return np.sum(one * _twos * (_thrs / four), axis=1)
+
+
+
+## global
+def nlikelihood2(errors, bfreqs, ustacks):
+    one = [2. * bfreqs[i] * bfreqs[j] for i, j in itertools.combinations(range(4), 2)]
+    four = 1. - np.sum(bfreqs**2) 
+    tots, twos, thrs = nblik2_build(errors, ustacks)
+    res2 = lik2_calc(errors, one, tots, twos, thrs, four)
+    return res2
+
+
+
+def olikelihood2(errors, bfreqs, ustacks):
     """probability of heterozygous"""
-    returns = np.zeros([len(ustacks)])
-    for idx, ustack in enumerate(ustacks):
+    
+    returns = np.empty([len(ustacks)])
+    four = 1.-np.sum(bfreqs**2)
+
+    for idx in xrange(ustacks.shape[0]):
+        ustack = ustacks[idx]
         spair = np.array(list(itertools.combinations(ustack, 2)))
         bpair = np.array(list(itertools.combinations(bfreqs, 2)))
         one = 2.*bpair.prod(axis=1)
@@ -51,7 +115,7 @@ def likelihood2(errors, bfreqs, ustacks):
         two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
         three = scipy.stats.binom.pmf(\
                     spair[:, 0], spair.sum(axis=1), 0.5)
-        four = 1.-np.sum(bfreqs**2)
+
         returns[idx] = np.sum(one*two*(three/four))
     return np.array(returns)
 
@@ -77,18 +141,33 @@ def liketest2(errors, bfreqs, ustack):
 
 
 
-
-def get_diploid_lik(pstart, bfreqs, ustacks, counts):
+def oget_diploid_lik(pstart, bfreqs, ustacks, counts):
     """ Log likelihood score given values [H,E] """
     hetero, errors = pstart
     if (hetero <= 0.) or (errors <= 0.):
         score = np.exp(100)
     else:
         ## get likelihood for all sites
-        lik1 = (1.-hetero)*likelihood1(errors, bfreqs, ustacks)
-        lik2 = (hetero)*likelihood2(errors, bfreqs, ustacks)
-        liks = lik1+lik2
-        logliks = np.log(liks[liks > 0])*counts[liks > 0]
+        lik1 = (1.-hetero) * likelihood1(errors, bfreqs, ustacks)
+        lik2 = (hetero) * olikelihood2(errors, bfreqs, ustacks)
+        liks = lik1 + lik2
+        logliks = np.log(liks[liks > 0]) * counts[liks > 0]
+        score = -logliks.sum()
+    return score
+
+
+
+def nget_diploid_lik(pstart, bfreqs, ustacks, counts):
+    """ Log likelihood score given values [H,E] """
+    hetero, errors = pstart
+    if (hetero <= 0.) or (errors <= 0.):
+        score = np.exp(100)
+    else:
+        ## get likelihood for all sites
+        lik1 = (1.-hetero) * likelihood1(errors, bfreqs, ustacks)
+        lik2 = (hetero) * nlikelihood2(errors, bfreqs, ustacks)
+        liks = lik1 + lik2
+        logliks = np.log(liks[liks > 0]) * counts[liks > 0]
         score = -logliks.sum()
     return score
 
@@ -241,24 +320,24 @@ def optim(data, sample, subloci):
 
     ## get array of all clusters data
     stacked = stackarray(data, sample, subloci)
-    #LOGGER.info('stack %s', stacked)
+    #maxsz = stacked.shape[0]
+    #stacked = stacked[np.random.randint(0, min(subloci, maxsz), maxsz)]
 
     ## get base frequencies
     bfreqs = stacked.sum(axis=0) / float(stacked.sum())
     #bfreqs = bfreqs**2
-    
     #LOGGER.debug(bfreqs)
     if np.isnan(bfreqs).any():
-        #LOGGER.error("  Caught sample with bad stack: %s %s", 
-        #                sample.name, bfreqs)
         raise IPyradWarningExit(" Bad stack in getfreqs; {} {}"\
                .format(sample.name, bfreqs))
 
     ## put into array, count array items as Byte strings
     tstack = Counter([j.tostring() for j in stacked])
+
     ## get keys back as arrays and store vals as separate arrays
     ustacks = np.array([np.fromstring(i, dtype=np.uint64) \
                         for i in tstack.iterkeys()])
+
     ## make bi-allelic only
     #tris = np.where(np.sum(ustacks > 0, axis=1) > 2)
     #for tri in tris:
@@ -282,10 +361,12 @@ def optim(data, sample, subloci):
     ## or do joint diploid estimates
     else:
         pstart = np.array([0.01, 0.001], dtype=np.float64)
-        hetero, errors = scipy.optimize.fmin(get_diploid_lik, pstart,
+        hetero, errors = scipy.optimize.fmin(nget_diploid_lik, pstart,
                                             (bfreqs, ustacks, counts), 
-                                             disp=False,
-                                             full_output=False)
+                                            maxfun=50, 
+                                            maxiter=50,
+                                            disp=False,
+                                            full_output=False)
     return hetero, errors
 
 
@@ -349,6 +430,7 @@ def submit(data, submitted_args, ipyclient):
     ## wrap in a try statement so that stats are saved for finished samples.
     ## each job is submitted to cleanup as it finishes
     try:
+        kbd = 0
         ## wait for jobs to finish
         while 1:
             fin = [i.ready() for i in jobs.values()]
@@ -371,8 +453,13 @@ def submit(data, submitted_args, ipyclient):
                 raise IPyradWarningExit("  Sample {} failed step 4"\
                                         .format(job))
 
+    except KeyboardInterrupt as kbd:
+        pass
+
     finally:
         assembly_cleanup(data)
+        if kbd:
+            raise KeyboardInterrupt
 
 
 

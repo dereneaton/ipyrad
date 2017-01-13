@@ -44,7 +44,7 @@ from collections import defaultdict
 from ipyrad.assemble.util import ObjDict, IPyradWarningExit
 
 ## for our desired form of parallelism we will limit 1 thread per cpu
-numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
+#numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
 
 ## debug numba code
 #numba.config.NUMBA_DISABLE_JIT = 1
@@ -1183,7 +1183,7 @@ def n_choose_k(n, k):
 #############################################################################
 #############################################################################
 
-@numba.jit('f8(f8[:])', nopython=True)
+@numba.jit('f8(f8[:])', nopython=True, cache=True)
 def get_weights(scores):
     """ 
     gets quartet weights from ordered svd scores. Following 
@@ -1201,7 +1201,7 @@ def get_weights(scores):
 
 
 
-@numba.jit('u4[:](u4[:,:])', nopython=True)
+@numba.jit('u4[:](u4[:,:])', nopython=True, cache=True)
 def count_snps(mat):
     """ 
     get dstats from the count array and return as a float tuple 
@@ -1259,7 +1259,7 @@ def count_snps(mat):
 
 
 
-@numba.jit('b1[:](u1[:,:],b1[:],u4[:])', nopython=True)
+@numba.jit('b1[:](u1[:,:],b1[:],u4[:])', nopython=True, cache=True)
 def subsample_snps_map(seqchunk, nmask, maparr):
     """ 
     removes ncolumns from snparray prior to matrix calculation, and 
@@ -1319,7 +1319,7 @@ def subsample_snps_map(seqchunk, nmask, maparr):
 
 
 
-@numba.jit('u4[:,:,:](u1[:,:],u4[:],b1[:])', nopython=True)
+@numba.jit('u4[:,:,:](u1[:,:],u4[:],b1[:])', nopython=True, cache=True)
 def chunk_to_matrices(narr, mapcol, nmask):
     """ 
     numba compiled code to get matrix fast.
@@ -1354,7 +1354,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
 
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def calculate(seqnon, mapcol, nmask, tests):
     """ groups together several numba compiled funcs """
 
@@ -1489,7 +1489,7 @@ def opr(path):
     return os.path.realpath(path)
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def shuffle_cols(seqarr, newarr, cols):
     """ used in bootstrap resampling without a map file """
     for idx in xrange(cols.shape[0]):
@@ -1519,7 +1519,7 @@ def resolve_ambigs(tmpseq):
 
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def get_spans(maparr, spans):
     """ get span distance for each locus in original seqarray """
     ## start at 0, finds change at 1-index of map file
@@ -1535,7 +1535,7 @@ def get_spans(maparr, spans):
 
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def get_shape(spans, loci):
     """ get shape of new bootstrap resampled locus array """
     width = 0
@@ -1545,7 +1545,7 @@ def get_shape(spans, loci):
     
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def fill_boot(seqarr, newboot, newmap, spans, loci):
     """ fills the new bootstrap resampled array """
     ## column index
