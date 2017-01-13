@@ -731,7 +731,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             prefix = os.path.join("/dev/shm",
                             "{}-{}".format(sample.name, rstring_id0))
         else:
-            prefix = os.path.join(data.dirs.refmapping,
+            prefix = os.path.join(data.dirs.refmapping, 
                             "{}-{}".format(sample.name, rstring_id0))
         read1 = "{}-R1".format(prefix)
         read2 = "{}-R2".format(prefix)
