@@ -2111,7 +2111,18 @@ def concat_vcf(data, names, full):
     else:
         writer = gzip.open(data.outfiles.VCF, 'a')
 
-    proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=writer, close_fds=True)
+    ## If reference mapping then it's nice to sort the vcf data by
+    ## CHROM and POS. This is doing a very naive sort right now, so the
+    ## CHROM will be ordered, but not the pos within each chrom.
+    LOGGER.error(data.paramsdict["assembly_method"])
+    if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]:
+        LOGGER.debug("sorting vcf")
+        cmd = ["cat"] + vcfchunks + [" | sort"]
+        cmd = " ".join(cmd)
+        proc = sps.Popen(cmd, shell=True, stderr=sps.STDOUT, stdout=writer, close_fds=True)
+    else:
+        proc = sps.Popen(["cat"] + vcfchunks, stderr=sps.STDOUT, stdout=writer, close_fds=True)
+
     err = proc.communicate()[0]
     if proc.returncode:
         raise IPyradWarningExit("err in concat_vcf: %s", err)
@@ -2152,6 +2163,9 @@ def vcfchunk(data, optim, sidx, start, full):
         acatg = acatg[keepmask, :]
         acatg = acatg[:, sidx, :, :]
 
+        ## Just take the first chrom/pos info for each base position
+        achrom = io5["chroms"][hslice[0]:hslice[1], 1]
+
     #LOGGER.info('keepmask %s', keepmask)
     LOGGER.info('acatg.shape %s', acatg.shape)
 
@@ -2167,7 +2181,8 @@ def vcfchunk(data, optim, sidx, start, full):
     ## vcf info to fill, this is bigger than the actual array
     #nrows = (keepmask.sum()*maxlen)
     nrows = maxsnplen
-    cols01 = np.zeros((nrows, 2), dtype=np.uint32)
+    cols0 = np.zeros(nrows, dtype=h5py.special_dtype(vlen=bytes))
+    cols1 = np.zeros(nrows, dtype=np.uint32)
     cols34 = np.zeros((nrows, 2), dtype="S3")
     cols7 = np.zeros((nrows, 1), dtype="S20")
     ## when nsamples is high this blows up memory (e.g., dim=(5M x 500))
@@ -2212,13 +2227,34 @@ def vcfchunk(data, optim, sidx, start, full):
         ## ----  build string array ----
         ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
         ## this is 1-indexed
-        cols01[init:init+seq.shape[1], 0] = start+locindex[iloc]+1
+        ## np.char.mod() will cast the locus count from int to str
+        #LOGGER.error("seq.shape {} - seq.shape[1] {}".format(seq.shape, seq.shape[1]))
 
-        ## fill (POS) position
-        if full:
-            cols01[init:init+seq.shape[1], 1] = np.arange(seq.shape[1]) + 1
+        ## If there are any valid reference positions at this locus then we'll just
+        ## call them all the same thing. This is a little naive, since there could 
+        ## be samples with unmapped reads that cluster across with samples that
+        ## have mapped reads. Seems like a small problem.
+        ## chrompos string is formatted like this: MT:10509-10985
+        pos = 0
+        if achrom[init:init+seq.shape[1]].any():
+            chrompos = achrom[init:init+seq.shape[1]].any()
+            cols0[init:init+seq.shape[1]] = np.array([chrompos.split(":")[0]] * seq.shape[1])
+            pos = int(chrompos.split(":")[1].split("-")[0])
         else:
-            cols01[init:init+seq.shape[1], 1] = np.where(snpidx)[0] + 1
+            cols0[init:init+seq.shape[1]] = np.core.defchararray.add(np.array(["locus_"] * seq.shape[1]),\
+                                                                 np.char.mod('%d', start+locindex[iloc]+1))
+        ## fill (POS) position
+        ## If there was a successful mapping to the reference sequence then
+        ## the variable `pos` here will equal the STARTPOS of the alignment.
+        ## If no mapping then it'll be 0, so will have no effect on denovo loci.
+        ##
+        ## This is also a little naive. For example if the alignment includes
+        ## indels at all then the POS numbering will not be exact with respect
+        ## to the reference. :-/
+        if full:
+            cols1[init:init+seq.shape[1]] = pos + np.arange(seq.shape[1]) + 1
+        else:
+            cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
 
         ## fill reference base
         alleles = reftrick(seq, GETCONS)
@@ -2245,7 +2281,6 @@ def vcfchunk(data, optim, sidx, start, full):
         alts = seq[:, ~mask]
         who = np.where(mask == False)[0]
         ## fill variable sites
-        #LOGGER.info("cols01 %s", cols01)
         for site in xrange(alts.shape[1]):
             bases = alts[:, site]
             #LOGGER.info("bases %s", bases)
@@ -2288,29 +2323,36 @@ def vcfchunk(data, optim, sidx, start, full):
         init += seq.shape[1]
 
     ## trim off empty rows if they exist
-    withdat = cols01[:, 0] != 0
+    withdat = cols0 != 0
     tot = withdat.sum()
 
     ## Only write if there is some data that passed filtering
     if tot:
+        LOGGER.debug("Writing data to vcf")
         if not full:
             writer = open(data.outfiles.vcf+".{}".format(start), 'w')
         else:
             writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
 
-        ## write in iterations b/c it can be freakin huge.
-        np.savetxt(writer,
-                    np.concatenate(
-                       (cols01[:tot, :].astype("S"),
-                        np.array([["."]]*tot, dtype="S1"),
-                        cols34[:tot, :],
-                        np.array([["13", "PASS"]]*tot, dtype="S4"),
-                        cols7[:tot, :],
-                        np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
-                        htmp["vcf"][:tot, :],
-                        ),
-                        axis=1),
-                    delimiter="\t", fmt="%s")
+        try:
+            ## write in iterations b/c it can be freakin huge.
+            ## for cols0 and cols1 the 'newaxis' slice and the transpose
+            ## are for turning the 1d arrays into column vectors.
+            np.savetxt(writer,
+                        np.concatenate(
+                           (cols0[:tot][np.newaxis].T,
+                            cols1[:tot][np.newaxis].T,
+                            np.array([["."]]*tot, dtype="S1"),
+                            cols34[:tot, :],
+                            np.array([["13", "PASS"]]*tot, dtype="S4"),
+                            cols7[:tot, :],
+                            np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
+                            htmp["vcf"][:tot, :],
+                            ),
+                            axis=1),
+                        delimiter="\t", fmt="%s")
+        except Exception as inst:
+            LOGGER.error(inst)
         writer.close()
 
     ## close and remove tmp h5
