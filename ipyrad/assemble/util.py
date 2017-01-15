@@ -417,7 +417,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                 combout.write("\n".join(writing))
                 combout.close()
     except Exception as inst:
-        LOGGER.error("Exception in merge_pairs - ".format(inst))
+        LOGGER.error("Exception in merge_pairs - {}".format(inst))
         raise
     ## No matter what happens please clean up the temp files.
     finally:
