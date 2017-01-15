@@ -129,14 +129,9 @@ def mapreads(data, sample, nthreads):
     post muscle_align. 
 
     Mapped reads end up in a sam file.
-    Unmapped reads are pulled out and put in place of the edits (.fasta) file. 
-
-    The raw edits .fasta file is moved to .<sample>.fasta to hide it in case 
-    the mapping screws up and we need to roll-back. Mapped reads stay in the 
-    sam file and are pulled out of the pileup later.
     """
 
-    LOGGER.info("Entering mapreads(): %s %s", sample.files.edits, nthreads)
+    LOGGER.info("Entering mapreads(): %s %s", sample.name, nthreads)
 
     ## This is the input derep file, for paired data we need to split the data, 
     ## and so we will make sample.files.dereps == [derep1, derep2], but for 
@@ -421,7 +416,7 @@ def get_overlapping_reads(data, sample, regions):
                 continue
 
             ## Store locus in a list
-            #LOGGER.info("clust from bam-region-to-fasta \n %s", clust)
+            # LOGGER.info("clust from bam-region-to-fasta \n %s", clust)
             locus_list.append(clust)
 
             ## write chunk of 1000 loci and clear list to minimize memory
@@ -702,14 +697,19 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
     print(" ".join(cmd1), file=proc1.stdin)
     ref = ""
     for line in iter(proc1.stdout.readline, "//\n"):
-        ref += line
         if "__done__" in line:
             break
+        ref += line
 
     ## parse sam to fasta. Save ref location to name.
-    name, seq = ref.strip().split("\n", 1)
-    seq = "".join(seq.split("\n"))
-    fasta = ["{}_REF;+\n{}".format(name, seq)]
+    try:
+        name, seq = ref.strip().split("\n", 1)
+        seq = "".join(seq.split("\n"))
+        fasta = ["{}_REF;+\n{}".format(name, seq)]
+    except ValueError as inst:
+        LOGGER.error("ref failed to parse - {}".format(ref))
+        LOGGER.error(" ".join(cmd1))
+        raise
 
     ## if PE then you have to merge the reads here
     if "pair" in data.paramsdict["datatype"]:
@@ -764,6 +764,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             ## return number of merged reads, writes merged data to 'merged'
             ## we don't yet do anything with the returned number of merged 
             _ = merge_pairs(data, [(read1, read2)], merged, 0, 1)
+
             with open(merged, 'r') as infile:
                 quatro = itertools.izip(*[iter(infile)]*4)
                 while 1:
@@ -793,10 +794,16 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
                 ## ref seq for PE alignment.
                 #fasta = trim_reference_sequence(fasta)
 
-        except Exception as inst:
+        except (OSError, ValueError, IPyradError) as inst:
+            ## ValueError raised inside merge_pairs() if it can't open one
+            ## or both of the files. Write this out, but ignore for now.
             ## Failed merging, probably unequal number of reads in R1 and R2
+            ## IPyradError raised if merge_pairs can't read either R1 or R2
+            ## file.
             ## Skip this locus?
             LOGGER.debug("Failed to merge reads, continuing; %s", inst)
+            LOGGER.error("cmd - {}".format(cmd))
+            return ""
         finally:
             ## Only clean up the files if they exist otherwise it'll raise.
             if os.path.exists(merged):
