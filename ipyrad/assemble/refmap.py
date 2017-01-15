@@ -702,10 +702,12 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
         ref += line
 
     ## parse sam to fasta. Save ref location to name.
+    ## Set size= an improbably large value so the REF sequence
+    ## sorts to the top for muscle aligning.
     try:
         name, seq = ref.strip().split("\n", 1)
         seq = "".join(seq.split("\n"))
-        fasta = ["{}_REF;+\n{}".format(name, seq)]
+        fasta = ["{}_REF;size={};+\n{}".format(name, seq, 10000)]
     except ValueError as inst:
         LOGGER.error("ref failed to parse - {}".format(ref))
         LOGGER.error(" ".join(cmd1))
