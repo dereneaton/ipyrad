@@ -2114,10 +2114,9 @@ def concat_vcf(data, names, full):
     ## If reference mapping then it's nice to sort the vcf data by
     ## CHROM and POS. This is doing a very naive sort right now, so the
     ## CHROM will be ordered, but not the pos within each chrom.
-    LOGGER.error(data.paramsdict["assembly_method"])
     if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]:
         LOGGER.debug("sorting vcf")
-        cmd = ["cat"] + vcfchunks + [" | sort"]
+        cmd = ["cat"] + vcfchunks #+ [" | sort"]
         cmd = " ".join(cmd)
         proc = sps.Popen(cmd, shell=True, stderr=sps.STDOUT, stdout=writer, close_fds=True)
     else:
@@ -2245,11 +2244,17 @@ def vcfchunk(data, optim, sidx, start, full):
         pos = 0
         if achrom[init:init+seq.shape[1]].any():
             chrompos = achrom[init:init+seq.shape[1]].any()
+            LOGGER.debug("Found a refmap seq - {}:{}".format(chrompos.split(":")[0], chrompos.split(":")[1]))
             cols0[init:init+seq.shape[1]] = np.array([chrompos.split(":")[0]] * seq.shape[1])
             pos = int(chrompos.split(":")[1].split("-")[0])
         else:
-            cols0[init:init+seq.shape[1]] = np.core.defchararray.add(np.array(["locus_"] * seq.shape[1]),\
+            try:
+                cols0[init:init+seq.shape[1]] = np.core.defchararray.add(np.array(["locus_"] * seq.shape[1]),\
                                                                  np.char.mod('%d', start+locindex[iloc]+1))
+            except:
+                LOGGER.debug("Found a locus with no snps - {}".format(start+locindex[iloc]+1))
+                continue
+
         ## fill (POS) position
         ## If there was a successful mapping to the reference sequence then
         ## the variable `pos` here will equal the STARTPOS of the alignment.
