@@ -26,6 +26,7 @@ import time
 import datetime
 import warnings
 import networkx as nx
+import ipyparallel as ipp
 
 from refmap import *
 from util import *
@@ -176,404 +177,404 @@ def sample_cleanup(data, sample):
             pass
 
 
-## slower than persistent_popen_align3
-def persistent_popen_align_fifos(clusts, maxseqs=200):
-    """ keeps a persistent bash shell open and feeds it muscle alignements """
+# ## slower than persistent_popen_align3
+# def persistent_popen_align_fifos(clusts, maxseqs=200):
+#     """ keeps a persistent bash shell open and feeds it muscle alignements """
 
-    ## open a fifo in and out
-    FIFO_IN = "/tmp/{}-in-fifo".format(os.getpid())
-    FIFO_OT = "/tmp/{}-ot-fifo".format(os.getpid())
+#     ## open a fifo in and out
+#     FIFO_IN = "/tmp/{}-in-fifo".format(os.getpid())
+#     FIFO_OT = "/tmp/{}-ot-fifo".format(os.getpid())
 
-    def server(FIFO_IN, FIFO_OT):
-        if os.path.exists(FIFO_IN):
-            os.unlink(FIFO_IN)
-        if os.path.exists(FIFO_OT):
-            os.unlink(FIFO_OT)
+#     def server(FIFO_IN, FIFO_OT):
+#         if os.path.exists(FIFO_IN):
+#             os.unlink(FIFO_IN)
+#         if os.path.exists(FIFO_OT):
+#             os.unlink(FIFO_OT)
 
-        if not os.path.exists(FIFO_IN):
-            os.mkfifo(FIFO_IN)
-            in_fifo = open(FIFO_IN, 'w+')
+#         if not os.path.exists(FIFO_IN):
+#             os.mkfifo(FIFO_IN)
+#             in_fifo = open(FIFO_IN, 'w+')
 
-        if not os.path.exists(FIFO_OT):
-            os.mkfifo(FIFO_OT)
-            ot_fifo = open(FIFO_OT, 'w+')
+#         if not os.path.exists(FIFO_OT):
+#             os.mkfifo(FIFO_OT)
+#             ot_fifo = open(FIFO_OT, 'w+')
      
-        ## open a proc
-        proc = sps.Popen(["bash"], 
-                   stdin=in_fifo, 
-                   stdout=ot_fifo, 
-                   universal_newlines=True)
-        return in_fifo, ot_fifo, proc
+#         ## open a proc
+#         proc = sps.Popen(["bash"], 
+#                    stdin=in_fifo, 
+#                    stdout=ot_fifo, 
+#                    universal_newlines=True)
+#         return in_fifo, ot_fifo, proc
     
 
-    def write2(FIFO_IN):
-        ## the muscle command with alignment as stdin and // as splitter
-        cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                    .format(clust, ipyrad.bins.muscle, "//")
+#     def write2(FIFO_IN):
+#         ## the muscle command with alignment as stdin and // as splitter
+#         cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+#                     .format(clust, ipyrad.bins.muscle, "//")
 
-        ## send cmd to the bash shell
-        with open(FIFO_IN, 'w+') as pipe:
-            print(cmd, file=pipe)
+#         ## send cmd to the bash shell
+#         with open(FIFO_IN, 'w+') as pipe:
+#             print(cmd, file=pipe)
 
         
-    def read2(FIFO_OT):
-        ## store new alignment
-        align=[]
-        ## read the stdout by line until // is reached
-        with open(FIFO_OT, 'r') as read_fifo:
-            for line in iter(read_fifo.readline, "//\n"):
-                align.append(line)
-        return "".join(align)
+#     def read2(FIFO_OT):
+#         ## store new alignment
+#         align=[]
+#         ## read the stdout by line until // is reached
+#         with open(FIFO_OT, 'r') as read_fifo:
+#             for line in iter(read_fifo.readline, "//\n"):
+#                 align.append(line)
+#         return "".join(align)
         
-    ## do the business
-    fin, fout, proc = server(FIFO_IN, FIFO_OT)
+#     ## do the business
+#     fin, fout, proc = server(FIFO_IN, FIFO_OT)
         
-    ## iterate over clusters in this file until finished
-    aligned = []
-    for clust in clusts:
-        ## skip align if only one seq
-        if clust.count(">") > 1:       
-            write2(FIFO_IN)
-            align1 = read2(FIFO_OT)
+#     ## iterate over clusters in this file until finished
+#     aligned = []
+#     for clust in clusts:
+#         ## skip align if only one seq
+#         if clust.count(">") > 1:       
+#             write2(FIFO_IN)
+#             align1 = read2(FIFO_OT)
             
-            ## remove '>' from names, and '\n' from inside seqs                
-            lines = align1[1:].split("\n>")
-            lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
-            aa = [i.split("\n", 1) for i in lines]
-            align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
-            align1 = "\n".join(align1)
-            aligned.append(align1)
-        else:
-            aligned.append(clust)
+#             ## remove '>' from names, and '\n' from inside seqs                
+#             lines = align1[1:].split("\n>")
+#             lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
+#             aa = [i.split("\n", 1) for i in lines]
+#             align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
+#             align1 = "\n".join(align1)
+#             aligned.append(align1)
+#         else:
+#             aligned.append(clust)
 
-    ## kill the shell 
-    print("exit", file=fout)
+#     ## kill the shell 
+#     print("exit", file=fout)
         
-    # cleanup fds, fifos, proc
-    fin.close()
-    fout.close()
-    os.unlink(FIFO_IN)
-    os.unlink(FIFO_OT)
-    proc.wait()
+#     # cleanup fds, fifos, proc
+#     fin.close()
+#     fout.close()
+#     os.unlink(FIFO_IN)
+#     os.unlink(FIFO_OT)
+#     proc.wait()
 
-    return aligned
+#     return aligned
     
 
-## slower than persistent_popen_align3
-def persistent_popen_align_fifos2(clusts, maxseqs=200):
-    """ keeps a persistent bash shell open and feeds it muscle alignements """
+# ## slower than persistent_popen_align3
+# def persistent_popen_align_fifos2(clusts, maxseqs=200):
+#     """ keeps a persistent bash shell open and feeds it muscle alignements """
 
-    ## open a fifo in and out
-    FIFO_IN = "/tmp/{}-in-fifo".format(os.getpid())
-    FIFO_OT = "/tmp/{}-ot-fifo".format(os.getpid())
+#     ## open a fifo in and out
+#     FIFO_IN = "/tmp/{}-in-fifo".format(os.getpid())
+#     FIFO_OT = "/tmp/{}-ot-fifo".format(os.getpid())
 
-    def server(FIFO_IN, FIFO_OT):
-        if os.path.exists(FIFO_IN):
-            os.unlink(FIFO_IN)
-        if os.path.exists(FIFO_OT):
-            os.unlink(FIFO_OT)
+#     def server(FIFO_IN, FIFO_OT):
+#         if os.path.exists(FIFO_IN):
+#             os.unlink(FIFO_IN)
+#         if os.path.exists(FIFO_OT):
+#             os.unlink(FIFO_OT)
 
-        if not os.path.exists(FIFO_IN):
-            os.mkfifo(FIFO_IN)
-            in_fifo = open(FIFO_IN, 'w+', 0)
+#         if not os.path.exists(FIFO_IN):
+#             os.mkfifo(FIFO_IN)
+#             in_fifo = open(FIFO_IN, 'w+', 0)
 
-        if not os.path.exists(FIFO_OT):
-            os.mkfifo(FIFO_OT)
-            ot_fifo = open(FIFO_OT, 'rw+', 0)
+#         if not os.path.exists(FIFO_OT):
+#             os.mkfifo(FIFO_OT)
+#             ot_fifo = open(FIFO_OT, 'rw+', 0)
      
-        ## open a proc
-        proc = sps.Popen(['bash'], 
-                         stdin=in_fifo, 
-                         stdout=ot_fifo, 
-                         universal_newlines=True)
-        return in_fifo, ot_fifo, proc
+#         ## open a proc
+#         proc = sps.Popen(['bash'], 
+#                          stdin=in_fifo, 
+#                          stdout=ot_fifo, 
+#                          universal_newlines=True)
+#         return in_fifo, ot_fifo, proc
     
 
-    def write(FIFO_IN):
-        ## the muscle command with alignment as stdin and // as splitter
-        cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                    .format(clust, ipyrad.bins.muscle, "//")
+#     def write(FIFO_IN):
+#         ## the muscle command with alignment as stdin and // as splitter
+#         cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+#                     .format(clust, ipyrad.bins.muscle, "//")
 
-        ## send cmd to the bash shell
-        with open(FIFO_IN, 'w+') as pipe:
-            print(cmd, file=pipe)
+#         ## send cmd to the bash shell
+#         with open(FIFO_IN, 'w+') as pipe:
+#             print(cmd, file=pipe)
             
         
-    def read2(fout):
-        ## store new alignment
-        align=[]
-        ## read the stdout by line until // is reached
-        for line in iter(fout.readline, "//\n"):
-            align.append(line)
-        return "".join(align)
+#     def read2(fout):
+#         ## store new alignment
+#         align=[]
+#         ## read the stdout by line until // is reached
+#         for line in iter(fout.readline, "//\n"):
+#             align.append(line)
+#         return "".join(align)
         
-    ## do the business inside a wrapper so we can kill it with KBD easier
-    try:
-        fin, fout, proc = server(FIFO_IN, FIFO_OT)
+#     ## do the business inside a wrapper so we can kill it with KBD easier
+#     try:
+#         fin, fout, proc = server(FIFO_IN, FIFO_OT)
             
-        ## iterate over clusters in this file until finished
-        aligned = []
-        for clust in clusts:       
-            if clust.count(">") > 1:
+#         ## iterate over clusters in this file until finished
+#         aligned = []
+#         for clust in clusts:       
+#             if clust.count(">") > 1:
 
-                ## perform i/o with muscle
-                write(FIFO_IN)
-                align1 = read2(fout)
+#                 ## perform i/o with muscle
+#                 write(FIFO_IN)
+#                 align1 = read2(fout)
                 
-                ## remove '>' from names, and '\n' from inside seqs                
-                lines = align1[1:].split("\n>")
-                lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
-                aa = [i.split("\n", 1) for i in lines]
-                align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
-                align1 = "\n".join(align1)
-                aligned.append(align1)
+#                 ## remove '>' from names, and '\n' from inside seqs                
+#                 lines = align1[1:].split("\n>")
+#                 lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
+#                 aa = [i.split("\n", 1) for i in lines]
+#                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
+#                 align1 = "\n".join(align1)
+#                 aligned.append(align1)
 
-            else:
-                aligned.append(clust.replace(">", ""))
+#             else:
+#                 aligned.append(clust.replace(">", ""))
 
-    ## kill it 
-    except KeyboardInterrupt:
-        proc.kill()
-        raise KeyboardInterrupt
+#     ## kill it 
+#     except KeyboardInterrupt:
+#         proc.kill()
+#         raise KeyboardInterrupt
         
-    ## kill the bash shell
-    print("exit", file=fin)
+#     ## kill the bash shell
+#     print("exit", file=fin)
     
-    ## cleanup
-    fin.close()
-    fout.close()
-    os.unlink(FIFO_IN)
-    os.unlink(FIFO_OT)
-    ## this will cleanup the proc
-    proc.wait()
+#     ## cleanup
+#     fin.close()
+#     fout.close()
+#     os.unlink(FIFO_IN)
+#     os.unlink(FIFO_OT)
+#     ## this will cleanup the proc
+#     proc.wait()
         
-    return aligned
+#     return aligned
 
 
-## slower than persistent_popen_align3
-def persistent_popen_align_fifos3(clusts, maxseqs=200):
-    """ keeps a persistent bash shell open and feeds it muscle alignements """
+# ## slower than persistent_popen_align3
+# def persistent_popen_align_fifos3(clusts, maxseqs=200):
+#     """ keeps a persistent bash shell open and feeds it muscle alignements """
 
-    ## open a fifo in and out
-    try:      
-        FIFO_IN = "/dev/shm/{}-in-fifo".format(os.getpid())
-        FIFO_OT = "/dev/shm/{}-ot-fifo".format(os.getpid())
-    except IOError:     
-        FIFO_IN = "/tmp/{}-in-fifo".format(os.getpid())
-        FIFO_OT = "/tmp/{}-ot-fifo".format(os.getpid())
+#     ## open a fifo in and out
+#     try:      
+#         FIFO_IN = "/dev/shm/{}-in-fifo".format(os.getpid())
+#         FIFO_OT = "/dev/shm/{}-ot-fifo".format(os.getpid())
+#     except IOError:     
+#         FIFO_IN = "/tmp/{}-in-fifo".format(os.getpid())
+#         FIFO_OT = "/tmp/{}-ot-fifo".format(os.getpid())
         
-    def server(FIFO_IN, FIFO_OT):
-        if os.path.exists(FIFO_IN):
-            os.unlink(FIFO_IN)
-        if os.path.exists(FIFO_OT):
-            os.unlink(FIFO_OT)
+#     def server(FIFO_IN, FIFO_OT):
+#         if os.path.exists(FIFO_IN):
+#             os.unlink(FIFO_IN)
+#         if os.path.exists(FIFO_OT):
+#             os.unlink(FIFO_OT)
             
-        if not os.path.exists(FIFO_IN):
-            os.mkfifo(FIFO_IN)
-            in_fifo = open(FIFO_IN, 'w+', 0)
+#         if not os.path.exists(FIFO_IN):
+#             os.mkfifo(FIFO_IN)
+#             in_fifo = open(FIFO_IN, 'w+', 0)
 
-        if not os.path.exists(FIFO_OT):
-            os.mkfifo(FIFO_OT)
-            ot_fifo = open(FIFO_OT, 'w+', 0)
+#         if not os.path.exists(FIFO_OT):
+#             os.mkfifo(FIFO_OT)
+#             ot_fifo = open(FIFO_OT, 'w+', 0)
      
-        ## open a proc
-        proc = sps.Popen(['bash'], 
-                         stdin=in_fifo, 
-                         stdout=ot_fifo, 
-                         universal_newlines=True)
-        return in_fifo, ot_fifo, proc
+#         ## open a proc
+#         proc = sps.Popen(['bash'], 
+#                          stdin=in_fifo, 
+#                          stdout=ot_fifo, 
+#                          universal_newlines=True)
+#         return in_fifo, ot_fifo, proc
     
 
-    def write(FIFO_IN):
-        ## the muscle command with alignment as stdin and // as splitter
-        cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                    .format(clust, ipyrad.bins.muscle, "//")
+#     def write(FIFO_IN):
+#         ## the muscle command with alignment as stdin and // as splitter
+#         cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+#                     .format(clust, ipyrad.bins.muscle, "//")
 
-        ## send cmd to the bash shell
-        with open(FIFO_IN, 'w+') as pipe:
-            print(cmd, file=pipe)
+#         ## send cmd to the bash shell
+#         with open(FIFO_IN, 'w+') as pipe:
+#             print(cmd, file=pipe)
         
-    def read2(fout):
-        ## store new alignment
-        align=[]
-        ## read the stdout by line until // is reached
-        for line in iter(fout.readline, "//\n"):
-            align.append(line)
-        return "".join(align).strip()
+#     def read2(fout):
+#         ## store new alignment
+#         align=[]
+#         ## read the stdout by line until // is reached
+#         for line in iter(fout.readline, "//\n"):
+#             align.append(line)
+#         return "".join(align).strip()
         
-    ## do the business inside a wrapper so we can kill it with KBD easier
-    try:
-        ## look for kbd
-        kbd = 0
+#     ## do the business inside a wrapper so we can kill it with KBD easier
+#     try:
+#         ## look for kbd
+#         kbd = 0
         
-        ## open a fifo server view to bash
-        fin, fout, proc = server(FIFO_IN, FIFO_OT)
+#         ## open a fifo server view to bash
+#         fin, fout, proc = server(FIFO_IN, FIFO_OT)
             
-        ## iterate over clusters in this file until finished
-        aligned = []
-        for clust in clusts:       
-            if clust.count(">") > 1:
+#         ## iterate over clusters in this file until finished
+#         aligned = []
+#         for clust in clusts:       
+#             if clust.count(">") > 1:
 
-                ## perform i/o with muscle
-                write(FIFO_IN)
-                align1 = read2(fout)
+#                 ## perform i/o with muscle
+#                 write(FIFO_IN)
+#                 align1 = read2(fout)
                 
-                ## remove '>' from names, and '\n' from inside seqs                
-                lines = align1[1:].split("\n>")
-                lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
-                aa = [i.split("\n", 1) for i in lines]
-                align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
-                align1 = "\n".join(align1)
-                aligned.append(align1)
+#                 ## remove '>' from names, and '\n' from inside seqs                
+#                 lines = align1[1:].split("\n>")
+#                 lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
+#                 aa = [i.split("\n", 1) for i in lines]
+#                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
+#                 align1 = "\n".join(align1)
+#                 aligned.append(align1)
 
-            else:
-                aligned.append(clust.replace(">", "").strip())
+#             else:
+#                 aligned.append(clust.replace(">", "").strip())
 
-        ## kill the bash shell
-        print("exit", file=fin)
+#         ## kill the bash shell
+#         print("exit", file=fin)
     
-    ## interrupted - kill it 
-    except KeyboardInterrupt as kbd:
-        proc.kill()
+#     ## interrupted - kill it 
+#     except KeyboardInterrupt as kbd:
+#         proc.kill()
         
-    ## ensure cleanup
-    finally:
-        fin.close()
-        fout.close()
-        os.unlink(FIFO_IN)
-        os.unlink(FIFO_OT)
-        ## this will cleanup the proc
-        proc.wait()
+#     ## ensure cleanup
+#     finally:
+#         fin.close()
+#         fout.close()
+#         os.unlink(FIFO_IN)
+#         os.unlink(FIFO_OT)
+#         ## this will cleanup the proc
+#         proc.wait()
         
-    if kbd:
-        raise KeyboardInterrupt
+#     if kbd:
+#         raise KeyboardInterrupt
         
-    return aligned
+#     return aligned
 
 
-## slower than persistent_popen_align3
-def persistent_popen_align(clusts, maxseqs=200):
-    """ keeps a persistent bash shell open and feeds it muscle alignements """
+# ## slower than persistent_popen_align3
+# def persistent_popen_align(clusts, maxseqs=200):
+#     """ keeps a persistent bash shell open and feeds it muscle alignements """
 
-    ## create a separate shell for running muscle in, this is much faster
-    ## than spawning a separate subprocess for each muscle call
-    proc = sps.Popen(["bash"],
-                     stdin=sps.PIPE, 
-                     stdout=sps.PIPE, 
-                     universal_newlines=True)
+#     ## create a separate shell for running muscle in, this is much faster
+#     ## than spawning a separate subprocess for each muscle call
+#     proc = sps.Popen(["bash"],
+#                      stdin=sps.PIPE, 
+#                      stdout=sps.PIPE, 
+#                      universal_newlines=True)
 
-    ## iterate over clusters in this file until finished
-    aligned = []
-    for clust in clusts:
+#     ## iterate over clusters in this file until finished
+#     aligned = []
+#     for clust in clusts:
 
-        ## new alignment string for read1s and read2s
-        align1 = ""
-        align2 = ""
+#         ## new alignment string for read1s and read2s
+#         align1 = ""
+#         align2 = ""
 
-        ## do we need to split the alignment? (is there a PE insert?)
-        try:
-            ## make into list
-            lclust = clust.split()[:maxseqs*2]
+#         ## do we need to split the alignment? (is there a PE insert?)
+#         try:
+#             ## make into list
+#             lclust = clust.split()[:maxseqs*2]
 
-            ## split cluster list at nnnn separator for each read
-            lclust1 = list(itertools.chain(*zip(\
-                     lclust[::2], [i.split("nnnn")[0] for i in lclust[1::2]])))
-            lclust2 = list(itertools.chain(*zip(\
-                     lclust[::2], [i.split("nnnn")[1] for i in lclust[1::2]])))
+#             ## split cluster list at nnnn separator for each read
+#             lclust1 = list(itertools.chain(*zip(\
+#                      lclust[::2], [i.split("nnnn")[0] for i in lclust[1::2]])))
+#             lclust2 = list(itertools.chain(*zip(\
+#                      lclust[::2], [i.split("nnnn")[1] for i in lclust[1::2]])))
 
-            ## put back into strings
-            clust1 = "\n".join(lclust1)
-            clust2 = "\n".join(lclust2)
+#             ## put back into strings
+#             clust1 = "\n".join(lclust1)
+#             clust2 = "\n".join(lclust2)
 
-            ## Align the first reads.
-            ## The muscle command with alignment as stdin and // as splitter
-            cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                    .format(clust1, ipyrad.bins.muscle, "//")
+#             ## Align the first reads.
+#             ## The muscle command with alignment as stdin and // as splitter
+#             cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+#                     .format(clust1, ipyrad.bins.muscle, "//")
 
-            ## send cmd1 to the bash shell
-            print(cmd1, file=proc.stdin)
+#             ## send cmd1 to the bash shell
+#             print(cmd1, file=proc.stdin)
 
-            ## read the stdout by line until splitter is reached
-            ## meaning that the alignment is finished.
-            for line in iter(proc.stdout.readline, '//\n'):
-                align1 += line
+#             ## read the stdout by line until splitter is reached
+#             ## meaning that the alignment is finished.
+#             for line in iter(proc.stdout.readline, '//\n'):
+#                 align1 += line
 
-            ## Align the second reads.
-            ## The muscle command with alignment as stdin and // as splitter
-            cmd2 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                    .format(clust2, ipyrad.bins.muscle, "//")
+#             ## Align the second reads.
+#             ## The muscle command with alignment as stdin and // as splitter
+#             cmd2 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+#                     .format(clust2, ipyrad.bins.muscle, "//")
 
-            ## send cmd2 to the bash shell
-            print(cmd2, file=proc.stdin)
+#             ## send cmd2 to the bash shell
+#             print(cmd2, file=proc.stdin)
 
-            ## read the stdout by line until splitter is reached
-            ## meaning that the alignment is finished.
-            for line in iter(proc.stdout.readline, '//\n'):
-                align2 += line
+#             ## read the stdout by line until splitter is reached
+#             ## meaning that the alignment is finished.
+#             for line in iter(proc.stdout.readline, '//\n'):
+#                 align2 += line
 
-            ## join up aligned read1 and read2 and ensure names order matches
-            la1 = align1.split()
-            la2 = align2.split()
-            dalign1 = {i:j for i,j in zip(la1[::2], la1[1::2])}
-            dalign2 = {i:j for i,j in zip(la2[::2], la2[1::2])}
-            align1 = ""
-            keys = sorted(dalign1.keys(), key=lambda x: \
-                          int(x.split("=")[-1].split(";")[0]), reverse=True)
-            for key in keys:
-                align1 += "\n".join([key, dalign1[key].replace("\n", "")+"nnnn"+\
-                                          dalign2[key].replace("\n", "")+"\n"])
+#             ## join up aligned read1 and read2 and ensure names order matches
+#             la1 = align1.split()
+#             la2 = align2.split()
+#             dalign1 = {i:j for i,j in zip(la1[::2], la1[1::2])}
+#             dalign2 = {i:j for i,j in zip(la2[::2], la2[1::2])}
+#             align1 = ""
+#             keys = sorted(dalign1.keys(), key=lambda x: \
+#                           int(x.split("=")[-1].split(";")[0]), reverse=True)
+#             for key in keys:
+#                 align1 += "\n".join([key, dalign1[key].replace("\n", "")+"nnnn"+\
+#                                           dalign2[key].replace("\n", "")+"\n"])
 
-            ## deprecated from old function, we now assume by this point 
-            ## that your data are properly filtered.
-            ## get leftlimit of seed, no hits can go left of this
-            ## this can save pairgbs from being garbage
-            #idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
-            #leftlimit = min(0, idxs)
-            #aseqs1 = [i[leftlimit:] for i in aseqs1]
+#             ## deprecated from old function, we now assume by this point 
+#             ## that your data are properly filtered.
+#             ## get leftlimit of seed, no hits can go left of this
+#             ## this can save pairgbs from being garbage
+#             #idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
+#             #leftlimit = min(0, idxs)
+#             #aseqs1 = [i[leftlimit:] for i in aseqs1]
 
-            ## append aligned cluster string
-            aligned.append(align1)
+#             ## append aligned cluster string
+#             aligned.append(align1)
 
-        ## Either reads are SE, or at least some pairs are merged.
-        except IndexError:
+#         ## Either reads are SE, or at least some pairs are merged.
+#         except IndexError:
             
-            if clust.count(">") > 1:
-                ## limit the number of input seqs
-                lclust = "\n".join(clust.split()[:maxseqs*2])
+#             if clust.count(">") > 1:
+#                 ## limit the number of input seqs
+#                 lclust = "\n".join(clust.split()[:maxseqs*2])
                 
-                ## the muscle command with alignment as stdin and // as splitter
-                cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                            .format(lclust, ipyrad.bins.muscle, "//")
+#                 ## the muscle command with alignment as stdin and // as splitter
+#                 cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+#                             .format(lclust, ipyrad.bins.muscle, "//")
 
-                ## send cmd to the bash shell (TODO: PIPE could overflow here!)
-                print(cmd, file=proc.stdin)
+#                 ## send cmd to the bash shell (TODO: PIPE could overflow here!)
+#                 print(cmd, file=proc.stdin)
 
-                ## read the stdout by line until // is reached. This BLOCKS.
-                for line in iter(proc.stdout.readline, '//\n'):
-                    align1 += line
+#                 ## read the stdout by line until // is reached. This BLOCKS.
+#                 for line in iter(proc.stdout.readline, '//\n'):
+#                     align1 += line
                     
-                ## remove '>' from names, and '\n' from inside long seqs                
-                lines = align1[1:].split("\n>")
-                lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
-                aa = [i.split("\n", 1) for i in lines]
-                align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
-                align1 = "\n".join(align1)
+#                 ## remove '>' from names, and '\n' from inside long seqs                
+#                 lines = align1[1:].split("\n>")
+#                 lines.sort(key=lambda x: int(x.split("=")[-1].split(";")[0]), reverse=True)
+#                 aa = [i.split("\n", 1) for i in lines]
+#                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
+#                 align1 = "\n".join(align1)
         
-                ## append to aligned
-                aligned.append(align1)
+#                 ## append to aligned
+#                 aligned.append(align1)
 
-            else:
-                aligned.append(clust)
+#             else:
+#                 aligned.append(clust)
 
-    # cleanup
-    proc.stdout.close()
-    if proc.stderr:
-        proc.stderr.close()
-    proc.stdin.close()
-    proc.wait()
+#     # cleanup
+#     proc.stdout.close()
+#     if proc.stderr:
+#         proc.stderr.close()
+#     proc.stdin.close()
+#     proc.wait()
 
-    ## return the aligned clusters
-    return aligned     
+#     ## return the aligned clusters
+#     return aligned     
 
 
 ## winner, rigorously testing in sequential and parallel against other funcs
@@ -718,7 +719,7 @@ def align_and_parse(handle, max_internal_indels=8):
         clusts = infile.read().split("//\n//\n")
 
     ## bail if no data
-    if not clusts:
+    if not clusts[0]:
         LOGGER.debug("skipping empty chunk - %s", handle)
         return 0
 
@@ -784,7 +785,7 @@ def aligned_indel_filter(clust, max_internal_indels):
     return 0
 
 
-## deprecated
+## deprecated in 3, still used in 6 for now
 def muscle_align(data, sample, chunk, maxindels):
     """ aligns reads, does split then aligning for paired reads """
 
@@ -918,7 +919,7 @@ def muscle_align(data, sample, chunk, maxindels):
     return highindels
 
 
-## deprecated
+## deprecated in 3, still used in 6 for now
 def parsemuscle(data, out):
     """
     parse muscle string output into two *sorted* lists.
@@ -940,7 +941,7 @@ def parsemuscle(data, out):
         return anames, aseqs
 
 
-## deprecated
+## deprecated in 3, still used in 6 for now
 def muscle_call(data, names, seqs):
     """
     Makes subprocess call to muscle. A little faster than before.
@@ -972,10 +973,8 @@ def build_clusters(data, sample, maxindels):
     By default, we set maxindels=6 for this step (within-sample clustering).
     """
 
-    ## derepfile
+    ## i/o vsearch files
     derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
-
-    ## vsearch results files
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
@@ -1021,6 +1020,9 @@ def build_clusters(data, sample, maxindels):
                 seedsseen.add(seed)
                 ## store the last fseq, count it, and clear fseq
                 if fseqs:
+                    ## sort fseqs by derep
+                    fseqs.sort(key=lambda x: \
+                        int(x.split(";size=")[1].split(";")[0]), reverse=True)                    
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
@@ -1123,102 +1125,18 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
     progressbar(10, 0, " {}     | {} | s3 |"\
                 .format(PRINTSTR["derep_concat_split"], elapsed))
 
-    ## for HPC systems this should be done to make sure targets are spread
+    ## TODO: for HPC systems this should be done to make sure targets are spread
     ## among different nodes.
     if nthreads:
         if nthreads < len(ipyclient.ids):
-            ## this could select the threads more intelligently based on spacing
-            ## them among nodes (TODO).
             thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::nthreads])
         elif nthreads == 1:
             thview = ipyclient.load_balanced_view()
         else:
             thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
-    snames = [i.name for i in samples]
 
-    ## Create DAGs for the assembly method being used, store jobs in nodes
-    dag = nx.DiGraph()
-    nodes = []
-
-    ## iterate over the sample names
-    for sname in snames:
-        ## get list of pre-align jobs from globals based on assembly method
-        method = data.paramsdict["assembly_method"]
-        if method == "denovo":
-            joborder = DENOVO
-        elif method == "reference":
-            joborder = REFERENCE
-        elif method == "denovo+reference":
-            joborder = DENOVO_PLUS
-        else:
-            joborder = DENOVO_MINUS
-
-        ## append pre-align job for each sample to nodes list
-        for func in joborder:
-            nodes.append("{}-{}-{}".format(func, 0, sname))
-
-        ## add jobs for the align funcs, each will have max 10
-        for chunk in range(10):
-            nodes.append("{}-{}-{}".format("muscle_align", chunk, sname))
-
-        ## add final reconcat jobs
-        nodes.append("{}-{}-{}".format("reconcat", 0, sname))
-
-    ## add all nodes to the DAG
-    for node in nodes:
-        dag.add_node(node)
-
-    ## add edges/dependencies bewteen jobs to enforce an order of operations
-    ## the pattern is (first-this, then-that).
-    for sname in snames:
-        ## set dependencies on all samples having finished something
-        for sname2 in snames:
-            ## enforce clust/map func doesn't run until all derep jobs are done
-            dag.add_edge("{}-{}-{}".format(joborder[0], 0, sname2),
-                         "{}-{}-{}".format(joborder[1], 0, sname))
-            ## enforce that job after clust/map doesn't run until all clust/map
-            ## jobs are finished, this protect threaded view from being diluted
-            #dag.add_edge("{}-{}-{}".format(joborder[1], 0, sname2),
-            #             "{}-{}-{}".format(joborder[2], 0, sname))
-
-        ## add more order restrictions to pre-align jobs. jobs 1,2 are above.
-        ## 3 and 4 (ref and muscle chunk) are single threaded, so
-        ## we'll just restrict that within sample the previous has to finish.
-        for idx in xrange(2, len(joborder)):
-            ## remaining steps of prealign jobs
-            dag.add_edge("{}-{}-{}".format(joborder[idx-1], 0, sname),
-                         "{}-{}-{}".format(joborder[idx], 0, sname))
-
-        ## add the first align job for each sample such that it cannot start
-        ## until all samples have finished chunking, and then add remaining
-        ## 9 align jobs that can't start until after the first chunk is
-        ## finished. This is nice because it makes the largest chunks go first,
-        ## and it *greatly* simplifies the dag. However, it slows performance
-        ## if there are fewer than four samples, since it will wait on the
-        ## first chunk, but such small jobs are uncommon.
-        for sname2 in snames:
-            for chunk in range(10):
-                dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
-                             "{}-{}-{}".format("muscle_align", chunk, sname))   
-                ## add that the final reconcat job can't start until after
-                ## each chunk of its own sample has finished aligning.
-                dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
-                             "{}-{}-{}".format("reconcat", 0, sname))
-
-        ### old style in which first muscle-align job was prioritized...
-        # for sname2 in snames:
-        #     dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
-        #                  "{}-{}-{}".format("muscle_align", 0, sname))
-
-        # ## add remaining 9 align jobs dependent on first (0) being finished
-        # for chunk in range(1, 10):
-        #     dag.add_edge("{}-{}-{}".format("muscle_align", 0, sname),
-        #                  "{}-{}-{}".format("muscle_align", chunk, sname))
-
-        #     ## add that the final reconcat job can't start until after
-        #     ## each chunk of its own sample has finished aligning.
-        #     dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
-        #                  "{}-{}-{}".format("reconcat", 0, sname))
+    ## get list of jobs/dependencies as a DAG for all pre-align funcs.
+    dag, joborder = build_dag(data, samples)
 
     ## dicts for storing submitted jobs and results
     results = {}
@@ -1227,10 +1145,10 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
     ## sort makes sure jobs are input with all dependencies found.
     for node in nx.topological_sort(dag):
         ## get list of async results leading to this job
-        deps = [results[n] for n in dag.predecessors(node)]
+        deps = [results.get(n) for n in dag.predecessors(node)]
+        deps = ipp.Dependency(dependencies=deps, failure=True)
 
         ## get func, sample, and args for this func (including [data, sample])
-        #print(node, deps)
         funcstr, chunk, sname = node.split("-", 2)
         func = FUNCDICT[funcstr]
         sample = data.samples[sname]
@@ -1241,10 +1159,9 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         elif funcstr in ["build_clusters"]:
             args = [data, sample, maxindels]
         elif funcstr in ["muscle_align"]:
-            handle = os.path.join(data.tmpdir, "{}_chunk_{}.ali"\
-                                  .format(sample.name, chunk))
+            handle = os.path.join(data.tmpdir, 
+                        "{}_chunk_{}.ali".format(sample.name, chunk))
             args = [handle, maxindels]
-            #args = [data, sample, chunk, maxindels]
         else:
             args = [data, sample]
 
@@ -1303,6 +1220,60 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
 
     ## uncomment to plot the dag
     #_plot_dag(dag, results, snames)
+
+
+
+def build_dag(data, samples):
+    """
+    build a directed acyclic graph describing jobs to be run in order.
+    """
+
+    ## Create DAGs for the assembly method being used, store jobs in nodes
+    snames = [i.name for i in samples]
+    dag = nx.DiGraph()
+
+    ## get list of pre-align jobs from globals based on assembly method
+    joborder = JOBORDER[data.paramsdict["assembly_method"]]
+
+    ## WHICH JOBS TO RUN: iterate over the sample names
+    for sname in snames:
+        ## append pre-align job for each sample to nodes list
+        for func in joborder:
+            dag.add_node("{}-{}-{}".format(func, 0, sname))
+
+        ## append align func jobs, each will have max 10
+        for chunk in xrange(10):
+            dag.add_node("{}-{}-{}".format("muscle_align", chunk, sname))
+
+        ## append final reconcat jobs
+        dag.add_node("{}-{}-{}".format("reconcat", 0, sname))
+
+    ## ORDER OF JOBS: add edges/dependency between jobs: (first-this, then-that)
+    for sname in snames:
+        for sname2 in snames:
+            ## enforce that clust/map cannot start until derep is done for ALL
+            ## samples. This is b/c...
+            dag.add_edge("{}-{}-{}".format(joborder[0], 0, sname2),
+                         "{}-{}-{}".format(joborder[1], 0, sname))
+
+        ## add remaining pre-align jobs 
+        for idx in xrange(2, len(joborder)):
+            dag.add_edge("{}-{}-{}".format(joborder[idx-1], 0, sname),
+                         "{}-{}-{}".format(joborder[idx], 0, sname))
+
+        ## Add 10 align jobs, none of which can start until all chunker jobs
+        ## are finished. Similarly, reconcat jobs cannot start until all align
+        ## jobs are finished.
+        for sname2 in snames:
+            for chunk in range(10):
+                dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
+                             "{}-{}-{}".format("muscle_align", chunk, sname))
+                ## add that the final reconcat job can't start until after
+                ## each chunk of its own sample has finished aligning.
+                dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
+                             "{}-{}-{}".format("reconcat", 0, sname))
+    ## return the dag
+    return dag, joborder
 
 
 
@@ -1659,6 +1630,10 @@ def cluster(data, sample, nthreads):
         raise IPyradError("Input file for clustering doesn't exist - {}"\
                         .format(derephandle))
 
+    ## testing one sample fail
+    #if sample.name == "1C_0":
+    #    x
+
     ## datatype specific optimization
     ## minsl: the percentage of the seed that must be matched
     ##    smaller values for RAD/ddRAD where we might want to combine, say 50bp
@@ -1991,33 +1966,36 @@ FUNCDICT = {
     }
 
 
-
 ## Pre-align funcs for the four assembly methods
-DENOVO = ["derep_concat_split",
-          "cluster",
-          "build_clusters",
-          "muscle_chunker"]
-
-REFERENCE = ["derep_concat_split",
-             "mapreads",
-             "ref_muscle_chunker",
-             "muscle_chunker"]
-
-DENOVO_PLUS = ["derep_concat_split",
-               "mapreads",
-               "cluster",
-               "build_clusters",
-               "ref_muscle_chunker",
-               "muscle_chunker"]
-
-DENOVO_MINUS = ["derep_concat_split",
-                "mapreads",
-                "cluster",
-                "build_clusters",
-                "muscle_chunker"]
-
-ALIGNFUNCS = ["muscle_align",
-              "reconcat"]
+JOBORDER = {
+    "denovo" : [
+        "derep_concat_split",
+        "cluster",
+        "build_clusters",
+        "muscle_chunker"
+        ], 
+    "reference" : [
+        "derep_concat_split",
+        "mapreads",
+        "ref_muscle_chunker",
+        "muscle_chunker"
+        ], 
+    "denovo+reference" : [
+        "derep_concat_split",
+        "mapreads",
+        "cluster",
+        "build_clusters",
+        "ref_muscle_chunker",
+        "muscle_chunker"
+        ], 
+    "denovo-reference" : [
+        "derep_concat_split",
+        "mapreads",
+        "cluster",
+        "build_clusters",
+        "muscle_chunker"
+        ],
+    }   
 
 
 NO_UHITS_ERROR = """\
@@ -2034,6 +2012,10 @@ if __name__ == "__main__":
     ## reload autosaved data. In case you quit and came back
     JSONPATH = "/home/deren/Documents/ipyrad/tests/cli/cli.json"
     DATA = ipyrad.load_json(JSONPATH)
-
-    ## run step 6
     DATA.run('3', force=True)
+
+    ## reload autosaved data. In case you quit and came back
+    JSONPATH = "/home/deren/Documents/ipyrad/tests/pairtest/pairtest.json"
+    DATA = ipyrad.load_json(JSONPATH)
+    DATA.run('3', force=True)
+
