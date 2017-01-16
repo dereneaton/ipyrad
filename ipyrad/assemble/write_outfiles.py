@@ -2115,8 +2115,11 @@ def concat_vcf(data, names, full):
     ## CHROM and POS. This is doing a very naive sort right now, so the
     ## CHROM will be ordered, but not the pos within each chrom.
     if data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]:
-        LOGGER.debug("sorting vcf")
-        cmd = ["cat"] + vcfchunks #+ [" | sort"]
+        ## Some unix sorting magic to get POS sorted within CHROM
+        ## First you sort by POS (-k 2,2), then you do a `stable` sort 
+        ## by CHROM. You end up with POS ordered and grouped correctly by CHROM
+        ## but relatively unordered CHROMs (locus105 will be before locus11).
+        cmd = ["cat"] + vcfchunks + [" | sort -k 2,2 -n | sort -k 1,1 -s"]
         cmd = " ".join(cmd)
         proc = sps.Popen(cmd, shell=True, stderr=sps.STDOUT, stdout=writer, close_fds=True)
     else:
@@ -2168,7 +2171,9 @@ def vcfchunk(data, optim, sidx, start, full):
         ## This just prevents a breaking change in the transition from
         ## 0.5.15 to 0.6. 
         if "/chroms" in io5:
-            achrom = io5["chroms"][hslice[0]:hslice[1], 1]
+            achrom = io5["chroms"][hslice[0]:hslice[1]]
+            achrom = achrom[keepmask, :]
+            achrom = achrom[:, sidx]
         else:
             achrom = np.array([])
 
@@ -2241,16 +2246,26 @@ def vcfchunk(data, optim, sidx, start, full):
         ## be samples with unmapped reads that cluster across with samples that
         ## have mapped reads. Seems like a small problem.
         ## chrompos string is formatted like this: MT:10509-10985
+        ##
+        ## We can't rely on just the first member of achrom[iloc] because the first
+        ## sample may not have had a read at that locus.
+        ## The rsplits handle scaffold names that may contain ":".
         pos = 0
-        if achrom[init:init+seq.shape[1]].any():
-            chrompos = achrom[init:init+seq.shape[1]].any()
-            LOGGER.debug("Found a refmap seq - {}:{}".format(chrompos.split(":")[0], chrompos.split(":")[1]))
-            cols0[init:init+seq.shape[1]] = np.array([chrompos.split(":")[0]] * seq.shape[1])
-            pos = int(chrompos.split(":")[1].split("-")[0])
+        if achrom[iloc].any():
+            try:
+                #LOGGER.debug("iloc {} - achrom {}".format(iloc, achrom.shape))
+                chrompos = [z for z in achrom[iloc] if ":" in z][0]
+                #LOGGER.debug("Found a refmap seq - {}:{}".format(chrompos.rsplit(":", 1)[0], chrompos.rsplit(":", 1)[1]))
+                cols0[init:init+seq.shape[1]] = np.array([chrompos.rsplit(":", 1)[0]] * seq.shape[1])
+                pos = int(chrompos.rsplit(":", 1)[1].split("-")[0])
+            except:
+                LOGGER.debug("Found a bad ref achrom array - iloc {} - start - {}".format(iloc, start))
+                raise
         else:
             try:
                 cols0[init:init+seq.shape[1]] = np.core.defchararray.add(np.array(["locus_"] * seq.shape[1]),\
                                                                  np.char.mod('%d', start+locindex[iloc]+1))
+                #LOGGER.debug("Found a non-ref seq - {}".format(start+locindex[iloc]+1))
             except:
                 LOGGER.debug("Found a locus with no snps - {}".format(start+locindex[iloc]+1))
                 continue
@@ -2364,7 +2379,8 @@ def vcfchunk(data, optim, sidx, start, full):
                             axis=1),
                         delimiter="\t", fmt="%s")
         except Exception as inst:
-            LOGGER.error(inst)
+            LOGGER.error("Error building vcf file - ".format(inst))
+            raise
         writer.close()
 
     ## close and remove tmp h5

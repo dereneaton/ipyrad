@@ -265,6 +265,7 @@ def consensus(data, sample, tmpchunk, optim):
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
             ## IF this is a reference mapped read store the chrom and pos info
+            ## This is hackish. If the reference scaffolds contain ";" this is fucked.
             ref_position = ""
             if len(names[0].split(";")) == 4:
                 ref_position = names[0].split(";")[1]
