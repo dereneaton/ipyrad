@@ -1151,42 +1151,16 @@ class Assembly(object):
             ## ready so that we can print how many cores started on each
             ## host machine exactly.
             if (not ip.__interactive__) or show_cluster:
-                print(ip.cluster_info())
-                #if (self._ipcluster["profile"] != "default") or \
-                #   (self._ipcluster["engines"] == "MPI"):
-                #    hosts = ipyclient[:].apply_sync(socket.gethostname)
-                #    for hostname in set(hosts):
-                #        print("  host compute node: [{} cores] on {}"\
-                #              .format(hosts.count(hostname), hostname))
-
-                ## if Local setup then we know that we can get all the cores for
-                ## sure and we won't bother waiting for them to start, since
-                ## they'll start grabbing jobs once they're started.
-                # else:
-                #     ## If `cores` is set then honor this request, else use all
-                #     ## available cores.
-                #     if self._ipcluster["cores"]:
-                #         _cpus = self._ipcluster["cores"]
-                #     else:
-                #         if not self._ipcluster["cluster_id"]:
-                #             _cpus = len(ipyclient)
-                #         else:
-                #             _cpus = detect_cpus()
-                #     print("  local compute node: [{} cores] on {}"\
-                #           .format(_cpus, socket.gethostname()))
+                print(ip.cluster_info(client=ipyclient))
 
             ## get the list of steps to run
             if isinstance(steps, int):
                 steps = str(steps)
-            steps = list(steps)
-            steps.sort()
+            steps = sorted(list(steps))
 
             ## print an Assembly name header if inside API
             if ip.__interactive__:
                 print("\n  Assembly: {}".format(self.name))
-
-            ## store pids in case we need to die hard (w/ a vengeance)
-            #pids = ipyclient[:].apply_sync(os.getpid)
 
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
@@ -1208,8 +1182,7 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '4' in steps:
-                self._step4func(samples=None, subsample=9999999, force=force,
-                                ipyclient=ipyclient)
+                self._step4func(samples=None, force=force, ipyclient=ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
@@ -1239,6 +1212,7 @@ class Assembly(object):
             LOGGER.error("IPyradWarningExit: %s", inst)
             print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}"\
                   .format(inst))
+            #raise
 
         except Exception as inst:
             LOGGER.error(inst)
