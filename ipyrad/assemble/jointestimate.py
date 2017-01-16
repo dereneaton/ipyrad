@@ -491,11 +491,12 @@ def assembly_cleanup(data):
         data.stats_dfs.s4.to_string(outfile)
 
     fails = data.stats[data.stats["state"] == 3].index.values
-    msg = """
-    These samples failed joint estimation and will be excluded from
-    downstream analysis (probably very few highdepth reads):
-    {}""".format(fails)
-    print(msg)
+    if fails:
+        msg = """
+        These samples failed joint estimation and will be excluded from
+        downstream analysis (probably very few highdepth reads):
+        {}""".format(fails)
+        print(msg)
 
 
 if __name__ == "__main__":
