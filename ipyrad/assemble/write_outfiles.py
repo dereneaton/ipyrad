@@ -2164,7 +2164,14 @@ def vcfchunk(data, optim, sidx, start, full):
         acatg = acatg[:, sidx, :, :]
 
         ## Just take the first chrom/pos info for each base position
-        achrom = io5["chroms"][hslice[0]:hslice[1], 1]
+        ## This tests for the 'chroms' dataset in io5 and falls back
+        ## to the 'old' CHROM/POS vcf output if it doesn't exist.
+        ## This just prevents a breaking change in the transition from
+        ## 0.5.15 to 0.6. 
+        if "/chroms" in io5:
+            achrom = io5["chroms"][hslice[0]:hslice[1], 1]
+        else:
+            achrom = np.array([])
 
     #LOGGER.info('keepmask %s', keepmask)
     LOGGER.info('acatg.shape %s', acatg.shape)
