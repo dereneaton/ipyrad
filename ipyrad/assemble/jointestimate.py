@@ -450,8 +450,8 @@ def submit(data, submitted_args, ipyclient):
             else:
                 LOGGER.error("  Sample %s failed with error %s", 
                              job, jobs[job].exception())
-                raise IPyradWarningExit("  Sample {} failed step 4"\
-                                        .format(job))
+                #raise IPyradWarningExit("  Sample {} failed step 4"\
+                #                        .format(job))
 
     except KeyboardInterrupt as kbd:
         pass
@@ -490,7 +490,13 @@ def assembly_cleanup(data):
     with open(data.stats_files.s4, 'w') as outfile:
         data.stats_dfs.s4.to_string(outfile)
 
-
+    fails = data.stats[data.stats["state"] == 3].index.values
+    if fails:
+        msg = """
+        These samples failed joint estimation and will be excluded from
+        downstream analysis (probably very few highdepth reads):
+        {}""".format(fails)
+        print(msg)
 
 
 if __name__ == "__main__":

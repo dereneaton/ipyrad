@@ -60,6 +60,8 @@ def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
 
     project_dir = parsedict['1']
+    if not project_dir:
+        project_dir = "./"
     ## Be nice if somebody also puts in the file extension
     assembly_name = parsedict['0']
     my_assembly = os.path.join(project_dir, assembly_name)

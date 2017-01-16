@@ -79,14 +79,13 @@ def muscle_align_across(data, samples, chunk):
         else:
             ## split seqs before align if PE. If 'nnnn' not found (single end
             ## or merged reads) then `except` will pass it to SE alignment.
-            paired = 1
+            ## The other case where `except` will pass is if one or the other
+            ## of the PE reads is empty. In this case the split() won't fail
+            ## but the call to parsemuscle() will raise an index error. The
+            ## SE code downstream will strip the "nnnn" and proceed as usual.
             try:
                 seqs1 = [i.split("nnnn")[0] for i in seqs]
                 seqs2 = [i.split("nnnn")[1] for i in seqs]
-            except IndexError:
-                paired = 0
-
-            if paired:
                 string1 = muscle_call(data, names, seqs1)
                 string2 = muscle_call(data, names, seqs2)
                 anames, aseqs1 = parsemuscle(data, string1)
@@ -95,17 +94,21 @@ def muscle_align_across(data, samples, chunk):
                 aseqs = ["{}nnnn{}".format(i, j) for i, j in zip(aseqs1, aseqs2)]
                 aseqs = np.array([list(i) for i in aseqs])
                 thislen = min(maxlen, aseqs.shape[1])
+                sidxs = [snames.index(anames[idx].rsplit("_", 1)[0]) for idx \
+                         in xrange(aseqs.shape[0])]
+                ## if dups
+                if len(set(sidxs)) != aseqs.shape[0]:
+                    duples[ldx] = 1
                 for idx in xrange(aseqs.shape[0]):
                     newn = anames[idx].rsplit(';', 1)[0]
                     ## save to aligned cluster
                     stack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
                     ## name index from sorted list (indels order)
-                    sidx = snames.index(anames[idx].rsplit("_", 1)[0])
+                    sidx = sidxs[idx]
                     ## store the indels
-                    LOGGER.info(np.where(aseqs[idx, :thislen] == "-")[0])
+                    #LOGGER.info("{} - {}".format(idx, np.where(aseqs[idx, :thislen] == "-")[0]))
                     indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
-
-            else:
+            except IndexError:
                 seqs = [i.replace('nnnn', '') for i in seqs]
                 string1 = muscle_call(data, names, seqs)
                 anames, aseqs = parsemuscle(data, string1)
@@ -435,6 +438,11 @@ def build_h5_array(data, samples, ipyclient):
                                     dtype=np.uint8,
                                     chunks=(chunks, len(samples)),
                                     compression="gzip")
+    superchroms = io5.create_dataset("chroms", (data.nloci, len(samples)),
+                                    dtype=h5py.special_dtype(vlen=bytes),
+                                    chunks=(chunks, len(samples)),
+                                    compression="gzip")
+
     ## allele count storage
     supercatg.attrs["chunksize"] = (chunks, 1, maxlen, 4)
     supercatg.attrs["samples"] = [i.name for i in samples]
@@ -442,6 +450,9 @@ def build_h5_array(data, samples, ipyclient):
     superseqs.attrs["samples"] = [i.name for i in samples]
     superalls.attrs["chunksize"] = (chunks, len(samples))
     superalls.attrs["samples"] = [i.name for i in samples]
+    superchroms.attrs["chunksize"] = (chunks, len(samples))
+    superchroms.attrs["samples"] = [i.name for i in samples]
+ 
 
     ## array for pair splits locations, dup and ind filters
     io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
@@ -684,6 +695,7 @@ def singlecat(data, sample, bseeds, sidx):
     ## which is known from seeds and hits
     ocatg = np.zeros((data.nloci, maxlen, 4), dtype=np.uint32)
     onall = np.zeros(data.nloci, dtype=np.uint8)
+    ochrom = np.zeros(data.nloci, dtype=h5py.special_dtype(vlen=bytes))
 
     LOGGER.info("single cat here")
     ## grab the sample's data and write to ocatg and onall
@@ -695,12 +707,17 @@ def singlecat(data, sample, bseeds, sidx):
         tmp = catarr[full[:, 2], :maxlen, :]
         del catarr
         ocatg[full[:, 0], :tmp.shape[1], :] = tmp
+        
         del tmp
 
         ## get it and delete it
         nall = io5["nalleles"][:]
         onall[full[:, 0]] = nall[full[:, 2]]
         del nall
+
+        chrom = io5["chroms"][:]
+        ochrom[full[:, 0]] = chrom[full[:, 2]]
+        del chrom
 
     ## get indel locations for this sample
     ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
@@ -722,6 +739,7 @@ def singlecat(data, sample, bseeds, sidx):
                            #chunks=(chunksize, maxlen, 4), gzip=True)
         oh5.create_dataset("inall", data=onall, dtype=np.uint8)
                            #chunks=(chunksize, maxlen, 4), gzip=True)
+        oh5.create_dataset("ichrom", data=ochrom, dtype=h5py.special_dtype(vlen=bytes))
     # LOGGER.info("submitting %s %s to singlecat", sidx, hits.shape)
     #del ocatg
     #del onall
@@ -743,6 +761,7 @@ def write_to_fullarr(data, sample, sidx):
         chunk = io5["catgs"].attrs["chunksize"][0]
         catg = io5["catgs"]
         nall = io5["nalleles"]
+        chrom = io5["chroms"]
 
         ## adding an axis to newcatg makes it write about 1000X faster.
         ## so instead of e.g.,
@@ -753,11 +772,13 @@ def write_to_fullarr(data, sample, sidx):
         with h5py.File(smpio) as indat:
             newcatg = indat["icatg"][:]
             onall = indat["inall"][:]
+            ochrom = indat["ichrom"][:]
             for cidx in xrange(0, catg.shape[0], chunk):
                 #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
                 end = cidx + chunk
                 catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
                 nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
+                chrom[:, sidx:sidx+1] = np.expand_dims(ochrom, axis=1)
         os.remove(smpio)
 
 
@@ -1000,13 +1021,13 @@ def sub_build_clustbits(data, usort, nseeds):
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
-
                 ## occasionally write to file
                 if seqsize >= optim:
                     if seqlist:
                         loci += seqsize
                         with open(os.path.join(data.tmpdir,
                             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
+                            LOGGER.error("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
                             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
                         seqlist = []
@@ -1208,7 +1229,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     finally:
         ## delete the tmpdir
-        shutil.rmtree(data.tmpdir)
+        #shutil.rmtree(data.tmpdir)
 
         ## Cleanup loose files
         uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")

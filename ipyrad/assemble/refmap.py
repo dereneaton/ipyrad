@@ -129,14 +129,9 @@ def mapreads(data, sample, nthreads):
     post muscle_align. 
 
     Mapped reads end up in a sam file.
-    Unmapped reads are pulled out and put in place of the edits (.fasta) file. 
-
-    The raw edits .fasta file is moved to .<sample>.fasta to hide it in case 
-    the mapping screws up and we need to roll-back. Mapped reads stay in the 
-    sam file and are pulled out of the pileup later.
     """
 
-    LOGGER.info("Entering mapreads(): %s %s", sample.files.edits, nthreads)
+    LOGGER.info("Entering mapreads(): %s %s", sample.name, nthreads)
 
     ## This is the input derep file, for paired data we need to split the data, 
     ## and so we will make sample.files.dereps == [derep1, derep2], but for 
@@ -393,6 +388,11 @@ def get_overlapping_reads(data, sample, regions):
     if data.paramsdict["assembly_method"] == "denovo+reference":
         outfile.write("\n//\n//\n")
 
+    ## Make a process to pass in to bam_region_to_fasta so we can just reuse
+    ## it over and over rather than recreating a bunch of subprocesses. Saves
+    ## hella time.
+    proc1 = sps.Popen("sh", stdin=sps.PIPE, stdout=sps.PIPE, universal_newlines=True)
+
     # Wrap this in a try so we can easily locate errors
     try:
         ## For each identified region, build the pileup and write out the fasta
@@ -406,7 +406,7 @@ def get_overlapping_reads(data, sample, regions):
             chrom, region_start, region_end = line.strip().split()[0:3]
 
             ## bam_region_to_fasta returns a chunk of fasta sequence
-            args = [data, sample, chrom, region_start, region_end]
+            args = [data, sample, proc1, chrom, region_start, region_end]
             clust = bam_region_to_fasta(*args)
 
             ## If bam_region_to_fasta fails for some reason it'll return [], 
@@ -416,7 +416,7 @@ def get_overlapping_reads(data, sample, regions):
                 continue
 
             ## Store locus in a list
-            #LOGGER.info("clust from bam-region-to-fasta \n %s", clust)
+            # LOGGER.info("clust from bam-region-to-fasta \n %s", clust)
             locus_list.append(clust)
 
             ## write chunk of 1000 loci and clear list to minimize memory
@@ -559,7 +559,7 @@ def check_insert_size(data, sample):
         ## overlap, so we have to calculate inner mate distance a little 
         ## differently.
         else:
-            hack = (avg_insert - avg_len) * (3 * np.math.ceil(stdv_insert))
+            hack = (avg_insert - avg_len) + (3 * np.math.ceil(stdv_insert))
             
 
         ## set the hackerdict value
@@ -643,7 +643,7 @@ def trim_reference_sequence(fasta):
     return fasta
 
 
-def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
+def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
     """ 
     Take the chromosome position, and start and end bases and return sequences
     of all reads that overlap these sites. This is the command we're building:
@@ -682,20 +682,36 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
     ## which we'll paste in at the top of each stack to aid alignment.
     cmd1 = [ipyrad.bins.samtools, "faidx", 
             data.paramsdict["reference_sequence"], 
-            rstring_id1]
+            rstring_id1, " ; echo __done__"]
 
     ## Call the command, I found that it doesn't work with shell=False if 
     ## the refstring is 'MT':100-200', but it works if it is MT:100-200. 
     LOGGER.info("Grabbing bam_region_to_fasta:\n %s", cmd1)
-    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    ref = proc1.communicate()[0]
-    if proc1.returncode:
-        raise IPyradWarningExit("  error in %s: %s", cmd1, ref)
+    #proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    #ref = proc1.communicate()[0]
+    #if proc1.returncode:
+    #    raise IPyradWarningExit("  error in %s: %s", cmd1, ref)
+
+    ## push the samtools faidx command to our subprocess, then accumulate
+    ## the results from stdout
+    print(" ".join(cmd1), file=proc1.stdin)
+    ref = ""
+    for line in iter(proc1.stdout.readline, "//\n"):
+        if "__done__" in line:
+            break
+        ref += line
 
     ## parse sam to fasta. Save ref location to name.
-    name, seq = ref.strip().split("\n", 1)
-    seq = "".join(seq.split("\n"))
-    fasta = ["{}_REF;+\n{}".format(name, seq)]
+    ## Set size= an improbably large value so the REF sequence
+    ## sorts to the top for muscle aligning.
+    try:
+        name, seq = ref.strip().split("\n", 1)
+        seq = "".join(seq.split("\n"))
+        fasta = ["{}_REF;size={};+\n{}".format(name, seq, 10000)]
+    except ValueError as inst:
+        LOGGER.error("ref failed to parse - {}".format(ref))
+        LOGGER.error(" ".join(cmd1))
+        raise
 
     ## if PE then you have to merge the reads here
     if "pair" in data.paramsdict["datatype"]:
@@ -710,23 +726,39 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
 
         ## Create temporary files for R1, R2 and merged, which we will pass to
         ## the function merge_pairs() which calls vsearch to test merging.
-        prefix = os.path.join(data.dirs.refmapping, 
-                        "{}-{}".format(sample.name, rstring_id0))
+        ##
+        ## If you are on linux then creating the temp files in /dev/shm
+        ## should improve performance
+        if os.path.exists("/dev/shm"):
+            prefix = os.path.join("/dev/shm",
+                            "{}-{}".format(sample.name, rstring_id0))
+        else:
+            prefix = os.path.join(data.dirs.refmapping, 
+                            "{}-{}".format(sample.name, rstring_id0))
         read1 = "{}-R1".format(prefix)
         read2 = "{}-R2".format(prefix)
         merged = "{}-merged".format(prefix)
 
         ## command to do the 'view' in samtools
-        cmd1 = [ipyrad.bins.samtools, "view", "-b", bamf, rstring_id0]
-        cmd2 = [ipyrad.bins.samtools, "bam2fq", "-1", read1, "-2", read2, "-"]
+        ## cmd1 = [ipyrad.bins.samtools, "view", "-b", bamf, rstring_id0]
+        ## cmd2 = [ipyrad.bins.samtools, "bam2fq", "-1", read1, "-2", read2, "-"]
+
+        cmd1 = " ".join([ipyrad.bins.samtools, "view", "-b", bamf, rstring_id0])
+        cmd2 = " ".join([ipyrad.bins.samtools, "bam2fq", "-1", read1, "-2", read2, "-", "; echo __done__"])
+        cmd = " | ".join([cmd1, cmd2])
+
+        print(cmd, file=proc1.stdin)
+        for line in iter(proc1.stdout.readline, "//\n"):
+            if "__done__" in line:
+                break
 
         ## run commands, pipe 1 -> 2, then cleanup
-        proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
-        res = proc2.communicate()[0]
-        if proc2.returncode:
-            raise IPyradWarningExit("error {}: {}".format(cmd2, res))
-        proc1.stdout.close()
+        ## proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+        ## proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
+        ## res = proc2.communicate()[0]
+        ## if proc2.returncode:
+        ##     raise IPyradWarningExit("error {}: {}".format(cmd2, res))
+        ## proc1.stdout.close()
 
         ## merge the pairs. 0 means don't revcomp bcz samtools already
         ## did it for us. 1 means "actually merge".
@@ -734,6 +766,7 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
             ## return number of merged reads, writes merged data to 'merged'
             ## we don't yet do anything with the returned number of merged 
             _ = merge_pairs(data, [(read1, read2)], merged, 0, 1)
+
             with open(merged, 'r') as infile:
                 quatro = itertools.izip(*[iter(infile)]*4)
                 while 1:
@@ -763,10 +796,16 @@ def bam_region_to_fasta(data, sample, chrom, region_start, region_end):
                 ## ref seq for PE alignment.
                 #fasta = trim_reference_sequence(fasta)
 
-        except Exception as inst:
+        except (OSError, ValueError, IPyradError) as inst:
+            ## ValueError raised inside merge_pairs() if it can't open one
+            ## or both of the files. Write this out, but ignore for now.
             ## Failed merging, probably unequal number of reads in R1 and R2
+            ## IPyradError raised if merge_pairs can't read either R1 or R2
+            ## file.
             ## Skip this locus?
             LOGGER.debug("Failed to merge reads, continuing; %s", inst)
+            LOGGER.error("cmd - {}".format(cmd))
+            return ""
         finally:
             ## Only clean up the files if they exist otherwise it'll raise.
             if os.path.exists(merged):

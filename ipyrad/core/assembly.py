@@ -1252,8 +1252,11 @@ class Assembly(object):
                         else:
                             ## nanny: kill the engines left running, report
                             ## that some engines were killed.
-                            pass
-                        ipyclient.close()
+                            ipyclient.abort()
+                            ipyclient.shutdown(hub=True, block=False)
+                            ipyclient.close()
+                            print("  warning: ipcluster shutdown and must be restarted")
+
                 ## a final spacer
                 if self._headers:
                     print("")
