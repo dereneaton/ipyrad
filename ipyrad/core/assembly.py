@@ -964,7 +964,7 @@ class Assembly(object):
 
 
 
-    def _step4func(self, samples, subsample, force, ipyclient):
+    def _step4func(self, samples, force, ipyclient):
         """ hidden wrapped function to start step 4 """
 
         if self._headers:
@@ -984,7 +984,7 @@ class Assembly(object):
                 return
 
         ## send to function
-        assemble.jointestimate.run(self, samples, subsample, force, ipyclient)
+        assemble.jointestimate.run(self, samples, force, ipyclient)
 
 
 
@@ -1212,7 +1212,6 @@ class Assembly(object):
             LOGGER.error("IPyradWarningExit: %s", inst)
             print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}"\
                   .format(inst))
-            #raise
 
         except Exception as inst:
             LOGGER.error(inst)
