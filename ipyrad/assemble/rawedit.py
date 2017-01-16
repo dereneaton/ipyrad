@@ -98,7 +98,6 @@ def parse_single_results(data, sample, res1):
 
 
 
-
 def parse_pair_results(data, sample, res):
     """ parse results from cutadapt for paired data"""
     LOGGER.info("in parse pair mod results\n%s", res)   
@@ -211,7 +210,11 @@ def cutadaptit_single(data, sample):
     ## do modifications to read1 and write to tmp file
     LOGGER.info(cmdf1)
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
-    res1 = proc1.communicate()[0]
+    try:
+        res1 = proc1.communicate()[0]
+    except KeyboardInterrupt:
+        proc1.kill()
+        raise KeyboardInterrupt
 
     ## raise errors if found
     if proc1.returncode:
@@ -274,7 +277,7 @@ def cutadaptit_pairs(data, sample):
     `_R1`. So for example a sample called WatDo_PipPrep_R1_100.fq.gz must
     be referenced in the barcode file as WatDo_PipPrep_100. The name in your
     barcode file for this sample must match: {}
-""".format(sample.name)
+    """.format(sample.name)
             LOGGER.error(msg)
             raise IPyradWarningExit(msg)
     else:
@@ -320,8 +323,14 @@ def cutadaptit_pairs(data, sample):
 
     ## do modifications to read1 and write to tmp file
     LOGGER.debug(cmdf1)
-    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
-    res1 = proc1.communicate()[0]
+    try:
+        proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+        res1 = proc1.communicate()[0]
+    except KeyboardInterrupt:
+        proc1.kill()
+        LOGGER.info("this is where I want it to interrupt")
+        raise KeyboardInterrupt()
+
     ## raise errors if found
     if proc1.returncode:
         raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
@@ -360,6 +369,28 @@ def run2(data, samples, force, ipyclient):
     ## parallel client
     lbview = ipyclient.load_balanced_view()
 
+    ## wrapped funcs
+    kbd = 0
+    try:
+        subsamples = concat_reads(data, subsamples)
+        run_cutadapt(data, subsamples, lbview)
+
+    except KeyboardInterrupt:
+        LOGGER.info("We're in here")
+        kbd = 1
+
+    finally:
+        ## store sample results in data stats
+        if kbd:
+            raise KeyboardInterrupt()
+        else:
+            assembly_cleanup(data)
+
+
+
+def concat_reads(data, subsamples):
+    """ concatenate if multiple input files for a single samples """
+
     ## concatenate reads if they come from merged assemblies.
     if any([len(i.files.fastqs) > 1 for i in subsamples]):
         ## run on single engine for now
@@ -394,6 +425,11 @@ def run2(data, samples, force, ipyclient):
             ## just copy fastqs handles to concat attribute
             sample.files.concat = sample.files.fastqs
 
+    return subsamples
+
+
+
+def run_cutadapt(data, subsamples, lbview):
     ## choose cutadapt function based on datatype
     start = time.time()
     finished = 0
@@ -431,9 +467,6 @@ def run2(data, samples, force, ipyclient):
         else:
             print("  found an error in step2; see ipyrad_log.txt")
             LOGGER.warn("error in step2: %s", rawedits[async].exception())
-
-    ## store sample results in data stats
-    assembly_cleanup(data)
 
 
 
