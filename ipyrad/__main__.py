@@ -353,7 +353,7 @@ def parse_command_line():
             + "quickly so you can verify everything is working")
 
     parser.add_argument("--ipcluster", action='store_true',
-        help="connect to ipcluster instance with profile=ipyrad")
+        help="connect to running ipcluster instance with default cluster-id=''")
 
 
     ## if no args then return help message
@@ -480,8 +480,7 @@ def main():
             ## an ipcluster instance that is already running instead then 
             ## they have to use the API, or to have set args.ipcluster
             if args.ipcluster:
-                data._ipcluster["profile"] = "ipyrad"
-                #ip.__interactive__ = 1
+                data._ipcluster["cluster_id"] = ""
             else:
                 data = register_ipcluster(data)
 

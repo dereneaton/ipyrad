@@ -41,10 +41,13 @@ def likelihood1(errors, bfreqs, ustacks):
 
 
 @numba.jit(nopython=True)
-def nblik2_build(err, ustacks):
+def nblik2_build(ustacks):
+    """
+    JIT'd function builds large array that can be used to calc binom pmf
+    """
 
     ## store
-    ret = np.empty(ustacks.shape[0])
+    #ret = np.empty(ustacks.shape[0])
 
     ## fill for pmf later 
     tots = np.empty((ustacks.shape[0], 1))
@@ -72,14 +75,14 @@ def nblik2_build(err, ustacks):
 
 
 def lik2_calc(err, one, tots, twos, thrs, four):
+    """ 
+    vectorized calc of binom pmf on large arrays 
+    """
 
     ## calculate twos
-    #_twos = np.array([scipy.stats.binom.pmf(\
-    #        twos[i], tots[i], 0.5) for i in xrange(tots.shape[0])])
     _twos = scipy.stats.binom.pmf(twos, tots, 0.5)
 
     ## calculate threes
-    dim = thrs.shape
     _thrs = thrs.reshape(thrs.shape[0] * thrs.shape[1], thrs.shape[2])
     _thrs = scipy.stats.binom.pmf(_thrs[:, 0], _thrs[:, 1], (2.*err) / 3.)
     _thrs = _thrs.reshape(thrs.shape[0], 6)
@@ -89,71 +92,13 @@ def lik2_calc(err, one, tots, twos, thrs, four):
 
 
 
-## global
 def nlikelihood2(errors, bfreqs, ustacks):
+    """ calls nblik2_build and lik2_calc for a given err """
     one = [2. * bfreqs[i] * bfreqs[j] for i, j in itertools.combinations(range(4), 2)]
     four = 1. - np.sum(bfreqs**2) 
-    tots, twos, thrs = nblik2_build(errors, ustacks)
+    tots, twos, thrs = nblik2_build(ustacks)
     res2 = lik2_calc(errors, one, tots, twos, thrs, four)
     return res2
-
-
-
-def olikelihood2(errors, bfreqs, ustacks):
-    """probability of heterozygous"""
-    
-    returns = np.empty([len(ustacks)])
-    four = 1.-np.sum(bfreqs**2)
-
-    for idx in xrange(ustacks.shape[0]):
-        ustack = ustacks[idx]
-        spair = np.array(list(itertools.combinations(ustack, 2)))
-        bpair = np.array(list(itertools.combinations(bfreqs, 2)))
-        one = 2.*bpair.prod(axis=1)
-        tot = ustack.sum()
-        atwo = tot - spair[:, 0] - spair[:, 1]
-        two = scipy.stats.binom.pmf(atwo, tot, (2.*errors)/3.)
-        three = scipy.stats.binom.pmf(\
-                    spair[:, 0], spair.sum(axis=1), 0.5)
-
-        returns[idx] = np.sum(one*two*(three/four))
-    return np.array(returns)
-
-
-## more verbose and slow form of the function above
-def liketest2(errors, bfreqs, ustack):
-    """probability of heterozygous"""
-
-    fullsum = 0
-    for idx in xrange(4):
-        subsum = 0
-        for jdx in xrange(4):
-            one = 2. * bfreqs[idx] * bfreqs[jdx]
-            tot = ustack.sum()
-            two = scipy.stats.binom.pmf(tot - ustack[idx] - ustack[jdx], 
-                                        tot, (2.*errors)/3.)
-            three = scipy.stats.binom.pmf(ustack[idx], 
-                                          ustack[idx] + ustack[jdx], 0.5)
-            four = 1 - np.sum(bfreqs**2)
-            subsum += one * two * (three / four)
-        fullsum += subsum
-    return fullsum
-
-
-
-def oget_diploid_lik(pstart, bfreqs, ustacks, counts):
-    """ Log likelihood score given values [H,E] """
-    hetero, errors = pstart
-    if (hetero <= 0.) or (errors <= 0.):
-        score = np.exp(100)
-    else:
-        ## get likelihood for all sites
-        lik1 = (1.-hetero) * likelihood1(errors, bfreqs, ustacks)
-        lik2 = (hetero) * olikelihood2(errors, bfreqs, ustacks)
-        liks = lik1 + lik2
-        logliks = np.log(liks[liks > 0]) * counts[liks > 0]
-        score = -logliks.sum()
-    return score
 
 
 
@@ -174,8 +119,7 @@ def nget_diploid_lik(pstart, bfreqs, ustacks, counts):
 
 
 def get_haploid_lik(errors, bfreqs, ustacks, counts):
-    """ Log likelihood score given values [E]. This can be written to run much
-    faster by executing across the whole array, and/or by also in parallel """
+    """ Log likelihood score given values [E]. """
     hetero = 0.
     ## score terribly if below 0
     if errors <= 0.:
@@ -183,8 +127,9 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
     else:
         ## get likelihood for all sites
         lik1 = ((1.-hetero)*likelihood1(errors, bfreqs, ustacks)) 
-        lik2 = (hetero)*likelihood2(errors, bfreqs, ustacks)
-        liks = lik1+lik2
+        #lik2 = (hetero)*nlikelihood2(errors, bfreqs, ustacks)
+        #liks = lik1+lik2
+        liks = lik1
         logliks = np.log(liks[liks > 0])*counts[liks > 0]
         score = -logliks.sum()
     return score
@@ -236,7 +181,7 @@ def recal_hidepth(data, sample):
 
 
 
-def stackarray(data, sample, subloci):
+def stackarray(data, sample):
     """ 
     Stacks clusters into arrays
     """
@@ -315,13 +260,11 @@ def stackarray(data, sample, subloci):
 
 
 
-def optim(data, sample, subloci):
+def optim(data, sample):
     """ func scipy optimize to find best parameters"""
 
     ## get array of all clusters data
-    stacked = stackarray(data, sample, subloci)
-    #maxsz = stacked.shape[0]
-    #stacked = stacked[np.random.randint(0, min(subloci, maxsz), maxsz)]
+    stacked = stackarray(data, sample)
 
     ## get base frequencies
     bfreqs = stacked.sum(axis=0) / float(stacked.sum())
@@ -349,7 +292,6 @@ def optim(data, sample, subloci):
     ## cleanup    
     del tstack
 
-
     ## if data are haploid fix H to 0
     if int(data.paramsdict["max_alleles_consens"]) == 1:
         pstart = np.array([0.001], dtype=np.float64)
@@ -371,18 +313,15 @@ def optim(data, sample, subloci):
 
 
 
-def run(data, samples, subloci, force, ipyclient):
+def run(data, samples, force, ipyclient):
     """ calls the main functions """
-
-    ## speed hack == use only the first 2000 high depth clusters for estimation.
-    ## based on testing this appears sufficient for accurate estimates
-    ## the default is set in assembly.py
 
     # if haploid data
     if data.paramsdict["max_alleles_consens"] == 1:
         print("  Applying haploid-based test (infer E with H fixed to 0).")
 
-    submitted_args = []
+    subsamples = []
+
     ## if sample is already done skip
     for sample in samples:
         if not force:
@@ -393,7 +332,7 @@ def run(data, samples, subloci, force, ipyclient):
                 print("    skipping {}; ".format(sample.name)+\
                       "not clustered yet. Run step3() first.")
             else:
-                submitted_args.append([sample, subloci])
+                subsamples.append(sample)
         else:
             if sample.stats.state < 3:
                 print("    "+sample.name+" not clustered. Run step3() first.")
@@ -401,34 +340,33 @@ def run(data, samples, subloci, force, ipyclient):
                 print("    skipping {}. Too few high depth reads ({}). "\
                       .format(sample.name, sample.stats.clusters_hidepth))
             else:
-                submitted_args.append([sample, subloci])
+                subsamples.append(sample)
 
-    if submitted_args:    
+    if subsamples:
         ## submit jobs to parallel client
-        submit(data, submitted_args, ipyclient)
+        submit(data, subsamples, ipyclient)
 
 
 
-def submit(data, submitted_args, ipyclient):
+def submit(data, subsamples, ipyclient):
     """ 
     Sends jobs to engines and cleans up failures. Print progress. 
     """
 
     ## first sort by cluster size
-    submitted_args.sort(key=lambda x: x[0].stats.clusters_hidepth, reverse=True)
-                                           
+    subsamples.sort(key=lambda x: x.stats.clusters_hidepth, reverse=True)
+                            
     ## send all jobs to a load balanced client
     lbview = ipyclient.load_balanced_view()
     jobs = {}
-    for sample, subloci in submitted_args:
-        ## stores async results using sample names
-        jobs[sample.name] = lbview.apply(optim, *(data, sample, subloci))
 
-    ## dict to store cleanup jobs
-    start = time.time()
+    ## stores async results using sample names    
+    for sample in subsamples:
+        jobs[sample.name] = lbview.apply(optim, *(data, sample))
 
     ## wrap in a try statement so that stats are saved for finished samples.
     ## each job is submitted to cleanup as it finishes
+    start = time.time() 
     try:
         kbd = 0
         ## wait for jobs to finish
@@ -450,8 +388,6 @@ def submit(data, submitted_args, ipyclient):
             else:
                 LOGGER.error("  Sample %s failed with error %s", 
                              job, jobs[job].exception())
-                #raise IPyradWarningExit("  Sample {} failed step 4"\
-                #                        .format(job))
 
     except KeyboardInterrupt as kbd:
         pass
@@ -497,6 +433,7 @@ def assembly_cleanup(data):
         downstream analysis (probably very few highdepth reads):
         {}""".format(fails)
         print(msg)
+
 
 
 if __name__ == "__main__":
