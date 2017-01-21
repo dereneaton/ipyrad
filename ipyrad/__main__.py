@@ -113,6 +113,7 @@ def branch_assembly(args, parsedict):
     Load the passed in assembly and create a branch. Copy it
     to a new assembly, and also write out the appropriate params.txt
     """
+
     ## Get the current assembly
     data = getassembly(args, parsedict)
 
@@ -120,10 +121,19 @@ def branch_assembly(args, parsedict):
     bargs = args.branch
     if len(bargs) > 1:
         ## are we removing or keeping listed samples?
-        subsamples = bargs[1:]            
+        subsamples = bargs[1:]
+
+        ## drop the matching samples
         if bargs[1] == "-":
+            ## check drop names
+            fails = [i for i in subsamples[1:] if i not in data.samples.keys()]
+            if any(fails):
+                raise IPyradWarningExit("\
+                    \n  Failed: unrecognized names requested, check spelling:\n  {}"\
+                    .format("\n  ".join([i for i in fails])))
             print("  dropping {} samples".format(len(subsamples)-1))
             subsamples = list(set(data.samples.keys()) - set(subsamples))
+
         ## If the arg after the new param name is a file that exists
         if os.path.exists(bargs[1]):
             new_data = data.branch(bargs[0], infile=bargs[1])
