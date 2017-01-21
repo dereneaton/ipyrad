@@ -117,8 +117,13 @@ def branch_assembly(args, parsedict):
     ## Get the current assembly
     data = getassembly(args, parsedict)
 
-    ## look for subsamples
+    ## get arguments to branch command
     bargs = args.branch
+
+    ## get new name, trim off .txt if it was accidentally added
+    newname = bargs[0].rstrip(".txt")
+
+    ## look for subsamples
     if len(bargs) > 1:
         ## are we removing or keeping listed samples?
         subsamples = bargs[1:]
@@ -136,13 +141,13 @@ def branch_assembly(args, parsedict):
 
         ## If the arg after the new param name is a file that exists
         if os.path.exists(bargs[1]):
-            new_data = data.branch(bargs[0], infile=bargs[1])
+            new_data = data.branch(newname, infile=bargs[1])
         else:
-            new_data = data.branch(bargs[0], subsamples)
+            new_data = data.branch(newname, subsamples)
 
     ## keeping all samples
     else:
-        new_data = data.branch(bargs[0], None)
+        new_data = data.branch(newname, None)
 
     print("  creating a new branch called '{}' with {} Samples".\
              format(new_data.name, len(new_data.samples)))
