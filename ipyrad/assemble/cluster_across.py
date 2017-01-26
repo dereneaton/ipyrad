@@ -152,7 +152,6 @@ def muscle_align_across(data, samples, chunk):
 
 
 
-
 def multi_muscle_align(data, samples, clustbits, ipyclient):
     """
     Sends the cluster bits to nprocessors for muscle alignment. They return
@@ -450,9 +449,9 @@ def build_h5_array(data, samples, ipyclient):
     superseqs.attrs["samples"] = [i.name for i in samples]
     superalls.attrs["chunksize"] = (chunks, len(samples))
     superalls.attrs["samples"] = [i.name for i in samples]
-    superchroms.attrs["chunksize"] = (chunks, len(samples))
-    superchroms.attrs["samples"] = [i.name for i in samples]
- 
+    if 'reference' in data.paramsdict["datatype"]:    
+        superchroms.attrs["chunksize"] = (chunks, len(samples))
+        superchroms.attrs["samples"] = [i.name for i in samples]
 
     ## array for pair splits locations, dup and ind filters
     io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
@@ -586,7 +585,8 @@ def multicat(data, samples, ipyclient):
     if not async2.successful():
         raise IPyradWarningExit("error in fill_dups: %s", async2.exception())
 
-    ## make a limited njobs view based on mem limits
+    ## make a limited njobs view based on mem limits 
+    ## TODO: is using smallview necessary?!
     smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
 
     ## make a list of jobs
@@ -653,10 +653,12 @@ def multicat(data, samples, ipyclient):
                 raise IPyradWarningExit(" error in write_to_fullarr ({}) {}"\
                                     .format(job, cleanups[job].exception()))
 
-    ## remove large indels array file
+    ## remove large indels array file and singlecat tmparr file
     ifile = os.path.join(data.dirs.consens, data.name+".tmp.indels")
     if os.path.exists(ifile):
         os.remove(ifile)
+    if os.path.exists(bseeds):
+        os.remove(bseeds)
 
     ## print final progress
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
@@ -736,15 +738,11 @@ def singlecat(data, sample, bseeds, sidx):
         os.remove(smpio)
     with h5py.File(smpio, 'w') as oh5:
         oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
-                           #chunks=(chunksize, maxlen, 4), gzip=True)
         oh5.create_dataset("inall", data=onall, dtype=np.uint8)
-                           #chunks=(chunksize, maxlen, 4), gzip=True)
-        oh5.create_dataset("ichrom", data=ochrom, dtype=h5py.special_dtype(vlen=bytes))
-    # LOGGER.info("submitting %s %s to singlecat", sidx, hits.shape)
-    #del ocatg
-    #del onall
+        if 'reference' in data.paramsdict["datatype"]:
+            oh5.create_dataset("ichrom", data=ochrom, 
+                               dtype=h5py.special_dtype(vlen=bytes))
 
-    #return newcatg, onall, sidx
 
 
 ## This func could potentially be replaced entirely by making 
@@ -761,7 +759,8 @@ def write_to_fullarr(data, sample, sidx):
         chunk = io5["catgs"].attrs["chunksize"][0]
         catg = io5["catgs"]
         nall = io5["nalleles"]
-        chrom = io5["chroms"]
+        if 'reference' in data.paramsdict["datatype"]:
+            chrom = io5["chroms"]
 
         ## adding an axis to newcatg makes it write about 1000X faster.
         ## so instead of e.g.,
@@ -772,13 +771,15 @@ def write_to_fullarr(data, sample, sidx):
         with h5py.File(smpio) as indat:
             newcatg = indat["icatg"][:]
             onall = indat["inall"][:]
-            ochrom = indat["ichrom"][:]
+            if 'reference' in data.paramsdict["datatype"]:            
+                ochrom = indat["ichrom"][:]
             for cidx in xrange(0, catg.shape[0], chunk):
                 #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
                 end = cidx + chunk
                 catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
                 nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
-                chrom[:, sidx:sidx+1] = np.expand_dims(ochrom, axis=1)
+                if 'reference' in data.paramsdict["datatype"]:                
+                    chrom[:, sidx:sidx+1] = np.expand_dims(ochrom, axis=1)
         os.remove(smpio)
 
 
@@ -1156,6 +1157,7 @@ def build_input_file(data, samples, randomseed):
     outdat.close()
 
 
+
 def run(data, samples, noreverse, force, randomseed, ipyclient):
     """
     Master function to run :
@@ -1232,7 +1234,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     finally:
         ## delete the tmpdir
-        #shutil.rmtree(data.tmpdir)
+        shutil.rmtree(data.tmpdir)
 
         ## Cleanup loose files
         uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
@@ -1248,6 +1250,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
                 os.remove(f)
             except:
                 pass
+
 
 
 if __name__ == "__main__":
