@@ -1192,10 +1192,13 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## calls vsearch, uses all threads available to head node
     cluster(data, noreverse)
 
-    # ## make an tmpout directory
+    ## make an tmpout directory. First delete if it already exists.
+    ## If step 6 crashes and doesn't clean up the tmpaligns dir then
+    ## bad things happen and it's tricky to debug.
     data.tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
-    if not os.path.exists(data.tmpdir):
-        os.mkdir(data.tmpdir)
+    if os.path.exists(data.tmpdir):
+        shutil.rmtree(data.tmpdir)
+    os.mkdir(data.tmpdir)
 
     ## wrap everything involving tmpdir to make sure we delete it on failure
     try:
