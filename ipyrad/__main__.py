@@ -210,13 +210,6 @@ def merge_assemblies(args):
     ## Do the merge
     merged_assembly = ip.merge(newname, assemblies)
 
-    ## Set the values for some params that don't make sense inside
-    ## merged assemblies
-    merged_names = ", ".join([x.name for x in assemblies])
-    merged_assembly.paramsdict["raw_fastq_path"] = "Merged: " + merged_names
-    merged_assembly.paramsdict["barcodes_path"] = "Merged: " + merged_names
-    merged_assembly.paramsdict["sorted_fastq_path"] = "Merged: " + merged_names
-
     ## Write out the merged assembly params file and report success
     merged_assembly.write_params("params-{}.txt".format(newname), force=args.force)
 
