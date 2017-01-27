@@ -346,15 +346,6 @@ def run2(data, samples, force, ipyclient):
     Filter for samples that are already finished with this step, allow others
     to run, pass them to parallel client function to filter with cutadapt. 
     """
-    ## check for cutadapt (at least until we get it into our own conda channel)
-    try:
-        import cutadapt
-    except ImportError:
-        raise IPyradWarningExit("""\
-    Required dependency 'cutadapt' is missing. It will normally be installed
-    during the ipyrad installation. Run the following command to install it:
-    `conda install -c ipyrad cutadapt`
-    """)
 
     ## create output directories 
     data.dirs.edits = os.path.join(os.path.realpath(
@@ -369,26 +360,31 @@ def run2(data, samples, force, ipyclient):
     ## parallel client
     lbview = ipyclient.load_balanced_view()
 
-    ## wrapped funcs
-    kbd = 0
-    try:
-        subsamples = concat_reads(data, subsamples)
-        run_cutadapt(data, subsamples, lbview)
-
-    except KeyboardInterrupt:
-        LOGGER.info("We're in here")
-        kbd = 1
-
-    finally:
-        ## store sample results in data stats
-        if kbd:
-            raise KeyboardInterrupt()
-        else:
-            assembly_cleanup(data)
+    ## Hard to wrap this safely. We would like it to remove leftover
+    ## files if interrupted, but it seems to require a hard shutdown of 
+    ## ipcluster to kill the bash jobs. Should we shut it down inside
+    ## here instead of in assembly?
+    subsamples = concat_reads(data, subsamples, ipyclient)
+    run_cutadapt(data, subsamples, lbview)
+    assembly_cleanup(data)
 
 
 
-def concat_reads(data, subsamples):
+def cleanup_and_die(data, samples):
+    """ Interrupt required ipyclient.shutdown to kill jobs. This is called
+    after to ensure file cleanup. Not yet implemented."""
+    ## clean up concat files b/c they weren't finished writing. Hard kill.
+    concats = [os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz") \
+               for sample in samples]
+    concats += [os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz") \
+               for sample in samples]
+    for conc in concats:
+        if os.path.exists(conc):
+            os.remove(conc)
+
+
+
+def concat_reads(data, subsamples, ipyclient):
     """ concatenate if multiple input files for a single samples """
 
     ## concatenate reads if they come from merged assemblies.
@@ -543,7 +539,7 @@ NO_BARS_GBS_WARNING = """\
     This is a just a warning: 
     You set 'filter_adapters' to 2 (stringent), however, b/c your data
     is paired-end gbs or ddrad the second read is likely to contain the 
-    barcode in addition to the adapter sequence. Actually, it be:
+    barcode in addition to the adapter sequence. Actually, it would be:
                   [sequence][cut overhang][barcode][adapter]
     If you add a barcode table to your params it will improve the accuracy of 
     adapter trimming, especially if your barcodes are of varying lengths, and 
