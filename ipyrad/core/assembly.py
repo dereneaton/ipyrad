@@ -1325,12 +1325,10 @@ def _name_from_file(fname, splitnames, fields):
     ## remove extensions, retains '.' in file names.
     while 1:
         tmpb, tmpext = os.path.splitext(base)
-        print(tmpb, tmpext)
         if tmpext in file_extensions:        
             base = tmpb
         else:
             break
-    print(base, tmpb)
 
     if fields:
         namebits = base.split(splitnames)
