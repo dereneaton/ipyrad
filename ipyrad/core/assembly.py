@@ -1314,8 +1314,7 @@ def _get_samples(self, samples):
 def _name_from_file(fname, splitnames, fields):
     """ internal func: get the sample name from any pyrad file """
     ## allowed extensions
-    file_extensions = [".gz", ".fastq", ".fq", ".fasta",
-                       ".clustS", ".consens"]
+    file_extensions = [".gz", ".fastq", ".fq", ".fasta", ".clustS", ".consens"]
     base, _ = os.path.splitext(os.path.basename(fname))
 
     ## remove read number from name
@@ -1323,11 +1322,14 @@ def _name_from_file(fname, splitnames, fields):
                .replace("_R1_", "_")\
                .replace("_R1.", ".")
 
-    ## remove extensions
+    ## remove extensions, retains '.' in file names.
     tmpb, tmpext = os.path.splitext(base)
-    while tmpext in file_extensions:
+    while 1:
         tmpb, tmpext = os.path.splitext(tmpb)
-        base = tmpb
+        if tmpext in file_extensions:        
+            base = tmpb
+        else:
+            break
 
     if fields:
         namebits = base.split(splitnames)
