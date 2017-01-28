@@ -695,7 +695,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
 
     ## Call the command, I found that it doesn't work with shell=False if 
     ## the refstring is 'MT':100-200', but it works if it is MT:100-200. 
-    LOGGER.info("Grabbing bam_region_to_fasta:\n %s", cmd1)
+    LOGGER.info("Grabbing bam_region_to_fasta:\n {}".format(cmd1))
     #proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     #ref = proc1.communicate()[0]
     #if proc1.returncode:
@@ -720,7 +720,6 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
     except ValueError as inst:
         LOGGER.error("ref failed to parse - {}".format(ref))
         LOGGER.error(" ".join(cmd1))
-        raise
 
     ## if PE then you have to merge the reads here
     if "pair" in data.paramsdict["datatype"]:
