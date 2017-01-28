@@ -1323,13 +1323,14 @@ def _name_from_file(fname, splitnames, fields):
                .replace("_R1.", ".")
 
     ## remove extensions, retains '.' in file names.
-    tmpb, tmpext = os.path.splitext(base)
     while 1:
-        tmpb, tmpext = os.path.splitext(tmpb)
+        tmpb, tmpext = os.path.splitext(base)
+        print(tmpb, tmpext)
         if tmpext in file_extensions:        
             base = tmpb
         else:
             break
+    print(base, tmpb)
 
     if fields:
         namebits = base.split(splitnames)
