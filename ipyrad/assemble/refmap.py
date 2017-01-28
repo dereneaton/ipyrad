@@ -46,6 +46,7 @@ def sample_cleanup(data, sample):
         except:
             pass
 
+
 def index_reference_sequence(data, force=False):
     """ 
     Index the reference sequence, out if it already exists.
@@ -342,6 +343,7 @@ def ref_muscle_chunker(data, sample):
     regions = bedtools_merge(data, sample)
 
     if len(regions) > 0:
+        ## this calls bam_region_to_fasta a billion times
         get_overlapping_reads(data, sample, regions)
     else:
         msg = "No reads mapped to reference sequence - {}".format(sample.name)
@@ -666,10 +668,17 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
     if not os.path.exists(bamf):
         raise IPyradWarningExit("  file not found - %s", bamf)
 
-#    chrom = re.escape(repr(chrom))[1:-1].replace('\\\\', '\\')
-    chrom.replace("|", "\|")
-    chrom.replace("(", "\(")
-    chrom.replace(")", "\)")
+    # chrom = re.escape(repr(chrom))[1:-1].replace('\\\\', '\\')
+    LOGGER.info("before: %s", chrom)
+    chrom.replace("|", r"\|")
+    chrom.replace("(", r"\(")
+    chrom.replace(")", r"\)")
+    LOGGER.info("after: %s", chrom)
+
+    ## What we want to do is have the num-chrom dict as an arg, then build this
+    ## string as three ints [chrom-int, pos-start, pos-end]
+    #cint = cdict[chrom]
+    #cpstring = "__{}_{}_{}__".format(cint, int(region_start)+1, region_end)
 
     ## a string argument as input to commands, indexed at either 0 or 1, 
     ## and with pipe characters removed from chromo names
