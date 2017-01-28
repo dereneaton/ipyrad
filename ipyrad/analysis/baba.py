@@ -19,6 +19,7 @@ import numba
 import itertools
 import datetime
 import types
+import copy
 import time
 import os
 
@@ -685,7 +686,7 @@ def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
     ## add dash through histograms
     dims = (xlines[0], xlines[-1], hmin, hmax)# canvas.height)
     axes = canvas.cartesian(bounds=dims)
-    axes.hlines(y = 0, style={"stroke-dasharray": "5, 10"})
+    axes.hlines(y=0, style={"stroke-dasharray": "5, 10"})
     axes.show = False
 
     ## add bar plots
@@ -869,16 +870,16 @@ class Tree(object):
         else:
             self.newick = "((((a,b),c),d), ((((e,f),g),h) , (((i,j),k),l)));"
         ## parse newick, assigns idx to nodes, returns tre, edges, verts, names
-        t, e, v, names = cladogram(self.newick)
+        tree, edges, verts, names = cladogram(self.newick)
 
         ## parse admixture events
         self.admix = admix
         self._check_admix()
 
         ## store values
-        self.tree = t
-        self.edges = e
-        self.verts = v
+        self.tree = tree
+        self.edges = edges
+        self.verts = verts
         self.names = names.values()  ## in tree plot vlshow order
 
 
@@ -896,6 +897,8 @@ class Tree(object):
             use_edge_lengths=True, 
             taxdicts=None, 
             bootsarr=None,
+            collapse_outgroup=False,
+            test_labels=False,
             **kwargs):
         """
         plot the tree using toyplot.graph. 
@@ -917,11 +920,11 @@ class Tree(object):
             ...
         """
 
-        ## update kwargs
+        ## update kwargs from defaults
         args = {"height": min(1000, 15*len(self.tree)),
                 "width": min(1000, 15*len(self.tree)),
-                "vsize": 20, 
-                "vlshow": True, 
+                "vsize": 0, 
+                "vlshow": False, 
                 "ewidth": 3, 
                 "vlstyle": {"font-size": "18px"}, 
                 "cex": "14px", 
@@ -929,70 +932,85 @@ class Tree(object):
                 "pct_tree_x": 0.7, 
                 "lwd_lines": 1,
                 }
+        ## default if only a tree plot
+        if not taxdicts:
+            args.update({
+                "vsize": 20,
+                "vlshow": True,
+                })
         args.update(kwargs)
 
+        ## collapse outgroup
+        if collapse_outgroup:
+            tree, taxdicts = _collapse_outgroup(self.tree, taxdicts)
+            newick = tree.write(format=1)
+        else:
+            newick = self.newick
+
         ## starting tree position will be changed if adding panel plots
-        self._xmin_tree = 0.
-        self._ymin_tree = 0.
-        self._ymin_test = 0.
-        self._ymin_text = 0.
+        xmin_tree = 0.
+        ymin_tree = 0.
+        ymin_test = 0.
+        ymin_text = 0.
 
         ## convert vert to length 1s if not using edges
-        self._verts = self.verts
-        if not use_edge_lengths:
-            _, _, self._verts, _ = cladogram(self.newick, use_edge_lengths=False)
-        self._verts = self._verts.astype(np.float)
+        verts = copy.deepcopy(self.verts)
+
+        #if not use_edge_lengths:
+        tree, edges, verts, names = cladogram(newick, use_edge_lengths=False)
+        verts = verts.astype(np.float)
 
         ## ensure types
         bootsarr = np.array(bootsarr)
 
         ## relocate tree for panel plots
-        if (np.any(bootsarr) or taxdicts):
+        if np.any(bootsarr) or taxdicts:
             
             ## adjust Y-axis: boots Y is 125% of tree Y
             pcy = 1 - args["pct_tree_y"]
-            newmin = self._verts[:, 1].max() * pcy
-            newhs = np.linspace(newmin, self._verts[:, 1].max(), len(set(self._verts[:, 1])))
-            self._ymin_tree += self._verts[:, 1].max() * pcy
-            self._verts[:, 1] = [newhs[int(i)] for i in self._verts[:, 1]]
+            newmn = verts[:, 1].max() * pcy
+            newhs = np.linspace(newmn, verts[:, 1].max(), len(set(verts[:, 1])))
+            ymin_tree += verts[:, 1].max() * pcy
+            verts[:, 1] = [newhs[int(i)] for i in verts[:, 1]]
 
             ## adjust X-axis: boots X is 75% of tree X
             if np.any(bootsarr):
                 ## how much do I need to add to make the tree be 60%?
-                self._xmin_tree += self._verts[:, 0].max() * args["pct_tree_x"]
-                self._verts[:, 0] += self._verts[:, 0].max() * args["pct_tree_x"]
+                xmin_tree += verts[:, 0].max() * args["pct_tree_x"]
+                verts[:, 0] += verts[:, 0].max() * args["pct_tree_x"]
 
             ## get spacer between panels
-            self._ztot = 0.15 * self._xmin_tree
+            ztot = 0.15 * xmin_tree
 
         ## add spacer for tip names
-        pctt = 0.2 * (self._ymin_tree + self._ymin_test)
-        self._ymin_tree += pctt/2.
-        self._ymin_test += pctt/2.
-        self._verts[:, 1] += pctt/2.
+        pctt = 0.2 * (ymin_tree + ymin_test)
+        ymin_tree += pctt / 2.
+        ymin_test += pctt / 2.
+        verts[:, 1] += pctt / 2.
 
         ## create a canvas and a single cartesian coord system
         canvas = toyplot.Canvas(height=args['height'], width=args['width'])
         axes = canvas.cartesian(bounds=("5%", "95%", "5%", "95%"))
             
         ## add the tree/graph ------------------------------------------------
-        mark1 = axes.graph(self.edges, 
-                           vcoordinates=self._verts, 
-                           ewidth=args["ewidth"], 
-                           ecolor=toyplot.color.near_black, 
-                           vlshow=args["vlshow"],
-                           vsize=args["vsize"],
-                           vlstyle=args["vlstyle"],
-                           vlabel=self.names)   
+        _ = axes.graph(edges, 
+                        vcoordinates=verts, 
+                        ewidth=args["ewidth"], 
+                        ecolor=toyplot.color.near_black, 
+                        estyle={"stroke-linecap": "round"},
+                        vlshow=args["vlshow"],
+                        vsize=args["vsize"],
+                        vlstyle=args["vlstyle"],
+                        vlabel=names.values())   
 
         ## add rects for test taxa -------------------------------------------
         if taxdicts:
-            ys = np.linspace(self._ymin_tree, self._ymin_test, len(taxdicts)+1)
+            yhs = np.linspace(ymin_tree, ymin_test, len(taxdicts)+1)
             ## calculate coords, top and bot 30% of bars is cutoff 
-            self._xmin_hists = 0
-            self._xmin_zs = (self._xmin_tree * 0.5) #- 0.4
-            yyy = (ys[0] - ys[1])
-            yy = 0.70 * yyy
+            xmin_hists = 0.
+            xmin_zs = (xmin_tree * 0.5) 
+            ysp = (yhs[0] - yhs[1])  ## yyy
+            ytrim = 0.70 * ysp
 
             ## colors for tips
             cdict = {"p1": toyplot.color.Palette()[0], 
@@ -1004,20 +1022,22 @@ class Tree(object):
             for idx, test in enumerate(taxdicts):
                 ## check taxdict names
                 dictnames = list(itertools.chain(*test.values()))
-                badnames = [i for i in dictnames if i not in self.names]
+                badnames = [i for i in dictnames if i not in names.values()]
                 if badnames:
-                    raise IPyradError("found names not in tree: {}"\
-                          ",".join(badnames))
+                    #raise IPyradError(
+                    print("Warning: found names not in tree:\n -{}"\
+                          .format("\n -".join(list(badnames))))
 
                 ## add dashed grid line for tests
-                edges = np.array([[0, 1], [2, 3]])
-                verts = np.array([
-                          [self._xmin_tree,         ys[idx]-yyy/2.],
-                          [self._verts[:, 0].max(), ys[idx]-yyy/2.],
-                          [self._xmin_zs+self._ztot/2., ys[idx]-yyy/2.],
-                          [self._xmin_tree-self._ztot,  ys[idx]-yyy/2.],
+                gedges = np.array([[0, 1], [2, 3]])
+                gverts = np.array([
+                          [xmin_tree, yhs[idx]-ysp/2.],
+                          [verts[:, 0].max(), yhs[idx]-ysp/2.],
+                          [xmin_zs+ztot/2., yhs[idx]-ysp/2.],
+                          [xmin_tree-ztot, yhs[idx]-ysp/2.],
                           ])
-                axes.graph(edges, vcoordinates=verts,
+                axes.graph(gedges, 
+                           vcoordinates=gverts,
                            ewidth=args["lwd_lines"], 
                            ecolor=toyplot.color.Palette()[-1],
                            vsize=0, 
@@ -1025,27 +1045,50 @@ class Tree(object):
                            estyle={"stroke-dasharray": "5, 5"},
                            )                              
 
-                ## add rectangle
+                ## add test rectangles
                 for tax in ["p1", "p2", "p3", "p4"]:
-                    # axes.rects(min(spx)-0.25, max(spx)+0.25,
-                    #            ys[idx]-yy, ys[idx+1]+yy,
-                    #            color=cdict[tax]) 
-                    spx = [self.tree.search_nodes(name=i)[0] for i in test[tax]]
+                    spx = [tree.search_nodes(name=i)[0] for i in test[tax]]
                     spx = np.array([i.x for i in spx], dtype=np.float)
-                    spx += self._xmin_tree
+                    spx += xmin_tree
                     spx.sort()
                     ## fill rectangles while leaving holes for missing taxa
                     for i in xrange(spx.shape[0]):
-                        if i < spx.shape[0]-1:
-                            if spx[i+1]-spx[i] < 1.5:
-                                axes.rects(spx[i]-0.25, spx[i]+0.8, 
-                                           ys[idx]-yy, ys[idx+1]+yy, color=cdict[tax]) 
+                        if i == 0:
+                            xleft = spx[i] - 0.25
+                            xright = spx[i] + 0.25
+                        if i != spx.shape[0]-1:
+                            if spx[i+1] - spx[i] < 1.5:
+                                xright += 1
                             else:
-                                axes.rects(spx[i]-0.25, spx[i]+0.25, 
-                                    ys[idx]-yy, ys[idx+1]+yy, color=cdict[tax]) 
+                                axes.rects(xleft, xright, 
+                                    yhs[idx] - ytrim, 
+                                    yhs[idx+1] + ytrim, color=cdict[tax]) 
+                                xleft = spx[i+1] - 0.25
+                                xright = spx[i+1] + 0.25
                         else:
-                            axes.rects(spx[i]-0.25, spx[i]+0.25, 
-                                    ys[idx]-yy, ys[idx+1]+yy, color=cdict[tax]) 
+                            axes.rects(xleft, xright,
+                                    yhs[idx] - ytrim, 
+                                    yhs[idx+1] + ytrim, color=cdict[tax]) 
+                    
+            ## add test-label
+            if test_labels:
+                if isinstance(test_labels, bool) or test_labels == 1: 
+                    labels = range(1, len(taxdicts) + 1)
+                elif isinstance(test_labels, list):
+                    labels = test_labels
+                else:
+                    raise IPyradError("  label_tests must be a list or boolean")
+                axes.text(
+                    [verts[:, 0].max() + 1] * len(taxdicts),
+                    yhs[:-1] - ysp / 2., 
+                    labels,
+                        color=toyplot.color.near_black,
+                        style={
+                            "font-size": args["cex"],
+                            "text-anchor" : "start",
+                            "-toyplot-anchor-shift":"0",
+                            },
+                        )                
 
 
             ## add hists
@@ -1065,8 +1108,8 @@ class Tree(object):
                             bins=bins, range=(rmin, rmax), density=True)
 
                     ## get hist colors
-                    z = allzs[idx]
-                    if z > 3:
+                    thisz = allzs[idx]
+                    if thisz > 3:
                         if bootsarr[idx].mean() < 0:
                             color = toyplot.color.Palette()[0]
                         else:
@@ -1075,121 +1118,173 @@ class Tree(object):
                         color = toyplot.color.Palette()[-1]
 
                     ## plot z's within range 
-                    zright = self._xmin_tree - self._ztot
-                    zleft = self._xmin_zs + self._ztot/2.
-                    zprop = z / zmax
+                    zright = xmin_tree - ztot
+                    zleft = xmin_zs + ztot/2.
+                    zprop = thisz / zmax
                     zmaxlen = zright - zleft
                     zlen = zmaxlen * zprop
-                    axes.rects(zright-zlen, zright,
-                               ys[idx]-yy, ys[idx+1]+yy,
-                               color=toyplot.color.Palette()[2])
+                    axes.rects(
+                        zright-zlen, zright,
+                        yhs[idx] - ytrim, 
+                        yhs[idx+1] + ytrim,
+                        color=toyplot.color.Palette()[2])
 
                     ## get hist xspans, heights in range
-                    xran = np.linspace(self._xmin_hists, 
-                                       self._xmin_zs - self._ztot/2., bins+1)
+                    xran = np.linspace(xmin_hists, xmin_zs - ztot/2., bins+1)
                     mags = mags / mags.max()
-                    mags = (mags * yyy) * 0.8
-                    yline = ys[idx+1]
+                    mags = (mags * ysp) * 0.8
+                    yline = yhs[idx+1]
                     heights = np.column_stack([[yline for i in mags], mags])
-                    axes.bars(xran[:-1], heights, baseline="stacked",
-                              color=["white", color])
+                    axes.bars(
+                        xran[:-1], 
+                        heights, 
+                        baseline="stacked",
+                        color=["white", color],
+                        )
 
                     ## add x-line to histograms
-                    verts = np.array([[xran[0], yline], [xran[-1], yline]])
-                    edges = np.array([[0, 1]])
-                    axes.graph(edges, vcoordinates=verts, 
-                               ewidth=1, 
-                               ecolor=toyplot.color.near_black,
-                               vsize=0, 
-                               vlshow=False,
-                               )
+                    gverts = np.array([
+                        [xran[0], yline], 
+                        [xran[-1], yline],
+                        ])
+                    gedges = np.array([[0, 1]])
+                    axes.graph(
+                        gedges, 
+                        vcoordinates=gverts, 
+                        ewidth=1, 
+                        ecolor=toyplot.color.near_black,
+                        vsize=0, 
+                        vlshow=False,
+                        )
 
                 ## add xline to z-plots
-                verts = np.array([[self._xmin_zs + self._ztot/2., yline], 
-                                  [self._xmin_tree - self._ztot, yline]])
-                edges = np.array([[0, 1]])
-                axes.graph(edges, vcoordinates=verts, 
-                                  ewidth=1, 
-                                  ecolor=toyplot.color.near_black,
-                                  vsize=0, 
-                                  vlshow=False,
-                                  )
+                gverts = np.array([
+                    [xmin_zs + ztot/2., yline], 
+                    [xmin_tree - ztot, yline], 
+                    ])
+                gedges = np.array([[0, 1]])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    vsize=0, 
+                    vlshow=False,
+                    )
 
                 ## add dashed y-line at 0 to histograms
                 here = np.where(xpos > 0)[0].min()
                 zero = xran[here-1]
-                verts = np.array([[zero, self._ymin_test], 
-                                  [zero, self._ymin_tree]]) 
-                edges = np.array([[0, 1]])
-                axes.graph(edges, vcoordinates=verts, 
-                           ewidth=1, 
-                           ecolor=toyplot.color.near_black,
-                           eopacity=1.,
-                           vsize=0, 
-                           vlshow=False,
-                           estyle={"stroke-dasharray": "5, 5"},
-                           )
+                gverts = np.array([
+                    [zero, ymin_test],
+                    [zero, ymin_tree - ytrim / 4.],
+                    ])
+                gedges = np.array([[0, 1]])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    eopacity=1.,
+                    vsize=0, 
+                    vlshow=False,
+                    estyle={"stroke-dasharray": "5, 5"},
+                    )
 
                 ## add solid y-line to z-plots
-                verts = np.array([[self._xmin_tree-self._ztot, self._ymin_test+yyy/4.],
-                                  [self._xmin_tree-self._ztot, self._ymin_tree-yyy/4.]])
-                edges = np.array([[0, 1]])
-                axes.graph(edges, vcoordinates=verts, 
-                           ewidth=1, 
-                           ecolor=toyplot.color.near_black,
-                           eopacity=1.,
-                           vsize=0, 
-                           vlshow=False,
-                           )
+                gverts = np.array([
+                    [xmin_tree - ztot, ymin_test + ytrim/4.],
+                    [xmin_tree - ztot, ymin_tree - ytrim/4.],
+                    ])
+                gedges = np.array([[0, 1]])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    eopacity=1.,
+                    vsize=0, 
+                    vlshow=False,
+                    )
 
                 ## add tick-marks to x-lines (hists and z-plots)
-                ticklen = (self._ymin_test - self._ymin_text) * 0.2
-                edges = np.array([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
-                verts = np.array([[self._xmin_hists, self._ymin_test-ticklen],
-                                  [self._xmin_hists, self._ymin_test],
-                                  [zero, self._ymin_test-ticklen],                              
-                                  [zero, self._ymin_test],
-                                  [self._xmin_zs-self._ztot/2., self._ymin_test-ticklen],
-                                  [self._xmin_zs-self._ztot/2., self._ymin_test],
-                                  [self._xmin_zs+self._ztot/2., self._ymin_test-ticklen],
-                                  [self._xmin_zs+self._ztot/2., self._ymin_test],
-                                  [self._xmin_tree-self._ztot, self._ymin_test-ticklen],
-                                  [self._xmin_tree-self._ztot, self._ymin_test],
-                                  ])
-                axes.graph(edges, vcoordinates=verts, 
-                           ewidth=1, 
-                           ecolor=toyplot.color.near_black,
-                           eopacity=1.,
-                           vsize=0, 
-                           vlshow=False,
-                           )                
+                ticklen = ytrim / 4.
+                gedges = np.array([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+                gverts = np.array([
+                    [xmin_hists, ymin_test - ticklen],
+                    [xmin_hists, ymin_test],
+                    [zero, ymin_test - ticklen],                              
+                    [zero, ymin_test],
+                    [xmin_zs - ztot / 2., ymin_test - ticklen],
+                    [xmin_zs - ztot / 2., ymin_test],
+                    [xmin_zs + ztot / 2., ymin_test - ticklen],
+                    [xmin_zs + ztot / 2., ymin_test],
+                    [xmin_tree - ztot, ymin_test - ticklen],
+                    [xmin_tree - ztot, ymin_test],
+                    ])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    eopacity=1.,
+                    vsize=0, 
+                    vlshow=False,
+                    )
 
                 ## add tick labels
                 labels = [rmin, 0, rmax, zmax, 0]
-                axes.text(verts[:, 0][::2], 
-                          [ys[-1] - yyy / 2.] * len(labels),
-                          labels, 
-                          color=toyplot.color.near_black,
-                          style={
-                             "font-size": args["cex"],
-                             "text-anchor" : "middle",
-                             "-toyplot-anchor-shift":"0",
-                             },
-                          )
+                axes.text(
+                    gverts[:, 0][::2], 
+                    [ymin_test - ysp] * len(labels),
+                    labels, 
+                    color=toyplot.color.near_black,
+                    style={
+                        "font-size": args["cex"],
+                        "text-anchor" : "middle",
+                        "-toyplot-anchor-shift":"0",
+                        },
+                    )
+
+                ## add baba abba labels
+                axes.text(
+                    [gverts[:, 0][0], gverts[:, 0][4]],
+                    [ymin_test - ysp * 2] * 2,
+                    ["BABA", "ABBA"], 
+                    color=toyplot.color.near_black,
+                    style={
+                        "font-size": args["cex"], #"12px",
+                        "text-anchor" : "middle",
+                        "-toyplot-anchor-shift":"0",
+                        },
+                    )     
+
+                ## add bootstrap and z-score titles
+                axes.text(
+                    [zero, zright - 0.5 * zmaxlen],
+                    [ymin_tree + ysp / 2.] * 2,
+                    ["Bootstrap D-stats", "Z-scores"], 
+                    color=toyplot.color.near_black,
+                    style={
+                        "font-size": args["cex"], #"12px",
+                        "text-anchor" : "middle",
+                        "-toyplot-anchor-shift":"0",
+                        },
+                    )
 
                                  
         ## add names to tips --------------------------------------------------
         if show_tips:
             ## calculate coords
-            nams = [i for i in self.names if not isinstance(i, int)]
-            spx = [self.tree.search_nodes(name=i)[0] for i in nams]
+            nams = [i for i in names.values() if not isinstance(i, int)]
+            spx = [tree.search_nodes(name=i)[0] for i in nams]
             spx = np.array([i.x for i in spx], dtype=np.float)
-            spx += self._xmin_tree
+            spx += xmin_tree
             if taxdicts:
-                spy = [ys[-1] - yyy / 2.] * len(nams)
+                spy = [yhs[-1] - ysp / 2.] * len(nams)
             else:
-                spy = [self._ymin_test - 0.5] * len(nams)
-            mark3 = axes.text(spx, spy, nams,
+                spy = [ymin_test - 0.5] * len(nams)
+            _ = axes.text(spx, spy, nams,
                               angle=-90, 
                               color=toyplot.color.near_black,
                               style={
@@ -1234,17 +1329,36 @@ class Tree(object):
             axes.y.show = True
         else:
             axes.y.show = False    
-            
-        #axes.hlines(0)
-        #axes.hlines(2)        
-        #axes.vlines(0)
-        #axes.vlines(2)
-        #axes.vlines(4)
-        #axes.vlines(8)
-        #axes.vlines(11)         
 
         ## return plotting 
         return canvas, axes
+
+
+
+def _collapse_outgroup(tree, taxdicts):
+    """ collapse outgroup in ete Tree for easier viewing """
+    ## check that all tests have the same outgroup
+    outg = taxdicts[0]["p4"]
+    if not all([i["p4"] == outg for i in taxdicts]):
+        raise Exception("no good")
+   
+    ## prune tree, keep only one sample from outgroup
+    tre = ete.Tree(tree.write(format=1)) #tree.copy(method="deepcopy")
+    alltax = [i for i in tre.get_leaf_names() if i not in outg]
+    alltax += [outg[0]]
+    tre.prune(alltax)
+    tre.search_nodes(name=outg[0])[0].name = "outgroup"
+    tre.ladderize()
+
+    ## remove other ougroups from taxdicts
+    taxd = copy.deepcopy(taxdicts)
+    newtaxdicts = []
+    for test in taxd:
+        #test["p4"] = [outg[0]]
+        test["p4"] = ["outgroup"]
+        newtaxdicts.append(test)
+
+    return tre, newtaxdicts
 
 
 
