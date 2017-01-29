@@ -70,13 +70,19 @@ def muscle_align_across(data, samples, chunk):
         names = lines[::2]
         seqs = lines[1::2]
 
-        ## append counter to end of names b/c muscle doesn't retain order
-        names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
-
+        if len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
+            LOGGER.debug("Found a duplicate stack number of seqs - {}".format(len(names)))
+            duples[ldx] = 1
+            ## Strip the leading > from the name or downstream dies
+            stack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
+            LOGGER.debug("dupestack - {}".format(stack))
         ## don't bother aligning singletons
-        if len(names) <= 1:
+        elif len(names) <= 1:
             pass
         else:
+            ## append counter to end of names b/c muscle doesn't retain order
+            names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+
             ## split seqs before align if PE. If 'nnnn' not found (single end
             ## or merged reads) then `except` will pass it to SE alignment.
             ## The other case where `except` will pass is if one or the other
