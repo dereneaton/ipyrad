@@ -997,7 +997,6 @@ class Tree(object):
                         vcoordinates=verts, 
                         ewidth=args["ewidth"], 
                         ecolor=toyplot.color.near_black, 
-                        estyle={"stroke-linecap": "round"},
                         vlshow=args["vlshow"],
                         vsize=args["vsize"],
                         vlstyle=args["vlstyle"],
@@ -1263,7 +1262,7 @@ class Tree(object):
                 axes.text(
                     [zero, zright - 0.5 * zmaxlen],
                     [ymin_tree + ysp / 2.] * 2,
-                    ["Bootstrap D-stats", "Z-scores"], 
+                    ["Bootstrap D-statistics", "Z-scores"], 
                     color=toyplot.color.near_black,
                     style={
                         "font-size": args["cex"], #"12px",
