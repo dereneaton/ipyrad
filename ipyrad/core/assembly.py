@@ -872,22 +872,18 @@ class Assembly(object):
                 print("\n  Step 1: Loading sorted fastq data to Samples")
             else:
                 print("\n  Step 1: Demultiplexing fastq data to Samples")
-        #else:
-        #    print("")
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
             if not force:
                 print(SAMPLES_EXIST.format(len(self.samples), self.name))
             else:
-                ## overwrite existing data
+                ## overwrite existing data else do demux
                 if glob.glob(sfiles):
-                    #if self._headers:
                     self._link_fastqs(ipyclient=ipyclient, force=force)
-
-                ## otherwise do the demultiplexing
                 else:
-                    assemble.demultiplex.run(self, preview, ipyclient, force)
+                    #assemble.demultiplex.run(self, preview, ipyclient, force)                    
+                    assemble.demultiplex.run2(self, ipyclient, force)
 
         ## Creating new Samples
         else:
@@ -897,18 +893,17 @@ class Assembly(object):
 
             ## otherwise do the demultiplexing
             else:
-                assemble.demultiplex.run(self, preview, ipyclient, force)
+                #assemble.demultiplex.run(self, preview, ipyclient, force)
+                assemble.demultiplex.run2(self, ipyclient, force)
 
 
 
-    def _step2func(self, samples, nreplace, force, preview, ipyclient):
+    def _step2func(self, samples, force, ipyclient):
         """ hidden wrapped function to start step 2"""
 
         ## print header
         if self._headers:
             print("\n  Step 2: Filtering reads ")
-        #else:
-        #    print("")
 
         ## If no samples in this assembly then it means you skipped step1,
         if not self.samples.keys():
@@ -925,7 +920,6 @@ class Assembly(object):
 
         ## Run samples through rawedit
         assemble.rawedit.run2(self, samples, force, ipyclient)
-        #assemble.rawedit.run(self, samples, nreplace, force, preview, ipyclient)
 
 
 
@@ -1142,6 +1136,7 @@ class Assembly(object):
         ## wrap everything in a try statement to ensure that we save the
         ## Assembly object if it is interrupted at any point, and also
         ## to ensure proper cleanup of the ipyclient.
+        ipyclient = None
         try:
             ## use an existing ipcluster instance
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)
@@ -1170,8 +1165,7 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '2' in steps:
-                self._step2func(samples=None, nreplace=1, force=force,
-                                preview=preview, ipyclient=ipyclient)
+                self._step2func(samples=None, force=force, ipyclient=ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
@@ -1221,51 +1215,45 @@ class Assembly(object):
 
         ## close client when done or interrupted
         finally:
-            try:
-                ## save the Assembly
-                self.save()
+            cleanup = 0
+            ## save the Assembly
+            self.save()
 
-                ## can't close client if it was never open
-                if ipyclient:
+            ## can't close client if it was never open
+            if ipyclient:
 
-                    ## if CLI stop ipcluster and close client
-                    if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
-                        ## protect from KBD while killing jobs?
-                        LOGGER.info("  shutting down engines")
-                        #_cleanup_and_die(pids)
+                ## if CLI stop ipcluster and close client
+                if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
+                    LOGGER.info("  shutting down engines")
+                    ipyclient.abort()
+                    if ipyclient.outstanding:
+                        cleanup = 1                        
+                    ipyclient.shutdown(hub=True, block=False)
+                    ipyclient.close()
+                    LOGGER.info("  finished shutdown")
+                        
+                ## if API, stop jobs and clean queue
+                else:
+                    ipyclient.abort()
+                    if not ipyclient.outstanding:
+                        ipyclient.purge_everything()
+                    else:
+                        ## nanny: kill the engines left running, report kill.
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
-                        LOGGER.info("  finished shutdown")
-                        
-                    ## if API, stop jobs and clean queue
-                    else:
-                        ipyclient.abort()
-                        ## purge fails if jobs are still running. We could do
-                        ## a wait call, but what if its a really long running
-                        ## job?. We could do os.kill, but that also kills the
-                        ## engines. it seems there is a shutdown function in
-                        ## the works that allows for engine restart, but its
-                        ## not available yet. This is problem for the API.
-                        if not ipyclient.outstanding:
-                            ipyclient.purge_everything()
-                        else:
-                            ## nanny: kill the engines left running, report
-                            ## that some engines were killed.
-                            ipyclient.abort()
-                            ipyclient.shutdown(hub=True, block=False)
-                            ipyclient.close()
-                            print("  warning: ipcluster shutdown and must be restarted")
+                        print("\n  warning: ipcluster shutdown and must be restarted")
+                        cleanup = 1
 
-                ## a final spacer
-                if self._headers:
-                    print("")
+            ## a final spacer
+            if self._headers:
+                print("")
 
-            ## if exception in close and save, print and ignore
-            except Exception as inst2:
-                LOGGER.warning("\
-            error during ipcluster shutdown (%s)\
-            some Python processes may have been orphaned and should be killed"
-            , inst2)
+            ## A final cleanup call that run in the case that ipcluster needs 
+            ## to be killed. e.g., rawedit cat and cutadapt code have this, 
+            ## where big tmp files need to be removed, but can't be removed 
+            ## until after ipcluster is dead. 
+            if cleanup:
+                pass ##TODO
 
 
 
@@ -1326,8 +1314,7 @@ def _get_samples(self, samples):
 def _name_from_file(fname, splitnames, fields):
     """ internal func: get the sample name from any pyrad file """
     ## allowed extensions
-    file_extensions = [".gz", ".fastq", ".fq", ".fasta",
-                       ".clustS", ".consens"]
+    file_extensions = [".gz", ".fastq", ".fq", ".fasta", ".clustS", ".consens"]
     base, _ = os.path.splitext(os.path.basename(fname))
 
     ## remove read number from name
@@ -1335,11 +1322,13 @@ def _name_from_file(fname, splitnames, fields):
                .replace("_R1_", "_")\
                .replace("_R1.", ".")
 
-    ## remove extensions
-    tmpb, tmpext = os.path.splitext(base)
-    while tmpext in file_extensions:
-        tmpb, tmpext = os.path.splitext(tmpb)
-        base = tmpb
+    ## remove extensions, retains '.' in file names.
+    while 1:
+        tmpb, tmpext = os.path.splitext(base)
+        if tmpext in file_extensions:        
+            base = tmpb
+        else:
+            break
 
     if fields:
         namebits = base.split(splitnames)
@@ -1460,6 +1449,13 @@ def merge(name, assemblies):
             for ftype in ["mapped_reads", "unmapped_reads", "clusters",
                           "consens", "database"]:
                 merged.samples[sample].files[ftype] = []
+
+    ## Set the values for some params that don't make sense inside
+    ## merged assemblies
+    merged_names = ", ".join([x.name for x in assemblies])
+    merged.paramsdict["raw_fastq_path"] = "Merged: " + merged_names
+    merged.paramsdict["barcodes_path"] = "Merged: " + merged_names
+    merged.paramsdict["sorted_fastq_path"] = "Merged: " + merged_names
 
     ## return the new Assembly object
     merged.save()

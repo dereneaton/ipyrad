@@ -223,10 +223,12 @@ def consensus(data, sample, tmpchunk, optim):
     io5 = h5py.File(consenshandle.replace("_tmpcons.", "_tmpcats."), 'w')
     catarr = io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
     nallel = io5.create_dataset("alls", (optim, ), dtype=np.uint8)
+    
     ## Enable storing arbitrary length strings
     dt = h5py.special_dtype(vlen=bytes)
     chrompos = io5.create_dataset("chroms", (optim, ), dtype=dt)
-    #catarr = numpy.zeros([optim, maxlen, 4], dtype='uint32')
+    ## maybe could get away with uint32
+    #chrompos = io5.create_dataset("chroms", (optim, ), dtype=np.uint64)
 
     ## store data for stats counters
     counters = {"name" : tmpnum,
@@ -264,8 +266,10 @@ def consensus(data, sample, tmpchunk, optim):
             seqs = piece[1::2]
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
+
             ## IF this is a reference mapped read store the chrom and pos info
             ## This is hackish. If the reference scaffolds contain ";" this is fucked.
+            ## Just split from the right side using rsplit or negative indexing!
             ref_position = ""
             if len(names[0].split(";")) == 4:
                 ref_position = names[0].split(";")[1]
@@ -572,7 +576,9 @@ def cleanup(data, sample, statsdicts):
                                    dtype=np.uint8,
                                    chunks=(optim, ),
                                    compression="gzip")
-        dchrom = ioh5.create_dataset("chroms", (nloci, ),
+        ## only create chrom for reference-aligned data
+        if 'reference' in data.paramsdict["datatype"]:
+            dchrom = ioh5.create_dataset("chroms", (nloci, ),
                                      dtype=h5py.special_dtype(vlen=bytes),
                                      chunks=(optim, ),
                                      compression="gzip")
@@ -584,7 +590,8 @@ def cleanup(data, sample, statsdicts):
             end = start + optim
             dcat[start:end] = io5['cats'][:]
             dall[start:end] = io5['alls'][:]
-            dchrom[start:end] = io5['chroms'][:]
+            if 'reference' in data.paramsdict["datatype"]:
+                dchrom[start:end] = io5['chroms'][:]
             start += optim
             io5.close()
             os.remove(icat)
@@ -857,7 +864,8 @@ def make_chunks(data, samples, lbview):
     ## check for failures
     for sample in samples:
         if not lasyncs[sample.name].successful():
-            LOGGER.error("  sample %s failed: %s", sample.name, lasyncs[sample.name].exception())
+            LOGGER.error("  sample %s failed: %s", sample.name, 
+                        lasyncs[sample.name].exception())
 
     return lasyncs
 

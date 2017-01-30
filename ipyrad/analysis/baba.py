@@ -7,7 +7,7 @@
 from __future__ import print_function, division
 
 
-from ipyrad.assemble.write_outfiles import reftrick, GETCONS
+from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
 from ipyrad.assemble.util import *
 
 import scipy.stats as st
@@ -18,124 +18,22 @@ import numpy as np
 import numba
 import itertools
 import datetime
+import types
+import copy
 import time
 import os
+
+## non-included imports
 import toyplot
+import ete3 as ete
+try: 
+    import msprime as ms
+except ImportError:
+    pass
 
 
 ## prettier printing
 # pd.options.display.float_format = '{:.4f}'.format
-
-# @numba.jit('i4(i4[:])')
-# def sum1d(array):
-#     """ a sum function that is typed for speed in numba"""
-#     sumn = 0.0
-#     for i in range(array.shape[0]):
-#         sumn += array[i]
-#     return sumn
-
-# @numba.jit('f4(i4[:], i4[:])')
-# def jcalc_d12(abbba, babba):
-#     """ D12 calc for fixed differences from pdf (pandas data frame)"""
-#     return sum1d(abbba-babba)/sum1d(abbba+babba)
-
-# @numba.jit('f4(i4[:], i4[:])')
-# def jcalc_d1(abbaa, babaa):
-#     """ D1 calc for fixed differences from pdf (pandas data frame)"""
-#     return sum1d(abbaa-babaa)/sum1d(abbaa+babaa)
-
-# @numba.jit('f4(i4[:], i4[:])')
-# def jcalc_d2(ababa, baaba):
-#     """ D2 calc for fixed differences from pdf (pandas data frame)"""
-#     return sum1d(ababa-baaba)/sum1d(ababa+baaba)
-
-
-# @numba.jit('f4[:,:](i4[:,:], i4)')#, nopython=True)
-# def jtestloop(vals, nboots):
-#     """ fast numba testloop"""
-#     ## create empty results array
-#     barr = np.zeros((nboots, 3), dtype=np.float32)
-#     ## fill array
-#     for iboot in xrange(nboots):
-#         samples = np.random.randint(0, vals.shape[0], vals.shape[0])
-#         ## create empty boot array
-#         bootarr = np.zeros((vals.shape[0], 19), dtype=np.int32)
-#         ## fill the boots array
-#         for irand in xrange(vals.shape[0]):
-#             bootarr[irand] = vals[samples[irand]]
-#         ## calculate Dstats from bootarr and insert to barr
-#         barr[iboot][0] += jcalc_d12(bootarr[:, 8], bootarr[:, 12])
-#         barr[iboot][1] += jcalc_d12(bootarr[:, 7], bootarr[:, 11])
-#         barr[iboot][2] += jcalc_d12(bootarr[:, 6], bootarr[:, 10])
-#     return barr
-
-
-# @numba.jit('f4[:,:](i4[:,:], i4[:])', nopython=True)
-# def jtestloop2(vals, rands):
-#     """ fast numba testloop"""
-#     ## create empty results array
-#     barr = np.zeros((rands.shape[0], 3), dtype=np.float32)
-#     ## fill array
-#     for iboot in xrange(rands.shape[0]):
-#         #samples = np.random.randint(0, vals.shape[0], vals.shape[0])
-#         ## create empty boot array
-#         bootarr = np.zeros((vals.shape[0], 19), dtype=np.int32)
-#         ## fill the boots array
-#         for irand in xrange(vals.shape[0]):
-#             bootarr[irand] = vals[rands[irand]]
-#         ## calculate Dstats from bootarr and insert to barr
-#         barr[iboot][0] += jcalc_d12(bootarr[:, 8], bootarr[:, 12])
-#         barr[iboot][1] += jcalc_d12(bootarr[:, 7], bootarr[:, 11])
-#         barr[iboot][2] += jcalc_d12(bootarr[:, 6], bootarr[:, 10])
-#     return barr
-
-
-# ## call function to get test statistics
-# def jdstat_part(pdf, nboots):
-#     """ Function to perform bootstrap resampling to measure
-#     significance of partitioned D-statistics. """
-#     ## dict to store boot results with column order D12, D1, D2
-#     barr = np.zeros((nboots, 3), dtype=np.float32)
-
-#     ## do bootstrap resampling with replacement
-#     for iboot in xrange(nboots):
-#         samples = np.random.randint(0, pdf.shape[0], pdf.shape[0])
-#         bootdf = pd.DataFrame([pdf.loc[i] for i in samples])
-#         barr[iboot] = [calc_d12(bootdf), calc_d1(bootdf), calc_d2(bootdf)]
-
-#     ## array for full data results
-#     rarr = np.zeros((9,), dtype=np.float16)
-#     rarr[0:3] = [calc_d12(pdf), calc_d1(pdf), calc_d2(pdf)]
-#     rarr[3:6] = [barr]
-
-
-#     results["D_12"] = calc_d12(pdf)
-#     results["D_1"] = calc_d1(pdf)
-#     results["D_2"] = calc_d2(pdf)
-
-#     ## get standard deviation & Z from boots
-#     results["D12sd"] = np.std(boots["D12"])
-#     results["Z12"] = abs(results["D_12"])/float(results["D12sd"])
-#     results["D1sd"] = np.std(boots["D1"])
-#     results["Z1"] = abs(results["D_1"])/float(results["D1sd"])
-#     results["D2sd"] = np.std(boots["D2"])
-#     results["Z2"] = abs(results["D_2"])/float(results["D2sd"])
-#     return pd.Series(results)
-
-
-# ## Functions to calculate partitioned D-statistics
-# def calc_d12(pdf):
-#     """ D12 calc for fixed differences from pdf (pandas data frame)"""
-#     return sum(pdf.ABBBA-pdf.BABBA)/float(sum(pdf.ABBBA+pdf.BABBA))
-
-# def calc_d1(pdf):
-#     """ D1 calc for fixed differences from pdf (pandas data frame)"""
-#     return sum(pdf.ABBAA-pdf.BABAA)/float(sum(pdf.ABBAA+pdf.BABAA))
-
-# def calc_d2(pdf):
-#     """ D2 calc for fixed differences from pdf (pandas data frame)"""
-#     return sum(pdf.ABABA-pdf.BAABA)/float(sum(pdf.ABABA+pdf.BAABA))
-
 
 
 ## Functions to calculate D-foil
@@ -162,41 +60,6 @@ def calc_dol(pdf):
     nleft = pdf.BAABA+pdf.BABBA+pdf.ABBAA+pdf.ABAAA
     nright = pdf.ABABA+pdf.ABBBA+pdf.BABAA+pdf.BAAAA
     return sum(nleft-nright)/float(sum(nleft+nright))
-
-
-
-# ## call function to get test statistics
-# def dstat_part(pdf, nboots):
-#     """ Function to perform bootstrap resampling to measure
-#     significance of partitioned D-statistics. """
-#     ## dict to store boot results with column order D12, D1, D2
-#     barr = np.zeros((nboots, 3), dtype=np.float16)
-
-#     ## do bootstrap resampling with replacement
-#     for iboot in xrange(nboots):
-#         samples = np.random.randint(0, pdf.shape[0], pdf.shape[0])
-#         bootdf = pd.DataFrame([pdf.loc[i] for i in samples])
-#         barr[iboot] = [calc_d12(bootdf), calc_d1(bootdf), calc_d2(bootdf)]
-
-#     ## array for full data results
-#     rarr = np.zeros((9,), dtype=np.float16)
-#     rarr[0:3] = [calc_d12(pdf), calc_d1(pdf), calc_d2(pdf)]
-#     rarr[3:6] = [barr]
-
-
-#     results["D_12"] = calc_d12(pdf)
-#     results["D_1"] = calc_d1(pdf)
-#     results["D_2"] = calc_d2(pdf)
-
-#     ## get standard deviation & Z from boots
-#     results["D12sd"] = np.std(boots["D12"])
-#     results["Z12"] = abs(results["D_12"])/float(results["D12sd"])
-#     results["D1sd"] = np.std(boots["D1"])
-#     results["Z1"] = abs(results["D_1"])/float(results["D1sd"])
-#     results["D2sd"] = np.std(boots["D2"])
-#     results["Z2"] = abs(results["D_2"])/float(results["D2sd"])
-#     return pd.Series(results)
-
 
 
 def dstat_foil(pdf, nboots):
@@ -298,154 +161,6 @@ def x_dol(pdf):
 
 
 
-# def loci2pdf(loci, where=None, ntotal=None):
-#     """
-#     takes ms output file created using dfoil_sim.py and
-#     creates a table of site counts similar to what the dfoil_sim.py
-#     script attempts to do, but correctly.
-
-#     Parameters
-#     ----------
-#     loci : list
-#         list of loci
-#     ntotal : int
-#         total number of sites simulated, since ms does not output
-#         invariant sites this is needed to calc AAAAA
-
-#     Returns
-#     -------
-#     results : pandas.Dataframe
-#         A DataFrame with results
-
-#     """
-#     ## site patterns
-#     sitep = ["total",
-#              "AAAAA", "AAABA", "AABAA", "AABBA",
-#              "ABAAA", "ABABA", "ABBAA", "ABBBA",
-#              "BAAAA", "BAABA", "BABAA", "BABBA",
-#              "BBAAA", "BBABA", "BBBAA", "BBBBA", "locID", "pos"]
-
-#     ## Create DataFrame
-#     lcounts = pd.DataFrame(0, columns=sitep,
-#                               index=xrange(loci.shape[0]),
-#                               dtype=np.int32)
-#     ## counter for position
-#     pos = 0
-#     ## iterate over loci
-#     for iloc in xrange(loci.shape[0]):
-#         ## get real length
-#         ntotal = loci[iloc][0].astype("S1").tostring().find('9')
-#         ## get site patterns in this locus
-#         counts = loci[iloc][:][:, :ntotal].astype("S1")
-#         ## for each site in this locus
-#         counts[counts == '0'] = 'B'
-#         counts[counts == '1'] = 'A'
-#         for site in counts.T:
-#             #print(site)
-#             if site[-1] not in ['9', 'B']:
-#                 lcounts[site.tostring()][iloc] += 1
-#         ## fill in meta info
-#         #lcounts["AAAAx"][iloc] = ntotal-lcounts.iloc[iloc].values.sum()
-#         lcounts["total"][iloc] = ntotal
-#         lcounts["pos"][iloc] = int(pos)
-#         lcounts["locID"][iloc] = where[iloc]+1
-#         pos += ntotal
-#     i = 0
-#     while os.path.exists(
-#             os.path.join(
-#               os.path.curdir, "dstat_%s.csv") % i):
-#         i += 1
-#     handle = os.path.join(os.path.curdir, "dstat_%s.csv") % i
-#     lcounts.to_csv(handle, sep="\t")
-#     return lcounts
-
-# def ms2loci(handle, maxlen=200):
-#     """ converts ms output file to loci list """
-#     ## read in the input file
-#     with open(handle, 'r') as infile:
-#         indata = infile.read()
-
-#     ## split by locus, skip first chunk which contains ms code and random seeds
-#     loci = indata.strip().split("//")[1:]
-#     farr = np.ones((len(loci), 5, maxlen), dtype="int8")
-
-#     ## iterate
-#     for iloc in xrange(farr.shape[0]):
-#         arr = np.int8([list(j) for j in loci[iloc].strip().split("\n")[2:]])
-#         farr[iloc][:, :arr.shape[1]] = arr
-#     return farr
-
-# def _loci2loci(handle, taxonlist):
-#     """
-#     Converts .loci file to a numpy array of loci with sufficient taxon sampling
-#     for the test in 'taxonlist'. Returns the float array with frequency of SNP
-#     in each row/taxon. 
-
-#     Params:
-#       - handle:
-#         A .loci file handle
-#       - taxonlist:
-#         A list/array of lists/arrays: [[p1],[p2],[p3],[p4],[outg]] specifying
-#         a four or five taxon test to perform.
-
-#     Converts loci file to a binary array with XXXXA values for up to 5 taxa
-#     stored as floats, such that if multiple individuals were listed in a taxon
-#     position they are represented as a SNP frequency. If only four taxa were
-#     entered then the values are XXX9A, and the fourth values will be ignored
-#     in all computation. The loci array dimensions is (nloci, 5, maxlen), however,
-#     nloci is the number of loci that have sufficient taxon sampling to be included,
-#     and so it is typically less than the full number in the .loci file.
-#     """
-
-#     ## read in the input file
-#     with open(handle, 'r') as infile:
-#         ## split on "//" for legacy compatibility
-#         loci = infile.read().strip().split("//")[:-1]
-
-#     ## create emtpy array to fill
-#     nloci = len(loci)
-#     farr = np.ones((nloci, 5, maxlen), dtype=np.float64)
-#     taxc = np.zeros((nloci,))
-
-#     ## iterate over loci to find those which have taxon sampling
-#     for iloc in xrange(nloci):
-#         lines = loci[iloc].split("\n", 1)[1].split()
-#         names = [i[1:] for i in lines[::2]]
-#         seqs = np.array([list(i) for i in lines[1::2]])
-#         seqlen = seqs.shape[1]
-
-#         taxi = sum([i in names for i in taxonlist])
-#         taxc[iloc] += taxi
-#         if taxi == len(taxonlist):
-#             arr = np.zeros((5, maxlen), dtype=np.float64)
-#             ## find most frequent allele among outgroups and call that the
-#             ## outgroup allele (A). How do we break ties? For simplicity, we'll
-#             ## consistently choose lowest base to break ties (e.g., A over C)
-#             arr[-1].fill(1)
-
-#             ## fill fake data columns with 9s
-#             arr[:, seqlen-maxlen:].fill(9)
-
-#             ## get outgroup values
-#             outvals = seqs[names.index(taxonlist[4])]
-#             for itax in xrange(4):
-#                 ## make 1s all sites that match to outg
-#                 tmparr = np.int8(seqs[names.index(taxonlist[itax])] == outvals)
-#                 ## make 9s all sites that have (N-RKSMW)
-#                 #tmparr[
-#                 arr[itax][:tmparr.shape[0]] = tmparr
-#             farr[iloc] = arr
-
-#     ## warn if no SNPs are found
-#     ## warn if no loci have sampling of all taxa
-
-#     #print(np.histogram(taxc, range(7)))
-#     ## return array that includes np.ones for loci w/o taxa
-#     return farr[taxc == len(taxonlist)], taxc
-
-##############################################################
-
-
 def partd(handle, test, mindict, nboots):
     pass
 
@@ -454,19 +169,31 @@ def dfoil(handle, test, mindict, nboots):
     pass
 
 
-def batch(handle, taxdicts, mindicts=None, nboots=100, ipyclient=None, quiet=False):
+def batch(handle, taxdicts, mindicts=None, nboots=1000, ipyclient=None, quiet=False):
     """
     parallel mode
     """
 
+    ## if ms generator make into reusable list
+    sims = 0
+    if isinstance(handle, types.GeneratorType):
+        handle = list(handle)
+        sims = 1
+
+    ## parse taxdicts into names and lists if it a dictionary
+    if isinstance(taxdicts, dict):
+        names, taxdicts = taxdicts.keys(), taxdicts.values()
+    else:
+        names = []
+
     ## an array to hold results (len(taxdicts), nboots)
     tot = len(taxdicts)
-    resarr = np.zeros((tot, 4), dtype=np.float64)
-    bootarr = np.zeros((tot, nboots), dtype=np.float64)
+    resarr = np.zeros((tot, 6), dtype=np.float64)
+    bootsarr = np.zeros((tot, nboots), dtype=np.float64)
 
     ## if no ipyclient then assume Default is running, else raise error
     if not ipyclient:
-        pass
+        raise IPyradError("  must provide an ipyclient Object")
 
     ## submit jobs to run on the cluster queue
     else:
@@ -478,7 +205,14 @@ def batch(handle, taxdicts, mindicts=None, nboots=100, ipyclient=None, quiet=Fal
     
         ## iterate over tests (repeats mindicts if fewer than taxdicts)
         for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
-            asyncs[idx] = lbview.apply(baba, *(handle, test, mindict, nboots))
+            ## if it's sim data then convert to an array
+            if sims:
+                arr = _msp_to_arr(handle, test)
+                args = (arr, test, mindict, nboots)
+                asyncs[idx] = lbview.apply(baba, *args)
+            else:
+                args = (handle, test, mindict, nboots)
+                asyncs[idx] = lbview.apply(baba, *args)
             idx += 1
 
         ## block until finished, print progress if requested.
@@ -491,7 +225,9 @@ def batch(handle, taxdicts, mindicts=None, nboots=100, ipyclient=None, quiet=Fal
                         " error: {}: {}".format(job, asyncs[job].exception()))
                 ## enter results for successful jobs
                 else:
-                    resarr[job], bootarr[job] = asyncs[job].result()
+                    _res, _bot = asyncs[job].result()
+                    resarr[job] = _res.as_matrix()[:, 0]
+                    bootsarr[job] = _bot
                     del asyncs[job]
 
             ## count finished
@@ -503,11 +239,22 @@ def batch(handle, taxdicts, mindicts=None, nboots=100, ipyclient=None, quiet=Fal
                 print("")
                 break
 
-        return resarr, bootarr
+        ## dress up resarr as a Pandas DataFrame
+        if not names:
+            names = range(len(taxdicts))
+        resarr = pd.DataFrame(resarr, 
+                index=names,
+                columns=["dstat", "bootmean", "bootstd", "ABBA", "BABA", "Z"])
+
+        ## sort results dataframe and bootsarr to match
+        resarr = resarr.sort_index()
+        order = [list(resarr.index).index(i) for i in names]
+        bootsarr = bootsarr[order]
+        return resarr, bootsarr
 
 
 
-def baba(inarr, taxdict, mindict=None, nboots=100):
+def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
     """
     Takes input loci file or frequency array and a dictionary describing a 
     four or five taxon test to perform, and return D-statistic and related 
@@ -552,23 +299,41 @@ def baba(inarr, taxdict, mindict=None, nboots=100):
 
     ## get data as an array from loci file
     if isinstance(inarr, str):
-        arr = _loci_to_arr(inarr, taxdict, mindict)
+        arr, _ = _loci_to_arr(inarr, taxdict, mindict)
     elif isinstance(inarr, np.ndarray):
         arr = inarr
+    elif isinstance(inarr, types.GeneratorType):
+        arr = _msp_to_arr(inarr, taxdict)
+    elif isinstance(inarr, list):
+        arr = _msp_to_arr(inarr, taxdict)
     else:
         raise Exception("Must enter either a 'locifile' or 'arr'")
 
     ## run tests
     if len(taxdict) == 4:
+
+        ## get results
         res, boots = _get_signif_4(arr, nboots)
+    
+        ## make res into a nice DataFrame
+        res = pd.DataFrame(res, 
+                columns=[name],
+                index=["dstat", "bootmean", "bootstd", "abba", "baba", "Z"])
+
     else:
+        ## get results
         res, boots = _get_signif_5(arr, nboots)
+
+        ## make int a DataFrame
+        res = pd.DataFrame(res,
+            index=["p3", "p4", "shared"], 
+            columns=["dstat", "bootmean", "bootstd", "abxxa", "baxxa", "Z"]
+            )
+
     return res, boots
 
 
 
-## can reduce array size significantly which would speed things up if we reduce
-## to minlen being Nsnps and remove all cols without SNPs.
 def _loci_to_arr(locifile, taxdict, mindict):
     """
     return a frequency array from a loci file for all loci with taxa from 
@@ -580,24 +345,23 @@ def _loci_to_arr(locifile, taxdict, mindict):
         loci = infile.read().strip().split("|\n")
         nloci = len(loci)
 
-    ## get max loc length
-    maxlen = 0
-    for iloc in xrange(nloci):
-        lines = loci[iloc].split("\n")[:-1]
-        _maxl = len(lines[0]) 
-        maxlen = max(maxlen, _maxl)
+    ## make the array (4 or 5) and a mask array to remove loci without cov
+    keep = np.zeros(nloci, dtype=np.bool_)
+    arr = np.zeros((nloci, 4, 300), dtype=np.float64)
+    if len(taxdict) == 5:
+        arr = np.zeros((nloci, 6, 300), dtype=np.float64)
 
-    ## make the array (4 or 5)
-    arr = np.zeros((nloci, len(taxdict), maxlen), dtype=np.float64)
-    
     ## if not mindict, make one that requires 1 in each taxon
     if not mindict:
         mindict = {i:1 for i in taxdict}
+    if isinstance(mindict, int):
+        mindict = {i:mindict for i in taxdict}
 
     ## raise error if names are not 'p[int]' 
     allowed_names = ['p1', 'p2', 'p3', 'p4', 'p5']
     if any([i not in allowed_names for i in taxdict]):
-        raise NameError("keys in taxdict must be named 'p1' through 'p4' or 'p5'")
+        raise IPyradError(\
+            "keys in taxdict must be named 'p1' through 'p4' or 'p5'")
 
     ## parse key names
     keys = sorted([i for i in taxdict.keys() if i[0] == 'p'])
@@ -611,47 +375,108 @@ def _loci_to_arr(locifile, taxdict, mindict):
         names = [i.split()[0] for i in lines]
         seqs = np.array([list(i.split()[1]) for i in lines])
 
-        ## check that names cover the taxdict
+        ## check that names cover the taxdict (still need to check by site)
         covs = [sum([j in names for j in taxdict[tax]]) >= mindict[tax] \
                 for tax in taxdict]
-        if all(covs):
-            
-            ## get the refseq 
-            ref = np.where([i in taxdict[outg] for i in names])[0]
-            refseq = seqs[ref].view(np.uint8)
-            ancestral = np.array([reftrick(refseq, GETCONS)[:, 0]])
 
-            ## and fill it in
-            iseq = _reffreq(ancestral, refseq, GETCONS)
+        ## keep locus
+        if all(covs):
+            keep[loc] = True
+
+            ## get the refseq
+            refidx = np.where([i in taxdict[outg] for i in names])[0]
+            refseq = seqs[refidx].view(np.uint8)
+            ancestral = np.array([reftrick(refseq, GETCONS2)[:, 0]])
+
+            ## freq of ref in outgroup
+            iseq = _reffreq2(ancestral, refseq, GETCONS2)
             arr[loc, -1, :iseq.shape[1]] = iseq 
 
-            ## fill each other tax freq in taxdict
-            for tidx, key in enumerate(keys[:-1]):
+            ## enter 4-taxon freqs
+            if len(taxdict) == 4:
+                for tidx, key in enumerate(keys[:-1]):
 
-                ## get idx of names in test tax
-                nidx = np.where([i in taxdict[key] for i in names])[0]
+                    ## get idx of names in test tax
+                    nidx = np.where([i in taxdict[key] for i in names])[0]
+                    sidx = seqs[nidx].view(np.uint8)
+                   
+                    ## get freq of sidx
+                    iseq = _reffreq2(ancestral, sidx, GETCONS2)
+                   
+                    ## fill it in 
+                    arr[loc, tidx, :iseq.shape[1]] = iseq
+
+            else:
+
+                ## entere p5; and fill it in
+                iseq = _reffreq2(ancestral, refseq, GETCONS2) 
+                arr[loc, -1, :iseq.shape[1]] = iseq 
+                
+                ## enter p1
+                nidx = np.where([i in taxdict['p1'] for i in names])[0]
                 sidx = seqs[nidx].view(np.uint8)
-                ## get freq of sidx
-                iseq = _reffreq(ancestral, sidx, GETCONS)
-                ## fill it in 
-                arr[loc, tidx, :iseq.shape[1]] = iseq
+                iseq = _reffreq2(ancestral, sidx, GETCONS2)
+                arr[loc, 0, :iseq.shape[1]] = iseq
+                
+                ## enter p2
+                nidx = np.where([i in taxdict['p2'] for i in names])[0]
+                sidx = seqs[nidx].view(np.uint8)
+                iseq = _reffreq2(ancestral, sidx, GETCONS2)
+                arr[loc, 1, :iseq.shape[1]] = iseq
+                
+                ## enter p3 with p4 masked, and p4 with p3 masked
+                nidx = np.where([i in taxdict['p3'] for i in names])[0]
+                nidy = np.where([i in taxdict['p4'] for i in names])[0]
+                sidx = seqs[nidx].view(np.uint8)
+                sidy = seqs[nidy].view(np.uint8)
+                xseq = _reffreq2(ancestral, sidx, GETCONS2)
+                yseq = _reffreq2(ancestral, sidy, GETCONS2)
+                mask3 = xseq != 0
+                mask4 = yseq != 0
+                xseq[mask4] = 0
+                yseq[mask3] = 0
+                arr[loc, 2, :xseq.shape[1]] = xseq
+                arr[loc, 3, :yseq.shape[1]] = yseq
+                
+                ## enter p34 
+                nidx = nidx.tolist() + nidy.tolist()
+                sidx = seqs[nidx].view(np.uint8)
+                iseq = _reffreq2(ancestral, sidx, GETCONS2)
+                arr[loc, 4, :iseq.shape[1]] = iseq
+
 
     ## size-down array to the number of loci that have taxa for the test
-    ## this was already done in COV, this would filter for loci that 
-    ## contain at least some variants, but that is not required.
-    #who = np.all(np.all(arr==0, axis=2), axis=1)
-    #arr = arr[~who]
+    arr = arr[keep, :, :]
 
-    ## remove empty sites now that we subsampled
-    maxlen = np.where(np.all(np.all(arr==0, axis=1), axis=0))[0].min()
-    arr = arr[:, :, :maxlen]
+    ## size-down sites to 
+    arr = masknulls(arr)
 
-    return arr
+    return arr, keep
 
 
 
 @numba.jit(nopython=True)
-def _reffreq(refseq, iseq, consdict):
+def masknulls(arr):
+    nvarr = np.zeros(arr.shape[0], dtype=np.int8)
+    trimarr = np.zeros(arr.shape, dtype=np.float64)
+    for loc in xrange(arr.shape[0]):
+        nvars = 0
+        for site in xrange(arr.shape[2]):
+            col = arr[loc, :, site]
+            ## mask cols with 9s
+            if not np.any(col == 9):
+                ## any non-outgroup shows variation?
+                ## todo: check whether BBBBA is ever info?
+                if np.any(col[:-1] != col[0]):
+                    trimarr[loc, :, nvars] = col
+                    nvars += 1
+        nvarr[loc] = nvars        
+    return trimarr[:, :, :nvarr.max()]
+
+
+
+@numba.jit(nopython=True)
+def _reffreq2(ancestral, iseq, consdict):
     ## empty arrays
     freq = np.zeros((1, iseq.shape[1]), dtype=np.float64)
     amseq = np.zeros((iseq.shape[0]*2, iseq.shape[1]), dtype=np.uint8)
@@ -660,23 +485,29 @@ def _reffreq(refseq, iseq, consdict):
     for seq in xrange(iseq.shape[0]):
         for col in xrange(iseq.shape[1]):  
 
-            ## expand colums with ambigs and remove N-
+            ## get this base and check if it is hetero
             base = iseq[seq][col]
             who = consdict[:, 0] == base
             
-            ## resolve heteros and enter into 
+            ## if not hetero then enter it
             if not np.any(who):
                 amseq[seq*2][col] = base
                 amseq[seq*2+1][col] = base        
+            ## if hetero then enter the 2 resolutions
             else:
                 amseq[seq*2][col] = consdict[who, 1][0]
                 amseq[seq*2+1][col] = consdict[who, 2][0]
 
-    ## get as frequencies
-    amseq = (refseq == amseq).astype(np.float64)
-    for i in xrange(amseq.shape[0]):
-        freq += amseq[i]   
-    return freq / np.float64(amseq.shape[0])
+    ## amseq may have N or -, these need to be masked
+    for i in xrange(amseq.shape[1]):
+        ## without N or -
+        reduced = amseq[:, i][amseq[:, i] != 9]
+        counts = reduced != ancestral[0][i]
+        if reduced.shape[0]:
+            freq[:, i] = counts.sum() / reduced.shape[0]
+        else:
+            freq[:, i] = 9
+    return freq
 
 
 
@@ -689,9 +520,10 @@ def _prop_dstat(arr):
     top = abba - baba
     bot = abba + baba
 
-    ## get statistic and avoid zero div   
-    if bot.sum() != 0:
-        dstat = top.sum() / float(bot.sum())
+    ## get statistic and avoid zero div  
+    sbot = bot.sum()
+    if  sbot != 0:
+        dstat = top.sum() / float(sbot)
     else:
         dstat = 0
     
@@ -720,19 +552,19 @@ def _get_boots(arr, nboots):
 
 
 
-#@numba.jit(nopython=True)
+@numba.jit(nopython=True)
 def _get_signif_4(arr, nboots):
     """
     returns a list of stats and an array of dstat boots. Stats includes
     z-score and two-sided P-value. 
     """
-    ## serial execution
     abba, baba, dstat = _prop_dstat(arr)
     boots = _get_boots(arr, nboots)
     e, s = (boots.mean(), boots.std())
-    #z = np.abs(dstat) / s
-    z = np.abs(e) / s
-    stats = np.array([dstat, e, s, z])
+    z = 0.
+    if s:
+        z = np.abs(e) / s
+    stats = np.array([dstat, e, s, abba, baba, z])
     return stats, boots
 
 
@@ -743,55 +575,30 @@ def _get_signif_5(arr, nboots):
     returns a list of stats and an array of dstat boots. Stats includes
     z-score and two-sided P-value. 
     """
-    abba, baba, dstat = _prop_dstat(arr)
-    boots = _get_boots(arr, nboots)
-    e, s = (boots.mean(), boots.std())
-    z = np.abs(dstat) / s
-    stats = np.array([dstat, e, s, z])
-    return stats, boots    
 
+    statsarr = np.zeros((3, 6), dtype=np.float64)
+    bootsarr = np.zeros((3, nboots))
 
+    idx = 0
+    for acol in [2, 3, 4]:
+        rows = np.array([0, 1, acol, 5])
+        tarr = arr[:, rows, :]
 
-## function to convert ms simulated trees to arr 
-## assumes a fixed 12 taxon tree
-## assumes simlen = 100 
-def _msp_to_arr(nreps, simreps, test):
-    
-    ## the fixed tree dictionary
-    fix = {j: [i, i+1] for j, i in zip(list("abcdefghijkl"), range(0, 24, 2))}
-    
-    ## fill taxdict by test
-    keys = ['p1', 'p2', 'p3', 'p4']
-    taxs = [test[key] for key in keys]
-    idxs = [list(itertools.chain(*[fix[j] for j in i])) for i in taxs]
+        abxa, baxa, dstat = _prop_dstat(tarr)
+        boots = _get_boots(tarr, nboots)
+        e, s = (boots.mean(), boots.std())
+        if s:
+            z = np.abs(dstat) / s
+        else:
+            z = np.NaN
+        stats = np.array([dstat, e, s, abxa, baxa, z])
 
-    ## array to fill, limit to 100 len
-    arr = np.zeros((nreps, sum([len(i) for i in idxs]), 100))
-    
-    ## iterate over reps filling arr
-    for idx, trees in enumerate(simreps):
-        
-        ## build genotype array
-        shape = trees.get_num_mutations(), trees.get_sample_size()
-        garr = np.empty(shape, dtype="u1")
-    
-        ## fill the garr
-        for variant in trees.variants():
-            garr[variant.index] = variant.genotypes
-        garr = garr.T
-        
-        ## fill my arr with freqs
-        for pdx, tax in enumerate(idxs):
-            freq = garr[tax]
-            freq = freq.sum(axis=0) / float(freq.shape[0])
-            maxsz = min(freq.shape[0], 100)
-            arr[idx, pdx, :maxsz] = freq[:maxsz]
-            
-    ## reduce the size of arr to min  
-    minl = np.where(np.all(np.all(arr==0, axis=1) == True, axis=0))[0].min()
-    arr = arr[:, :, :minl]
-    
-    return arr
+        statsarr[idx] = stats
+        bootsarr[idx] = boots
+        idx += 1
+
+    return statsarr, bootsarr
+
 
 
 #######################################################################
@@ -821,7 +628,7 @@ def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
     bmax = canvas.height * 0.35
     hmin = canvas.height * 0.45
     hmax = canvas.height * 0.95
-    wmin = canvas.width * 0.1
+    wmin = canvas.width * 0.15
     wmax = canvas.width * 0.9
 
     ## space between plots (min 50)
@@ -835,18 +642,25 @@ def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
     
     ## add the rest
     for idx in xrange(ntests):
-        ## new data
-        res = resarr[idx]
+        ## new data from resarr dataframe
+        #res = resarr.iloc[idx]
         boot = bootarr[idx]
         hist = np.histogram(boot, bins=50, range=(rmin, rmax), density=True)
         
         ## get p-value from z-score
-        sign = res[3] > cutoff
+        sign = resarr.Z[idx] > cutoff
+        if sign:
+            if resarr.bootmean[idx] > 0:
+                histcolor = toyplot.color.Palette()[0]
+            else:
+                histcolor = toyplot.color.Palette()[1]
+        else:
+            histcolor = toyplot.color.Palette()[-1]
         
         ## next axes
         dims = (xlines[idx], xlines[idx]+spacer, hmin, hmax)
         axes = canvas.cartesian(bounds=dims)
-        axes.bars(hist, along='y', color=toyplot.color.Palette()[sign])
+        axes.bars(hist, along='y', color=histcolor)
 
         ## style leftmost edge
         if idx == 0:
@@ -872,13 +686,13 @@ def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
     ## add dash through histograms
     dims = (xlines[0], xlines[-1], hmin, hmax)# canvas.height)
     axes = canvas.cartesian(bounds=dims)
-    axes.hlines(y = 0, style={"stroke-dasharray": "5, 10"})
+    axes.hlines(y=0, style={"stroke-dasharray": "5, 10"})
     axes.show = False
 
     ## add bar plots
     dims = (xlines[0], xlines[-1], bmin, bmax)
     axes = canvas.cartesian(bounds=dims)
-    axes.bars(xlines[1:], resarr[:, 3], opacity=0.75)
+    axes.bars(xlines[1:], resarr.Z, opacity=0.75, color=toyplot.color.Palette()[2])
 
     ## bars axis styling
     axes.padding = 0.5
@@ -898,7 +712,7 @@ def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
 
 
 
-def panelplot():
+def panelplot(tests, resarr, bootsarr, tree):
 
     ## setup canvas height in three parts 
     canvas = toyplot.Canvas(width=1000, height=1000)
@@ -949,7 +763,7 @@ def panelplot():
         dims = (blocks[bidx], blocks[bidx]+spacer, 
                 div_tree_ymin, div_tree_ymax)
         div_block = canvas.cartesian(bounds=dims)
-        print dims
+        print(dims)
         
         ## functions to fill block based on taxonomy of test
         div_block.fill([0, 100], [100, 100])
@@ -984,8 +798,8 @@ def panelplot():
 
     ## plot histogram distributions --------------------------------------
     rmax = np.max(np.abs(bootsarr))
-    rmax = round(min(1.0, max(0.2, rmax+0.1*rmax)), 1)
-    rmin = round(max(-1.0, min(-0.2, -1 * rmax)), 1)
+    rmax = round(min(1.0, max(0.1, rmax+0.1*rmax)), 1)
+    rmin = round(max(-1.0, min(-0.1, -1 * rmax)), 1)
 
     ## space between plots 
     div_hist_ymin = div_z_ymax + pheight * 0.05
@@ -1043,6 +857,837 @@ def panelplot():
     div_hist.show = False
 
     return canvas
+
+
+
+class Tree(object):
+    def __init__(self, newick=None, admix=None):
+
+        ## use default newick string if not given
+        if newick:
+            self.newick = newick
+            self.admix = admix
+        else:
+            self.newick = "((((a,b),c),d), ((((e,f),g),h) , (((i,j),k),l)));"
+        ## parse newick, assigns idx to nodes, returns tre, edges, verts, names
+        tree, edges, verts, names = cladogram(self.newick)
+
+        ## parse admixture events
+        self.admix = admix
+        self._check_admix()
+
+        ## store values
+        self.tree = tree
+        self.edges = edges
+        self.verts = verts
+        self.names = names.values()  ## in tree plot vlshow order
+
+
+    def _check_admix(self):
+        ## raise an error if admixture event is not possible in time period
+        if self.admix:
+            for event in self.admix:
+                pass #print(event)
+
+
+    def draw(
+            self, 
+            yaxis=False, 
+            show_tips=False, 
+            use_edge_lengths=True, 
+            taxdicts=None, 
+            bootsarr=None,
+            collapse_outgroup=False,
+            test_labels=False,
+            **kwargs):
+        """
+        plot the tree using toyplot.graph. 
+
+        Parameters:
+        -----------
+            taxdicts: dict
+                Show tests as colored rectangles.
+            bootsarr: ndarray
+                Show bootstrap distributions (requires taxdicts as well)
+            yaxis: bool
+                Show the y-axis.
+            use_edge_lengths: bool
+                Use edge lengths from newick tree.
+            show_tips: bool
+                Show tip names from tree.
+            pct_tree_y: float
+                proportion of canvas y-axis showing tree
+            ...
+        """
+
+        ## update kwargs from defaults
+        args = {"height": min(1000, 15*len(self.tree)),
+                "width": min(1000, 15*len(self.tree)),
+                "vsize": 0, 
+                "vlshow": False, 
+                "ewidth": 3, 
+                "vlstyle": {"font-size": "18px"}, 
+                "cex": "14px", 
+                "pct_tree_y": 0.3, 
+                "pct_tree_x": 0.7, 
+                "lwd_lines": 1,
+                }
+        ## default if only a tree plot
+        if not taxdicts:
+            args.update({
+                "vsize": 20,
+                "vlshow": True,
+                })
+        args.update(kwargs)
+
+        ## collapse outgroup
+        if collapse_outgroup:
+            tree, taxdicts = _collapse_outgroup(self.tree, taxdicts)
+            newick = tree.write(format=1)
+        else:
+            newick = self.newick
+
+        ## starting tree position will be changed if adding panel plots
+        xmin_tree = 0.
+        ymin_tree = 0.
+        ymin_test = 0.
+        ymin_text = 0.
+
+        ## convert vert to length 1s if not using edges
+        verts = copy.deepcopy(self.verts)
+
+        #if not use_edge_lengths:
+        tree, edges, verts, names = cladogram(newick, use_edge_lengths=False)
+        verts = verts.astype(np.float)
+
+        ## ensure types
+        bootsarr = np.array(bootsarr)
+
+        ## relocate tree for panel plots
+        if np.any(bootsarr) or taxdicts:
+            
+            ## adjust Y-axis: boots Y is 125% of tree Y
+            pcy = 1 - args["pct_tree_y"]
+            newmn = verts[:, 1].max() * pcy
+            newhs = np.linspace(newmn, verts[:, 1].max(), len(set(verts[:, 1])))
+            ymin_tree += verts[:, 1].max() * pcy
+            verts[:, 1] = [newhs[int(i)] for i in verts[:, 1]]
+
+            ## adjust X-axis: boots X is 75% of tree X
+            if np.any(bootsarr):
+                ## how much do I need to add to make the tree be 60%?
+                xmin_tree += verts[:, 0].max() * args["pct_tree_x"]
+                verts[:, 0] += verts[:, 0].max() * args["pct_tree_x"]
+
+            ## get spacer between panels
+            ztot = 0.15 * xmin_tree
+
+        ## add spacer for tip names
+        pctt = 0.2 * (ymin_tree + ymin_test)
+        ymin_tree += pctt / 2.
+        ymin_test += pctt / 2.
+        verts[:, 1] += pctt / 2.
+
+        ## create a canvas and a single cartesian coord system
+        canvas = toyplot.Canvas(height=args['height'], width=args['width'])
+        axes = canvas.cartesian(bounds=("5%", "95%", "5%", "95%"))
+            
+        ## add the tree/graph ------------------------------------------------
+        _ = axes.graph(edges, 
+                        vcoordinates=verts, 
+                        ewidth=args["ewidth"], 
+                        ecolor=toyplot.color.near_black, 
+                        vlshow=args["vlshow"],
+                        vsize=args["vsize"],
+                        vlstyle=args["vlstyle"],
+                        vlabel=names.values())   
+
+        ## add rects for test taxa -------------------------------------------
+        if taxdicts:
+            yhs = np.linspace(ymin_tree, ymin_test, len(taxdicts)+1)
+            ## calculate coords, top and bot 30% of bars is cutoff 
+            xmin_hists = 0.
+            xmin_zs = (xmin_tree * 0.5) 
+            ysp = (yhs[0] - yhs[1])  ## yyy
+            ytrim = 0.70 * ysp
+
+            ## colors for tips
+            cdict = {"p1": toyplot.color.Palette()[0], 
+                     "p2": toyplot.color.Palette()[1],
+                     "p3": toyplot.color.near_black, 
+                     "p4": toyplot.color.Palette()[-1],}
+
+            ## iterate over tests putting in rects
+            for idx, test in enumerate(taxdicts):
+                ## check taxdict names
+                dictnames = list(itertools.chain(*test.values()))
+                badnames = [i for i in dictnames if i not in names.values()]
+                if badnames:
+                    #raise IPyradError(
+                    print("Warning: found names not in tree:\n -{}"\
+                          .format("\n -".join(list(badnames))))
+
+                ## add dashed grid line for tests
+                gedges = np.array([[0, 1], [2, 3]])
+                gverts = np.array([
+                          [xmin_tree, yhs[idx]-ysp/2.],
+                          [verts[:, 0].max(), yhs[idx]-ysp/2.],
+                          [xmin_zs+ztot/2., yhs[idx]-ysp/2.],
+                          [xmin_tree-ztot, yhs[idx]-ysp/2.],
+                          ])
+                axes.graph(gedges, 
+                           vcoordinates=gverts,
+                           ewidth=args["lwd_lines"], 
+                           ecolor=toyplot.color.Palette()[-1],
+                           vsize=0, 
+                           vlshow=False,
+                           estyle={"stroke-dasharray": "5, 5"},
+                           )                              
+
+                ## add test rectangles
+                for tax in ["p1", "p2", "p3", "p4"]:
+                    spx = [tree.search_nodes(name=i)[0] for i in test[tax]]
+                    spx = np.array([i.x for i in spx], dtype=np.float)
+                    spx += xmin_tree
+                    spx.sort()
+                    ## fill rectangles while leaving holes for missing taxa
+                    for i in xrange(spx.shape[0]):
+                        if i == 0:
+                            xleft = spx[i] - 0.25
+                            xright = spx[i] + 0.25
+                        if i != spx.shape[0]-1:
+                            if spx[i+1] - spx[i] < 1.5:
+                                xright += 1
+                            else:
+                                axes.rects(xleft, xright, 
+                                    yhs[idx] - ytrim, 
+                                    yhs[idx+1] + ytrim, color=cdict[tax]) 
+                                xleft = spx[i+1] - 0.25
+                                xright = spx[i+1] + 0.25
+                        else:
+                            axes.rects(xleft, xright,
+                                    yhs[idx] - ytrim, 
+                                    yhs[idx+1] + ytrim, color=cdict[tax]) 
+                    
+            ## add test-label
+            if test_labels:
+                if isinstance(test_labels, bool) or test_labels == 1: 
+                    labels = range(1, len(taxdicts) + 1)
+                elif isinstance(test_labels, list):
+                    labels = test_labels
+                else:
+                    raise IPyradError("  label_tests must be a list or boolean")
+                axes.text(
+                    [verts[:, 0].max() + 1] * len(taxdicts),
+                    yhs[:-1] - ysp / 2., 
+                    labels,
+                        color=toyplot.color.near_black,
+                        style={
+                            "font-size": args["cex"],
+                            "text-anchor" : "start",
+                            "-toyplot-anchor-shift":"0",
+                            },
+                        )                
+
+
+            ## add hists
+            if np.any(bootsarr):
+
+                ## get bounds on hist
+                rmax = np.max(np.abs(bootsarr))
+                rmax = round(min(1.0, max(0.2, rmax+0.05*rmax)), 1)
+                rmin = round(max(-1.0, min(-0.2, -1 * rmax)), 1)
+                allzs = np.abs(np.array([i.mean() / i.std() for i in bootsarr]))
+                zmax = max(3., float(np.math.ceil(allzs.max())))
+
+                ## add histograms, and hist axes
+                for idx in xrange(bootsarr.shape[0]):
+                    bins = 30
+                    mags, xpos = np.histogram(bootsarr[idx], 
+                            bins=bins, range=(rmin, rmax), density=True)
+
+                    ## get hist colors
+                    thisz = allzs[idx]
+                    if thisz > 3:
+                        if bootsarr[idx].mean() < 0:
+                            color = toyplot.color.Palette()[0]
+                        else:
+                            color = toyplot.color.Palette()[1]
+                    else:
+                        color = toyplot.color.Palette()[-1]
+
+                    ## plot z's within range 
+                    zright = xmin_tree - ztot
+                    zleft = xmin_zs + ztot/2.
+                    zprop = thisz / zmax
+                    zmaxlen = zright - zleft
+                    zlen = zmaxlen * zprop
+                    axes.rects(
+                        zright-zlen, zright,
+                        yhs[idx] - ytrim, 
+                        yhs[idx+1] + ytrim,
+                        color=toyplot.color.Palette()[2])
+
+                    ## get hist xspans, heights in range
+                    xran = np.linspace(xmin_hists, xmin_zs - ztot/2., bins+1)
+                    mags = mags / mags.max()
+                    mags = (mags * ysp) * 0.8
+                    yline = yhs[idx+1]
+                    heights = np.column_stack([[yline for i in mags], mags])
+                    axes.bars(
+                        xran[:-1], 
+                        heights, 
+                        baseline="stacked",
+                        color=["white", color],
+                        )
+
+                    ## add x-line to histograms
+                    gverts = np.array([
+                        [xran[0], yline], 
+                        [xran[-1], yline],
+                        ])
+                    gedges = np.array([[0, 1]])
+                    axes.graph(
+                        gedges, 
+                        vcoordinates=gverts, 
+                        ewidth=1, 
+                        ecolor=toyplot.color.near_black,
+                        vsize=0, 
+                        vlshow=False,
+                        )
+
+                ## add xline to z-plots
+                gverts = np.array([
+                    [xmin_zs + ztot/2., yline], 
+                    [xmin_tree - ztot, yline], 
+                    ])
+                gedges = np.array([[0, 1]])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    vsize=0, 
+                    vlshow=False,
+                    )
+
+                ## add dashed y-line at 0 to histograms
+                here = np.where(xpos > 0)[0].min()
+                zero = xran[here-1]
+                gverts = np.array([
+                    [zero, ymin_test],
+                    [zero, ymin_tree - ytrim / 4.],
+                    ])
+                gedges = np.array([[0, 1]])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    eopacity=1.,
+                    vsize=0, 
+                    vlshow=False,
+                    estyle={"stroke-dasharray": "5, 5"},
+                    )
+
+                ## add solid y-line to z-plots
+                gverts = np.array([
+                    [xmin_tree - ztot, ymin_test + ytrim/4.],
+                    [xmin_tree - ztot, ymin_tree - ytrim/4.],
+                    ])
+                gedges = np.array([[0, 1]])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    eopacity=1.,
+                    vsize=0, 
+                    vlshow=False,
+                    )
+
+                ## add tick-marks to x-lines (hists and z-plots)
+                ticklen = ytrim / 4.
+                gedges = np.array([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+                gverts = np.array([
+                    [xmin_hists, ymin_test - ticklen],
+                    [xmin_hists, ymin_test],
+                    [zero, ymin_test - ticklen],                              
+                    [zero, ymin_test],
+                    [xmin_zs - ztot / 2., ymin_test - ticklen],
+                    [xmin_zs - ztot / 2., ymin_test],
+                    [xmin_zs + ztot / 2., ymin_test - ticklen],
+                    [xmin_zs + ztot / 2., ymin_test],
+                    [xmin_tree - ztot, ymin_test - ticklen],
+                    [xmin_tree - ztot, ymin_test],
+                    ])
+                axes.graph(
+                    gedges, 
+                    vcoordinates=gverts, 
+                    ewidth=1, 
+                    ecolor=toyplot.color.near_black,
+                    eopacity=1.,
+                    vsize=0, 
+                    vlshow=False,
+                    )
+
+                ## add tick labels
+                labels = [rmin, 0, rmax, zmax, 0]
+                axes.text(
+                    gverts[:, 0][::2], 
+                    [ymin_test - ysp] * len(labels),
+                    labels, 
+                    color=toyplot.color.near_black,
+                    style={
+                        "font-size": args["cex"],
+                        "text-anchor" : "middle",
+                        "-toyplot-anchor-shift":"0",
+                        },
+                    )
+
+                ## add baba abba labels
+                axes.text(
+                    [gverts[:, 0][0], gverts[:, 0][4]],
+                    [ymin_test - ysp * 2] * 2,
+                    ["BABA", "ABBA"], 
+                    color=toyplot.color.near_black,
+                    style={
+                        "font-size": args["cex"], #"12px",
+                        "text-anchor" : "middle",
+                        "-toyplot-anchor-shift":"0",
+                        },
+                    )     
+
+                ## add bootstrap and z-score titles
+                axes.text(
+                    [zero, zright - 0.5 * zmaxlen],
+                    [ymin_tree + ysp / 2.] * 2,
+                    ["Bootstrap D-statistics", "Z-scores"], 
+                    color=toyplot.color.near_black,
+                    style={
+                        "font-size": args["cex"], #"12px",
+                        "text-anchor" : "middle",
+                        "-toyplot-anchor-shift":"0",
+                        },
+                    )
+
+                                 
+        ## add names to tips --------------------------------------------------
+        if show_tips:
+            ## calculate coords
+            nams = [i for i in names.values() if not isinstance(i, int)]
+            spx = [tree.search_nodes(name=i)[0] for i in nams]
+            spx = np.array([i.x for i in spx], dtype=np.float)
+            spx += xmin_tree
+            if taxdicts:
+                spy = [yhs[-1] - ysp / 2.] * len(nams)
+            else:
+                spy = [ymin_test - 0.5] * len(nams)
+            _ = axes.text(spx, spy, nams,
+                              angle=-90, 
+                              color=toyplot.color.near_black,
+                              style={
+                                 "font-size": args["cex"],
+                                 "text-anchor" : "start",
+                                 "-toyplot-anchor-shift":"0",
+                                 },
+                              ) 
+
+
+        ## plot admix lines ---------------------------------
+        if self.admix:
+            for event in self.admix:
+                ## get event
+                source, sink, _, _, _ = event
+
+                ## get nodes from tree
+                source = self.tree.search_nodes(name=source)[0]
+                sink = self.tree.search_nodes(name=sink)[0]
+
+                ## get coordinates
+                fromx = np.max([source.up.x, source.x]) - np.abs(source.up.x - source.x) / 2.
+                fromy = source.y + (source.up.y - source.y) / 2.
+                tox = np.max([sink.up.x, sink.x]) - np.abs(sink.up.x - sink.x) / 2.
+                toy = sink.y + (sink.up.y - sink.y) / 2.
+                
+                ## if show_tips:
+                if show_tips:
+                    fromy += spacer
+                    toy += spacer
+
+                ## plot
+                mark = axes.plot([fromx, tox], [fromy, toy], 
+                                color=toyplot.color.Palette()[1], 
+                                style={"stroke-width": 3, 
+                                       "stroke-dasharray": "2, 2"},
+                                )
+                
+        ## hide x and hide/show y axies
+        axes.x.show = False
+        if yaxis:
+            axes.y.show = True
+        else:
+            axes.y.show = False    
+
+        ## return plotting 
+        return canvas, axes
+
+
+
+def _collapse_outgroup(tree, taxdicts):
+    """ collapse outgroup in ete Tree for easier viewing """
+    ## check that all tests have the same outgroup
+    outg = taxdicts[0]["p4"]
+    if not all([i["p4"] == outg for i in taxdicts]):
+        raise Exception("no good")
+   
+    ## prune tree, keep only one sample from outgroup
+    tre = ete.Tree(tree.write(format=1)) #tree.copy(method="deepcopy")
+    alltax = [i for i in tre.get_leaf_names() if i not in outg]
+    alltax += [outg[0]]
+    tre.prune(alltax)
+    tre.search_nodes(name=outg[0])[0].name = "outgroup"
+    tre.ladderize()
+
+    ## remove other ougroups from taxdicts
+    taxd = copy.deepcopy(taxdicts)
+    newtaxdicts = []
+    for test in taxd:
+        #test["p4"] = [outg[0]]
+        test["p4"] = ["outgroup"]
+        newtaxdicts.append(test)
+
+    return tre, newtaxdicts
+
+
+
+    # for idx in xrange(ntests):
+    #     ## new data from resarr dataframe
+    #     #res = resarr.iloc[idx]
+    #     boot = bootarr[idx]
+    #     hist = np.histogram(boot, bins=50, range=(rmin, rmax), density=True)
+        
+    #     ## get p-value from z-score
+    #     sign = resarr.Z[idx] > cutoff
+    #     if sign:
+    #         if resarr.bootmean[idx] > 0:
+    #             histcolor = toyplot.color.Palette()[0]
+    #         else:
+    #             histcolor = toyplot.color.Palette()[1]
+    #     else:
+    #         histcolor = "grey"
+        
+    #     ## next axes
+    #     dims = (xlines[idx], xlines[idx]+spacer, hmin, hmax)
+    #     axes = canvas.cartesian(bounds=dims)
+    #     axes.bars(hist, along='y', color=histcolor)
+
+    #     ## style leftmost edge
+    #     if idx == 0:
+    #         ## add histograms y-label
+    #         axes.y.label.text = "D-stat bootstraps"
+    #         axes.y.label.style = {"font-size": args['label-font-size'],
+    #                               "fill": toyplot.color.near_black}
+    #         axes.y.label.offset = 30 #wmin / 2. ## 40
+
+    #         ## axes style
+    #         axes.y.ticks.show = True
+    #         axes.y.ticks.labels.style = {"font-size": args['tick-font-size']}
+    #         axes.y.ticks.labels.offset = 10
+    #     else:        
+    #         ## styling left most
+    #         axes.y.ticks.show = False
+    #         axes.y.ticks.labels.show = False
+
+    #     ## shared axis style
+    #     axes.x.show = False
+    #     axes.padding = 0.5
+
+
+
+## convertes newick to (edges, vertices)
+def cladogram(newick, use_edge_lengths=True, invert=False):
+    
+    ## invert and short name to arg so it is similar to ape
+    ig = use_edge_lengths == False
+
+    ## get tree
+    tre = ete.Tree(newick=newick)
+    tre.ladderize()
+
+    ## map numeric values to internal nodes from root to tips
+    ## preorder: first parent and then children. These indices will
+    ## be used in the int edge array to map edges.
+    names = {}
+    idx = 0
+    for node in tre.traverse("preorder"):
+        if not node.is_leaf():
+            if node.name:
+                names[idx] = node.name
+            else:
+                names[idx] = idx
+                node.name = str(idx)
+            node.idx = idx
+            idx += 1
+
+    ## map number to the tips, these will be the highest numbers
+    for node in sorted(tre.get_leaves(), key=lambda x: x.name):
+        names[idx] = node.name
+        node.idx = idx
+        idx += 1
+
+    ## create empty edges and coords arrays
+    edges = np.zeros((idx-1, 2), dtype=int)
+    verts = np.zeros((idx, 2), dtype=float)
+    
+    ## postorder: first children and then parents. This moves up the list .
+    nidx = 0
+    tip_num = len(tre.get_leaves()) - 1
+    for node in tre.traverse("postorder"):
+        #for nidx in range(idx)[::-1]:
+        #node = tre.search_nodes(idx=nidx)[0]
+        if node.is_leaf():
+            edges[nidx-1, :] = node.up.idx, node.idx
+            node.x = tip_num 
+            node.y = 0
+            tip_num -= 1
+            verts[node.idx] = [node.x, node.y]
+        
+        elif node.is_root():
+            node.x = sum(i.x for i in node.children) / 2.
+            if ig:
+                node.y = node.get_farthest_leaf(ig)[1] + 1
+            else:
+                node.y = node.get_farthest_leaf()[1]
+            verts[node.idx] = [node.x, node.y]
+        
+        else:
+            edges[nidx-1, :] = node.up.idx, node.idx
+            node.x = sum(i.x for i in node.children) / 2.
+            if ig:
+                node.y = node.get_farthest_leaf(ig)[1] + 1
+            else:
+                node.y = node.get_farthest_leaf()[1]
+            verts[node.idx] = [node.x, node.y] 
+        nidx += 1
+
+    ## invert for sideways trees
+    if invert:
+        verts[:, 1] = np.abs(verts[:, 1] - tlen)
+
+    return tre, edges, verts, names
+
+
+
+######################################################################
+## Simulation functions (require msprime)
+######################################################################
+
+
+def sim_admix(nreps, tree, admix=None, Ns=500000, gen=20):
+
+    ## set up the ML values for Tau from tree. Units in tree are coalescent 
+    ## and must be multiplied by generation time to get in units of gen
+    Taus = np.array(list(set(tree.verts[:, 1]))) * 1e4 * gen
+
+    ## Population IDs correspond to their indexes in pop config
+    ntips = len(tree.tree)
+    pop_config = [
+        ms.PopulationConfiguration(sample_size=2, initial_size=Ns)
+        for i in range(ntips)]
+
+    ## migration matrix all zeros init
+    migmat = np.zeros((ntips, ntips)).tolist()
+
+    ## a list for storing demographic events
+    demog = []
+
+    ## move up tree from tips to root appending events to demog
+    for node in tree.tree.traverse("preorder"):
+
+        if node.is_leaf():
+            pass
+            ## check for migration
+
+            ## record coalescence
+
+
+
+
+## simulates data on 12 taxon tree with two admixture events
+def _sim_admix_12(nreps, Ns=500000, gen=20):
+    
+    # Set the ML values of various parameters
+    Taus = np.array([0, 1, 2, 3, 4, 5]) * 1e4 * gen
+
+    # Migration rates C -> B and from IJ -> EF
+    m_C_B = 2e-6
+    m_IJ_EF = 2e-6
+    
+    # Population IDs correspond to their indexes in pop_config.
+    ntips = len(tree.tree)
+    pop_config = [
+        ms.PopulationConfiguration(sample_size=2, initial_size=Ns)
+        for i in range(ntips)]
+    
+    ## migration matrix all zeros time=0
+    migmat = np.zeros((ntips, ntips)).tolist()
+    
+    ## set up demography
+    demog = [
+        ## initial migration from C -> B
+        ms.MigrationRateChange(time=0, rate=m_C_B, matrix_index=(1, 2)),
+        ms.MigrationRateChange(time=Taus[1], rate=0),
+
+        # merge events at time 1 (b,a), (f,e), (j,i)
+        ms.MassMigration(time=Taus[1], source=1, destination=0, proportion=1.0), 
+        ms.MassMigration(time=Taus[1], source=5, destination=4, proportion=1.0), 
+        ms.MassMigration(time=Taus[1], source=9, destination=8, proportion=1.0), 
+        
+        ## migration from IJ -> EF (backward in time)
+        ms.MigrationRateChange(time=Taus[1], rate=m_IJ_EF, matrix_index=(4, 8)), 
+
+        ## merge events at time 2 (c,a), (g,e), (k,i)
+        ms.MassMigration(time=Taus[2], source=2, destination=0, proportion=1.0), 
+        ms.MassMigration(time=Taus[2], source=6, destination=4, proportion=1.0), 
+        ms.MassMigration(time=Taus[2], source=10, destination=8, proportion=1.0), 
+
+        ## end migration at ABC and merge
+        ms.MigrationRateChange(time=Taus[2], rate=0),
+        ms.MassMigration(time=Taus[3], source=3, destination=0, proportion=1.0), 
+        ms.MassMigration(time=Taus[3], source=7, destination=4, proportion=1.0), 
+        ms.MassMigration(time=Taus[3], source=11, destination=8, proportion=1.0),   
+        
+        ## merge EFJH -> IJKL
+        ms.MassMigration(time=Taus[4], source=8, destination=4, proportion=1.0),   
+        
+        ## merge ABCD -> EFJHIJKL
+        ms.MassMigration(time=Taus[5], source=4, destination=0, proportion=1.0),   
+    ]
+
+    ## sim the data
+    replicates = ms.simulate(
+        population_configurations=pop_config,
+        migration_matrix=migmat,
+        demographic_events=demog,
+        num_replicates=nreps,
+        length=100, 
+        mutation_rate=1e-9)
+    
+    return replicates
+
+
+
+def _msp_to_arr(simreps, test):
+    
+    ## the fixed tree dictionary
+    fix = {j: [i, i+1] for j, i in zip(list("abcdefghijkl"), range(0, 24, 2))}
+    
+    ## fill taxdict by test
+    keys = ['p1', 'p2', 'p3', 'p4']
+    arr = np.zeros((100000, 4, 100))
+    
+    ## unless it's a 5-taxon test
+    if len(test) == 5:
+        arr = np.zeros((100000, 6, 100))
+        keys += ['p5']
+    
+    ## create array sampler for taxa
+    taxs = [test[key] for key in keys]
+    idxs = [list(itertools.chain(*[fix[j] for j in i])) for i in taxs]
+
+    ## iterate over reps filling arr
+    idx = 0
+    for trees in simreps:
+        
+        ## build genotype array
+        shape = trees.get_num_mutations(), trees.get_sample_size()
+        garr = np.empty(shape, dtype="u1")
+    
+        ## fill the garr
+        for variant in trees.variants():
+            garr[variant.index] = variant.genotypes
+        
+        if len(test) == 4:
+            if garr.shape[0]:
+                ## fill my arr with freqs
+                for pdx, tax in enumerate(idxs):
+                    freq = garr[:, tax]
+                    freq = freq.sum(axis=1) / float(freq.shape[1])
+                    maxsz = min(freq.shape[0], 100)
+                    arr[idx, pdx, :maxsz] = freq[:maxsz]
+        else:
+            if garr.shape[0]:
+                ## get the easy ones
+                p1 = garr[:, idxs[0]]
+                p2 = garr[:, idxs[1]]
+                p5 = garr[:, idxs[4]]
+                p34 = garr[:, idxs[2]+idxs[3]]
+
+                ## identity of SNPs is important
+                p3 = garr[:, idxs[2]]
+                p4 = garr[:, idxs[3]]
+                
+                ## any rows with data in b are masked in a
+                mask3 = np.where(p3.sum(axis=1) == 0)[0]
+                mask4 = np.where(p4.sum(axis=1) == 0)[0]
+                masked_p3 = p3[mask4]
+                masked_p4 = p4[mask3]
+                
+                ## enter frequencies
+                freq = p1
+                freq = freq.sum(axis=1) / float(freq.shape[1])
+                maxsz = min(freq.shape[0], 100)
+                arr[idx, 0, :maxsz] = freq[:maxsz]
+                
+                freq = p2
+                freq = freq.sum(axis=1) / float(freq.shape[1])
+                maxsz = min(freq.shape[0], 100)
+                arr[idx, 1, :maxsz] = freq[:maxsz]
+               
+                freq = masked_p3
+                freq = freq.sum(axis=1) / float(freq.shape[1])
+                maxsz = min(freq.shape[0], 100)
+                arr[idx, 2, :maxsz] = freq[:maxsz]               
+               
+                freq = masked_p4
+                freq = freq.sum(axis=1) / float(freq.shape[1])
+                maxsz = min(freq.shape[0], 100)
+                arr[idx, 3, :maxsz] = freq[:maxsz]
+               
+                freq = p34
+                freq = freq.sum(axis=1) / float(freq.shape[1])
+                maxsz = min(freq.shape[0], 100)
+                arr[idx, 4, :maxsz] = freq[:maxsz]
+                 
+                freq = p5
+                freq = freq.sum(axis=1) / float(freq.shape[1])
+                maxsz = min(freq.shape[0], 100)
+                arr[idx, 5, :maxsz] = freq[:maxsz]
+        idx += 1
+
+    ## reduce the size of arr to min loci        
+    arr = arr[:idx+1]
+    
+    ## reduce the size of arr to min len
+    minl = np.where(np.all(np.all(arr==0, axis=1) == True, axis=0))[0]
+    if np.any(minl):
+        minl = minl.min()
+    else:
+        minl = None
+    arr = arr[:, :, :minl]
+    
+    return arr
+
+
+
+## combines sim_admix12 + msp_to_arr + baba to return single (stats, boots)
+def sim_admix_12_baba(nreps, test, mindict, nboots):
+    sims = _sim_admix_12(nreps)
+    arr = _msp_to_arr(sims, test)
+    stats, boots = baba(arr, test, mindict, nboots)
+    return stats, boots
+
 
 
 
