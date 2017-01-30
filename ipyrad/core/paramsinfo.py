@@ -25,8 +25,7 @@ pinfo = OrderedDict([
     minimum coverage values, different levels of indels allowed, etc.
     Examples:
     ----------------------------------------------------------------------
-    data.set_params(0) = "white-crowns"               ## full path example
-    data.set_params('assembly_name') = "white-crowns" ## verbose
+    data.set_params('assembly_name', "white-crowns")     ## verbose
     ----------------------------------------------------------------------
     """, "Assembly name. Used to name output directories for assembly steps")
 ),
@@ -36,9 +35,7 @@ pinfo = OrderedDict([
     saved. This parameter affects all steps of assembly (1-7). 
     Examples: 
     ----------------------------------------------------------------------
-    data.set_params(1) = "/home/user/rad_analysis/"   ## full path example
-    data.set_params(1) = "./"                         ## current work. dir.
-    data.set_params('project_dir') = "./"       ## verbose
+    data.set_params('project_dir', "./")                 ## verbose
     ----------------------------------------------------------------------
     """, "Project dir (made in curdir if not present)")
 ),
@@ -49,10 +46,7 @@ pinfo = OrderedDict([
     FASTQ data files reside. Files can be gzipped. This parameter affects 
     only step 1 of assembly. Examples:
     ----------------------------------------------------------------------
-    data.set_params(2) = "/home/user/rad_analysis/*.fastq  ## full path
-    data.set_params(2) = "raw/*.fq"                        ## relative path
-    data.set_params(2) = "raw/*.fastq.gz"                  ## gzipped data 
-    data.set_params("raw_fastq_path") = "raw/*.fastq.gz"   ## verbose 
+    data.set_params("raw_fastq_path", "raw/*.fastq.gz")   ## verbose 
     ----------------------------------------------------------------------
     """, "Location of raw non-demultiplexed fastq files")
 ),
@@ -66,9 +60,7 @@ pinfo = OrderedDict([
     barcodes files and multiple raw files then you'll need to run each
     separately. Examples:
     ----------------------------------------------------------------------
-    data.set_params(3) = "/home/user/rad_analysis/barcodes.txt ## full path
-    data.set_params(3) = "./barcodes.txt                   ## relative path
-    data.set_params("barcodes_path") = "./barcodes.txt"    ## verbose
+    data.set_params("barcodes_path", "./barcodes.txt")    ## verbose
     ----------------------------------------------------------------------
     """, "Location of barcodes file")
 ),
@@ -83,10 +75,7 @@ pinfo = OrderedDict([
     This parameter affects only step 2 of assembly. 
     Examples:
     ----------------------------------------------------------------------
-    data.set_params(4) = "/home/user/data/*.fastq    ## set data location
-    data.set_params(4) = ""                ## defaults to working directory
-    data.set_params(4) = "./"                  ## uses current directory
-    data.set_params("sorted_fastq_path") = ""  ## Use default
+    data.set_params("sorted_fastq_path", "data/*.gz")     ## 
     ----------------------------------------------------------------------
     """, "Location of demultiplexed/sorted fastq files")
 ),
@@ -120,9 +109,7 @@ pinfo = OrderedDict([
                       it is probable that unmapped reads are neutral or 
                       unlinked to non-neutral.
     ----------------------------------------------------------------------
-    data.set_params(5) = denovo        ## set a name
-    data.set_params(5) = reference        ## set a name of parameters values
-    data.set_params("assembly_method") = denovo+reference   ## verbose
+    data.set_params("assembly_method", "denovo+reference")   ## verbose
     ---------------------------------------------------------------------- 
     """, "Assembly method (denovo, reference, denovo+reference, denovo-reference)")
 ),
@@ -385,23 +372,22 @@ pinfo = OrderedDict([
 ),
 
 ("25", ("""
-    (25) edit_cutsites ---------------------------------------------------
+    (25) trim_reads -- ---------------------------------------------------
     Examples:
     ----------------------------------------------------------------------
-    data.set_params(25) = 1
-    data.set_params("edit_cutsites") = 1
+    data.set_params("trim_reads") = (0, -5, 0, 0)
+    data.set_params("trim_reads") = (5, 85, 0, 0)
     ----------------------------------------------------------------------
-    """, "Edit cut-sites (R1, R2) (see docs)")
+    """, "Trim raw reads edges (R1>, <R1, R2>, <R2) (see docs)")
 ),
 
 ("26", ("""
-    (26) trim_overhang ---------------------------------------------------
+    (26) trim_loci -------------------------------------------------------
     Examples:
     ----------------------------------------------------------------------
-    data.set_params(26) = 1
-    data.set_params("trim_overhang") = 1
+    data.set_params("trim_loci") = (0, 5, 5, 0)
     ----------------------------------------------------------------------
-    """, "Trim overhang (see docs) (R1>, <R1, R2>, <R2)")
+    """, "Trim locus edges (see docs) (R1>, <R1, R2>, <R2)")
 ),
 
 ("27", ("""
@@ -442,6 +428,7 @@ def paramname(param=""):
         raise
 
     return name
+
 
 def paraminfo(param="", short=False):
     """ Returns detailed information for the numbered parameter. 
