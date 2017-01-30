@@ -44,13 +44,6 @@ if _os.path.exists(__debugflag__):
 else:
     __loglevel__ = "ERROR"#"INFO"
 
-## clear the logfile if it is too big
-if _os.path.exists(__debugfile__):
-    if _os.path.getsize(__debugfile__) > 50000000:
-        with open(__debugfile__, 'w') as clear:
-            clear.write("file reset")
-
-
 ## check that all dependencies exist and are working
 import subprocess as _subprocess
 import sys as _sys
