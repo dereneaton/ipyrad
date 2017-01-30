@@ -184,18 +184,52 @@ def cutadaptit_single(data, sample):
         adapter = data._hackersonly["p3_adapter"]
 
     ## get command line argument
-    cmdf1 = ["cutadapt", 
-             "--cut", str(data.paramsdict["edit_cutsites"][0]),
-             "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-             "--max-n", str(data.paramsdict["max_low_qual_bases"]),
-             "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
-             "--trim-n", 
-             "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
-             sample.files.concat[0][0]]
+    # cmdf1 = ["cutadapt", 
+    #          "--cut", str(data.paramsdict["edit_cutsites"][0]),
+    #          "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
+    #          "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+    #          "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
+    #          "--trim-n", 
+    #          "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
+    #          sample.files.concat[0][0]]
+
+
+    ## get length trim parameter from new or older version of ipyrad params
+    trim5 = trim3 = ""
+    if data.paramsdict.get("trim_reads"):
+        trimlen = data.paramsdict.get("trim_reads")
+        
+        ## trim 5' end
+        if trimlen[0]:
+            trim5 = "--cut {}".format(trimlen[0])
+        if trimlen[1] < 0:
+            trim3 = "--cut {}".format(trimlen[1])
+        if trimlen[1] > 0:
+            trim3 = "--length {}".format(trimlen[1])
+    else:
+        trimlen = data.paramsdict.get("edit_cutsites")
+        trim5 = "--cut {}".format(trimlen[0])
+
+    ## testing new 'trim_reads' setting
+    cmdf1 = ["cutadapt"]
+    if trim5:
+        cmdf1 += [trim5]
+    if trim3:
+        cmdf1 += [trim3]
+    cmdf1 += ["--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
+              "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+              "--trim-n", 
+              "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
+              sample.files.concat[0][0]]
 
     if int(data.paramsdict["filter_adapters"]):
-        cmdf1.insert(1, "20,20")
-        cmdf1.insert(1, "--quality-cutoff")
+        #cmdf1.insert(1, "20,20")
+        #cmdf1.insert(1, "--quality-cutoff")
+        ## NEW: only quality trim the 3' end for SE data.
+        cmdf1.insert(1, "20")
+        cmdf1.insert(1, "-q")
+        cmdf1.insert(1, str(data.paramsdict["phred_Qscore_offset"]))
+        cmdf1.insert(1, "--quality-base")
 
     if int(data.paramsdict["filter_adapters"]) > 1:
         ## first enter extra cuts
@@ -218,7 +252,7 @@ def cutadaptit_single(data, sample):
 
     ## raise errors if found
     if proc1.returncode:
-        raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
+        raise IPyradWarningExit(" error in {}\n {}".format(" ".join(cmdf1), res1))
 
     ## return result string to be parsed outside of engine
     return res1
@@ -239,8 +273,8 @@ def cutadaptit_pairs(data, sample):
     sname = sample.name
 
     ## applied to read pairs
-    trim_r1 = str(data.paramsdict["edit_cutsites"][0])
-    trim_r2 = str(data.paramsdict["edit_cutsites"][1])
+    #trim_r1 = str(data.paramsdict["edit_cutsites"][0])
+    #trim_r2 = str(data.paramsdict["edit_cutsites"][1])
     finput_r1 = sample.files.concat[0][0]
     finput_r2 = sample.files.concat[0][1]
 
@@ -288,12 +322,29 @@ def cutadaptit_pairs(data, sample):
                    "N"*6+\
                    data._hackersonly["p5_adapter"]
 
-    ## the base command
+    ## parse trim_reads
+    trim5 = trim3 = ""
+    if data.paramsdict.get("trim_reads"):
+        trimlen = data.paramsdict.get("trim_reads")
+        
+        ## trim 5' end
+        if trimlen[0]:
+            trim5 = "-u {}".format(trimlen[0])
+        if trimlen[1] < 0:
+            trim3 = "-u {}".format(trimlen[1])
+        if trimlen[1] > 0:
+            ## only negatives allowed
+            trim3 = "-U {}".format(-1*trimlen[1])
+    else:
+        trimlen = data.paramsdict.get("edit_cutsites")
+        trim5 = "-u {}".format(trimlen[0])
+        trim3 = "-U {}".format(trimlen[1])
+
+    ## testing new 'trim_reads' setting
     cmdf1 = ["cutadapt", 
-                  "-u", trim_r1,
-                  "-U", trim_r2,
+                  trim5, 
+                  trim3,
                   "--trim-n",
-                  "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
                   "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
                   "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),                         
                   "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
@@ -304,7 +355,9 @@ def cutadaptit_pairs(data, sample):
     ## additional args
     if int(data.paramsdict["filter_adapters"]):
         cmdf1.insert(1, "20,20")
-        cmdf1.insert(1, "--quality-cutoff")
+        cmdf1.insert(1, "-q")
+        cmdf1.insert(1, str(data.paramsdict["phred_Qscore_offset"]))
+        cmdf1.insert(1, "--quality-base")
 
     if int(data.paramsdict["filter_adapters"]) > 1:
         ## first enter extra cuts
