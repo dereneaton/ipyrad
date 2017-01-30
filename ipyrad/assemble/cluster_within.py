@@ -1657,8 +1657,8 @@ def cluster(data, sample, nthreads):
 
     ## If this value is not null (which is the default) then override query cov
     if data._hackersonly["query_cov"]:
-        cov = " -query_cov "+str(data._hackersonly["query_cov"])
-        assert data._hackersonly["query_cov"] <= 1, "query_cov must be <= 1.0"
+        cov = str(data._hackersonly["query_cov"])
+        assert float(cov) <= 1, "query_cov must be <= 1.0"
 
     ## get call string
     cmd = [ipyrad.bins.vsearch,
