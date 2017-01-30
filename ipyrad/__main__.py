@@ -21,6 +21,7 @@ LOGGER = logging.getLogger(__name__)
 
 def parse_params(args):
     """ Parse the params file args, create and return Assembly object."""
+
     ## check that params.txt file is correctly formatted.
     try:
         with open(args.params) as paramsin:
@@ -29,29 +30,39 @@ def parse_params(args):
         sys.exit("  No params file found")
 
     ## check header: big version changes can be distinguished by the header
+    legacy_version = 0
     try:
+        ## try to update the Assembly ...
+        legacy_version = 1
         if not len(plines[0].split()[0]) == 7:
             raise IPyradWarningExit("""
         Error: file '{}' is not compatible with ipyrad v.{}.
-        Please create an updated params file with the -n argument. 
+        Please create and update a new params file using the -n argument. 
+        For info on which parameters have changed see the changelog:
+        (http://ipyrad.readthedocs.io/releasenotes.html)
         """.format(args.params, ip.__version__))
-    except IndexError as inst:
+
+    except IndexError:
         raise IPyradWarningExit("""
         Error: Params file should not have any empty lines at the top
         of the file. Verify there are no blank lines and rerun ipyrad.
         Offending file - {}
         """.format(args.params))
-    ## check length
-    ## assert len(plines) > 30, "params file error. Format not recognized."
+
+    ## update and backup
+    if legacy_version:
+        #which version...
+        #update_to_6()
+        pass
 
     ## make into a dict. Ignore blank lines at the end of file
-    ## Really this will ignore all blang lines
+    ## Really this will ignore all blank lines
     items = [i.split("##")[0].strip() for i in plines[1:] if not i.strip() == ""]
 
     #keys = [i.split("]")[-2][-1] for i in plines[1:]]
-    keys = range(len(plines)-1)
+    #keys = range(len(plines)-1)
+    keys = ip.Assembly('null', quiet=True).paramsdict.keys()
     parsedict = {str(i):j for i, j in zip(keys, items)}
-
     return parsedict
 
 
@@ -59,11 +70,13 @@ def parse_params(args):
 def showstats(parsedict):
     """ loads assembly or dies, and print stats to screen """
 
-    project_dir = parsedict['1']
+    #project_dir = parsedict['1']
+    project_dir = parsedict["project_dir"]
     if not project_dir:
         project_dir = "./"
     ## Be nice if somebody also puts in the file extension
-    assembly_name = parsedict['0']
+    #assembly_name = parsedict['0']
+    assembly_name = parsedict["assembly_name"]
     my_assembly = os.path.join(project_dir, assembly_name)
 
     ## If the project_dir doesn't exist don't even bother trying harder.
@@ -172,36 +185,26 @@ def merge_assemblies(args):
 
     ## Make sure there are the right number of args
     if len(args.merge) < 3:
-        msg = "\n  Attempting to merge assemblies but wrong number of args. "\
-            + "The format for the merging command is:"\
-            + "\n\n    ipyrad -m new_assembly_name params-1.txt params-2.txt"
-        sys.exit(msg)
-    ## Make sure the first arg isn't a params file, i could see someone
-    ## someone trying this
+        sys.exit(_WRONG_NUM_CLI_MERGE)
+
+    ## Make sure the first arg isn't a params file, i could see someone doing it
     newname = args.merge[0]
     if os.path.exists(newname) and "params-" in newname:
-        msg = "\n  Looks like you're trying to pass in a params file that "\
-            + "already exists. The first arg\n  for -m should be the name of "\
-            + "the new assembly (this will create a new params file for you)."
-        sys.exit(msg) 
+        sys.exit(_WRONG_ORDER_CLI_MERGE) 
+
     ## Make sure first arg will create a param file that doesn't already exist
     if os.path.exists("params-" + newname + ".txt") and not args.force:
-        msg = "\n  First argument for ipyrad -m should be the name of the new"\
-            + " assembly. This will create\n  a new params file called params-"\
-            + newname + ".txt, but this file already exists."
-        sys.exit(msg)
+        sys.exit(_NAME_EXISTS_MERGE.format("params-" + newname + ".txt"))
+
     ## Make sure the rest of the args are params files that already exist
     assemblies_to_merge = args.merge[1:]
     for assembly in assemblies_to_merge:
         if not os.path.exists(assembly):
-            msg = "\n  All arguments after the first for -m need to be params"\
-                + " files for assemblies with\n  samples that are all in state 1."\
-                + " This assembly param file does not exist: " + assembly
-            sys.exit(msg)
+            sys.exit(_DOES_NOT_EXIST_MERGE.format(assembly))
 
-    assemblies = []
     ## Get assemblies for each of the passed in params files.
     ## We're recycling some of the machinery for loading assemblies here
+    assemblies = []
     for params_file in args.merge[1:]:
         args.params = params_file
         parsedict = parse_params(args)
@@ -229,8 +232,10 @@ def getassembly(args, parsedict):
     ## used for loading existing.
     ##
     ## Be nice if the user includes the extension.
-    project_dir = ip.core.assembly._expander(parsedict['1'])
-    assembly_name = parsedict['0']
+    #project_dir = ip.core.assembly._expander(parsedict['1'])
+    #assembly_name = parsedict['0']
+    project_dir = ip.core.assembly._expander(parsedict['project_dir'])
+    assembly_name = parsedict['assembly_name']
     assembly_file = os.path.join(project_dir, assembly_name)
 
     ## Assembly creation will handle error checking  on
@@ -250,19 +255,19 @@ def getassembly(args, parsedict):
     except IPyradWarningExit as _:
         ## if no assembly is found then go ahead and make one
         if '1' not in args.steps:
-            raise IPyradWarningExit("""
-    Error: Steps >1 ({}) requested but no current assembly found - {}
-    """.format(args.steps, assembly_file))
+            raise IPyradWarningExit(\
+                "  Error: You must first run step 1 on the assembly: {}"\
+                .format(assembly_file))
         else:
             ## create a new assembly object
             data = ip.Assembly(assembly_name)
 
     ## for entering some params...
     for param in parsedict:
+
         ## trap assignment of assembly_name since it is immutable.
-        if param == str(0):
-            ## only pass to set_params if user tried to change assembly_name
-            ## it will raise an Exit error
+        if param == "assembly_name":
+            ## Raise error if user tried to change assembly name
             if parsedict[param] != data.name:
                 data.set_params(param, parsedict[param])
         else:
@@ -403,8 +408,7 @@ def main():
 
     ## create new paramsfile if -n
     if args.new:
-        ## Create a tmp assembly and call write_params to write out
-        ## default params.txt file
+        ## Create a tmp assembly, call write_params to make default params.txt
         try:
             tmpassembly = ip.Assembly(args.new, quiet=True)
             tmpassembly.write_params("params-{}.txt".format(args.new), 
@@ -413,7 +417,7 @@ def main():
             print(inst)
             sys.exit(2)
 
-        print("\n    New file 'params-{}.txt' created in {}\n".\
+        print("\n  New file 'params-{}.txt' created in {}\n".\
                format(args.new, os.path.realpath(os.path.curdir)))
         sys.exit(2)
 
@@ -479,6 +483,8 @@ def main():
             ## if more ipcluster args from command-line then use those
             if args.MPI:
                 data._ipcluster["engines"] = "MPI"
+                if not args.cores:
+                    raise IPyradWarningExit(_MPI_CORES_ERROR)
             else:
                 data._ipcluster["engines"] = "Local"
 
@@ -503,6 +509,34 @@ def main():
         if args.results:
             showstats(parsedict)
 
+
+_MPI_CORES_ERROR = """
+  If using --MPI you must supply the number of cores with the -c argument.
+"""
+
+_WRONG_NUM_CLI_MERGE = """
+  Error: Attempting to merge assemblies but wrong number of args.
+  The format for the merging command is:
+  
+  ipyrad -m new_assembly_name params-1.txt params-2.txt
+"""
+
+_WRONG_ORDER_CLI_MERGE = """
+  Looks like you're trying to pass in a params file that
+  already exists. The first arg for -m should be the name of
+  the new assembly (this will create a new params file for you)
+"""
+
+_NAME_EXISTS_MERGE = """
+   New Assembly name already exists: {}
+   The merge Assembly name must be unique
+"""
+
+_DOES_NOT_EXIST_MERGE = """
+  All arguments after the first for -m need to be params files
+  for assemblies with Samples that are all in state 1. This
+  Assembly param file does not exist: {}
+"""
 
 if __name__ == "__main__": 
     main()
