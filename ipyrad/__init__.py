@@ -51,6 +51,13 @@ if _os.path.exists(__debugfile__):
             clear.write("file reset")
 
 
+## ensures MPI is loaded at init on all engines
+# actually it freezes if we use this...
+#from mpi4py import MPI
+#comm = MPI.COMM_WORLD
+#rank = comm.Get_rank()
+
+
 ## check that all dependencies exist and are working
 import subprocess as _subprocess
 import sys as _sys
