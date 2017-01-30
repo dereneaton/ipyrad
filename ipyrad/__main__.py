@@ -475,6 +475,16 @@ def main():
             ## print header
             print(header)
 
+            ## Only blank the log file if we're actually going to run a new
+            ## assembly. This used to be in __init__, but had the side effect
+            ## of occasionally blanking the log file in an undesirable fashion
+            ## for instance if you run a long assembly and it crashes and
+            ## then you run `-r` and it blanks the log, it's crazymaking.
+            if os.path.exists(ip.__debugfile__):
+                if os.path.getsize(ip.__debugfile__) > 50000000:
+                    with open(ip.__debugfile__, 'w') as clear:
+                        clear.write("file reset")
+
             ## run Assembly steps
             ## launch or load assembly with custom profile/pid
             data = getassembly(args, parsedict)
