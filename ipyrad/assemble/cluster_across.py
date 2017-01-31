@@ -622,10 +622,10 @@ def multicat(data, samples, ipyclient):
                     last_sample = name
                     del jobs[name]
                 else:
-                    LOGGER.error(" error in singlecat (%s) %s",
-                                 name, jobs[name].exception())
+                    #LOGGER.error(" error in singlecat (%s) %s",
+                    #             name, jobs[name].exception())
                     raise IPyradWarningExit(" error in singlecat ({}) {}"\
-                                        .format(name), jobs[name].exception())
+                                           .format(name), jobs[name].exception())
 
         ## print progress bar
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
