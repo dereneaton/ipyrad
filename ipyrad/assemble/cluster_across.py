@@ -455,9 +455,8 @@ def build_h5_array(data, samples, ipyclient):
     superseqs.attrs["samples"] = [i.name for i in samples]
     superalls.attrs["chunksize"] = (chunks, len(samples))
     superalls.attrs["samples"] = [i.name for i in samples]
-    if 'reference' in data.paramsdict["datatype"]:    
-        superchroms.attrs["chunksize"] = (chunks, len(samples))
-        superchroms.attrs["samples"] = [i.name for i in samples]
+    superchroms.attrs["chunksize"] = (chunks, len(samples))
+    superchroms.attrs["samples"] = [i.name for i in samples]
 
     ## array for pair splits locations, dup and ind filters
     io5.create_dataset("splits", (data.nloci, ), dtype=np.uint16)
@@ -723,9 +722,10 @@ def singlecat(data, sample, bseeds, sidx):
         onall[full[:, 0]] = nall[full[:, 2]]
         del nall
 
-        chrom = io5["chroms"][:]
-        ochrom[full[:, 0]] = chrom[full[:, 2]]
-        del chrom
+        if 'reference' in data.paramsdict["datatype"]:
+            chrom = io5["chroms"][:]
+            ochrom[full[:, 0]] = chrom[full[:, 2]]
+            del chrom
 
     ## get indel locations for this sample
     ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
@@ -966,7 +966,8 @@ def build_clustbits(data, ipyclient):
         time.sleep(0.1)
 
     ## send count seeds job to engines.
-    async2 = ipyclient[0].apply(count_seeds, usort)
+    lbview = ipyclient.load_balanced_view()
+    async2 = lbview.apply(count_seeds, usort)
     while not async2.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(3, 1, " building clusters     | {} | s6 |".format(elapsed))
@@ -1254,20 +1255,19 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         shutil.rmtree(data.tmpdir)
 
         ## Cleanup loose files
-        uhaplos = os.path.join(data.dirs.consens, data.name+".utemp")
-        hhaplos = os.path.join(data.dirs.consens, data.name+".htemp")
-        uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
-        catshuf = os.path.join(data.dirs.consens, data.name+"_catcons.tmp")
-        catcons = os.path.join(data.dirs.consens, data.name+"_cathaps.tmp")
-        cathaps = os.path.join(data.dirs.consens, data.name+"_catshuf.tmp")
-        catsort = os.path.join(data.dirs.consens, data.name+"_catsort.tmp")
-
-        for f in [uhaplos, hhaplos, uhandle, catshuf, catcons, cathaps, catsort]:
+        removal = []
+        removal.append(os.path.join(data.dirs.consens, data.name+".utemp"))
+        removal.append(os.path.join(data.dirs.consens, data.name+".htemp"))
+        removal.append(os.path.join(data.dirs.consens, data.name+"_catcons.tmp"))
+        removal.append(os.path.join(data.dirs.consens, data.name+"_cathaps.tmp"))
+        removal.append(os.path.join(data.dirs.consens, data.name+"_catshuf.tmp"))
+        removal.append(os.path.join(data.dirs.consens, data.name+"_catsort.tmp"))
+        #uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
+        for rfile in removal:
             try:
-                os.remove(f)
-            except:
+                os.remove(rfile)
+            except Exception:
                 pass
-
 
 
 if __name__ == "__main__":

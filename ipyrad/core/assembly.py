@@ -20,7 +20,6 @@ import itertools
 import numpy as np
 import pandas as pd
 import ipyrad as ip
-import socket
 import time
 import datetime
 
@@ -170,8 +169,8 @@ class Assembly(object):
                        ("max_SNPs_locus", (20, 20)),
                        ("max_Indels_locus", (8, 8)),
                        ("max_shared_Hs_locus", 0.50),
-                       ("edit_cutsites", (0, 0)),
-                       ("trim_overhang", (0, 0, 0, 0)),
+                       ("trim_reads", (0, 0, 0, 0)),
+                       ("trim_loci", (0, 0, 0, 0)),
                        ("output_formats", ['l', 'p', 's', 'v']),
                        ("pop_assign_file", ""),
         ])
@@ -697,25 +696,28 @@ class Assembly(object):
 
         Examples
         --------
-        ## param 1 takes only a str as input
-        [Assembly].set_params(1, 'new_directory')
+        ## param 'project_dir' takes only a str as input
         [Assembly].set_params('project_dir', 'new_directory')
 
-        ## param 8 must be a tuple or str, if str it is converted to a tuple
-        ## with the second entry empty.
-        [Assembly].set_params(8, 'TGCAG')
+        ## param 'restriction_overhang' must be a tuple or str, if str it is 
+        ## converted to a tuple with the second entry empty.
         [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')
 
-        ## param 24 can be an int or a float:
-        [Assembly].set_params(24, 4)
+        ## param 'max_shared_Hs_locus' can be an int or a float:
         [Assembly].set_params('max_shared_Hs_locus', 0.25)
 
         """
 
+        ## this includes current params and some legacy params for conversion
+        legacy_params = ["edit_cutsites", "trim_overhang"]
+        current_params = self.paramsdict.keys()
+        allowed_params = current_params + legacy_params
+
         ## require parameter recognition
-        if not ((param in range(50)) or \
-                (param in [str(i) for i in range(50)]) or \
-                (param in self.paramsdict.keys())):
+        #if not ((param in range(50)) or \
+        #        (param in [str(i) for i in range(50)]) or \
+        #        (param in allowed_params)):
+        if not param in allowed_params:
             raise IPyradParamsError("Parameter key not recognized: {}"\
                                     .format(param))
 
@@ -1812,6 +1814,7 @@ def _paramschecker(self, param, newvalue):
         "max_Indels_locus should be a tuple e.g., (5, 100)"
         self.paramsdict['max_Indels_locus'] = newvalue
 
+    ## deprecated but retained for legacy, now uses trim_reads (below)
     elif param == 'edit_cutsites':
         ## Force into a string tuple
         newvalue = _tuplecheck(newvalue)
@@ -1829,14 +1832,39 @@ def _paramschecker(self, param, newvalue):
     Error: edit_cutsites should be a tuple e.g., (0, 5) or ('TGCAG', 6),
     you entered {}
     """.format(newvalue))
-
         self.paramsdict['edit_cutsites'] = newvalue
 
+    elif param == 'trim_reads':
+        ## Force into a string tuple
+        newvalue = _tuplecheck(newvalue)
+        ## try converting each tup element to ints
+        newvalue = list(newvalue)
+        for i in range(4):
+            try:
+                newvalue[i] = int(newvalue[i])
+            except (ValueError, IndexError):
+                pass
+        newvalue = tuple(newvalue)
+        ## make sure we have a nice tuple
+        if not isinstance(newvalue, tuple):
+            raise IPyradWarningExit("""
+    Error: trim_reads should be a tuple e.g., (0, -5, -5, 0) 
+    or (0, 90, 0, 90), or (0, 0, 0, 0). 
+    You entered {}\n""".format(newvalue))
+        self.paramsdict['trim_reads'] = newvalue        
+
+    ## deprecated but retained for legacy, now named trim_loci 
     elif param == 'trim_overhang':
         newvalue = _tuplecheck(newvalue, str)
         assert isinstance(newvalue, tuple), \
         "trim_overhang should be a tuple e.g., (4, *, *, 4)"
         self.paramsdict['trim_overhang'] = tuple([int(i) for i in newvalue])
+
+    elif param == 'trim_loci':
+        newvalue = _tuplecheck(newvalue, str)
+        assert isinstance(newvalue, tuple), \
+        "trim_overhang should be a tuple e.g., (0, -5, -5, 0)"
+        self.paramsdict['trim_loci'] = tuple([int(i) for i in newvalue])
 
 
     elif param == 'output_formats':
@@ -1938,8 +1966,8 @@ NO_SEQ_PATH_FOUND = """\
         (1) a sorted_fastq_path
         (2) a raw_fastq_path + barcodes_path
     """
-PARAMS_EXISTS = """\
-    Params file already exists: {}
+PARAMS_EXISTS = """
+    Error: Params file already exists: {}
     Use force argument to overwrite.
     """
 SAMPLES_EXIST = """\

@@ -892,7 +892,10 @@ def get_edges(data, superints, splits):
     for some reason make sure we copy the superints instead.
     """
     ## the filtering arg and parse it into minsamp numbers
-    edgetrims = np.array(data.paramsdict["trim_overhang"]).astype(np.int16)
+    if "trim_overhang" in data.paramsdict:
+        edgetrims = np.array(data.paramsdict["trim_overhang"]).astype(np.int16)
+    else:
+        edgetrims = np.array(data.paramsdict["trim_loci"]).astype(np.int16)
 
     ## Cuts 3 and 4 are only for 3rad/radcap
     ## TODO: This is moderately hackish, it's not using cut3/4
