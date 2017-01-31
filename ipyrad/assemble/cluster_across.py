@@ -870,26 +870,37 @@ def fill_superseqs(data, samples):
 
         ## get seq and split it
         if chunk:
-            fill = np.zeros((len(samples), maxlen), dtype="|S1")
-            fill.fill("N")
-            piece = chunk[0].strip().split("\n")
-            names = piece[0::2]
-            seqs = np.array([list(i) for i in piece[1::2]])
-            ## fill in the separator if it exists
-            separator = np.where(np.all(seqs == 'n', axis=0))[0]
-            if np.any(separator):
-                chunkedge[cloc] = separator.min()
+            try:
+                fill = np.zeros((len(samples), maxlen), dtype="|S1")
+                fill.fill("N")
+                piece = chunk[0].strip().split("\n")
+                names = piece[0::2]
+                seqs = np.array([list(i) for i in piece[1::2]])
+                ## fill in the separator if it exists
+                separator = np.where(np.all(seqs == 'n', axis=0))[0]
+                if np.any(separator):
+                    chunkedge[cloc] = separator.min()
 
-            ## fill in the hits
-            #LOGGER.info("seqs : %s", seqs)
-            #LOGGER.info("seqs.shape : %s", seqs.shape)
-            shlen = seqs.shape[1]
-            for name, seq in zip(names, seqs):
-                sidx = snames.index(name.rsplit("_", 1)[0])
-                fill[sidx, :shlen] = seq[:maxlen]
+                ## fill in the hits
+                #LOGGER.info("seqs : %s", seqs)
+                #LOGGER.info("seqs.shape : %s", seqs.shape)
+                try:
+                    shlen = seqs.shape[1]
+                except IndexError as inst:
+                    ## seqs with dupes fail to get the proper shape for some
+                    ## reason, so just set it to maxlen. They get tossed out anyway.
+                    ## TODO: It would be nice to know why this happens and not
+                    ## just let it slide. The shape of dupe seqs ends up being 
+                    ## like (3,) i.e. no length portion....
+                    shlen = min([len(x) for x in seqs])
+                for name, seq in zip(names, seqs):
+                    sidx = snames.index(name.rsplit("_", 1)[0])
+                    fill[sidx, :shlen] = seq[:maxlen]
 
-            ## PUT seqs INTO local ARRAY
-            chunkseqs[cloc] = fill
+                ## PUT seqs INTO local ARRAY
+                chunkseqs[cloc] = fill
+            except Exception as inst:
+                LOGGER.info("dupe chunk {}".format(chunk))
 
         ## increase counters
         cloc += 1
@@ -1235,9 +1246,9 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         LOGGER.info("building full database")
         build_h5_array(data, samples, ipyclient)
 
-    #except Exception as inst:
-    #    LOGGER.error(inst)
-    #    raise IPyradWarningExit(inst)
+    except Exception as inst:
+        LOGGER.error(inst)
+        raise IPyradWarningExit(inst)
 
     finally:
         ## delete the tmpdir
