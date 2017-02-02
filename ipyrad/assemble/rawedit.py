@@ -205,7 +205,8 @@ def cutadaptit_single(data, sample):
         if trimlen[1] < 0:
             trim3 = "--cut {}".format(trimlen[1])
         if trimlen[1] > 0:
-            trim3 = "--length {}".format(trimlen[1])
+            #trim3 = "--length {}".format(trimlen[1]) ## why won't this WORK!?!?
+            trim3 = "--cut {}".format(trimlen[1])            
     else:
         trimlen = data.paramsdict.get("edit_cutsites")
         trim5 = "--cut {}".format(trimlen[0])
