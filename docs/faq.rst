@@ -109,3 +109,13 @@ to your ~/.bashrc file.
 
     export PYTHONPATH=""; ipyrad -p params.txt -s 1
 
+Why doesn't ipyrad handle PE original RAD
+-----------------------------------------
+Paired-End RAD protocol is tricky to denovo assemble. Because of the sonication step R2 
+doesn't line up nicely. ipyrad makes strong assumptions about how r1 and r2 align, 
+assumptions which are met by PE gbs and ddrad, but which are not met by original RAD. 
+This doesn't matter (as much) if you have a reference genome, but if you don't have a 
+reference it's a nightmare... dDocent has a PE-RAD mode, but I haven't evaluated it. 
+I know that people have also used stacks (because stacks treats r1 andr2 as independent 
+loci). If people ask me how to denovo assemble with PE-RAD in ipyrad I tell them to 
+just assemble it as SE and ignore R2.
