@@ -826,7 +826,7 @@ def prechecks(data, preview, force):
     if preview:
         optim = ((data._hackersonly["preview_step1"]) // (data.cpus))
     else:
-        optim = estimate_optim(raws[0][0], data.cpus)
+        optim = estimate_optim(data, raws[0][0], data.cpus)
 
     ## Build full inverse barcodes dictionary
     matchdict = {}
@@ -888,14 +888,14 @@ def prechecks(data, preview, force):
 
 
 
-def estimate_optim(testfile, ncpus):
+def estimate_optim(data, testfile, ncpus):
     """ 
     Estimate a reasonable optim value by grabbing a chunk of sequences, 
     decompressing and counting them, to estimate the full file size.
     """
     ## count the len of one file and assume all others are similar len
     insize = os.path.getsize(testfile)
-    tmp_file_name = "./tmp-step1-count.fq"
+    tmp_file_name = os.path.join(data.paramsdict["project_dir"], "tmp-step1-count.fq")
     if testfile.endswith(".gz"):
         infile = gzip.open(testfile)
         outfile = gzip.open(tmp_file_name, 'wb', compresslevel=5)
