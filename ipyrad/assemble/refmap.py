@@ -121,7 +121,7 @@ def index_reference_sequence(data, force=False):
 
 
 
-def mapreads(data, sample, nthreads):
+def mapreads(data, sample, nthreads, force):
     """ 
     Attempt to map reads to reference sequence. This reads in the fasta files
     (samples.files.edits), and maps each read to the reference. Unmapped reads 
@@ -265,42 +265,44 @@ def mapreads(data, sample, nthreads):
         cmd5.insert(2, mumapfile)
         cmd5.insert(2, "-0")
 
-    ## Running cmd1 creates ref_mapping/sname.sam, 
-    LOGGER.debug(" ".join(cmd1))
-    proc1 = sps.Popen(cmd1, stderr=cmd1_stderr, stdout=cmd1_stdout)
+    ## Don't redo all this bullcrap if it's already done unless force flag is set
+    if not os.path.exists(os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")) or force:
+        ## Running cmd1 creates ref_mapping/sname.sam, 
+        LOGGER.debug(" ".join(cmd1))
+        proc1 = sps.Popen(cmd1, stderr=cmd1_stderr, stdout=cmd1_stdout)
 
-    ## This is really long running job so we wrap it to ensure it dies. 
-    try:
-        error1 = proc1.communicate()[0]
-    except KeyboardInterrupt:
-        proc1.kill()
+        ## This is really long running job so we wrap it to ensure it dies. 
+        try:
+            error1 = proc1.communicate()[0]
+        except KeyboardInterrupt:
+            proc1.kill()
 
-    ## raise error if one occurred in smalt
-    if proc1.returncode:
-        raise IPyradWarningExit(error1)
+        ## raise error if one occurred in smalt
+        if proc1.returncode:
+            raise IPyradWarningExit(error1)
 
-    ## Running cmd2 writes to ref_mapping/sname.unmapped.bam, and 
-    ## fills the pipe with mapped BAM data
-    LOGGER.debug(" ".join(cmd2))
-    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+        ## Running cmd2 writes to ref_mapping/sname.unmapped.bam, and 
+        ## fills the pipe with mapped BAM data
+        LOGGER.debug(" ".join(cmd2))
+        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
 
-    ## Running cmd3 pulls mapped BAM from pipe and writes to 
-    ## ref_mapping/sname.mapped-sorted.bam. 
-    ## Because proc2 pipes to proc3 we just communicate this to run both.
-    LOGGER.debug(" ".join(cmd3))
-    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
-    error3 = proc3.communicate()[0]
-    if proc3.returncode:
-        raise IPyradWarningExit(error3)
-    proc2.stdout.close()
+        ## Running cmd3 pulls mapped BAM from pipe and writes to 
+        ## ref_mapping/sname.mapped-sorted.bam. 
+        ## Because proc2 pipes to proc3 we just communicate this to run both.
+        LOGGER.debug(" ".join(cmd3))
+        proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+        error3 = proc3.communicate()[0]
+        if proc3.returncode:
+            raise IPyradWarningExit(error3)
+        proc2.stdout.close()
 
-    ## Later we're gonna use samtools to grab out regions using 'view', and to
-    ## do that we need it to be indexed. Let's index it now. 
-    LOGGER.debug(" ".join(cmd4))
-    proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
-    error4 = proc4.communicate()[0]
-    if proc4.returncode:
-        raise IPyradWarningExit(error4)
+        ## Later we're gonna use samtools to grab out regions using 'view', and to
+        ## do that we need it to be indexed. Let's index it now. 
+        LOGGER.debug(" ".join(cmd4))
+        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
+        error4 = proc4.communicate()[0]
+        if proc4.returncode:
+            raise IPyradWarningExit(error4)
     
     ## Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
     ## or it makes edits/sname-tmp-umap{12}.fastq for paired data, which 
@@ -669,11 +671,11 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
         raise IPyradWarningExit("  file not found - %s", bamf)
 
     # chrom = re.escape(repr(chrom))[1:-1].replace('\\\\', '\\')
-    LOGGER.info("before: %s", chrom)
+    #LOGGER.info("before: %s", chrom)
     chrom.replace("|", r"\|")
     chrom.replace("(", r"\(")
     chrom.replace(")", r"\)")
-    LOGGER.info("after: %s", chrom)
+    #LOGGER.info("after: %s", chrom)
 
     ## What we want to do is have the num-chrom dict as an arg, then build this
     ## string as three ints [chrom-int, pos-start, pos-end]
@@ -710,13 +712,16 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             break
         ref += line
 
+    ## initialize the fasta list.
+    fasta = []
+
     ## parse sam to fasta. Save ref location to name.
     ## Set size= an improbably large value so the REF sequence
     ## sorts to the top for muscle aligning.
     try:
         name, seq = ref.strip().split("\n", 1)
         seq = "".join(seq.split("\n"))
-        fasta = ["{}_REF;size={};+\n{}".format(name, seq, 10000)]
+        fasta = ["{}_REF;size={};+\n{}".format(name, 10000, seq)]
     except ValueError as inst:
         LOGGER.error("ref failed to parse - {}".format(ref))
         LOGGER.error(" ".join(cmd1))
@@ -824,34 +829,42 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
                 os.remove(read2)
        
     else:
-        ## SE if faster than PE cuz it skips writing intermedidate files
-        cmd2 = [ipyrad.bins.samtools, "view", bamf, rstring_id0]
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+        try:
+            ## SE if faster than PE cuz it skips writing intermedidate files
+            cmd2 = [ipyrad.bins.samtools, "view", bamf, rstring_id0]
+            proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+    
+            ## run and check outputs
+            res = proc2.communicate()[0]
+            if proc2.returncode:
+                raise IPyradWarningExit("{} {}".format(cmd2, res))
 
-        ## run and check outputs
-        res = proc2.communicate()[0]
-        if proc2.returncode:
-            raise IPyradWarningExit("{} {}".format(cmd2, res))
+            ## do not join seqs that
+            for line in res.strip().split("\n"):
+                bits = line.split("\t")
 
-        ## do not join seqs that 
-        for line in res.strip().split("\n"):
-            bits = line.split("\t")
+                ## Read in the 2nd field (FLAGS), convert to binary
+                ## and test if the 7th bit is set which indicates revcomp
+                orient = "+"
+                if int('{0:012b}'.format(int(bits[1]))[7]):
+                    orient = "-"
 
-            ## Read in the 2nd field (FLAGS), convert to binary
-            ## and test if the 7th bit is set which indicates revcomp
-            orient = "+"
-            if int('{0:012b}'.format(int(bits[1]))[7]):
-                orient = "-"
-
-            ## Rip insert the mapping position between the seq label and
-            ## the vsearch derep size.
-            fullfast = ">{a};{b};{c};{d}\n{e}".format(
-                a=bits[0].split(";")[0],
-                b=rstring_id0,
-                c=bits[0].split(";")[1], 
-                d=orient, 
-                e=bits[9])
-            fasta.append(fullfast)
+                ## Rip insert the mapping position between the seq label and
+                ## the vsearch derep size.
+                fullfast = ">{a};{b};{c};{d}\n{e}".format(
+                    a=bits[0].split(";")[0],
+                    b=rstring_id0,
+                    c=bits[0].split(";")[1],
+                    d=orient,
+                    e=bits[9])
+                fasta.append(fullfast)
+        except (OSError, ValueError, Exception) as inst:
+            ## Once in a blue moon something fsck and it breaks the
+            ## assembly. No reason to give up if .001% of reads fail
+            ## so just skip this locus.
+            LOGGER.debug("Failed get reads at a locus, continuing; %s", inst)
+            LOGGER.error("cmd - {}".format(cmd))
+            return ""
 
     return "\n".join(fasta)
 
@@ -883,7 +896,7 @@ def refmap_stats(data, sample):
     sample_cleanup(data, sample)
 
 
-def refmap_init(data, sample):
+def refmap_init(data, sample, force):
     """ create some file handles for refmapping """
     ## make some persistent file handles for the refmap reads files
     sample.files.unmapped_reads = os.path.join(data.dirs.edits, 
@@ -891,6 +904,8 @@ def refmap_init(data, sample):
     sample.files.mapped_reads = os.path.join(data.dirs.refmapping,
                                   "{}-mapped-sorted.bam".format(sample.name))
 
+    if os.path.exists(sample.files.mapped_reads) and not force:
+        print("Skip mapping for {}. Use -f to force remapping.".format(sample.name))
 
 
 ## GLOBALS

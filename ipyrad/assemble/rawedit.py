@@ -342,16 +342,18 @@ def cutadaptit_pairs(data, sample):
         trim3 = "-U {}".format(trimlen[1])
 
     ## testing new 'trim_reads' setting
-    cmdf1 = ["cutadapt", 
-                  trim5, 
-                  trim3,
-                  "--trim-n",
-                  "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
-                  "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),                         
-                  "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
-                  "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
-                  finput_r1, 
-                  finput_r2]
+    cmdf1 = ["cutadapt"]
+    if trim5:
+        cmdf1 += [trim5]
+    if trim3:
+        cmdf1 += [trim3]
+    cmdf1 += ["--trim-n",
+              "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+              "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
+              "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
+              "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
+              finput_r1,
+              finput_r2]
 
     ## additional args
     if int(data.paramsdict["filter_adapters"]):
@@ -387,7 +389,7 @@ def cutadaptit_pairs(data, sample):
 
     ## raise errors if found
     if proc1.returncode:
-        raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
+        raise IPyradWarningExit(" error [returncode={}]: {}\n{}".format(proc1.returncode, " ".join(cmdf1), res1))
 
     LOGGER.debug("Exiting cutadaptit_pairs - {}".format(sname))
     ## return results string to be parsed outside of engine
@@ -516,7 +518,7 @@ def run_cutadapt(data, subsamples, lbview):
                 parse_pair_results(data, data.samples[async], res)
         else:
             print("  found an error in step2; see ipyrad_log.txt")
-            LOGGER.warn("error in step2: %s", rawedits[async].exception())
+            LOGGER.warn("error in run_cutadapt(): %s", rawedits[async].exception())
 
 
 
@@ -569,7 +571,7 @@ def concat_multiple_inputs(data, sample):
             proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
-            raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
+            raise IPyradWarningExit("error in: {}, {}".format(cmd1, res1))
 
         ## Only set conc2 if R2 actually exists
         conc2 = 0

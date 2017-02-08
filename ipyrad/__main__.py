@@ -134,7 +134,9 @@ def branch_assembly(args, parsedict):
     bargs = args.branch
 
     ## get new name, trim off .txt if it was accidentally added
-    newname = bargs[0].rstrip(".txt")
+    newname = bargs[0]
+    if newname.endswith(".txt"):
+        newname = newname[:-4]
 
     ## look for subsamples
     if len(bargs) > 1:

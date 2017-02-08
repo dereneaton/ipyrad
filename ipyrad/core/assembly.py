@@ -323,6 +323,9 @@ class Assembly(object):
 
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
+        ## Assert files are not .bz2 format
+        if any([i for i in fastqs if i.endswith(".bz2")]):
+            raise(IPyradError(NO_SUPPORT_FOR_BZ2.format(path)))
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
@@ -772,6 +775,7 @@ class Assembly(object):
                 padding = (" "*(30-len(paramvalue)))
                 paramkey = self.paramsdict.keys().index(key)
                 paramindex = " ## [{}] ".format(paramkey)
+                LOGGER.debug(key, val, paramindex)
                 name = "[{}]: ".format(paramname(paramkey))
                 description = paraminfo(paramkey, short=True)
                 paramsfile.write("\n" + paramvalue + padding + \
@@ -1939,6 +1943,14 @@ NO_FILES_FOUND_PAIRS = """\
     Check that file names match the required convention for paired datatype
     i.e., paired file names should be identical save for _R1_ and _R2_
     (note the underscores before AND after R*).
+    """
+NO_SUPPORT_FOR_BZ2 = """\
+    Found bz2 formatted files in 'sorted_fastq_path': {}
+    ipyrad does not support bz2 files. The only supported formats for samples
+    are .gz, .fastq, and .fq. The easiest thing to do is probably go into
+    your sorted_fastq_path directory and issue this command `bunzip2 *`. You
+    will probably also need to update your params file to reflect the fact
+    that sample raw files now probably end with .fq or .fastq.
     """
 NAMES_LOOK_PAIRED_WARNING = """\
     Warning: '_R2_' was detected in a file name, which suggests the data may

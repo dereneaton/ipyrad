@@ -932,8 +932,11 @@ def parsemuscle(data, out):
     seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
     tups = zip(names, seqs)
     ## who knew, zip(*) is the inverse of zip
-    anames, aseqs = zip(*sorted(tups,
-                        key=lambda x: int(x[0].split(";")[-1][1:])))
+    try:
+        anames, aseqs = zip(*sorted(tups,
+                            key=lambda x: int(x[0].split(";")[-1][1:])))
+    except:
+        LOGGER.error("bad tups - {}".format(tups))
     ## remove reference if present
     if "_REF;+0" in anames[0]:
         return anames[1:], aseqs[1:]
@@ -1111,7 +1114,7 @@ def setup_dirs(data):
 
 
 
-def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
+def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     """
     Create a DAG of prealign jobs to be run in order for each sample. Track
     Progress, report errors. Each assembly method has a slightly different
@@ -1154,8 +1157,10 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels):
         sample = data.samples[sname]
 
         ## args vary depending on the function
-        if funcstr in ["derep_concat_split", "mapreads", "cluster"]:
+        if funcstr in ["derep_concat_split", "cluster"]:
             args = [data, sample, nthreads]
+        elif funcstr in ["mapreads"]:
+            args = [data, sample, nthreads, force]
         elif funcstr in ["build_clusters"]:
             args = [data, sample, maxindels]
         elif funcstr in ["muscle_align"]:
@@ -1897,7 +1902,7 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
             ## if refmapping make filehandles that will be persistent
             if not data.paramsdict["assembly_method"] == "denovo":
                 for sample in subsamples:
-                    refmap_init(data, sample)
+                    refmap_init(data, sample, force)
 
                     ## set thread-count to 2 for paired-data
                     nthreads = 2
@@ -1915,7 +1920,7 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
                     nthreads *= 2
 
             ## submit jobs to be run on cluster
-            args = [data, subsamples, ipyclient, nthreads, maxindels]
+            args = [data, subsamples, ipyclient, nthreads, maxindels, force]
             new_apply_jobs(*args)
 
 
