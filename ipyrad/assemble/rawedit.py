@@ -174,8 +174,8 @@ def cutadaptit_single(data, sample):
     mintrimlen. If filter=1, we add quality filters. If filter=2 we add
     adapter filters. 
     """
-    sname = sample.name
 
+    sname = sample.name
     ## if (GBS, ddRAD) then use second cut site with adapter.
     if data.paramsdict["datatype"] != "rad":
         adapter = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
@@ -192,7 +192,6 @@ def cutadaptit_single(data, sample):
     #          "--trim-n", 
     #          "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
     #          sample.files.concat[0][0]]
-
 
     ## get length trim parameter from new or older version of ipyrad params
     trim5 = trim3 = ""
@@ -270,7 +269,6 @@ def cutadaptit_pairs(data, sample):
     a warning about this when filter_adapters=2 and no barcodes?
     """
     LOGGER.debug("Entering cutadaptit_pairs - {}".format(sample.name))
-
     sname = sample.name
 
     ## applied to read pairs
