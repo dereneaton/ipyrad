@@ -348,11 +348,11 @@ def cutadaptit_pairs(data, sample):
     if trim3:
         cmdf1 += [trim3]
     cmdf1 += ["--trim-n",
-              "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
-              "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),                         
-              "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
+              "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+              "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
+              "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
               "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
-              finput_r1, 
+              finput_r1,
               finput_r2]
 
     ## additional args
