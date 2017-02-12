@@ -375,6 +375,8 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
 
     ## how many reads to store before writing to disk
     waitchunk = int(1e6)
+    LOGGER.debug("in here")
+    LOGGER.info("in here")
 
     ## pid name for this engine
     epid = os.getpid()
@@ -440,9 +442,12 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
     else:
         quarts = itertools.izip(quart1, iter(int, 1))
 
+    LOGGER.info("here %s", tups[0])
+
     ## go until end of the file
     while 1:
         try:
+            LOGGER.debug("next")
             read1, read2 = quarts.next()
             read1 = list(read1)
             filestat[0] += 1
@@ -465,8 +470,10 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
             ## Parse barcode. Uses the parsing function selected above.
             barcode = getbarcode(cutters, read1, longbar)
    
+        LOGGER.debug("nexter: %s %s %s", cutters, longbar, barcode)
         ## find if it matches 
         sname_match = matchdict.get(barcode)
+        LOGGER.debug("%s %s %s %s", read1, read2, barcode, sname_match)
 
         if sname_match:
             #sample_index[filestat[0]-1] = snames.index(sname_match) + 1
@@ -577,9 +584,16 @@ def collate_files(data, sname, tmp1s, tmp2s):
     for tmpfile in tmp1s:
         cmd1 += [tmpfile]
 
+    ## compression function
+    proc = sps.Popen(['which', 'pigz'], stderr=sps.PIPE, stdout=sps.PIPE).communicate()
+    if proc[0].strip():
+        compress = ["pigz"]
+    else:
+        compress = ["gzip"]
+
     ## call cmd
     proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.PIPE)
-    proc2 = sps.Popen(["gzip"], stdin=proc1.stdout, stderr=sps.PIPE, stdout=out)
+    proc2 = sps.Popen(compress, stdin=proc1.stdout, stderr=sps.PIPE, stdout=out)
     err = proc2.communicate()
     if proc2.returncode:
         raise IPyradWarningExit("error in collate_files R1 %s", err)
@@ -602,7 +616,7 @@ def collate_files(data, sname, tmp1s, tmp2s):
 
         ## call cmd
         proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.PIPE)
-        proc2 = sps.Popen(["gzip"], stdin=proc1.stdout, stderr=sps.PIPE, stdout=out)
+        proc2 = sps.Popen(compress, stdin=proc1.stdout, stderr=sps.PIPE, stdout=out)
         err = proc2.communicate()
         if proc2.returncode:
             raise IPyradWarningExit("error in collate_files R2 %s", err)
@@ -888,7 +902,7 @@ def prechecks(data, preview, force):
 
 
 
-def estimate_optim(data, testfile, ncpus):
+def estimate_optim(data, testfile, ipyclient):
     """ 
     Estimate a reasonable optim value by grabbing a chunk of sequences, 
     decompressing and counting them, to estimate the full file size.
@@ -917,12 +931,7 @@ def estimate_optim(data, testfile, ncpus):
     inputreads = int(insize / tmp_size) * 10000
     os.remove(tmp_file_name)
 
-    ## break into ncpu chunks for sending to optim lines of data to each cpu
-    optim = (inputreads // (ncpus)) + (inputreads % (ncpus))
-    optim = int(optim*4)
-    #LOGGER.info("total reads: %s, total lines: %s", inputreads, inputreads*4)
-
-    return optim
+    return inputreads
 
 
 
@@ -961,20 +970,228 @@ def run2(data, ipyclient, force):
     ## get file handles, name-lens, cutters, and matchdict
     raws, longbar, cutters, matchdict = prechecks2(data, force)
 
-    ## initial progress bar
+    ## wrap funcs to ensure we can kill tmpfiles
+    kbd = 0
+    try:
+        ## if splitting files, split files into smaller chunks for demuxing
+        chunkfiles = splitfiles(data, raws, ipyclient)
+
+        ## send chunks to be demux'd
+        statdicts = demux2(data, chunkfiles, cutters, longbar, matchdict, ipyclient)
+
+        ## concat tmp files
+        concat_chunks(data, ipyclient)
+
+        ## build stats from dictionaries
+        perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts    
+        make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars)
+
+
+    except KeyboardInterrupt:
+        print("\n  ...interrupted, just a second while we ensure proper cleanup")
+        kbd = 1
+        raise
+
+    ## cleanup
+    finally:
+        ## cleaning up the tmpdir is safe from ipyclient
+        tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks-"+data.name)
+        if os.path.exists(tmpdir):
+            shutil.rmtree(tmpdir)
+
+        if kbd:
+            raise KeyboardInterrupt("s1")
+        else:
+            _cleanup_and_die(data)
+
+
+
+def _cleanup_and_die(data):
+    """ cleanup func for step 1 """
+    tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
+    tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.p"))
+    for tmpf in tmpfiles:            
+        os.remove(tmpf)
+
+
+
+def splitfiles(data, raws, ipyclient):
+    """ sends raws to be chunked"""
+
+    ## create a tmpdir for chunked_files and a chunk optimizer 
+    tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks-"+data.name)
+    if os.path.exists(tmpdir):
+        shutil.rmtree(tmpdir)
+    os.makedirs(tmpdir)
+
+    ## chunk into 8M reads
+    totalreads = estimate_optim(data, raws[0][0], ipyclient)
+    optim = int(8e6)
+    njobs = int(totalreads/(optim/4.)) * len(raws)
+
+    ## if more files than cpus: no chunking
+    nosplit = 0
+    if (len(raws) > len(ipyclient)) or (totalreads < optim):
+        nosplit = 1
+
+    ## send slices N at a time. The dict chunkfiles stores a tuple of rawpairs
+    ## dictionary to store asyncresults for sorting jobs
+    start = time.time()
+    chunkfiles = {}
+    for fidx, tups in enumerate(raws):
+        handle = os.path.splitext(os.path.basename(tups[0]))[0]
+        ## if number of lines is > 20M then just submit it
+        if nosplit:
+            chunkfiles[handle] = [tups]
+            #chunkfiles[fidx] = [tups]
+        else:
+            ## chunk the file using zcat_make_temps
+            chunklist = zcat_make_temps(data, tups, fidx, tmpdir, optim, njobs, start)
+            chunkfiles[handle] = chunklist
+            #chunkfiles[fidx] = chunklist
+    print("")
+
+    return chunkfiles
+
+
+
+def concat_chunks(data, ipyclient):
+    """ concatenate chunks """
+
+    ## collate files progress bar
+    start = time.time()
+    lbview = ipyclient.load_balanced_view()
+    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+    progressbar(10, 0, ' writing/compressing   | {} | s1 |'.format(elapsed))            
+    ## get all the files
+    ftmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.fastq"))
+
+    ## a dict to assign tmp files to names/reads
+    r1dict = {}
+    r2dict = {}
+    for sname in data.barcodes:
+        r1dict[sname] = []
+        r2dict[sname] = []
+
+    ## assign to name keys
+    for ftmp in ftmps:
+        base, orient, _ = ftmp.rsplit("_", 2)
+        sname = base.rsplit("/", 1)[-1].split("tmp_", 1)[1]
+        if orient == "R1":
+            r1dict[sname].append(ftmp)
+        else:
+            r2dict[sname].append(ftmp)
+
+    ## concatenate files
+    total = len(data.barcodes)
+    writers = []
+    for sname in data.barcodes:
+        tmp1s = sorted(r1dict[sname])
+        tmp2s = sorted(r2dict[sname])
+        writers.append(lbview.apply(collate_files, *[data, sname, tmp1s, tmp2s]))
+
+    while 1:
+        ready = [i.ready() for i in writers]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(total, sum(ready), 
+                    ' writing/compressing   | {} | s1 |'.format(elapsed))            
+        time.sleep(0.1)
+        if all(ready):
+            print("")
+            break
+
+
+
+def demux2(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
+    """ submit chunks to be sorted """
+
+    ## parallel stuff
     start = time.time()
     lbview = ipyclient.load_balanced_view()
 
     ## store statcounters and async results in dicts
     perfile = {}
     filesort = {}
-    for idx, rawtuple in enumerate(raws):
-        ## submit job
-        handle = os.path.splitext(os.path.basename(rawtuple[0]))[0]
-        args = (data, rawtuple, cutters, longbar, matchdict, idx)
-        filesort[handle] = lbview.apply(barmatch, *args)
-        ## get ready to receive stats: 'total', 'cutfound', 'matched'
-        perfile[handle] = np.zeros(3, dtype=np.int)
+    total = 0
+    done = 0 
+
+    ## chunkfiles is a dict with {handle: chunkslist, ...}. The func barmatch
+    ## writes results to samplename files with PID number, and also writes a 
+    ## pickle for chunk specific results with fidx suffix, which it returns.
+    for handle, rawtuplist in chunkfiles.items():
+        ## get args for job
+        for fidx, rawtuple in enumerate(rawtuplist):
+            #handle = os.path.splitext(os.path.basename(rawtuple[0]))[0]
+            args = (data, rawtuple, cutters, longbar, matchdict, fidx)
+
+            ## submit the job
+            async = lbview.apply(barmatch, *args)
+            filesort[total] = (handle, async)
+            total += 1
+
+            ## get ready to receive stats: 'total', 'cutfound', 'matched'
+            perfile[handle] = np.zeros(3, dtype=np.int)
+
+    ## stats for each sample
+    fdbars = {}
+    fsamplehits = Counter()
+    fbarhits = Counter()
+    fmisses = Counter()
+    ## a tuple to hold my dictionaries
+    statdicts = perfile, fsamplehits, fbarhits, fmisses, fdbars
+
+    ## wait for jobs to finish
+    while 1:
+        fin = [i for i, j in filesort.items() if j[1].ready()]
+        #fin = [i for i in jobs if i[1].ready()]
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        progressbar(total, done, 
+          ' sorting reads         | {} | s1 |'.format(elapsed))
+        time.sleep(0.1)
+
+        ## should we break?
+        if total == done:
+            print("")
+            break
+
+        ## cleanup
+        for key in fin:
+            tup = filesort[key]
+            if tup[1].successful():
+                pfile = tup[1].result()
+                handle = tup[0]
+                if pfile:
+                    ## check if this needs to return data
+                    putstats(pfile, handle, statdicts)
+                    ## purge to conserve memory
+                    del filesort[key]
+                    done += 1
+
+    return statdicts
+
+
+
+def demux(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
+    """ submit chunks to be sorted """
+
+    ## parallel stuff
+    start = time.time()
+    lbview = ipyclient.load_balanced_view()
+
+    ## store statcounters and async results in dicts
+    perfile = {}
+    filesort = {}
+    for handle, rawtuplist in chunkfiles.items():
+        ## get args for job
+        for fidx, rawtuple in enumerate(rawtuplist):
+            #handle = os.path.splitext(os.path.basename(rawtuple[0]))[0]
+            args = (data, rawtuple, cutters, longbar, matchdict, fidx)
+
+            ## submit the job
+            filesort[handle] = lbview.apply(barmatch, *args)
+
+            ## get ready to receive stats: 'total', 'cutfound', 'matched'
+            perfile[handle] = np.zeros(3, dtype=np.int)
 
     ## stats for each sample
     fdbars = {}
@@ -986,7 +1203,7 @@ def run2(data, ipyclient, force):
 
     try:
         kbd = 0
-        total = len(raws)
+        total = len(chunkfiles)
         done = 0
         ## wait for jobs to finish
         while 1:
@@ -1004,11 +1221,10 @@ def run2(data, ipyclient, force):
             ## cleanup
             for job in fin:
                 if filesort[job].successful():
-                    result = filesort[job].result()
+                    pfile = filesort[job].result()
                     if result:
-
                         ## check if this needs to return data
-                        putstats(result, job, statdicts)
+                        putstats(pfile, handle, statdicts)
                         
                         ## purge to conserve memory
                         del filesort[job]
@@ -1019,14 +1235,15 @@ def run2(data, ipyclient, force):
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(10, 0, ' writing/compressing   | {} | s1 |'.format(elapsed))
 
+
     except KeyboardInterrupt:
         ## wait to cleanup
         kbd = 1
-        #print("IN HERE")
         raise
 
+
+    ## only proceed here if barmatch jobs were not interrupted
     else:
-        #print("NOT IN HERE")
         ## collate files and do progress bar
         ftmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.fastq"))
 
@@ -1072,7 +1289,6 @@ def run2(data, ipyclient, force):
                 break
 
     finally:
-        #print("AND HERE")
         ## clean up junk files
         tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
         tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.p"))
@@ -1085,7 +1301,6 @@ def run2(data, ipyclient, force):
             ## build stats from dictionaries
             perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts    
             make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars)
-
 
 
 
@@ -1144,8 +1359,7 @@ def wrapped_run(data, preview, ipyclient, force):
         optim += 1
 
     ### progress
-    LOGGER.info("chunks size = %s lines, on %s cpus", 
-                optim, data.cpus)
+    LOGGER.info("chunks size = %s lines, on %s cpus", optim, data.cpus)
 
     ## dictionary to store asyncresults for sorting jobs
     filesort = {}
@@ -1185,19 +1399,21 @@ def wrapped_run(data, preview, ipyclient, force):
             ## chunk the file using zcat_make_temps
             ## this can't really be parallelized unless I/O is parallelized, 
             ## we just pass it one engine so we can keep the timer counting
-            async = ipyclient[0].apply(zcat_make_temps, 
-                                       [data, tups, fidx, tmpdir, optim])
+            #async = ipyclient[0].apply(zcat_make_temps, 
+            #                           *(data, tups, fidx, tmpdir, optim))
+            chunk = zcat_make_temps(data, tups, fidx, tmpdir, optim, start)
+            chunkfiles[fidx] = chunk
 
             ## get the chunk names
             ## TODO: this progress bar could be improved to update when it finds
             ## more files in the tmpdir, and count until the num it expects will
             ## be created.
-            while not async.ready():
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(data.cpus, fidx, 
-                    ' chunking large files  | {} | s1 |'.format(elapsed))        
-                time.sleep(0.1)
-            chunkfiles[fidx] = async.result()
+            #while not async.ready():
+            #    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            #    progressbar(data.cpus, fidx, 
+            #        ' chunking large files  | {} | s1 |'.format(elapsed))        
+            #    time.sleep(0.1)
+            #chunkfiles[fidx] = async.result()
             ## make an empty list for when we analyze this chunk
             filesort[fidx] = []
 
@@ -1336,7 +1552,7 @@ def putstats(pfile, handle, statdicts):
 
 
 
-def zcat_make_temps(args):
+def zcat_make_temps(data, raws, num, tmpdir, optim, njobs, start):
     """ 
     Call bash command 'cat' and 'split' to split large files. The goal
     is to create N splitfiles where N is a multiple of the number of processors
@@ -1344,9 +1560,8 @@ def zcat_make_temps(args):
     """
 
     ## split args
-    data, raws, num, tmpdir, optim = args
     tmpdir = os.path.realpath(tmpdir)
-    #LOGGER.info("zcat is using optim = %s", optim)
+    LOGGER.info("zcat is using optim = %s", optim)
 
     ## read it, is it gzipped?
     catcmd = ["cat"]
@@ -1364,19 +1579,27 @@ def zcat_make_temps(args):
             os.path.join(tmpdir, "chunk2_"+str(num)+"_")]
 
     ### run splitter
-    ### The -a flag tells split how long the suffix for each split file
-    ### should be. It uses lowercase letters of the alphabet, so `-a 4`
-    ### will have 26^4 possible tmp file names.
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
 
     ## wrap the actual call so we can kill it if anything goes awry
-    try:
-        res = proc3.communicate()[0]
-        proc1.stdout.close()
-    except KeyboardInterrupt:
-        proc1.kill()
-        proc3.kill()
+    while 1:
+        try:
+            if not isinstance(proc3.poll(), int):
+                elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                done = len(glob.glob(os.path.join(tmpdir, 'chunk1_*')))
+                progressbar(njobs, min(njobs, done),
+                    ' chunking large files  | {} | s1 |'.format(elapsed))
+                time.sleep(0.1)
+            else:
+                res = proc3.communicate()[0]
+                proc1.stdout.close()
+                break
+
+        except KeyboardInterrupt:
+            proc1.kill()
+            proc3.kill()
+            raise KeyboardInterrupt()
 
     if proc3.returncode:
         raise IPyradWarningExit(" error in %s: %s", cmd3, res)
@@ -1389,13 +1612,24 @@ def zcat_make_temps(args):
         proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
         proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
 
-        ## wrap the call so we can kill it if interrupted
-        try:
-            res = proc4.communicate()[0]
-            proc2.stdout.close()
-        except KeyboardInterrupt:
-            proc2.kill()
-            proc4.kill()
+        ## wrap the actual call so we can kill it if anything goes awry
+        while 1:
+            try:
+                if not isinstance(proc4.poll(), int):
+                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                    done = len(glob.glob(os.path.join(tmpdir, 'chunk1_*')))
+                    progressbar(njobs, min(njobs, done),
+                        ' chunking large files  | {} | s1 |'.format(elapsed))
+                    time.sleep(0.1)
+                else:
+                    res = proc4.communicate()[0]
+                    proc2.stdout.close()
+                    break
+
+            except KeyboardInterrupt:
+                proc2.kill()
+                proc4.kill()
+                raise KeyboardInterrupt()
 
         if proc4.returncode:
             raise IPyradWarningExit(" error in %s: %s", cmd4, res)
@@ -1409,6 +1643,9 @@ def zcat_make_temps(args):
 
     assert len(chunks1) == len(chunks2), \
         "R1 and R2 files are not the same length."
+
+    ## ensure full progress bar b/c estimates njobs could be off
+    progressbar(10, 10, ' chunking large files  | {} | s1 |'.format(elapsed))
 
     return zip(chunks1, chunks2)
 
