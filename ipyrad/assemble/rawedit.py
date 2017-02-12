@@ -183,39 +183,28 @@ def cutadaptit_single(data, sample):
     else:
         adapter = data._hackersonly["p3_adapter"]
 
-    ## get command line argument
-    # cmdf1 = ["cutadapt", 
-    #          "--cut", str(data.paramsdict["edit_cutsites"][0]),
-    #          "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-    #          "--max-n", str(data.paramsdict["max_low_qual_bases"]),
-    #          "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
-    #          "--trim-n", 
-    #          "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
-    #          sample.files.concat[0][0]]
-
     ## get length trim parameter from new or older version of ipyrad params
-    trim5 = trim3 = ""
+    trim5 = trim3 = []
     if data.paramsdict.get("trim_reads"):
         trimlen = data.paramsdict.get("trim_reads")
         
         ## trim 5' end
         if trimlen[0]:
-            trim5 = "--cut {}".format(trimlen[0])
+            trim5 = ["--cut", str(trimlen[0])]
         if trimlen[1] < 0:
-            trim3 = "--cut {}".format(trimlen[1])
+            trim3 = ["--cut", str(trimlen[1])]
         if trimlen[1] > 0:
-            #trim3 = "--length {}".format(trimlen[1]) ## why won't this WORK!?!?
-            trim3 = "--cut {}".format(trimlen[1])            
+            trim3 = ["--length", str(trimlen[1])]
     else:
         trimlen = data.paramsdict.get("edit_cutsites")
-        trim5 = "--cut {}".format(trimlen[0])
+        trim5 = ["--cut", str(trimlen[0])]
 
     ## testing new 'trim_reads' setting
     cmdf1 = ["cutadapt"]
     if trim5:
-        cmdf1 += [trim5]
+        cmdf1 += trim5
     if trim3:
-        cmdf1 += [trim3]
+        cmdf1 += trim3
     cmdf1 += ["--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
               "--max-n", str(data.paramsdict["max_low_qual_bases"]),
               "--trim-n", 
@@ -223,20 +212,19 @@ def cutadaptit_single(data, sample):
               sample.files.concat[0][0]]
 
     if int(data.paramsdict["filter_adapters"]):
-        #cmdf1.insert(1, "20,20")
-        #cmdf1.insert(1, "--quality-cutoff")
         ## NEW: only quality trim the 3' end for SE data.
         cmdf1.insert(1, "20")
         cmdf1.insert(1, "-q")
         cmdf1.insert(1, str(data.paramsdict["phred_Qscore_offset"]))
         cmdf1.insert(1, "--quality-base")
 
+
     if int(data.paramsdict["filter_adapters"]) > 1:
-        ## first enter extra cuts
+        ## first enter extra cuts (order of input is reversed)
         for extracut in data._hackersonly["p3_adapters_extra"][::-1]:
             cmdf1.insert(1, extracut)
             cmdf1.insert(1, "-a")
-        ## then put the main cut first
+        ## then put the main cut so it appears first in command
         cmdf1.insert(1, adapter)
         cmdf1.insert(1, "-a")
 
@@ -317,34 +305,37 @@ def cutadaptit_pairs(data, sample):
         print(NO_BARS_GBS_WARNING)
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
-        adapter2 = "N"*len(data.paramsdict["restriction_overhang"][0])+\
-                   "N"*6+\
-                   data._hackersonly["p5_adapter"]
+        adapter2 = "XXX"
+        #"N"*len(data.paramsdict["restriction_overhang"][0])+\
+        #           "N"*6+\
+        #           data._hackersonly["p5_adapter"]
 
     ## parse trim_reads
-    trim5 = trim3 = ""
+    trim5 = trim3 = None
     if data.paramsdict.get("trim_reads"):
         trimlen = data.paramsdict.get("trim_reads")
         
         ## trim 5' end
         if trimlen[0]:
-            trim5 = "-u {}".format(trimlen[0])
+            trim5 = ["-u", str(trimlen[0])]
         if trimlen[1] < 0:
-            trim3 = "-u {}".format(trimlen[1])
+            trim3 = ["-u", str(trimlen[1])]
+        if trimlen[1] < 0:
+            trim3 = ["-U", str(-1*trimlen[1])]
         if trimlen[1] > 0:
-            ## only negatives allowed
-            trim3 = "-U {}".format(-1*trimlen[1])
+            trim3 = ["--length", str(trimlen[1])]
+
     else:
         trimlen = data.paramsdict.get("edit_cutsites")
-        trim5 = "-u {}".format(trimlen[0])
-        trim3 = "-U {}".format(trimlen[1])
+        trim5 = ["-u", str(trimlen[0])]
+        trim3 = ["-U", str(trimlen[1])]
 
     ## testing new 'trim_reads' setting
     cmdf1 = ["cutadapt"]
     if trim5:
-        cmdf1 += [trim5]
+        cmdf1 += trim5
     if trim3:
-        cmdf1 += [trim3]
+        cmdf1 += trim3
     cmdf1 += ["--trim-n",
               "--max-n", str(data.paramsdict["max_low_qual_bases"]),
               "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
@@ -354,6 +345,11 @@ def cutadaptit_pairs(data, sample):
               finput_r2]
 
     ## additional args
+    if int(data.paramsdict["filter_adapters"]) < 2:
+        ## add a dummy adapter to let cutadapt know whe are not using legacy-mode
+        cmdf1.insert(1, "XXX")
+        cmdf1.insert(1, "-A")
+
     if int(data.paramsdict["filter_adapters"]):
         cmdf1.insert(1, "20,20")
         cmdf1.insert(1, "-q")
@@ -376,7 +372,7 @@ def cutadaptit_pairs(data, sample):
         cmdf1.insert(1, '-A')         
 
     ## do modifications to read1 and write to tmp file
-    LOGGER.debug(cmdf1)
+    LOGGER.debug(" ".join(cmdf1))
     try:
         proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
         res1 = proc1.communicate()[0]
@@ -418,16 +414,22 @@ def run2(data, samples, force, ipyclient):
     ## files if interrupted, but it seems to require a hard shutdown of 
     ## ipcluster to kill the bash jobs. Should we shut it down inside
     ## here instead of in assembly?
-    subsamples = concat_reads(data, subsamples, ipyclient)
-    run_cutadapt(data, subsamples, lbview)
-    assembly_cleanup(data)
+    try:
+        subsamples = concat_reads(data, subsamples, ipyclient)
+        run_cutadapt(data, subsamples, lbview)
+        assembly_cleanup(data)
+
+    except KeyboardInterrupt:
+        print("\n ...interrupted, just a minute while we ensure proper cleanup")
+        raise KeyboardInterrupt("s2")
 
 
 
-def cleanup_and_die(data, samples):
+def _cleanup_and_die(data):
     """ Interrupt required ipyclient.shutdown to kill jobs. This is called
     after to ensure file cleanup. Not yet implemented."""
-    ## clean up concat files b/c they weren't finished writing. Hard kill.
+
+    samples = data.samples.keys()
     concats = [os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz") \
                for sample in samples]
     concats += [os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz") \
