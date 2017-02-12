@@ -22,6 +22,7 @@ import pandas as pd
 import ipyrad as ip
 import time
 import datetime
+import ipyparallel as ipp
 
 from collections import OrderedDict
 from ipyrad.assemble.util import *
@@ -772,6 +773,11 @@ class Assembly(object):
                     paramvalue = ", ".join([str(i) for i in val])
                 else:
                     paramvalue = str(val)
+
+                ## skip deprecated params
+                if key in ["edit_cutsites", "trim_overhang"]:
+                    continue
+
                 padding = (" "*(30-len(paramvalue)))
                 paramkey = self.paramsdict.keys().index(key)
                 paramindex = " ## [{}] ".format(paramkey)
@@ -1143,6 +1149,7 @@ class Assembly(object):
         ## Assembly object if it is interrupted at any point, and also
         ## to ensure proper cleanup of the ipyclient.
         ipyclient = None
+        inst = None
         try:
             ## use an existing ipcluster instance
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)
@@ -1210,8 +1217,7 @@ class Assembly(object):
 
         except IPyradWarningExit as inst:
             LOGGER.error("IPyradWarningExit: %s", inst)
-            print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}"\
-                  .format(inst))
+            print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}".format(inst))
 
         except Exception as inst:
             LOGGER.error(inst)
@@ -1221,26 +1227,27 @@ class Assembly(object):
 
         ## close client when done or interrupted
         finally:
-            cleanup = 0
             ## save the Assembly
             self.save()
 
             ## can't close client if it was never open
             if ipyclient:
 
+                ## abort any jobs still running
+                try:
+                    ipyclient.abort()
+                except ipp.NoEnginesRegistered:
+                    pass
+
                 ## if CLI stop ipcluster and close client
                 if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
                     LOGGER.info("  shutting down engines")
-                    ipyclient.abort()
-                    if ipyclient.outstanding:
-                        cleanup = 1                        
                     ipyclient.shutdown(hub=True, block=False)
                     ipyclient.close()
                     LOGGER.info("  finished shutdown")
                         
                 ## if API, stop jobs and clean queue
                 else:
-                    ipyclient.abort()
                     if not ipyclient.outstanding:
                         ipyclient.purge_everything()
                     else:
@@ -1248,33 +1255,26 @@ class Assembly(object):
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
                         print("\n  warning: ipcluster shutdown and must be restarted")
-                        cleanup = 1
+
+            ## cleanup funcs, may not be needed when ipyparallel gets a nanny 
+            ## func, eventually. Only catches KBD at the moment.
+            if inst:
+                print(inst)
+                self._cleanup_and_die(inst)
 
             ## a final spacer
             if self._headers:
                 print("")
 
-            ## A final cleanup call that run in the case that ipcluster needs 
-            ## to be killed. e.g., rawedit cat and cutadapt code have this, 
-            ## where big tmp files need to be removed, but can't be removed 
-            ## until after ipcluster is dead. 
-            if cleanup:
-                pass ##TODO
 
-
-
-def _cleanup_and_die(pids):
-    """
-    When engines are running external bins like vsearch they can't hear
-    KeyboardInterrupts, and so they aren't killed properly. We can save the
-    pids of Engines and kill them here instead.
-    """
-    ## get pids of engines
-    for pid in pids:
-        try:
-            os.kill(pid, 9)
-        except OSError:
-            pass
+    def _cleanup_and_die(self, inst):
+        """
+        cleanup funcs that can only be run after ipcluster shutdown
+        """
+        if inst == "s1":
+            ip.assemble.demultiplex._cleanup_and_die(self)
+        if inst == "s2":
+            ip.assemble.rawedit._cleanup_and_die(self)
 
 
 
