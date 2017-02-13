@@ -1410,7 +1410,7 @@ def make_outfiles(data, samples, output_formats, ipyclient):
 
     ## remove the tmparrays
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name))
-    #os.remove(tmparrs)
+    os.remove(tmparrs)
 
 
 ## DEPRECATED FOR BOSS_MAKE_ARRAYS

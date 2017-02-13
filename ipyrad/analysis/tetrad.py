@@ -633,7 +633,7 @@ class Tetrad(object):
         cmd = " ".join(
                 [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
-                " weights=off"+
+                #" weights=off"+
                 " otre=.tmpwtre"])
 
         ## run them
@@ -642,7 +642,7 @@ class Tetrad(object):
                                        stderr=subprocess.STDOUT,
                                        stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as inst:
-            LOGGER.error("Error in wQMC: \n({}).".format(inst))
+            LOGGER.error("Error in QMC: \n({}).".format(inst))
             LOGGER.error(subprocess.STDOUT)
             raise inst
 
