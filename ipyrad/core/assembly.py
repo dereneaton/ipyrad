@@ -1088,10 +1088,9 @@ class Assembly(object):
             raise IPyradError(FIRST_RUN_6.format(self.database))
 
         if not force:
-            if os.path.exists(
-                os.path.join(self.dirs.project, self.name+"_outfiles")):
-                raise IPyradWarningExit(OUTPUT_EXISTS\
-               .format(os.path.join(self.dirs.project, self.name+"_outfiles")))
+            outdir = os.path.join(self.dirs.project, self.name+"_outfiles")
+            if os.path.exists(outdir):
+                raise IPyradWarningExit(OUTPUT_EXISTS.format(outdir))
 
         ## Run step7
         assemble.write_outfiles.run(self, samples, force, ipyclient)
@@ -1217,7 +1216,9 @@ class Assembly(object):
 
         except IPyradWarningExit as inst:
             LOGGER.error("IPyradWarningExit: %s", inst)
-            print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}".format(inst))
+            print("\n  Encountered an error (see details in ./ipyrad_log.txt)"+\
+                  "\n  Error summary is below -------------------------------"+\
+                  "\n{}".format(inst))
 
         except Exception as inst:
             LOGGER.error(inst)
@@ -1259,7 +1260,6 @@ class Assembly(object):
             ## cleanup funcs, may not be needed when ipyparallel gets a nanny 
             ## func, eventually. Only catches KBD at the moment.
             if inst:
-                print(inst)
                 self._cleanup_and_die(inst)
 
             ## a final spacer
@@ -2017,7 +2017,7 @@ NOT_CLUSTERED_YET = """\
 OUTPUT_EXISTS = """\
     Output files already created for this Assembly in:
     {}
-    To overwrite, rerun using the force argument.
+    To overwrite, rerun using the force argument. 
     """
 FIRST_RUN_1 = """\
     No Samples found. First run step 1 to load raw or demultiplexed fastq
