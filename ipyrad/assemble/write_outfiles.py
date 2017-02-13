@@ -1410,10 +1410,10 @@ def make_outfiles(data, samples, output_formats, ipyclient):
 
     ## remove the tmparrays
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name))
-    os.remove(tmparrs)
+    #os.remove(tmparrs)
 
 
-
+## DEPRECATED FOR BOSS_MAKE_ARRAYS
 ## TODO: use view(np.uint8) and compile loop as numba func
 def make_arrays(data, sidx, optim, nloci):
     """
@@ -1573,7 +1573,7 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
         start = time.time()
         njobs = len(asyncs)
         ## axis1 counters
-        seqidx = snpidx = bisidx = mapidx = 0
+        seqidx = snpidx = bisidx = mapidx = locidx = 0
         
         while 1:
             ## we need to collect results in order!
@@ -1586,9 +1586,15 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
                     tmp5["snparr"][:, snpidx:snpidx+snparr.shape[1]] = snparr
                     snpidx += snparr.shape[1]
                     tmp5["bisarr"][:, bisidx:bisidx+bisarr.shape[1]] = bisarr
-                    bisidx += bisarr.shape[1]  
-                    tmp5["maparr"][mapidx:mapidx+maparr.shape[0], :] = maparr
-                    mapidx += maparr.shape[0]
+                    bisidx += bisarr.shape[1]
+
+                    ## mapfile needs idxs summed
+                    mapcopy = maparr.copy()
+                    mapcopy[:, 0] += locidx
+                    mapcopy[:, 3] += mapidx
+                    tmp5["maparr"][mapidx:mapidx+maparr.shape[0], :] = mapcopy
+                    locidx = mapcopy[-1, 0]
+                    mapidx += mapcopy.shape[0]
                     
                     del asyncs[0]
                         
@@ -1781,7 +1787,7 @@ def write_snps_map(data):
     ## grab map data from tmparr
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
-        maparr = io5["maparr"]
+        maparr = io5["maparr"][:]
 
         ## get last data 
         end = np.where(np.all(maparr[:] == 0, axis=1))[0]
@@ -1796,6 +1802,7 @@ def write_snps_map(data):
             for idx in xrange(end):
                 ## build to list
                 line = maparr[idx, :]
+                print(line)
                 outchunk.append(\
                     "{}\trad{}_snp{}\t{}\t{}\n"\
                     .format(line[0], line[1], line[2], 0, line[3]))
@@ -1979,13 +1986,6 @@ def write_geno(data, sidx):
         ## print to files
         np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
         np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
-
-    ## write a map file for use in admixture with locations of SNPs
-    ## for denovo data we just have evenly spaced the unlinked SNPs
-    # 1  rs123456  0  1234555
-    # 1  rs234567  0  1237793
-    # 1  rs224534  0  -1237697        <-- exclude this SNP
-    # 1  rs233556  0  1337456
 
 
 
