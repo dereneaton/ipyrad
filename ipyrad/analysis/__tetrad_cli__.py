@@ -202,9 +202,9 @@ def main():
 
             ## clear any files associated with this name if forced
             if args.force:
-                data = ipa.tetrad.Tetrad(args.name, args.outdir, "", initarr=0)
+                data = ipa.tetrad.Tetrad(name=args.name, wdir=args.outdir, 
+                                         seqfile="", initarr=0)
                 data._purge()
-
             ## create new Tetrad
             data = ipa.tetrad.Tetrad(name=args.name, 
                                      wdir=args.outdir, 
