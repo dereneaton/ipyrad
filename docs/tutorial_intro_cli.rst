@@ -178,7 +178,7 @@ use any text editor you like).
 
 
 .. parsed-literal::
-    ------- ipyrad params file (v.0.3.7)---------------------------------------------
+    ------- ipyrad params file (v.0.5.15)-------------------------------------------
     iptest                         ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
     ./                             ## [1] [project_dir]: Project dir (made in curdir if not present)
                                    ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
@@ -189,25 +189,26 @@ use any text editor you like).
     rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
     TGCAG,                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
     5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
-    33                             ## [10] [phred_Qscore_offset]: phred Q score offset (only alternative=64)
+    33                             ## [10] [phred_Qscore_offset]: phred Q score offset (33 is default and very standard)
     6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
     6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
     10000                          ## [13] [maxdepth]: Max cluster depth within samples
     0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
-    1                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
+    0                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
     0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
     35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
     2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
     5, 5                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus (R1, R2)
     8, 8                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus (R1, R2)
     4                              ## [21] [min_samples_locus]: Min # samples per locus for output
-    50, 50                         ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
+    20, 20                         ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
     8, 8                           ## [23] [max_Indels_locus]: Max # of indels per locus (R1, R2)
-    0.25                           ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
-    0, 0                           ## [25] [edit_cutsites]: Edit cut-sites (R1, R2) (see docs)
-    1, 2, 2, 1                     ## [26] [trim_overhang]: Trim overhang (see docs) (R1>, <R1, R2>, <R2)
-    *                              ## [27] [output_formats]: Output formats (see docs)
+    0.5                            ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
+    0, 0                           ## [25] [trim_reads]: Trim raw read edges (5'>, <3') applies same to pairs (see docs)
+    0, 0, 0, 0                     ## [26] [trim_loci]: Trim locus edges (see docs) (R1>, <R1, R2>, <R2)
+    p, s, v                        ## [27] [output_formats]: Output formats (see docs)
                                    ## [28] [pop_assign_file]: Path to population assignment file
+
 
 
 In general the default parameter values are sensible, and we won't 
@@ -263,17 +264,19 @@ Now lets run step 1! For the simulated data this will take just a few seconds.
     >>> ipyrad -p params-iptest.txt -s 1
 
 .. parsed-literal::
-  --------------------------------------------------
-   ipyrad [v.0.3.7]
-   Interactive assembly and analysis of RADseq data
-  --------------------------------------------------
-   New Assembly: iptest
-   ipyparallel setup: Local connection to 4 Engines
- 
-   Step1: Demultiplexing fastq data to Samples
-   [####################] 100%  sorting reads         | 0:00:04 
-   [####################] 100%  writing files         | 0:00:00 
-   Saving Assembly.
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      New Assembly: iptest
+      host compute node: [8 cores] on tinus
+
+      Step 1: Demultiplexing fastq data to Samples
+
+      [####################] 100%  sorting reads         | 0:00:04  
+      [####################] 100%  writing/compressing   | 0:00:00 
 
 
 There are 4 main parts to this step: (1) It creates a new Assembly called iptest, 
@@ -309,20 +312,20 @@ invoking the ``-r`` flag.
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw
-    1A_0      1      20046
-    1B_0      1      19932
-    1C_0      1      20007
-    1D_0      1      19946
-    2E_0      1      19839
-    2F_0      1      19950
-    2G_0      1      19844
-    2H_0      1      20102
-    3I_0      1      20061
-    3J_0      1      19961
-    3K_0      1      20188
-    3L_0      1      20012
-    
-    
+    1A_0      1      19862
+    1B_0      1      20043
+    1C_0      1      20136
+    1D_0      1      19966
+    2E_0      1      20017
+    2F_0      1      19933
+    2G_0      1      20030
+    2H_0      1      20199
+    3I_0      1      19885
+    3J_0      1      19822
+    3K_0      1      19965
+    3L_0      1      20008
+
+
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
@@ -350,10 +353,12 @@ the simulated data here). Please go look for yourself if you're interested.
 Step 2: Filter reads
 ~~~~~~~~~~~~~~~~~~~~
 This step filters reads based on quality scores, and can be used to 
-detect Illumina adapters in your reads, which is sometimes a problem 
-with homebrew type library preparations. Here the filter is set to the 
-default value of 0 (zero), meaning it filters only based on quality scores of 
-base calls. The filtered files are written to a new directory called 
+detect Illumina adapters in your reads, which is a common concern with any
+NGS data set, and especially so for homebrew type library preparations. 
+Here the filter is set to the default value of 0 (zero), meaning it filters 
+only based on quality scores of base calls, and does not search for adapters.
+This is a good option if your data are already pre-filtered. 
+The resuling filtered files from step 2 are written to a new directory called 
 ``iptest_edits/``.
 
 .. code-block:: bash
@@ -361,17 +366,16 @@ base calls. The filtered files are written to a new directory called
     >>> ipyrad -p params-iptest.txt -s 2
 
 .. parsed-literal::
-  --------------------------------------------------
-   ipyrad [v.0.3.7]
-   Interactive assembly and analysis of RADseq data
-  --------------------------------------------------
-   loading Assembly: iptest
-   from saved path: ~/Documents/ipyrad/tests/iptest.json
-   ipyparallel setup: Local connection to 4 Engines
- 
-   Step2: Filtering reads 
-   [####################] 100%  processing reads      | 0:00:33 
-   Saving Assembly.
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      host compute node: [8 cores] on tinus
+
+      Step 2: Filtering reads 
+      [####################] 100%  processing reads      | 0:00:02 
 
 
 Again, you can look at the results output by this step and also some 
@@ -395,19 +399,20 @@ handy stats tracked for this assembly.
 .. parsed-literal::
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_filtered
-    1A_0      2      20046           20046
-    1B_0      2      19932           19932
-    1C_0      2      20007           20007
-    1D_0      2      19946           19946
-    2E_0      2      19839           19839
-    2F_0      2      19950           19950
-    2G_0      2      19844           19844
-    2H_0      2      20102           20102
-    3I_0      2      20061           20061
-    3J_0      2      19961           19961
-    3K_0      2      20188           20188
-    3L_0      2      20012           20012
+          state  reads_raw  reads_passed_filter
+    1A_0      2      19862                19862
+    1B_0      2      20043                20043
+    1C_0      2      20136                20136
+    1D_0      2      19966                19966
+    2E_0      2      20017                20017
+    2F_0      2      19933                19933
+    2G_0      2      20030                20030
+    2H_0      2      20199                20199
+    3I_0      2      19885                19885
+    3J_0      2      19822                19822
+    3K_0      2      19965                19965
+    3L_0      2      20008                20008
+
     
     
     Full stats files
