@@ -19,11 +19,11 @@ different scenarios:
 2. `One Library Multiple lanes of
    sequencing <#one-library-multiple-lanes-of-sequencing>`__
 3. `Multiple libraries Multiple lanes of
-   sequencing <#3.-Multiple-Libraries-Multiple-Lanes-of-Sequencing>`__
+   sequencing <#multiple-libraries-multiple-lanes-of-sequencing>`__
 4. `Separate multiple libraries from one lane of
-   sequencing <#4.-Separate-Multiple-Libraries-from-One-Lane-of-Sequencing>`__
+   sequencing <#separate-multiple-libraries-from-one-lane-of-sequencing>`__
 5. `Alternative: Doing all of this with the API instead of the
-   CLI <#5.-Alternative:-Using-the-ipyrad-API-to-do-these-things>`__
+   CLI <#alternative:-using-the-ipyrad-api-to-do-these-things>`__
 
 1. One library One Lane of sequencing
 -------------------------------------
@@ -110,7 +110,7 @@ that are then merged into a single Object for assembling.
     sed -i '/\[4] /c\./demux1_fastq/*.gz  ## [2] ' params-New.txt
     
     ## assemble this data set 
-    ipyrad -p params-New -s 1234567
+    ipyrad -p params-New.txt -s 1234567
 
 2. One Library Multiple Lanes of Sequencing
 -------------------------------------------

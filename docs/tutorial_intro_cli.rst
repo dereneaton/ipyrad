@@ -478,21 +478,21 @@ Now lets run step 3:
     >>> ipyrad -p params-iptest.txt -s 3
 
 .. parsed-literal::
-  --------------------------------------------------
-   ipyrad [v.0.3.7]
-   Interactive assembly and analysis of RADseq data
-  --------------------------------------------------
-   loading Assembly: iptest
-   from saved path: ~/Documents/ipyrad/tests/iptest.json
-   ipyparallel setup: Local connection to 4 Engines
- 
-   Step3: Clustering/Mapping reads
-   [####################] 100%  dereplicating         | 0:00:01 
-   [####################] 100%  clustering            | 0:00:03 
-   [####################] 100%  chunking              | 0:00:00 
-   [####################] 100%  aligning              | 0:00:44 
-   [####################] 100%  concatenating         | 0:00:00 
-   Saving Assembly.
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      host compute node: [8 cores] on tinus
+
+      Step 3: Clustering/Mapping reads
+      [####################] 100%  dereplicating         | 0:00:00  
+      [####################] 100%  clustering            | 0:00:00  
+      [####################] 100%  building clusters     | 0:00:00  
+      [####################] 100%  chunking              | 0:00:00  
+      [####################] 100%  aligning              | 0:00:03  
+      [####################] 100%  concatenating         | 0:00:00  
 
 
 Again we can examine the results. The stats output tells you how many clusters 
@@ -509,19 +509,19 @@ base calls in low depth clusters.
 .. parsed-literal:: 
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      3      20046           20046            1000              1000
-    1B_0      3      19932           19932            1000              1000
-    1C_0      3      20007           20007            1000              1000
-    1D_0      3      19946           19946            1000              1000
-    2E_0      3      19839           19839            1000              1000
-    2F_0      3      19950           19950            1000              1000
-    2G_0      3      19844           19844            1000              1000
-    2H_0      3      20102           20102            1000              1000
-    3I_0      3      20061           20061            1000              1000
-    3J_0      3      19961           19961            1000              1000
-    3K_0      3      20188           20188            1000              1000
-    3L_0      3      20012           20012            1000              1000
+          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth
+    1A_0      3      19862                19862            1000              1000
+    1B_0      3      20043                20043            1000              1000
+    1C_0      3      20136                20136            1000              1000
+    1D_0      3      19966                19966            1000              1000
+    2E_0      3      20017                20017            1000              1000
+    2F_0      3      19933                19933            1000              1000
+    2G_0      3      20030                20030            1000              1000
+    2H_0      3      20199                20199            1000              1000
+    3I_0      3      19885                19885            1000              1000
+    3J_0      3      19822                19822            1000              1000
+    3K_0      3      19965                19965            1000              1000
+    3L_0      3      20008                20008            1000              1000
 
 
     Full stats files
@@ -533,6 +533,8 @@ base calls in low depth clusters.
     step 5: None
     step 6: None
     step 7: None
+
+
 
 
 The aligned clusters found during this step are now located in 
@@ -600,17 +602,16 @@ straightforward, and pretty fast. Run it thusly:
     >>> ipyrad -p params-iptest.txt -s 4
 
 .. parsed-literal::
-  --------------------------------------------------
-   ipyrad [v.0.3.7]
-   Interactive assembly and analysis of RADseq data
-  --------------------------------------------------
-   loading Assembly: iptest
-   from saved path: ~/Documents/ipyrad/tests/iptest.json
-   ipyparallel setup: Local connection to 4 Engines
- 
-   Step4: Joint estimation of error rate and heterozygosity
-   [####################] 100%  inferring [H, E]      | 0:01:09 
-   Saving Assembly.
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      host compute node: [8 cores] on tinus
+
+      Step 4: Joint estimation of error rate and heterozygosity
+      [####################] 100%  inferring [H, E]      | 0:00:02  
 
 
 This step does not produce new output files, only a stats file with the 
@@ -624,35 +625,35 @@ You can also invoke the ``-r`` flag to see the estimated values.
 .. parsed-literal::
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      4      20046           20046            1000              1000   
-    1B_0      4      19932           19932            1000              1000   
-    1C_0      4      20007           20007            1000              1000   
-    1D_0      4      19946           19946            1000              1000   
-    2E_0      4      19839           19839            1000              1000   
-    2F_0      4      19950           19950            1000              1000   
-    2G_0      4      19844           19844            1000              1000   
-    2H_0      4      20102           20102            1000              1000   
-    3I_0      4      20061           20061            1000              1000   
-    3J_0      4      19961           19961            1000              1000   
-    3K_0      4      20188           20188            1000              1000   
-    3L_0      4      20012           20012            1000              1000   
-    
+          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth  \
+    1A_0      4      19862                19862            1000              1000   
+    1B_0      4      20043                20043            1000              1000   
+    1C_0      4      20136                20136            1000              1000   
+    1D_0      4      19966                19966            1000              1000   
+    2E_0      4      20017                20017            1000              1000   
+    2F_0      4      19933                19933            1000              1000   
+    2G_0      4      20030                20030            1000              1000   
+    2H_0      4      20199                20199            1000              1000   
+    3I_0      4      19885                19885            1000              1000   
+    3J_0      4      19822                19822            1000              1000   
+    3K_0      4      19965                19965            1000              1000   
+    3L_0      4      20008                20008            1000              1000   
+
           hetero_est  error_est  
-    1A_0    0.002191   0.000772  
-    1B_0    0.001878   0.000757  
-    1C_0    0.002235   0.000716  
-    1D_0    0.001855   0.000742  
-    2E_0    0.001822   0.000753  
-    2F_0    0.002052   0.000791  
-    2G_0    0.001889   0.000794  
-    2H_0    0.002191   0.000734  
-    3I_0    0.001855   0.000748  
-    3J_0    0.001686   0.000791  
-    3K_0    0.001797   0.000739  
-    3L_0    0.002000   0.000752  
-    
-    
+    1A_0    0.001824   0.000759  
+    1B_0    0.001908   0.000752  
+    1C_0    0.002084   0.000745  
+    1D_0    0.001803   0.000761  
+    2E_0    0.001830   0.000766  
+    2F_0    0.001996   0.000755  
+    2G_0    0.001940   0.000763  
+    2H_0    0.001747   0.000756  
+    3I_0    0.001807   0.000758  
+    3J_0    0.001931   0.000776  
+    3K_0    0.002092   0.000766  
+    3L_0    0.002042   0.000748  
+
+
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
@@ -662,6 +663,7 @@ You can also invoke the ``-r`` flag to see the estimated values.
     step 5: None
     step 6: None
     step 7: None
+
 
 
 
@@ -676,19 +678,21 @@ to be the real haplotypes at each locus within each sample.
     >>> ipyrad -p params-iptest.txt -s 5
 
 .. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.3.7]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  loading Assembly: iptest
-  from saved path: ~/Documents/ipyrad/tests/iptest.json
-  ipyparallel setup: Local connection to 4 Engines
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      host compute node: [8 cores] on tinus
 
-  Step5: Consensus base calling 
-  Mean error  [0.00076 sd=0.00002]
-  Mean hetero [0.00195 sd=0.00018]
-  [####################] 100%  consensus calling     | 0:00:28 
-  Saving Assembly.
+      Step 5: Consensus base calling 
+      Mean error  [0.00076 sd=0.00001]
+      Mean hetero [0.00192 sd=0.00012]
+      [####################] 100%  calculating depths    | 0:00:01  
+      [####################] 100%  chunking clusters     | 0:00:00  
+      [####################] 100%  consens calling       | 0:00:10  
+
 
 
 Again we can ask for the results:
@@ -706,35 +710,35 @@ number of reads_consens should be equal to the number of clusters_hidepth.
 .. parsed-literal::
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_filtered  clusters_total  clusters_hidepth
-    1A_0      5      20046           20046            1000              1000   
-    1B_0      5      19932           19932            1000              1000   
-    1C_0      5      20007           20007            1000              1000   
-    1D_0      5      19946           19946            1000              1000   
-    2E_0      5      19839           19839            1000              1000   
-    2F_0      5      19950           19950            1000              1000   
-    2G_0      5      19844           19844            1000              1000   
-    2H_0      5      20102           20102            1000              1000   
-    3I_0      5      20061           20061            1000              1000   
-    3J_0      5      19961           19961            1000              1000   
-    3K_0      5      20188           20188            1000              1000   
-    3L_0      5      20012           20012            1000              1000   
-    
+          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth  \
+    1A_0      5      19862                19862            1000              1000   
+    1B_0      5      20043                20043            1000              1000   
+    1C_0      5      20136                20136            1000              1000   
+    1D_0      5      19966                19966            1000              1000   
+    2E_0      5      20017                20017            1000              1000   
+    2F_0      5      19933                19933            1000              1000   
+    2G_0      5      20030                20030            1000              1000   
+    2H_0      5      20199                20199            1000              1000   
+    3I_0      5      19885                19885            1000              1000   
+    3J_0      5      19822                19822            1000              1000   
+    3K_0      5      19965                19965            1000              1000   
+    3L_0      5      20008                20008            1000              1000   
+
           hetero_est  error_est  reads_consens  
-    1A_0    0.002191   0.000772           1000  
-    1B_0    0.001878   0.000757           1000  
-    1C_0    0.002235   0.000716           1000  
-    1D_0    0.001855   0.000742           1000  
-    2E_0    0.001822   0.000753           1000  
-    2F_0    0.002052   0.000791           1000  
-    2G_0    0.001889   0.000794           1000  
-    2H_0    0.002191   0.000734           1000  
-    3I_0    0.001855   0.000748           1000  
-    3J_0    0.001686   0.000791           1000  
-    3K_0    0.001797   0.000739           1000  
-    3L_0    0.002000   0.000752           1000 
-    
-    
+    1A_0    0.001824   0.000759           1000  
+    1B_0    0.001908   0.000752           1000  
+    1C_0    0.002084   0.000745           1000  
+    1D_0    0.001803   0.000761           1000  
+    2E_0    0.001830   0.000766           1000  
+    2F_0    0.001996   0.000755           1000  
+    2G_0    0.001940   0.000763           1000  
+    2H_0    0.001747   0.000756           1000  
+    3I_0    0.001807   0.000758           1000  
+    3J_0    0.001931   0.000776           1000  
+    3K_0    0.002092   0.000766           1000  
+    3L_0    0.002042   0.000748           1000  
+
+
     Full stats files
     ------------------------------------------------
     step 1: ./iptest_fastqs/s1_demultiplex_stats.txt
@@ -744,6 +748,9 @@ number of reads_consens should be equal to the number of clusters_hidepth.
     step 5: ./iptest_consens/s5_consens_stats.txt
     step 6: None
     step 7: None
+
+
+
 
 This step creates a new directory called ``./iptest_consens`` to store
 the consensus sequences for each sample. We can use our trusty ``head``
@@ -785,21 +792,22 @@ same locus, based on sequence similarity.
     >>> ipyrad -p params-iptest.txt -s 6
 
 .. parsed-literal::
-  --------------------------------------------------
-   ipyrad [v.0.3.7]
-   Interactive assembly and analysis of RADseq data
-  --------------------------------------------------
-   loading Assembly: iptest
-   from saved path: ~/Documents/ipyrad/tests/iptest.json
-   ipyparallel setup: Local connection to 4 Engines
- 
-   Step6: Clustering across 12 samples at 0.85 similarity
-   [####################] 100%  concat/shuf input     | 0:00:00 
-   [####################] 100%  clustering across     | 0:00:00 
-   [####################] 100%  aligning clusters     | 0:00:08 
-   [####################] 100%  ordering clusters     | 0:00:16 
-   [####################] 100%  building database     | 0:00:07 
-   Saving Assembly.
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      host compute node: [8 cores] on tinus
+
+      Step 6: Clustering at 0.85 similarity across 12 samples
+      [####################] 100%  concat/shuffle input  | 0:00:00  
+      [####################] 100%  clustering across     | 0:00:00  
+      [####################] 100%  building clusters     | 0:00:01  
+      [####################] 100%  aligning clusters     | 0:00:03  
+      [####################] 100%  database indels       | 0:00:00  
+      [####################] 100%  indexing clusters     | 0:00:01  
+      [####################] 100%  building database     | 0:00:00  
 
 
 This step differs from previous steps in that we are no longer applying a
@@ -833,21 +841,23 @@ After running step 7 like so:
 
 
 .. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.3.7]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  loading Assembly: iptest
-  from saved path: ~/Documents/ipyrad/tests/iptest_outfiles
-  ipyparallel setup: Local connection to 1 Engines
+     -------------------------------------------------------------
+      ipyrad [v.0.5.15]
+      Interactive assembly and analysis of RAD-seq data
+     -------------------------------------------------------------
+      loading Assembly: iptest
+      from saved path: ~/Documents/ipyrad/tests/iptest.json
+      host compute node: [8 cores] on tinus
 
-  Step7: Filter and write output files for 12 Samples
-  [####################] 100%  filtering loci        | 0:00:10 
-  [####################] 100%  building loci/stats   | 0:00:02 
-  [####################] 100%  building vcf file     | 0:00:19 
-  [####################] 100%  writing outfiles      | 0:00:02 
-  Outfiles written to: ~/Documents/ipyrad/tests/iptest_outfiles
-  Saving Assembly.
+      Step 7: Filter and write output files for 12 Samples
+      [####################] 100%  filtering loci        | 0:00:05  
+      [####################] 100%  building loci/stats   | 0:00:00  
+      [####################] 100%  building vcf file     | 0:00:01  
+      [####################] 100%  writing vcf file      | 0:00:00  
+      [####################] 100%  building arrays       | 0:00:01  
+      [####################] 100%  writing outfiles      | 0:00:02  
+      Outfiles written to: ~/Documents/ipyrad/tests/iptest_outfiles
+
 
 
 A new directory is created called ``iptest_outfiles``. This directory contains
@@ -855,6 +865,7 @@ all the output files specified in the params file. The default is to
 create all supported output files which include PHYLIP(.phy), NEXUS(.nex), 
 EIGENSTRAT's genotype format(.geno), STRUCTURE(.str), as well
 as many others. Explore some of these files below.
+
 
 Final stats file
 ~~~~~~~~~~~~~~~~
@@ -873,79 +884,78 @@ much variation is present in the data. Check out the results file.
     >>> less iptest_outfiles/iptest_stats.txt
 
 .. parsed-literal::
-  ## The number of loci caught by each filter.
-  ## ipyrad API location: [assembly].statsfiles.s7_filters
-  
-                             locus_filtering
-  total_prefiltered_loci                1000
-  filtered_by_rm_duplicates                0
-  filtered_by_max_indels                   0
-  filtered_by_max_snps                     0
-  filtered_by_max_shared_het               0
-  filtered_by_min_sample                   0
-  filtered_by_max_alleles                  0
-  total_filtered_loci                   1000
-  
-  
-  ## The number of loci recovered for each Sample.
-  ## ipyrad API location: [assembly].stats_dfs.s7_samples
-  
-        sample_coverage
-  1A_0             1000
-  1B_0             1000
-  1C_0             1000
-  1D_0             1000
-  2E_0             1000
-  2F_0             1000
-  2G_0             1000
-  2H_0             1000
-  3I_0             1000
-  3J_0             1000
-  3K_0             1000
-  3L_0             1000
-  
-  
-  ## The number of loci for which N taxa have data.
-  ## ipyrad API location: [assembly].stats_dfs.s7_loci
-  
-      locus_coverage  sum_coverage
-  1                0             0
-  2                0             0
-  3                0             0
-  4                0             0
-  5                0             0
-  6                0             0
-  7                0             0
-  8                0             0
-  9                0             0
-  10               0             0
-  11               0             0
-  12            1000          1000
-  
-  
-  ## The distribution of SNPs (var and pis) across loci.
-  ## var = all variable sites (pis + autapomorphies)
-  ## pis = parsimony informative site (minor allele in >1 sample)
-  ## ipyrad API location: [assembly].stats_dfs.s7_snps
-  
+    ## The number of loci caught by each filter.
+    ## ipyrad API location: [assembly].statsfiles.s7_filters
+
+                                total_filters  applied_order  retained_loci
+    total_prefiltered_loci               1000              0           1000
+    filtered_by_rm_duplicates               0              0           1000
+    filtered_by_max_indels                  0              0           1000
+    filtered_by_max_snps                    0              0           1000
+    filtered_by_max_shared_het              0              0           1000
+    filtered_by_min_sample                  0              0           1000
+    filtered_by_max_alleles                 0              0           1000
+    total_filtered_loci                  1000              0           1000
+
+
+    ## The number of loci recovered for each Sample.
+    ## ipyrad API location: [assembly].stats_dfs.s7_samples
+
+          sample_coverage
+    1A_0             1000
+    1B_0             1000
+    1C_0             1000
+    1D_0             1000
+    2E_0             1000
+    2F_0             1000
+    2G_0             1000
+    2H_0             1000
+    3I_0             1000
+    3J_0             1000
+    3K_0             1000
+    3L_0             1000
+
+    ## The number of loci for which N taxa have data.
+    ## ipyrad API location: [assembly].stats_dfs.s7_loci
+
+        locus_coverage  sum_coverage
+    1                0             0
+    2                0             0
+    3                0             0
+    4                0             0
+    5                0             0
+    6                0             0
+    7                0             0
+    8                0             0
+    9                0             0
+    10               0             0
+    11               0             0
+    12            1000          1000
+
+
+    ## The distribution of SNPs (var and pis) across loci.
+    ## var = all variable sites (pis + autapomorphies)
+    ## pis = parsimony informative site (minor allele in >1 sample)
+    ## ipyrad API location: [assembly].stats_dfs.s7_snps
+
         var  sum_var  pis  sum_pis
-    0    10        0  306        0
-    1    39       39  376      376
-    2    96      231  211      798
-    3   146      669   77     1029
-    4   213     1521   18     1101
-    5   191     2476   10     1151
-    6   145     3346    2     1163
-    7    67     3815    0     1163
-    8    49     4207    0     1163
-    9    30     4477    0     1163
-    10    6     4537    0     1163
-    11    4     4581    0     1163
-    12    1     4593    0     1163
-    13    2     4619    0     1163
-    14    1     4633    0     1163
+    0    16        0  331        0
+    1    55       55  376      376
+    2   106      267  208      792
+    3   208      891   52      948
+    4   198     1683   26     1052
+    5   145     2408    4     1072
+    6   124     3152    3     1090
+    7    69     3635    0     1090
+    8    50     4035    0     1090
+    9    12     4143    0     1090
+    10   10     4243    0     1090
+    11    3     4276    0     1090
+    12    3     4312    0     1090
+    13    1     4325    0     1090
 
 
+    
 Check out the ``.loci`` output (this is ipyrad native internal format). 
 Each locus is delineated by a pair of forward slashes ``//``. Within each
 locus are all the reads from each sample that clustered together. The line
