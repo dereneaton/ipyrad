@@ -236,7 +236,7 @@ def batch(handle, taxdicts, mindicts=None, nboots=1000, ipyclient=None, quiet=Fa
             progressbar(tot, fin, " calculating D-stats  | {} | ".format(elap))
             time.sleep(0.1)
             if not asyncs:
-                print("")
+                print("\n")
                 break
 
         ## dress up resarr as a Pandas DataFrame
@@ -1480,11 +1480,37 @@ def cladogram(newick, use_edge_lengths=True, invert=False):
 
 
 ######################################################################
-## Simulation functions (require msprime)
+## Simulation functions (requires msprime)
 ######################################################################
 
 
 def sim_admix(nreps, tree, admix=None, Ns=500000, gen=20):
+    """
+    Enter a baba.Tree object in which the 'tree' attribute (newick 
+    derived tree) has edge lengths in units of generations. You can 
+    use the 'gen' parameter to multiply branch lengths by a constant. 
+
+    Parameters:
+    -----------
+
+    nreps: (int)
+        Number of reps (loci) to simulate under the demographic scenario
+    tree: (baba.Tree object)
+        A baba.Tree object initialized by calling baba.Tree(*args). 
+    admix: (list)
+        A list of admixture events to occur on the tree. Nodes must be 
+        reference by their index number, and events must occur in time
+        intervals when edges exist. Use the .draw() function of the 
+        baba.Tree object to see node index numbers and coalescent times.
+    Ns: (float)
+        Fixed effective population size for all lineages (may allow to vary
+        in the future). 
+    gen: (int)
+        A multiplier applied to branch lengths to scale into units of 
+        generations. Example, if all edges on a tree were 1 then you might
+        enter 50000 to multiply so that edges are 50K generations long.
+
+    """
 
     ## set up the ML values for Tau from tree. Units in tree are coalescent 
     ## and must be multiplied by generation time to get in units of gen
@@ -1502,7 +1528,32 @@ def sim_admix(nreps, tree, admix=None, Ns=500000, gen=20):
     ## a list for storing demographic events
     demog = []
 
-    ## move up tree from tips to root appending events to demog
+    ## coalescent times (excludes time=0 (tips))
+    coals = sorted(list(set(tree.verts[:, 1])))[1:]
+
+    ## cladogram code will need to preserve underlying verts/edges, and 
+    ## only make new temporary hidden verts/edges for plotting.
+
+    ## leaves have large 'idx' numbers, but names are strs, whereas internal
+    ## have lower 'idx' numbers, and matching integer names. 
+
+    ## add coalescent events to demog. All nodes (and children) are labeled 
+    ## with integers, and we always use the lower number as the destination
+    ## of a MassMigration, to keep track of source/sink.
+    for ct in xrange(len(coals)):
+        nodes = np.where(tree.verts[:, 1] == coals[ct])
+ 
+        source = [i if i.is_leaf() else i.children]
+        time = Taus[1]
+        event = ms.MassMigration(
+                    time=time,
+                    source=1, 
+                    destination=0, 
+                    proportion=1.0)
+        demog.append(event)
+
+
+    ## traverse tree from tips to root appending events to demog
     for node in tree.tree.traverse("preorder"):
 
         if node.is_leaf():

@@ -640,7 +640,7 @@ Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    *                     ## [27] Make all output datatypes (this is the default)
+    *                     ## [27] Make all output datatypes
     n, v, g               ## [27] Only write out nexus, vcf and geno formats
     u,k                   ## [27] Only write out unlinked snps in phylip, and structure
 
