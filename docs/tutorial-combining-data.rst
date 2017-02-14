@@ -15,7 +15,7 @@ we demonstrate a number of ways to demultiplex and load data under
 different scenarios:
 
 1. `One Library One Lane of
-   sequencing <#1.-One-library-One-Lane-of-sequencing>`__
+   sequencing <#One-library-One-Lane-of-sequencing>`__
 2. `One Library Multiple lanes of
    sequencing <#2.-One-Library-Multiple-Lanes-of-Sequencing>`__
 3. `Multiple libraries Multiple lanes of
