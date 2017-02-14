@@ -72,7 +72,7 @@ Input files
     If you have **multiple plates** of data or if your data was already
     demultiplexed when you received it, we still recommend you complete
     the intro tutorial with the simulated data, but then see 
-    advanced_input_datasets_ for specific instructions on how to read
+    tutorial_combining_data_ for specific instructions on how to read
     in previously demultiplexed samples and how to merge multiple
     plates of data.
 

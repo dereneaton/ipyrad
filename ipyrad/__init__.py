@@ -195,7 +195,7 @@ def _getbins():
                        "bedtools-linux-x86_64")
         qmc = _os.path.join(
                        _os.path.abspath(bin_path),
-                       "wQMC-linux-x86_64")
+                       "QMC-linux-x86_64")
     else:
         vsearch = _os.path.join(
                        _os.path.abspath(bin_path),
@@ -218,7 +218,7 @@ def _getbins():
         ## only one compiled version available, works for all?
         qmc = _os.path.join(
                        _os.path.abspath(bin_path),
-                       "wQMC-linux-x86_64")
+                       "QMC-osx-x86_64")
 
     # Test for existence of binaries
     assert _cmd_exists(muscle), "muscle not found here: "+muscle
