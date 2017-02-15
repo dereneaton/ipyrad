@@ -625,7 +625,7 @@ You can also invoke the ``-r`` flag to see the estimated values.
 .. parsed-literal::
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth  \
+          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth
     1A_0      4      19862                19862            1000              1000   
     1B_0      4      20043                20043            1000              1000   
     1C_0      4      20136                20136            1000              1000   
@@ -710,7 +710,7 @@ number of reads_consens should be equal to the number of clusters_hidepth.
 .. parsed-literal::
     Summary stats of Assembly iptest
     ------------------------------------------------
-          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth  \
+          state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth
     1A_0      5      19862                19862            1000              1000   
     1B_0      5      20043                20043            1000              1000   
     1C_0      5      20136                20136            1000              1000   

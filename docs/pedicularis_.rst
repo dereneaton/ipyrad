@@ -201,7 +201,7 @@ The example here was run on a 20-core workstation and can finish in ~20 minutes.
 
   Summary stats of Assembly pedicularis
   ------------------------------------------------
-                          state  reads_raw  reads_passed_filter  clusters_total  \
+                          state  reads_raw  reads_passed_filter  clusters_total
   29154_superba               6     696994               689996          130735   
   30556_thamno                6    1452316              1440314          199587   
   30686_cyathophylla          6    1253109              1206947          233183   
