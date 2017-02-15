@@ -170,7 +170,7 @@ class Assembly(object):
                        ("max_SNPs_locus", (20, 20)),
                        ("max_Indels_locus", (8, 8)),
                        ("max_shared_Hs_locus", 0.50),
-                       ("trim_reads", (0, 0)),
+                       ("trim_reads", (0, 0, 0, 0)),
                        ("trim_loci", (0, 0, 0, 0)),
                        ("output_formats", ['p', 's', 'v']),
                        ("pop_assign_file", ""),
