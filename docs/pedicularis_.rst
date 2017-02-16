@@ -9,10 +9,8 @@ Eaton & Ree (2013) single-end RAD data set
 
 Here we demonstrate a *denovo* assembly for an empirical RAD data set to 
 give a general idea of the results you might expect to recover. 
-This example was run on a 4-core laptop with 8GB RAM, and takes about 2.25 hours
-to run completely, showing that you do not need a super computer to assemble 
-many data sets. However, using more cores will improve the speed of ipyrad 
-approximately linearly, so if you have access to a large cluster go ahead and use it.
+This example was run on a 20-core workstation with 64GB RAM, and takes 
+about 20 minutes to run completely. 
 
 We will use the 13 taxa *Pedicularis* data set from Eaton and Ree (2013) 
 (`open access link <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3739883/pdf/syt032.pdf>`__).
