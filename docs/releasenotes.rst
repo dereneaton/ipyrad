@@ -5,6 +5,176 @@
 Release Notes
 =============
 
+0.6.0
+-----
+- trim reads default 0,0,0,0. Similar action to trim loci, but applied in step 2 to raws
+- trim_reads default is 0,0
+- raise default cov/minsl for gbs data to 0.5 from 0.33
+- prettifying docs
+- pedicularis docs update v6 way way faster
+- updated tutorial
+- fixing links in combining data docs
+- updating tutorial for latest version/speed
+- added docs for combining multiple plates
+- added docs for combining multiple plates
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added docs for combining multiple plates
+- cosmetic change to docs
+- Removed  from output formats defaults (it doesn't do anything)
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- baba cookbooks [unfinished] up
+- finally added osx QMC and fixed bug for same name and force flag rerun
+- put back in a remove tmpdirs call
+- removed a superfluous print statement
+- bug fix to mapfile, now compatible with tetrad
+- paramsinfo for new trimreads param
+- branching fix for handling new param names and upgrading to them
+- better handling of pairgbs no bcode trimming. Now handles --length arg
+- better handling of KBD in demux. Faster compression.
+- forgot sname var in cutadaptit_single
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic changes to rawedit
+- Fix step 2 for PE reads crashing during cutatapt.
+- Test for bz2 files in sorted_fastq_path and nag the user bcz we don't support this format.
+- Step 1 create tmp file for estimating optim chunk size in project_dir not ./
+- Add force flag to mapreads(), mostly to save time on rerunning if it crashes during finalize_mapping. Also fixed a nasty bug in refmapping.
+- Added text to faq about why PE original RAD is hard to assemble, cuz people always ask.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cosmetic
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better handling of loci w/ duplicate seqs per sample.
+- fkjd;afjd;ka
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Fix a bug that munged some names in branching.
+- merge conflict
+- modified for new trim param names
+- support for new trim_loci param
+- support for updated cutadapt
+- bugfix for hackerdict modify of cov
+- chrom only for paired data
+- changed two parameter names (trims)
+- tested out MPI checks
+- cutadapt upgrade allow for --length option
+- Moved log file reset from init to main to prevent -r from blanking the log >:{
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Moved log file reset from __init__ to __main__
+- Don't bother aligning clusters with duplicates in step 6.
+- baba update
+- remove print statement left in code
+- same fix to names parser, better.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added comment ideas for chrompos in refmap
+- bug fix, Sample names were being oversplit if they had '.' in them
+- test labels, improved spacing, collapse_outgroups options added to baba plots
+- Fix debug message in refmap and don't raise on failure to parse reference sequence.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- attempts to make better cleanup for interrupt in API
+- some cleanup to calling steps 1,2 funcs
+- speed testing demux code with single vs multicore
+- moved setting of ['merged'] to replace filepath names to Assembly instead of main so that it also works for the API
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added a np dict-like arr to be used in baba, maybe in ref.
+- baba plotting functions added
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better handling of tmpdir in step 6.
+- added baba cookbook
+- only map chrom pos if in reference mode
+- new batch and plotting functions
+- trim .txt from new branch name if accidentally added to avoid Assembly name error
+- added a name-checker to the branch-drop CLI command
+- Fixed legend on Pedicularis manuscript analysis trees.
+- Cosmetic change
+- Adding manuscript analysis tree plotting for empirical PE ddRAD refmap assemblies.
+- More or less complete manuscript analysis results.
+- Actually fix vcf writing CHROM/POS information from refseq mapped reads.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Handle monomorphic loci during vcf construction.
+- removed deprecated subsample option from jointestimate
+- --ipcluster method looks for default profile and cluster-id instance
+- clode cleanup and faster haploid E inference
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- simplified cluster info printing
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- enforce ipyclient.shutdown at end of API run() if engine jobs are not stopped
+- code cleanup. Trying to allow better KBD in step2
+- lots of cleanup to DAG code. Now ok for individual samples to fail in step3, others will continue. Sorts clusters by derep before align chunking
+- Allow assemblies w/o chrom/pos data in the hdf5 to continue using the old style vcf position numbering scheme.
+- Don't print the error message about samples failing step 4 if no samples actually fail.
+- Set a size= for reference sequence to sort it to the top of the chunk prior to muscle aligning.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Allow samples with very few reads to gracefully fail step 4.
+- Better error handling during reference mapping for PE.
+- Fix error reporting in merge_pairs().
+- Add CHROM/POS info to the output vcf file. The sorting order is a little wonky.
+- Handle empty project_dir when running -r.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- a clean bighorse notebook run on 100 cores
+- Fix minor merge conflict in ref_muscle_chunker.
+- Use one persistant subprocess for finalizing mapped reads. Big speed-up. Also fix a stupid bug in estimating insert size.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better handling of errors in merge_pairs, and more careful cleanup on error.
+- If /dev/shm exists, use it for finalizing mapped reads.
+- Handle a case where one or the other of the PE reads is empty.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cleaner print cpus func
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Adding a new dataset to the catg and clust hdf5 files to store CHROM and POS info for reference mapped reads.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added cleanhorse notebook
+- working on notebook
+- cleanup up redundancy
+- MUCH FASTER STEP 4 using numba array building and vectorized scipy
+- MUCH FASTER MUSCLE ALIGNING. And a bug fix to a log reporter
+- bug fix to error/log handler
+- Finish manuscript refmap results analysis. Added a notebook for plotting trees from manuscript Pedicularis assembly.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Better checking for special characters in assembly names, and more informative error message.
+- added a test on big data
+- broken notebook
+- cosmetic
+- development notebook for baba
+- working on shareplots
+- cosmetic
+- testing caching numba funcs for faster run starts
+- added optional import of subprocess32
+- docs update
+- progress on baba
+- added option to add additional adapters to be filtered from paired data
+- Adding pairwise fst to manuscript analysis results. Begin work on raxml for manuscript analysis results.
+- Change a log message from info to warn that handles exceptions in rawedit.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- abba baba updated
+- Fixed link in tetrad doc and cosmetic change to API docs.
+- Add comments to results notebooks.
+- Adding manuscript reference mapping results.
+- Manuscript analysis reference sequence mapping horserace updates. Stacks mostly done. dDocent started.
+- Adding ddRAD horserace nb.
+- Better cleanup during refmap merge_pairs (#211).
+- update for raxml-HYBRID
+- update raxml docs
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- cleanup old code
+- update raxml docs
+- updating raxml docs
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- update to bucky cookbook
+
 0.5.15
 ------
 - bug fix to ensure chunk size of the tmparray in make-arrays is not greater than the total array size
