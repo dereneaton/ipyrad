@@ -5,6 +5,13 @@
 Release Notes
 =============
 
+0.6.1
+-----
+- Fixed malformed nexus output file.
+- cookbook updates to docs
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- updated cookbook structure pedicularis
+
 0.6.0
 -----
 - trim reads default 0,0,0,0. Similar action to trim loci, but applied in step 2 to raws
