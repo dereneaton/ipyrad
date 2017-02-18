@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.6.2
+-----
+- Fix subtle bug with migration to trim_reads parameter.
+
 0.6.1
 -----
 - Fixed malformed nexus output file.
