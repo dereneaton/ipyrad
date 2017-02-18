@@ -10,7 +10,6 @@ Documentation
 Full documentation is available here (`<http://ipyrad.readthedocs.io>`_),
 where you will find installation instructions, example tutorials, and a full user guide.
 
-
 Quick Install
 ------------
 ipyrad is available through the Python package installer `conda` with all dependencies included.
