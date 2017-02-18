@@ -5,6 +5,10 @@
 Release Notes
 =============
 
+0.6.3
+-----
+- Fixed a bug i introduced to assembly. Autotroll.
+
 0.6.2
 -----
 - Fix subtle bug with migration to trim_reads parameter.
