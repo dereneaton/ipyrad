@@ -1768,7 +1768,7 @@ def write_nex(data, sidx, pnames):
         with open(data.outfiles.nex, 'w') as out:
 
             ## write nexus seq header
-            out.write(NEXHEADER.format(seqarr.shape[0], seqarr.shape[1]))
+            out.write(NEXHEADER.format(seqarr.shape[0], end))
 
             ## write interleaved seqs 100 chars at a time with longname+2 before
             for block in xrange(0, end, 100):
