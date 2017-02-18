@@ -1821,6 +1821,7 @@ def _paramschecker(self, param, newvalue):
     ## deprecated but retained for legacy, now uses trim_reads (below)
     elif param == 'edit_cutsites':
         ## Force into a string tuple
+        newvalue = tuple(newvalue)
         newvalue = _tuplecheck(newvalue)
         ## try converting each tup element to ints
         newvalue = list(newvalue)
@@ -1828,6 +1829,7 @@ def _paramschecker(self, param, newvalue):
             try:
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
+                newvalue.append(0)
                 pass
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
@@ -1847,6 +1849,7 @@ def _paramschecker(self, param, newvalue):
             try:
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
+                newvalue.append(0)
                 pass
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple

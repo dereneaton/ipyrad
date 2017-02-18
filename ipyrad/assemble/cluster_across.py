@@ -1046,7 +1046,7 @@ def sub_build_clustbits(data, usort, nseeds):
                         loci += seqsize
                         with open(os.path.join(data.tmpdir,
                             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
-                            LOGGER.error("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
+                            LOGGER.debug("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
                             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
                         seqlist = []
