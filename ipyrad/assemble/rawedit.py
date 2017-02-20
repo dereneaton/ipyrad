@@ -463,17 +463,21 @@ def concat_reads(data, subsamples, ipyclient):
         finished = 0
         catjobs = {}
         for sample in subsamples:
-            catjobs[sample.name] = ipyclient[0].apply(\
-                                   concat_multiple_inputs, *(data, sample))
+            ## only concat the ones that have two files
+            if len(sample.files.fastqs) > 1:
+                catjobs[sample.name] = ipyclient[0].apply(\
+                                       concat_multiple_inputs, *(data, sample))
+            else:
+                sample.files.concat = sample.files.fastqs
 
         ## wait for all to finish
         while 1:
             finished = sum([i.ready() for i in catjobs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(subsamples), finished, 
+            progressbar(len(catjobs), finished, 
                        " concatenating inputs  | {} | s2 |".format(elapsed))
             time.sleep(0.1)
-            if finished == len(subsamples):
+            if finished == len(catjobs):
                 print("")
                 break
 
@@ -490,6 +494,8 @@ def concat_reads(data, subsamples, ipyclient):
             ## just copy fastqs handles to concat attribute
             sample.files.concat = sample.files.fastqs
 
+    for sample in subsamples:
+        print(sample.files.concat, sample.files.fastqs)
     return subsamples
 
 
