@@ -7,6 +7,9 @@ Release Notes
 
 0.6.4
 -----
+
+0.6.4
+-----
 - update to docs parameters
 - bug fix for merging assemblies with a mix of same named and diff named samples
 - cosmetic
