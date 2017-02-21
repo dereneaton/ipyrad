@@ -671,7 +671,10 @@ class Assembly(object):
                     #sys.stdout.write(self.paramsdict.values()[int(param)-1])
                     return self.paramsdict.values()[int(param)]
             except (ValueError, TypeError, NameError, IndexError):
-                return 'key not recognized'
+                try:
+                    return self.paramsdict[param]
+                except KeyError:
+                    return 'key not recognized'
 
 
 
