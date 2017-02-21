@@ -269,10 +269,14 @@ def consensus(data, sample, tmpchunk, optim):
 
             ## IF this is a reference mapped read store the chrom and pos info
             ## This is hackish. If the reference scaffolds contain ";" this is fucked.
-            ## Just split from the right side using rsplit or negative indexing!
+            ## Just split from the right side using rsplit and negative indexing!
             ref_position = ""
-            if len(names[0].split(";")) == 4:
-                ref_position = names[0].split(";")[1]
+            if "reference" in data.paramsdict["assembly_method"]:
+                try:
+                    ref_position = names[0].rsplit(";")[-3]
+                except:
+                    LOGGER.debug("Reference sequence chrom/pos failed for {}".format(names[0]))
+                    ref_position = ""
 
             ## apply read depth filter
             if nfilter1(data, reps):

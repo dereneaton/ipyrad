@@ -863,7 +863,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             ## assembly. No reason to give up if .001% of reads fail
             ## so just skip this locus.
             LOGGER.debug("Failed get reads at a locus, continuing; %s", inst)
-            LOGGER.error("cmd - {}".format(cmd))
+            LOGGER.error("cmd2 - {}".format(cmd2))
             return ""
 
     return "\n".join(fasta)
