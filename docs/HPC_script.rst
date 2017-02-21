@@ -159,6 +159,10 @@ the system to wait a few minutes, and then the ipyrad command.
     ## with --profile=ipyrad and send it to run in the background (daemonize)
     user@compute$ ipcluster start --n 48 --engines=MPI --ip=* --profile=ipyrad --daemonize
 
+    ## Wait for ipcluster to fire up properly. Sleeping for 60 seconds typically
+    ## is sufficient, but YMMV.
+    sleep 60
+
     ## Then run ipyrad like normal but with --ipcluster so it knows to look for 
     ## your specific ipcluster instance.
     user@compute$ ipyrad -p params-test.txt -s 2 -c 48 --ipcluster
