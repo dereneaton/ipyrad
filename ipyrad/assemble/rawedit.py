@@ -494,8 +494,6 @@ def concat_reads(data, subsamples, ipyclient):
             ## just copy fastqs handles to concat attribute
             sample.files.concat = sample.files.fastqs
 
-    for sample in subsamples:
-        print(sample.files.concat, sample.files.fastqs)
     return subsamples
 
 
