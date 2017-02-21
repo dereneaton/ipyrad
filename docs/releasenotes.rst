@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.6.5
+-----
+- Fixed 2 errors in steps 3 and 4.
+-  "Updating ipyrad/__init__.py to version - 0.6.4
+- left a debugging print statement in the code
+- removed old bin
+-  "Updating ipyrad/__init__.py to version - 0.6.4
+
 0.6.4
 -----
 - left a debugging print statement in the code
