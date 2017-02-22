@@ -1328,7 +1328,7 @@ def _name_from_file(fname, splitnames, fields):
 
     ## remove read number from name
     base = base.replace("_R1_.", ".")\
-               .replace("_R1_", "_")\
+               .replace("_R1_", "")\
                .replace("_R1.", ".")
 
     ## remove extensions, retains '.' in file names.
