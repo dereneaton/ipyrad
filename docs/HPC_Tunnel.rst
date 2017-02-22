@@ -1,12 +1,13 @@
 
+.. include:: global.rst
+
 .. _HPCscript:
 
 Run jupyter-notebook on an HPC cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The *ipyrad* API was specifically designed for use inside 
-`jupyter-notebooks<jupyter.org>`__, :ref:`jupyter-notebooks<jupyter.org>`__, `jupyter-notebooks<http://jupyter.org>`__
-
+`jupyter-notebooks <http://jupyter.org>`_ 
 a tool for reproducible science. 
 Notebooks allow you to run interactive code that can be documented with 
 embedded Markdown to create a shareable and executable document.
