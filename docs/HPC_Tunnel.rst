@@ -5,7 +5,7 @@ Run jupyter-notebook on an HPC cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The *ipyrad* API was specifically designed for use inside 
-`jupyter-notebooks<jupyter.org>`, :ref:`jupyter-notebooks<jupyter.org>`, `jupyter-notebooks<http://jupyter.org>`
+`jupyter-notebooks<jupyter.org>`__, :ref:`jupyter-notebooks<jupyter.org>`__, `jupyter-notebooks<http://jupyter.org>`__
 
 a tool for reproducible science. 
 Notebooks allow you to run interactive code that can be documented with 
@@ -88,18 +88,18 @@ What is this script doing? The ``XDG_RUNTIME_DIR`` command is a little obscure
 and simply fixes a bug where SLURM otherwise sets this variable to something that
 is incompatible with jupyter. The ``ipnport`` is a random number between 8000-9999
 that will be used to send data. The ``ipnip`` is the ip address of the login 
-node that we are connected to. The `echo` command prints information to the log 
-file about how to connect to our notebook once it has started. 
+node that we are connected to. The ``echo`` commands simply print this 
+information to the log file so we will know how to connect to our notebook 
+server once it has started. 
 
 The final two commands are the most important. The first starts an ``ipcluster`` 
 instance which will ensure that we can connect to all of the requested CPUs. 
 There are many ways to start this parallel client (see the ipyparallel docs), 
-but the arguments we pass to it here should generally work for almost any 
-system. The final command starts the ``jupyter-notebook`` server, telling it
+but the arguments we used above should generally work for most systems.
+The final command starts the ``jupyter-notebook`` server, telling it
 to forward data to the port that we specified. 
 
-Once we have the sbatch script prepared, simply submit the job to your HPC 
-cluster's queue using the ``sbatch`` command, like this:
+Now you can submit the script to the queue using the ``sbatch`` command:
 
 .. code-block:: bash
 
@@ -133,12 +133,12 @@ tunnel at any time and your code will continue to run on the Jupyter-notebook.
 You could re-connect later to the same notebook by re-opening the tunnel with 
 the same SSH command.
 
-Security
-~~~~~~~~
-When you connect to a jupyter-notebook server it will likely ask for a 
-password/token. You can find the automatically generated token in your 
+Security/tokens
+~~~~~~~~~~~~~~~~
+When you connect to the jupyter-notebook server it will likely ask for a 
+password/token. You can find an automatically generated token in your 
 jupyter-log file near the bottom. It is the long string printed after the word 
-`token`. 
+`token`. Copy just that portion and paste it in the token cell.
 
 
 Using jupyter
@@ -151,7 +151,7 @@ github repo, which makes them easy to share. When running ipyrad I usually set
 the "project_dir" be a location in the scratch directory of the cluster, since
 it is faster for reading/writing large files. 
 You can see an example of this type of setup using the ipyrad API here:
-:ref:`here<http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`. 
+:ref:`here<http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_. 
 
 
 Restarting ipcluster
