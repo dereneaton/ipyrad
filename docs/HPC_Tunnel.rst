@@ -7,7 +7,7 @@ Run jupyter-notebook on an HPC cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The *ipyrad* API was specifically designed for use inside 
-`jupyter-notebooks <http://jupyter.org>`_ 
+`jupyter-notebooks <http://jupyter.org>`_,  
 a tool for reproducible science. 
 Notebooks allow you to run interactive code that can be documented with 
 embedded Markdown to create a shareable and executable document.
@@ -151,8 +151,8 @@ different projects in different directories, where each directory is also a
 github repo, which makes them easy to share. When running ipyrad I usually set 
 the "project_dir" be a location in the scratch directory of the cluster, since
 it is faster for reading/writing large files. 
-You can see an example of this type of setup using the ipyrad API here:
-:ref:`here<http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_. 
+You can see an example of this type of setup using the ipyrad API here
+(`API empirical notebook <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_).
 
 
 Restarting ipcluster
@@ -168,13 +168,14 @@ commands to restart ``ipcluster``. You can close the tab if you wish but the
 terminal will remain running on the remote system. You can use ``ctrl-c`` to
 stop the ipcluster instance after you restart it once in this way. 
 
-```bash
-## stop the running ipcluster instance
-ipcluster stop
+.. code-block:: bash
 
-## start a new ipcluster instance viewing all nodes
-ipcluster start --n=60 --engines=MPI --ip=*
-```
+    ## stop the running ipcluster instance
+    ipcluster stop
+
+    ## start a new ipcluster instance viewing all nodes
+    ipcluster start --n=60 --engines=MPI --ip=*
+
 
 Connecting multiple notebook at once
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
