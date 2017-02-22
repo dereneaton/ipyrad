@@ -123,23 +123,25 @@ yourself, separate from the system-wide software.
 This is useful because it then allows you to install and access ipyrad_ and all 
 its dependencies (other Python modules and executables), and to update them 
 yourself. Lot's of useful software is available on conda, which you can find 
-and install by googling conda and the software name. Beware, however, that your
-local version will typically not be optimized to the extent that system-wide software is
-and may thus run a bit slower. This is not a problem for ipyrad, as it was written with
-this in mind. But for something like RAxML, you will be better off with a system
-installed version. 
+and install by googling conda and the software name. 
 
 
 How do I ignore or remove conda?
-------------------------
-Conda is easy to remove if you were to decide that you no longer wanted to use it. 
-Conda itself, as well as all of the software that it installs is located in the 
-miniconda/ directory, and so you could remove all of it by removing that directory. 
-I would advise, however, that a much simpler way to switch on/off conda software 
-would be to simply comment out the line in your ``~/.bashrc`` file that appends 
-miniconda/ to your PATH. Then run ``source ~/.bashrc`` and your system will 
-completely ignore the conda software. Likewise, you can uncomment the line, 
-re-source the file, and your conda software will be back. 
+---------------------------------
+Conda is super easy to ignore or remove if you ever find that it is not working
+for you. Conda itself, as well as all of the software that it installs is 
+located in the miniconda/ directory, and so you *can* remove all of it by 
+removing that directory. I would advise, however, that a much simpler way to 
+switch on/off conda software would be to simply comment out the line in your 
+``~/.bashrc`` file that appends miniconda/ to your PATH. Then run 
+``source ~/.bashrc`` and your system will completely ignore the conda software. 
+Likewise, you can uncomment the line, re-source the file, and your conda 
+software will be back. Conda is hugely popular, but it is also quite new, 
+and actively under development, which has caused some issues with compatibility
+when major updates have arisen over the last 1-2 years. If you have a quite old
+conda distribution (pre v.4) that is giving you troubles when you try to update
+software I would recommend removing it and reinstalling. You can then reinstall
+all of your conda software quite easily.
 
 
 Included dependencies in ipyrad
