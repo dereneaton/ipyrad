@@ -1,33 +1,53 @@
 
 .. _HPCscript:
 
-SSH Tunnel Jupyter notebook to an HPC cluster
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Run jupyter-notebook on an HPC cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The *ipyrad* API was specifically designed for use inside jupyter-notebooks, 
-a tool for reproducible science. Notebooks allow you to run interactive code 
-that can documented with embedded Markdown to create shareable and executable
-documentation. Running *ipyrad* interactively in a notebook is easy to do on 
-a laptop or workstation. Just type `jupyter-notebook` into a terminal
-and a notebook dashboard will automatically launch in your default browser.
-See our [introductory tutorial on the ipyrad API]. 
+The *ipyrad* API was specifically designed for use inside 
+`jupyter-notebooks <jupyter.org>`, a tool for reproducible science. 
+Notebooks allow you to run interactive code that can be documented with 
+embedded Markdown to create a shareable and executable document.
+Running *ipyrad* interactively in a notebook is easy to do on 
+a laptop or workstation. Simply type `jupyter-notebook` into a terminal
+and a notebook dashboard will open in your default browser.
+For more information see our [introductory tutorial on the ipyrad API]. 
 
 Running jupyter-notebooks on a remote HPC cluster is only slightly more 
 difficult, but hugely advantageous, because you have access to massively 
-more computing power. This tutorial explains how to setup a SSH Tunnel so that
-you can execute code in a Notebook on your local computer (i.e., your laptop)
-but have the heavy computation occurring remotely on compute nodes of your 
-cluster. Instructions below are for the SLURM (sbatch) job submission 
-system, we also have an [example using TORQUE (qsub) here]. 
+more computing power. This tutorial explains how to start a notebook server
+on your HPC cluster, and connect to it from your local computer (i.e., your laptop), 
+so that you can interact with the notebook in your browser but still have 
+the heavy computation occurring remotely on the cluster. 
+Instructions below are for the SLURM (sbatch) job submission 
+system, we have [examples using TORQUE (qsub) submission scripts available as well]. 
 
 
-Step 1: Submit a batch script to launch a jupyter-notebook
+Video tutorial: 
+~~~~~~~~~~~~~~~
+tldr; these instructions are also availabe in the form of a video. 
+.. raw:: html
+
+    <div style="position: relative; 
+                padding-bottom: 56.25%; 
+                height: 0; 
+                overflow: hidden; 
+                max-width: 100%; 
+                height: auto;">
+        <iframe src="//www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+    </div>
+
+
+
+Step 1: Submit a batch script to launch a notebook server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Copy and paste the codeblock below into a text editor and save the script as 
-`slurm_jupyter.sh`. The code may need to be edited slightly to conform to your 
-cluster, which may require setting the name of the partition (queue), or 
-changing the number of nodes and walltime to within the limits that are 
-allowed. 
+Copy and paste the code block below into a text editor and save the script as 
+`slurm_jupyter.sbatch`. The #SBATCH section of the script will need to be edited 
+slightly to conform to your cluster, which may require setting the name of the 
+partition (queue), or changing the number of nodes and walltime limits. In this 
+script we are requesting 60 cores (3 nodes, 20 cores per node). The stdout (output)
+of the job will be printed to the log file named 'jupyter-log-%J.txt', where 
+%J will be replaced by the job ID number. 
 
 .. code-block:: bash
 
@@ -68,16 +88,7 @@ allowed.
     jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
 
 
-When executed, this script does the following: 
-
-(i) parses the #SBATCH info to request resources, here asking for 3 nodes 
-with 20 cores each, to not allow others to connect to our nodes (exclusive),
-to let us stay connected for 30 days, to have at least 4GB RAM per CPU, to
-name the job 'jptr60' (corresponding to the fact that we requested 60 CPUs)
-and to create an output file called 'jupyter-log-%J.txt', where %J will be 
-replaced by the job ID number. 
-
-(ii) we get some info for tunneling jupyter. The XDG_RUNTIME_DIR argument
+What this script is doing is to The XDG_RUNTIME_DIR argument
 fixes a bug where SLURM otherwise sets this variable to something that is 
 incompatible with jupyter. The `ipnport` argument selects a random port number 
 between 8000-9999. The `ipnip` is the ip address of the login node we are 
@@ -98,7 +109,7 @@ using the `sbatch` command.
 
 .. code-block:: bash
 
-    user@login-node$ sbatch slurm_jupyter.sh
+    user@login-node$ sbatch slurm_jupyter.sbatch
 
 You can check the queue to see if the job has started using the `squeue` command. 
 Once it has started information will be printed to the log file, which will be 
