@@ -5,13 +5,15 @@ Run jupyter-notebook on an HPC cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The *ipyrad* API was specifically designed for use inside 
-`jupyter-notebooks <jupyter.org>`, a tool for reproducible science. 
+`jupyter-notebooks<jupyter.org>`, :ref:`jupyter-notebooks<jupyter.org>`, `jupyter-notebooks<http://jupyter.org>`
+
+a tool for reproducible science. 
 Notebooks allow you to run interactive code that can be documented with 
 embedded Markdown to create a shareable and executable document.
 Running *ipyrad* interactively in a notebook is easy to do on 
 a laptop or workstation. Simply type ``jupyter-notebook`` into a terminal
 and a notebook dashboard will open in your default browser.
-For more information see our [introductory tutorial on the ipyrad API]. 
+For more information see our [introductory tutorial on the ipyrad API] (coming soon). 
 
 Running jupyter-notebooks on a remote HPC cluster is only slightly more 
 difficult, but hugely advantageous, because you have access to massively 
@@ -23,16 +25,15 @@ Instructions below are for the SLURM (sbatch) job submission
 system, we have [examples using TORQUE (qsub) submission scripts available as well]. 
 
 
-tldr; Video tutorial: 
+tldr; Video tutorial
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 50%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe src="//www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
     </div>
-
-<br>
+    <br>
 
 Step 1: Submit a batch script to launch a notebook server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
