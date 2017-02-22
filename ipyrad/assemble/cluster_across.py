@@ -271,7 +271,7 @@ def build_indels(data, samples, ipyclient):
         end = int(indf.rsplit("_", 1)[-1][:-8])
         inarr = np.load(indf)
         LOGGER.info('inarr shape %s', inarr.shape)
-        LOGGER.info('iset shape %s', iset[:].shape)
+        LOGGER.info('iset shape %s', iset.shape)
         iset[:, init:end, :] = inarr[:, :end-init]
         init += end-init
         done += 1
