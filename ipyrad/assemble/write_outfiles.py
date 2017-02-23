@@ -327,8 +327,8 @@ def select_samples(dbsamples, samples):
 
 def filter_all_clusters(data, samples, ipyclient):
     """
-    Open the HDF5 array with seqs, catg, and filter data. Fill the remaining
-    filters.
+    Open the clust_database HDF5 array with seqs, catg, and filter data. 
+    Fill the remaining filters.
     """
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
@@ -739,6 +739,7 @@ def enter_singles(iloc, pnames, snppad, edg, aseqs, asnps, smask, samplecov, loc
 def init_arrays(data):
     """
     Create database file for storing final filtered snps data as hdf5 array.
+    Copies splits and duplicates info from clust_database to database.
     """
 
     ## get stats from step6 h5 and create new h5
@@ -1331,20 +1332,6 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     ## these arrays are keys in the tmp h5 array: seqarr, snparr, bisarr, maparr
     boss_make_arrays(data, sidx, optim, nloci, ipyclient)
 
-    # arsync = lbview.apply(make_arrays, *(data, sidx, optim, nloci))
-    # # wait for finished make_arrays, this prog bar should prob be INSIDE
-    # # make_arrays so it can actually track something...
-    # while 1:
-    #     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    #     progressbar(1, 0, " building arrays       | {} | s7 |".format(elapsed))
-    #     if arsync.ready():
-    #         progressbar(1, 1, " building arrays       | {} | s7 |".format(elapsed))
-    #         break
-    #     time.sleep(0.1)
-    # print("")
-    # # TODO, parallelize make-arrays
-    # seqarr, snparr, bisarr, maparr = arsync.result()
-
     start = time.time()
     ## phy and partitions are a default output ({}.phy, {}.phy.partitions)
     if "p" in output_formats:
@@ -1588,14 +1575,15 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
                     tmp5["bisarr"][:, bisidx:bisidx+bisarr.shape[1]] = bisarr
                     bisidx += bisarr.shape[1]
 
-                    ## mapfile needs idxs summed
-                    mapcopy = maparr.copy()
-                    mapcopy[:, 0] += locidx
-                    mapcopy[:, 3] += mapidx
-                    tmp5["maparr"][mapidx:mapidx+maparr.shape[0], :] = mapcopy
-                    locidx = mapcopy[-1, 0]
-                    mapidx += mapcopy.shape[0]
-                    
+                    ## mapfile needs idxs summed, only bother if there is data
+                    ## that passed filtering for this chunk
+                    if maparr.shape[0]:
+                        mapcopy = maparr.copy()
+                        mapcopy[:, 0] += locidx
+                        mapcopy[:, 3] += mapidx
+                        tmp5["maparr"][mapidx:mapidx+maparr.shape[0], :] = mapcopy
+                        locidx = mapcopy[-1, 0]
+                        mapidx += mapcopy.shape[0]
                     del asyncs[0]
                         
                 else:
@@ -1604,7 +1592,8 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
             ## print progress            
             time.sleep(0.1)
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(njobs, njobs-len(asyncs), " building arrays       | {} | s7 |".format(elapsed))
+            progressbar(njobs, njobs-len(asyncs), 
+                " building arrays       | {} | s7 |".format(elapsed))
             
             ## are we done?
             if not asyncs:

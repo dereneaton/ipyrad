@@ -98,9 +98,8 @@ instance which will ensure that we can connect to all of the requested CPUs.
 There are many ways to start this parallel client (see the ipyparallel docs), 
 but the arguments we used above should generally work for most systems.
 The final command starts the ``jupyter-notebook`` server, telling it
-to forward data to the port that we specified. 
-
-Now you can submit the script to the queue using the ``sbatch`` command:
+to forward data to the port that we specified. Now you can submit the script 
+to the queue using the ``sbatch`` command:
 
 .. code-block:: bash
 
