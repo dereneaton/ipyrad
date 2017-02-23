@@ -5,6 +5,27 @@
 Release Notes
 =============
 
+0.6.6
+-----
+- bug fix in building_arrays where completely filtered array bits would raise index error -1
+- tunnel docs updates
+- minor cosmetics
+- method docs updated to say bwa
+- some conda tips added
+- tunneling docs update
+- tunneling docs update
+- tunneling docs update
+- tunneling docs update
+- tunneling docs update
+- tunneling docs update
+- tunneling docs update
+- tunneling docs update
+- fix for name parsing of non gzip files that was leaving an underscore
+- cosmetic
+- Allow get_params using the param string as well as param index
+- Update hpc docs to add the sleep command when firing up ipcluster manually.
+- Fixed some formatting issues in the FAQ.rst.
+
 0.6.5
 -----
 - Fixed 2 errors in steps 3 and 4.
