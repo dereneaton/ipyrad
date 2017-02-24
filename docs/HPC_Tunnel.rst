@@ -49,7 +49,9 @@ to get information about how to connect to the jupyter server that we've started
 
 Single Node setup:
 This example would connect to one node with 20 cores available. 
+
 .. code-block:: bash
+
     #!/bin/bash
     #SBATCH --partition general
     #SBATCH --nodes 1
@@ -83,6 +85,7 @@ Multi-node MPI setup:
 For this setup you will have to replace ``module load OpenMPI`` with the 
 appropriate module command to load MPI on your system. If you do not know what
 this is then look it up for your cluster or ask the system administrator. 
+
 .. code-block:: bash
 
     #!/bin/bash
