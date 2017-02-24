@@ -848,6 +848,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
                 orient = "+"
                 if int('{0:012b}'.format(int(bits[1]))[7]):
                     orient = "-"
+                    bits[9] = revcomp(bits[9])
 
                 ## Rip insert the mapping position between the seq label and
                 ## the vsearch derep size.
