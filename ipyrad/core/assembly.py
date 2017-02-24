@@ -22,6 +22,7 @@ import pandas as pd
 import ipyrad as ip
 import time
 import datetime
+import ipyparallel as ipp
 
 from collections import OrderedDict
 from ipyrad.assemble.util import *
@@ -171,7 +172,7 @@ class Assembly(object):
                        ("max_shared_Hs_locus", 0.50),
                        ("trim_reads", (0, 0, 0, 0)),
                        ("trim_loci", (0, 0, 0, 0)),
-                       ("output_formats", ['l', 'p', 's', 'v']),
+                       ("output_formats", ['p', 's', 'v']),
                        ("pop_assign_file", ""),
         ])
 
@@ -323,6 +324,9 @@ class Assembly(object):
 
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
+        ## Assert files are not .bz2 format
+        if any([i for i in fastqs if i.endswith(".bz2")]):
+            raise(IPyradError(NO_SUPPORT_FOR_BZ2.format(path)))
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
@@ -667,7 +671,10 @@ class Assembly(object):
                     #sys.stdout.write(self.paramsdict.values()[int(param)-1])
                     return self.paramsdict.values()[int(param)]
             except (ValueError, TypeError, NameError, IndexError):
-                return 'key not recognized'
+                try:
+                    return self.paramsdict[param]
+                except KeyError:
+                    return 'key not recognized'
 
 
 
@@ -769,9 +776,15 @@ class Assembly(object):
                     paramvalue = ", ".join([str(i) for i in val])
                 else:
                     paramvalue = str(val)
+
+                ## skip deprecated params
+                if key in ["edit_cutsites", "trim_overhang"]:
+                    continue
+
                 padding = (" "*(30-len(paramvalue)))
                 paramkey = self.paramsdict.keys().index(key)
                 paramindex = " ## [{}] ".format(paramkey)
+                LOGGER.debug(key, val, paramindex)
                 name = "[{}]: ".format(paramname(paramkey))
                 description = paraminfo(paramkey, short=True)
                 paramsfile.write("\n" + paramvalue + padding + \
@@ -1078,10 +1091,9 @@ class Assembly(object):
             raise IPyradError(FIRST_RUN_6.format(self.database))
 
         if not force:
-            if os.path.exists(
-                os.path.join(self.dirs.project, self.name+"_outfiles")):
-                raise IPyradWarningExit(OUTPUT_EXISTS\
-               .format(os.path.join(self.dirs.project, self.name+"_outfiles")))
+            outdir = os.path.join(self.dirs.project, self.name+"_outfiles")
+            if os.path.exists(outdir):
+                raise IPyradWarningExit(OUTPUT_EXISTS.format(outdir))
 
         ## Run step7
         assemble.write_outfiles.run(self, samples, force, ipyclient)
@@ -1139,6 +1151,7 @@ class Assembly(object):
         ## Assembly object if it is interrupted at any point, and also
         ## to ensure proper cleanup of the ipyclient.
         ipyclient = None
+        inst = None
         try:
             ## use an existing ipcluster instance
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)
@@ -1206,8 +1219,9 @@ class Assembly(object):
 
         except IPyradWarningExit as inst:
             LOGGER.error("IPyradWarningExit: %s", inst)
-            print("\n  Encountered an error, see ./ipyrad_log.txt. \n  {}"\
-                  .format(inst))
+            print("\n  Encountered an error (see details in ./ipyrad_log.txt)"+\
+                  "\n  Error summary is below -------------------------------"+\
+                  "\n{}".format(inst))
 
         except Exception as inst:
             LOGGER.error(inst)
@@ -1217,26 +1231,27 @@ class Assembly(object):
 
         ## close client when done or interrupted
         finally:
-            cleanup = 0
             ## save the Assembly
             self.save()
 
             ## can't close client if it was never open
             if ipyclient:
 
+                ## abort any jobs still running
+                try:
+                    ipyclient.abort()
+                except ipp.NoEnginesRegistered:
+                    pass
+
                 ## if CLI stop ipcluster and close client
                 if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
                     LOGGER.info("  shutting down engines")
-                    ipyclient.abort()
-                    if ipyclient.outstanding:
-                        cleanup = 1                        
                     ipyclient.shutdown(hub=True, block=False)
                     ipyclient.close()
                     LOGGER.info("  finished shutdown")
                         
                 ## if API, stop jobs and clean queue
                 else:
-                    ipyclient.abort()
                     if not ipyclient.outstanding:
                         ipyclient.purge_everything()
                     else:
@@ -1244,33 +1259,25 @@ class Assembly(object):
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
                         print("\n  warning: ipcluster shutdown and must be restarted")
-                        cleanup = 1
+
+            ## cleanup funcs, may not be needed when ipyparallel gets a nanny 
+            ## func, eventually. Only catches KBD at the moment.
+            if inst:
+                self._cleanup_and_die(inst)
 
             ## a final spacer
             if self._headers:
                 print("")
 
-            ## A final cleanup call that run in the case that ipcluster needs 
-            ## to be killed. e.g., rawedit cat and cutadapt code have this, 
-            ## where big tmp files need to be removed, but can't be removed 
-            ## until after ipcluster is dead. 
-            if cleanup:
-                pass ##TODO
 
-
-
-def _cleanup_and_die(pids):
-    """
-    When engines are running external bins like vsearch they can't hear
-    KeyboardInterrupts, and so they aren't killed properly. We can save the
-    pids of Engines and kill them here instead.
-    """
-    ## get pids of engines
-    for pid in pids:
-        try:
-            os.kill(pid, 9)
-        except OSError:
-            pass
+    def _cleanup_and_die(self, inst):
+        """
+        cleanup funcs that can only be run after ipcluster shutdown
+        """
+        if inst == "s1":
+            ip.assemble.demultiplex._cleanup_and_die(self)
+        if inst == "s2":
+            ip.assemble.rawedit._cleanup_and_die(self)
 
 
 
@@ -1321,7 +1328,7 @@ def _name_from_file(fname, splitnames, fields):
 
     ## remove read number from name
     base = base.replace("_R1_.", ".")\
-               .replace("_R1_", "_")\
+               .replace("_R1_", "")\
                .replace("_R1.", ".")
 
     ## remove extensions, retains '.' in file names.
@@ -1824,6 +1831,7 @@ def _paramschecker(self, param, newvalue):
             try:
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
+                newvalue.append(0)
                 pass
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
@@ -1843,6 +1851,7 @@ def _paramschecker(self, param, newvalue):
             try:
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
+                newvalue.append(0)
                 pass
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
@@ -1940,6 +1949,14 @@ NO_FILES_FOUND_PAIRS = """\
     i.e., paired file names should be identical save for _R1_ and _R2_
     (note the underscores before AND after R*).
     """
+NO_SUPPORT_FOR_BZ2 = """\
+    Found bz2 formatted files in 'sorted_fastq_path': {}
+    ipyrad does not support bz2 files. The only supported formats for samples
+    are .gz, .fastq, and .fq. The easiest thing to do is probably go into
+    your sorted_fastq_path directory and issue this command `bunzip2 *`. You
+    will probably also need to update your params file to reflect the fact
+    that sample raw files now probably end with .fq or .fastq.
+    """
 NAMES_LOOK_PAIRED_WARNING = """\
     Warning: '_R2_' was detected in a file name, which suggests the data may
     be paired-end. If so, you should set the parameter 'datatype' to a paired
@@ -2005,7 +2022,7 @@ NOT_CLUSTERED_YET = """\
 OUTPUT_EXISTS = """\
     Output files already created for this Assembly in:
     {}
-    To overwrite, rerun using the force argument.
+    To overwrite, rerun using the force argument. 
     """
 FIRST_RUN_1 = """\
     No Samples found. First run step 1 to load raw or demultiplexed fastq

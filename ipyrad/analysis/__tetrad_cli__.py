@@ -198,7 +198,14 @@ def main():
     else:
         ## create new Tetrad class Object if it doesn't exist
         newjson = os.path.join(args.outdir, args.name+'.tet.json')
-        if (not os.path.exists(newjson)) or args.force:
+        if args.force or (not os.path.exists(newjson)):
+
+            ## clear any files associated with this name if forced
+            if args.force:
+                data = ipa.tetrad.Tetrad(name=args.name, wdir=args.outdir, 
+                                         seqfile="", initarr=0)
+                data._purge()
+            ## create new Tetrad
             data = ipa.tetrad.Tetrad(name=args.name, 
                                      wdir=args.outdir, 
                                      method=args.method, 
@@ -208,7 +215,9 @@ def main():
                                      treefile=args.tree, 
                                      nboots=args.boots, 
                                      nquartets=args.nquartets)
+            ## if not quiet...
             print("  new Tetrad instance: {}".format(args.name))
+
         else:
             raise IPyradWarningExit(QUARTET_EXISTS\
             .format(args.name, args.outdir, args.outdir, args.name, args.name))

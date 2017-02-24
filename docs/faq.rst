@@ -14,15 +14,18 @@ Troubleshooting ipyparallel issues
 ----------------------------------
 Sometimes ipyrad can have trouble talking to the ipyparallel
 cluster on HPC systems. First we'll get an interactive shell
-on an HPC compute node.
+on an HPC compute node (YMMV with the `qsub -I` here, you might
+need to specify the queue and allocate specific resource).
 
 .. code-block:: bash
+
     qsub -I
 
 .. code-block:: bash
+
     ipcluster start --n 4 --daemonize
 
-Then type `ipython` top open an ipython session.
+Then type `ipython` to open an ipython session.
 
 .. code-block:: python
 
@@ -73,6 +76,7 @@ The result should look something like this:
     data.write_params('params-test.txt')
 
 Don't forget to stop the ipcluster when you are done.
+
 .. code-block:: bash
 
     ipcluster stop

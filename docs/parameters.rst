@@ -119,7 +119,7 @@ Example entries into params.txt:
 
 5. Assembly method
 --------------------
-There are four :ref:`Assembly_methods<Assembly_methods>` options in ipyrad_:
+There are four :ref:`Assembly_methods<Assembly_methods>` options in ipyrad:
 denovo, reference, denovo+reference, and denovo-reference.
 The latter three all require a reference sequence file (param #6) in fasta
 format. See the :ref:`tutorials` for an example.
@@ -263,12 +263,14 @@ kind of data, simply list all the restriction overhangs for all your cutters.
 
 9. max_low_qual_bases
 ---------------------
-During step 2 low quality base calls are converted to Ns, and reads with more
-than some number of low quality base calls are excluded. The default value for
-`max_low_qual_bases` is 5. Allowing too many Ns in sequences will reduce the
-likelihood that homologous reads cluster together, so I do not recommend
-increasing this value above the number of allowed differences between reads
-based on the `clust_threshold` and sequence length.
+During step 2 bases are trimmed from the 3' end of reads when the quality score
+is consistently below 20 (which can be modified by modifying phred_Qscore_offset_). 
+However, your reads may still contain some number of ambiguous (N) sites that 
+were not trimmed based on quality scores, and these will affect the efficiency
+and accuracy of clustering downstream. This parameter sets the upper limit on the 
+number of Ns allowed in reads. The default value for
+`max_low_qual_bases` is 5. I would generally recommend against increasing 
+this value greatly. 
 
 Affected steps = 2. Example entries to params.txt:
 
@@ -282,13 +284,13 @@ Affected steps = 2. Example entries to params.txt:
 
 10. Phred_Qscore_offset
 ------------------------
-The threshold at which a base call is considered a low quality base call
-during step 2 filtering is determined by the `phred_Qscore_offset`. The
-default offset is 33, which is equivalent to a minimum qscore of 20. Some
+Bases are trimmed from the 3' end of reads if their quality scores is below
+this 20. The default offset for quality scores is 33. Some 
 older data use a qscore offset of 64, but this is increasingly rare. You
-can toggle the offset number to change the threshold for low qual bases.
-For example, reducing the offset to 26 is equivalent to a minimum qscore
-of 13, which is approximately 95% probability of a correct base call.
+can toggle the offset number to change the threshold for trimming. 
+For example, reducing the offset from 33 to 23 is equivalent to changing the 
+minimum quality score from 20 to 10, which is approximately 
+95% probability of a correct base call.
 
 Affected steps = 2. Example entries to params.txt:
 
@@ -511,7 +513,8 @@ The minimum number of Samples that must have data at a given locus for it to
 be retained in the final data set. If you enter a number equal to the full
 number of samples in your data set then it will return only loci that have
 data shared across all samples. Whereas if you enter a lower value, like 4, 
-it will return a more sparse matrix, including any loci for which at least four samples contain data. This parameter is overridden if a min_samples values 
+it will return a more sparse matrix, including any loci for which at least 
+four samples contain data. This parameter is overridden if a min_samples values 
 are entered in the :ref:`popfile<pop_assign_file>`. Default value is 4.
 
 Affected steps = 7. Example entries to params.txt
@@ -580,28 +583,31 @@ Affected steps = 7. Example entries to params.txt
     10               ## [24] allow hetero site to occur across max of 10 Samples
 
 
-.. _edit_cut_sites:
+.. _trim_reads:
 
-25. edit_cut_sites
---------------------
-Sometimes you can look at your demultiplexed data and see that there was a problem
+25. trim_reads
+--------------
+Sometimes you can look at your fastq data files and see that there was a problem
 with the sequencing such that the cut site which should occur at the beginning of
 your reads is either offset by one or more bases, or contains many errors. You 
-can trim off N bases from the beginning of R1 and R2 reads during step 2 
-by setting the number of bases here. 
+can trim off N bases from the beginning or end of R1 and R2 reads during step 2 
+by setting the number of bases here. This could similarly be used to trim all 
+reads to a uniform length (though uniform read lengths are not required in ipyrad).
 
 Affected steps = 2. Example entries to params.txt
 
 .. parsed-literal::
 
-    0, 0             ## [25] does nothing
-    6, 0             ## [25] trims the first 6 bases from R1s
-    6, 6             ## [25] trims the first 6 bases from R1s and R2s
+    0, 0, 0, 0       ## [25] does nothing
+    5, 0, 0, 0       ## [25] trims first 5 bases from R1s
+    5, -5, 0, 0      ## [25] trims first 5 bases and last five based from R1s
+    5, 80, 0, 0      ## [25] trims first 5 bases from R1s and trims maxlen to 80
+    5, 75, 5, 75     ## [25] trims first 5 from R1 and R1, and maxlen to 75.
 
 
-.. _trim_overhang:
+.. _trim_loci:
 
-26. trim_overhang
+26. trim_loci
 ------------------
 Trim N bases from the edges of final aligned loci. This can be useful in denovo
 data sets in particular, where the 3' edge of reads is less well aligned than the
@@ -611,9 +617,9 @@ Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    0,0,0,0        ## [26] no locus edge trimming
-    0,5,0,0        ## [26] trim 5 bases from right edge of R1 reads in locus
-    0,5,5,0        ## [26] trim 5 bases from right edge of R1 and left edge of R2
+    0, 0, 0, 0     ## [26] no locus edge trimming
+    0, 5, 0, 0     ## [26] trims first 5 bases from R1s in aligned locus
+    0, 5, 5, 0     ## [26] trims last 5 bases from R1s and first 5 from R2s
 
 
 .. _output_formats:
@@ -640,7 +646,7 @@ Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    *                     ## [27] Make all output datatypes (this is the default)
+    *                     ## [27] Make all output datatypes
     n, v, g               ## [27] Only write out nexus, vcf and geno formats
     u,k                   ## [27] Only write out unlinked snps in phylip, and structure
 

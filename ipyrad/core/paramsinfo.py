@@ -375,10 +375,11 @@ pinfo = OrderedDict([
     (25) trim_reads -- ---------------------------------------------------
     Examples:
     ----------------------------------------------------------------------
-    data.set_params("trim_reads") = (0, -5, 0, 0)
-    data.set_params("trim_reads") = (5, 85, 0, 0)
+    data.set_params("trim_reads") = (0, -5, 0, 0)  ## trims last 5 from R1
+    data.set_params("trim_reads") = (5, 85, 0, 0)  ## trims R1 from 5-85
+    data.set_params("trim_reads") = (5, 85, 5, 85) ## trims both pairs 5-85
     ----------------------------------------------------------------------
-    """, "Trim raw reads edges (R1>, <R1, R2>, <R2) (see docs)")
+    """, "Trim raw read edges (R1>, <R1, R2>, <R2) (see docs)")
 ),
 
 ("26", ("""

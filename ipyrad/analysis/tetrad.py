@@ -188,6 +188,14 @@ class Tetrad(object):
             self.nquartets = total
             
         
+    def _purge(self):
+        """ complete refresh"""
+        oldfiles = [self.files.qdump, self.h5in, self.h5out] + self.trees.values()
+        for oldfile in oldfiles:
+            if oldfile:
+                if os.path.exists(oldfile):
+                    os.remove(oldfile) 
+
 
 
     def refresh(self):
@@ -275,7 +283,7 @@ class Tetrad(object):
             if self.files.mapfile:
                 with open(self.files.mapfile, 'r') as inmap:
                     ## parse the map file from txt and save as dataset
-                    maparr = np.genfromtxt(inmap, dtype=np.uint32)
+                    maparr = np.genfromtxt(inmap, dtype=np.uint64)
                     io5["bootsmap"][:] = maparr[:, [0, 3]]
 
                     ## parse the span info from maparr and save to dataset
@@ -625,7 +633,7 @@ class Tetrad(object):
         cmd = " ".join(
                 [ip.bins.qmc,
                 " qrtt="+self.files.qdump,
-                " weights=off"+
+                #" weights=off"+
                 " otre=.tmpwtre"])
 
         ## run them
@@ -634,7 +642,7 @@ class Tetrad(object):
                                        stderr=subprocess.STDOUT,
                                        stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as inst:
-            LOGGER.error("Error in wQMC: \n({}).".format(inst))
+            LOGGER.error("Error in QMC: \n({}).".format(inst))
             LOGGER.error(subprocess.STDOUT)
             raise inst
 
@@ -1183,7 +1191,7 @@ def n_choose_k(n, k):
 #############################################################################
 #############################################################################
 
-@numba.jit('f8(f8[:])', nopython=True, cache=True)
+@numba.jit('f8(f8[:])', nopython=True)#, cache=True)
 def get_weights(scores):
     """ 
     gets quartet weights from ordered svd scores. Following 
@@ -1201,7 +1209,7 @@ def get_weights(scores):
 
 
 
-@numba.jit('u4[:](u4[:,:])', nopython=True, cache=True)
+@numba.jit('u4[:](u4[:,:])', nopython=True)#, cache=True)
 def count_snps(mat):
     """ 
     get dstats from the count array and return as a float tuple 
@@ -1259,7 +1267,7 @@ def count_snps(mat):
 
 
 
-@numba.jit('b1[:](u1[:,:],b1[:],u4[:])', nopython=True, cache=True)
+@numba.jit('b1[:](u1[:,:],b1[:],u4[:])', nopython=True)#, cache=True)
 def subsample_snps_map(seqchunk, nmask, maparr):
     """ 
     removes ncolumns from snparray prior to matrix calculation, and 
@@ -1319,7 +1327,7 @@ def subsample_snps_map(seqchunk, nmask, maparr):
 
 
 
-@numba.jit('u4[:,:,:](u1[:,:],u4[:],b1[:])', nopython=True, cache=True)
+@numba.jit('u4[:,:,:](u1[:,:],u4[:],b1[:])', nopython=True)#, cache=True)
 def chunk_to_matrices(narr, mapcol, nmask):
     """ 
     numba compiled code to get matrix fast.
@@ -1354,7 +1362,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
 
 
 
-@numba.jit(nopython=True, cache=True)
+@numba.jit(nopython=True)#, cache=True)
 def calculate(seqnon, mapcol, nmask, tests):
     """ groups together several numba compiled funcs """
 
@@ -1489,7 +1497,7 @@ def opr(path):
     return os.path.realpath(path)
 
 
-@numba.jit(nopython=True, cache=True)
+@numba.jit(nopython=True)#, cache=True)
 def shuffle_cols(seqarr, newarr, cols):
     """ used in bootstrap resampling without a map file """
     for idx in xrange(cols.shape[0]):
@@ -1519,23 +1527,26 @@ def resolve_ambigs(tmpseq):
 
 
 
-@numba.jit(nopython=True, cache=True)
+@numba.jit(nopython=True)#, cache=True)
 def get_spans(maparr, spans):
     """ get span distance for each locus in original seqarray """
     ## start at 0, finds change at 1-index of map file
-    bidx = 0
-    
+    bidx = 1
+    spans = np.zeros((maparr[-1, 0], 2), np.uint64)
     ## read through marr and record when locus id changes
-    for idx in xrange(maparr.shape[0]):
+    for idx in xrange(1, maparr.shape[0]):
         cur = maparr[idx, 0]
         if cur != bidx:
-            spans[cur-1, 1] = idx+1
-            spans[cur, 0] = idx+1
+            idy = idx + 1
+            spans[cur-2, 1] = idx
+            spans[cur-1, 0] = idx
+            bidx = cur
+    spans[-1, 1] = maparr[-1, -1]
     return spans
 
 
 
-@numba.jit(nopython=True, cache=True)
+@numba.jit(nopython=True)#, cache=True)
 def get_shape(spans, loci):
     """ get shape of new bootstrap resampled locus array """
     width = 0
@@ -1545,7 +1556,7 @@ def get_shape(spans, loci):
     
 
 
-@numba.jit(nopython=True, cache=True)
+@numba.jit(nopython=True)#, cache=True)
 def fill_boot(seqarr, newboot, newmap, spans, loci):
     """ fills the new bootstrap resampled array """
     ## column index

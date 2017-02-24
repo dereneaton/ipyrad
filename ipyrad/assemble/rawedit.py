@@ -174,8 +174,8 @@ def cutadaptit_single(data, sample):
     mintrimlen. If filter=1, we add quality filters. If filter=2 we add
     adapter filters. 
     """
-    sname = sample.name
 
+    sname = sample.name
     ## if (GBS, ddRAD) then use second cut site with adapter.
     if data.paramsdict["datatype"] != "rad":
         adapter = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
@@ -183,40 +183,28 @@ def cutadaptit_single(data, sample):
     else:
         adapter = data._hackersonly["p3_adapter"]
 
-    ## get command line argument
-    # cmdf1 = ["cutadapt", 
-    #          "--cut", str(data.paramsdict["edit_cutsites"][0]),
-    #          "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
-    #          "--max-n", str(data.paramsdict["max_low_qual_bases"]),
-    #          "--quality-base", str(data.paramsdict["phred_Qscore_offset"]),
-    #          "--trim-n", 
-    #          "--output", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
-    #          sample.files.concat[0][0]]
-
-
     ## get length trim parameter from new or older version of ipyrad params
-    trim5 = trim3 = ""
+    trim5r1 = trim3r1 = []
     if data.paramsdict.get("trim_reads"):
         trimlen = data.paramsdict.get("trim_reads")
         
         ## trim 5' end
         if trimlen[0]:
-            trim5 = "--cut {}".format(trimlen[0])
+            trim5r1 = ["-u", str(trimlen[0])]
         if trimlen[1] < 0:
-            trim3 = "--cut {}".format(trimlen[1])
+            trim3r1 = ["-u", str(trimlen[1])]
         if trimlen[1] > 0:
-            #trim3 = "--length {}".format(trimlen[1]) ## why won't this WORK!?!?
-            trim3 = "--cut {}".format(trimlen[1])            
+            trim3r1 = ["--length", str(trimlen[1])]
     else:
         trimlen = data.paramsdict.get("edit_cutsites")
-        trim5 = "--cut {}".format(trimlen[0])
+        trim5r1 = ["--cut", str(trimlen[0])]
 
     ## testing new 'trim_reads' setting
     cmdf1 = ["cutadapt"]
-    if trim5:
-        cmdf1 += [trim5]
-    if trim3:
-        cmdf1 += [trim3]
+    if trim5r1:
+        cmdf1 += trim5r1
+    if trim3r1:
+        cmdf1 += trim3r1
     cmdf1 += ["--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
               "--max-n", str(data.paramsdict["max_low_qual_bases"]),
               "--trim-n", 
@@ -224,20 +212,19 @@ def cutadaptit_single(data, sample):
               sample.files.concat[0][0]]
 
     if int(data.paramsdict["filter_adapters"]):
-        #cmdf1.insert(1, "20,20")
-        #cmdf1.insert(1, "--quality-cutoff")
         ## NEW: only quality trim the 3' end for SE data.
         cmdf1.insert(1, "20")
         cmdf1.insert(1, "-q")
         cmdf1.insert(1, str(data.paramsdict["phred_Qscore_offset"]))
         cmdf1.insert(1, "--quality-base")
 
+
     if int(data.paramsdict["filter_adapters"]) > 1:
-        ## first enter extra cuts
+        ## first enter extra cuts (order of input is reversed)
         for extracut in data._hackersonly["p3_adapters_extra"][::-1]:
             cmdf1.insert(1, extracut)
             cmdf1.insert(1, "-a")
-        ## then put the main cut first
+        ## then put the main cut so it appears first in command
         cmdf1.insert(1, adapter)
         cmdf1.insert(1, "-a")
 
@@ -270,7 +257,6 @@ def cutadaptit_pairs(data, sample):
     a warning about this when filter_adapters=2 and no barcodes?
     """
     LOGGER.debug("Entering cutadaptit_pairs - {}".format(sample.name))
-
     sname = sample.name
 
     ## applied to read pairs
@@ -319,41 +305,64 @@ def cutadaptit_pairs(data, sample):
         print(NO_BARS_GBS_WARNING)
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
-        adapter2 = "N"*len(data.paramsdict["restriction_overhang"][0])+\
-                   "N"*6+\
-                   data._hackersonly["p5_adapter"]
+        adapter2 = "XXX"
 
     ## parse trim_reads
-    trim5 = trim3 = ""
+    trim5r1 = trim5r2 = trim3r1 = trim3r2 = []
     if data.paramsdict.get("trim_reads"):
         trimlen = data.paramsdict.get("trim_reads")
         
         ## trim 5' end
         if trimlen[0]:
-            trim5 = "-u {}".format(trimlen[0])
+            trim5r1 = ["-u", str(trimlen[0])]
         if trimlen[1] < 0:
-            trim3 = "-u {}".format(trimlen[1])
+            trim3r1 = ["-u", str(trimlen[1])]
         if trimlen[1] > 0:
-            ## only negatives allowed
-            trim3 = "-U {}".format(-1*trimlen[1])
+            trim3r1 = ["--length", str(trimlen[1])]
+
+        ## legacy support for trimlen = 0,0 default
+        if len(trimlen) > 2:
+            if trimlen[2]:
+                trim5r2 = ["-U", str(trimlen[2])]
+
+        if len(trimlen) > 3:
+            if trimlen[3]:
+                if trimlen[3] < 0:
+                    trim3r2 = ["-U", str(trimlen[3])]
+                if trimlen[3] > 0:            
+                    trim3r2 = ["--length", str(trimlen[3])]
+
     else:
+        ## legacy support
         trimlen = data.paramsdict.get("edit_cutsites")
-        trim5 = "-u {}".format(trimlen[0])
-        trim3 = "-U {}".format(trimlen[1])
+        trim5r1 = ["-u", str(trimlen[0])]
+        trim5r2 = ["-U", str(trimlen[1])]
 
     ## testing new 'trim_reads' setting
-    cmdf1 = ["cutadapt", 
-                  trim5, 
-                  trim3,
-                  "--trim-n",
-                  "--max-n", str(data.paramsdict["max_low_qual_bases"]), 
-                  "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),                         
-                  "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"), 
-                  "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
-                  finput_r1, 
-                  finput_r2]
+    cmdf1 = ["cutadapt"]
+    if trim5r1:
+        cmdf1 += trim5r1
+    if trim3r1:
+        cmdf1 += trim3r1
+    if trim5r2:
+        cmdf1 += trim5r2
+    if trim3r2:
+        cmdf1 += trim3r2
+
+    cmdf1 += ["--trim-n",
+              "--max-n", str(data.paramsdict["max_low_qual_bases"]),
+              "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
+              "-o", OPJ(data.dirs.edits, sname+".trimmed_R1_.fastq.gz"),
+              "-p", OPJ(data.dirs.edits, sname+".trimmed_R2_.fastq.gz"),
+              finput_r1,
+              finput_r2]
 
     ## additional args
+    if int(data.paramsdict["filter_adapters"]) < 2:
+        ## add a dummy adapter to let cutadapt know whe are not using legacy-mode
+        cmdf1.insert(1, "XXX")
+        cmdf1.insert(1, "-A")
+
     if int(data.paramsdict["filter_adapters"]):
         cmdf1.insert(1, "20,20")
         cmdf1.insert(1, "-q")
@@ -376,7 +385,7 @@ def cutadaptit_pairs(data, sample):
         cmdf1.insert(1, '-A')         
 
     ## do modifications to read1 and write to tmp file
-    LOGGER.debug(cmdf1)
+    LOGGER.debug(" ".join(cmdf1))
     try:
         proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
         res1 = proc1.communicate()[0]
@@ -387,7 +396,7 @@ def cutadaptit_pairs(data, sample):
 
     ## raise errors if found
     if proc1.returncode:
-        raise IPyradWarningExit(" error in %s, %s", cmdf1, res1)
+        raise IPyradWarningExit(" error [returncode={}]: {}\n{}".format(proc1.returncode, " ".join(cmdf1), res1))
 
     LOGGER.debug("Exiting cutadaptit_pairs - {}".format(sname))
     ## return results string to be parsed outside of engine
@@ -418,16 +427,22 @@ def run2(data, samples, force, ipyclient):
     ## files if interrupted, but it seems to require a hard shutdown of 
     ## ipcluster to kill the bash jobs. Should we shut it down inside
     ## here instead of in assembly?
-    subsamples = concat_reads(data, subsamples, ipyclient)
-    run_cutadapt(data, subsamples, lbview)
-    assembly_cleanup(data)
+    try:
+        subsamples = concat_reads(data, subsamples, ipyclient)
+        run_cutadapt(data, subsamples, lbview)
+        assembly_cleanup(data)
+
+    except KeyboardInterrupt:
+        print("\n ...interrupted, just a minute while we ensure proper cleanup")
+        raise KeyboardInterrupt("s2")
 
 
 
-def cleanup_and_die(data, samples):
+def _cleanup_and_die(data):
     """ Interrupt required ipyclient.shutdown to kill jobs. This is called
     after to ensure file cleanup. Not yet implemented."""
-    ## clean up concat files b/c they weren't finished writing. Hard kill.
+
+    samples = data.samples.keys()
     concats = [os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz") \
                for sample in samples]
     concats += [os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz") \
@@ -448,17 +463,21 @@ def concat_reads(data, subsamples, ipyclient):
         finished = 0
         catjobs = {}
         for sample in subsamples:
-            catjobs[sample.name] = ipyclient[0].apply(\
-                                   concat_multiple_inputs, *(data, sample))
+            ## only concat the ones that have two files
+            if len(sample.files.fastqs) > 1:
+                catjobs[sample.name] = ipyclient[0].apply(\
+                                       concat_multiple_inputs, *(data, sample))
+            else:
+                sample.files.concat = sample.files.fastqs
 
         ## wait for all to finish
         while 1:
             finished = sum([i.ready() for i in catjobs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(subsamples), finished, 
+            progressbar(len(catjobs), finished, 
                        " concatenating inputs  | {} | s2 |".format(elapsed))
             time.sleep(0.1)
-            if finished == len(subsamples):
+            if finished == len(catjobs):
                 print("")
                 break
 
@@ -516,7 +535,7 @@ def run_cutadapt(data, subsamples, lbview):
                 parse_pair_results(data, data.samples[async], res)
         else:
             print("  found an error in step2; see ipyrad_log.txt")
-            LOGGER.warn("error in step2: %s", rawedits[async].exception())
+            LOGGER.warn("error in run_cutadapt(): %s", rawedits[async].exception())
 
 
 
@@ -569,7 +588,7 @@ def concat_multiple_inputs(data, sample):
             proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
-            raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
+            raise IPyradWarningExit("error in: {}, {}".format(cmd1, res1))
 
         ## Only set conc2 if R2 actually exists
         conc2 = 0
