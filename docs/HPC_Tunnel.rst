@@ -72,7 +72,7 @@ This example would connect to one node with 20 cores available.
     echo    "  Paste ssh command in a terminal on local host (i.e., laptop)"
     echo    "  ------------------------------------------------------------"
     echo -e "  ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST\n"
-    echo    "  Open this address in a browser on local host; see token below.
+    echo    "  Open this address in a browser on local host; see token below"
     echo    "  ------------------------------------------------------------"
     echo -e "  localhost:$ipnport                                      \n\n"
 
@@ -106,10 +106,10 @@ this is then look it up for your cluster or ask the system administrator.
     ## print tunneling instructions to jupyter-log-{jobid}.txt 
     echo -e "\n"
     echo    "  Paste ssh command in a terminal on local host (i.e., laptop)"
-    echo    "  ------------------------------------------------------------"
+    echo    "  -------------------------------------------------------------"
     echo -e "  ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST\n"
-    echo    "  Open this address in a browser on local host; see token below.
-    echo    "  ------------------------------------------------------------"
+    echo    "  Open this address in a browser on local host; see token below"
+    echo    "  -------------------------------------------------------------"
     echo -e "  localhost:$ipnport                                      \n\n"
 
     ## initiate MPI & start ipcluster engines using MPI
@@ -140,12 +140,12 @@ be printed to the log file, ``jupyter-log-{jobid}.txt``. Use the command
 
 .. code-block:: yaml
 
-     Copy/Paste this in your local terminal to ssh tunnel with remote 
+     Paste ssh command in a terminal on local host (i.e., laptop)
      ---------------------------------------------------------------- 
      ssh -N -L 8193:xx.yyy.zzz:8193 user@remote.hpc.edu
      ---------------------------------------------------------------
  
-     Then open a browser on your local machine to the following address
+     Open this address in a browser on local host; see token below
      ------------------------------------------------------------------
      http://localhost:8193
      ------------------------------------------------------------------
