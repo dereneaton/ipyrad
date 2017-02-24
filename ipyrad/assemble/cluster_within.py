@@ -687,7 +687,12 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 ## remove '>' from names, and '\n' from inside long seqs                
                 lines = align1[1:].split("\n>")
 
-                lines.sort(key=DEREP, reverse=True)
+                try:
+                    lines.sort(key=DEREP, reverse=True)
+                except ValueError as inst:
+                    LOGGER.error("Bad clust - {}".format(clust))
+                    LOGGER.error("Bad lines - {}".format(lines))
+                    continue
                 aa = [i.split("\n", 1) for i in lines]
                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
                 align1 = "\n".join(align1).strip()

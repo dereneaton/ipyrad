@@ -862,8 +862,8 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             ## Once in a blue moon something fsck and it breaks the
             ## assembly. No reason to give up if .001% of reads fail
             ## so just skip this locus.
-            LOGGER.debug("Failed get reads at a locus, continuing; %s", inst)
-            LOGGER.error("cmd - {}".format(cmd))
+            LOGGER.error("Failed get reads at a locus, continuing; %s", inst)
+            LOGGER.error("cmd - {}".format(cmd2))
             return ""
 
     return "\n".join(fasta)
