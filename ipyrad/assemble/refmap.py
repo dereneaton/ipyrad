@@ -848,7 +848,10 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
                 orient = "+"
                 if int('{0:012b}'.format(int(bits[1]))[7]):
                     orient = "-"
-                    bits[9] = revcomp(bits[9])
+                    ## Don't actually revcomp the sequence because samtools
+                    ## writes out reference sequence on the forward strand
+                    ## as well as reverse strand hits from the bam file.
+                    #bits[9] = revcomp(bits[9])
 
                 ## Rip insert the mapping position between the seq label and
                 ## the vsearch derep size.
