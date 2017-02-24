@@ -5,7 +5,7 @@ package:
 source:
   fn: bpp3.3.tar.gz
   url: https://raw.githubusercontent.com/dereneaton/ipyrad/master/conda.recipe/bpp/bpp3.3.tar.gz
-  md5: 81b67cf0d1a240a06c6da01a0df22fbc
+  md5: 8bc56cf069100f3adf0553692d997aa7
 
 build:
   number: '0'
