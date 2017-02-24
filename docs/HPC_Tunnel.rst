@@ -21,9 +21,10 @@ difficult, but hugely advantageous, because you have access to massively
 more computing power. This tutorial explains how to start a notebook server
 on your HPC cluster, and connect to it from your local computer (i.e., your laptop), 
 so that you can interact with the notebook in your browser but still have 
-the heavy computation occurring remotely on the cluster. 
+the heavy computation occurring remotely on a cluster. 
 Instructions below are for the SLURM (sbatch) job submission 
-system, we have [examples using TORQUE (qsub) submission scripts available as well]. 
+system, we have additional examples available for [TORQUE (qsub) submission 
+scripts] (soon) and [others] (soon). 
 
 
 tldr; Video tutorial
@@ -39,13 +40,49 @@ tldr; Video tutorial
 Step 1: Submit a batch script to launch a notebook server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Copy and paste the code block below into a text editor and save the script as 
-``slurm_jupyter.sbatch``. The #SBATCH section of the script will need to be edited 
-slightly to conform to your cluster, which may require setting the name of the 
-partition (queue), or changing the number of nodes and walltime limits. In this 
-script we are requesting 60 cores (3 nodes, 20 cores per node). The stdout (output)
-of the job will be printed to the log file named ``jupyter-log-%J.txt``, where 
-%J will be replaced by the job ID number. 
+``slurm_jupyter.sbatch``. The #SBATCH section of the script may need to be edited 
+slightly to conform to your cluster. The stdout (output) of the job will be 
+printed to a log file named ``jupyter-log-%J.txt``, where %J will be replaced 
+by the job ID number. We'll need to look at the log file once the job starts
+to get information about how to connect to the jupyter server that we've started.
 
+
+Single Node setup:
+This example would connect to one node with 20 cores available. 
+.. code-block:: bash
+    #!/bin/bash
+    #SBATCH --partition general
+    #SBATCH --nodes 1
+    #SBATCH --ntasks-per-node 20
+    #SBATCH --exclusive
+    #SBATCH --time 4:00:00
+    #SBATCH --mem-per-cpu 4000
+    #SBATCH --job-name tunnel
+    #SBATCH --output jupyter-log-%J.txt
+
+    ## get tunneling info
+    XDG_RUNTIME_DIR=""
+    ipnport=$(shuf -i8000-9999 -n1)
+    ipnip=$(hostname -i)
+
+    ## print tunneling instructions to jupyter-log-{jobid}.txt 
+    echo -e "\n"
+    echo    "  Paste ssh command in a terminal on local host (i.e., laptop)"
+    echo    "  ------------------------------------------------------------"
+    echo -e "  ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST\n"
+    echo    "  Open this address in a browser on local host; see token below.
+    echo    "  ------------------------------------------------------------"
+    echo -e "  localhost:$ipnport                                      \n\n"
+
+    ## start an ipcluster instance and launch jupyter server
+    ipcluster start --daemonize
+    jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
+
+
+Multi-node MPI setup:
+For this setup you will have to replace ``module load OpenMPI`` with the 
+appropriate module command to load MPI on your system. If you do not know what
+this is then look it up for your cluster or ask the system administrator. 
 .. code-block:: bash
 
     #!/bin/bash
@@ -58,58 +95,45 @@ of the job will be printed to the log file named ``jupyter-log-%J.txt``, where
     #SBATCH --job-name jptr60
     #SBATCH --output jupyter-log-%J.txt
 
-    ## a required bugfix for slurm/jupyter
+    ## get tunneling info
     XDG_RUNTIME_DIR=""
-
-    ## selects a random port number 
     ipnport=$(shuf -i8000-9999 -n1)
-
-    ## gets ip of compute node host
     ipnip=$(hostname -i)
 
-    ## prints tunneling instructions to ipyrad-log file
-    echo -e "\n\n   Copy/Paste this in your local terminal to ssh tunnel with remote "
-    echo        "   ------------------------------------------------------------------"
-    echo        "   ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST "
-    echo        "   ------------------------------------------------------------------"
-    echo -e "\n\n   Then open a browser on your local machine to the following address"
-    echo        "   ------------------------------------------------------------------"
-    echo        "   localhost:$ipnport"
-    echo -e     "   ------------------------------------------------------------------\n\n"
-    sleep 1
+    ## print tunneling instructions to jupyter-log-{jobid}.txt 
+    echo -e "\n"
+    echo    "  Paste ssh command in a terminal on local host (i.e., laptop)"
+    echo    "  ------------------------------------------------------------"
+    echo -e "  ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST\n"
+    echo    "  Open this address in a browser on local host; see token below.
+    echo    "  ------------------------------------------------------------"
+    echo -e "  localhost:$ipnport                                      \n\n"
 
-    ## start an ipcluster instance here to init MPI
+    ## initiate MPI & start ipcluster engines using MPI
+    module load OpenMPI
     ipcluster start --n=60 --engines=MPI --ip=* --daemonize
 
     ## start notebook on remote host 
     jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
 
 
-What is this script doing? The ``XDG_RUNTIME_DIR`` command is a little obscure 
-and simply fixes a bug where SLURM otherwise sets this variable to something that
-is incompatible with jupyter. The ``ipnport`` is a random number between 8000-9999
-that will be used to send data. The ``ipnip`` is the ip address of the login 
-node that we are connected to. The ``echo`` commands simply print this 
-information to the log file so we will know how to connect to our notebook 
-server once it has started. 
-
-The final two commands are the most important. The first starts an ``ipcluster`` 
-instance which will ensure that we can connect to all of the requested CPUs. 
-There are many ways to start this parallel client (see the ipyparallel docs), 
-but the arguments we used above should generally work for most systems.
-The final command starts the ``jupyter-notebook`` server, telling it
-to forward data to the port that we specified. Now you can submit the script 
-to the queue using the ``sbatch`` command:
+If you want to know the details of what this script is doing jump down to 
+the section titled 
+:ref:`The slurm_jupyter.sbatch script explained<The slurm_jupyter.sbatch script explained>`. 
+For now, you can simply submit it to the cluster queue using the sbatch command.
 
 .. code-block:: bash
 
     user@login-node$ sbatch slurm_jupyter.sbatch
 
-You can check the queue to see if the job has started using the ``squeue`` command. 
-Once it has started information will be printed to the log file, which is
-named ``jupyter-log-{jobid}.txt``. Use the command ``less`` to look at this file and
-you should see something like below. 
 
+
+Connecting to the jupyter server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+After submitting your sbatch script to the queue you can check to see if
+it has started with the ``squeue`` command. Once it starts information will 
+be printed to the log file, ``jupyter-log-{jobid}.txt``. Use the command
+``less`` to look at this file and you should see something like below. 
 
 .. code-block:: yaml
 
@@ -118,28 +142,25 @@ you should see something like below.
      ssh -N -L 8193:xx.yyy.zzz:8193 user@remote.hpc.edu
      ---------------------------------------------------------------
  
- 
      Then open a browser on your local machine to the following address
      ------------------------------------------------------------------
-     localhost:8193
+     http://localhost:8193
      ------------------------------------------------------------------
 
-Follow the instructions from the logfile and paste the `ssh` code block into 
-a terminal on your local machine (e.g., laptop). This creates the SSH tunnel
-from your local machine to the remote compute node on your cluster. As long
-as the SSH tunnel is open you should be able to view the Jupyter-notebook in 
-your browser by going to the localhost address listed. You can close the SSH
-tunnel at any time and your code will continue to run on the Jupyter-notebook. 
-You could re-connect later to the same notebook by re-opening the tunnel with 
-the same SSH command.
+Follow the instructions and paste the `ssh` code block into a terminal on your 
+local machine (e.g., laptop). This creates the SSH tunnel from your local 
+machine to the port on the cluster where the jupyter server is running. 
+As long as the SSH tunnel is open you will be able to interact with the 
+jupyter-notebook through your browser. You can close the SSH tunnel at any time 
+the notebook will continue running on the cluster. You can also re-connect to it 
+later by re-opening the tunnel with the same SSH command.
 
 Security/tokens
 ~~~~~~~~~~~~~~~~
 When you connect to the jupyter-notebook server it will likely ask for a 
 password/token. You can find an automatically generated token in your 
 jupyter-log file near the bottom. It is the long string printed after the word 
-`token`. Copy just that portion and paste it in the token cell.
-
+`token`. Copy just that portion and paste it in the token cell. 
 
 Using jupyter
 ~~~~~~~~~~~~~~
@@ -154,18 +175,36 @@ You can see an example of this type of setup using the ipyrad API here
 (`API empirical notebook <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_).
 
 
+The slurm_jupyter.sbatch script explained
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What is the sbatch script doing? The ``XDG_RUNTIME_DIR`` command is a little obscure 
+and simply fixes a bug where SLURM otherwise sets this variable to something that
+is incompatible with jupyter. The ``ipnport`` is a random number between 8000-9999
+that selects which port we will use to send data on. The ``ipnip`` is the ip 
+address of the login node that we are tunneling through. The ``echo`` commands 
+simply print the tunneling information to the log file. In the multi-node 
+script there is an additional argument for loading the MPI module, which isn't
+necessary on all clusters, some initiate MPI automatically when we run ipcluster, 
+but the safest bet is to always load your system MPI module. The final two 
+commands are the most important. The first starts an ``ipcluster`` 
+instance which will ensure that we can connect to all of the requested CPUs. 
+There are many ways to start the parallel client (see the ipyparallel docs), 
+but the arguments we used should generally work for most systems.
+The final command starts the ``jupyter-notebook`` server, telling it
+to forward data to the port that we specified, from the IP address we specified. 
+
+
 Restarting ipcluster
 ~~~~~~~~~~~~~~~~~~~~~
-It is necessary to start the ``ipcluster`` instance in our sbatch script in order
-to initialize a connection to all of the avialable CPUs. However, once the connection
-has been established we can later stop and restart ``ipcluster`` however we wish
-and it will continue to find the same engines. Sometimes if an error arises and 
-you want to kill the ipcluster engines the easiest way is to stop the ``ipcluster``
-instance. You can do this by starting a new terminal from the jupyter dashboard, 
-and selecting [new]/[terminal] on the right side. In the terminal run the following
-commands to restart ``ipcluster``. You can close the tab if you wish but the 
-terminal will remain running on the remote system. You can use ``ctrl-c`` to
-stop the ipcluster instance after you restart it once in this way. 
+Once the connection is established you can later stop and restart ``ipcluster`` 
+if you run into a problem with the parallel engines, for example, you might 
+have a stalled job on one of the engines. The easiest way to do this is to stop 
+the ``ipcluster`` instance by starting a new terminal from the jupyter dashboard, 
+by selecting [new]/[terminal] on the right side, and then following
+the commands below to restart ``ipcluster``. This does not *always* work for 
+reconnecting to multiple nodes over MPI, that will depend on your system, but 
+it should always work for restarting a local connection, i.e., no extra 
+arguments are passed to ipcluster. 
 
 .. code-block:: bash
 
@@ -173,7 +212,7 @@ stop the ipcluster instance after you restart it once in this way.
     ipcluster stop
 
     ## start a new ipcluster instance viewing all nodes
-    ipcluster start --n=60 --engines=MPI --ip=*
+    ipcluster start
 
 
 Connecting multiple notebook at once
@@ -188,7 +227,6 @@ file for CLI, or in the attribute for the API).
 
 Terminating the connection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-To close/disconnect the jupyter-notebook and ipcluster instance simply kill/cancel
-the job running on your cluster. To terminate the SSH connection from your local 
-machine that is viewing an open port, you can simply close the ssh connection
-running in a terminal. 
+Just cancel the job on your clusters job queue. You can close the local connections
+at any time and reconnect to them later. Remember, the serving is running on the 
+cluster. 

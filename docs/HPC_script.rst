@@ -67,16 +67,16 @@ As you can see they're pretty similar.
     #PBS -m ae
     #PBS -M youremail@institution.edu
     #PBS -q queue_name
-    #PBS -l nodes=2:ppn=8
+    #PBS -l nodes=1:ppn=20
 
     ## change into your home dir, or a specific place from there
     cd $PBS_O_WORKDIR/myanalysis/
 
     ## call some ipyrad commands
-    ipyrad -p params-demux.txt -s 1 -c 16 --MPI
-    ipyrad -p params-test.txt -b newbranch
-    ipyrad -p params-newbranch.txt -s 2345 -c 16 --MPI
-    ipyrad -p params-newbranch.txt -r 
+    ipyrad -p params-demux.txt -s 1 -c 20  
+    ipyrad -p params-test.txt -b newbranch  
+    ipyrad -p params-newbranch.txt -s 2345 -c 20  
+    ipyrad -p params-newbranch.txt -r   
 
 
 .. parsed-literal::
@@ -103,6 +103,7 @@ And here is an example *sbatch* script:
     cd $HOME/myanalysis
 
     ## call ipyrad on your params file
+    module load OpenMPI
     ipyrad -p params-test.txt -s 1234567 -c 64 --MPI
 
 .. parsed-literal::
