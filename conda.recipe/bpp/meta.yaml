@@ -1,0 +1,17 @@
+package:
+  name: bpp
+  version: !!str 3.3
+
+source:
+  fn: bpp3.3.tar.gz
+  url: https://raw.githubusercontent.com/dereneaton/ipyrad/master/conda.recipe/bpp/bpp3.3.tar.gz
+  md5: 81b67cf0d1a240a06c6da01a0df22fbc
+
+build:
+  number: '0'
+  script: build.sh
+  skip: 'False'
+
+about:
+  home: 
+  license: MIT

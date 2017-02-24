@@ -1,0 +1,17 @@
+package:
+  name: clumpp
+  version: !!str 1.1.2
+
+source:
+  fn: CLUMPP_Linux64.1.1.2.tar.gz
+  url: https://web.stanford.edu/group/rosenberglab/software/CLUMPP_Linux64.1.1.2.tar.gz
+  md5: ae0ba74fc56a2103173b77f5ed4519da
+
+build:
+  number: '0'
+  script: build.sh
+  skip: 'False'
+
+about:
+  home: https://web.stanford.edu/group/rosenberglab/software/
+  license: MIT
