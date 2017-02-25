@@ -613,8 +613,7 @@ def cleanup(data, sample, statsdicts):
                "maxn": 0}
 
     ## merge finished consens stats
-    for i in range(len(combs1)):
-        counters, filters = statsdicts[i]
+    for counters, filters in statsdicts:
         ## sum individual counters
         for key in xcounters:
             xcounters[key] += counters[key]
