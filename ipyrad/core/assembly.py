@@ -202,7 +202,8 @@ class Assembly(object):
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 8),
-                        ("aligner", "bwa")
+                        ("aligner", "bwa"),
+                        ("min_SE_refmap_overlap", -17)
         ])
 
     def __str__(self):
@@ -1777,7 +1778,14 @@ def _paramschecker(self, param, newvalue):
         self.paramsdict['filter_adapters'] = int(newvalue)
 
     elif param == 'filter_min_trim_len':
-        self.paramsdict['filter_min_trim_len'] = int(newvalue)
+        newvalue = int(newvalue)
+        ## filter_min_trim_len takes precedence over min_SE_refmap_overlap
+        ## so if min_trim_len is too small then we'll shrink the overlap
+        ## value. If we didn't do this then it would cause problems for
+        ## v short reads during reference mapping.
+        if newvalue < (self._hackersonly["min_SE_refmap_overlap"] * 2):
+            self._hackersonly["min_SE_refmap_overlap"] = newvalue / 2
+        self.paramsdict['filter_min_trim_len'] = newvalue
 
     elif param == 'max_alleles_consens':
         self.paramsdict['max_alleles_consens'] = int(newvalue)

@@ -597,11 +597,18 @@ def bedtools_merge(data, sample):
     cmd1 = [ipyrad.bins.bedtools, "bamtobed", "-i", mappedreads]
     cmd2 = [ipyrad.bins.bedtools, "merge", "-i", "-"]
 
-    ## Set the -d flag to tell bedtools how far apart to allow mate pairs.
+    ## If PE the -d flag to tell bedtools how far apart to allow mate pairs.
+    ## If SE the -d flag is negative, specifying that SE reads need to
+    ## overlap by at least a specific number of bp. This prevents the
+    ## stairstep syndrome when a + and - read are both extending from
+    ## the same cutsite. Passing a negative number to `merge -d` gets this done.
     if 'pair' in data.paramsdict["datatype"]:
         check_insert_size(data, sample)
         #cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
         cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
+        cmd2.insert(2, "-d")
+    else:
+        cmd2.insert(2, str(-1 * data._hackersonly["min_SE_refmap_overlap"]))
         cmd2.insert(2, "-d")
 
     ## pipe output from bamtobed into merge
@@ -684,10 +691,29 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
 
     ## a string argument as input to commands, indexed at either 0 or 1, 
     ## and with pipe characters removed from chromo names
+    ## rstring_id1 is for fetching the reference sequence bcz faidx is
+    ## 1 indexed
     rstring_id1 = "{}:{}-{}"\
         .format(chrom, str(int(region_start)+1), region_end)
+
+    ## rstring_id0 is just for printing out the reference CHROM/POS
+    ## in the read name
     rstring_id0 = "{}:{}-{}"\
-        .format(chrom, str(region_start), region_end)
+        .format(chrom, region_start, region_end)
+
+    ## If SE then we enforce the minimum overlap distance to avoid the 
+    ## staircase syndrome of multiple reads overlapping just a little.
+    overlap_buffer = 0
+    if not "pair" in data.paramsdict["datatype"]:
+        overlap_buffer = data._hackersonly["min_SE_refmap_overlap"]
+
+    ## rstring_id0_buffered is for samtools view. We have to play patty
+    ## cake here with the two rstring_id0s because we want `view` to 
+    ## enforce the buffer for SE, but we want the reference sequence
+    ## start and end positions to print correctly for downstream.
+    rstring_id0_buffered = "{}:{}-{}"\
+        .format(chrom, int(region_start) + overlap_buffer,\
+                int(region_end) - overlap_buffer)
 
     ## The "samtools faidx" command will grab this region from reference 
     ## which we'll paste in at the top of each stack to aid alignment.
@@ -831,7 +857,9 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
     else:
         try:
             ## SE if faster than PE cuz it skips writing intermedidate files
-            cmd2 = [ipyrad.bins.samtools, "view", bamf, rstring_id0]
+            ## rstring_id0_buffered is going to enforce the required 
+            ## min_SE_refmap_overlap on either end of this region.
+            cmd2 = [ipyrad.bins.samtools, "view", bamf, rstring_id0_buffered]
             proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
     
             ## run and check outputs

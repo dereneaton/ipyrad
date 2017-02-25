@@ -5,6 +5,29 @@
 Release Notes
 =============
 
+0.6.7
+-----
+- Fixed stats reported for filtered_by_depth during step 5.
+- Add new hackersonly parameter min_SE_refmap_overlap and code to refmap.py to forbid merging SE reads that don't significantly overlap.
+- Use preprocessing selectors for linux/osx for clumpp.
+- Add url/md5 for mac binary to clumpp meta.yaml
+- conda recipes update
+- getting ipyrad to conda install on other envs
+- updating versions for conda, rtd, setup.py
+- moving conda recipes
+- conda recipe dir structure
+- bpp install bug fix
+- bpp recipe fix
+- conda recipes added
+- Roll back change to revcomp reverse strand SE hits. Oops.
+- fix merge conflect with debug messages.
+- Fix a bug in refmap, and handle bad clusters in cluster_within.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Actually revcomp SE - strand reads.
+- updated HPC docs
+- updated HPC docs
+- updated HPC docs
+
 0.6.6
 -----
 - bug fix in building_arrays where completely filtered array bits would raise index error -1
