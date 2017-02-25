@@ -1,0 +1,33 @@
+package:
+  name: iqtree-pomo
+  version: {{ environ.get('GIT_DESCRIBE_TAG', '') }}
+
+source:
+  git_url: https://github.com/Cibiv/IQ-TREE.git
+  git_tag: PoMo
+
+build:
+  number: '0'
+  script: build.sh
+  skip: 'False'
+
+requirements:
+  build:
+  - gcc
+  - cmake
+  - eigen
+  - zlib
+  
+  run:
+  - libgcc
+  - zlib
+
+test:
+  commands:
+    - iqtree
+    - iqtree-pomo
+
+about:
+  home: "http://www.iqtree.org/"
+  license: "GPL-2.0"
+  summary: "ML tree inference w/ polymorphism-aware models"
