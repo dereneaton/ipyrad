@@ -4,9 +4,10 @@ package:
 
 source:
   fn: CLUMPP_Linux64.1.1.2.tar.gz
-  url: https://web.stanford.edu/group/rosenberglab/software/CLUMPP_Linux64.1.1.2.tar.gz
-  md5: ae0ba74fc56a2103173b77f5ed4519da
-
+#  url: https://web.stanford.edu/group/rosenberglab/software/CLUMPP_Linux64.1.1.2.tar.gz
+#  md5: ae0ba74fc56a2103173b77f5ed4519da
+  url: https://web.stanford.edu/group/rosenberglab/software/CLUMPP_MacOSX.1.1.2.tar.gz
+  md5: bf044d7ce2b807b5ceec937bb2a764fd
 build:
   number: '0'
   script: build.sh
