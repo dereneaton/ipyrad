@@ -16,9 +16,10 @@ requirements:
     - cython
     - h5py
     - ipyparallel >=5.1.0
-    - ipython >=4.0.0
+    - ipython >=5.0.0
     - jupyter_client
     - jupyter
+    - notebook >=4.3
     - mpi4py
     - nbconvert
     - numba >=0.31
