@@ -5,6 +5,19 @@
 Release Notes
 =============
 
+0.6.8
+-----
+- Actually remove the reference sequence post alignment in step 3. This was BREAKING STUFF.
+- updated notebook requirement in conda recipe
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Handle conda building pomo on different platforms.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Ooops we broke the versioner.py script. Now it's fixed.
+- conda recipe updates
+- conda recipe updates
+- conda recipe updates
+- testing git lfs for storing example data
+
 0.6.7
 -----
 - Fixed stats reported for filtered_by_depth during step 5.
