@@ -693,6 +693,11 @@ def persistent_popen_align3(clusts, maxseqs=200):
                     LOGGER.error("Bad clust - {}".format(clust))
                     LOGGER.error("Bad lines - {}".format(lines))
                     continue
+
+                ## Remove the reference sequence post alignment
+                if "_REF;" in lines[0]:
+                    lines = lines[1:]
+
                 aa = [i.split("\n", 1) for i in lines]
                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
                 align1 = "\n".join(align1).strip()
