@@ -184,27 +184,27 @@ def cutadaptit_single(data, sample):
         adapter = data._hackersonly["p3_adapter"]
 
     ## get length trim parameter from new or older version of ipyrad params
-    trim5 = trim3 = []
+    trim5r1 = trim3r1 = []
     if data.paramsdict.get("trim_reads"):
         trimlen = data.paramsdict.get("trim_reads")
         
         ## trim 5' end
         if trimlen[0]:
-            trim5 = ["--cut", str(trimlen[0])]
+            trim5r1 = ["-u", str(trimlen[0])]
         if trimlen[1] < 0:
-            trim3 = ["--cut", str(trimlen[1])]
+            trim3r1 = ["-u", str(trimlen[1])]
         if trimlen[1] > 0:
-            trim3 = ["--length", str(trimlen[1])]
+            trim3r1 = ["--length", str(trimlen[1])]
     else:
         trimlen = data.paramsdict.get("edit_cutsites")
-        trim5 = ["--cut", str(trimlen[0])]
+        trim5r1 = ["--cut", str(trimlen[0])]
 
     ## testing new 'trim_reads' setting
     cmdf1 = ["cutadapt"]
-    if trim5:
-        cmdf1 += trim5
-    if trim3:
-        cmdf1 += trim3
+    if trim5r1:
+        cmdf1 += trim5r1
+    if trim3r1:
+        cmdf1 += trim3r1
     cmdf1 += ["--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
               "--max-n", str(data.paramsdict["max_low_qual_bases"]),
               "--trim-n", 
@@ -306,36 +306,49 @@ def cutadaptit_pairs(data, sample):
         adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                    data._hackersonly["p3_adapter"]
         adapter2 = "XXX"
-        #"N"*len(data.paramsdict["restriction_overhang"][0])+\
-        #           "N"*6+\
-        #           data._hackersonly["p5_adapter"]
 
     ## parse trim_reads
-    trim5 = trim3 = None
+    trim5r1 = trim5r2 = trim3r1 = trim3r2 = []
     if data.paramsdict.get("trim_reads"):
         trimlen = data.paramsdict.get("trim_reads")
         
         ## trim 5' end
         if trimlen[0]:
-            trim5 = ["-u", str(trimlen[0])]
+            trim5r1 = ["-u", str(trimlen[0])]
         if trimlen[1] < 0:
-            trim3 = ["-u", str(trimlen[1])]
-        if trimlen[1] < 0:
-            trim3 = ["-U", str(-1*trimlen[1])]
+            trim3r1 = ["-u", str(trimlen[1])]
         if trimlen[1] > 0:
-            trim3 = ["--length", str(trimlen[1])]
+            trim3r1 = ["--length", str(trimlen[1])]
+
+        ## legacy support for trimlen = 0,0 default
+        if len(trimlen) > 2:
+            if trimlen[2]:
+                trim5r2 = ["-U", str(trimlen[2])]
+
+        if len(trimlen) > 3:
+            if trimlen[3]:
+                if trimlen[3] < 0:
+                    trim3r2 = ["-U", str(trimlen[3])]
+                if trimlen[3] > 0:            
+                    trim3r2 = ["--length", str(trimlen[3])]
 
     else:
+        ## legacy support
         trimlen = data.paramsdict.get("edit_cutsites")
-        trim5 = ["-u", str(trimlen[0])]
-        trim3 = ["-U", str(trimlen[1])]
+        trim5r1 = ["-u", str(trimlen[0])]
+        trim5r2 = ["-U", str(trimlen[1])]
 
     ## testing new 'trim_reads' setting
     cmdf1 = ["cutadapt"]
-    if trim5:
-        cmdf1 += trim5
-    if trim3:
-        cmdf1 += trim3
+    if trim5r1:
+        cmdf1 += trim5r1
+    if trim3r1:
+        cmdf1 += trim3r1
+    if trim5r2:
+        cmdf1 += trim5r2
+    if trim3r2:
+        cmdf1 += trim3r2
+
     cmdf1 += ["--trim-n",
               "--max-n", str(data.paramsdict["max_low_qual_bases"]),
               "--minimum-length", str(data.paramsdict["filter_min_trim_len"]),
@@ -450,17 +463,21 @@ def concat_reads(data, subsamples, ipyclient):
         finished = 0
         catjobs = {}
         for sample in subsamples:
-            catjobs[sample.name] = ipyclient[0].apply(\
-                                   concat_multiple_inputs, *(data, sample))
+            ## only concat the ones that have two files
+            if len(sample.files.fastqs) > 1:
+                catjobs[sample.name] = ipyclient[0].apply(\
+                                       concat_multiple_inputs, *(data, sample))
+            else:
+                sample.files.concat = sample.files.fastqs
 
         ## wait for all to finish
         while 1:
             finished = sum([i.ready() for i in catjobs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(subsamples), finished, 
+            progressbar(len(catjobs), finished, 
                        " concatenating inputs  | {} | s2 |".format(elapsed))
             time.sleep(0.1)
-            if finished == len(subsamples):
+            if finished == len(catjobs):
                 print("")
                 break
 

@@ -687,7 +687,12 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 ## remove '>' from names, and '\n' from inside long seqs                
                 lines = align1[1:].split("\n>")
 
-                lines.sort(key=DEREP, reverse=True)
+                try:
+                    lines.sort(key=DEREP, reverse=True)
+                except ValueError as inst:
+                    LOGGER.error("Bad clust - {}".format(clust))
+                    LOGGER.error("Bad lines - {}".format(lines))
+                    continue
                 aa = [i.split("\n", 1) for i in lines]
                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
                 align1 = "\n".join(align1).strip()
@@ -738,7 +743,6 @@ def align_and_parse(handle, max_internal_indels=8):
         ## check for too many internal indels
         filtered = aligned_indel_filter(clust, max_internal_indels)
 
-        ## apply trimming to 'gbs' data sets to check for overshooting
         ## reverse complement matches. No longer implemented.
         #filtered = overshoot_filter(clust)
 
@@ -1653,8 +1657,8 @@ def cluster(data, sample, nthreads):
     minsl = 0.5
     if data.paramsdict["datatype"] == "gbs":
         strand = "both"
-        cov = 0.33
-        minsl = 0.33
+        cov = 0.5
+        minsl = 0.5
     elif data.paramsdict["datatype"] == 'pairgbs':
         strand = "both"
         cov = 0.75

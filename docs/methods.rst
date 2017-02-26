@@ -23,15 +23,14 @@ alignment clustering by sequence similarity using the program vsearch_.
 .. _reference:  
 reference
 ---------
-Sequences are mapped to a reference genome using the program smalt_ based on 
-sequence similarity. 
+Sequences are mapped to a reference genome using the program bwa_ 
+(or smalt_, optionally) based on sequence similarity. 
 
 .. _denovo_plus:
 denovo+reference
 -----------------
-Sequences are mapped to a reference genome using the program smalt_ based on 
-sequence similarity, and reads that do not match to the reference are assembled
-using the denovo method. 
+Sequences are mapped to a reference genome based on sequence similarity, and 
+reads that do not match to the reference are assembled using the denovo method. 
 
 .. _denovo_minus:
 denovo-reference

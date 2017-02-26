@@ -271,7 +271,7 @@ def build_indels(data, samples, ipyclient):
         end = int(indf.rsplit("_", 1)[-1][:-8])
         inarr = np.load(indf)
         LOGGER.info('inarr shape %s', inarr.shape)
-        LOGGER.info('iset shape %s', iset[:].shape)
+        LOGGER.info('iset shape %s', iset.shape)
         iset[:, init:end, :] = inarr[:, :end-init]
         init += end-init
         done += 1
@@ -1046,7 +1046,7 @@ def sub_build_clustbits(data, usort, nseeds):
                         loci += seqsize
                         with open(os.path.join(data.tmpdir,
                             data.name+".chunk_{}".format(loci)), 'w') as clustsout:
-                            LOGGER.error("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
+                            LOGGER.debug("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
                             clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
                         seqlist = []

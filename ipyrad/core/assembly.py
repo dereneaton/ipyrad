@@ -202,7 +202,8 @@ class Assembly(object):
                         ("output_loci_name_buffer", 5),
                         ("query_cov", None),
                         ("smalt_index_wordlen", 8),
-                        ("aligner", "bwa")
+                        ("aligner", "bwa"),
+                        ("min_SE_refmap_overlap", -17)
         ])
 
     def __str__(self):
@@ -671,7 +672,10 @@ class Assembly(object):
                     #sys.stdout.write(self.paramsdict.values()[int(param)-1])
                     return self.paramsdict.values()[int(param)]
             except (ValueError, TypeError, NameError, IndexError):
-                return 'key not recognized'
+                try:
+                    return self.paramsdict[param]
+                except KeyError:
+                    return 'key not recognized'
 
 
 
@@ -1325,7 +1329,7 @@ def _name_from_file(fname, splitnames, fields):
 
     ## remove read number from name
     base = base.replace("_R1_.", ".")\
-               .replace("_R1_", "_")\
+               .replace("_R1_", "")\
                .replace("_R1.", ".")
 
     ## remove extensions, retains '.' in file names.
@@ -1774,7 +1778,14 @@ def _paramschecker(self, param, newvalue):
         self.paramsdict['filter_adapters'] = int(newvalue)
 
     elif param == 'filter_min_trim_len':
-        self.paramsdict['filter_min_trim_len'] = int(newvalue)
+        newvalue = int(newvalue)
+        ## filter_min_trim_len takes precedence over min_SE_refmap_overlap
+        ## so if min_trim_len is too small then we'll shrink the overlap
+        ## value. If we didn't do this then it would cause problems for
+        ## v short reads during reference mapping.
+        if newvalue < (self._hackersonly["min_SE_refmap_overlap"] * 2):
+            self._hackersonly["min_SE_refmap_overlap"] = newvalue / 2
+        self.paramsdict['filter_min_trim_len'] = newvalue
 
     elif param == 'max_alleles_consens':
         self.paramsdict['max_alleles_consens'] = int(newvalue)
@@ -1828,6 +1839,7 @@ def _paramschecker(self, param, newvalue):
             try:
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
+                newvalue.append(0)
                 pass
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
@@ -1847,6 +1859,7 @@ def _paramschecker(self, param, newvalue):
             try:
                 newvalue[i] = int(newvalue[i])
             except (ValueError, IndexError):
+                newvalue.append(0)
                 pass
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple

@@ -7,8 +7,8 @@ Assembly Outline
 ================
 The typical workflow to move from fastq formatted input data to assembled 
 output files in ipyrad_ involves :ref:`seven sequential steps <seven_steps>`. 
-The reason it is separated into distinct steps is to create a modular 
-workflow that can be easily restarted if it is interrupted, and can be easily
+The reason we separate assembly into distinct steps is to create a modular 
+workflow that can be easily restarted if interrupted, and can be easily
 :ref:`branched<branching_workflow>` at different points to create 
 assemblies under different combinations of parameter settings. 
 
@@ -17,9 +17,8 @@ Basic workflow
 ---------------
 The simplest use of ipyrad is to assemble a data set under a single set of 
 parameters defined in a params file. Step 1 assigns data to each of the Samples, 
-Steps 2-5 process data for each Sample, Step 6 identifies homology between 
-different Samples, and Step 7 filters these data and formats them for downstream
-analyses. 
+Steps 2-5 process data for each Sample, Step 6 clusters data across Samples, 
+and Step 7 filters these data and formats them for downstream analyses. 
 
 .. image:: images/steps.png
 
@@ -46,7 +45,7 @@ assemblies in which multiple data sets are assembled under different parameter
 settings. The schematic below shows an example where an assembly 
 is branched at step3. The new branch will inherit file paths and statistics 
 from the first Assembly, but can then apply different parameters going forward.
-Branching does not create hard copies of existing data files, and so it not 
+Branching does not create hard copies of existing data files, and so is not 
 an "expensive" action in terms of disk space or time. We suggest it be used 
 quite liberally whenever applying a new set of parameters. 
 
@@ -90,8 +89,8 @@ Seven Steps
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step 1 loads sequence data into a named :ref:`Assembly<Assembly>` and assigns
 reads to :ref:`Samples<Samples>` (individuals). If the data are not yet 
-demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_file>`, 
-otherwise, it simply reads the data for each Sample. 
+demultiplexed then step 1 uses information from a :ref:`barcodes file<barcodes_file>` 
+to demultiplex the data, otherwise, it simply reads the data for each Sample. 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step1:  
