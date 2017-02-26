@@ -10,12 +10,18 @@ cd $SRC_DIR
 mkdir -p build/
 cd build
 
-## see here when writing OSX instructions:
-## https://github.com/Cibiv/IQ-TREE/wiki/Compilation-Guide#downloading-source-code
-## CC=clang CXX=clang++ cmake ..
-
-## easy linux install
-cmake -D -DIQTREE_FLAGS=omp ..
+sw_vers -productVersion
+if [ $? -eq 0 ]
+then
+    ## see here when writing OSX instructions:
+    ## https://github.com/Cibiv/IQ-TREE/wiki/Compilation-Guide#downloading-source-code
+    echo "Doing Mac build"
+    CC=clang CXX=clang++ /usr/local/bin/cmake ..
+else
+    ## easy linux install
+    echo "Doing linux build"
+    cmake -D -DIQTREE_FLAGS=omp ..
+fi
 make -j4
 
 ## pro-tip - I kept trying this with 'conda build .' and afterwards the binary
