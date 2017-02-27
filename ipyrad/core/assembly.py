@@ -1366,8 +1366,8 @@ def _read_sample_names(fname):
     line.
     """
     try:
-        infile = open(fname, 'r')
-        subsamples = [x.split()[0] for x in infile.readlines()]
+        with open(fname, 'r') as infile:
+            subsamples = [x.split()[0] for x in infile.readlines() if x.strip()]
 
     except Exception as inst:
         print("Failed to read input file with sample names.\n{}".format(inst))
