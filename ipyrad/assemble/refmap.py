@@ -761,6 +761,9 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
         ## in the clust.gz file. There is a way to fix it but it's
         ## very annoying and i'm not sure if it's worth it...
         ## Drop the reference sequence for now...
+        ##
+        ## If you ever fix this be sure to remove the reference sequence
+        ## from each cluster post alignment in cluster_within/align_and_parse()
         fasta = []
 
         ## Create temporary files for R1, R2 and merged, which we will pass to
