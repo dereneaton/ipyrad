@@ -5,6 +5,18 @@
 Release Notes
 =============
 
+0.6.9
+-----
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Changed the sign on the new hackersonly parameter min_SE_refmap_overlap.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added a persistent_popen function for aligning, needs testing before implementing
+- cosmetic
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- debugger in demux was printing way too much
+- bugfix for empty lines in branching subsample file
+- Add a janky version checker to nag the user.
+
 0.6.8
 -----
 - Actually remove the reference sequence post alignment in step 3. This was BREAKING STUFF.
