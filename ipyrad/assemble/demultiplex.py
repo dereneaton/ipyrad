@@ -447,7 +447,6 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
     ## go until end of the file
     while 1:
         try:
-            LOGGER.debug("next")
             read1, read2 = quarts.next()
             read1 = list(read1)
             filestat[0] += 1
@@ -470,10 +469,8 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
             ## Parse barcode. Uses the parsing function selected above.
             barcode = getbarcode(cutters, read1, longbar)
    
-        LOGGER.debug("nexter: %s %s %s", cutters, longbar, barcode)
         ## find if it matches 
         sname_match = matchdict.get(barcode)
-        LOGGER.debug("%s %s %s %s", read1, read2, barcode, sname_match)
 
         if sname_match:
             #sample_index[filestat[0]-1] = snames.index(sname_match) + 1

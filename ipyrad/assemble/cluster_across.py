@@ -40,6 +40,165 @@ LOGGER = logging.getLogger(__name__)
 
 
 
+## a replacement for muscle_align_across that uses persistent popen
+def persistent_popen_align3(data, samples, chunk):
+    """  notes """
+
+    ## data are already chunked, read in the whole thing
+    with open(chunk, 'rb') as infile:
+        clusts = infile.read().split("//\n//\n")[:-1]    
+
+    ## snames to ensure sorted order
+    samples.sort(key=lambda x: x.name)
+    snames = [sample.name for sample in samples]
+
+    ## make a tmparr to store metadata (this can get huge, consider using h5)
+    maxlen = data._hackersonly["max_fragment_length"] + 20
+    indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool_)
+    duples = np.zeros(len(clusts), dtype=np.bool_)
+
+    ## create a persistent shell for running muscle in. 
+    proc = sps.Popen(["bash"], 
+                    stdin=sps.PIPE, 
+                    stdout=sps.PIPE, 
+                    universal_newlines=True)
+
+    ## iterate over clusters until finished
+    allstack = []
+    for ldx in xrange(len(clusts)):
+        ## new alignment string for read1s and read2s
+        aligned = []
+        lines = clusts[ldx].strip().split("\n")
+        names = lines[::2]
+        seqs = lines[1::2]        
+        align1 = ""
+        align2 = ""
+
+        ## dont both aligning if only one sequence
+        if len(names) == 1:
+            aligned.append(clusts[ldx].replace(">", "").strip())
+        elif len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
+            duples[ldx] = 1
+            aligned.append(clusts[ldx].replace(">", "").strip())
+        else:
+            ## append counter to names because muscle doesn't retain order
+            names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+
+            try:
+                ## try to split names on nnnn splitter
+                clust1, clust2 = zip(*[i.split("nnnn") for i in seqs])
+
+                ## make back into strings
+                cl1 = "\n".join(itertools.chain(*zip(names, clust1)))
+                cl2 = "\n".join(itertools.chain(*zip(names, clust2)))
+
+                ## Align the read-1s
+                ## TODO: check for pipe-overflow here and use files for i/o                
+                cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+                       .format(cl1, ipyrad.bins.muscle, "//")
+
+                ## send cmd1 to the bash shell
+                print(cmd1, file=proc.stdin)
+
+                ## read the stdout by line until splitter is reached
+                for line in iter(proc.stdout.readline, "//\n"):
+                    align1 += line
+
+                ## align the read-2s
+                ## TODO: check for pipe-overflow here and use files for i/o                
+                cmd2 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+                       .format(cl2, ipyrad.bins.muscle, "//")
+
+                ## send cmd2 to the bash shell
+                print(cmd2, file=proc.stdin)
+
+                ## read the stdout by line until splitter is reached
+                for line in iter(proc.stdout.readline, "//\n"):
+                    align2 += line
+
+                ## join the aligned read1 and read2 and ensure name order match
+                la1 = align1[1:].split("\n>")
+                la2 = align2[1:].split("\n>")
+                dalign1 = dict([i.split("\n", 1) for i in la1])
+                dalign2 = dict([i.split("\n", 1) for i in la2])
+                keys = sorted(dalign1.keys(), key=DEREP)
+                aligned = []
+                for key in keys:
+                    aligned.append("\n".join(
+                        [key, 
+                         dalign1[key].replace("\n", "")+"nnnn"+\
+                         dalign2[key].replace("\n", "")]))
+
+
+            except ValueError:
+                ## make back into strings
+                cl1 = "\n".join(["\n".join(i) for i in zip(names, seqs)])                
+
+                ## Align the read-1s 
+                ## TODO: check for pipe-overflow here and use files for i/o
+                cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
+                       .format(cl1, ipyrad.bins.muscle, "//")
+
+                ## send cmd1 to the bash shell
+                print(cmd1, file=proc.stdin)
+
+                ## read the stdout by line until splitter is reached
+                for line in iter(proc.stdout.readline, "//\n"):
+                    align1 += line
+
+                ## join the aligned read1 and read2 and ensure name order match
+                la1 = align1[1:].split("\n>")
+                dalign1 = dict([i.split("\n", 1) for i in la1])
+                keys = sorted(dalign1.keys(), key=DEREP)
+                aligned = []
+                for key in keys:
+                    aligned.append("\n".join(
+                        [key, dalign1[key].replace("\n", "")]))
+
+
+            ## enforce maxlen on aligned seqs
+            aseqs = np.vstack([list(i.split()[1]) for i in aligned])
+            sidxs = [snames.index(key.rsplit("_", 1)[0]) for key in keys]
+            thislen = min(maxlen, aseqs.shape[1])
+            istack = []
+            for idx in xrange(aseqs.shape[0]):
+                ## enter into stack
+                newn = aligned[idx].split(";", 1)[0]
+                istack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
+                ## name index in sorted list (indels order)
+                sidx = sidxs[idx]
+                indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
+
+            if istack:
+                allstack.append("\n".join(istack))
+
+    ## cleanup
+    proc.stdout.close()
+    if proc.stderr:
+        proc.stderr.close()
+    proc.stdin.close()
+    proc.wait()
+
+    ## write to file after
+    odx = chunk.rsplit("_")[-1]
+    alignfile = os.path.join(data.tmpdir, "align_{}.fa".format(odx))
+    with open(alignfile, 'wb') as outfile:
+        outfile.write("\n//\n//\n".join(allstack)+"\n")
+        os.remove(chunk)
+
+    ## save indels array to tmp dir
+    ifile = os.path.join(data.tmpdir, "indels_{}.tmp.npy".format(odx))
+    np.save(ifile, indels)
+    dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
+    np.save(dfile, duples)
+
+
+
+DEREP = lambda x: int(x.split(";")[-1][1:])
+
+
+
+### DEPRECATED IN PLACE OF persistent_popen_align3
 def muscle_align_across(data, samples, chunk):
     """
     Reads in a chunk of the rebuilt clusters. Aligns clusters and writes
@@ -175,6 +334,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     jobs = {}
     for idx in xrange(len(clustbits)):
         args = [data, samples, clustbits[idx]]
+        #jobs[idx] = lbview.apply(persistent_popen_align3, *args)
         jobs[idx] = lbview.apply(muscle_align_across, *args)
     allwait = len(jobs)
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -199,6 +359,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
             raise IPyradWarningExit("error in step 6 {}".format(jobs[idx].exception()))
         del jobs[idx]
     print("")
+
 
 
 
@@ -465,16 +626,6 @@ def build_h5_array(data, samples, ipyclient):
     ## close the big boy
     io5.close()
 
-    ## FILL SUPERCATG and fills dupfilter, indfilter, and nalleles
-    multicat(data, samples, ipyclient)
-
-    ## FILL SUPERSEQS and fills edges(splits) for paired-end data
-    fill_superseqs(data, samples)
-
-    ## set sample states
-    for sample in samples:
-        sample.stats.state = 6
-
 
 
 def fill_dups_arr(data):
@@ -592,7 +743,7 @@ def multicat(data, samples, ipyclient):
 
     ## make a limited njobs view based on mem limits 
     ## TODO: is using smallview necessary?!
-    smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
+    smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
 
     ## make a list of jobs
     jobs = {}
@@ -600,7 +751,6 @@ def multicat(data, samples, ipyclient):
         ## grab just the hits for this sample
         sidx = snames.index(sample.name)
         jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
-        #jobs[sample.name] = lbview.apply(singlecat, *(data, sample, bseeds, sidx))
 
     ## check for finished and submit disk-writing job when finished
     allwait = len(jobs)
@@ -622,10 +772,8 @@ def multicat(data, samples, ipyclient):
                     last_sample = name
                     del jobs[name]
                 else:
-                    #LOGGER.error(" error in singlecat (%s) %s",
-                    #             name, jobs[name].exception())
                     raise IPyradWarningExit(" error in singlecat ({}) {}"\
-                                           .format(name), jobs[name].exception())
+                                .format(name, jobs[name].exception()))
 
         ## print progress bar
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
@@ -706,6 +854,9 @@ def singlecat(data, sample, bseeds, sidx):
 
     LOGGER.info("single cat here")
     ## grab the sample's data and write to ocatg and onall
+    if not sample.files.database:
+        raise IPyradWarningExit("missing catg file for sample: {}"\
+                                .format(sample.name))
     with h5py.File(sample.files.database, 'r') as io5:
         ## get it and delete it
         catarr = io5["catg"][:]
@@ -1195,8 +1346,6 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     ## if no info we use detect_cpus to get info for this node.
     data.cpus = data._ipcluster["cores"]
     if not data.cpus:
-        ## should this use detect_cpus? more appropriate would be len ipyclient
-        #data.cpus = detect_cpus()
         data.cpus = len(ipyclient)
 
     ## make a vsearch input fasta file with all samples reads concat
@@ -1245,6 +1394,17 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         ## calls singlecat func inside
         LOGGER.info("building full database")
         build_h5_array(data, samples, ipyclient)
+    
+        ## FILL SUPERCATG and fills dupfilter, indfilter, and nalleles
+        multicat(data, samples, ipyclient)
+
+        ## FILL SUPERSEQS and fills edges(splits) for paired-end data
+        fill_superseqs(data, samples)
+
+        ## set sample states
+        for sample in samples:
+            sample.stats.state = 6
+
 
     except Exception as inst:
         LOGGER.error(inst)

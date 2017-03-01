@@ -579,7 +579,7 @@ def sample_cleanup(data, sample):
 
 ## winner, rigorously testing in sequential and parallel against other funcs
 def persistent_popen_align3(clusts, maxseqs=200):
-    """ keeps a persistent bash shell open and feeds it muscle alignements """
+    """ keeps a persistent bash shell open and feeds it muscle alignments """
 
     ## create a separate shell for running muscle in, this is much faster
     ## than spawning a separate subprocess for each muscle call
