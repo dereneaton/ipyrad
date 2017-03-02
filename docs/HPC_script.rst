@@ -150,21 +150,22 @@ This has proved useful on a few HPC clusters where compute nodes spin up
 very slowly, and ipyrad would quit after a few minutes if it didn't find the 
 connected CPUs it was looking for. To work around this the user can spin up
 ipcluster with the arguments listed below, then add in a sleep command to tell
-the system to wait a few minutes, and then the ipyrad command. 
+the system to wait a minute, and then the ipyrad command. 
 
 .. parsed-literal::
+
     ## Login in to an interactive node
-    user@login$ qsub -I -l nodes=4:ppn=8 -l walltime=24:00:00
+    user@login$ qsub -I -l nodes=1:ppn=20 -l walltime=24:00:00
     
     ## Now that you are on the compute node, start an ipcluster instance 
-    ## with --profile=ipyrad and send it to run in the background (daemonize)
-    user@compute$ ipcluster start --n 48 --engines=MPI --ip=* --profile=ipyrad --daemonize
+    user@compute$ ipcluster start --n 20 --daemonize
 
-    ## Wait for ipcluster to fire up properly. Sleeping for 60 seconds typically
-    ## is sufficient, but YMMV.
+    ## Wait for ipcluster. Sleeping for 60 seconds should be sufficient.
     sleep 60
 
     ## Then run ipyrad like normal but with --ipcluster so it knows to look for 
     ## your specific ipcluster instance.
-    user@compute$ ipyrad -p params-test.txt -s 2 -c 48 --ipcluster
+    user@compute$ ipyrad -p params-test.txt -s 2 --ipcluster
+
+
 
