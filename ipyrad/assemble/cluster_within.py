@@ -666,6 +666,10 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 ## append aligned cluster string
                 aligned.append("\n".join(align1))
 
+            ## Malformed clust. Dictionary creation with only 1 element will raise.
+            except ValueError as inst:
+                LOGGER.debug("Bad PE cluster - {}\nla1 - {}\nla2 - {}".format(\
+                                lclust, la1, la2))
 
             ## Either reads are SE, or at least some pairs are merged.
             except IndexError:
