@@ -347,19 +347,21 @@ class Assembly(object):
             r2_files = [i.replace("_R1_", "_R2_") for i in r1_files]
 
             if r1_files:
-                if not any(["_R1_" in i for i in fastqs]) or \
-                       (len(r1_files) != len(r2_files)):
-                    raise IPyradError("""
-        Paired file names must be identical except for _R1_ and _R2_.""")
+                if not any(["_R1_" in i for i in fastqs]):
+                    raise IPyradError(
+                        "    The sequence _R1_ must be present in file names.")
             else:
-                raise IPyradError("""
-        Fastq filenames are malformed. R1 must contain the string _R1_ and
-        R2 must be identical to R1, excepting the replacement of _R2_ for _R1_.""")
+                raise IPyradError(PAIRED_FILENAMES_ERROR)
+
+            if len(r1_files) != len(r2_files):
+                raise IPyradError(R1_R2_name_error\
+                    .format(len(r1_files), len(r2_files)))
 
             ## Test R2 files actually exist
             if not all([os.path.exists(x) for x in r2_files]):
-                raise IPyradError("""
-        Paired file names must be identical except for _R1_ and _R2_.""")
+                examples = [i for i in r2_files if not os.path.exists(i)]
+                examples = "\n".join(examples)
+                raise IPyradError(MISSING_PAIRFILE_ERROR.format(examples))
 
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
@@ -595,7 +597,6 @@ class Assembly(object):
             the locus to be retained. Example:
 
             popmins = {'pop1': 3, 'pop2': 2}
-            
 
         """
         if not popdict:
@@ -663,9 +664,9 @@ class Assembly(object):
         if not param:
             for index, (key, value) in enumerate(self.paramsdict.items()):
                 if isinstance(value, str):
-                    value = value.replace(fullcurdir, ".")
-                sys.stdout.write("  {:<4}{:<28}{:<45}\n".format(index,
-                           key, value))
+                    value = value.replace(fullcurdir+"/", "./")
+                sys.stdout.write("  {:<4}{:<28}{:<45}\n"\
+                    .format(index, key, value))
         else:
             try:
                 if int(param):
@@ -1554,32 +1555,16 @@ def _paramschecker(self, param, newvalue):
         ## things would happen. Calling set_params on assembly_name only raises
         ## an informative error. Assembly_name is set at Assembly creation time
         ## and is immutable.
-        raise IPyradWarningExit("""
-    Warning: Assembly name is set at Assembly creation time and is an immutable
-    property: You may, however, branch the assembly which will create a copy
-    with a new name, a sort of roundabout name change. Here's how:
-
-    Command Line Interface:
-        ipyrad -p params-old-name.txt -b new-name
-
-    API (Jupyter Notebook Users):
-        new_assembly = my_assembly.branch("new_name")
-    """)
+        raise IPyradWarningExit(CANNOT_CHANGE_ASSEMBLY_NAME)
 
     elif param == 'project_dir':
         expandpath = _expander(newvalue)
         if not expandpath.startswith("/"):
             if os.path.exists(expandpath):
-                #expandpath = "./"+expandpath
                 expandpath = _expander(expandpath)
         ## Forbid spaces in path names
         if " " in expandpath:
-            raise IPyradWarningExit("""
-    Error: Your project_dir contains a directory with a space in the name.
-    This can cause all kinds of funny problems so please rename this
-    directory and remove the space. Try replacing the space with an underscore.
-    You entered: {}
-    """.format(expandpath))
+            raise IPyradWarningExit(BAD_PROJDIR_NAME.format(expandpath))
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath
 
@@ -1590,13 +1575,7 @@ def _paramschecker(self, param, newvalue):
         if newvalue and not "Merged:" in newvalue:
             fullrawpath = _expander(newvalue)
             if os.path.isdir(fullrawpath):
-                raise IPyradWarningExit("""
-    Error: You entered the path to a directory for raw_fastq_path. To
-    ensure the correct files in the directory are selected, please use a
-    wildcard selector to designate the desired files.
-    Example: /home/user/data/*.fastq  ## selects all files ending in '.fastq'
-    You entered: {}
-    """.format(fullrawpath))
+                raise IPyradWarningExit(RAW_PATH_ISDIR.format(fullrawpath))
             ## if something is found in path
             elif glob.glob(fullrawpath):
                 self.paramsdict['raw_fastq_path'] = fullrawpath
@@ -1617,12 +1596,7 @@ def _paramschecker(self, param, newvalue):
             fullbarpath = glob.glob(_expander(newvalue))[0]
             ## raise error if file is not found
             if not os.path.exists(fullbarpath):
-                raise IPyradWarningExit("""
-    Error: barcodes file not found. This must be an absolute path
-    (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory
-    where you're running ipyrad (./data/data_barcodes.txt). You entered:
-    {}
-    """.format(fullbarpath))
+                raise IPyradWarningExit(BARCODE_NOT_FOUND.format(fullbarpath))
             else:
                 self.paramsdict['barcodes_path'] = fullbarpath
                 self._link_barcodes()
@@ -1642,35 +1616,20 @@ def _paramschecker(self, param, newvalue):
             fullsortedpath = _expander(newvalue)
 
             if os.path.isdir(fullsortedpath):
-                raise IPyradWarningExit("""
-    Error: You entered the path to a directory for sorted_fastq_path. To
-    ensure the correct files in the directory are selected, please use a
-    wildcard selector to designate the desired files.
-    Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
-    You entered: {}
-    """.format(fullsortedpath))
+                raise IPyradWarningExit(SORTED_ISDIR.format(fullsortedpath))
             elif glob.glob(fullsortedpath):
                 self.paramsdict['sorted_fastq_path'] = fullsortedpath
 
             else:
-                raise IPyradWarningExit("""
-    Error: fastq sequence files in sorted_fastq_path could not be found.
-    Please check that the location was entered correctly and that a wild
-    card selector (*) was used to select all or a subset of files.
-    You entered: {}
-    """.format(fullsortedpath))
+                raise IPyradWarningExit(SORTED_NOT_FOUND.format(fullsortedpath))
         ## if no value was entered then set to "".
         else:
             self.paramsdict['sorted_fastq_path'] = ""
 
 
-
     elif param == 'assembly_method':
         methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
-        assert newvalue in methods, """
-    The assembly_method parameter must be one of the following: denovo, reference,
-    denovo+reference or denovo-reference. You entered: \n{}.
-    """.format(newvalue)
+        assert newvalue in methods, BAD_ASSEMBLY_METHOD.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
 
 
@@ -1679,12 +1638,7 @@ def _paramschecker(self, param, newvalue):
             fullrawpath = _expander(newvalue)
             if not os.path.isfile(fullrawpath):
                 LOGGER.info("reference sequence file not found.")
-                raise IPyradWarningExit("""
-    "Warning: reference sequence file not found. This must be an absolute path
-    (/home/wat/ipyrad/data/reference.gz) or relative to the directory where
-    you're running ipyrad (./data/reference.gz). You entered:
-    {}
-    """.format(fullrawpath))
+                raise IPyradWarningExit(REF_NOT_FOUND.format(fullrawpath))
             self.paramsdict['reference_sequence'] = fullrawpath
         ## if no value was entered the set to "". Will be checked again
         ## at step3 if user tries to do refseq and raise error
@@ -1933,6 +1887,83 @@ def _paramschecker(self, param, newvalue):
 
 
 ### ERROR MESSAGES ###################################
+MISSING_PAIRFILE_ERROR = """\
+    Paired file names must be identical except for _R1_ and _R2_. 
+    Example, there are not matching files for samples: \n{}
+    """
+
+PAIRED_FILENAMES_ERROR = """\
+    Fastq filenames are malformed. R1 must contain the string _R1_ and
+    R2 must be identical to R1, excepting the replacement of _R2_ for _R1_.
+    """
+
+R1_R2_name_error = """\
+    Paired file names must be identical except for _R1_ and _R2_.
+    We detect {} R1 files and {} R2 files.
+    """
+
+REF_NOT_FOUND = """\
+    "Warning: reference sequence file not found. This must be an absolute path
+    (/home/wat/ipyrad/data/reference.gz) or relative to the directory where
+    you're running ipyrad (./data/reference.gz). You entered:
+    {}
+    """
+
+BAD_ASSEMBLY_METHOD = """\
+    The assembly_method parameter must be one of the following: denovo, reference,
+    denovo+reference or denovo-reference. You entered:
+    {}.
+    """
+
+SORTED_NOT_FOUND = """\
+    Error: fastq sequence files in sorted_fastq_path could not be found.
+    Please check that the location was entered correctly and that a wild
+    card selector (*) was used to select all or a subset of files.
+    You entered: {}
+    """
+
+SORTED_ISDIR = """\
+    Error: You entered the path to a directory for sorted_fastq_path. To
+    ensure the correct files in the directory are selected, please use a
+    wildcard selector to designate the desired files.
+    Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
+    You entered: {}
+    """
+
+BARCODE_NOT_FOUND = """\
+    Error: barcodes file not found. This must be an absolute path
+    (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory
+    where you're running ipyrad (./data/data_barcodes.txt). You entered:
+    {}
+    """
+
+RAW_PATH_ISDIR = """\
+    Error: You entered the path to a directory for raw_fastq_path. To
+    ensure the correct files in the directory are selected, please use a
+    wildcard selector to designate the desired files.
+    Example: /home/user/data/*.fastq  ## selects all files ending in '.fastq'
+    You entered: {}
+    """
+
+BAD_PROJDIR_NAME = """\
+    Error: Your project_dir contains a directory with a space in the name.
+    This can cause all kinds of funny problems so please rename this
+    directory and remove the space. Try replacing the space with an underscore.
+    You entered: {}
+    """
+
+CANNOT_CHANGE_ASSEMBLY_NAME = """\
+    Warning: Assembly name is set at Assembly creation time and is an immutable
+    property: You may, however, branch the assembly which will create a copy
+    with a new name, but retain a copy of the original Assembly. Here's how:
+
+    Command Line Interface:
+        ipyrad -p params-old-name.txt -b new-name
+
+    API (Jupyter Notebook Users):
+        new_assembly = my_assembly.branch("new_name")
+    """
+
 REQUIRE_ASSEMBLY_NAME = """\
     Assembly name _must_ be set. This is the first parameter in the params.txt
     file, and will be used as a prefix for output files. It should be a short
