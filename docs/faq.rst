@@ -98,6 +98,7 @@ In this way, `ipcluster` and `ipyrad` will both look in `$HOME` for the `.ipytho
 
 ipyrad crashes during dereplication in step 3
 ---------------------------------------------
+
 .. parsed_literal::
 
     ERROR sample [XYZ] failed in step [derep_concat_split]; error: EngineError(Engine '68e79bbc-0aae-4c91-83ec-97530e257387' died while running task u'fdef6e55-dcb9-47cb-b4e6-f0d2b591b4af')
@@ -110,16 +111,17 @@ You can take advantage of the following steps during step 2 to better filter you
 data so that it will be cleaner, and thus dereplicate more efficiently. This will
 in turn greatly speed up the step3 clustering and aligning steps. 
 
-1. Use the "filter_adapters" = 2 argument in ipyrad which will search for and 
-    remove Illumina adapters. 
-2. Consider trimming edges of the reads with the "trim_reads" option. An argument 
+* Use the "filter_adapters" = 2 argument in ipyrad which will search for and 
+remove Illumina adapters. 
+* Consider trimming edges of the reads with the "trim_reads" option. An argument 
 like (5, 75, 5, 75) would trim the first five bases of R1 and R2 reads, and trim 
 all reads to a max length of 75bp. Trimming to a fixed length helps if your read 
 qualities are variable, because the reads may be trimmed to variable lengths. 
-3. Try running on a computer with more memory, or requesting more memory if on a cluster. 
+* Try running on a computer with more memory, or requesting more memory if on a cluster. 
 
 Other random problems with solutions
 ------------------------------------
+
 .. parsed_literal::
 
     Failed at nopython (nopython frontend)
