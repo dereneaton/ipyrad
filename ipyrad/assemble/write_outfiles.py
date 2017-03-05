@@ -230,7 +230,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
 
     print("\n\n## The number of loci caught by each filter."+\
-          "\n## ipyrad API location: [assembly].statsfiles.s7_filters\n",
+          "\n## ipyrad API location: [assembly].stats_dfs.s7_filters\n",
           file=outstats)
     data.stats_dfs.s7_filters = pd.DataFrame([filtdat, applied, retained]).T
     data.stats_dfs.s7_filters.to_string(buf=outstats)
