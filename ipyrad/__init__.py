@@ -76,8 +76,11 @@ def cluster_info(client=None, cluster_id="", profile="default", engines="Local",
     ## report 
     hosts = ipyclient[:].apply_sync(_socket.gethostname)
     result = []
+    spacer = ""
+    if not __interactive__:
+        spacer = "  "
     for hostname in set(hosts):
-        result.append("  host compute node: [{} cores] on {}"\
+        result.append(spacer+"host compute node: [{} cores] on {}"\
                       .format(hosts.count(hostname), hostname))
     
     if not client:
