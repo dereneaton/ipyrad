@@ -174,9 +174,11 @@ def mapreads(data, sample, nthreads, force):
 
     ## (cmd1) bwa mem [OPTIONS] <index_name> <file_name_A> [<file_name_B>] > <output_file>
     ##  -t #         : Number of threads
+    ##  -M           : Mark split alignments as secondary.
 
     ## (cmd2) samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...] 
     ##   -b = write to .bam
+    ##   -q = Only keep reads with mapq score >= 30 (seems to be prety standard)
     ##   -F = Select all reads that DON'T have this flag. 
     ##         0x4 (segment unmapped)
     ##         0x800 (supplementary alignment)
@@ -212,6 +214,7 @@ def mapreads(data, sample, nthreads, force):
     else:
         cmd1 = [ipyrad.bins.bwa, "mem",
                 "-t", str(max(1, nthreads)),
+                "-M",
                 data.paramsdict['reference_sequence']
                 ] + sample.files.dereps
         cmd1_stdout = open(os.path.join(data.dirs.refmapping, sample.name+".sam"), 'w')
@@ -221,6 +224,7 @@ def mapreads(data, sample, nthreads, force):
     ## and it pipes the mapped data to be used in cmd3
     cmd2 = [ipyrad.bins.samtools, "view", 
            "-b", 
+            "-q", "30",
            "-F", "0x804", 
            "-U", os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam"), 
            os.path.join(data.dirs.refmapping, sample.name+".sam")]
@@ -870,6 +874,11 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             if proc2.returncode:
                 raise IPyradWarningExit("{} {}".format(cmd2, res))
 
+            ## if the region string is malformated you'll get back a warning
+            ## from samtools
+            if "[main_samview]" in res:
+                raise IPyradError("Bad reference region {}".format(rstring_id0_buffered))
+
             ## do not join seqs that
             for line in res.strip().split("\n"):
                 bits = line.split("\t")
@@ -893,6 +902,11 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
                     d=orient,
                     e=bits[9])
                 fasta.append(fullfast)
+        except IPyradError as inst:
+            ## If the mapped fragment is too short then the you'll get
+            ## regions that look like this: scaffold262:299039-299036
+            ## Just carry on, it's not a big deal.
+            LOGGER.debug("Got a bad region string: {}".format(inst))
         except (OSError, ValueError, Exception) as inst:
             ## Once in a blue moon something fsck and it breaks the
             ## assembly. No reason to give up if .001% of reads fail
