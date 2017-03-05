@@ -35,7 +35,7 @@ Then type `ipython` to open an ipython session.
     rc[:]
 
 The result should look something like this:
-.. parsed_literal::
+.. parsed-literal::
 
     Out[1]: <DirectView [0, 1, 2, 3]>
 
@@ -67,7 +67,7 @@ The result should look something like this:
     print data.stats
     print data._ipcluster
 
-.. parsed_literal::
+.. parsed-literal::
 
     {'profile': 'default', 'engines': 'Local', 'quiet': 0, 'cluster_id': '', 'timeout': 120, 'cores': 48}
 
@@ -99,7 +99,7 @@ In this way, `ipcluster` and `ipyrad` will both look in `$HOME` for the `.ipytho
 ipyrad crashes during dereplication in step 3
 ---------------------------------------------
 
-.. parsed_literal::
+.. parsed-literal::
 
     ERROR sample [XYZ] failed in step [derep_concat_split]; error: EngineError(Engine '68e79bbc-0aae-4c91-83ec-97530e257387' died while running task u'fdef6e55-dcb9-47cb-b4e6-f0d2b591b4af')
 
@@ -122,7 +122,7 @@ qualities are variable, because the reads may be trimmed to variable lengths.
 Collisions with other local python/conda installs
 -------------------------------------------------
 
-.. parsed_literal::
+.. parsed-literal::
 
     Failed at nopython (nopython frontend)
     UntypedAttributeError: Unknown attribute "any" of type Module(<module 'numpy' from...
