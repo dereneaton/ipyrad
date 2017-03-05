@@ -119,8 +119,8 @@ all reads to a max length of 75bp. Trimming to a fixed length helps if your read
 qualities are variable, because the reads may be trimmed to variable lengths. 
 * Try running on a computer with more memory, or requesting more memory if on a cluster. 
 
-Other random problems with solutions
-------------------------------------
+Collisions with other local python/conda installs
+-------------------------------------------------
 
 .. parsed_literal::
 
