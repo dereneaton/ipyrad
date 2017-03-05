@@ -111,13 +111,9 @@ You can take advantage of the following steps during step 2 to better filter you
 data so that it will be cleaner, and thus dereplicate more efficiently. This will
 in turn greatly speed up the step3 clustering and aligning steps. 
 
-* Use the "filter_adapters" = 2 argument in ipyrad which will search for and 
-remove Illumina adapters. 
-* Consider trimming edges of the reads with the "trim_reads" option. An argument 
-like (5, 75, 5, 75) would trim the first five bases of R1 and R2 reads, and trim 
-all reads to a max length of 75bp. Trimming to a fixed length helps if your read 
-qualities are variable, because the reads may be trimmed to variable lengths. 
-* Try running on a computer with more memory, or requesting more memory if on a cluster. 
+* Use the "filter_adapters" = 2 argument in ipyrad which will search for and remove Illumina adapters. 
+* Consider trimming edges of the reads with the "trim_reads" option. An argument like (5, 75, 5, 75) would trim the first five bases of R1 and R2 reads, and trim all reads to a max length of 75bp. Trimming to a fixed length helps if your read qualities are variable, because the reads may be trimmed to variable lengths. 
+* Try running on a computer with more memory, or requesting more memory if on a cluster.
 
 Collisions with other local python/conda installs
 -------------------------------------------------
