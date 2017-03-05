@@ -649,7 +649,15 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 dalign2 = dict([i.split("\n", 1) for i in la2])
                 align1 = []
                 #keys = dalign1.keys()
-                keys = sorted(dalign1.keys(), key=DEREP, reverse=True)
+                try:
+                    keys = sorted(dalign1.keys(), key=DEREP, reverse=True)
+                except ValueError as inst:
+                    ## Lines is empty. This means the call to muscle alignment failed.
+                    ## Not sure how to handle this, but it happens only very rarely.
+                    LOGGER.error("Muscle alignment failed: Bad clust - {}\nBad lines - {}"\
+                                .format(clust, lines))
+                    continue
+
                 for key in keys:
                     align1.append("\n".join([key, 
                                     dalign1[key].replace("\n", "")+"nnnn"+\
@@ -690,8 +698,10 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 try:
                     lines.sort(key=DEREP, reverse=True)
                 except ValueError as inst:
-                    LOGGER.error("Bad clust - {}".format(clust))
-                    LOGGER.error("Bad lines - {}".format(lines))
+                    ## Lines is empty. This means the call to muscle alignment failed.
+                    ## Not sure how to handle this, but it happens only very rarely.
+                    LOGGER.error("Muscle alignment failed: Bad clust - {}\nBad lines - {}"\
+                                .format(clust, lines))
                     continue
 
                 ## Remove the reference sequence post alignment
