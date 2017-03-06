@@ -35,7 +35,7 @@ Then type `ipython` to open an ipython session.
     rc[:]
 
 The result should look something like this:
-.. parsed_literal::
+.. parsed-literal::
 
     Out[1]: <DirectView [0, 1, 2, 3]>
 
@@ -67,7 +67,7 @@ The result should look something like this:
     print data.stats
     print data._ipcluster
 
-.. parsed_literal::
+.. parsed-literal::
 
     {'profile': 'default', 'engines': 'Local', 'quiet': 0, 'cluster_id': '', 'timeout': 120, 'cores': 48}
 
@@ -96,9 +96,29 @@ but you can fix it by adding an `export` inside your batch script.
 
 In this way, `ipcluster` and `ipyrad` will both look in `$HOME` for the `.ipython` directory.
 
-Other random problems with solutions
-------------------------------------
-.. parsed_literal::
+ipyrad crashes during dereplication in step 3
+---------------------------------------------
+
+.. parsed-literal::
+
+    ERROR sample [XYZ] failed in step [derep_concat_split]; error: EngineError(Engine '68e79bbc-0aae-4c91-83ec-97530e257387' died while running task u'fdef6e55-dcb9-47cb-b4e6-f0d2b591b4af')
+
+If step 3 crashes during dereplication you may see an error like above. Step 3
+can take quite a lot of memory if your data do not de-replicate very efficiently.
+Meaning that the sample which failed may contain a lot of singleton reads. 
+
+You can take advantage of the following steps during step 2 to better filter your 
+data so that it will be cleaner, and thus dereplicate more efficiently. This will
+in turn greatly speed up the step3 clustering and aligning steps. 
+
+* Use the "filter_adapters" = 2 argument in ipyrad which will search for and remove Illumina adapters. 
+* Consider trimming edges of the reads with the "trim_reads" option. An argument like (5, 75, 5, 75) would trim the first five bases of R1 and R2 reads, and trim all reads to a max length of 75bp. Trimming to a fixed length helps if your read qualities are variable, because the reads may be trimmed to variable lengths. 
+* Try running on a computer with more memory, or requesting more memory if on a cluster.
+
+Collisions with other local python/conda installs
+-------------------------------------------------
+
+.. parsed-literal::
 
     Failed at nopython (nopython frontend)
     UntypedAttributeError: Unknown attribute "any" of type Module(<module 'numpy' from...

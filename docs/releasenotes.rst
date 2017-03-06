@@ -5,6 +5,21 @@
 Release Notes
 =============
 
+0.6.10
+------
+- Filter reference mapped reads my mapq < 30, and handle the occasional malformed region string in bam_region_to_fasta.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Handle PE muscle failing alignment.
+- Cosmetic faq.rst
+- Cosmetic faq.rst
+- Cosmetic
+- Cosmetic docs changes.
+- Add docs for step 3 crashing bcz of lack of memory.
+- Catch a bug in alignment that would crop up intermittently.
+- removed the --profile={} tip from the docs
+- Fix notebook requirement at runtime error.
+- Fix formatting of output nexus file.
+
 0.6.9
 -----
 - Merge branch 'master' of https://github.com/dereneaton/ipyrad
