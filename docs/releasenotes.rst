@@ -5,6 +5,33 @@
 Release Notes
 =============
 
+0.6.10
+------
+- Filter reference mapped reads my mapq < 30, and handle the occasional malformed region string in bam_region_to_fasta.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Handle PE muscle failing alignment.
+- Cosmetic faq.rst
+- Cosmetic faq.rst
+- Cosmetic
+- Cosmetic docs changes.
+- Add docs for step 3 crashing bcz of lack of memory.
+- Catch a bug in alignment that would crop up intermittently.
+- removed the --profile={} tip from the docs
+- Fix notebook requirement at runtime error.
+- Fix formatting of output nexus file.
+
+0.6.9
+-----
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Changed the sign on the new hackersonly parameter min_SE_refmap_overlap.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added a persistent_popen function for aligning, needs testing before implementing
+- cosmetic
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- debugger in demux was printing way too much
+- bugfix for empty lines in branching subsample file
+- Add a janky version checker to nag the user.
+
 0.6.8
 -----
 - Actually remove the reference sequence post alignment in step 3. This was BREAKING STUFF.

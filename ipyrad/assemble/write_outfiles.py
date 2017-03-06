@@ -2523,9 +2523,7 @@ def vcfheader(data, names, ofile):
 
 
 NEXHEADER = \
-"""
-#nexus
-
+"""#nexus
 begin data;
   dimensions ntax={} nchar={};
   format datatype=dna missing=N gap=- interleave=yes;

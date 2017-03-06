@@ -39,6 +39,7 @@ requirements:
     - numba >=0.31
     - jupyter_client
     - jupyter
+    - notebook >=4.3
     - sphinx
     - pandas
     - mpi4py
