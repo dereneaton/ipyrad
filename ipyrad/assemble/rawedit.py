@@ -290,7 +290,7 @@ def cutadaptit_pairs(data, sample):
                        data._hackersonly["p3_adapter"]
             adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1]+\
                        fullcomp(data.barcodes[sample.name])[::-1]+\
-                       data._hackersonly["p5_adapter"]
+                       data._hackersonly["p5_adapter"] ## <- should this be revcomp?
         except KeyError as inst:
             msg = """
     Sample name does not exist in the barcode file. The name in the barcode file
@@ -303,9 +303,12 @@ def cutadaptit_pairs(data, sample):
             raise IPyradWarningExit(msg)
     else:
         print(NO_BARS_GBS_WARNING)
-        adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-                   data._hackersonly["p3_adapter"]
-        adapter2 = "XXX"
+        #adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
+        #           data._hackersonly["p3_adapter"]
+        #adapter2 = "XXX"
+        adapter1 = data._hackersonly["p3_adapter"]
+        adapter2 = fullcomp(data._hackersonly["p5_adapter"])
+
 
     ## parse trim_reads
     trim5r1 = trim5r2 = trim3r1 = trim3r2 = []
@@ -386,6 +389,7 @@ def cutadaptit_pairs(data, sample):
 
     ## do modifications to read1 and write to tmp file
     LOGGER.debug(" ".join(cmdf1))
+    #sys.exit()
     try:
         proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
         res1 = proc1.communicate()[0]
