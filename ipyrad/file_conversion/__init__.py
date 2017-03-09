@@ -8,7 +8,10 @@
 #__all__ = [basename(f)[:-3] for f in MODULES if isfile(f)]
 
 from .loci2bpp import loci2bpp
+from .loci2cf import loci2cf
 from .loci2multinex import loci2multinex
+
+#from .loci2migrate import loci2migrate
 #from .loci2gphocs import loci2gphocs
 
 #from . import loci2gphocs
