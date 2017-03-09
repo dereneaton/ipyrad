@@ -1,4 +1,4 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python2
 
 """ mostly a collection of loci2x conversion scripts """
 
@@ -9,8 +9,9 @@
 
 from .loci2bpp import loci2bpp
 from .loci2cf import loci2cf
-#from .loci2migrate import loci2migrate
+from .loci2multinex import loci2multinex
 
+#from .loci2migrate import loci2migrate
 #from .loci2gphocs import loci2gphocs
 
 #from . import loci2gphocs
