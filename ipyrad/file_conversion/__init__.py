@@ -1,4 +1,4 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python2
 
 """ mostly a collection of loci2x conversion scripts """
 
@@ -8,6 +8,7 @@
 #__all__ = [basename(f)[:-3] for f in MODULES if isfile(f)]
 
 from .loci2bpp import loci2bpp
+from .loci2multinex import loci2multinex
 #from .loci2gphocs import loci2gphocs
 
 #from . import loci2gphocs
