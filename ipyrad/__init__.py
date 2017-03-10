@@ -1,4 +1,4 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python2
 
 
 ## dunders

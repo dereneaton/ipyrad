@@ -1,3 +1,4 @@
+#!/usr/bin/env python2
 
 """ The 'load' module contains functions for loading saved assembly objects
 in JSON format. 
