@@ -1,3 +1,6 @@
+#!/usr/bin/python 
+
+""" convert loci file to bpp format input files """
 
 import os
 import sys
