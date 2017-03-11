@@ -939,8 +939,16 @@ def refmap_stats(data, sample):
     result2 = proc2.communicate()[0]
 
     ## store results
-    sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
-    sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
+    ## If PE, samtools reports the _actual_ number of reads mapped, both 
+    ## R1 and R2, so here if PE divide the results by 2 to stay consistent
+    ## with how we've been reporting R1 and R2 as one "read pair"
+    if "pair" in data.paramsdict["datatype"]:
+        LOGGER.debug("watwatwat")
+        sample.stats["refseq_unmapped_reads"] = int(result1.split()[0]) / 2
+        sample.stats["refseq_mapped_reads"] = int(result2.split()[0]) / 2
+    else:
+        sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
+        sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
 
     sample_cleanup(data, sample)
 
