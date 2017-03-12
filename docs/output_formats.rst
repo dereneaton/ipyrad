@@ -190,6 +190,22 @@ SNPS, with one SNP being randomly chosen per locus and the rest ignored.
     222122222222
 
 
+G-PhoCS \*.gphocs
+^^^^^^^^^^^^^^^^^
+This is a full sequence based format that is very similar to the native
+ipyrad .loci format. It is appropriate for use with the Bayesian MCMC
+demographic inference program G-PhoCS: http://compgen.cshl.edu/GPhoCS/
+
+.. parsed-literal::
+
+    499
+
+    locus0 10 90
+    A_0    CTACGATAGAGAAATCACTCTTTTCTTCAGGGSTAGACTCACACGGCGGCGCAATTGTCACGAAAGTAAACCAATAGTCACGT
+    B_0    CTACGATAGAGAAATCACTCTTTTCTTCAGGGGTAGACTCACACGGCGGCGCAATTGTCACGAAAGTAAACCAATAGTCACGT
+    C_0    CTACGATAGAGAAATCACTCTTTTCTTCAGGGGTAGACTCACACGGCGGCGCAATTGTCACGAAAGTAAACCAATAGTCACGT
+
+
 STRUCTURE \*.str & \*.u.str
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This is another SNP based format, that includes either all variable
