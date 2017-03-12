@@ -640,6 +640,7 @@ the available formats.
     n: NEXUS
     k: STRUCTURE 
     g: EIGENSTRAT .geno
+    G: G-PhoCS
     v: VCF (SNPs only)
 
 Affected steps = 7. Example entries to params.txt
