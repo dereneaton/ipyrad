@@ -1,51 +1,53 @@
 #!/usr/bin/env python2
+""" a function to produce migrate-n input files from an ipyrad .loci file"""
 
-import numpy as np
 import os
-import sys
-import gzip
-from collections import OrderedDict, Counter
+import numpy as np
 
-import logging
-LOGGER = logging.getLogger(__name__)
-
-def make( data, samples ):
-
-    ## TODO: Fix migrate format
-    print("Migrate format is still in development")
-    return
-
-    outfile  =  open(os.path.join(data.dirs.outfiles, data.name+".migrate"), 'w')
-    infile =  open(os.path.join( data.dirs.outfiles, data.name+".loci" ), 'r' )
-
-    ## TODO: Allow for subsampling the output by honoring the "samples" list passed in.
-
-    ## Make sure we have population assignments for this format
-    try:
-        taxa = data.populations
-    except AttributeError:
-        LOGGER.error( "Migrate file output requires population assignments \
-                        and this data.populations is empty. Make sure you have \
-                        set the 'pop_assign_file' parameter, and make sure the \
-                        path is correct and the format is right." )
-        return
-
-    ## TODO: Hax. pyRAD v3 used to allow specifying minimum coverage per group
-    ## This is a hackish version where we just use mindepth_statistical. Maybe
-    ## it's best not to filter
-    ## minhits = [ data.paramsdict["mindepth_statistical"] ] * len(taxa)
-
-    ## Hard coding minhits to 2 individuals per group.
-    ## TODO: Fixme.
-    minhits = [ 2 ] * len(taxa)
-
-    print "\t    data set reduced for group coverage minimums"
-    for i,j in zip(taxa,minhits):
-        print "\t   ",i, taxa[i], "minimum=",j
+## shorthand
+OPJ = os.path.join
 
 
-    ## filter data to only the loci that have data
-    ## for at least N individuals in each pop
+
+def loci2migrate(name, locifile, popdict, mindict=1):
+    """  
+    A function to build an input file for the program migrate from an ipyrad 
+    .loci file, and a dictionary grouping Samples into populations. 
+
+    Parameters:
+    -----------
+    name: (str)
+       The name prefix for the migrate formatted output file.
+    locifile: (str)
+       The path to the .loci file produced by ipyrad. 
+    popdict: (dict)
+       A Python dictionary grouping Samples into Populations. 
+    
+    Examples:
+    ---------
+    You can create the population dictionary by hand, and pass in the path 
+    to your .loci file as a string. 
+       >> popdict = {'A': ['a', 'b', 'c'], 'B': ['d', 'e', 'f']}
+       >> loci2migrate("outfile.migrate", "./mydata.loci", popdict)
+
+    Or, if you load your ipyrad.Assembly object from it's JSON file, you can
+    access the loci file path and population information from there directly. 
+       >> data = ip.load_json("mydata.json")
+       >> loci2migrate("outfile.migrate", data.outfiles.loci, data.populations)
+
+    """
+
+    ## I/O
+    outfile = open(name+".migrate", 'w')
+    infile = open(locifile, 'r')
+
+    ## minhits dictionary can be an int (all same) or a dictionary (set each)
+    if isinstance(mindict, int):
+        mindict = {pop: mindict for pop in popdict}
+    else:
+        mindict = mindict
+
+    ## filter data to only the loci that have data for mindict setting
     keep = []
     MINS = zip(taxa.keys(), minhits)
 
@@ -92,5 +94,14 @@ def make( data, samples ):
     outfile.close()
 
 
+
 if __name__ == "__main__":
-    make( data, samples )
+
+    ## example run
+    LOCIFILE = "./test.loci"
+    POPDICT = {"A": ['a'], "B": ['b']}
+    MINDICT = 1
+    loci2migrate("test", LOCIFILE, POPDICT, MINDICT)
+
+
+
