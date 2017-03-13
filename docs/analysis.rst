@@ -20,8 +20,8 @@ without Jupyter as well.
 
 Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-+ `Intro to Jupyter Notebooks Video <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__  
-+ `Jupyter Git and ipyrad <...>`__  
++ `Intro to Jupyter Notebooks Video <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
++ `Jupyter Git and ipyrad <...>`__
 + `setup SSH Tunneling to a HPC Cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
 
 *ipyrad* API Cookbooks
