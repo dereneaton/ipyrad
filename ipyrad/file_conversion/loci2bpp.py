@@ -1,3 +1,6 @@
+#!/usr/bin/env python2
+
+""" produce bpp formatted input files from ipyrad .loci file """
 
 import os
 import sys
@@ -5,6 +8,14 @@ import itertools
 import pandas as pd
 from ipyrad.assemble.util import IPyradWarningExit
 #import numpy as np
+
+# pylint: disable=W0142
+# pylint: disable=R0915
+# pylint: disable=R0914
+# pylint: disable=R0912
+
+## shorthand 
+OPJ = os.path.join
 
 
 def loci2bpp(name, locifile, imap, guidetree,
@@ -35,7 +46,7 @@ def loci2bpp(name, locifile, imap, guidetree,
     Parameters:
     -----------
     name:
-      A prefix name for output files that will be produced
+        A prefix name for output files that will be produced
     locifile:
         A .loci file produced by ipyrad.
     imap:
@@ -46,7 +57,7 @@ def loci2bpp(name, locifile, imap, guidetree,
         dictionary must also be present in the input 'guidetree'.
     guidetree:
         A newick string species tree hypothesis [e.g., (((a,b),(c,d)),e);]
-        All species in the imap dictionary must also be present in the guidetree.
+        All species in the imap dictionary must also be present in the guidetree
 
     Optional parameters:
     --------------------
@@ -60,23 +71,23 @@ def loci2bpp(name, locifile, imap, guidetree,
         'species' will be collapsed to test whether fewer species are a better
         fit to the data than the number in the input guidetree.
     delimit_alg:
-        Species delimitation algorithm. This is a two-part tuple. The first value
-        is the algorithm (0 or 1) and the second value is a tuple of arguments
+        Species delimitation algorithm. This is a tuple. The first value
+        is the algorithm (0 or 1) and the following values are arguments
         for the given algorithm. See other ctl files for examples of what the
         delimitation line looks like. This is where you can enter the params
         (e.g., alpha, migration) for the two different algorithms.
         For example, the following args would produce the following ctl lines:
-         alg=0, epsilon=5
-         > delimit_alg = (0, 5)
-         speciesdelimitation = 1 0 5
+           alg=0, epsilon=5
+           > delimit_alg = (0, 5)
+           speciesdelimitation = 1 0 5
 
-         alg=1, alpha=2, migration=1
-         > delimit_alg = (1, 2, 1)
-         speciesdelimitation = 1 1 2 1
+           alg=1, alpha=2, migration=1
+           > delimit_alg = (1, 2, 1)
+           speciesdelimitation = 1 1 2 1
 
-         alg=1, alpha=2, migration=1, diagnosis=0, ?=1
-         > delimit_alg = (1, 2, 1, 0, 1)
-         speciesdelimitation = 1 1 2 1 0 1
+           alg=1, alpha=2, migration=1, diagnosis=0, ?=1
+           > delimit_alg = (1, 2, 1, 0, 1)
+           speciesdelimitation = 1 1 2 1 0 1
     seed:
         A random number seed at start of analysis.
     burnin:
@@ -88,8 +99,8 @@ def loci2bpp(name, locifile, imap, guidetree,
     thetaprior:
         Prior on theta (4Neu), gamma distributed. mean = a/b. e.g., (5, 5)
     tauprior
-        Prior on root tau, gamma distributed mean = a/b. Last number is dirichlet
-        prior for other taus. e.g., (4, 2, 1)
+        Prior on root tau, gamma distributed mean = a/b. Last number is 
+        dirichlet prior for other taus. e.g., (4, 2, 1)
     traits_df:
         A pandas DataFrame with trait data properly formatted. This means only
         quantitative traits are included, and missing values are NaN.
@@ -136,8 +147,8 @@ def loci2bpp(name, locifile, imap, guidetree,
     prog = 'bpp'
     if isinstance(traits_df, pd.DataFrame):
         prog = 'ibpp'
-    outfile = os.path.join(wdir, "{}.{}.seq.txt".format(name, prog))
-    mapfile = os.path.join(wdir, "{}.{}.imap.txt".format(name, prog))
+    outfile = OPJ(wdir, "{}.{}.seq.txt".format(name, prog))
+    mapfile = OPJ(wdir, "{}.{}.imap.txt".format(name, prog))
 
     ## open outhandles
     fout = open(outfile, 'w')
@@ -219,7 +230,7 @@ def loci2bpp(name, locifile, imap, guidetree,
 
     ## return the ctl file string
     return os.path.abspath(
-        "{}.{}.ctl.txt".format(os.path.join(wdir, name), prog))
+        "{}.{}.ctl.txt".format(OPJ(wdir, name), prog))
 
 
 
@@ -233,7 +244,7 @@ def write_ctl(name, imap, guidetree, nloci,
     """ write outfile with any args in argdict """
 
     ## A string to store ctl info
-    CTL = []
+    ctl = []
 
     ## check the tree (can do this better once we install ete3 w/ ipyrad)
     if not guidetree.endswith(";"):
@@ -245,31 +256,31 @@ def write_ctl(name, imap, guidetree, nloci,
         prog = 'ibpp'
 
     ## write the top header info
-    CTL.append("seed = {}".format(seed))
-    CTL.append("seqfile = {}.{}.seq.txt".format(os.path.join(wdir, name), prog))
-    CTL.append("Imapfile = {}.{}.imap.txt".format(os.path.join(wdir, name), prog))
-    CTL.append("mcmcfile = {}.{}.mcmc.txt".format(os.path.join(wdir, name), prog))
-    CTL.append("outfile = {}.{}.out.txt".format(os.path.join(wdir, name), prog))
+    ctl.append("seed = {}".format(seed))
+    ctl.append("seqfile = {}.{}.seq.txt".format(OPJ(wdir, name), prog))
+    ctl.append("Imapfile = {}.{}.imap.txt".format(OPJ(wdir, name), prog))
+    ctl.append("mcmcfile = {}.{}.mcmc.txt".format(OPJ(wdir, name), prog))
+    ctl.append("outfile = {}.{}.out.txt".format(OPJ(wdir, name), prog))
     if isinstance(traits_df, pd.DataFrame):
-        CTL.append("traitfile = {}.{}.traits.txt".format(os.path.join(wdir, name), prog))
+        ctl.append("traitfile = {}.{}.traits.txt".format(OPJ(wdir, name), prog))
 
     ## number of loci (checks that seq file exists and parses from there)
-    CTL.append("nloci = {}".format(nloci))
-    CTL.append("usedata = {}".format(useseqdata))
-    CTL.append("cleandata = {}".format(cleandata))
+    ctl.append("nloci = {}".format(nloci))
+    ctl.append("usedata = {}".format(useseqdata))
+    ctl.append("cleandata = {}".format(cleandata))
 
     ## infer species tree
     if infer_sptree:
-        CTL.append("speciestree = 1 0.4 0.2 0.1")
+        ctl.append("speciestree = 1 0.4 0.2 0.1")
     else:
-        CTL.append("speciestree = 0")
+        ctl.append("speciestree = 0")
 
     ## infer delimitation (with algorithm 1 by default)
-    CTL.append("speciesdelimitation = {} {} {}"\
+    ctl.append("speciesdelimitation = {} {} {}"\
                .format(infer_delimit, delimit_alg[0],
                        " ".join([str(i) for i in delimit_alg[1:]])))
 
-    ## if using iBPP (if not traits_df, we assume you're using normal bpp (v.3.3+)
+    ## if using iBPP (if not traits_df, we assume you're using bpp (v.3.3+)
     if isinstance(traits_df, pd.DataFrame):
         ## check that the data frame is properly formatted
         try:
@@ -280,7 +291,8 @@ def write_ctl(name, imap, guidetree, nloci,
         ## subsample to keep only samples that are in IMAP, we do not need to
         ## standarize traits b/c ibpp does that for us.
         samples = sorted(list(itertools.chain(*imap.values())))
-        didx = [list(traits_df.index).index(i) for i in traits_df.index if i not in samples]
+        didx = [list(traits_df.index).index(i) for i in traits_df.index \
+                if i not in samples]
         dtraits = traits_df.drop(traits_df.index[didx])
 
         ## mean standardize traits values after excluding samples
@@ -322,18 +334,18 @@ def write_ctl(name, imap, guidetree, nloci,
         #ftraits.to_csv(traitfile)
 
         ## write ntraits and nindT and traitfilename
-        CTL.append("ntraits = {}".format(traits_df.shape[1]))
-        CTL.append("nindT = {}".format(nindT))  #traits_df.shape[0]))
-        CTL.append("usetraitdata = {}".format(usetraitdata))
-        CTL.append("useseqdata = {}".format(useseqdata))
+        ctl.append("ntraits = {}".format(traits_df.shape[1]))
+        ctl.append("nindT = {}".format(nindT))  #traits_df.shape[0]))
+        ctl.append("usetraitdata = {}".format(usetraitdata))
+        ctl.append("useseqdata = {}".format(useseqdata))
 
         ## trait priors
-        CTL.append("nu0 = {}".format(nu0))
-        CTL.append("kappa0 = {}".format(kappa0))
+        ctl.append("nu0 = {}".format(nu0))
+        ctl.append("kappa0 = {}".format(kappa0))
 
         ## remove ibpp incompatible options
-        CTL.remove("usedata = {}".format(useseqdata))
-        CTL.remove("speciestree = {}".format(infer_sptree))
+        ctl.remove("usedata = {}".format(useseqdata))
+        ctl.remove("speciestree = {}".format(infer_sptree))
 
     ## get tree values
     nspecies = str(len(imap))
@@ -341,31 +353,31 @@ def write_ctl(name, imap, guidetree, nloci,
     ninds = " ".join([str(len(imap[i])) for i in sorted(imap)])
 
     ## write the tree
-    CTL.append("""\
+    ctl.append("""\
 species&tree = {} {}
                  {}
                  {}""".format(nspecies, species, ninds, guidetree))
 
 
     ## priors
-    CTL.append("thetaprior = {} {}".format(*thetaprior))
-    CTL.append("tauprior = {} {} {}".format(*tauprior))
+    ctl.append("thetaprior = {} {}".format(*thetaprior))
+    ctl.append("tauprior = {} {} {}".format(*tauprior))
 
     ## other values, fixed for now
-    CTL.append("finetune = 1: {}".format(" ".join([str(i) for i in finetune])))
+    ctl.append("finetune = 1: {}".format(" ".join([str(i) for i in finetune])))
     #CTL.append("finetune = 1: 1 0.002 0.01 0.01 0.02 0.005 1.0")
-    CTL.append("print = 1 0 0 0")
-    CTL.append("burnin = {}".format(burnin))
-    CTL.append("sampfreq = {}".format(sampfreq))
-    CTL.append("nsample = {}".format(nsample))
+    ctl.append("print = 1 0 0 0")
+    ctl.append("burnin = {}".format(burnin))
+    ctl.append("sampfreq = {}".format(sampfreq))
+    ctl.append("nsample = {}".format(nsample))
 
     ## write out the ctl file
-    with open("{}.{}.ctl.txt".format(os.path.join(wdir, name), prog), 'w') as out:
-        out.write("\n".join(CTL))
+    with open("{}.{}.ctl.txt".format(OPJ(wdir, name), prog), 'w') as out:
+        out.write("\n".join(ctl))
 
     ## if verbose print ctl
     if verbose:
-        sys.stderr.write("ctl file\n--------\n"+"\n".join(CTL)+"\n--------\n\n")
+        sys.stderr.write("ctl file\n--------\n"+"\n".join(ctl)+"\n--------\n\n")
 
 
 
