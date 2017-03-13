@@ -179,8 +179,9 @@ def mapreads(data, sample, nthreads, force):
     ## (cmd2) samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...] 
     ##   -b = write to .bam
     ##   -q = Only keep reads with mapq score >= 30 (seems to be prety standard)
-    ##   -F = Select all reads that DON'T have this flag. 
+    ##   -F = Select all reads that DON'T have these flags. 
     ##         0x4 (segment unmapped)
+    ##         0x100 (Secondary alignment)
     ##         0x800 (supplementary alignment)
     ##   -U = Write out all reads that don't pass the -F filter 
     ##        (all unmapped reads go to this file).
@@ -225,7 +226,7 @@ def mapreads(data, sample, nthreads, force):
     cmd2 = [ipyrad.bins.samtools, "view", 
            "-b", 
             "-q", "30",
-           "-F", "0x804", 
+           "-F", "0x904",
            "-U", os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam"), 
            os.path.join(data.dirs.refmapping, sample.name+".sam")]
 
@@ -270,6 +271,9 @@ def mapreads(data, sample, nthreads, force):
         cmd5.insert(2, "-0")
 
     ## Don't redo all this bullcrap if it's already done unless force flag is set
+    ## TODO: This is a nice idea, but it was hastily implemented and doesn't
+    ## actually work anymore (the *unmapped.bam files are cleaned up on exit).
+    ## The conditional here can probably just be removed.
     if not os.path.exists(os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")) or force:
         ## Running cmd1 creates ref_mapping/sname.sam, 
         LOGGER.debug(" ".join(cmd1))

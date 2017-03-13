@@ -354,8 +354,8 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                 ## this is going to be tooo slow to read big files!!
                 data1 = open(two_files[0][0], 'r').read()
                 data2 = open(two_files[0][1], 'r').read()
-                LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s",
-                             two_files, merged_out, data1, data2)
+                #LOGGER.info("THIS IS WHAT WE HAD %s %s \n %s \n\n %s",
+                #             two_files, merged_out, data1, data2)
                 raise IPyradWarningExit("Error in merge pairs:\n %s\n%s", cmd, res)
 
             ## record how many read pairs were merged
