@@ -1842,7 +1842,7 @@ def _paramschecker(self, param, newvalue):
         ## let's get whatever the user entered as a tuple of letters
         allowed = assemble.write_outfiles.OUTPUT_FORMATS.keys()
 
-        if not newvalue:
+        if not newvalue.strip():
             newvalue = "*"
         if "*" in newvalue:
             newvalue = allowed
