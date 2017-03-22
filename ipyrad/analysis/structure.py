@@ -9,6 +9,9 @@ import itertools
 import sys
 import pandas as pd
 import numpy as np
+from numba import jit
+from ipyrad.analysis.tetrad import get_spans
+
 
 # pylint: disable=W0142
 # pylint: disable=W0212
@@ -37,15 +40,18 @@ class Structure(object):
     ipyrad analysis Structure Object. This is a wrapper to allow easily
     entering parameter setting to submit structure jobs to run in parallel.
     """
-    def __init__(self, name, strfile, workdir):
+    def __init__(self, name, strfile, workdir=None, mapfile=None):
         self.name = name
         self.strfile = os.path.realpath(strfile)
-        self.workdir = os.path.realpath(workdir)
-        self.params_main = _MainParams()
-        self.params_extra = _ExtraParams()
-        self.params_clumpp = _ClumppParams()
+        self.mainparams = _MainParams()
+        self.extraparams = _ExtraParams()
+        self.clumppparams = _ClumppParams()
 
         ## make workdir if it does not exist
+        if workdir:
+            self.workdir = os.path.realpath(workdir)
+        else:
+            self.workdir = os.path.join(os.path.curdir, "analysis-structure")
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
@@ -58,6 +64,27 @@ class Structure(object):
             self.popdata = [i.split('\t')[1] for i in lines][::2]
             self.popflag = [i.split('\t')[2] for i in lines][::2]
             del lines
+
+        ## if mapfile then parse it to an array
+        if mapfile:
+            with open(mapfile) as inmap:
+                maparr = np.genfromtxt(inmap)[:, [0, 3]].astype(np.uint64)
+                spans = np.zeros((maparr[-1, 0], 2), np.uint64)
+                spans = get_spans(maparr, spans)
+                self.maparr = spans
+                self.nsites = spans.shape[0]
+        else:
+            self.maparr = None
+            
+
+    def _subsample(self):
+        """ returns a subsample of unlinked snp sites """
+        spans = self.maparr
+        samp = np.zeros(spans.shape[0], dtype=np.uint64)
+        for i in xrange(spans.shape[0]):
+            samp[i] = np.random.randint(spans[i, 0], spans[i, 1], 1)
+        return samp
+
 
     @property
     def header(self):
@@ -74,7 +101,15 @@ class Structure(object):
         return repfiles
 
 
-    def submit_structure_job(self, kpop, nreps, seed=12345, quiet=0, ipyclient=None):
+    def submit_structure_jobs(self,
+        kpop, 
+        nreps, 
+        ipyclient=None,
+        seed=12345, 
+        quiet=False, 
+        return_asyncs=False, 
+        ):
+
         """ 
         submits a job to run on the cluster and returns an asynchronous result
         object. K is the number of populations, randomseed if not set will be 
@@ -85,12 +120,25 @@ class Structure(object):
         kpop: (int)
             The MAXPOPS parameter in structure, i.e., the number of populations
             assumed by the model (K). 
+
         nreps: (int):
             Number of independent runs starting from distinct seeds.
+
         ipyclient: (ipyparallel.Client Object)
             An ipyparallel client connected to an ipcluster instance. This is 
             used to manage parallel jobs. If not present a single job will
             run and block until finished (i.e., code is not parallel).
+
+        seed: (int):
+            Random number seed used for subsampling unlinked SNPs if a mapfile
+            is linked to the Structure Object. 
+
+        quiet: (bool)
+            Whether to print number of jobs submitted to stderr
+
+        return_asyncs: (bool):
+            Whether to return the asynchronous result objects for each job. The
+            default is False. These can be used for debugging if a job fails.
 
         Returns: 
         ---------
@@ -105,13 +153,17 @@ class Structure(object):
         ipyclient = ipp.Client()
 
         ## get structure object
-        s = Structure("mydata.str", "workdir")
-        s.params_main.numreps = 100000
-        s.params_main.burnin = 10000
+        s = Structure(strfile="mydata.str", 
+                      workdir="structure-results",
+                      mapfile="mydata.snps.map")
+
+        ## set some basic params
+        s.mainparams.numreps = 100000
+        s.mainparams.burnin = 10000
 
         ## submit many jobs
         for kpop in [3, 4, 5]:
-            s.submit_structure_job(kpop=kpop, nreps=10, ipyclient=ipyclient)
+            s.submit_structure_jobs(kpop=kpop, nreps=10, ipyclient=ipyclient)
 
         ## track progress
 
@@ -126,7 +178,7 @@ class Structure(object):
         ## check that there is a ipcluster instance running
         asyncs = []
         for rep in xrange(nreps):
-            self.params_extra.seed = np.random.randint(0, 1e9, 1)[0]
+            self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
             if ipyclient:
                 ## call structure        
                 lbview = ipyclient.load_balanced_view()
@@ -134,15 +186,17 @@ class Structure(object):
                 asyncs.append(async)
 
             else:
-                sys.stderr.write("[{}] submitted 1 structure job\n")
+                sys.stderr.write("submitted 1 structure job [{}-K-{}]\n"\
+                                 .format(self.name, kpop))
                 comm = _call_structure(self, kpop, rep)
                 return comm
 
         if ipyclient:
             if not quiet:
-                sys.stderr.write("submitted {} structure jobs [{}]\n"\
-                                .format(nreps, self.name))
-            return asyncs
+                sys.stderr.write("submitted {} structure jobs [{}-K-{}]\n"\
+                                .format(nreps, self.name, kpop))
+            if return_asyncs:
+                return asyncs
 
 
 
@@ -156,8 +210,8 @@ class Structure(object):
             os.remove(job)
 
         ## check params
-        self.params_main.numreps = int(self.params_main.numreps)
-        self.params_main.burnin = int(self.params_main.burnin)
+        self.mainparams.numreps = int(self.mainparams.numreps)
+        self.mainparams.burnin = int(self.mainparams.burnin)
 
         ## write tmp files for the job
         tmp_m = open(os.path.join(self.workdir, "tmp.mainparams.txt"), 'w')
@@ -165,27 +219,42 @@ class Structure(object):
         tmp_s = open(os.path.join(self.workdir, "tmp.strfile.txt"), 'w')
 
         ## write params files
-        tmp_m.write(self.params_main._asfile())
-        tmp_e.write(self.params_extra._asfile())
+        tmp_m.write(self.mainparams._asfile())
+        tmp_e.write(self.extraparams._asfile())
 
-        ## write pop data to the tmp_s file if user entered it
+        ## subsample SNPs as unlinked if a mapfile is present.
+        ## & write pop data to the tmp_s file if present
         assert len(self.popdata) == len(self.labels), \
             "popdata list must be the same length as the number of taxa"
+
         with open(self.strfile) as ifile:
             _data = ifile.readlines()
+            ## header
+            header = np.array([i.strip().split("\t")[:5] for i in _data])
+            ## seqdata
+            seqdata = np.array([i.strip().split("\t")[5:] for i in _data])
+
+            ## enter popdata into seqfile if present in self
             if any(self.popdata):
+                ## set popdata in header
+                header[::2, 1] = self.popdata
+                header[1::2, 1] = self.popdata
+                
+                ## set flag to all 1s if user entered popdata but no popflag
                 if not any(self.popflag):
                     self.popflag = [1 for i in self.popdata]
-                tmppop = list(itertools.chain(*[(i, i) for i in self.popdata]))
-                tmpflag = list(itertools.chain(*[(i, i) for i in self.popflag]))
-                for idx, line in enumerate(_data):
-                    newline = line.split("\t")
-                    newline[1] = str(tmppop[idx])
-                    newline[2] = str(tmpflag[idx])
-                    tmp_s.write("\t".join(newline))
+                    header[:, 2] = 1
+                else:
+                    header[::2, 2] = self.popdata
+                    header[1::2, 2] = self.popdata
 
-            else:
-                tmp_s.write("".join(_data))
+            ## subsample SNPs if mapfile is present
+            if isinstance(self.maparr, np.ndarray):
+                seqdata = seqdata[:, self._subsample()]
+                
+            ## write fullstr
+            fullstr = np.concatenate([header, seqdata], axis=1)
+            np.savetxt(tmp_s, fullstr, delimiter="\t", fmt="%s")
 
         ## close tmp files
         tmp_m.close()
@@ -208,7 +277,7 @@ def _call_structure(sobj, kpop, rep):
            "-m", os.path.join(sobj.workdir, "tmp.mainparams.txt"),
            "-e", os.path.join(sobj.workdir, "tmp.extraparams.txt"),
            "-K", str(kpop),
-           "-D", str(sobj.params_extra.seed), 
+           "-D", str(sobj.extraparams.seed), 
            "-N", str(sobj.ntaxa), 
            "-L", str(sobj.nsites),
            "-i", os.path.join(sobj.workdir, "tmp.strfile.txt"),
@@ -285,12 +354,12 @@ class _ExtraParams(_Object):
         self.locpriorinit = 1.0
         self.maxlocprior = 20.0
 
-        self.printnet = 1               ## do we want these to pritn ?
+        self.printnet = 1               ## do we want these to print ?
         self.printlambda = 1            ##
         self.printqsum = 1              ##
         self.sitebysite = 0
         self.printqhat = 0
-        self.updatefreq = 100
+        self.updatefreq = 10000
         self.printlikes = 0
         self.intermedsave = 0
         self.echodata = 0       
@@ -320,9 +389,10 @@ class _ClumppParams(_Object):
         self.outfile = 0
         self.popfile = 0
         self.miscfile = 0
-        self.c = 3
-        self.r = 10
-        self.m = 3
+        #self.kpop = 3
+        #self.c = 3
+        #self.r = 10
+        self.m = 2
         self.w = 1
         self.s = 2
         self.greedy_option = 2
@@ -347,12 +417,19 @@ class _ClumppParams(_Object):
 def _get_clumpp_table(self, kpop):
 
     ## concat results for k=x
-    nreps, ninds = _concat_reps(self, kpop)
+    reps = _concat_reps(self, kpop)
+    if reps:
+        ninds = reps[0].inds
+        nreps = len(reps)
+    else:
+        ninds = nreps = 0
 
-    self.params_clumpp.kpop = kpop
     clumphandle = os.path.join(self.workdir, "tmp.clumppparams.txt")
+    self.clumppparams.kpop = kpop
+    self.clumppparams.c = ninds
+    self.clumppparams.r = nreps
     with open(clumphandle, 'w') as tmp_c:
-        tmp_c.write(self.params_clumpp._asfile())
+        tmp_c.write(self.clumppparams._asfile())
     
     ## create CLUMPP args string
     outfile = os.path.join(self.workdir, 
@@ -375,6 +452,11 @@ def _get_clumpp_table(self, kpop):
                             stdout=subprocess.PIPE)
     _ = proc.communicate()
 
+    ## cleanup
+    for rfile in [indfile, miscfile]:
+        if os.path.exists(rfile):
+            os.remove(rfile)
+
     ## parse clumpp results file
     ofile = os.path.join(self.workdir, "{}-K-{}.outfile".format(self.name, kpop))
     if os.path.exists(ofile):
@@ -396,38 +478,86 @@ def _get_clumpp_table(self, kpop):
 def _concat_reps(self, kpop):
     "combine replicates into single indfile, returns nreps, ninds"
    
-    ## grab all the _f result files
-    reps = os.path.join(self.workdir, "{}-K-{}-rep-*_f".format(self.name, kpop))
-    repfiles = glob.glob(reps)
-    
     ## make an output handle
-    outf = os.path.join(self.workdir, "{}-K-{}.indfile".format(self.name, kpop))
+    outf = os.path.join(self.workdir, 
+        "{}-K-{}.indfile".format(self.name, kpop))
     
     ## combine replicates and write to indfile
-    i = 1
+    reps = []
     with open(outf, 'w') as outfile:
-        for rep in repfiles:
-            i = 1
-            ## strips junk to extract matrix
-            for line in open(rep).readlines():
-                ## matrix lines have this junk
+        for rep in self.result_files:
+            result = Rep(rep)
+            reps.append(result)
+            outfile.write(result.stable)
+    return reps
+
+
+
+# class Clumpp(object):
+#     """ results from a clumpp of structure results """
+#     def __init__(self):
+#         self.nreps = 0
+#         self.table = None
+#         self.meanLK = 0
+#         self.LppK = 0
+#         self.evanno
+
+
+#         self.LnPK
+#         self.LnPPK
+#         self.deltaK
+
+
+
+class Rep(object):
+    """ parsed structure result file object """
+    def __init__(self, repfile):
+        self.repfile = repfile
+        self.est_lnlik = 0
+        self.mean_lnlik = 0
+        self.var_lnlik = 0
+        self.alpha = 0
+        self.inds = 0
+        
+        ## get table string        
+        self.stable = self.parse()
+        
+
+    def parse(self):
+        """ parse an _f structure output file """
+        stable = ""
+        with open(self.repfile) as orep:
+            dat = orep.readlines()
+            for line in dat:
+                ## stat lines
+                if "Estimated Ln Prob of Data" in line:
+                    self.est_lnlik = float(line.split()[-1])
+                if "Mean value of ln likelihood" in line:
+                    self.mean_lnlik = float(line.split()[-1])
+                if "Variance of ln likelihood" in line:
+                    self.var_lnlik = float(line.split()[-1])
+                if "Mean value of alpha" in line:
+                    self.alpha = float(line.split()[-1])
+
+                ## matrix lines
                 if ")   :  " in line:
+                    ## check if sample is supervised...
                     abc = line.strip().split()
                     outstr = "{}{}{}".format(
-                        " ".join([abc[0], abc[0], abc[2], abc[0].split('.')[0]]),
+                        " ".join([abc[0], abc[0], abc[2], 
+                                  abc[0].split('.')[0]]),
                         " :  ",
                         " ".join(abc[4:])
-                    ) 
-                    outfile.write(outstr+"\n")
-                    i += 1
-        outfile.write("\n")    
-    return len(repfiles), i-1
+                    )
+                    self.inds += 1
+                    stable += outstr+"\n"
+            stable += "\n"
+        return stable
 
 
 
 
 _MAINPARAMS = """
-
 #define BURNIN         {burnin}                   //
 #define NUMREPS        {numreps}                  //
 
@@ -453,7 +583,6 @@ _MAINPARAMS = """
 
 
 _EXTRAPARAMS = """
-
 #define NOADMIX             {noadmix}                    //
 #define LINKAGE             {linkage}                    //
 #define USEPOPINFO          {usepopinfo}                 //
@@ -511,9 +640,7 @@ _EXTRAPARAMS = """
 
 """
 
-
 _CLUMPPARAMS = """
-
 DATATYPE                      {datatype}               #
 INDFILE                       {indfile}                #
 POPFILE                       {popfile}                #
@@ -521,7 +648,7 @@ OUTFILE                       {outfile}                #
 MISCFILE                      {miscfile}               #
 K                             {kpop}                   #
 C                             {c}                      #
-R                             {r}                      #
+R                             {r}                      # 
 M                             {m}                      #
 W                             {w}                      #
 S                             {s}                      # 
