@@ -101,6 +101,30 @@ PHYLO_INVARIANTS = """
 #############################################################################
 
 
+
+## user accessible tetrad object
+def tetrad(name, 
+    seqfile, 
+    wdir=None,
+    method='all', 
+    mapfile=None, 
+    treefile=None, 
+    resolve=1, 
+    nboots=0, 
+    nquartets=0, 
+    initarr=1, 
+    *args,
+    **kwdefaults):
+    ## make list and return a Tetrad object
+    if not wdir:
+        wdir = os.path.curdir
+    args = [name, seqfile, method, mapfile, treefile, resolve, 
+            nboots, nquartets, initarr]
+    return Tetrad(*args)
+
+
+
+
 class Tetrad(object):
     """
     The main tetrad object for storing data and checkpointing. It is 
@@ -110,7 +134,7 @@ class Tetrad(object):
 
     def __init__(self, name, seqfile, wdir=os.path.curdir, method='all', 
                  mapfile=None, treefile=None, resolve=1, nboots=0, 
-                 nquartets=0, initarr=1):
+                 nquartets=0, initarr=1, *args, **kwargs):
         ## version is ipyrad version
         self._version = ip.__version__
 
