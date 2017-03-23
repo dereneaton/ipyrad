@@ -7,5 +7,5 @@
 
 
 ## short cut to the Class objects
-from .structure import Structure
+from .structure import structure
 from .tetrad import Tetrad

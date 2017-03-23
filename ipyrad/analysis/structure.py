@@ -5,17 +5,68 @@
 import os
 import glob
 import subprocess
-import itertools
 import sys
 import pandas as pd
 import numpy as np
-from numba import jit
 from ipyrad.analysis.tetrad import get_spans
 
 
 # pylint: disable=W0142
 # pylint: disable=W0212
 # pylint: disable=C0301
+# pylint: disable=R0902
+# pylint: disable=R0903
+
+
+## User accessible convenience function
+def structure(name, strfile, workdir=None, mapfile=None):
+    """ 
+    Create and return an ipyrad.analysis Structure Object. This object allows
+    you to easily enter parameter setting to submit structure jobs to run in 
+    parallel on a cluster. 
+
+    Parameters
+    -----------
+    name (str):
+        A prefix name for all output files. 
+    strfile (str):
+        The path to a .str or .ustr file formatted to run in STRUCTURE. The 
+        first is expected to include all SNPs for a data set, and is meant to
+        be combined with a mapfile (see next), whereas the ustr file contains
+        a random sample of unlinked SNPs. 
+    mapfile (str):
+        The path to a .snps.map file from ipyrad. This has information about 
+        which SNPs are linked (from the same RAD locus) which allow for sampling
+        unlinked SNPs. 
+
+    Attributes:
+    ----------
+    mainparams (dict):
+        A dictionary with the mainparams used by STRUCTURE
+    extraparams (dict):
+        A dictionary with the extraparams used by STRUCTURE
+    clumppparams (dict):
+        A ditionary with the parameter settings used by CLUMPP
+    header (pandas.DataFrame):
+        Returns the header columns of the str file
+    result_files (list):
+        Returns a list of result files for finished STRUCTURE jobs submitted 
+        by this object. 
+
+    Functions:
+    ----------
+    submit_structure_jobs(*args, **kwargs):
+        Submits independent replicate jobs to run on a cluster.
+    get_clumpp_table(kpop):
+        Returns a table of results for K=kpop permuted across all replicates.
+    """ 
+    ## check params
+    ## ....
+
+    ## return Structure class Object
+    return Structure(name, strfile, workdir, mapfile)
+
+
 
 
 class _Object(object):
@@ -24,10 +75,15 @@ class _Object(object):
     def __getitem__(self, key):
         return self.__dict__[key]
 
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
     def __repr__(self):
         _repr = ""
         keys = sorted(self.__dict__.keys())
-        _printstr = "{:<" + str(2 + max([len(i) for i in keys]))+"} {:>10}\n"
+        maxlen = max(20, 2 + max([len(i) for i in keys]))
+        #maxlen = 20
+        _printstr = "{:<" + str(maxlen) + "} {:<}\n"
         for key in keys:
             _repr += _printstr.format(key, str(self[key]))
         return _repr
@@ -37,9 +93,46 @@ class _Object(object):
 ## These are almost all default values.
 class Structure(object):
     """ 
-    ipyrad analysis Structure Object. This is a wrapper to allow easily
-    entering parameter setting to submit structure jobs to run in parallel.
-    """
+    Create and return an ipyrad.analysis Structure Object. This object allows
+    you to easily enter parameter setting to submit structure jobs to run in 
+    parallel on a cluster. 
+
+    Parameters
+    -----------
+    name (str):
+        A prefix name for all output files. 
+    strfile (str):
+        The path to a .str or .ustr file formatted to run in STRUCTURE. The 
+        first is expected to include all SNPs for a data set, and is meant to
+        be combined with a mapfile (see next), whereas the ustr file contains
+        a random sample of unlinked SNPs. 
+    mapfile (str):
+        The path to a .snps.map file from ipyrad. This has information about 
+        which SNPs are linked (from the same RAD locus) which allow for sampling
+        unlinked SNPs. 
+
+    Attributes:
+    ----------
+    mainparams (dict):
+        A dictionary with the mainparams used by STRUCTURE
+    extraparams (dict):
+        A dictionary with the extraparams used by STRUCTURE
+    clumppparams (dict):
+        A ditionary with the parameter settings used by CLUMPP
+    header (pandas.DataFrame):
+        Returns the header columns of the str file
+    result_files (list):
+        Returns a list of result files for finished STRUCTURE jobs submitted 
+        by this object. 
+
+    Functions:
+    ----------
+    submit_structure_jobs(*args, **kwargs):
+        Submits independent replicate jobs to run on a cluster.
+    get_clumpp_table(kpop):
+        Returns a table of results for K=kpop permuted across all replicates.
+    
+    """    
     def __init__(self, name, strfile, workdir=None, mapfile=None):
         self.name = name
         self.strfile = os.path.realpath(strfile)
@@ -293,6 +386,14 @@ def _call_structure(sobj, kpop, rep):
 
 
 class _MainParams(_Object):
+    """
+    A dictionary object of mainparams parameter arguments to STRUCTURE. 
+    See STRUCTURE docs for details on their function. Modify by setting as 
+    an object or dict, e.g.:
+
+    struct.mainparams.popflag = 1
+    struct.mainparams["popflag"] = 1
+    """
     def __init__(self):
         self.burnin = int(250000)
         self.numreps = int(1e6)
@@ -319,7 +420,14 @@ class _MainParams(_Object):
 
 
 class _ExtraParams(_Object):
+    """
+    A dictionary object of extraparams parameter arguments to STRUCTURE. 
+    See STRUCTURE docs for details on their function. Modify by setting as 
+    an object or dict, e.g.:
 
+    struct.extraparams.noadmix = 1
+    struct.extraparams["noadmix"] = 1
+    """
     def __init__(self):
         self.noadmix = 0
         self.linkage = 0
@@ -383,6 +491,15 @@ class _ExtraParams(_Object):
 
 
 class _ClumppParams(_Object):
+    """
+    A dictionary object of params arguments to CLUMPP.
+    See CLUMPP docs for details on their function. Modify by setting as 
+    an object or dict, e.g.:
+
+    struct.clumppparams.datatype = 1
+    struct.clumpparams["datatype"] = 1
+    """
+
     def __init__(self):
         self.datatype = 0
         self.indfile = 0
@@ -415,6 +532,7 @@ class _ClumppParams(_Object):
 
 
 def _get_clumpp_table(self, kpop):
+    """ private function to clumpp results"""
 
     ## concat results for k=x
     reps = _concat_reps(self, kpop)
@@ -485,7 +603,10 @@ def _concat_reps(self, kpop):
     ## combine replicates and write to indfile
     reps = []
     with open(outf, 'w') as outfile:
-        for rep in self.result_files:
+        repfiles = glob.glob(
+            os.path.join(self.workdir, 
+                self.name+"-K-{}-rep-*_f".format(kpop)))
+        for rep in repfiles:
             result = Rep(rep)
             reps.append(result)
             outfile.write(result.stable)
