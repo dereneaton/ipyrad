@@ -8,6 +8,7 @@ from __future__ import print_function, division
 
 
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
+## reduce this...
 from ipyrad.assemble.util import *
 
 import scipy.stats as st
@@ -36,140 +37,250 @@ except ImportError:
 # pd.options.display.float_format = '{:.4f}'.format
 
 
+class Baba(object):
+    "new baba class object"
+    def __init__(self, locifile):
+        self.data = os.path.realpath(locifile)
+        #self.tests = {}
+
+
+    def dstat(self, 
+        test, 
+        mindict=None, 
+        nboots=1000):
+        """
+        Takes input loci file or frequency array and a dictionary describing a 
+        four or five taxon test to perform, and returns D-statistic and 
+        results of a bootstrap significance test, and an array of bootstraps. 
+
+        Parameters
+        ----------
+        inarr : string or ndarray
+            A string path to a .loci file produced by ipyrad. Alternatively, data
+            can be entered as an ndarray. Numpy array float allele frequencies 
+            with dimension (nloci, 4 or 5, maxlen). See docs.
+            
+        test : dict
+            A dictionary mapping Sample names to test taxon names, e.g., 
+            test = {'p1': ['a', 'b'], 'p2': ['c', 'd'], 'p3': ['e'], 'p4': ['f']}.
+            Four taxon tests should have p1-p4 whereas five taxon tests will 
+            be performed if dict keys are p1-p5. Other names will raise an error. 
+            The highest value name (e.g., p5) is the outgroup. 
+
+        mindict : dict
+            A dictionary mapping minimum sample values to taxon names (e.g., p1 and 
+            p2, like above). Loci that do not meet the minimum sample coverage will
+            be excluded from calculations and bootstraps. If no mindict is entered
+            then a default dict is used with values=1.
+
+        nboots: int
+            The number of non-parametric bootstrap replicates to perform in which 
+            loci are re-sampled with replacement to the same number as in the 
+            original data set (after applying mindict filtering). 
+
+        Returns
+        -------
+        out : tuple of ndarrays
+            The first element is a ndarray with [dstat, bootmean, bootstd, Z-score], 
+            the second element is a ndarray with the bootstrap dstats. 
+
+        boots : ndarray
+            An array of dstat values over nboots replicates. See plotting functions
+            for usage.
+        """
+        kwargs = dict(taxdict=test, mindict=mindict, nboots=nboots)
+        return baba(self.data, **kwargs)
+
+
+    def batch_list(self, 
+        tests, 
+        mindicts=None, 
+        nboots=1000,
+        ipyclient=None,
+        quiet=False):
+        """
+        Run a batch of dstat tests on a list of tests, where each test is 
+        a dictionary mapping sample names to {p1 - p4} (and sometimes p5). 
+
+        Parameters:
+        -----------
+        tests (list):
+            A list of dictionaries mapping sample names to keys.
+        mindicts (int or dict):
+            An int or dict listing the minimum number of samples that must 
+            have data in a locus for the locus to be retained in the test. 
+        nboots (int):
+            The number of non-parametric bootstrap replicates to perform.
+        ipyclient (ipyparallel.Client object):
+            An ipyparallel client object to distribute jobs to a cluster. 
+        quiet (bool):
+            Whether to print progress bar to the screen.
+        """
+        args = [tests, mindicts, nboots, ipyclient, quiet]
+        return batch(self.data, *args)
+
+
+    def batch_tree(self, 
+        tree, 
+        mindicts=None,
+        nboots=1000, 
+        ipyclient=None, 
+        quiet=False):
+        """
+        Run a batch of dstat tests on a all possible combinations fitting a 
+        rooted topology passed in as a newick string. 
+
+        Parameters:
+        -----------
+        tree (newick str, or filepath, or ete.Tree() object):
+            A tree file or object. 
+        mindicts (int or dict):
+            ...
+        nboots (int):
+            ....
+        ipyclient ():
+            ...
+        quiet (bool):
+            ...
+        """
+        return "Not yet implemented, coming soon."
+
+
+
+
+
 ## Functions to calculate D-foil
-def calc_dfo(pdf):
-    """ DFO calc for fixed differences from pdf """
-    nleft = pdf.BABAA+pdf.BBBAA+pdf.ABABA+pdf.AAABA
-    nright = pdf.BAABA+pdf.BBABA+pdf.ABBAA+pdf.AABAA
-    return sum(nleft-nright)/float(sum(nleft+nright))
+# def calc_dfo(pdf):
+#     """ DFO calc for fixed differences from pdf """
+#     nleft = pdf.BABAA+pdf.BBBAA+pdf.ABABA+pdf.AAABA
+#     nright = pdf.BAABA+pdf.BBABA+pdf.ABBAA+pdf.AABAA
+#     return sum(nleft-nright)/float(sum(nleft+nright))
 
-def calc_dil(pdf):
-    """ DIL calc for fixed differences from pdf """
-    nleft = pdf.ABBAA+pdf.BBBAA+pdf.BAABA+pdf.AAABA
-    nright = pdf.ABABA+pdf.BBABA+pdf.BABAA+pdf.AABAA
-    return sum(nleft-nright)/float(sum(nleft+nright))
+# def calc_dil(pdf):
+#     """ DIL calc for fixed differences from pdf """
+#     nleft = pdf.ABBAA+pdf.BBBAA+pdf.BAABA+pdf.AAABA
+#     nright = pdf.ABABA+pdf.BBABA+pdf.BABAA+pdf.AABAA
+#     return sum(nleft-nright)/float(sum(nleft+nright))
 
-def calc_dfi(pdf):
-    """ DFI calc for fixed differences from pdf """
-    nleft = pdf.BABAA+pdf.BABBA+pdf.ABABA+pdf.ABAAA
-    nright = pdf.ABBAA+pdf.ABBBA+pdf.BAABA+pdf.BAAAA
-    return sum(nleft-nright)/float(sum(nleft+nright))
+# def calc_dfi(pdf):
+#     """ DFI calc for fixed differences from pdf """
+#     nleft = pdf.BABAA+pdf.BABBA+pdf.ABABA+pdf.ABAAA
+#     nright = pdf.ABBAA+pdf.ABBBA+pdf.BAABA+pdf.BAAAA
+#     return sum(nleft-nright)/float(sum(nleft+nright))
 
-def calc_dol(pdf):
-    """ DOL calc for fixed differences from pdf """
-    nleft = pdf.BAABA+pdf.BABBA+pdf.ABBAA+pdf.ABAAA
-    nright = pdf.ABABA+pdf.ABBBA+pdf.BABAA+pdf.BAAAA
-    return sum(nleft-nright)/float(sum(nleft+nright))
-
-
-def dstat_foil(pdf, nboots):
-    """ Function to perform boostrap resampling on Dfoil stats """
-    ## dict to store results
-    results = {}
-
-    ## dict to store bootstrap reps
-    boots = {"DFO": [],
-             "DIL": [],
-             "DFI": [],
-             "DOL": []}
-
-    ## do bootstrap resampling with replacement
-    for _ in xrange(nboots):
-        samples = np.random.randint(0, len(pdf), len(pdf))
-        bootdf = pd.DataFrame([pdf.loc[i] for i in samples])
-        boots["DFO"].append(calc_dfo(bootdf))
-        boots["DIL"].append(calc_dil(bootdf))
-        boots["DFI"].append(calc_dfi(bootdf))
-        boots["DOL"].append(calc_dol(bootdf))
-
-    ## calculate on full data
-    results["DFO"] = calc_dfo(pdf)
-    results["DIL"] = calc_dil(pdf)
-    results["DFI"] = calc_dfi(pdf)
-    results["DOL"] = calc_dol(pdf)
-
-    ## get standard deviation & Z from boots
-    results["DFOsd"] = np.std(boots["DFO"])
-    results["Z_DFO"] = abs(results["DFO"])/float(results["DFOsd"])
-    results["DILsd"] = np.std(boots["DIL"])
-    results["Z_DIL"] = abs(results["DIL"])/float(results["DILsd"])
-    results["DFIsd"] = np.std(boots["DFI"])
-    results["Z_DFI"] = abs(results["DFI"])/float(results["DFIsd"])
-    results["DOLsd"] = np.std(boots["DOL"])
-    results["Z_DOL"] = abs(results["DOL"])/float(results["DOLsd"])
-    return pd.Series(results)
+# def calc_dol(pdf):
+#     """ DOL calc for fixed differences from pdf """
+#     nleft = pdf.BAABA+pdf.BABBA+pdf.ABBAA+pdf.ABAAA
+#     nright = pdf.ABABA+pdf.ABBBA+pdf.BABAA+pdf.BAAAA
+#     return sum(nleft-nright)/float(sum(nleft+nright))
 
 
-## Functions to calculate Dfoil with chi-square test """
-def x_dfo(pdf):
-    """ calculate DFO significance by chi-square test """
-    nleft = [pdf.BABAA[i]+pdf.BBBAA[i]+pdf.ABABA[i]+pdf.AAABA[i] \
-              for i in range(len(pdf))]
-    nright = [pdf.BAABA[i]+pdf.BBABA[i]+pdf.ABBAA[i]+pdf.AABAA[i] \
-              for i in range(len(pdf))]
-    getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-             i, j in zip(nleft, nright)]
-    xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-             i, j in zip(nleft, nright)]
-    sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-    return [np.mean(getd), np.std(getd), np.mean(sig)]
+# def dstat_foil(pdf, nboots):
+#     """ Function to perform boostrap resampling on Dfoil stats """
+#     ## dict to store results
+#     results = {}
+
+#     ## dict to store bootstrap reps
+#     boots = {"DFO": [],
+#              "DIL": [],
+#              "DFI": [],
+#              "DOL": []}
+
+#     ## do bootstrap resampling with replacement
+#     for _ in xrange(nboots):
+#         samples = np.random.randint(0, len(pdf), len(pdf))
+#         bootdf = pd.DataFrame([pdf.loc[i] for i in samples])
+#         boots["DFO"].append(calc_dfo(bootdf))
+#         boots["DIL"].append(calc_dil(bootdf))
+#         boots["DFI"].append(calc_dfi(bootdf))
+#         boots["DOL"].append(calc_dol(bootdf))
+
+#     ## calculate on full data
+#     results["DFO"] = calc_dfo(pdf)
+#     results["DIL"] = calc_dil(pdf)
+#     results["DFI"] = calc_dfi(pdf)
+#     results["DOL"] = calc_dol(pdf)
+
+#     ## get standard deviation & Z from boots
+#     results["DFOsd"] = np.std(boots["DFO"])
+#     results["Z_DFO"] = abs(results["DFO"])/float(results["DFOsd"])
+#     results["DILsd"] = np.std(boots["DIL"])
+#     results["Z_DIL"] = abs(results["DIL"])/float(results["DILsd"])
+#     results["DFIsd"] = np.std(boots["DFI"])
+#     results["Z_DFI"] = abs(results["DFI"])/float(results["DFIsd"])
+#     results["DOLsd"] = np.std(boots["DOL"])
+#     results["Z_DOL"] = abs(results["DOL"])/float(results["DOLsd"])
+#     return pd.Series(results)
 
 
-
-def x_dil(pdf):
-    """ calculate DIL significance by chi-square test """
-    nleft = [pdf.ABBAA[i]+pdf.BBBAA[i]+pdf.BAABA[i]+pdf.AAABA[i] \
-              for i in xrange(len(pdf))]
-    nright = [pdf.ABABA[i]+pdf.BBABA[i]+pdf.BABAA[i]+pdf.AABAA[i] \
-              for i in xrange(len(pdf))]
-    getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-            i, j in zip(nleft, nright)]
-    xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-            i, j in zip(nleft, nright)]
-    sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-    return [np.mean(getd), np.std(getd), np.mean(sig)]
+# ## Functions to calculate Dfoil with chi-square test """
+# def x_dfo(pdf):
+#     """ calculate DFO significance by chi-square test """
+#     nleft = [pdf.BABAA[i]+pdf.BBBAA[i]+pdf.ABABA[i]+pdf.AAABA[i] \
+#               for i in range(len(pdf))]
+#     nright = [pdf.BAABA[i]+pdf.BBABA[i]+pdf.ABBAA[i]+pdf.AABAA[i] \
+#               for i in range(len(pdf))]
+#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
+#              i, j in zip(nleft, nright)]
+#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
+#              i, j in zip(nleft, nright)]
+#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
+#     return [np.mean(getd), np.std(getd), np.mean(sig)]
 
 
 
-def x_dfi(pdf):
-    """ calculate DFI significane by chi-square test """
-    nleft = [pdf.BABAA[i]+pdf.BABBA[i]+pdf.ABABA[i]+pdf.ABAAA[i] \
-              for i in xrange(len(pdf))]
-    nright = [pdf.ABBAA[i]+pdf.ABBBA[i]+pdf.BAABA[i]+pdf.BAAAA[i] \
-              for i in xrange(len(pdf))]
-    getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-             i, j in zip(nleft, nright)]
-    xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-             i, j in zip(nleft, nright)]
-    sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-    return [np.mean(getd), np.std(getd), np.mean(sig)]
+# def x_dil(pdf):
+#     """ calculate DIL significance by chi-square test """
+#     nleft = [pdf.ABBAA[i]+pdf.BBBAA[i]+pdf.BAABA[i]+pdf.AAABA[i] \
+#               for i in xrange(len(pdf))]
+#     nright = [pdf.ABABA[i]+pdf.BBABA[i]+pdf.BABAA[i]+pdf.AABAA[i] \
+#               for i in xrange(len(pdf))]
+#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
+#             i, j in zip(nleft, nright)]
+#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
+#             i, j in zip(nleft, nright)]
+#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
+#     return [np.mean(getd), np.std(getd), np.mean(sig)]
 
 
 
-def x_dol(pdf):
-    """ calculate DOL significance by chi-square test """
-    nleft = [pdf.BAABA[i]+pdf.BABBA[i]+pdf.ABBAA[i]+pdf.ABAAA[i] \
-              for i in xrange(len(pdf))]
-    nright = [pdf.ABABA[i]+pdf.ABBBA[i]+pdf.BABAA[i]+pdf.BAAAA[i] \
-               for i in xrange(len(pdf))]
-    getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-             i, j in zip(nleft, nright)]
-    xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-             i, j in zip(nleft, nright)]
-    sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-    return [np.mean(getd), np.std(getd), np.mean(sig)]
+# def x_dfi(pdf):
+#     """ calculate DFI significane by chi-square test """
+#     nleft = [pdf.BABAA[i]+pdf.BABBA[i]+pdf.ABABA[i]+pdf.ABAAA[i] \
+#               for i in xrange(len(pdf))]
+#     nright = [pdf.ABBAA[i]+pdf.ABBBA[i]+pdf.BAABA[i]+pdf.BAAAA[i] \
+#               for i in xrange(len(pdf))]
+#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
+#              i, j in zip(nleft, nright)]
+#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
+#              i, j in zip(nleft, nright)]
+#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
+#     return [np.mean(getd), np.std(getd), np.mean(sig)]
 
 
 
-def partd(handle, test, mindict, nboots):
-    pass
+# def x_dol(pdf):
+#     """ calculate DOL significance by chi-square test """
+#     nleft = [pdf.BAABA[i]+pdf.BABBA[i]+pdf.ABBAA[i]+pdf.ABAAA[i] \
+#               for i in xrange(len(pdf))]
+#     nright = [pdf.ABABA[i]+pdf.ABBBA[i]+pdf.BABAA[i]+pdf.BAAAA[i] \
+#                for i in xrange(len(pdf))]
+#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
+#              i, j in zip(nleft, nright)]
+#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
+#              i, j in zip(nleft, nright)]
+#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
+#     return [np.mean(getd), np.std(getd), np.mean(sig)]
 
 
-def dfoil(handle, test, mindict, nboots):
-    pass
 
-
-def batch(handle, taxdicts, mindicts=None, nboots=1000, ipyclient=None, quiet=False):
+def batch(
+    handle, 
+    taxdicts, 
+    mindicts=None, 
+    nboots=1000, 
+    ipyclient=None,
+    quiet=False):
     """
     parallel mode
     """
@@ -255,47 +366,7 @@ def batch(handle, taxdicts, mindicts=None, nboots=1000, ipyclient=None, quiet=Fa
 
 
 def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
-    """
-    Takes input loci file or frequency array and a dictionary describing a 
-    four or five taxon test to perform, and return D-statistic and related 
-    results, and a bootstrap array. 
-
-
-    Parameters
-    ----------
-    inarr : string or ndarray
-        A string path to a .loci file produced by ipyrad. Alternatively, data
-        can be entered as an ndarray. Numpy array float allele frequencies 
-        with dimension (nloci, 4 or 5, maxlen). See docs.
-        
-    test : dict
-        A dictionary mapping Sample names to test taxon names, e.g., 
-        test = {'p1': ['a', 'b'], 'p2': ['c', 'd'], 'p3': ['e'], 'p4': ['f']}.
-        Four taxon tests should have p1-p4 whereas five taxon tests will 
-        be performed if dict keys are p1-p5. Other names will raise an error. 
-        The highest value name (e.g., p5) is the outgroup. 
-
-    mindict : dict
-        A dictionary mapping minimum sample values to taxon names (e.g., p1 and 
-        p2, like above). Loci that do not meet the minimum sample coverage will
-        be excluded from calculations and bootstraps. If no mindict is entered
-        then a default dict is used with values=1.
-
-    nboots: int
-        The number of non-parametric bootstrap replicates to perform in which 
-        loci are re-sampled with replacement to the same number as in the 
-        original data set (after applying mindict filtering). 
-
-    Returns
-    -------
-    out : tuple of ndarrays
-        The first element is a ndarray with [dstat, bootmean, bootstd, Z-score], 
-        the second element is a ndarray with the bootstrap dstats. 
-
-    boots : ndarray
-        An array of dstat values over nboots replicates. See plotting functions
-        for usage.
-    """
+    """ private function to perform a single D-stat test"""
 
     ## get data as an array from loci file
     if isinstance(inarr, str):
@@ -321,7 +392,7 @@ def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
         ## make res into a nice DataFrame
         res = pd.DataFrame(res, 
                 columns=[name],
-                index=["dstat", "bootmean", "bootstd", "abba", "baba", "Z"])
+                index=["Dstat", "bootmean", "bootstd", "ABBA", "BABA", "Z"])
 
     else:
         ## get results
@@ -330,10 +401,10 @@ def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
         ## make int a DataFrame
         res = pd.DataFrame(res,
             index=["p3", "p4", "shared"], 
-            columns=["dstat", "bootmean", "bootstd", "abxxa", "baxxa", "Z"]
+            columns=["Dstat", "bootmean", "bootstd", "ABxxA", "BAxxA", "Z"]
             )
 
-    return res, boots
+    return res.T, boots
 
 
 
@@ -714,7 +785,6 @@ def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
     
 
 
-
 def panelplot(tests, resarr, bootsarr, tree):
 
     ## setup canvas height in three parts 
@@ -872,6 +942,10 @@ class Sim(object):
 
 
 
+#class ctree(Tree):
+#    pass
+
+
 class Tree(object):
     def __init__(self, newick=None, admix=None):
 
@@ -915,15 +989,15 @@ class Tree(object):
 
 
     def draw(
-            self, 
-            yaxis=False, 
-            show_tips=False, 
-            use_edge_lengths=True, 
-            taxdicts=None, 
-            bootsarr=None,
-            collapse_outgroup=False,
-            test_labels=False,
-            **kwargs):
+        self, 
+        yaxis=False, 
+        show_tips=False, 
+        use_edge_lengths=True, 
+        taxdicts=None, 
+        bootsarr=None,
+        collapse_outgroup=False,
+        test_labels=False,
+        **kwargs):
         """
         plot the tree using toyplot.graph. 
 
@@ -1468,7 +1542,6 @@ def cladogram(newick, use_edge_lengths=True, invert=False):
 ######################################################################
 ## Simulation functions (requires msprime)
 ######################################################################
-
 def _simulate(self, nreps, admix=None, Ns=500000, gen=20):
     """
     Enter a baba.Tree object in which the 'tree' attribute (newick 
@@ -1627,6 +1700,7 @@ def _sim_admix_12(nreps, Ns=500000, gen=20):
         mutation_rate=1e-9)
     
     return replicates
+
 
 
 #def _msp_to_arr(simreps, test):
