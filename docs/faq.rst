@@ -171,6 +171,7 @@ adapter contamination are causing the reads to not cluster.
 If you have a lot of quality issues or if your assemby is taking a long time to cluster 
 here are some ways to filter more aggressively, which should improve runtime and the
 quality of the assembly:
+
 * Set filter_adapters to 2 (stringent=trims Illumina adapters)
 * Set phred_Qscore_offset to 43 (more aggressive trimming of low quality bases from 3' end of reads
 * Hard trim the first or last N bases from raw reads by setting e.g., trim_reads to (5, 5, 0, 0)
