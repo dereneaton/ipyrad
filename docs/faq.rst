@@ -156,3 +156,23 @@ to an alternative way of coding the alleles so that we can store both phased and
 alleles, and its just taking a while to do. So for now we are only providing unphased 
 alleles, although we do save the estimated number of alleles for each locus. This 
 information is kind of hidden under the hood at the moment though.
+
+Why is my assembly taking FOREVER to run?
+-----------------------------------------
+There have been a few questions recently about long running jobs (e.g., >150 hours), which 
+in my experience should be quite rare when many processors are being used. In general, 
+I would guess that libraries which take this long to run are probably overloaded with 
+singleton reads, meaning reads are not clustering well within or across samples. This 
+can happen for two main reasons: (1) Your data set actually consists of a ton of 
+singleton reads, which is often the case in libraries that use very common cutters like 
+ezRAD; or (2) Your data needs to be filtered better, because low quality ends and 
+adapter contamination are causing the reads to not cluster.
+
+If you have a lot of quality issues or if your assemby is taking a long time to cluster 
+here are some ways to filter more aggressively, which should improve runtime and the
+quality of the assembly:
+
+* Set filter_adapters to 2 (stringent=trims Illumina adapters)
+* Set phred_Qscore_offset to 43 (more aggressive trimming of low quality bases from 3' end of reads
+* Hard trim the first or last N bases from raw reads by setting e.g., trim_reads to (5, 5, 0, 0)
+* Add additional 'adapter sequences' to be filtered (any contaminant can be searched for, I have added long A-repeats in one library where this appeared common). This can be done easily in the API, but requires editing the JSON file for the CLI.

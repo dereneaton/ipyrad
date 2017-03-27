@@ -1090,7 +1090,7 @@ class Assembly(object):
                     ## present in the db
                     samples = [x for x in samples if x.name not in idiff]
         except (IOError, ValueError):
-            raise IPyradError(FIRST_RUN_6.format(self.database))
+            raise IPyradError(FIRST_RUN_6.format(self.clust_database))
 
         if not force:
             outdir = os.path.join(self.dirs.project, self.name+"_outfiles")
@@ -1842,6 +1842,10 @@ def _paramschecker(self, param, newvalue):
         ## let's get whatever the user entered as a tuple of letters
         allowed = assemble.write_outfiles.OUTPUT_FORMATS.keys()
 
+        ## Handle the case where output formats is empty
+        if not newvalue.strip():
+            newvalue = "*"
+
         if isinstance(newvalue, tuple):
             newvalue = list(newvalue)
         if isinstance(newvalue, str):
@@ -1854,8 +1858,6 @@ def _paramschecker(self, param, newvalue):
                 newvalue = allowed
             newvalue = tuple(newvalue)
             #newvalue = tuple([i for i in newvalue if i in allowed])
-        if not newvalue.strip():
-            newvalue = "*"
         if "*" in newvalue:
             newvalue = allowed
 
