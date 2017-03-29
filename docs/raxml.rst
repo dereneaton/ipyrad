@@ -5,26 +5,37 @@
 
 Maximum-likelihood phylogenetic inference
 =========================================
-The program RAxML is a standard tool for phylogenetic inference
-popular for its speed and ease of use, and is among the most commonly 
-used software for analyzing RAD-seq alignments.
-Optimizing it to run on a cluster can be a bit a tricky. 
-Here I list a few tips for working with large concatenated RAD-seq 
-alignments (.phy output file) based on information from the 
-`v.8.0 raxml documentation <https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj4opaa1IjRAhVB1oMKHajPAMAQFggcMAA&url=https%3A%2F%2Fbioinformatics.oxfordjournals.org%2Fcontent%2Fsuppl%2F2014%2F01%2F18%2Fbtu033.DC1%2FNewManual.pdf&usg=AFQjCNH_8fbJI7fBU6yVL74UFKRzZhftFg&sig2=3GfktJYcAdFcSxRWs0TgFw>`__ as well as other tips I've come
-across from reading the `raxml forum <https://groups.google.com/forum/#!topic/raxml/>`__. 
+RAxML is a standard tool for phylogenetic inference popular for its speed and 
+ease of use, and is among the most commonly used software for analyzing RAD-seq 
+alignments. While it is easy to run a multi-threaded version of RAxML, which 
+can take advantage of many threads on a single machine, it is a bit more difficult
+to optimize a run that is parallized over many connected machines on 
+a HPC cluster. Here I list a few tips for running RAxML either in as a 
+multi-threaded (PTHREADS) mode, or in the MPI version. We also list some tips
+that seem to work well for analyzing large concatenated RAD-seq alignments 
+(.phy output file) from ipyrad. 
+
+More information about RAxML can be found in the  
+`v.8.0 raxml documentation <https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj4opaa1IjRAhVB1oMKHajPAMAQFggcMAA&url=https%3A%2F%2Fbioinformatics.oxfordjournals.org%2Fcontent%2Fsuppl%2F2014%2F01%2F18%2Fbtu033.DC1%2FNewManual.pdf&usg=AFQjCNH_8fbJI7fBU6yVL74UFKRzZhftFg&sig2=3GfktJYcAdFcSxRWs0TgFw>`__ 
+and on the google group `raxml forum <https://groups.google.com/forum/#!topic/raxml/>`__. 
 
 
 Installing raxml on a cluster
 -----------------------------
-There are many versions of raxml available and the one on your
-may not be up to date. You can ask your administrator to install 
-the latest version, or install it yourself *locally*
-(you do not need administrative privileges for this.)
+There are many versions of raxml available and the one on your system may not 
+be up to date. You can ask your administrator to install the latest version, or 
+install it yourself *locally* (you do not need administrative privileges for 
+this.) I usually recommend using `conda`, but in this case recommend installing
+from source instead, since conda does not yet handle well checking for various
+threading/compiling options. 
+
 The code below installs three versions of raxml, the PTHREADS (threaded version), 
 MPI (can use processors from different nodes), and Hybrid
-(a mix of the first two). This installation will put the executables
-in a local directory called `~/local/bin/`.
+(a mix of the first two), all with the AVX mode enabled. 
+This installation will put the executables in a local directory called 
+`~/local/bin/` which you will want to add to your $PATH 
+(add it to your .bashrc file).
+
 
 .. code:: bash  
 

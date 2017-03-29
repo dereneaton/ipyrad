@@ -178,9 +178,10 @@ def mapreads(data, sample, nthreads, force):
 
     ## (cmd2) samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...] 
     ##   -b = write to .bam
-    ##   -q = Only keep reads with mapq score >= 30 (seems to be prety standard)
-    ##   -F = Select all reads that DON'T have this flag. 
+    ##   -q = Only keep reads with mapq score >= 30 (seems to be pretty standard)
+    ##   -F = Select all reads that DON'T have these flags. 
     ##         0x4 (segment unmapped)
+    ##         0x100 (Secondary alignment)
     ##         0x800 (supplementary alignment)
     ##   -U = Write out all reads that don't pass the -F filter 
     ##        (all unmapped reads go to this file).
@@ -224,8 +225,11 @@ def mapreads(data, sample, nthreads, force):
     ## and it pipes the mapped data to be used in cmd3
     cmd2 = [ipyrad.bins.samtools, "view", 
            "-b", 
-            "-q", "30",
-           "-F", "0x804", 
+           ## TODO: This introduces a bug with PE right now. Think about the case where
+           ## R1 has low qual mapping and R2 has high. You get different numbers
+           ## of reads in the unmapped tmp files. FML.
+           #"-q", "30",
+           "-F", "0x904",
            "-U", os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam"), 
            os.path.join(data.dirs.refmapping, sample.name+".sam")]
 
@@ -235,6 +239,7 @@ def mapreads(data, sample, nthreads, force):
             "-O", "bam", 
             "-o", sample.files.mapped_reads]
 
+    ## TODO: Unnecessary?
     ## this is gonna read the sorted BAM file and index it. only for pileup?
     cmd4 = [ipyrad.bins.samtools, "index", sample.files.mapped_reads]
 
@@ -269,44 +274,42 @@ def mapreads(data, sample, nthreads, force):
         cmd5.insert(2, mumapfile)
         cmd5.insert(2, "-0")
 
-    ## Don't redo all this bullcrap if it's already done unless force flag is set
-    if not os.path.exists(os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")) or force:
-        ## Running cmd1 creates ref_mapping/sname.sam, 
-        LOGGER.debug(" ".join(cmd1))
-        proc1 = sps.Popen(cmd1, stderr=cmd1_stderr, stdout=cmd1_stdout)
+    ## Running cmd1 creates ref_mapping/sname.sam, 
+    LOGGER.debug(" ".join(cmd1))
+    proc1 = sps.Popen(cmd1, stderr=cmd1_stderr, stdout=cmd1_stdout)
 
-        ## This is really long running job so we wrap it to ensure it dies. 
-        try:
-            error1 = proc1.communicate()[0]
-        except KeyboardInterrupt:
-            proc1.kill()
+    ## This is really long running job so we wrap it to ensure it dies. 
+    try:
+        error1 = proc1.communicate()[0]
+    except KeyboardInterrupt:
+        proc1.kill()
 
-        ## raise error if one occurred in smalt
-        if proc1.returncode:
-            raise IPyradWarningExit(error1)
+    ## raise error if one occurred in smalt
+    if proc1.returncode:
+        raise IPyradWarningExit(error1)
 
-        ## Running cmd2 writes to ref_mapping/sname.unmapped.bam, and 
-        ## fills the pipe with mapped BAM data
-        LOGGER.debug(" ".join(cmd2))
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+    ## Running cmd2 writes to ref_mapping/sname.unmapped.bam, and 
+    ## fills the pipe with mapped BAM data
+    LOGGER.debug(" ".join(cmd2))
+    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
 
-        ## Running cmd3 pulls mapped BAM from pipe and writes to 
-        ## ref_mapping/sname.mapped-sorted.bam. 
-        ## Because proc2 pipes to proc3 we just communicate this to run both.
-        LOGGER.debug(" ".join(cmd3))
-        proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
-        error3 = proc3.communicate()[0]
-        if proc3.returncode:
-            raise IPyradWarningExit(error3)
-        proc2.stdout.close()
+    ## Running cmd3 pulls mapped BAM from pipe and writes to 
+    ## ref_mapping/sname.mapped-sorted.bam. 
+    ## Because proc2 pipes to proc3 we just communicate this to run both.
+    LOGGER.debug(" ".join(cmd3))
+    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+    error3 = proc3.communicate()[0]
+    if proc3.returncode:
+        raise IPyradWarningExit(error3)
+    proc2.stdout.close()
 
-        ## Later we're gonna use samtools to grab out regions using 'view', and to
-        ## do that we need it to be indexed. Let's index it now. 
-        LOGGER.debug(" ".join(cmd4))
-        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
-        error4 = proc4.communicate()[0]
-        if proc4.returncode:
-            raise IPyradWarningExit(error4)
+    ## Later we're gonna use samtools to grab out regions using 'view', and to
+    ## do that we need it to be indexed. Let's index it now. 
+    LOGGER.debug(" ".join(cmd4))
+    proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
+    error4 = proc4.communicate()[0]
+    if proc4.returncode:
+        raise IPyradWarningExit(error4)
     
     ## Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
     ## or it makes edits/sname-tmp-umap{12}.fastq for paired data, which 
@@ -939,8 +942,16 @@ def refmap_stats(data, sample):
     result2 = proc2.communicate()[0]
 
     ## store results
-    sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
-    sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
+    ## If PE, samtools reports the _actual_ number of reads mapped, both 
+    ## R1 and R2, so here if PE divide the results by 2 to stay consistent
+    ## with how we've been reporting R1 and R2 as one "read pair"
+    if "pair" in data.paramsdict["datatype"]:
+        LOGGER.debug("watwatwat")
+        sample.stats["refseq_unmapped_reads"] = int(result1.split()[0]) / 2
+        sample.stats["refseq_mapped_reads"] = int(result2.split()[0]) / 2
+    else:
+        sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
+        sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
 
     sample_cleanup(data, sample)
 
@@ -953,8 +964,11 @@ def refmap_init(data, sample, force):
     sample.files.mapped_reads = os.path.join(data.dirs.refmapping,
                                   "{}-mapped-sorted.bam".format(sample.name))
 
-    if os.path.exists(sample.files.mapped_reads) and not force:
-        print("Skip mapping for {}. Use -f to force remapping.".format(sample.name))
+    ## TODO: This code came with my effort to skip redoing refmapping
+    ## Which i abandoned, I think. It doesn't do anything but print a
+    ## message that isn't true right now.
+    #if os.path.exists(sample.files.mapped_reads) and not force:
+    #    print("Skip mapping for {}. Use -f to force remapping.".format(sample.name))
 
 
 ## GLOBALS

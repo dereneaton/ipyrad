@@ -5,6 +5,60 @@
 Release Notes
 =============
 
+0.6.11
+------
+- Fix a bug in PE refmapping.
+- Fix error reporting if when testing for existence of the clust_database file at beginning of step 7.
+- Fix bug reading output formats from params file.
+- cosmetic
+- Add docs for dealing with long running jobs due to quality issues.
+- bug fix for output format empty
+- structure cookbook update
+- pushing analysis tools
+- svg struct plot added
+- structure cookbook updates
+- struct image added for docs
+- update structure cookbook for new code
+- Actually fix the output_format default if blank.
+- Set blank output formats in params to default to all formats.
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Add a filter flag for samtools to push secondary alignments to the unmapped file.
+- rm old files
+- shareplot code in progress
+- work in progress baba code notebook
+- a decent api intro but bland
+- beginnings of a migrate script
+- raxml docs updated, needs work still
+- analysis docs page update
+- cosmetic changes
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- structure parallel wrapper scripts up in analysis
+- cosmetic
+- simplifying analysis imports
+- cleanup top imports
+- Adding support for G-PhoCS output format.
+- Fix wacky reporting of mapped/unmapped reads for PE.
+- Document why we don't write out the alleles format currently.
+- module init headers
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- added loci2cf script
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- update structure notebook with conda recipes
+- fileconversions updated
+- loci2cf func added
+- cookbook bucky docs up
+- loci2multinex and bucky notebook updated
+- BUCKy cookbook updated
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- Merge branch 'master' of https://github.com/dereneaton/ipyrad
+- bucky conda recipe up
+- fix to API access hint
+- cleaner code by moving msgs to the end
+- slight modification to paired adapter trimming code
+- cleaner Class Object in baba
+- minor change to cluster_info printing in API
+
 0.6.10
 ------
 - Filter reference mapped reads my mapq < 30, and handle the occasional malformed region string in bam_region_to_fasta.

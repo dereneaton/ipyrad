@@ -962,8 +962,6 @@ class Tetrad(object):
 
         ## wrap everything in a try statement so we can ensure that it will
         ## save if interrupted and we will clean up the 
-        ## client instance at the end. If it was created then we kill it. If
-        ## using an existing client then we simply clean the memory space.
         try:
             ## find an ipcluster instance
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)

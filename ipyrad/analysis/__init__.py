@@ -13,19 +13,18 @@ from .baba import Baba as baba
 from .tree import Tree as tree
 from .bpp import bpp
 from .tetrad import tetrad
+from .structure import structure
+#from .treemix import treemix
 
 #from ..plotting.baba_panel_plot import baba_panel_plot
 #from ..plotting.tree_panel_plot import tree_panel_plot
 #from ..plotting.share_panel_plot import share_panel_plot
-
 #from .structure import structure
-#from .treemix import treemix
+
 
 
 #import tetrad.tetrad as tetrad #
 #import baba.baba as baba
 #import baba
 #from .tetrad.tetrad import tetrad
-
-
 

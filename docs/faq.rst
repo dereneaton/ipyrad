@@ -133,8 +133,8 @@ to your ~/.bashrc file.
 
     export PYTHONPATH=""; ipyrad -p params.txt -s 1
 
-Why doesn't ipyrad handle PE original RAD
------------------------------------------
+Why doesn't ipyrad handle PE original RAD?
+------------------------------------------
 Paired-End RAD protocol is tricky to denovo assemble. Because of the sonication step R2 
 doesn't line up nicely. ipyrad makes strong assumptions about how r1 and r2 align, 
 assumptions which are met by PE gbs and ddrad, but which are not met by original RAD. 
@@ -143,3 +143,36 @@ reference it's a nightmare... dDocent has a PE-RAD mode, but I haven't evaluated
 I know that people have also used stacks (because stacks treats r1 andr2 as independent 
 loci). If people ask me how to denovo assemble with PE-RAD in ipyrad I tell them to 
 just assemble it as SE and ignore R2.
+
+Why doesn't ipyrad write out the .alleles format with phased alleles like pyrad used to?
+----------------------------------------------------------------------------------------
+We're hoping to provide something similar eventually, the problem with the pyrad alleles 
+file is that the alleles are only phased correctly when we enforce that reads must align 
+almost completely, i.e., they are not staggered in their overlap. So the alleles are 
+correct for RAD data, because the reads match up perfectly on their left side, however, 
+staggered overlaps are common in other data sets that use very common cutters, like 
+ezRAD and some GBS, and especially so when R1 and R2 reads merge. So we needed to change 
+to an alternative way of coding the alleles so that we can store both phased and unphased 
+alleles, and its just taking a while to do. So for now we are only providing unphased 
+alleles, although we do save the estimated number of alleles for each locus. This 
+information is kind of hidden under the hood at the moment though.
+
+Why is my assembly taking FOREVER to run?
+-----------------------------------------
+There have been a few questions recently about long running jobs (e.g., >150 hours), which 
+in my experience should be quite rare when many processors are being used. In general, 
+I would guess that libraries which take this long to run are probably overloaded with 
+singleton reads, meaning reads are not clustering well within or across samples. This 
+can happen for two main reasons: (1) Your data set actually consists of a ton of 
+singleton reads, which is often the case in libraries that use very common cutters like 
+ezRAD; or (2) Your data needs to be filtered better, because low quality ends and 
+adapter contamination are causing the reads to not cluster.
+
+If you have a lot of quality issues or if your assemby is taking a long time to cluster 
+here are some ways to filter more aggressively, which should improve runtime and the
+quality of the assembly:
+
+* Set filter_adapters to 2 (stringent=trims Illumina adapters)
+* Set phred_Qscore_offset to 43 (more aggressive trimming of low quality bases from 3' end of reads
+* Hard trim the first or last N bases from raw reads by setting e.g., trim_reads to (5, 5, 0, 0)
+* Add additional 'adapter sequences' to be filtered (any contaminant can be searched for, I have added long A-repeats in one library where this appeared common). This can be done easily in the API, but requires editing the JSON file for the CLI.

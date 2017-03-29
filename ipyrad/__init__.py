@@ -2,7 +2,7 @@
 
 
 ## dunders
-__version__ = "0.6.10"
+__version__ = "0.6.11"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
@@ -19,10 +19,11 @@ import atexit as _atexit
 ## main ip.functions
 from . import load as _load
 from . import assemble 
-from . import file_conversion
 from ipyrad.core.parallel import get_client as _get_client
-#from . import plotting  ## do not autoimport plotting, import as ipp
-#from . import analysis  ## do not autoimport analysis, import as ipa
+
+#from . import file_conversion     ## do not autoimport; import as fc
+#from . import plotting            ## do not autoimport; import as ipp
+#from . import analysis            ## do not autoimport; import as ipa
 
 ## bring nested functions to top for API
 from ipyrad.core.assembly import Assembly
@@ -62,8 +63,8 @@ if __loglevel__ == "DEBUG":
 
 
 
-def cluster_info(client=None, cluster_id="", profile="default", engines="Local", 
-                 timeout=60, cores=0, quiet=True, **kwargs):
+def cluster_info(client=None, cluster_id="", profile="default",
+                 engines="Local", timeout=60, cores=0, quiet=True, **kwargs):
     """ report info on the ipcluster instance """  
 
     ## get the client
