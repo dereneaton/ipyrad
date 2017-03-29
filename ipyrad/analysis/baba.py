@@ -6,14 +6,15 @@
 
 from __future__ import print_function, division
 
-
+## ipyrad tools
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
-## reduce this...
-from ipyrad.assemble.util import *
+from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
+from ipyrad.analysis.bpp import Params
+from ipyrad.analysis.tree import decompose_tree
+from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
-import scipy.stats as st
+#import scipy.stats as st  ## used for dfoil
 import ipyparallel as ipp
-import ipyrad as ip
 import pandas as pd
 import numpy as np
 import numba
@@ -24,7 +25,7 @@ import copy
 import time
 import os
 
-## non-included imports
+## non-standard imports
 import toyplot
 import ete3 as ete
 try: 
@@ -39,65 +40,66 @@ except ImportError:
 
 class Baba(object):
     "new baba class object"
-    def __init__(self, locifile):
-        self.data = os.path.realpath(locifile)
-        #self.tests = {}
-
-
-    def dstat(self, 
-        test, 
-        mindict=None, 
-        nboots=1000):
-        """
-        Takes input loci file or frequency array and a dictionary describing a 
-        four or five taxon test to perform, and returns D-statistic and 
-        results of a bootstrap significance test, and an array of bootstraps. 
+    def __init__(self, data=None, tests=None, newick=None, nboots=1000, mincov=1):
+        """ 
+        ipyrad.analysis Baba Class object.
 
         Parameters
         ----------
-        inarr : string or ndarray
+        data : string or ndarray
             A string path to a .loci file produced by ipyrad. Alternatively, data
             can be entered as an ndarray. Numpy array float allele frequencies 
             with dimension (nloci, 4 or 5, maxlen). See docs.
             
-        test : dict
+        tests : dict or list of dicts
             A dictionary mapping Sample names to test taxon names, e.g., 
             test = {'p1': ['a', 'b'], 'p2': ['c', 'd'], 'p3': ['e'], 'p4': ['f']}.
             Four taxon tests should have p1-p4 whereas five taxon tests will 
             be performed if dict keys are p1-p5. Other names will raise an error. 
             The highest value name (e.g., p5) is the outgroup. 
+        
+        newick: str
+            ...
+    
+        Functions
+        ---------
+        run()
+            ...
+        generate_tests_from_tree()
+            ...
+        plot()
+            ...
 
-        mindict : dict
-            A dictionary mapping minimum sample values to taxon names (e.g., p1 and 
-            p2, like above). Loci that do not meet the minimum sample coverage will
-            be excluded from calculations and bootstraps. If no mindict is entered
-            then a default dict is used with values=1.
-
-        nboots: int
-            The number of non-parametric bootstrap replicates to perform in which 
-            loci are re-sampled with replacement to the same number as in the 
-            original data set (after applying mindict filtering). 
-
-        Returns
-        -------
-        out : tuple of ndarrays
-            The first element is a ndarray with [dstat, bootmean, bootstd, Z-score], 
-            the second element is a ndarray with the bootstrap dstats. 
-
-        boots : ndarray
-            An array of dstat values over nboots replicates. See plotting functions
-            for usage.
         """
-        kwargs = dict(taxdict=test, mindict=mindict, nboots=nboots)
-        return baba(self.data, **kwargs)
+        ## parse data as (1) path to data file, or (2) ndarray
+        if isinstance(data, str):
+            self.data = os.path.realpath(data)
+        else:
+            self.data = data
+        self.newick = newick
+
+        ## store tests, check for errors
+        self.tests = tests
+
+        ## parameters
+        self.params = Params()
+        self.params.mincov = mincov
+        self.params.nboots = nboots
+        self.params.quiet = False
+        self.params.database = None
+
+        ## results storage
+        self.results_table = None
+        self.results_boots = None
 
 
-    def batch_list(self, 
-        tests, 
-        mindicts=None, 
-        nboots=1000,
+    def run(self, 
+        #tests, 
+        #mindicts=None, 
+        #nboots=1000,
         ipyclient=None,
-        quiet=False):
+        #quiet=False):
+        ):
         """
         Run a batch of dstat tests on a list of tests, where each test is 
         a dictionary mapping sample names to {p1 - p4} (and sometimes p5). 
@@ -116,217 +118,149 @@ class Baba(object):
         quiet (bool):
             Whether to print progress bar to the screen.
         """
-        args = [tests, mindicts, nboots, ipyclient, quiet]
-        return batch(self.data, *args)
+        #args = [ipyclient, quiet]
+        self.results_table, self.results_boots = batch(self, ipyclient)
 
 
-    def batch_tree(self, 
-        tree, 
-        mindicts=None,
-        nboots=1000, 
-        ipyclient=None, 
-        quiet=False):
-        """
-        Run a batch of dstat tests on a all possible combinations fitting a 
-        rooted topology passed in as a newick string. 
+    def generate_tests_from_tree(self, 
+        constraint_dict=None, 
+        constraint_exact=True, 
+        verbose=True):
+        """ 
+        Returns a list of all possible 4-taxon tests on a tree (newick file). 
+        The number of possible tests can be greatly reduced by setting 
+        constraints on the taxon sampling using the constraint_dict arg. 
 
         Parameters:
         -----------
-        tree (newick str, or filepath, or ete.Tree() object):
-            A tree file or object. 
-        mindicts (int or dict):
-            ...
-        nboots (int):
-            ....
-        ipyclient ():
-            ...
-        quiet (bool):
-            ...
+        ... 
         """
-        return "Not yet implemented, coming soon."
+        if not self.newick:
+            raise AttributeError("no newick tree information in {self}.newick")
+        tests = tree2tests(self.newick, constraint_dict, constraint_exact)
+        if verbose:
+            print("{} tests generated from tree".format(len(tests)))
+        self.tests = tests
 
 
+    def plot(self, 
+        show_test_labels=True, 
+        use_edge_lengths=False, 
+        collapse_outgroup=False, 
+        pct_tree_x=0.5, 
+        pct_tree_y=0.7,
+        *args, 
+        **kwargs):
 
+        ## check for attributes
+        if not self.newick:
+            raise IPyradError("baba plot must have a .newick attribute (treefile)")
+        if not self.tests:
+            raise IPyradError("baba plot must have a .tests attribute")
+        if not isinstance(self.results_boots, np.ndarray):
+            raise IPyradError("baba plot must have results (you must run .run())")
 
+        ## ensure tests is a list
+        if isinstance(self.tests, dict):
+            self.tests = [self.tests]
 
-## Functions to calculate D-foil
-# def calc_dfo(pdf):
-#     """ DFO calc for fixed differences from pdf """
-#     nleft = pdf.BABAA+pdf.BBBAA+pdf.ABABA+pdf.AAABA
-#     nright = pdf.BAABA+pdf.BBABA+pdf.ABBAA+pdf.AABAA
-#     return sum(nleft-nright)/float(sum(nleft+nright))
+        ## re-decompose the tree
+        tree, edges, verts, names = decompose_tree(
+            self.newick, 
+            orient="down", 
+            use_edge_lengths=use_edge_lengths)
+        verts = verts.astype(np.float)
 
-# def calc_dil(pdf):
-#     """ DIL calc for fixed differences from pdf """
-#     nleft = pdf.ABBAA+pdf.BBBAA+pdf.BAABA+pdf.AAABA
-#     nright = pdf.ABABA+pdf.BBABA+pdf.BABAA+pdf.AABAA
-#     return sum(nleft-nright)/float(sum(nleft+nright))
-
-# def calc_dfi(pdf):
-#     """ DFI calc for fixed differences from pdf """
-#     nleft = pdf.BABAA+pdf.BABBA+pdf.ABABA+pdf.ABAAA
-#     nright = pdf.ABBAA+pdf.ABBBA+pdf.BAABA+pdf.BAAAA
-#     return sum(nleft-nright)/float(sum(nleft+nright))
-
-# def calc_dol(pdf):
-#     """ DOL calc for fixed differences from pdf """
-#     nleft = pdf.BAABA+pdf.BABBA+pdf.ABBAA+pdf.ABAAA
-#     nright = pdf.ABABA+pdf.ABBBA+pdf.BABAA+pdf.BAAAA
-#     return sum(nleft-nright)/float(sum(nleft+nright))
-
-
-# def dstat_foil(pdf, nboots):
-#     """ Function to perform boostrap resampling on Dfoil stats """
-#     ## dict to store results
-#     results = {}
-
-#     ## dict to store bootstrap reps
-#     boots = {"DFO": [],
-#              "DIL": [],
-#              "DFI": [],
-#              "DOL": []}
-
-#     ## do bootstrap resampling with replacement
-#     for _ in xrange(nboots):
-#         samples = np.random.randint(0, len(pdf), len(pdf))
-#         bootdf = pd.DataFrame([pdf.loc[i] for i in samples])
-#         boots["DFO"].append(calc_dfo(bootdf))
-#         boots["DIL"].append(calc_dil(bootdf))
-#         boots["DFI"].append(calc_dfi(bootdf))
-#         boots["DOL"].append(calc_dol(bootdf))
-
-#     ## calculate on full data
-#     results["DFO"] = calc_dfo(pdf)
-#     results["DIL"] = calc_dil(pdf)
-#     results["DFI"] = calc_dfi(pdf)
-#     results["DOL"] = calc_dol(pdf)
-
-#     ## get standard deviation & Z from boots
-#     results["DFOsd"] = np.std(boots["DFO"])
-#     results["Z_DFO"] = abs(results["DFO"])/float(results["DFOsd"])
-#     results["DILsd"] = np.std(boots["DIL"])
-#     results["Z_DIL"] = abs(results["DIL"])/float(results["DILsd"])
-#     results["DFIsd"] = np.std(boots["DFI"])
-#     results["Z_DFI"] = abs(results["DFI"])/float(results["DFIsd"])
-#     results["DOLsd"] = np.std(boots["DOL"])
-#     results["Z_DOL"] = abs(results["DOL"])/float(results["DOLsd"])
-#     return pd.Series(results)
-
-
-# ## Functions to calculate Dfoil with chi-square test """
-# def x_dfo(pdf):
-#     """ calculate DFO significance by chi-square test """
-#     nleft = [pdf.BABAA[i]+pdf.BBBAA[i]+pdf.ABABA[i]+pdf.AAABA[i] \
-#               for i in range(len(pdf))]
-#     nright = [pdf.BAABA[i]+pdf.BBABA[i]+pdf.ABBAA[i]+pdf.AABAA[i] \
-#               for i in range(len(pdf))]
-#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-#              i, j in zip(nleft, nright)]
-#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-#              i, j in zip(nleft, nright)]
-#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-#     return [np.mean(getd), np.std(getd), np.mean(sig)]
-
-
-
-# def x_dil(pdf):
-#     """ calculate DIL significance by chi-square test """
-#     nleft = [pdf.ABBAA[i]+pdf.BBBAA[i]+pdf.BAABA[i]+pdf.AAABA[i] \
-#               for i in xrange(len(pdf))]
-#     nright = [pdf.ABABA[i]+pdf.BBABA[i]+pdf.BABAA[i]+pdf.AABAA[i] \
-#               for i in xrange(len(pdf))]
-#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-#             i, j in zip(nleft, nright)]
-#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-#             i, j in zip(nleft, nright)]
-#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-#     return [np.mean(getd), np.std(getd), np.mean(sig)]
-
-
-
-# def x_dfi(pdf):
-#     """ calculate DFI significane by chi-square test """
-#     nleft = [pdf.BABAA[i]+pdf.BABBA[i]+pdf.ABABA[i]+pdf.ABAAA[i] \
-#               for i in xrange(len(pdf))]
-#     nright = [pdf.ABBAA[i]+pdf.ABBBA[i]+pdf.BAABA[i]+pdf.BAAAA[i] \
-#               for i in xrange(len(pdf))]
-#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-#              i, j in zip(nleft, nright)]
-#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-#              i, j in zip(nleft, nright)]
-#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-#     return [np.mean(getd), np.std(getd), np.mean(sig)]
-
-
-
-# def x_dol(pdf):
-#     """ calculate DOL significance by chi-square test """
-#     nleft = [pdf.BAABA[i]+pdf.BABBA[i]+pdf.ABBAA[i]+pdf.ABAAA[i] \
-#               for i in xrange(len(pdf))]
-#     nright = [pdf.ABABA[i]+pdf.ABBBA[i]+pdf.BABAA[i]+pdf.BAAAA[i] \
-#                for i in xrange(len(pdf))]
-#     getd = [(i-j)/float(i+j) if (i+j) > 0 else 0 for \
-#              i, j in zip(nleft, nright)]
-#     xstat = [((i-j)**2/float(i+j)) if (i+j) > 0 else 0 for \
-#              i, j in zip(nleft, nright)]
-#     sig = [1.-scipy.stats.chi2.cdf(x, 1) for x in xstat]
-#     return [np.mean(getd), np.std(getd), np.mean(sig)]
+        ## make the plot
+        canvas, axes = baba_panel_plot(
+            tree=tree,
+            edges=edges, 
+            verts=verts, 
+            names=names,
+            tests=self.tests,
+            boots=self.results_boots,
+            show_test_labels=show_test_labels, 
+            use_edge_lengths=use_edge_lengths, 
+            collapse_outgroup=collapse_outgroup, 
+            pct_tree_x=pct_tree_x,
+            pct_tree_y=pct_tree_y,
+            *args, 
+            **kwargs)
+        return canvas, axes
 
 
 
 def batch(
-    handle, 
-    taxdicts, 
-    mindicts=None, 
-    nboots=1000, 
+    baba,
     ipyclient=None,
-    quiet=False):
+    ):
     """
     parallel mode
     """
+
+    ## parse args
+    handle = baba.data
+    taxdicts = baba.tests
+    mindicts = baba.params.mincov
+    nboots = baba.params.nboots
 
     ## if ms generator make into reusable list
     sims = 0
     if isinstance(handle, types.GeneratorType):
         handle = list(handle)
         sims = 1
+    else:
+        ## expand locifile path to full path
+        handle = os.path.realpath(handle)
 
     ## parse taxdicts into names and lists if it a dictionary
+    #if isinstance(taxdicts, dict):
+    #    names, taxdicts = taxdicts.keys(), taxdicts.values()
+    #else:
+    #    names = []
+    names = []
     if isinstance(taxdicts, dict):
-        names, taxdicts = taxdicts.keys(), taxdicts.values()
-    else:
-        names = []
+        taxdicts = [taxdicts]
 
     ## an array to hold results (len(taxdicts), nboots)
     tot = len(taxdicts)
-    resarr = np.zeros((tot, 6), dtype=np.float64)
+    resarr = np.zeros((tot, 7), dtype=np.float64)
     bootsarr = np.zeros((tot, nboots), dtype=np.float64)
 
-    ## if no ipyclient then assume Default is running, else raise error
-    if not ipyclient:
-        raise IPyradError("  must provide an ipyclient Object")
+    ## if no ipyclient then drop back to multiprocessing
+    if ipyclient:
+        lbview = ipyclient.load_balanced_view()
+        def submit_dstat_job(args):
+            async = lbview.apply_async(dstat, *args)
+            return async
+    else:
+        import multiprocessing
+        lbview = multiprocessing.Pool()
+        def submit_dstat_job(args):
+            async = lbview.apply_async(dstat, args)
+            return async
+        #raise IPyradError("  must provide an ipyclient Object")
 
     ## submit jobs to run on the cluster queue
-    else:
-        ## get client
-        start = time.time()
-        lbview = ipyclient.load_balanced_view()
-        asyncs = {}
-        idx = 0
-    
-        ## iterate over tests (repeats mindicts if fewer than taxdicts)
-        for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
-            ## if it's sim data then convert to an array
-            if sims:
-                arr = _msp_to_arr(handle, test)
-                args = (arr, test, mindict, nboots)
-                asyncs[idx] = lbview.apply(baba, *args)
-            else:
-                args = (handle, test, mindict, nboots)
-                asyncs[idx] = lbview.apply(baba, *args)
-            idx += 1
+    start = time.time()
+    asyncs = {}
+    idx = 0
 
-        ## block until finished, print progress if requested.
+    ## iterate over tests (repeats mindicts if fewer than taxdicts)
+    for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
+        ## if it's sim data then convert to an array
+        if sims:
+            arr = _msp_to_arr(handle, test)
+            args = (arr, test, mindict, nboots)
+            asyncs[idx] = lbview.apply_async(dstat, *args)
+        else:
+            args = [handle, test, mindict, nboots]
+            #asyncs[idx] = lbview.apply_async(dstat, *args)
+            asyncs[idx] = submit_dstat_job(args)
+        idx += 1
+
+    ## block until finished, print progress if requested.
+    try:
         while 1:
             keys = [i for (i, j) in asyncs.items() if j.ready()]
             ## check for failures
@@ -336,8 +270,9 @@ def batch(
                         " error: {}: {}".format(job, asyncs[job].exception()))
                 ## enter results for successful jobs
                 else:
-                    _res, _bot = asyncs[job].result()
-                    resarr[job] = _res.as_matrix()[:, 0]
+                    #_res, _bot = asyncs[job].result()
+                    _res, _bot = asyncs[job].get()
+                    resarr[job] = _res.T.as_matrix()[:, 0]
                     bootsarr[job] = _bot
                     del asyncs[job]
 
@@ -350,22 +285,34 @@ def batch(
                 print("\n")
                 break
 
-        ## dress up resarr as a Pandas DataFrame
-        if not names:
-            names = range(len(taxdicts))
-        resarr = pd.DataFrame(resarr, 
-                index=names,
-                columns=["dstat", "bootmean", "bootstd", "ABBA", "BABA", "Z"])
+    except KeyboardInterrupt as inst:
+        ## cancel all jobs (ipy & multiproc modes) and then raise error
+        try:
+            ipyclient.abort()
+        except Exception:
+            pass
+        try:
+            ipyclient.terminate()
+        except Exception:
+            pass
+        raise inst
 
-        ## sort results dataframe and bootsarr to match
-        resarr = resarr.sort_index()
-        order = [list(resarr.index).index(i) for i in names]
-        bootsarr = bootsarr[order]
-        return resarr, bootsarr
+    ## dress up resarr as a Pandas DataFrame
+    if not names:
+        names = range(len(taxdicts))
+    resarr = pd.DataFrame(resarr, 
+        index=names,
+        columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
+
+    ## sort results and bootsarr to match if test names were supplied
+    resarr = resarr.sort_index()
+    order = [list(resarr.index).index(i) for i in names]
+    bootsarr = bootsarr[order]
+    return resarr, bootsarr
 
 
 
-def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
+def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     """ private function to perform a single D-stat test"""
 
     ## get data as an array from loci file
@@ -373,13 +320,13 @@ def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
         arr, _ = _loci_to_arr(inarr, taxdict, mindict)
     elif isinstance(inarr, np.ndarray):
         arr = inarr
+    elif isinstance(inarr, Sim):
+        arr = _msp_to_arr(inarr, taxdict)
     #elif isinstance(inarr, types.GeneratorType):
     #    arr = _msp_to_arr(inarr, taxdict)
     #elif isinstance(inarr, list):
     #    arr = _msp_to_arr(inarr, taxdict)
     ## get data from Sim object, do not digest the ms generator
-    elif isinstance(inarr, Sim):
-        arr = _msp_to_arr(inarr, taxdict)
     else:
         raise Exception("Must enter either a 'locifile' or 'arr'")
 
@@ -391,8 +338,8 @@ def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
     
         ## make res into a nice DataFrame
         res = pd.DataFrame(res, 
-                columns=[name],
-                index=["Dstat", "bootmean", "bootstd", "ABBA", "BABA", "Z"])
+            columns=[name],
+            index=["Dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
 
     else:
         ## get results
@@ -401,7 +348,7 @@ def baba(inarr, taxdict, mindict=1, nboots=1000, name=0):
         ## make int a DataFrame
         res = pd.DataFrame(res,
             index=["p3", "p4", "shared"], 
-            columns=["Dstat", "bootmean", "bootstd", "ABxxA", "BAxxA", "Z"]
+            columns=["Dstat", "bootmean", "bootstd", "Z", "ABxxA", "BAxxA", "nloci"]
             )
 
     return res.T, boots
@@ -529,6 +476,73 @@ def _loci_to_arr(locifile, taxdict, mindict):
 
 
 
+def tree2tests(newick, constraint_dict=None, constraint_exact=True):
+    """
+    Returns dict of all possible four-taxon splits in a tree. Assumes
+    the user has entered a rooted tree. Skips polytomies.
+    """
+    ## make tree
+    tree = ete.Tree(newick)
+    
+    ## constraints
+    cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
+    if constraint_dict:
+        cdict.update(constraint_dict)
+
+    ## traverse root to tips. Treat the left as outgroup, then the right.
+    tests = []
+    ## topnode must have children
+    for topnode in tree.traverse("levelorder"):  
+        ## test onode as either child
+        for oparent in topnode.children:
+            ## test outgroup as all descendants on one child branch
+            for onode in oparent.traverse():
+                ## put constraints on onode
+                if test_constraint(onode, cdict, "p4", constraint_exact):
+                    ## p123 parent is sister to oparent
+                    p123parent = oparent.get_sisters()[0]
+                    ## test p3 as all descendants of p123parent
+                    for p3parent in p123parent.children:
+                        ## p12 parent is sister to p3parent
+                        p12parent = p3parent.get_sisters()[0]
+                        for p3node in p3parent.traverse():
+                            if test_constraint(p3node, cdict, "p3", constraint_exact):
+                                if p12parent.children:
+                                    p1parent, p2parent = p12parent.children
+                                    for p2node in p2parent.traverse():
+                                        if test_constraint(p2node, cdict, "p2", constraint_exact):
+                                            for p1node in p1parent.traverse():
+                                                if test_constraint(p1node, cdict, "p1", constraint_exact):
+                                                    test = {}
+                                                    test['p4'] = onode.get_leaf_names()
+                                                    test['p3'] = p3node.get_leaf_names()
+                                                    test['p2'] = p2node.get_leaf_names()
+                                                    test['p1'] = p1node.get_leaf_names()
+                                                    tests.append(test)
+    return tests
+
+
+
+def test_constraint(node, cdict, tip, exact):
+    names = set(node.get_leaf_names())
+    const = set(cdict[tip])
+    if const:
+        if exact:
+            #if len(names.intersection(const)) == len(const):
+            if names == const:
+                return 1
+            else:
+                return 0
+        else:
+            if len(names.intersection(const)) == len(names):
+                return 1
+            else:
+                return 0        
+    return 1
+    
+    
+
+
 @numba.jit(nopython=True)
 def masknulls(arr):
     nvarr = np.zeros(arr.shape[0], dtype=np.int8)
@@ -638,7 +652,7 @@ def _get_signif_4(arr, nboots):
     z = 0.
     if s:
         z = np.abs(e) / s
-    stats = np.array([dstat, e, s, abba, baba, z])
+    stats = np.array([dstat, e, s, z, abba, baba, arr.shape[0]])
     return stats, boots
 
 
@@ -680,259 +694,6 @@ def _get_signif_5(arr, nboots):
 #######################################################################
 
 
-def bootplot(resarr, bootarr, alpha=0.05, *args, **kwargs):
-    """
-    plot the distribution of bootstrap replicates and significance
-    """
-    ## grab/update settable defaults
-    args = {"height": 400, 
-            "width": 1000, 
-            "label-font-size": "16px", 
-            "tick-font-size": "12px"}
-    args.update(kwargs)
-
-    ## storage for all the data
-    cutoff = st.norm.ppf(1-(alpha)/2) ## 1.96 for 0.05
-    ntests = resarr.shape[0]
-    xlines = np.zeros(ntests)
-
-    ## get borders canvas
-    canvas = toyplot.Canvas(height=args['height'], width=args['width'])
-    bmin = canvas.height * 0.05
-    bmax = canvas.height * 0.35
-    hmin = canvas.height * 0.45
-    hmax = canvas.height * 0.95
-    wmin = canvas.width * 0.15
-    wmax = canvas.width * 0.9
-
-    ## space between plots (min 50)
-    xlines = np.linspace(wmin, wmax, ntests+1)
-    spacer = 0.75 * (xlines[1] - xlines[0])
-    
-    ## get line plot scale
-    rmax = np.max(np.abs(bootarr))
-    rmax = round(min(1.0, max(0.2, rmax+0.1*rmax)), 1)
-    rmin = round(max(-1.0, min(-0.2, -1 * rmax)), 1)
-    
-    ## add the rest
-    for idx in xrange(ntests):
-        ## new data from resarr dataframe
-        #res = resarr.iloc[idx]
-        boot = bootarr[idx]
-        hist = np.histogram(boot, bins=50, range=(rmin, rmax), density=True)
-        
-        ## get p-value from z-score
-        sign = resarr.Z[idx] > cutoff
-        if sign:
-            if resarr.bootmean[idx] > 0:
-                histcolor = toyplot.color.Palette()[0]
-            else:
-                histcolor = toyplot.color.Palette()[1]
-        else:
-            histcolor = toyplot.color.Palette()[-1]
-        
-        ## next axes
-        dims = (xlines[idx], xlines[idx]+spacer, hmin, hmax)
-        axes = canvas.cartesian(bounds=dims)
-        axes.bars(hist, along='y', color=histcolor)
-
-        ## style leftmost edge
-        if idx == 0:
-            ## add histograms y-label
-            axes.y.label.text = "D-stat bootstraps"
-            axes.y.label.style = {"font-size": args['label-font-size'],
-                                  "fill": toyplot.color.near_black}
-            axes.y.label.offset = 30 #wmin / 2. ## 40
-
-            ## axes style
-            axes.y.ticks.show = True
-            axes.y.ticks.labels.style = {"font-size": args['tick-font-size']}
-            axes.y.ticks.labels.offset = 10
-        else:        
-            ## styling left most
-            axes.y.ticks.show = False
-            axes.y.ticks.labels.show = False
-
-        ## shared axis style
-        axes.x.show = False
-        axes.padding = 0.5
-
-    ## add dash through histograms
-    dims = (xlines[0], xlines[-1], hmin, hmax)# canvas.height)
-    axes = canvas.cartesian(bounds=dims)
-    axes.hlines(y=0, style={"stroke-dasharray": "5, 10"})
-    axes.show = False
-
-    ## add bar plots
-    dims = (xlines[0], xlines[-1], bmin, bmax)
-    axes = canvas.cartesian(bounds=dims)
-    axes.bars(xlines[1:], resarr.Z, opacity=0.75, color=toyplot.color.Palette()[2])
-
-    ## bars axis styling
-    axes.padding = 0.5
-    axes.y.ticks.labels.offset = 10
-    axes.y.ticks.labels.style = {"font-size": args['tick-font-size']}
-    axes.x.show = False#True
-    axes.hlines(y = cutoff, style={"stroke-dasharray": "5, 10"})
-    
-    ## bars y-label
-    axes.y.label.text = "Z-score"
-    axes.y.label.offset = 30 #40
-    axes.y.label.style = {"font-size": args['label-font-size'],
-                          "fill": toyplot.color.near_black}
-
-    return canvas
-    
-
-
-def panelplot(tests, resarr, bootsarr, tree):
-
-    ## setup canvas height in three parts 
-    canvas = toyplot.Canvas(width=1000, height=1000)
-
-    ## plot min/max
-    pwmin = canvas.width * 0.05
-    pwmax = canvas.width * 0.95
-    phmin = canvas.height * 0.05
-    phmax = canvas.height * 0.95
-    pwidth = pwmax - pwmin
-    pheight = phmax - phmin
-
-    ## tree plot min/max ----------------------------------------------
-    div_tree_xmin = pwmin
-    div_tree_xmax = pwmin + pwidth * 0.25
-    div_tree_ymin = phmin
-    div_tree_ymax = phmin + pheight * 0.50
-    dims = (div_tree_xmin, div_tree_xmax, 
-            div_tree_ymin, div_tree_ymax)
-    div_tree = canvas.cartesian(bounds=dims)
-    div_tree.graph(edges, 
-                   vcoordinates=coord, 
-                   ewidth=3, 
-                   ecolor=toyplot.color.near_black, 
-                   vlshow=False,
-                   vsize=0,
-                   along='y')
-    div_tree.show=False
-
-    ## separator between tree and blocks for names --------------------
-    namespace = pwidth * 0.15
-    div_sep_xmax = div_tree_xmax + namespace 
-    dims = (div_tree_xmax, div_sep_xmax, 
-            div_tree_ymin, div_tree_ymax)
-    div_sep = canvas.cartesian(bounds=dims)
-    div_sep.fill([0, 100], [100, 100], color=toyplot.color.Palette()[1])
-    div_sep.show = False
-
-    ## get blocks for tests
-    tests = range(10)
-    ntests = len(tests)
-
-    ## block spacers
-    blocks = np.linspace(div_sep_xmax, pwidth, ntests+1)
-    spacer = 0.75 * (blocks[1] - blocks[0])
-    for bidx in xrange(ntests):
-        ## create block 
-        dims = (blocks[bidx], blocks[bidx]+spacer, 
-                div_tree_ymin, div_tree_ymax)
-        div_block = canvas.cartesian(bounds=dims)
-        print(dims)
-        
-        ## functions to fill block based on taxonomy of test
-        div_block.fill([0, 100], [100, 100])
-        div_block.show = False 
-     
-    ## add bar plots ---------------------------------------------------
-    div_z_ymin = div_tree_ymax + pheight * 0.05
-    div_z_ymax = div_tree_ymax + pheight * 0.15
-    fudge = 3.
-    dims = (blocks[0], blocks[-1]-spacer/fudge, div_z_ymin, div_z_ymax)
-    div_z = canvas.cartesian(bounds=dims)
-    #print dims
-    div_z.bars(blocks[1:], blocks[1:]+spacer, resarr[:, 3], 
-               opacity=0.75, color=toyplot.color.Palette()[2])
-
-    ## bars axis styling
-    div_z.padding = 0.5
-    div_z.y.ticks.labels.offset = 10
-    div_z.y.ticks.labels.style = {"font-size": "12px"}# args['tick-font-size']}
-    div_z.x.show = False#True
-    div_z.y.spine.style = {"stroke-width": 2}# "2.5px"}
-    ## bars y-label
-    div_z.y.label.text = "Z-score"
-    div_z.y.label.offset = "40px"
-    div_z.y.label.style = {"font-size": "16px", #args['label-font-size'],
-                           "fill": toyplot.color.near_black}
-    ## add cutoff line
-    cutoff = 3.3
-    div_z.hlines(y = cutoff, 
-                 style={"stroke-width": 2, #"2.5px", 
-                        "stroke-dasharray": "5, 10"})
-
-    ## plot histogram distributions --------------------------------------
-    rmax = np.max(np.abs(bootsarr))
-    rmax = round(min(1.0, max(0.1, rmax+0.1*rmax)), 1)
-    rmin = round(max(-1.0, min(-0.1, -1 * rmax)), 1)
-
-    ## space between plots 
-    div_hist_ymin = div_z_ymax + pheight * 0.05
-    div_hist_ymax = pheight
-
-    ## add the rest
-    for idx in xrange(ntests):
-        ## new data
-        res = resarr[idx]
-        boot = bootsarr[idx]
-        hist = np.histogram(boot, bins=50, range=(rmin, rmax), density=True)
-
-        ## get p-value from z-score 
-        sign = res[3] > cutoff
-
-        ## make histogram cartesians
-        dims = (blocks[idx], blocks[idx]+spacer, div_hist_ymin, div_hist_ymax)
-        div_hist = canvas.cartesian(bounds=dims)
-        div_hist.bars(hist, along='y', color=toyplot.color.Palette()[sign])
-
-        ## next axes
-        #dims = (blocks[idx], blocks[idx]+spacer, div_hist_ymin, div_hist_ymax)
-        #axes = canvas.cartesian(bounds=dims)
-        #axes.bars(hist, along='y', color=toyplot.color.Palette()[sign])
-
-        ## style leftmost edge
-        if idx == 0:
-            ## add histograms y-label
-            div_hist.y.label.text = "D-stat bootstraps"
-            div_hist.y.label.offset = "40px" 
-            div_hist.y.label.style = {"font-size": "16px", #args['label-font-size'],
-                                      "fill": toyplot.color.near_black}
-
-            ## axes style
-            div_hist.y.ticks.show = True
-            div_hist.y.ticks.labels.style = {"font-size": "12px", 
-                                             "fill": toyplot.color.near_black}
-            #args['tick-font-size']}
-            div_hist.y.ticks.labels.offset = 10
-            div_hist.y.spine.style = {"stroke-width": 2}#"2.5px"}
-        else:        
-            ## styling left most
-            div_hist.y.ticks.show = False
-            div_hist.y.ticks.labels.show = False
-            
-        ## shared axis style
-        div_hist.x.show = False
-        div_hist.padding = 0.5
-
-    ## add dash through histograms
-    dims = (blocks[0], blocks[-1], div_hist_ymin, div_hist_ymax)
-    div_hist = canvas.cartesian(bounds=dims)
-    div_hist.hlines(y = 0, style={"stroke-width": 2, #"2.5px", 
-                                  "stroke-dasharray": "5, 10"})
-    div_hist.show = False
-
-    return canvas
-
-
-
 class Sim(object):
     def __init__(self, names, sims, nreps, debug):
         self.names = names
@@ -940,602 +701,6 @@ class Sim(object):
         self.nreps = nreps
         self.debug = debug
 
-
-
-#class ctree(Tree):
-#    pass
-
-
-class Tree(object):
-    def __init__(self, newick=None, admix=None):
-
-        ## use default newick string if not given
-        if newick:
-            self.newick = newick
-            self.admix = admix
-        else:
-            self.newick = "((((a,b),c),d), ((((e,f),g),h) , (((i,j),k),l)));"
-        ## parse newick, assigns idx to nodes, returns tre, edges, verts, names
-        tree, edges, verts, names = cladogram(self.newick)
-
-        ## parse admixture events
-        self.admix = admix
-        self._check_admix()
-
-        ## store values
-        self.tree = tree
-        self.edges = edges
-        self.verts = verts
-        self.names = names.values()  ## in tree plot vlshow order
-        #self.ladderized_tipnames = \
-        #    [self.verts[self.tree.search_nodes(name=name)[0].idx, 0]
-        #     for name in self.tree.get_leaf_names()]
-
-
-
-    def _check_admix(self):
-        ## raise an error if admixture event is not possible in time period
-        if self.admix:
-            for event in self.admix:
-                pass #print(event)
-
-
-    def simulate(self, nreps=1000, admix=None, Ns=int(5e5), gen=10):
-        sims = _simulate(self, nreps, admix, Ns, gen)
-        debug = 0  ## msprime debug
-        names = self.tree.get_leaf_names()[::-1]
-        Sims = Sim(names, sims, nreps, debug)
-        return Sims
-
-
-    def draw(
-        self, 
-        yaxis=False, 
-        show_tips=False, 
-        use_edge_lengths=True, 
-        taxdicts=None, 
-        bootsarr=None,
-        collapse_outgroup=False,
-        test_labels=False,
-        **kwargs):
-        """
-        plot the tree using toyplot.graph. 
-
-        Parameters:
-        -----------
-            taxdicts: dict
-                Show tests as colored rectangles.
-            bootsarr: ndarray
-                Show bootstrap distributions (requires taxdicts as well)
-            yaxis: bool
-                Show the y-axis.
-            use_edge_lengths: bool
-                Use edge lengths from newick tree.
-            show_tips: bool
-                Show tip names from tree.
-            pct_tree_y: float
-                proportion of canvas y-axis showing tree
-            ...
-        """
-        ## build toyplot plot
-        canvas, axes = _draw(self, yaxis, show_tips, use_edge_lengths, taxdicts, 
-                             bootsarr, collapse_outgroup, test_labels, **kwargs)
-        return canvas, axes
-
-
-
-def _draw(self, yaxis, show_tips, use_edge_lengths, taxdicts, bootsarr, collapse_outgroup, test_labels, **kwargs):
-
-    ## update kwargs from defaults
-    args = {"height": min(1000, 15*len(self.tree)),
-            "width": min(1000, 15*len(self.tree)),
-            "vsize": 0, 
-            "vlshow": False, 
-            "ewidth": 3, 
-            "vlstyle": {"font-size": "18px"}, 
-            "cex": "14px", 
-            "pct_tree_y": 0.3, 
-            "pct_tree_x": 0.7, 
-            "lwd_lines": 1,
-                }
-    ## default if only a tree plot
-    if not taxdicts:
-        args.update({
-            "vsize": 20,
-            "vlshow": True,
-            })
-    args.update(kwargs)
-
-    ## collapse outgroup
-    if collapse_outgroup:
-        tree, taxdicts = _collapse_outgroup(self.tree, taxdicts)
-        newick = tree.write(format=1)
-    else:
-        newick = self.newick
-
-    ## starting tree position will be changed if adding panel plots
-    xmin_tree = 0.
-    ymin_tree = 0.
-    ymin_test = 0.
-    ymin_text = 0.
-
-    ## convert vert to length 1s if not using edges
-    verts = copy.deepcopy(self.verts)
-
-    #if not use_edge_lengths:
-    tree, edges, verts, names = cladogram(newick, use_edge_lengths=False)
-    verts = verts.astype(np.float)
-
-    ## ensure types
-    bootsarr = np.array(bootsarr)
-
-    ## relocate tree for panel plots
-    if np.any(bootsarr) or taxdicts:
-            
-        ## adjust Y-axis: boots Y is 125% of tree Y
-        pcy = 1 - args["pct_tree_y"]
-        newmn = verts[:, 1].max() * pcy
-        newhs = np.linspace(newmn, verts[:, 1].max(), len(set(verts[:, 1])))
-        ymin_tree += verts[:, 1].max() * pcy
-        verts[:, 1] = [newhs[int(i)] for i in verts[:, 1]]
-
-        ## adjust X-axis: boots X is 75% of tree X
-        if np.any(bootsarr):
-            ## how much do I need to add to make the tree be 60%?
-            xmin_tree += verts[:, 0].max() * args["pct_tree_x"]
-            verts[:, 0] += verts[:, 0].max() * args["pct_tree_x"]
-
-        ## get spacer between panels
-        ztot = 0.15 * xmin_tree
-
-    ## add spacer for tip names
-    pctt = 0.2 * (ymin_tree + ymin_test)
-    ymin_tree += pctt / 2.
-    ymin_test += pctt / 2.
-    verts[:, 1] += pctt / 2.
-
-    ## create a canvas and a single cartesian coord system
-    canvas = toyplot.Canvas(height=args['height'], width=args['width'])
-    axes = canvas.cartesian(bounds=("5%", "95%", "5%", "95%"))
-            
-    ## add the tree/graph ------------------------------------------------
-    _ = axes.graph(edges, 
-                    vcoordinates=verts, 
-                    ewidth=args["ewidth"], 
-                    ecolor=toyplot.color.near_black, 
-                    vlshow=args["vlshow"],
-                    vsize=args["vsize"],
-                    vlstyle=args["vlstyle"],
-                    vlabel=names.values())   
-
-    ## add rects for test taxa -------------------------------------------
-    if taxdicts:
-        yhs = np.linspace(ymin_tree, ymin_test, len(taxdicts)+1)
-        ## calculate coords, top and bot 30% of bars is cutoff 
-        xmin_hists = 0.
-        xmin_zs = (xmin_tree * 0.5) 
-        ysp = (yhs[0] - yhs[1])  ## yyy
-        ytrim = 0.70 * ysp
-
-        ## colors for tips
-        cdict = {"p1": toyplot.color.Palette()[0], 
-                 "p2": toyplot.color.Palette()[1],
-                 "p3": toyplot.color.near_black, 
-                 "p4": toyplot.color.Palette()[-1],}
-
-        ## iterate over tests putting in rects
-        for idx, test in enumerate(taxdicts):
-            ## check taxdict names
-            dictnames = list(itertools.chain(*test.values()))
-            badnames = [i for i in dictnames if i not in names.values()]
-            if badnames:
-                #raise IPyradError(
-                print("Warning: found names not in tree:\n -{}"\
-                      .format("\n -".join(list(badnames))))
-
-            ## add dashed grid line for tests
-            gedges = np.array([[0, 1], [2, 3]])
-            gverts = np.array([
-                        [xmin_tree, yhs[idx]-ysp/2.],
-                        [verts[:, 0].max(), yhs[idx]-ysp/2.],
-                        [xmin_zs+ztot/2., yhs[idx]-ysp/2.],
-                        [xmin_tree-ztot, yhs[idx]-ysp/2.],
-                        ])
-            axes.graph(gedges, 
-                        vcoordinates=gverts,
-                        ewidth=args["lwd_lines"], 
-                        ecolor=toyplot.color.Palette()[-1],
-                        vsize=0, 
-                        vlshow=False,
-                        estyle={"stroke-dasharray": "5, 5"},
-                        )                              
-
-            ## add test rectangles
-            for tax in ["p1", "p2", "p3", "p4"]:
-                spx = [tree.search_nodes(name=i)[0] for i in test[tax]]
-                spx = np.array([i.x for i in spx], dtype=np.float)
-                spx += xmin_tree
-                spx.sort()
-                ## fill rectangles while leaving holes for missing taxa
-                for i in xrange(spx.shape[0]):
-                    if i == 0:
-                        xleft = spx[i] - 0.25
-                        xright = spx[i] + 0.25
-                    if i != spx.shape[0]-1:
-                        if spx[i+1] - spx[i] < 1.5:
-                            xright += 1
-                        else:
-                            axes.rects(xleft, xright, 
-                                yhs[idx] - ytrim, 
-                                yhs[idx+1] + ytrim, color=cdict[tax]) 
-                            xleft = spx[i+1] - 0.25
-                            xright = spx[i+1] + 0.25
-                    else:
-                        axes.rects(xleft, xright,
-                                yhs[idx] - ytrim, 
-                                yhs[idx+1] + ytrim, color=cdict[tax]) 
-                    
-        ## add test-label
-        if test_labels:
-            if isinstance(test_labels, bool) or test_labels == 1: 
-                labels = range(1, len(taxdicts) + 1)
-            elif isinstance(test_labels, list):
-                labels = test_labels
-            else:
-                raise IPyradError("  label_tests must be a list or boolean")
-            axes.text(
-                [verts[:, 0].max() + 1] * len(taxdicts),
-                yhs[:-1] - ysp / 2., 
-                labels,
-                    color=toyplot.color.near_black,
-                    style={
-                        "font-size": args["cex"],
-                        "text-anchor" : "start",
-                        "-toyplot-anchor-shift":"0",
-                        },
-                    )                
-
-        ## add hists
-        if np.any(bootsarr):
-            ## get bounds on hist
-            rmax = np.max(np.abs(bootsarr))
-            rmax = round(min(1.0, max(0.2, rmax+0.05*rmax)), 1)
-            rmin = round(max(-1.0, min(-0.2, -1 * rmax)), 1)
-            allzs = np.abs(np.array([i.mean() / i.std() for i in bootsarr]))
-            zmax = max(3., float(np.math.ceil(allzs.max())))
-
-            ## add histograms, and hist axes
-            for idx in xrange(bootsarr.shape[0]):
-                bins = 30
-                mags, xpos = np.histogram(bootsarr[idx], 
-                        bins=bins, range=(rmin, rmax), density=True)
-
-                ## get hist colors
-                thisz = allzs[idx]
-                if thisz > 3:
-                    if bootsarr[idx].mean() < 0:
-                        color = toyplot.color.Palette()[0]
-                    else:
-                        color = toyplot.color.Palette()[1]
-                else:
-                    color = toyplot.color.Palette()[-1]
-
-                ## plot z's within range 
-                zright = xmin_tree - ztot
-                zleft = xmin_zs + ztot/2.
-                zprop = thisz / zmax
-                zmaxlen = zright - zleft
-                zlen = zmaxlen * zprop
-                axes.rects(
-                    zright-zlen, zright,
-                    yhs[idx] - ytrim, 
-                    yhs[idx+1] + ytrim,
-                    color=toyplot.color.Palette()[2])
-
-                ## get hist xspans, heights in range
-                xran = np.linspace(xmin_hists, xmin_zs - ztot/2., bins+1)
-                mags = mags / mags.max()
-                mags = (mags * ysp) * 0.8
-                yline = yhs[idx+1]
-                heights = np.column_stack([[yline for i in mags], mags])
-                axes.bars(
-                    xran[:-1], 
-                    heights, 
-                    baseline="stacked",
-                    color=["white", color],
-                    )
-
-                ## add x-line to histograms
-                gverts = np.array([
-                    [xran[0], yline], 
-                    [xran[-1], yline],
-                    ])
-                gedges = np.array([[0, 1]])
-                axes.graph(
-                    gedges, 
-                    vcoordinates=gverts, 
-                    ewidth=1, 
-                    ecolor=toyplot.color.near_black,
-                    vsize=0, 
-                    vlshow=False,
-                    )
-
-            ## add xline to z-plots
-            gverts = np.array([
-                [xmin_zs + ztot/2., yline], 
-                [xmin_tree - ztot, yline], 
-                ])
-            gedges = np.array([[0, 1]])
-            axes.graph(
-                gedges, 
-                vcoordinates=gverts, 
-                ewidth=1, 
-                ecolor=toyplot.color.near_black,
-                vsize=0, 
-                vlshow=False,
-                )
-
-            ## add dashed y-line at 0 to histograms
-            here = np.where(xpos > 0)[0].min()
-            zero = xran[here-1]
-            gverts = np.array([
-                [zero, ymin_test],
-                [zero, ymin_tree - ytrim / 4.],
-                ])
-            gedges = np.array([[0, 1]])
-            axes.graph(
-                gedges, 
-                vcoordinates=gverts, 
-                ewidth=1, 
-                ecolor=toyplot.color.near_black,
-                eopacity=1.,
-                vsize=0, 
-                vlshow=False,
-                estyle={"stroke-dasharray": "5, 5"},
-                )
-
-            ## add solid y-line to z-plots
-            gverts = np.array([
-                [xmin_tree - ztot, ymin_test + ytrim/4.],
-                [xmin_tree - ztot, ymin_tree - ytrim/4.],
-                ])
-            gedges = np.array([[0, 1]])
-            axes.graph(
-                gedges, 
-                vcoordinates=gverts, 
-                ewidth=1, 
-                ecolor=toyplot.color.near_black,
-                eopacity=1.,
-                vsize=0, 
-                vlshow=False,
-                )
-
-            ## add tick-marks to x-lines (hists and z-plots)
-            ticklen = ytrim / 4.
-            gedges = np.array([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
-            gverts = np.array([
-                [xmin_hists, ymin_test - ticklen],
-                [xmin_hists, ymin_test],
-                [zero, ymin_test - ticklen],                              
-                [zero, ymin_test],
-                [xmin_zs - ztot / 2., ymin_test - ticklen],
-                [xmin_zs - ztot / 2., ymin_test],
-                [xmin_zs + ztot / 2., ymin_test - ticklen],
-                [xmin_zs + ztot / 2., ymin_test],
-                [xmin_tree - ztot, ymin_test - ticklen],
-                [xmin_tree - ztot, ymin_test],
-                ])
-            axes.graph(
-                gedges, 
-                vcoordinates=gverts, 
-                ewidth=1, 
-                ecolor=toyplot.color.near_black,
-                eopacity=1.,
-                vsize=0, 
-                vlshow=False,
-                )
-
-            ## add tick labels
-            labels = [rmin, 0, rmax, zmax, 0]
-            axes.text(
-                gverts[:, 0][::2], 
-                [ymin_test - ysp] * len(labels),
-                labels, 
-                color=toyplot.color.near_black,
-                style={
-                    "font-size": args["cex"],
-                    "text-anchor" : "middle",
-                    "-toyplot-anchor-shift":"0",
-                    },
-                )
-
-            ## add baba abba labels
-            axes.text(
-                [gverts[:, 0][0], gverts[:, 0][4]],
-                [ymin_test - ysp * 2] * 2,
-                ["BABA", "ABBA"], 
-                color=toyplot.color.near_black,
-                style={
-                    "font-size": args["cex"], #"12px",
-                    "text-anchor" : "middle",
-                    "-toyplot-anchor-shift":"0",
-                    },
-                )     
-
-            ## add bootstrap and z-score titles
-            axes.text(
-                [zero, zright - 0.5 * zmaxlen],
-                [ymin_tree + ysp / 2.] * 2,
-                ["Bootstrap D-statistics", "Z-scores"], 
-                color=toyplot.color.near_black,
-                style={
-                    "font-size": args["cex"], #"12px",
-                    "text-anchor" : "middle",
-                    "-toyplot-anchor-shift":"0",
-                    },
-                )
-
-    ## add names to tips --------------------------------------------------
-    if show_tips:
-        ## calculate coords
-        nams = [i for i in names.values() if not isinstance(i, int)]
-        spx = [tree.search_nodes(name=i)[0] for i in nams]
-        spx = np.array([i.x for i in spx], dtype=np.float)
-        spx += xmin_tree
-        if taxdicts:
-            spy = [yhs[-1] - ysp / 2.] * len(nams)
-        else:
-            spy = [ymin_test - 0.5] * len(nams)
-        _ = axes.text(spx, spy, nams,
-                        angle=-90, 
-                        color=toyplot.color.near_black,
-                        style={
-                            "font-size": args["cex"],
-                            "text-anchor" : "start",
-                            "-toyplot-anchor-shift":"0",
-                            },
-                        ) 
-
-    ## plot admix lines ---------------------------------
-    if self.admix:
-        for event in self.admix:
-            ## get event
-            source, sink, _, _, _ = event
-
-            ## get nodes from tree
-            source = self.tree.search_nodes(name=source)[0]
-            sink = self.tree.search_nodes(name=sink)[0]
-
-            ## get coordinates
-            fromx = np.max([source.up.x, source.x]) - np.abs(source.up.x - source.x) / 2.
-            fromy = source.y + (source.up.y - source.y) / 2.
-            tox = np.max([sink.up.x, sink.x]) - np.abs(sink.up.x - sink.x) / 2.
-            toy = sink.y + (sink.up.y - sink.y) / 2.
-                
-            ## if show_tips:
-            if show_tips:
-                fromy += spacer
-                toy += spacer
-
-            ## plot
-            mark = axes.plot([fromx, tox], [fromy, toy], 
-                            color=toyplot.color.Palette()[1], 
-                            style={"stroke-width": 3, 
-                                   "stroke-dasharray": "2, 2"},
-                            )
-                
-    ## hide x and hide/show y axies
-    axes.x.show = False
-    if yaxis:
-        axes.y.show = True
-    else:
-        axes.y.show = False    
-
-    ## return plotting 
-    return canvas, axes
-
-
-
-
-def _collapse_outgroup(tree, taxdicts):
-    """ collapse outgroup in ete Tree for easier viewing """
-    ## check that all tests have the same outgroup
-    outg = taxdicts[0]["p4"]
-    if not all([i["p4"] == outg for i in taxdicts]):
-        raise Exception("no good")
-   
-    ## prune tree, keep only one sample from outgroup
-    tre = ete.Tree(tree.write(format=1)) #tree.copy(method="deepcopy")
-    alltax = [i for i in tre.get_leaf_names() if i not in outg]
-    alltax += [outg[0]]
-    tre.prune(alltax)
-    tre.search_nodes(name=outg[0])[0].name = "outgroup"
-    tre.ladderize()
-
-    ## remove other ougroups from taxdicts
-    taxd = copy.deepcopy(taxdicts)
-    newtaxdicts = []
-    for test in taxd:
-        #test["p4"] = [outg[0]]
-        test["p4"] = ["outgroup"]
-        newtaxdicts.append(test)
-
-    return tre, newtaxdicts
-
-
-
-
-## convertes newick to (edges, vertices)
-def cladogram(newick, use_edge_lengths=True, invert=False):
-    
-    ## invert and short name to arg so it is similar to ape
-    ig = use_edge_lengths == False
-
-    ## get tree
-    tre = ete.Tree(newick=newick)
-    tre.ladderize()
-
-    ## map numeric values to internal nodes from root to tips
-    ## preorder: first parent and then children. These indices will
-    ## be used in the int edge array to map edges.
-    names = {}
-    idx = 0
-    for node in tre.traverse("preorder"):
-        if not node.is_leaf():
-            if node.name:
-                names[idx] = node.name
-            else:
-                names[idx] = idx
-                node.name = str(idx)
-            node.idx = idx
-            idx += 1
-
-    ## map number to the tips, these will be the highest numbers
-    for node in sorted(tre.get_leaves(), key=lambda x: x.name):
-        names[idx] = node.name
-        node.idx = idx
-        idx += 1
-
-    ## create empty edges and coords arrays
-    edges = np.zeros((idx-1, 2), dtype=int)
-    verts = np.zeros((idx, 2), dtype=float)
-    
-    ## postorder: first children and then parents. This moves up the list .
-    nidx = 0
-    tip_num = len(tre.get_leaves()) - 1
-    for node in tre.traverse("postorder"):
-        #for nidx in range(idx)[::-1]:
-        #node = tre.search_nodes(idx=nidx)[0]
-        if node.is_leaf():
-            edges[nidx-1, :] = node.up.idx, node.idx
-            node.x = tip_num 
-            node.y = 0
-            tip_num -= 1
-            verts[node.idx] = [node.x, node.y]
-        
-        elif node.is_root():
-            node.x = sum(i.x for i in node.children) / 2.
-            if ig:
-                node.y = node.get_farthest_leaf(ig)[1] + 1
-            else:
-                node.y = node.get_farthest_leaf()[1]
-            verts[node.idx] = [node.x, node.y]
-        
-        else:
-            edges[nidx-1, :] = node.up.idx, node.idx
-            node.x = sum(i.x for i in node.children) / 2.
-            if ig:
-                node.y = node.get_farthest_leaf(ig)[1] + 1
-            else:
-                node.y = node.get_farthest_leaf()[1]
-            verts[node.idx] = [node.x, node.y] 
-        nidx += 1
-
-    ## invert for sideways trees
-    if invert:
-        verts[:, 1] = np.abs(verts[:, 1] - tlen)
-
-    return tre, edges, verts, names
 
 
 

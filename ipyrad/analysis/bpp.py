@@ -10,7 +10,8 @@ import itertools
 import subprocess
 import numpy as np
 import ete3 as ete
-from ipyrad.assemble.util import IPyradWarningExit
+from collections import Counter
+from ipyrad.assemble.util import IPyradWarningExit, DUCT
 #import pandas as pd
 
 
@@ -52,28 +53,8 @@ def bpp(locifile, guidetree, imap, workdir="analysis-bpp", *args, **kwargs):
     assert set(imap.keys()) == set(tree.get_leaf_names()), "IMAP keys must match guidetree names"
 
     ## update default args
-    DEFKWARGS.update(kwargs)
-    return Bpp(locifile, guidetree, imap, workdir, *args, **DEFKWARGS)
+    return Bpp(locifile, guidetree, imap, workdir, *args, **kwargs)
 
-
-
-DEFKWARGS = {
-    "maxloci": None,
-    "minmap": None,
-    "minsnps": 0,
-    "infer_sptree": 0,
-    "infer_delimit": 0,
-    "delimit_alg": (0, 5),
-    "seed": 12345,
-    "burnin": 1000,
-    "nsample": 10000,
-    "sampfreq": 2,
-    "thetaprior": (5, 5),
-    "tauprior": (4, 2, 1),
-    "usedata": 1,
-    "cleandata": 0,
-    "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
-}
 
 
 class Bpp(object):
@@ -168,6 +149,24 @@ class Bpp(object):
         #self.name = name
         self.locifile = locifile
         self.workdir = workdir
+        self.kwargs = {
+                "maxloci": None,
+                "minmap": None,
+                "minsnps": 0,
+                "infer_sptree": 0,
+                "infer_delimit": 0,
+                "delimit_alg": (0, 5),
+                "seed": 12345,
+                "burnin": 1000,
+                "nsample": 10000,
+                "sampfreq": 2,
+                "thetaprior": (5, 5),
+                "tauprior": (4, 2, 1),
+                "usedata": 1,
+                "cleandata": 0,
+                "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
+            }
+        self.kwargs.update(kwargs)
 
         ## check locifile (count)
         #with open(locifile, 'r') as infile:
@@ -187,15 +186,15 @@ class Bpp(object):
 
         ## filters
         self.filters = Params()
-        self.filters.minmap = kwargs["minmap"]
-        self.filters.maxloci = kwargs["maxloci"]
-        self.filters.minsnps = kwargs["minsnps"]
+        self.filters.minmap = self.kwargs["minmap"]
+        self.filters.maxloci = self.kwargs["maxloci"]
+        self.filters.minsnps = self.kwargs["minsnps"]
 
         ## set bpp parameters with defaults
         self.params = Params()
         notparams = set(["workdir", "maxloci", "minmap", "minsnps"])
-        for key in set(kwargs.keys()) - notparams:
-            self.params[key] = kwargs[key]
+        for key in set(self.kwargs.keys()) - notparams:
+            self.params[key] = self.kwargs[key]
 
 
     #@property
@@ -280,7 +279,7 @@ class Bpp(object):
     #    return newbranch
 
 
-    def write_bpp_files(self, prefix):
+    def write_bpp_files(self, prefix, quiet=False):
         """ Writes bpp files (.ctl, .seq, .imap) to the working directory"""
 
         ## remove any old jobs with this same job name
@@ -293,23 +292,37 @@ class Bpp(object):
 
         ## write tmp files for the job
         self._name = prefix
-        self._write_seqfile()
-        self._write_mapfile()
+        self._write_seqfile(True)
+        self._write_mapfile(True)
         self._write_ctlfile()
 
+        if not quiet:
+            sys.stderr.write("input files created for job {} ({} loci)\n"\
+                             .format(prefix, self._nloci))
 
-    def _write_mapfile(self):
+
+
+    def _write_mapfile(self, name=False):
         ## write the imap file:
-        with open(os.path.join(self.workdir, "tmp.imapfile.txt"), 'w') as mapfile:
+        if name:
+            self.mapfile = os.path.join(self.workdir, self._name+".imapfile.txt")
+        else:
+            self.mapfile = os.path.join(self.workdir, "tmp.imapfile.txt")
+
+        with open(self.mapfile, 'w') as mapfile:
             data = ["{:<30} {}".format(val, key) for key \
                     in sorted(self.imap) for val in self.imap[key]]
             mapfile.write("\n".join(data))
 
 
-    def _write_seqfile(self, randomize_order=False):
+    def _write_seqfile(self, name=False, randomize_order=False):
 
         ## handles
-        seqfile = open(os.path.join(self.workdir, "tmp.seqfile.txt"), 'w')
+        if name: 
+            self.seqfile = os.path.join(self.workdir, self._name+".seqfile.txt")
+        else:
+            self.seqfile = os.path.join(self.workdir, "tmp.seqfile.txt")
+        seqfile = open(self.seqfile, 'w')
         with open(self.locifile) as infile:
             loci = infile.read().strip().split("|\n")
             nloci = len(loci)
@@ -322,7 +335,6 @@ class Bpp(object):
         ## iterate over loci, printing to outfile
         nkept = 0
         for iloc in xrange(nloci):
-            ## TODO: parse minsnps for the subset data here and filter with it...
             lines = loci[iloc].split("//")[0].split()
             names = lines[::2]
             names = ["^"+i for i in names]
@@ -330,6 +342,7 @@ class Bpp(object):
             seqlen = len(seqs[0])
             ## whether to skip this locus based on filters below
             skip = 0
+
             ## if minmap filter for sample coverage
             if self.filters.minmap:
                 covd = {}
@@ -341,8 +354,30 @@ class Bpp(object):
                     skip = 1
 
             ## too many loci?
-            if self.filters.maxloci:
+            if (not skip) and (self.filters.maxloci):
                 if nkept >= self.filters.maxloci:
+                    skip = 1
+
+            ## if minsnps filter for snps
+            if (not skip) and (self.filters.minsnps):
+                npis = 0
+                arr = np.array(seqs)
+                arr = np.zeros((arr.shape[0]*2, arr.shape[1]), dtype="S1")
+                for row in xrange(len(seqs)):
+                    fillrow = 2 * row
+                    arr[fillrow] = [DUCT[i][0] for i in seqs[row]]
+                    arr[fillrow+1] = [DUCT[i][1] for i in seqs[row]]
+                    
+                for col in xrange(arr.shape[1]):
+                    bases = arr[:, col]
+                    bases = bases[bases != "N"]
+                    bases = bases[bases != "-"]
+                    counts = Counter(bases)
+                    counts = counts.most_common(2)
+                    if len(counts) == 2:
+                        if counts[1][1] > 1:
+                            npis += 1
+                if npis < self.filters.minsnps:
                     skip = 1
 
             ## build locus as a string
@@ -375,8 +410,8 @@ class Bpp(object):
 
         ## write the top header info
         ctl.append("seed = {}".format(self.params.seed))
-        ctl.append("seqfile = {}".format(os.path.join(self.workdir, "tmp.seqfile.txt")))
-        ctl.append("Imapfile = {}".format(os.path.join(self.workdir, "tmp.imapfile.txt")))
+        ctl.append("seqfile = {}".format(self.seqfile))
+        ctl.append("Imapfile = {}".format(self.mapfile))
 
         path = os.path.join(self.workdir, self._name)
         if isinstance(rep, int):
@@ -470,6 +505,7 @@ class Params(object):
 
 class Result_00(object):
     """ parse bpp results object for 00 scenario """
+    pass
 
 
 
