@@ -9,13 +9,17 @@ from ipyrad import __version__
 ## same name as the module (file), such that when we import the function
 ## it clobbers the file name as a import. 
 
+from .baba import Baba as baba
+from .tree import Tree as tree
 from .bpp import bpp
 from .tetrad import tetrad
-from .baba import Tree as tree
-from .baba import Baba as baba
+
+#from ..plotting.baba_panel_plot import baba_panel_plot
+#from ..plotting.tree_panel_plot import tree_panel_plot
+#from ..plotting.share_panel_plot import share_panel_plot
+
 #from .structure import structure
 #from .treemix import treemix
-
 
 
 #import tetrad.tetrad as tetrad #
