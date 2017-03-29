@@ -10,6 +10,7 @@ import ipyrad as ip
 import argparse
 import logging
 import atexit
+import time
 import sys
 import os
 
@@ -486,6 +487,13 @@ def main():
     "\n  ipyrad [v.{}]".format(ip.__version__)+\
     "\n  Interactive assembly and analysis of RAD-seq data"+\
     "\n -------------------------------------------------------------"
+
+    ## Log the current version. End run around the LOGGER
+    ## so it'll always print regardless of log level.
+    with open(ip.__debugfile__, 'w') as logfile:
+        logfile.write(header)
+        logfile.write("\n  Begin run: {}".format(time.strftime("%Y-%m-%d %H:%M")))
+        logfile.write("\n  Using args {}".format(vars(args)))
 
     ## if merging just do the merge and exit
     if args.merge:
