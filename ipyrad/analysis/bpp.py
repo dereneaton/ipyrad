@@ -279,8 +279,21 @@ class Bpp(object):
     #    return newbranch
 
 
-    def write_bpp_files(self, prefix, quiet=False):
-        """ Writes bpp files (.ctl, .seq, .imap) to the working directory"""
+    def write_bpp_files(self, prefix, randomize_order=False, quiet=False):
+        """ 
+        Writes bpp files (.ctl, .seq, .imap) to the working directory. 
+
+        Parameters:
+        ------------
+        prefix (str):
+            a prefix name for the output files
+        randomize_order (bool):
+            whether to randomize the locus order, this will allow you to 
+            sample different subsets of loci in different replicates when
+            using the filters.maxloci option.
+        quiet (bool):
+            whether to print info to stderr when finished.
+        """
 
         ## remove any old jobs with this same job name
         oldjobs = glob.glob(os.path.join(self.workdir, prefix+"*.ctl.txt"))
