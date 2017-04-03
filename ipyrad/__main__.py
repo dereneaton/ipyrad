@@ -490,7 +490,7 @@ def main():
 
     ## Log the current version. End run around the LOGGER
     ## so it'll always print regardless of log level.
-    with open(ip.__debugfile__, 'w') as logfile:
+    with open(ip.__debugfile__, 'a') as logfile:
         logfile.write(header)
         logfile.write("\n  Begin run: {}".format(time.strftime("%Y-%m-%d %H:%M")))
         logfile.write("\n  Using args {}".format(vars(args)))
