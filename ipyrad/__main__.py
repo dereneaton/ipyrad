@@ -494,6 +494,7 @@ def main():
         logfile.write(header)
         logfile.write("\n  Begin run: {}".format(time.strftime("%Y-%m-%d %H:%M")))
         logfile.write("\n  Using args {}".format(vars(args)))
+        logfile.write("\n  Platform info: {}".format(os.uname()))
 
     ## if merging just do the merge and exit
     if args.merge:
