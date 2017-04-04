@@ -2321,7 +2321,7 @@ def vcfchunk(data, optim, sidx, start, full):
         else:
             try:
                 cols0[init:init+seq.shape[1]] = np.core.defchararray.add(np.array(["locus_"] * seq.shape[1]),\
-                                                                 np.char.mod('%d', start+locindex[iloc]+1))
+                                                                 np.char.mod('%d', start+locindex[iloc]))
                 #LOGGER.debug("Found a non-ref seq - {}".format(start+locindex[iloc]+1))
             except:
                 LOGGER.debug("Found a locus with no snps - {}".format(start+locindex[iloc]+1))
