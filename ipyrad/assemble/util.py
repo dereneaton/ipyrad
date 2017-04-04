@@ -269,7 +269,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
     for fhandle in two_files[0]:
         if not os.path.exists(fhandle):
             raise IPyradWarningExit("""
-    Attempting to merge a file that doesn't exist - {}.""".format(fhandle))
+    Attempting to merge a file that doesn't exist - {}""".format(fhandle))
 
     ## If it already exists, clean up the old merged file
     if os.path.exists(merged_out):
