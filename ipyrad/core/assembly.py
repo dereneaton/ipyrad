@@ -1842,14 +1842,13 @@ def _paramschecker(self, param, newvalue):
         ## let's get whatever the user entered as a tuple of letters
         allowed = assemble.write_outfiles.OUTPUT_FORMATS.keys()
 
-        ## Handle the case where output formats is empty
-        if not newvalue.strip():
-            newvalue = "*"
-
         if isinstance(newvalue, tuple):
             newvalue = list(newvalue)
         if isinstance(newvalue, str):
             newvalue = [i.strip() for i in newvalue.split(",")]
+            ## Handle the case where output formats is empty
+            if not any(newvalue):
+                newvalue = "*"
         if isinstance(newvalue, list):
             ## if more than letters, raise an warning
             if any([len(i) > 1 for i in newvalue]):

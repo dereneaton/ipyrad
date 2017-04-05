@@ -375,8 +375,6 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
 
     ## how many reads to store before writing to disk
     waitchunk = int(1e6)
-    LOGGER.debug("in here")
-    LOGGER.info("in here")
 
     ## pid name for this engine
     epid = os.getpid()
@@ -442,7 +440,7 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
     else:
         quarts = itertools.izip(quart1, iter(int, 1))
 
-    LOGGER.info("here %s", tups[0])
+    LOGGER.debug("Doing chunk %s", tups[0])
 
     ## go until end of the file
     while 1:

@@ -539,7 +539,7 @@ def run_cutadapt(data, subsamples, lbview):
                 parse_pair_results(data, data.samples[async], res)
         else:
             print("  found an error in step2; see ipyrad_log.txt")
-            LOGGER.warn("error in run_cutadapt(): %s", rawedits[async].exception())
+            LOGGER.error("error in run_cutadapt(): %s", rawedits[async].exception())
 
 
 
