@@ -63,8 +63,16 @@ if __loglevel__ == "DEBUG":
 
 
 
-def cluster_info(client=None, cluster_id="", profile="default",
-                 engines="Local", timeout=60, cores=0, quiet=True, **kwargs):
+def cluster_info(
+    client=None, 
+    cluster_id="", 
+    profile="default",
+    engines="Local", 
+    timeout=60, 
+    cores=0, 
+    quiet=True,
+    spacer=0,
+    **kwargs):
     """ report info on the ipcluster instance """  
 
     ## get the client
@@ -77,9 +85,12 @@ def cluster_info(client=None, cluster_id="", profile="default",
     ## report 
     hosts = ipyclient[:].apply_sync(_socket.gethostname)
     result = []
-    spacer = ""
-    if not __interactive__:
+    if spacer:
+        spacer = " " * spacer
+    elif not __interactive__:
         spacer = "  "
+    else:
+        spacer = ""
     for hostname in set(hosts):
         result.append(spacer+"host compute node: [{} cores] on {}"\
                       .format(hosts.count(hostname), hostname))
