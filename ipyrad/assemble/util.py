@@ -606,15 +606,20 @@ def clustdealer(pairdealer, optim):
 
 
 
-def progressbar(njobs, finished, msg=""):
+def progressbar(njobs, finished, msg="", spacer=2):
     """ prints a progress bar """
     progress = 100*(finished / float(njobs))
     hashes = '#'*int(progress/5.)
     nohash = ' '*int(20-len(hashes))
     if not ipyrad.__interactive__:
         msg = msg.rsplit("|", 2)[0]
-    print("\r  [{}] {:>3}% {} "\
-          .format(hashes+nohash, int(progress), msg), end="")
+    print("\r{}[{}] {:>3}% {} "\
+          .format(
+              " " * spacer,
+              hashes+nohash, 
+              int(progress), 
+              msg),
+              end="")
     sys.stdout.flush()
 
 
