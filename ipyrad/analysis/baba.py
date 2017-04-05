@@ -10,7 +10,7 @@ from __future__ import print_function, division
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
 from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
 from ipyrad.analysis.bpp import Params
-from ipyrad.analysis.tree import decompose_tree
+from ipyrad.analysis.tree import Tree as tree #decompose_tree
 from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 #import scipy.stats as st  ## used for dfoil
@@ -93,32 +93,22 @@ class Baba(object):
         self.results_boots = None
 
 
+
     def run(self, 
-        #tests, 
-        #mindicts=None, 
-        #nboots=1000,
         ipyclient=None,
-        #quiet=False):
         ):
         """
         Run a batch of dstat tests on a list of tests, where each test is 
         a dictionary mapping sample names to {p1 - p4} (and sometimes p5). 
+        Parameters modifying the behavior of the run, such as the number
+        of bootstrap replicates (nboots) or the minimum coverage for 
+        loci (mincov) can be set in {object}.params.
 
         Parameters:
         -----------
-        tests (list):
-            A list of dictionaries mapping sample names to keys.
-        mindicts (int or dict):
-            An int or dict listing the minimum number of samples that must 
-            have data in a locus for the locus to be retained in the test. 
-        nboots (int):
-            The number of non-parametric bootstrap replicates to perform.
         ipyclient (ipyparallel.Client object):
             An ipyparallel client object to distribute jobs to a cluster. 
-        quiet (bool):
-            Whether to print progress bar to the screen.
         """
-        #args = [ipyclient, quiet]
         self.results_table, self.results_boots = batch(self, ipyclient)
 
 
@@ -139,7 +129,7 @@ class Baba(object):
             raise AttributeError("no newick tree information in {self}.newick")
         tests = tree2tests(self.newick, constraint_dict, constraint_exact)
         if verbose:
-            print("{} tests generated from tree".format(len(tests)))
+            print("  {} tests generated from tree".format(len(tests)))
         self.tests = tests
 
 
@@ -157,26 +147,32 @@ class Baba(object):
             raise IPyradError("baba plot must have a .newick attribute (treefile)")
         if not self.tests:
             raise IPyradError("baba plot must have a .tests attribute")
-        if not isinstance(self.results_boots, np.ndarray):
-            raise IPyradError("baba plot must have results (you must run .run())")
+        #if not isinstance(self.results_boots, np.ndarray):
+        #    raise IPyradError("baba plot must have results (you must run .run())")
 
         ## ensure tests is a list
         if isinstance(self.tests, dict):
             self.tests = [self.tests]
 
         ## re-decompose the tree
-        tree, edges, verts, names = decompose_tree(
+        #tree, edges, verts, names = decompose_tree(
+        #    self.newick, 
+        #    orient="down", 
+        #    use_edge_lengths=use_edge_lengths)
+        #verts = verts.astype(np.float)
+        ttree = tree(
             self.newick, 
-            orient="down", 
-            use_edge_lengths=use_edge_lengths)
-        verts = verts.astype(np.float)
+            orient='down', 
+            use_edge_lengths=use_edge_lengths,
+            )
 
         ## make the plot
-        canvas, axes = baba_panel_plot(
-            tree=tree,
-            edges=edges, 
-            verts=verts, 
-            names=names,
+        canvas, axes, panel = baba_panel_plot(
+            ttree=ttree,
+            #tree=tre.tree,
+            #edges=edges, 
+            #verts=verts, 
+            #names=names,
             tests=self.tests,
             boots=self.results_boots,
             show_test_labels=show_test_labels, 
@@ -186,7 +182,11 @@ class Baba(object):
             pct_tree_y=pct_tree_y,
             *args, 
             **kwargs)
-        return canvas, axes
+        return canvas, axes, panel
+
+
+    def copy(self):
+        return copy.deepcopy(self)
 
 
 
@@ -227,24 +227,41 @@ def batch(
     resarr = np.zeros((tot, 7), dtype=np.float64)
     bootsarr = np.zeros((tot, nboots), dtype=np.float64)
 
-    ## if no ipyclient then drop back to multiprocessing
-    if ipyclient:
-        lbview = ipyclient.load_balanced_view()
-        def submit_dstat_job(args):
-            async = lbview.apply_async(dstat, *args)
-            return async
+    ## define the function and parallelization to use, 
+    ## if no ipyclient then drops back to using multiprocessing.
+    if not ipyclient:
+        ## auto-start ipcluster like in ipyrad
+        #ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+        #ipcluster please start an ipyparallel cluster")
+        raise IPyradError("you must enter an ipyparallel.Client() object")
+
     else:
-        import multiprocessing
-        lbview = multiprocessing.Pool()
-        def submit_dstat_job(args):
-            async = lbview.apply_async(dstat, args)
-            return async
-        #raise IPyradError("  must provide an ipyclient Object")
+        lbview = ipyclient.load_balanced_view()
+
+    # if ipyclient:
+    #     lbview = ipyclient.load_balanced_view()
+    #     def submit_dstat_job(args):
+    #         async = lbview.apply_async(dstat, *args)
+    #         return async
+    # else:
+    #     import multiprocessing
+    #     lbview = multiprocessing.Pool()
+    #     def submit_dstat_job(args):
+    #         async = lbview.apply_async(dstat, args)
+    #         return async
 
     ## submit jobs to run on the cluster queue
     start = time.time()
     asyncs = {}
     idx = 0
+
+    ## prepare data before sending to engines
+    ## if it's a str (locifile) then parse it
+    if isinstance(handle, str):
+        with open(handle, 'r') as infile:
+            loci = infile.read().strip().split("|\n")
+    if isinstance(handle, list):
+        pass #sims()
 
     ## iterate over tests (repeats mindicts if fewer than taxdicts)
     for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
@@ -252,11 +269,12 @@ def batch(
         if sims:
             arr = _msp_to_arr(handle, test)
             args = (arr, test, mindict, nboots)
-            asyncs[idx] = lbview.apply_async(dstat, *args)
-        else:
-            args = [handle, test, mindict, nboots]
+            print("not yet implemented")
             #asyncs[idx] = lbview.apply_async(dstat, *args)
-            asyncs[idx] = submit_dstat_job(args)
+        else:
+            args = [loci, test, mindict, nboots]
+            #asyncs[idx] = submit_dstat_job(args)
+            asyncs[idx] = lbview.apply_async(dstat, *args)
         idx += 1
 
     ## block until finished, print progress if requested.
@@ -282,7 +300,7 @@ def batch(
             progressbar(tot, fin, " calculating D-stats  | {} | ".format(elap))
             time.sleep(0.1)
             if not asyncs:
-                print("\n")
+                print("")#\n")
                 break
 
     except KeyboardInterrupt as inst:
@@ -315,20 +333,25 @@ def batch(
 def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     """ private function to perform a single D-stat test"""
 
-    ## get data as an array from loci file
-    if isinstance(inarr, str):
+    # ## get data as an array from loci file
+    # ## if loci-list then parse arr from loci
+    if isinstance(inarr, list):
         arr, _ = _loci_to_arr(inarr, taxdict, mindict)
-    elif isinstance(inarr, np.ndarray):
-        arr = inarr
-    elif isinstance(inarr, Sim):
-        arr = _msp_to_arr(inarr, taxdict)
+    
+    # ## if it's an array already then go ahead
+    # elif isinstance(inarr, np.ndarray):
+    #     arr = inarr
+    # ## if it's a simulation object get freqs from array
+    # elif isinstance(inarr, Sim):
+    #     arr = _msp_to_arr(inarr, taxdict)
+
     #elif isinstance(inarr, types.GeneratorType):
     #    arr = _msp_to_arr(inarr, taxdict)
     #elif isinstance(inarr, list):
     #    arr = _msp_to_arr(inarr, taxdict)
     ## get data from Sim object, do not digest the ms generator
-    else:
-        raise Exception("Must enter either a 'locifile' or 'arr'")
+    #else:
+    #    raise Exception("Must enter either a 'locifile' or 'arr'")
 
     ## run tests
     if len(taxdict) == 4:
@@ -355,28 +378,26 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
 
 
 
-def _loci_to_arr(locifile, taxdict, mindict):
+def _loci_to_arr(loci, taxdict, mindict):
     """
     return a frequency array from a loci file for all loci with taxa from 
     taxdict and min coverage from mindict. 
     """
 
-    ## read in the input file
-    with open(locifile, 'r') as infile:
-        loci = infile.read().strip().split("|\n")
-        nloci = len(loci)
-
     ## make the array (4 or 5) and a mask array to remove loci without cov
+    nloci = len(loci)
     keep = np.zeros(nloci, dtype=np.bool_)
     arr = np.zeros((nloci, 4, 300), dtype=np.float64)
     if len(taxdict) == 5:
         arr = np.zeros((nloci, 6, 300), dtype=np.float64)
 
     ## if not mindict, make one that requires 1 in each taxon
-    if not mindict:
-        mindict = {i:1 for i in taxdict}
     if isinstance(mindict, int):
         mindict = {i:mindict for i in taxdict}
+    elif isinstance(mindict, dict):
+        mindict = {i:mindict[i] for i in taxdict}
+    else:
+        mindict = {i:1 for i in taxdict}
 
     ## raise error if names are not 'p[int]' 
     allowed_names = ['p1', 'p2', 'p3', 'p4', 'p5']
@@ -389,7 +410,7 @@ def _loci_to_arr(locifile, taxdict, mindict):
     outg = keys[-1]
 
     ## grab seqs just for the good guys
-    for loc in xrange(nloci):    
+    for loc in xrange(nloci):
 
         ## parse the locus
         lines = loci[loc].split("\n")[:-1]
@@ -482,7 +503,9 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=True):
     the user has entered a rooted tree. Skips polytomies.
     """
     ## make tree
+    #tree = ipa.tree(newick).tree
     tree = ete.Tree(newick)
+    testset = set()
     
     ## constraints
     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
@@ -492,34 +515,44 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=True):
     ## traverse root to tips. Treat the left as outgroup, then the right.
     tests = []
     ## topnode must have children
-    for topnode in tree.traverse("levelorder"):  
-        ## test onode as either child
+    for topnode in tree.traverse("levelorder"):
         for oparent in topnode.children:
-            ## test outgroup as all descendants on one child branch
-            for onode in oparent.traverse():
-                ## put constraints on onode
+            for onode in oparent.traverse("levelorder"):
                 if test_constraint(onode, cdict, "p4", constraint_exact):
+                    #print(topnode.name, onode.name)
+                    
                     ## p123 parent is sister to oparent
                     p123parent = oparent.get_sisters()[0]
-                    ## test p3 as all descendants of p123parent
-                    for p3parent in p123parent.children:
-                        ## p12 parent is sister to p3parent
-                        p12parent = p3parent.get_sisters()[0]
-                        for p3node in p3parent.traverse():
-                            if test_constraint(p3node, cdict, "p3", constraint_exact):
-                                if p12parent.children:
-                                    p1parent, p2parent = p12parent.children
-                                    for p2node in p2parent.traverse():
-                                        if test_constraint(p2node, cdict, "p2", constraint_exact):
-                                            for p1node in p1parent.traverse():
-                                                if test_constraint(p1node, cdict, "p1", constraint_exact):
-                                                    test = {}
-                                                    test['p4'] = onode.get_leaf_names()
-                                                    test['p3'] = p3node.get_leaf_names()
-                                                    test['p2'] = p2node.get_leaf_names()
-                                                    test['p1'] = p1node.get_leaf_names()
-                                                    tests.append(test)
-    return tests
+                    for p123node in p123parent.traverse("levelorder"):
+                        for p3parent in p123node.children:
+                            for p3node in p3parent.traverse("levelorder"):
+                                if test_constraint(p3node, cdict, "p3", constraint_exact):
+                                    #print(topnode.name, onode.name, p3node.name)
+                                    
+                                    ## p12 parent is sister to p3 parent
+                                    p12parent = p3parent.get_sisters()[0]
+                                    for p12node in p12parent.traverse("levelorder"):
+                                        if p12node.children:
+                                            p2parent = p12node.children[1]#for p2parent in p12parent.children[1]:
+                                            p1parent = p12node.children[0]
+                                            for p2node in p2parent.traverse("levelorder"):
+                                                if test_constraint(p2node, cdict, "p2", constraint_exact):
+                                                    for p1node in p1parent.traverse("levelorder"):
+                                                        if test_constraint(p1node, cdict, "p1", constraint_exact):
+                                                            test = {}
+                                                            test['p4'] = onode.get_leaf_names()
+                                                            test['p3'] = p3node.get_leaf_names()
+                                                            test['p2'] = p2node.get_leaf_names()
+                                                            test['p1'] = p1node.get_leaf_names()
+                                                            x = list(itertools.chain(*[sorted(test["p4"]) + \
+                                                                                       sorted(test["p3"]) + \
+                                                                                       sorted(test["p2"]) + \
+                                                                                       sorted(test["p1"])]))
+                                                            x = "_".join(x)
+                                                            if x not in testset:
+                                                                tests.append(test)
+                                                                testset.add(x)
+        return tests
 
 
 
@@ -689,9 +722,10 @@ def _get_signif_5(arr, nboots):
 
 
 
-#######################################################################
-## plotting funcs                                                ######
-#######################################################################
+
+######################################################################
+## Simulation functions (requires msprime)
+######################################################################
 
 
 class Sim(object):
@@ -702,11 +736,6 @@ class Sim(object):
         self.debug = debug
 
 
-
-
-######################################################################
-## Simulation functions (requires msprime)
-######################################################################
 def _simulate(self, nreps, admix=None, Ns=500000, gen=20):
     """
     Enter a baba.Tree object in which the 'tree' attribute (newick 

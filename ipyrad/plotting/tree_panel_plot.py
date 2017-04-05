@@ -8,100 +8,113 @@ import numpy as np
 import ete3 as ete
 import toyplot
 import itertools
-
 ## avoid circular import by NOT import tree
 #from ipyrad.analysis.tree import Tree as tree
 
 
-xxx = {
-    "font-size": "14px",
-    "text-anchor" : "start",
-    "-toyplot-anchor-shift":"0",
-    }
-
-
-## todo: maybe can flip stuff if orient is different
 class Panel(object):
-    def __init__(self, tree, edges, verts, names):
-        ## starting tree position will be changed if adding panel plots
-        self.tree = tree
-        self.edges = edges
-        self.verts = verts
-        self.names = names
+    def __init__(self, ttree):#tree, edges, verts, coords, lines, names):
+        ## get attributes from tree object
+        for attr in ['tree', 'edges', 'verts', 'names', '_coords', '_lines', '_orient']:
+            self.__dict__[attr] = ttree.__dict__[attr]
 
-        ## defaults starting
+        ## defaults panel edges
         self.xmin_tree = 0.
-        self.xmin_tips = 0.        
+        self.xmax_tree = 0.        
         self.ymin_tree = 0.
-        self.ymin_tips = 0.        
-        self.ztot = 0.
+        self.ymax_tree = 0.        
 
-        ## global kwargs
+        ## default kwargs
         self.kwargs = {
             "vsize": 0, 
+            "vmarker": "o",
             "vlshow": False, 
             "ewidth": 3, 
             "vlstyle": {"font-size": "14px"}, 
-            "tip_label_style": {"font-size": "12px", 
-                                "text-anchor" : "start"},
-            "tip_label_color": "#292724",
-            "tip_label_offset": None,
-            "pct_tree_y": 1.0, 
-            "pct_tree_x": 0.5, 
-            "lwd_lines": 1,
-            }   
+            "vstyle": {"stroke": "#292724"},
+            "style_tip_labels": {"font-size": "12px",
+                                 "text-anchor":"start", 
+                                 "-toyplot-anchor-shift":"10px", 
+                                 "fill": "#292724"},
+            "show_tip_labels": True,
+            "tree_style": "p",
+            "show_axes": False,
+            "debug": False,
+            }
 
 
-    def _panel_tip_labels(self, axes):
-        ## if panel.orient...
-        orient = 1  ## 'right'
+    def _panel_tip_labels(panel, axes):
+        ## get coordinates of text
+        names = panel.tree.get_leaf_names()
+        if panel._orient in ["right"]:
+            xpos = [panel.verts[:, 0].max()] * len(names)
+            ypos = range(len(panel.tree))[::-1] 
+            angle = 0.
+        elif panel._orient in ['down']:
+            xpos = range(len(panel.tree))[::-1] 
+            ypos = [panel.verts[:, 1].min()] * len(names)
+            angle = -90.
 
-        ## get x,y coords of tip labels ------------------------
-        names = [i for i in self.names.values() if not isinstance(i, int)]
-        spy = [self.tree.search_nodes(name=i)[0] for i in names]
-        spy = np.array([self.verts[i.idx, orient] for i in spy])
-        spx = [self.xmin_tips] * len(names)
+        tipstyle = {"font-size": "12px",
+                    "text-anchor":"start", 
+                    "-toyplot-anchor-shift":"10px", 
+                    "fill": "#292724"}
+        tipstyle.update(panel.kwargs["style_tip_labels"])
 
-        ## add to plot. Semantics assume orientation='right'
-        _ = axes.text(spx, spy, names,
-                    angle=0, 
-                    color=self.kwargs["tip_label_color"],
-                    style=self.kwargs["tip_label_style"],
-                    )
+        ## plot on axes
+        _ = axes.text(xpos, ypos, names,
+                angle=angle,
+                style=tipstyle,
+                ) 
+
 
 
     def _panel_tree(self, axes):
+        if self._orient in ["right"]:
+            self.xmax_tree = self.verts[:, 0].max()
+
         ## add the tree/graph ------------------------------------------------
-        _ = axes.graph(self.edges, 
-                       vcoordinates=self.verts, 
-
-                       ## edges 
-                       ewidth=self.kwargs["ewidth"], 
-                       ecolor=toyplot.color.near_black, 
-                       #estyle=...
-                       
-                       ## vert labels 
-                       vlabel=self.names.keys(),
-                       vlshow=self.kwargs["vlshow"],
-                       vlstyle=self.kwargs["vlstyle"],
-
-                       ## vert icons
-                       vsize=self.kwargs["vsize"],
-                       ## ...
-                       )
-
-
+        if self.kwargs["tree_style"] in ["c", "cladogram"]:
+            _ = axes.graph(self.edges, 
+                           vcoordinates=self.verts, 
+                           ewidth=self.kwargs["ewidth"], 
+                           ecolor=toyplot.color.near_black, 
+                           #estyle=... add round edges 
+                           vlabel=self.names.keys(),
+                           #vlabel=self.kwargs["vlabels"],                           
+                           vlshow=self.kwargs["vlshow"],
+                           vlstyle=self.kwargs["vlstyle"],
+                           vsize=self.kwargs["vsize"],
+                           )
+        else:
+            ## add lines for phylogram
+            _ = axes.graph(self._lines, 
+                           vcoordinates=self._coords, 
+                           ewidth=self.kwargs["ewidth"], 
+                           ecolor=toyplot.color.near_black, 
+                           vlshow=False,
+                           vsize=0.,
+                           )
+            ## add vertices for phylogram
+            nodestyle = {'fill': toyplot.color.to_css(toyplot.color.Palette()[0]), 
+                         'stroke': toyplot.color.to_css(toyplot.color.Palette()[0])}
+            nodestyle.update(self.kwargs["vstyle"])
+            _ = axes.graph(self.edges, 
+                           vcoordinates=self.verts, 
+                           ewidth=0.,
+                           vmarker=self.kwargs["vmarker"],
+                           vlabel=self.kwargs["vlabels"],
+                           #vlabel=self.names.keys(),
+                           vlshow=self.kwargs["vlshow"],
+                           vlstyle=self.kwargs["vlstyle"], 
+                           vsize=self.kwargs["vsize"],
+                           vstyle=nodestyle,
+                           )
+        
 
 
 ## the main function.
-def tree_panel_plot(
-    tree, 
-    edges, 
-    verts, 
-    names, 
-    show_tip_labels,
-    use_edge_lengths,
-    orient,
+def tree_panel_plot(ttree,
     print_args=False,
     *args, 
     **kwargs):
@@ -110,27 +123,39 @@ def tree_panel_plot(
     """
 
     ## create Panel plot object and set height & width
-    panel = Panel(tree, edges, verts, names)
+    panel = Panel(ttree)          #tree, edges, verts, names)
     if not kwargs.get("width"):
-        panel.kwargs["width"] = min(1000, 50*panel.verts[:, 0].max())
+        panel.kwargs["width"] = min(1000, 25*len(panel.tree))
     if not kwargs.get("height"):
-        panel.kwargs["height"] = min(1000, 25*(panel.verts[:, 1].max()-1))
+        panel.kwargs["height"] = panel.kwargs["width"]
+
     ## update defaults with kwargs & update size based on ntips & ntests
     panel.kwargs.update(kwargs)
 
-    ## partition panels by pct_x pct_y
-    if show_tip_labels:
-        ## the largest tree-x value is what percent of what we want it to be?
-        tree_max_x_should_be = panel.kwargs["width"] * panel.kwargs["pct_tree_x"]
-        tree_max_x_is = panel.verts[:, 0].max()
-        tree_max_x_muliply_by = float(tree_max_x_should_be) / tree_max_x_is
-        panel.verts[:, 0] *= tree_max_x_muliply_by
-        panel.xmax_tree = panel.verts[:, 0].max()
-        if panel.kwargs["tip_label_offset"]:
-            panel.xmin_tips = panel.xmax_tree + panel.kwargs["tip_label_offset"]
-        else:
-            panel.xmin_tips = panel.xmax_tree + (0.05 * panel.xmax_tree)
-        #print(panel.xmax_tree, panel.xmin_tips, panel.verts)
+    ## magic node label arguments overrides others
+    if panel.kwargs["show_node_support"]:
+        nnodes = sum(1 for i in panel.tree.traverse()) - len(panel.tree)
+        ## set node values
+        supps = [int(panel.tree.search_nodes(idx=j)[0].support) for j in range(nnodes)]
+        if not panel.kwargs["vsize"]:
+            panel.kwargs["vsize"] = 20
+        sizes = [panel.kwargs["vsize"] for j in range(nnodes)]
+        ## add leaf values
+        supps += [""] * len(panel.tree)
+        sizes += [0] * len(panel.tree)
+        ## override args
+        panel.kwargs["vlabels"] = supps
+        panel.kwargs["vsize"] = sizes
+        panel.kwargs["vlshow"] = True
+        #panel.kwargs["vmarker"] = 's'  ## square
+        ## if unrooted then hide root node scores
+        if len(panel.tree.children) > 2:
+            supps[0] = ""
+            sizes[0] = 0
+        #print(panel.kwargs["vlabels"])
+        #print(panel.kwargs["vsize"])
+    else:
+        panel.kwargs["vlabels"] = panel.names.keys()
 
     ## debugger / see all options
     if print_args:
@@ -142,14 +167,14 @@ def tree_panel_plot(
     ## create a canvas and a single cartesian coord system
     canvas = toyplot.Canvas(height=panel.kwargs['height'], width=panel.kwargs['width'])
     axes = canvas.cartesian(bounds=("10%", "90%", "10%", "90%"))    
-    axes.show = False
+    axes.show = panel.kwargs["show_axes"]
     
     ## add panel plots to the axis
     panel._panel_tree(axes)
-    if show_tip_labels:
+    if panel.kwargs["show_tip_labels"]:
         panel._panel_tip_labels(axes)
 
-    return canvas, axes
+    return canvas, axes, panel
     
 
 

@@ -4,8 +4,8 @@
 
 from __future__ import print_function
 import toyplot
-import toyplot.html
-import toyplot.svg
+#import toyplot.html
+#import toyplot.svg
 #import toyplot.pdf
 import numpy as np
 from collections import OrderedDict
