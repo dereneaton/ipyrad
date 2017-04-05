@@ -269,7 +269,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
     for fhandle in two_files[0]:
         if not os.path.exists(fhandle):
             raise IPyradWarningExit("""
-    Attempting to merge a file that doesn't exist - {}.""".format(fhandle))
+    Attempting to merge a file that doesn't exist - {}""".format(fhandle))
 
     ## If it already exists, clean up the old merged file
     if os.path.exists(merged_out):
@@ -606,15 +606,20 @@ def clustdealer(pairdealer, optim):
 
 
 
-def progressbar(njobs, finished, msg=""):
+def progressbar(njobs, finished, msg="", spacer=2):
     """ prints a progress bar """
     progress = 100*(finished / float(njobs))
     hashes = '#'*int(progress/5.)
     nohash = ' '*int(20-len(hashes))
     if not ipyrad.__interactive__:
         msg = msg.rsplit("|", 2)[0]
-    print("\r  [{}] {:>3}% {} "\
-          .format(hashes+nohash, int(progress), msg), end="")
+    print("\r{}[{}] {:>3}% {} "\
+          .format(
+              " " * spacer,
+              hashes+nohash, 
+              int(progress), 
+              msg),
+              end="")
     sys.stdout.flush()
 
 

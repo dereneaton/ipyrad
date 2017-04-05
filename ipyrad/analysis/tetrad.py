@@ -30,6 +30,7 @@ import sys
 import json
 import h5py
 import time
+import copy
 import numba
 import random
 import socket
@@ -41,7 +42,7 @@ import ipyrad as ip
 from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
-from ipyrad.assemble.util import ObjDict, IPyradWarningExit
+from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
 
 ## for our desired form of parallelism we will limit 1 thread per cpu
 #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
@@ -102,25 +103,23 @@ PHYLO_INVARIANTS = """
 
 
 
-## user accessible tetrad object
-def tetrad(name, 
-    seqfile, 
-    wdir=None,
-    method='all', 
-    mapfile=None, 
-    treefile=None, 
-    resolve=1, 
-    nboots=0, 
-    nquartets=0, 
-    initarr=1, 
-    *args,
-    **kwdefaults):
-    ## make list and return a Tetrad object
-    if not wdir:
-        wdir = os.path.curdir
-    args = [name, seqfile, method, mapfile, treefile, resolve, 
-            nboots, nquartets, initarr]
-    return Tetrad(*args)
+class Params(object):
+    """ 
+    A dict-like object for storing params values with a custom repr
+    """
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
+    def __repr__(self):
+        _repr = ""
+        keys = sorted(self.__dict__.keys())
+        _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+        for key in keys:
+            _repr += _printstr.format(key, str(self[key]))
+        return _repr
 
 
 
@@ -132,15 +131,28 @@ class Tetrad(object):
     starting tree, nboots, etc.). 
     """
 
-    def __init__(self, name, seqfile, wdir=os.path.curdir, method='all', 
-                 mapfile=None, treefile=None, resolve=1, nboots=0, 
-                 nquartets=0, initarr=1, *args, **kwargs):
-        ## version is ipyrad version
-        self._version = ip.__version__
+    def __init__(self, 
+        name, 
+        workdir="analysis-tetrad",
+        seqfile=None, 
+        mapfile=None, 
+        method='all', 
+        guidetreefile=None, 
+        nboots=0, 
+        nquartets=0, 
+        resolve=True, 
+        initarr=True, 
+        load=False,
+        quiet=False,
+        *args, 
+        **kwargs):
+
+        ## interactive or CLI
+        self.kwargs = kwargs
 
         ## name this assembly
         self.name = name
-        self.dirs = os.path.realpath(wdir)
+        self.dirs = os.path.realpath(workdir)
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
 
@@ -151,14 +163,14 @@ class Tetrad(object):
             "engines" : "Local", 
             "quiet" : 0, 
             "timeout" : 60, 
-            "cores" : 0}     #ip.assemble.util.detect_cpus()}
+            "cores" : 0}
 
         ## Sampling method attributes
         self.method = method
         self.nboots = nboots
         self.nquartets = nquartets
-        self.chunksize = 0
-        self.resolve = resolve
+        self._chunksize = 0
+        self._resolve = resolve
 
         ## store samples from the seqarray
         self.samples = []
@@ -167,37 +179,46 @@ class Tetrad(object):
         ## (haven't done this yet)
 
         ## hdf5 data bases init and delete existing
-        self.h5in = os.path.join(self.dirs, self.name+".input.h5")
-        self.h5out = os.path.join(self.dirs, self.name+".output.h5")
+        self.database = Params()
+        self.database.input = os.path.join(self.dirs, self.name+".input.h5")
+        self.database.output = os.path.join(self.dirs, self.name+".output.h5")        
 
         ## input files
-        self.files = ObjDict()
+        self.files = Params()
         self.files.seqfile = seqfile
         self.files.mapfile = mapfile
-        self.files.treefile = treefile
+        self.files.guidetreefile = guidetreefile
         self.files.qdump = None
+        self.files.stats = None
 
-        ## store tree file paths
-        self.trees = ObjDict()
-        ## the full trees
-        self.trees.tre = os.path.join(self.dirs, self.name+".full.tre")
-        ## the extended majority rule consensus tree w/ support values
-        self.trees.cons = os.path.join(self.dirs, self.name+".consensus.tre")
-        ## all bootstrap trees 
-        self.trees.boots = os.path.join(self.dirs, self.name+".boots")        
-        ## NHX formatted tre with rich information
-        self.trees.nhx = os.path.join(self.dirs, self.name+".nhx.tre")     
-        ## a file for tree and quartet stats
-        self.trees.stats = os.path.join(self.dirs, self.name+".stats.txt")
+        ## store tree file paths (init as None)
+        self.trees = Params()
+        self._tmp = None  ## the temporary qmc tree         
+        self.trees.tree = None  #os.path.join(self.dirs, self.name+".full.tre")
+        self.trees.cons = None  #os.path.join(self.dirs, self.name+".consensus.tre")
+        self.trees.boots = None #os.path.join(self.dirs, self.name+".boots")        
+        self.trees.nhx = None   #os.path.join(self.dirs, self.name+".nhx.tre")     
+        
+        ## stats is written to os.path.join(self.dirs, self.name+".stats.txt")
+        self.stats = Params()
+        self.stats.n_quartets_sampled = self.nquartets
+        #self.stats.prop_quartets_sampled = None
+
         ## checkpointing information
-        self.checkpoint = ObjDict()
+        self.checkpoint = Params()
         self.checkpoint.boots = 0
         self.checkpoint.arr = 0
 
         ## init the seq data and samples
-        if initarr:
-            self.init_seqarray()
-            self.parse_names()
+        if load:
+            self._load_json(self.name, self.dirs)
+
+        elif seqfile:
+            if initarr:
+                self._init_seqarray(quiet=quiet)
+                self._parse_names()
+        else:
+            raise IPyradWarningExit("must enter a seqfile argument.")
 
         ## if quartets not entered then sample all
         total = n_choose_k(len(self.samples), 4)
@@ -205,59 +226,46 @@ class Tetrad(object):
             if int(self.nquartets) >= total:
                 self.method = "all"
                 self.nquartets = total
-                print("  nquartets > total: switching to method='all' ")
+                print("nquartets > total: switching to method='all' ")
             if not self.nquartets:
-                raise IPyradWarningExit("  must enter nquartets value w/ method='random'")
+                raise IPyradWarningExit("must enter nquartets value w/ method='random'")
         else:
             self.nquartets = total
             
         
-    def _purge(self):
-        """ complete refresh"""
-        oldfiles = [self.files.qdump, self.h5in, self.h5out] + self.trees.values()
-        for oldfile in oldfiles:
-            if oldfile:
-                if os.path.exists(oldfile):
-                    os.remove(oldfile) 
-
-
 
     def refresh(self):
         """ 
         Remove all existing results files and reinit the h5 arrays 
-        so that the Tetrad object is just like fresh from a CLI start
+        so that the tetrad object is just like fresh from a CLI start.
         """
 
         ## clear any existing results files
-        oldfiles = [self.files.qdump] + self.trees.values()
+        oldfiles = [self.files.qdump] + \
+                    self.database.__dict__.values() + \
+                    self.trees.__dict__.values()
         for oldfile in oldfiles:
             if oldfile:
                 if os.path.exists(oldfile):
-                    os.remove(oldfile) 
-
-        ## io5 input has 'samples' and 'seqarr' keys which can be left
-        ## io5 output has 'qboots', 'qstats', 'quartets', 'weights'
-        with h5py.File(self.h5out, 'w') as io5:
-            ## remove old arrs
-            for key in io5.keys():
-                del io5[key]
-            ## create fresh ones
-            io5.create_dataset("quartets", (self.nquartets, 4), 
-                                dtype=np.uint16, chunks=(self.chunksize, 4))
-            io5.create_dataset("weights", (self.nquartets,), 
-                                dtype=np.float64, chunks=(self.chunksize, ))
-            io5.create_dataset("qstats", (self.nquartets, 4), 
-                                dtype=np.uint32, chunks=(self.chunksize, 4))
-            io5.create_group("qboots")        
-
-        ## reset metadata
-        self.checkpoint.array = 0
-        self.checkpoint.boots = 0
+                    os.remove(oldfile)
+        ## reinit
+        self.__init__(
+            name=self.name, 
+            seqfile=self.files.seqfile, 
+            mapfile=self.files.mapfile,
+            workdir=self.dirs,
+            method=self.method,
+            guidetreefile=self.files.guidetreefile,
+            resolve=self._resolve, 
+            nboots=self.nboots, 
+            nquartets=self.nquartets, 
+            initarr=True, 
+            quiet=True,
+            )
 
 
 
-    def parse_names(self):
-        """ parse names from the seqfile """
+    def _parse_names(self):
         ## parse samples from the sequence file
         self.samples = []
         with iter(open(self.files.seqfile, 'r')) as infile:
@@ -267,13 +275,10 @@ class Tetrad(object):
                     self.samples.append(infile.next().split()[0])
                 except StopIteration:
                     break
-        ## names are in the order of the sequences in seqfile
-        #self.samples = sorted(self.samples)
 
 
 
-    ## Filling the h5in seqarray
-    def init_seqarray(self):
+    def _init_seqarray(self, quiet=False):
         """ 
         Fills the seqarr with the full data set, and creates a bootsarr copy
         with the following modifications:
@@ -283,22 +288,22 @@ class Tetrad(object):
         3) convert to uint8 for smaller memory load and faster computation
         """
 
-        ## read in the file
+        ## read in the seqfile
         try:
             spath = open(self.files.seqfile, 'r')
         except IOError:
-            raise IPyradWarningExit(NO_SNP_FILE\
-                                    .format(self.files.seqfile))
+            raise IPyradWarningExit(NO_SNP_FILE.format(self.files.seqfile))
         line = spath.readline().strip().split()
         ntax = int(line[0])
         nbp = int(line[1])
 
         ## make a tmp seq array
-        print("  loading seq array [{} taxa x {} bp]".format(ntax, nbp))        
+        if not quiet:
+            print("loading seq array [{} taxa x {} bp]".format(ntax, nbp))        
         tmpseq = np.zeros((ntax, nbp), dtype=np.uint8)
     
         ## create array storage for real seq and the tmp bootstrap seqarray
-        with h5py.File(self.h5in, 'w') as io5:
+        with h5py.File(self.database.input, 'w') as io5:
             io5.create_dataset("seqarr", (ntax, nbp), dtype=np.uint8)
             io5.create_dataset("bootsarr", (ntax, nbp), dtype=np.uint8)
             io5.create_dataset("bootsmap", (nbp, 2), dtype=np.uint32)
@@ -314,7 +319,9 @@ class Tetrad(object):
                     spans = np.zeros((maparr[-1, 0], 2), np.uint64)
                     spans = get_spans(maparr, spans)
                     io5.create_dataset("spans", data=spans)
-                    print("  max unlinked SNPs per quartet: {}".format(spans.shape[0]))
+                    if not quiet:
+                        print("max unlinked SNPs per quartet (nloci): {}"\
+                              .format(spans.shape[0]))
             else:
                 io5["bootsmap"][:, 0] = np.arange(io5["bootsmap"].shape[0])
 
@@ -331,7 +338,7 @@ class Tetrad(object):
             io5["seqarr"][:] = tmpseq
 
             ## resolve ambiguous IUPAC codes
-            if self.resolve:
+            if self._resolve:
                 tmpseq = resolve_ambigs(tmpseq)
 
             ## convert CATG bases to matrix indices
@@ -353,19 +360,10 @@ class Tetrad(object):
 
 
 
-    def sample_bootseq_array(self):
-        """ 
-        Takes the seqarray and re-samples columns chunks based on linkage 
-        from the maps array. Saves the new map information in the bootmap. 
-
-        The seqarray is 'cleaned up' in several ways: 
-        1) converts "-" into "N"s, since they are similarly treated as missing. 
-        2) randomly resolve ambiguities (RSKWYM)
-        3) convert to uint8 for smaller memory load and faster computation
-        """
-
+    def _sample_bootseq_array(self):
+        ## Takes the seqarray and re-samples columns and saves to bootsarr. 
         ## use 'r+' to read and write to existing array
-        with h5py.File(self.h5in, 'r+') as io5:        
+        with h5py.File(self.database.input, 'r+') as io5:        
             ## load in the seqarr and maparr
             seqarr = io5["seqarr"][:]
 
@@ -376,7 +374,7 @@ class Tetrad(object):
 
             ## resolve ambiguous bases randomly. We do this each time so that
             ## we get different resolutions.
-            if self.resolve:
+            if self._resolve:
                 tmpseq = resolve_ambigs(tmpseq)
         
             ## convert CATG bases to matrix indices
@@ -391,11 +389,9 @@ class Tetrad(object):
 
 
 
-    def sample_bootseq_array_map(self):
-        """ Re-samples loci with replacement to fill the bootarr """
-
-        ## open view to the in database
-        with h5py.File(self.h5in, 'r+') as io5:
+    def _sample_bootseq_array_map(self):
+        ## Re-samples loci with replacement to fill the bootarr
+        with h5py.File(self.database.input, 'r+') as io5:
             ## load the original data (seqarr and spans)
             seqarr = io5["seqarr"][:]
             spans = io5["spans"][:]            
@@ -417,7 +413,7 @@ class Tetrad(object):
 
             ## resolve ambiguous bases randomly. We do this each time so that
             ## we get different resolutions.
-            if self.resolve:
+            if self._resolve:
                 tmpseq = resolve_ambigs(tmpseq)
 
             ## convert CATG bases to matrix indices
@@ -435,12 +431,14 @@ class Tetrad(object):
 
 
 
-    ## Functions to fill h5in with samples
-    def store_N_samples(self, ncpus):
-        """ Find all quartets of samples and store in a large array """
-        ## create a chunk size for sampling from the array of quartets. This should
-        ## be relatively large so that we don't spend a lot of time doing I/O, but
-        ## small enough that jobs finish every few hours for checkpointing
+    ## Functions to fill h5 with samples
+    def _store_N_samples(self, ncpus):
+        """ 
+        Find all quartets of samples and store in a large array
+        Create a chunk size for sampling from the array of quartets. 
+        This should be relatively large so that we don't spend a lot of time 
+        doing I/O, but small enough that jobs finish often for checkpointing.
+        """
         breaks = 2
         if self.nquartets < 5000:
             breaks = 1
@@ -450,9 +448,9 @@ class Tetrad(object):
             breaks = 8
 
         ## chunk up the data
-        self.chunksize = (self.nquartets // (breaks * ncpus) + \
-                         (self.nquartets % (breaks * ncpus)))
-        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
+        self._chunksize = (self.nquartets // (breaks * ncpus) + \
+                          (self.nquartets % (breaks * ncpus)))
+        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self._chunksize)
 
         ## 'samples' stores the indices of the quartet. 
         ## `quartets` stores the correct quartet in the order (1,2|3,4)
@@ -460,22 +458,25 @@ class Tetrad(object):
         ## we gzip this for now, but check later if this has a big speed cost
 
         ## create h5 OUT empty arrays
-        with h5py.File(self.h5out, 'w') as io5:
-            io5.create_dataset("quartets", (self.nquartets, 4), 
-                                dtype=np.uint16, chunks=(self.chunksize, 4))
-            io5.create_dataset("weights", (self.nquartets,), 
-                                dtype=np.float64, chunks=(self.chunksize, ))
-            io5.create_dataset("qstats", (self.nquartets, 4), 
-                                dtype=np.uint32, chunks=(self.chunksize, 4))
+        with h5py.File(self.database.output, 'w') as io5:
+            io5.create_dataset("quartets", 
+                               (self.nquartets, 4), 
+                               dtype=np.uint16, 
+                               chunks=(self._chunksize, 4))
+            io5.create_dataset("qstats", 
+                               (self.nquartets, 4), 
+                               dtype=np.uint32, 
+                               chunks=(self._chunksize, 4))
             io5.create_group("qboots")
 
 
         ## append to h5 IN array (which also has seqarray) and fill it
-        with h5py.File(self.h5in, 'a') as io5:
+        with h5py.File(self.database.input, 'a') as io5:
             ## create data sets
-            io5.create_dataset("samples", (self.nquartets, 4), 
+            io5.create_dataset("samples", 
+                               (self.nquartets, 4), 
                                dtype=np.uint16, 
-                               chunks=(self.chunksize, 4),
+                               chunks=(self._chunksize, 4),
                                compression='gzip')
 
             ## populate array with all possible quartets. This allows us to 
@@ -488,21 +489,22 @@ class Tetrad(object):
                 if self.method != "all":
                     ## grab the next random 1000
                     qiter = []
-                    while len(qiter) < min(self.chunksize, io5["samples"].shape[0]):
+                    while len(qiter) < min(self._chunksize, io5["samples"].shape[0]):
                         qiter.append(
                             random_combination(range(len(self.samples)), 4))
                     dat = np.array(qiter)
                 else:
                     ## grab the next ordered chunksize
-                    dat = np.array(list(itertools.islice(qiter, self.chunksize)))
+                    dat = np.array(list(itertools.islice(qiter, self._chunksize)))
 
                 ## store to h5 
-                io5["samples"][i:i+self.chunksize] = dat[:io5["samples"].shape[0] - i]
-                i += self.chunksize
+                io5["samples"][i:i+self._chunksize] = dat[:io5["samples"].shape[0] - i]
+                i += self._chunksize
 
 
 
-    def store_equal_samples(self, ncpus):
+    ## NOT YET READY FOR USE (TESTING)
+    def _store_equal_samples(self, ncpus):
         """ 
         sample quartets evenly across splits of the starting tree, and fills
         in remaining samples with random quartet samples. Uses a hash dict to 
@@ -519,22 +521,24 @@ class Tetrad(object):
         if self.nquartets > 500000:
             breaks = 8
 
-        self.chunksize = (self.nquartets // (breaks * ncpus) + \
+        self._chunksize = (self.nquartets // (breaks * ncpus) + \
                          (self.nquartets % (breaks * ncpus)))
-        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self.chunksize)
+        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self._chunksize)
 
         ## create h5 OUT empty arrays
-        with h5py.File(self.h5out, 'w') as io5:
-            io5.create_dataset("quartets", (self.nquartets, 4), 
-                                dtype=np.uint16, chunks=(self.chunksize, 4))
-            io5.create_dataset("weights", (self.nquartets,), 
-                                dtype=np.float64, chunks=(self.chunksize, ))
-            io5.create_dataset("qstats", (self.nquartets, 4), 
-                                dtype=np.uint32, chunks=(self.chunksize, 4))
+        with h5py.File(self.database.output, 'w') as io5:
+            io5.create_dataset("quartets", 
+                               (self.nquartets, 4), 
+                               dtype=np.uint16, 
+                               chunks=(self._chunksize, 4))
+            io5.create_dataset("qstats", 
+                               (self.nquartets, 4), 
+                               dtype=np.uint32, 
+                               chunks=(self._chunksize, 4))
             io5.create_group("qboots")
 
         ## get starting tree, unroot, randomly resolve, ladderize
-        tre = ete3.Tree(self.files.treefile, format=0)
+        tre = ete3.Tree(self.files.guidetreefile, format=0)
         tre.unroot()
         tre.resolve_polytomy(recursive=True)
         tre.ladderize()
@@ -592,12 +596,13 @@ class Tetrad(object):
 
         ## iterate over qiters sampling from each, if one runs out, keep 
         ## sampling from remaining qiters. Keep going until samples is filled
-        with h5py.File(self.h5in, 'a') as io5:
+        with h5py.File(self.database.input, 'a') as io5:
             ## create data sets
-            io5.create_dataset("samples", (self.nquartets, 4), 
-                                      dtype=np.uint16, 
-                                      chunks=(self.chunksize, 4),
-                                      compression='gzip')
+            io5.create_dataset("samples", 
+                               (self.nquartets, 4), 
+                               dtype=np.uint16, 
+                               chunks=(self._chunksize, 4),
+                               compression='gzip')
 
             ## fill chunksize at a time for efficiency
             i = 0
@@ -609,7 +614,7 @@ class Tetrad(object):
             while i < self.nquartets:
                 qdat = []
                 ## keep filling this chunk until its full
-                while len(qdat) < self.chunksize:
+                while len(qdat) < self._chunksize:
                     ## grab the next iterator
                     qiter = qiters.next()
                     cycle = cycler.next()
@@ -633,7 +638,7 @@ class Tetrad(object):
                         break
 
                 ## if array is not full then add random samples
-                while len(qdat) < self.chunksize:
+                while len(qdat) < self._chunksize:
                     qrtsamp = random_combination(range(len(self.samples)), 4)
                     if tuple(qrtsamp) not in sampled:
                         qdat.append(qrtsamp)
@@ -642,88 +647,79 @@ class Tetrad(object):
 
                 ## stick chunk into h5 array
                 dat = np.array(qdat, dtype=np.uint16)
-                io5["samples"][i:i+self.chunksize] = dat[:io5["samples"].shape[0] - i]
-                i += self.chunksize
+                io5["samples"][i:i+self._chunksize] = dat[:io5["samples"].shape[0] - i]
+                i += self._chunksize
 
             print("  equal sampling: {} edge quartets, {} random quartets "\
                   .format(edge_targeted, random_target))
 
 
 
-    def run_qmc(self, boot):
+    def _run_qmc(self, boot):
         """ runs quartet max-cut on a quartets file """
 
         ## convert to txt file for wQMC
-        cmd = " ".join(
-                [ip.bins.qmc,
-                " qrtt="+self.files.qdump,
-                #" weights=off"+
-                " otre=.tmpwtre"])
+        self._tmp = os.path.join(self.dirs, ".tmpwtre")
+        cmd = [ip.bins.qmc, "qrtt="+self.files.qdump, "otre="+self._tmp] 
 
         ## run them
-        try:
-            subprocess.check_call(cmd, shell=True,
-                                       stderr=subprocess.STDOUT,
-                                       stdout=subprocess.PIPE)
-        except subprocess.CalledProcessError as inst:
-            LOGGER.error("Error in QMC: \n({}).".format(inst))
-            LOGGER.error(subprocess.STDOUT)
-            raise inst
+        proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+        res = proc.communicate()
+        if proc.returncode:
+            #LOGGER.error("Error in QMC: \n({}).".format(res))
+            LOGGER.error(res)
+            raise IPyradWarningExit(res[1])
 
         ## read in the tmp files since qmc does not pipe
-        intmpwtre = open(".tmpwtre", 'r')
+        with open(self._tmp) as intree:
+            ## convert int names back to str names
+            tmpwtre = self._renamer(ete3.Tree(intree.read().strip()))
 
-        ## convert int names back to str names
-        tmpwtre = self.renamer(ete3.Tree(intmpwtre.read().strip()))
-
-        ## save the boot tree
+        ## save the tree
         if boot:
+            self.trees.boots = os.path.join(self.dirs, self.name+".boots")
             with open(self.trees.boots, 'a') as outboot:
                 outboot.write(tmpwtre+"\n")
-
-        ## store full data trees to Assembly
         else:
-            with open(self.trees.tre, 'w') as outtree:
+            self.trees.tree = os.path.join(self.dirs, self.name+".tree")
+            with open(self.trees.tree, 'w') as outtree:
                 outtree.write(tmpwtre)
 
         ## save JSON file checkpoint
-        intmpwtre.close()
-        self.save()
+        self._save()
 
 
 
-    def dump_qmc(self):
+    def _dump_qmc(self):
         """ 
         Makes a reduced array that excludes quartets with no information and 
         prints the quartets and weights to a file formatted for wQMC 
         """
         ## open the h5 database
-        io5 = h5py.File(self.h5out, 'r')
+        io5 = h5py.File(self.database.output, 'r')
 
         ## create an output file for writing
         self.files.qdump = os.path.join(self.dirs, self.name+".quartets.txt")
         LOGGER.info("qdump file %s", self.files.qdump)
         outfile = open(self.files.qdump, 'w')
 
-        ## todo: should pull quarts order in randomly?
-        for idx in xrange(0, self.nquartets, self.chunksize):
+        ## todo: should pull quarts order in randomly? or doesn't matter?
+        for idx in xrange(0, self.nquartets, self._chunksize):
             ## get mask of zero weight quartets
-            mask = io5["weights"][idx:idx+self.chunksize] != 0
-            LOGGER.info("exluded = %s, mask shape %s", 
-                        self.chunksize - mask.shape[0], mask.shape)
-
-            ## apply mask
-            LOGGER.info('q shape %s', io5["quartets"][idx:idx+self.chunksize].shape)
-            masked_quartets = io5["quartets"][idx:idx+self.chunksize, :][mask, :]
-
-
+            #mask = io5["weights"][idx:idx+self.chunksize] != 0
+            #weight = io5["weights"][idx:idx+self.chunksize][mask]
+            #LOGGER.info("exluded = %s, mask shape %s", 
+            #            self._chunksize - mask.shape[0], mask.shape)
+            #LOGGER.info('q shape %s', io5["quartets"][idx:idx+self._chunksize].shape)
+            masked_quartets = io5["quartets"][idx:idx+self._chunksize, :]#[mask, :]
             quarts = [list(j) for j in masked_quartets]
-            weight = io5["weights"][idx:idx+self.chunksize][mask]
 
             ## format and print
-            chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
-                                                    in zip(quarts, weight)]
+            #chunk = ["{},{}|{},{}:{}".format(*i+[j]) for i, j \
+            #                                        in zip(quarts, weight)]
+            chunk = ["{},{}|{},{}".format(*i) for i in quarts]
             outfile.write("\n".join(chunk)+"\n")
+
 
         ## close output file and h5 database
         outfile.close()
@@ -731,7 +727,7 @@ class Tetrad(object):
 
 
 
-    def renamer(self, tre):
+    def _renamer(self, tre):
         """ renames newick from numbers to sample names"""
         ## get the tre with numbered tree tip labels
         names = tre.get_leaves()
@@ -745,14 +741,14 @@ class Tetrad(object):
 
 
 
-    def write_output_splash(self):
+    def _finalize_stats(self):
         """ write final tree files """
 
         ## print stats file location:
-        print(STATSOUT.format(opr(self.trees.stats)))
+        print(STATSOUT.format(opr(self.files.stats)))
 
         ## print finished tree information ---------------------
-        print(FINALTREES.format(opr(self.trees.tre)))
+        print(FINALTREES.format(opr(self.trees.tree)))
 
         ## print bootstrap information --------------------------
         if self.nboots:
@@ -772,138 +768,33 @@ class Tetrad(object):
                                       attributes=["dist", "name"]))
                 print("")
             else:
-                qtre = ete3.Tree(self.trees.tre, format=0)
+                qtre = ete3.Tree(self.trees.tree, format=0)
                 qtre.unroot()
                 print(qtre.get_ascii())
                 print("")
 
         ## print PDF filename & tips -----------------------------
-        docslink = "ipyrad.readthedocs.org/cookbook.html"    
-        citelink = "ipyrad.readthedocs.org/tetrad.html"
+        docslink = "ipyrad.readthedocs.io/tetrad.html"    
+        citelink = "ipyrad.readthedocs.io"
         print(LINKS.format(docslink, citelink))
 
 
 
     def _compute_tree_stats(self):
         """ writes support values as edge labels on unrooted tree """
-
-        ## get name indices
-        names = self.samples
-
-        ## get majority rule consensus tree of weighted Q bootstrap trees
-        if self.nboots:
-            fulltre = ete3.Tree(self.trees.tre, format=0)
-            with open(self.trees.boots, 'r') as inboots:
-                wboots = [fulltre] + \
-                  [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
-            wctre, wcounts = consensus_tree(wboots, names=names)
-
-
-        ## build stats file
-        with open(self.trees.stats, 'w') as ostats:
-
-            ## print Tetrad info
-            ostats.write("## Analysis info\n")
-            ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
-            ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
-            ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.seqfile))
-            ostats.write("{:<30}  {:<20}\n".format("Map_file", self.files.mapfile))
-            used_treefile = [self.files.treefile if self.method == 'equal' else None][0]
-            ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
-            ostats.write("\n")
-
-            ## get Tetrad stats
-            ostats.write("## quartet statistics (coming soon)\n")
-            ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
-            proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
-            ostats.write("{:<30}  {:<20.1f}\n".format("percent_sampled_of_total", proportion))
-            mean_loci = 0
-            mean_snps = 0
-            mean_weight = 0
-            mean_dstat = 0
-            ostats.write("{:<30}  {:<20}\n".format("Mean_N_loci_per_split", mean_loci))
-            ostats.write("{:<30}  {:<20}\n".format("Mean_SNPs_per_split", mean_snps))
-            ostats.write("{:<30}  {:<20}\n".format("Mean_quartet_weight", mean_weight))
-            ostats.write("{:<30}  {:<20}\n".format("Mean_abba_baba", mean_dstat))
-            ostats.write("\n")
-
-            ## print tree output files info
-            ostats.write("## Tree files\n")
-            ostats.write("{:<30}  {:<20}\n".format("Initial_tree", self.trees.tre))
-            ostats.write("{:<30}  {:<20}\n".format("bootstrap_replicates", self.trees.boots))
-            ostats.write("{:<30}  {:<20}\n".format("extended_majrule_consens", self.trees.cons))            
-            ostats.write("\n")
-
-            ## print bootstrap splits
-            if self.nboots:
-                ostats.write("## splits observed in {} trees\n".format(len(wboots)))
-                for i, j in enumerate(self.samples):
-                    ostats.write("{:<3} {}\n".format(i, j))
-                ostats.write("\n")
-                for split, freq in wcounts:
-                    if split.count('1') > 1:
-                        ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
-                ostats.write("\n")
-
-
-        ## parallelized this function because it can be slogging
-        ipyclient = ip.core.parallel.get_client(**self._ipcluster)
-        lbview = ipyclient.load_balanced_view()
-        
-        ## store results in dicts
-        qtots = {}
-        qsamp = {}
-        tots = set(wctre.get_leaf_names())
-        ## iterate over node traversal. 
-        for node in wctre.traverse():
-            ## this is slow, needs to look at every sampled quartet
-            ## so we send it be processed on an engine
-            qtots[node] = lbview.apply(_get_total, *(tots, node))
-            qsamp[node] = lbview.apply(_get_sampled, *(self, tots, node, names))
-
-        ## wait for jobs to finish
-        ipyclient.wait()
-
-        ## put results into tree
-        for node in wctre.traverse():
-            ## this is fast, just calcs n_choose_k
-            total = qtots[node].result()
-            sampled = qsamp[node].result()
-            ## store the results to the tree            
-            node.add_feature("quartets_possible", total)
-            node.add_feature("quartets_sampled", sampled)
-
-        features = ["quartets_total", "quartets_sampled"]
-
-        ## return as NHX format with extra info
-        with open(self.trees.cons, 'w') as outtre:
-            outtre.write(wctre.write(format=0, features=features))
+        compute_tree_stats(self)
 
 
 
-    ## not currently being used and its ugly, just provide a cookbook
-    # def quickfig(self):
-    #     """ make a quick ete3 fig. Plots total quartets """
-    #     ts = ete3.TreeStyle()
-    #     ts.layout_fn = layout
-    #     ts.show_leaf_name = False
-    #     ts.mode = 'r'
-    #     ts.draw_guiding_lines = True
-    #     ts.show_scale = False
-    #     ts.scale = 25
-
-    #     tre = ete3.Tree(self.trees.nhx)
-    #     tre.ladderize()
-    #     tre.convert_to_ultrametric(tree_length=len(tre)//2)
-    #     tre.render(file_name=self.trees.pdf, h=40*len(tre), tree_style=ts)
-
-
-
-    def save(self):
+    def _save(self):
         """ save a JSON file representation of Tetrad Class for checkpoint"""
 
         ## save each attribute as dict
-        fulldumps = json.dumps(self.__dict__, 
+        fulldict = copy.deepcopy(self.__dict__)
+        for i, j in fulldict.items():
+            if isinstance(j, Params):
+                fulldict[i] = j.__dict__
+        fulldumps = json.dumps(fulldict,
                                sort_keys=False, 
                                indent=4, 
                                separators=(",", ":"),
@@ -927,24 +818,68 @@ class Tetrad(object):
 
 
 
-    def insert_to_array(self, start, results, bidx):
+    def _insert_to_array(self, start, results):
         """ inputs results from workers into hdf4 array """
         qrts, wgts, qsts = results
         #qrts, wgts = results
         #print(qrts)
 
-        with h5py.File(self.h5out, 'r+') as out:
-            chunk = self.chunksize
+        with h5py.File(self.database.output, 'r+') as out:
+            chunk = self._chunksize
             out['quartets'][start:start+chunk] = qrts
-            out['weights'][start:start+chunk] = wgts
+            ##out['weights'][start:start+chunk] = wgts
 
-            if bidx:
-                out["qboots/b{}".format(bidx-1)][start:start+chunk] = qsts
+            ## entered as 0-indexed !
+            if self.checkpoint.boots:
+                key = "qboots/b{}".format(self.checkpoint.boots-1)
+                out[key][start:start+chunk] = qsts
             else:
                 out["qstats"][start:start+chunk] = qsts
 
-        ## save checkpoint
-        #data.svd.checkpoint_arr = np.where(ww == 0)[0].min()
+
+
+    ## thoughts on this... we need to re-estimate chunksize given whatever
+    ## new parallel setup is passed in. Start from arr checkpoint to end. 
+    def _load_json(self, name, workdir, quiet=False):
+        """ Load a json serialized Tetrad Class object """
+
+        ## load the JSON string and try with name+.json
+        path = os.path.join(workdir, name)
+        if not path.endswith(".tet.json"):
+            path += ".tet.json"
+
+        ## expand user
+        path = path.replace("~", os.path.expanduser("~"))
+
+        ## load the json file as a dictionary
+        try:
+            with open(path, 'r') as infile:
+                fullj = _byteify(json.loads(infile.read(),
+                                object_hook=_byteify), 
+                            ignore_dicts=True)
+        except IOError:
+            raise IPyradWarningExit("""\
+        Cannot find checkpoint (.tet.json) file at: {}""".format(path))
+
+        ## set old attributes into new tetrad object
+        self.name = fullj["name"]
+        self.files.seqfile = fullj["files"]["seqfile"]
+        self.files.mapfile = fullj["files"]["mapfile"]        
+        self.dirs = fullj["dirs"]
+        self.method = fullj["method"]
+        self._init_seqarray(quiet=quiet)
+        self._parse_names()
+
+        ## fill in the same attributes
+        for key in fullj:
+            ## fill Params a little different
+            if key in ["files", "database", "trees", "stats", "checkpoint"]:
+                filler = fullj[key]
+                for ikey in filler:
+                    self.__dict__[key].__setattr__(ikey, fullj[key][ikey])
+            else:
+                self.__setattr__(key, fullj[key])
+
 
 
     ########################################################################
@@ -952,12 +887,21 @@ class Tetrad(object):
     ########################################################################
     def run(self, force=0, quiet=0):
         """ 
-        Run quartet inference on a SNP alignment. If checkpoint values exist 
-        it will continue from where it left off unless force=True to force a
-        a restart using the same parameter values. The analysis launches an
-        ipcluster instance by default unless newclient=0, in which case it 
-        expects to find an ipcluster instance running under the "default"
-        profile. 
+        Run quartet inference on a SNP alignment and distribute work
+        across an ipyparallel cluster (ipyclient). Unless passed an 
+        ipyclient explicitly, it looks for a running ipcluster instance
+        running from the "default" profile, and will raise an exception
+        if one is not found within a set time limit. Parameter settings
+        influencing the run (e.g., nquartets, sampling method) should
+        be set on the tetrad Class object itself. 
+
+        Parameters
+        ----------
+        force (bool):
+            ...
+        quiet (bool):
+            ...
+
         """
 
         ## wrap everything in a try statement so we can ensure that it will
@@ -967,60 +911,63 @@ class Tetrad(object):
             ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
-            report_cluster(self, ipyclient, quiet)
+            if not quiet:
+                print(ip.cluster_info(ipyclient))
 
-            ## get or init quartet sampling
-            if not self.chunksize:
+            ## grab 2 engines from each host (2 multi-thread jobs per host)
+            rdict = ipyclient[:].apply(socket.gethostname).get_dict()
+            hosts = set(rdict.values())
+            hostdict = {host: [i for i in rdict if rdict[i] == host] for host in hosts}
+            targets = list(itertools.chain(*[hostdict[i][:2] for i in hostdict]))
+            lbview = ipyclient.load_balanced_view(targets=targets)
+
+            ## get or init quartet sampling ---------------------------
+            if not self._chunksize:
                 self.nquartets = n_choose_k(len(self.samples), 4)
                 if self.method != 'equal':
                     ## store N sampled quartets into the h5 array
-                    self.store_N_samples(ncpus=len(ipyclient.ids))
+                    self._store_N_samples(ncpus=len(lbview))
                 else:
-                    self.store_equal_samples(ncpus=len(ipyclient.ids))
+                    self._store_equal_samples(ncpus=len(lbview))
 
-            ## calculate invariants for the full array
-            if not os.path.exists(self.trees.tre):
-                print("  inferring {} induced quartet trees".format(self.nquartets))
-                self.inference(0, ipyclient)
+            ## calculate invariants for the full array ----------------
+            start = time.time()            
+            if not self.trees.tree:
+                print("inferring {} induced quartet trees".format(self.nquartets))
+                self.inference(start, lbview)
+                print("")
 
-            ## run the bootstrap replicates -------------------------------
-            if self.nboots:
-                if self.nboots == self.checkpoint.boots:
-                    print("  continuing {} bootstrap replicates from boot {}"\
-                          .format(self.nboots, self.checkpoint.boots))  
+            ## calculate for bootstraps -------------------------------            
+            start = time.time()
+            while self.checkpoint.boots < self.nboots:
+                if self.files.mapfile:
+                    self._sample_bootseq_array_map()
                 else:
-                    print("  running {} bootstrap replicates".format(self.nboots))              
-    
-                ## load from current boot
-                for bidx in xrange(self.checkpoint.boots+1, self.nboots):
-                    ## get resampled array and set checkpoint
-                    if self.checkpoint.arr == 0:
-                        if self.files.mapfile:
-                            self.sample_bootseq_array_map()
-                        else:
-                            self.sample_bootseq_array() 
+                    self._sample_bootseq_array() 
 
-                    ## start boot inference, (1-indexed !!!)
-                    self.inference(bidx, ipyclient)
-                    self.checkpoint.boots = bidx
+                ## start boot inference, (1-indexed !!!)
+                self.checkpoint.boots += 1
+                self.inference(start, lbview)
 
-                ## write outputs with bootstraps
-                self.write_output_splash()
-
+            ## write outputs with bootstraps
+            print("")
+            self.files.stats = os.path.join(self.dirs, self.name+"_stats.txt")
+            if not self.kwargs.get("cli"):
+                self._compute_tree_stats()
             else:
-                ## write outputs without bootstraps
-                self.write_output_splash()
+                self._finalize_stats()               
 
 
         ## handle exceptions so they will be raised after we clean up below
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
-            print("\n  Keyboard Interrupt by user. Cleaning up...")
+            print("\nKeyboard Interrupt by user. Cleaning up...")
             raise
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
-            print("  IPyradWarningExit: {}".format(inst))
+            print(inst)
+            raise 
 
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
@@ -1031,20 +978,25 @@ class Tetrad(object):
         finally:
             try:
                 ## save the Assembly
-                self.save()                
+                self._save()                
                 
                 ## can't close client if it was never open
                 if ipyclient:
 
                     ## if CLI, stop jobs and shutdown
-                    if self._ipcluster["cluster_id"]:
-                        ipyclient.abort()
+                    if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
+                        LOGGER.info("  shutting down engines")
+                        ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
-                    ## if API, stop jobs and clean queue
+                        LOGGER.info("  finished shutdown")
                     else:
-                        ## TODO: Look into using cancel on engine ids...
-                        ipyclient.abort()#ipyclient.outstanding)
-                        ipyclient.purge_results(ipyclient.ids)
+                        if not ipyclient.outstanding:
+                            ipyclient.purge_everything()
+                        else:
+                            ## nanny: kill the engines left running, report kill.
+                            ipyclient.shutdown(hub=True, block=False)
+                            ipyclient.close()
+                            print("\n  warning: ipcluster shutdown and must be restarted")
             
             ## if exception is close and save, print and ignore
             except Exception as inst2:
@@ -1053,52 +1005,52 @@ class Tetrad(object):
 
 
 
-    def inference(self, bidx, ipyclient):
+    def inference(self, start, lbview):
         """ 
         Inference sends slices of jobs to the parallel engines for computing
         and collects the results into the output hdf5 array as they finish. 
         """
 
         ## an iterator to distribute sampled quartets in chunks
-        njobs = sum(1 for _ in \
-                xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
-        jobiter = iter(xrange(self.checkpoint.arr, self.nquartets, self.chunksize))
+        gen = xrange(self.checkpoint.arr, self.nquartets, self._chunksize)
+        njobs = sum(1 for _ in gen)
+        jobiter = iter(gen)
         LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
-                self.chunksize, self.checkpoint.arr, self.nquartets, njobs)
+            self._chunksize, self.checkpoint.arr, self.nquartets, njobs)
 
         ## if bootstrap create an output array for results unless we are 
-        ## restarting an existing analysis, then use the one already present
-        with h5py.File(self.h5out, 'r+') as out:
-            if 'b{}'.format(bidx) not in out["qboots"].keys():
-                out["qboots"].create_dataset("b{}".format(bidx), 
-                                             (self.nquartets, 4), 
-                                             dtype=np.uint32, 
-                                             chunks=(self.chunksize, 4))
+        ## restarting an existing boot, then use the one already present
+        key = "b{}".format(self.checkpoint.boots)
+        with h5py.File(self.database.output, 'r+') as out:
+            if key not in out["qboots"].keys():
+                out["qboots"].create_dataset(key, 
+                                            (self.nquartets, 4), 
+                                            dtype=np.uint32, 
+                                            chunks=(self._chunksize, 4))
 
-        ## A distributor for engine jobs. Get a threaded view. 
-        lbview = ipyclient.load_balanced_view()
+        ## initial progress bar
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        if not self.checkpoint.boots:
+            progressbar(1, 0, 
+                " initial tree | {} | ".format(elapsed), spacer=0)
+        else:
+            progressbar(self.nboots, self.checkpoint.boots, 
+                " boot {:<7} | {} | ".format(self.checkpoint.boots, elapsed), 
+                spacer=0)
 
-        ## start progress bar timer and submit initial n jobs
-        start = time.time()
+        ## distribute jobs across nodes
         res = {}
         for _ in xrange(njobs):
             ## get chunk of quartet samples and send to a worker engine
             qidx = jobiter.next()
             LOGGER.info('submitting chunk: %s', qidx)
-            with h5py.File(self.h5in, 'r') as inh5:
-                smps = inh5["samples"][qidx:qidx+self.chunksize]
-            res[qidx] = lbview.apply(nworker, *[self, smps, TESTS])
+            with h5py.File(self.database.input, 'r') as inh5:
+                smps = inh5["samples"][qidx:qidx+self._chunksize]
+                res[qidx] = lbview.apply(nworker, *[self, smps, TESTS])
 
         ## keep adding jobs until the jobiter is empty
         done = 0
         while 1:
-            ## print progress unless bootstrapping, diff progbar for that.
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            if not bidx:
-                progressbar(njobs, done, " initial tree | {} | ".format(elapsed))
-            else:
-                progressbar(njobs, done, " boot {:<7} | {} | ".format(bidx, elapsed))
-
             ## check for finished jobs
             curkeys = res.keys()
             finished = [i.ready() for i in res.values()]
@@ -1114,7 +1066,7 @@ class Tetrad(object):
                             ## insert results into hdf5 data base
                             results = res[ikey].get(0)
                             LOGGER.info("%s", results[1])
-                            self.insert_to_array(ikey, results, bidx)
+                            self._insert_to_array(ikey, results) #, bidx)
                             ## purge memory of the old one
                             del res[ikey]
                         else:
@@ -1126,8 +1078,8 @@ class Tetrad(object):
                     try:
                         ## send chunk off to be worked on
                         qidx = jobiter.next()
-                        with h5py.File(self.h5in, 'r') as inh5:
-                            smps = inh5["samples"][qidx:qidx+self.chunksize]
+                        with h5py.File(self.database.input, 'r') as inh5:
+                            smps = inh5["samples"][qidx:qidx+self._chunksize]
                         res[qidx] = lbview.apply(nworker, *[self, smps, TESTS])
 
                     ## if no more jobs then just wait until these are done
@@ -1136,33 +1088,134 @@ class Tetrad(object):
             else:
                 time.sleep(0.01)
 
+            ## print progress unless bootstrapping, diff progbar for that.
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            if not self.checkpoint.boots:
+                progressbar(njobs, done, 
+                    " initial tree | {} | ".format(elapsed), spacer=0)
+            else:
+                progressbar(self.nboots, self.checkpoint.boots, 
+                    " boot {:<7} | {} | ".format(self.checkpoint.boots, elapsed), 
+                    spacer=0)
+
             ## done is counted on finish, so this means we're done
             if njobs == done:
-                break
-
-        ## final progress bar
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        if not bidx:
-            progressbar(njobs, done, " initial tree | {} | ".format(elapsed))
-        else:
-            progressbar(njobs, done, " boot {:<7} | {} | ".format(bidx, elapsed))
-        print("")
+               break
 
         ## dump quartets to a file
-        self.dump_qmc()
+        self._dump_qmc()
 
         ## send to qmc
-        if not bidx:
-            self.run_qmc(0)
-            #_ = lbview.apply(self.run_qmc, 0)
+        if not self.checkpoint.boots:
+            self._run_qmc(0)
         else:
-            self.run_qmc(1)            
-            #_ = lbview.apply(self.run_qmc, 1)
+            self._run_qmc(1)            
 
         ## reset the checkpoint_arr
         self.checkpoint.arr = 0
 
-        #return async_qmc
+
+
+################################################################
+## STATS FUNCTIONS
+################################################################
+def compute_tree_stats(self):        
+    ## get name indices
+    names = self.samples
+
+    ## get majority rule consensus tree of weighted Q bootstrap trees
+    if self.nboots:
+        fulltre = ete3.Tree(self.trees.tree, format=0)
+        with open(self.trees.boots, 'r') as inboots:
+            wboots = [fulltre] + \
+              [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+        wctre, wcounts = consensus_tree(wboots, names=names)
+        self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
+        with open(self.trees.cons, 'w') as ocons:
+            ocons.write(wctre.write(format=0))
+
+    ## build stats file and write trees
+    self.trees.nhx = os.path.join(self.dirs, self.name + ".nhx")
+    with open(self.files.stats, 'w') as ostats:
+
+        ## print Tetrad info
+        ostats.write("## Analysis info\n")
+        ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
+        ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
+        ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.seqfile))
+        ostats.write("{:<30}  {:<20}\n".format("Map_file", self.files.mapfile))
+        used_treefile = [self.files.guidetreefile if self.method == 'equal' else None][0]
+        ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
+        ostats.write("\n")
+
+        ## get Tetrad stats
+        ostats.write("## quartet statistics (coming soon!!)\n")
+        ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
+        proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
+        ostats.write("{:<30}  {:<20.1f}\n".format("percent_sampled_of_total", proportion))
+        mean_loci = 0
+        mean_snps = 0
+        mean_weight = 0
+        mean_dstat = 0
+        ostats.write("{:<30}  {:<20}\n".format("Mean_N_loci_per_split", mean_loci))
+        ostats.write("{:<30}  {:<20}\n".format("Mean_SNPs_per_split", mean_snps))
+        ostats.write("{:<30}  {:<20}\n".format("Mean_quartet_weight", mean_weight))
+        ostats.write("{:<30}  {:<20}\n".format("Mean_abba_baba", mean_dstat))
+        ostats.write("\n")
+
+        ## print tree output files info
+        ostats.write("## Tree files\n")
+        ostats.write("{:<30}  {:<20}\n".format("Initial_tree", self.trees.tree))
+        ostats.write("{:<30}  {:<20}\n".format("bootstrap_replicates", self.trees.boots))
+        ostats.write("{:<30}  {:<20}\n".format("extended_majrule_consens", self.trees.cons))            
+        ostats.write("\n")
+
+        ## print bootstrap splits
+        if self.nboots:
+            ostats.write("## splits observed in {} trees\n".format(len(wboots)))
+            for i, j in enumerate(self.samples):
+                ostats.write("{:<3} {}\n".format(i, j))
+            ostats.write("\n")
+            for split, freq in wcounts:
+                if split.count('1') > 1:
+                    ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
+            ostats.write("\n")
+
+
+    ## parallelized this function because it can be slogging
+    ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+    lbview = ipyclient.load_balanced_view()
+    
+    ## store results in dicts
+    qtots = {}
+    qsamp = {}
+    tots = set(wctre.get_leaf_names())
+    ## iterate over node traversal. 
+    for node in wctre.traverse():
+        ## this is slow, needs to look at every sampled quartet
+        ## so we send it be processed on an engine
+        qtots[node] = lbview.apply(_get_total, *(tots, node))
+        qsamp[node] = lbview.apply(_get_sampled, *(self, tots, node, names))
+
+    ## wait for jobs to finish
+    ipyclient.wait()
+
+    ## put results into tree
+    for node in wctre.traverse():
+        ## this is fast, just calcs n_choose_k
+        total = qtots[node].result()
+        sampled = qsamp[node].result()
+        ## store the results to the tree            
+        node.add_feature("quartets_possible", total)
+        node.add_feature("quartets_sampled", sampled)
+    features = ["quartets_total", "quartets_sampled"]
+
+    ## return as NHX format with extra info
+    with open(self.trees.nhx, 'w') as outtre:
+        outtre.write(wctre.write(format=0, features=features))
+
+    ## close the client view
+    ipyclient.close()
 
 
 
@@ -1213,21 +1266,21 @@ def n_choose_k(n, k):
 #############################################################################
 #############################################################################
 
-@numba.jit('f8(f8[:])', nopython=True)#, cache=True)
-def get_weights(scores):
-    """ 
-    gets quartet weights from ordered svd scores. Following 
-    description from Avni et al. 
-    """
-    ## lowest to highest [best, ils1, ils2]
-    scores.sort()
-    ## get weight given the svd scores
-    if scores[2]:
-        weight = (scores[2]-scores[0]) / \
-                 (np.exp(scores[2]-scores[1]) * scores[2])
-    else:
-        weight = 0
-    return weight
+# @numba.jit('f8(f8[:])', nopython=True)#, cache=True)
+# def get_weights(scores):
+#     """ 
+#     gets quartet weights from ordered svd scores. Following 
+#     description from Avni et al. 
+#     """
+#     ## lowest to highest [best, ils1, ils2]
+#     scores.sort()
+#     ## get weight given the svd scores
+#     if scores[2]:
+#         weight = (scores[2]-scores[0]) / \
+#                  (np.exp(scores[2]-scores[1]) * scores[2])
+#     else:
+#         weight = 0
+#     return weight
 
 
 
@@ -1425,7 +1478,7 @@ def nworker(data, smpchunk, tests):
     #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
     
     ## open the seqarray view, the modified array is in bootsarr
-    with h5py.File(data.h5in, 'r') as io5:
+    with h5py.File(data.database.input, 'r') as io5:
         seqview = io5["bootsarr"][:]
         maparr = io5["bootsmap"][:]
 
@@ -1610,44 +1663,6 @@ def fill_boot(seqarr, newboot, newmap, spans, loci):
     return newboot, newmap
 
 
-
-## thoughts on this... we need to re-estimate chunksize given whatever
-## new parallel setup is passed in. Start from arr checkpoint to end. 
-def load_json(path):
-    """ Load a json serialized Tetrad Class object """
-
-    ## load the JSON string and try with name+.json
-    if not path.endswith(".tet.json"):
-        path += ".tet.json"
-
-    ## expand user
-    path = path.replace("~", os.path.expanduser("~"))
-
-    ## load the json file
-    try:
-        with open(path, 'r') as infile:
-            fullj = _byteify(json.loads(infile.read(),
-                            object_hook=_byteify), 
-                        ignore_dicts=True)
-    except IOError:
-        raise IPyradWarningExit("""\
-    Cannot find checkpoint (.tet.json) file at: {}""".format(path))
-
-    ## create a new Tetrad Class
-    newobj = Tetrad(fullj["name"], 
-                    fullj["dirs"], 
-                    fullj["method"], 
-                    initarr=0)
-
-    ## fill in the same attributes
-    for key in fullj:
-        newobj.__setattr__(key, fullj[key])
-
-    newobj.files = ObjDict(newobj.files)
-    newobj.trees = ObjDict(newobj.trees)
-    newobj.checkpoint = ObjDict(newobj.checkpoint)
-
-    return newobj
 
 
 
@@ -1841,8 +1856,10 @@ def _build_trees(fclade_counts, namedict):
             node.add_child(child)
         if not node.is_leaf():
             node.dist = int(round(100*countdict[clade]))
+            node.support = int(round(100*countdict[clade]))
         else:
             node.dist = int(100) 
+            node.support = int(100)
         
         nodes[clade] = node
         queue = new_queue
@@ -1876,85 +1893,47 @@ def _get_sampled(data, tots, node, names):
 
     ## do chunks at a time in case qrts is huge
     idx = 0
-    with h5py.File(data.h5out, 'r') as io5:
-        qrts = io5["quartets"][idx:idx+data.chunksize]
+    with h5py.File(data.database.output, 'r') as io5:
+        qrts = io5["quartets"][idx:idx+data._chunksize]
         for qrt in qrts:
             sqrt = set(qrt)
             if len(sqrt.intersection(idxd)) > 1:
                 if len(sqrt.intersection(idxu)) > 1:
                     sampled += 1
-            idx += data.chunksize
+            idx += data._chunksize
 
     return sampled
-
-
-
-def report_cluster(self, ipyclient, quiet):
-    """ report the ipcluster setup """
-    ## if MPI setup then we are going to wait until all engines are
-    ## ready so that we can print how many cores started on each 
-    ## host machine exactly. 
-    if not quiet:
-        if self._ipcluster["engines"] == "MPI":
-            hosts = ipyclient[:].apply_sync(socket.gethostname)
-            for hostname in set(hosts):
-                print("  host compute node: [{} cores] on {}"\
-                      .format(hosts.count(hostname), hostname))
-            print("")
-        ## if Local setup then we know that we can get all the cores for 
-        ## sure and we won't bother waiting for them to start, since 
-        ## they'll start grabbing jobs once they're started. 
-        else:
-            if self._ipcluster["cores"]:
-                _cpus = self._ipcluster["cores"]
-            else:
-                _cpus = len(ipyclient.ids)
-            print("  local compute node: [{} cores] on {}\n"\
-                  .format(_cpus, socket.gethostname()))
-
-
-def progressbar(njobs, finished, msg=""):
-    """ prints a progress bar """
-    progress = 100*(finished / float(njobs))
-    hashes = '#'*int(progress/5.)
-    nohash = ' '*int(20-len(hashes))
-    #if not ipyrad.__interactive__:
-    #    msg = msg.rsplit("|", 2)[0]
-    print("\r  [{}] {:>3}% {} "\
-          .format(hashes+nohash, int(progress), msg), end="")
-    sys.stdout.flush()
 
 
 
 ## GLOBALS #############################################################
 
 STATSOUT = """
-  Statistics for sampling, discordance, and tree support:
-    > {}
-    """
+Statistics for sampling, discordance, and tree support:
+  {}
+"""
 
 FINALTREES = """\
-  Best tree inferred from the full SNP array:
-    > {}
-    """
+Best tree inferred from the full SNP array:
+  {}
+"""
 
 BOOTTREES = """\
-  Extended majority-rule consensus over bootstraps w/ support as edge lengths:
-    > {}
+Extended majority-rule consensus with support values:
+  {}
 
-  All bootstrap trees:
-    > {}
-    """
+All bootstrap trees:
+  {}
+"""
 
 ASCII_TREE = """\
-  ASCII view of unrooted topology from the weighted analysis
-    {}
-    """
+  {}
+"""
 
 LINKS = """\
-  * For tips on plotting trees in R: {}     
-  * For tips on citing this software: {} 
-    """
+* For tips on plotting trees: {}     
+* For tips on citing this software: {} 
+"""
 
 ########################################################################
 ## JUNK
@@ -2026,9 +2005,10 @@ LINKS = """\
 if __name__ == "__main__":
 
     ## imports
-    import ipyrad.analysis as ipa
+    #import ipyrad.analysis as ipa
     #import ipyrad as ip
     #import ipyparallel as ipp
+    pass
 
     #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/cli/cli.json")
     #DATA = ipyrad.load_json("~/Documents/ipyrad/tests/iptutorial/cli.json")

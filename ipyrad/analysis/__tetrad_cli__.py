@@ -22,6 +22,7 @@ import ipyrad.analysis as ipa
 # pylint: disable=E1101
 
 LOGGER = logging.getLogger(__name__)
+__interactive__ = False
 
 
 def parse_command_line():
@@ -98,9 +99,9 @@ def parse_command_line():
         type=str, default="test",
         help="output name prefix (default: 'test')")
 
-    parser.add_argument('-o', metavar="outdir", dest="outdir",
-        type=str, default="./analysis_tetrad",
-        help="output directory (default: creates ./analysis_tetrad)")
+    parser.add_argument('-o', metavar="workdir", dest="workdir",
+        type=str, default="./analysis-tetrad",
+        help="output directory (default: creates ./analysis-tetrad)")
 
     parser.add_argument('-t', metavar="starting_tree", dest="tree",
         type=str, default=None,
@@ -121,7 +122,7 @@ def parse_command_line():
         help="connect to parallel CPUs across multiple nodes")
 
     parser.add_argument("--ipcluster", action='store_true',
-        help="connect to ipcluster instance with profile=ipyrad")
+        help="connect to ipcluster instance with profile=default")
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -168,8 +169,6 @@ def parse_command_line():
 
 def main():
     """ main function """
-    ## not in ipython
-    ip.__interactive__ = 0
 
     ## parse params file input (returns to stdout if --help or --version)
     args = parse_command_line()
@@ -189,7 +188,8 @@ def main():
 
     ## if JSON, load existing Tetrad analysis -----------------------
     if args.json:
-        data = ipa.tetrad.load_json(args.json)
+        #data = ipa.tetrad.load_json(args.json)
+        data = ipa.tetrad(name=args.name, workdir=args.workdir, load=True)
         ## if force then remove all results
         if args.force:
             data.refresh()
@@ -197,30 +197,34 @@ def main():
     ## else create a new tmp assembly for the seqarray-----------------
     else:
         ## create new Tetrad class Object if it doesn't exist
-        newjson = os.path.join(args.outdir, args.name+'.tet.json')
-        if args.force or (not os.path.exists(newjson)):
-
-            ## clear any files associated with this name if forced
+        newjson = os.path.join(args.workdir, args.name+'.tet.json')
+        if (not os.path.exists(newjson)) or args.force:
+            ## purge any files associated with this name if forced
             if args.force:
-                data = ipa.tetrad.Tetrad(name=args.name, wdir=args.outdir, 
-                                         seqfile="", initarr=0)
-                data._purge()
-            ## create new Tetrad
-            data = ipa.tetrad.Tetrad(name=args.name, 
-                                     wdir=args.outdir, 
-                                     method=args.method, 
-                                     seqfile=args.seq, 
-                                     resolve=args.resolve,
-                                     mapfile=args.map, 
-                                     treefile=args.tree, 
-                                     nboots=args.boots, 
-                                     nquartets=args.nquartets)
+                ipa.tetrad(name=args.name, 
+                           workdir=args.workdir, 
+                           seqfile=args.seq, 
+                           initarr=False, 
+                           quiet=True).refresh()
+
+            ## create new tetrad object
+            data = ipa.tetrad(name=args.name, 
+                              workdir=args.workdir, 
+                              method=args.method, 
+                              seqfile=args.seq, 
+                              resolve=args.resolve,
+                              mapfile=args.map, 
+                              guidetreefile=args.tree, 
+                              nboots=args.boots, 
+                              nquartets=args.nquartets, 
+                              cli=True,
+                              )
             ## if not quiet...
-            print("  new Tetrad instance: {}".format(args.name))
+            print("tetrad instance: {}".format(args.name))
 
         else:
-            raise IPyradWarningExit(QUARTET_EXISTS\
-            .format(args.name, args.outdir, args.outdir, args.name, args.name))
+            raise SystemExit(QUARTET_EXISTS\
+            .format(args.name, args.workdir, args.workdir, args.name, args.name))
 
     ## boots can be set either for a new object or loaded JSON to continue it
     if args.boots:
@@ -232,6 +236,8 @@ def main():
     ## if more ipcluster args from command-line then use those
     if args.MPI:
         data._ipcluster["engines"] = "MPI"
+        if not args.cores:
+            raise IPyradWarningExit("must provide -c argument with --MPI")
     else:
         data._ipcluster["engines"] = "Local"
 
@@ -241,8 +247,7 @@ def main():
     ## an ipcluster instance that is already running instead then 
     ## they have to use the API, or to have set args.ipcluster
     if args.ipcluster:
-        data._ipcluster["profile"] = "ipyrad"
-        #ip.__interactive__ = 1
+        data._ipcluster["cluster_id"] = ""
     else:
         data = register_ipcluster(data)
 
@@ -261,19 +266,18 @@ def main():
 ## CONSTANTS AND WARNINGS
 
 HEADER = """
- ----------------------------------------------------------------------
-  tetrad [v.{}]
-  Quartet inference from phylogenetic invariants
-  Distributed as part of the ipyrad.analysis toolkit
- ----------------------------------------------------------------------\
-  """
+-------------------------------------------------------
+tetrad [v.{}] (ipyrad.analysis toolkit)
+Quartet inference from phylogenetic invariants
+-------------------------------------------------------\
+"""
 
-QUARTET_EXISTS = """\
-    Error: tetrad analysis '{}' already exists in {} 
-    Use the force argument (-f) to overwrite old analysis files, or,
-    Use the JSON argument (-j {}/{}.tet.json) 
-    to continue analysis of '{}' from last checkpoint.
-    """
+QUARTET_EXISTS = """
+Error: tetrad analysis '{}' already exists in {} 
+Use the force argument (-f) to overwrite old analysis files, or,
+Use the JSON argument (-j {}/{}.tet.json) 
+to continue analysis of '{}' from last checkpoint.
+"""
 
 
 if __name__ == "__main__": 
