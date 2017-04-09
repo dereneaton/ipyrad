@@ -3,6 +3,10 @@
 """ D-statistic calculations """
 # pylint: disable=E1101
 # pylint: disable=F0401
+# pylint: disable=W0142
+# pylint: disable=R0915
+# pylint: disable=R0914
+# pylint: disable=R0912
 
 from __future__ import print_function, division
 
@@ -14,7 +18,6 @@ from ipyrad.analysis.tree import Tree as tree #decompose_tree
 from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 #import scipy.stats as st  ## used for dfoil
-import ipyparallel as ipp
 import pandas as pd
 import numpy as np
 import numba
@@ -26,13 +29,14 @@ import time
 import os
 
 ## non-standard imports
-import toyplot
 import ete3 as ete
 try: 
     import msprime as ms
 except ImportError:
     pass
 
+## set floating point precision in data frames to 3 for prettier printing
+pd.set_option('precision', 3)
 
 ## prettier printing
 # pd.options.display.float_format = '{:.4f}'.format
@@ -40,22 +44,28 @@ except ImportError:
 
 class Baba(object):
     "new baba class object"
-    def __init__(self, data=None, tests=None, newick=None, nboots=1000, mincov=1):
+    def __init__(self, 
+        data=None, 
+        tests=None, 
+        newick=None, 
+        nboots=1000, 
+        mincov=1):
         """ 
         ipyrad.analysis Baba Class object.
 
         Parameters
         ----------
         data : string or ndarray
-            A string path to a .loci file produced by ipyrad. Alternatively, data
-            can be entered as an ndarray. Numpy array float allele frequencies 
-            with dimension (nloci, 4 or 5, maxlen). See docs.
+            A string path to a .loci file produced by ipyrad. Alternatively, 
+            data can be entered as a Numpy array of float allele frequencies 
+            with dimension (nloci, 4 or 5, maxlen). See simulation example 
+            in the docs.
             
         tests : dict or list of dicts
             A dictionary mapping Sample names to test taxon names, e.g., 
-            test = {'p1': ['a', 'b'], 'p2': ['c', 'd'], 'p3': ['e'], 'p4': ['f']}.
+            test = {'p1': ['a', 'b'], 'p2': ['c'], 'p3': ['e'], 'p4': ['f']}.
             Four taxon tests should have p1-p4 whereas five taxon tests will 
-            be performed if dict keys are p1-p5. Other names will raise an error. 
+            used if dict keys are p1-p5. Other key names will raise an error. 
             The highest value name (e.g., p5) is the outgroup. 
         
         newick: str
@@ -110,6 +120,8 @@ class Baba(object):
             An ipyparallel client object to distribute jobs to a cluster. 
         """
         self.results_table, self.results_boots = batch(self, ipyclient)
+        self.results_table.nloci = np.nan_to_num(self.results_table.nloci)\
+                                                 .astype(int)
 
 
     def generate_tests_from_tree(self, 
@@ -129,7 +141,7 @@ class Baba(object):
             raise AttributeError("no newick tree information in {self}.newick")
         tests = tree2tests(self.newick, constraint_dict, constraint_exact)
         if verbose:
-            print("  {} tests generated from tree".format(len(tests)))
+            print("{} tests generated from tree".format(len(tests)))
         self.tests = tests
 
 
@@ -147,19 +159,12 @@ class Baba(object):
             raise IPyradError("baba plot must have a .newick attribute (treefile)")
         if not self.tests:
             raise IPyradError("baba plot must have a .tests attribute")
-        #if not isinstance(self.results_boots, np.ndarray):
-        #    raise IPyradError("baba plot must have results (you must run .run())")
 
         ## ensure tests is a list
         if isinstance(self.tests, dict):
             self.tests = [self.tests]
 
         ## re-decompose the tree
-        #tree, edges, verts, names = decompose_tree(
-        #    self.newick, 
-        #    orient="down", 
-        #    use_edge_lengths=use_edge_lengths)
-        #verts = verts.astype(np.float)
         ttree = tree(
             self.newick, 
             orient='down', 
@@ -169,10 +174,6 @@ class Baba(object):
         ## make the plot
         canvas, axes, panel = baba_panel_plot(
             ttree=ttree,
-            #tree=tre.tree,
-            #edges=edges, 
-            #verts=verts, 
-            #names=names,
             tests=self.tests,
             boots=self.results_boots,
             show_test_labels=show_test_labels, 
@@ -186,6 +187,7 @@ class Baba(object):
 
 
     def copy(self):
+        """ returns a copy of the baba analysis object """
         return copy.deepcopy(self)
 
 
@@ -195,7 +197,7 @@ def batch(
     ipyclient=None,
     ):
     """
-    parallel mode
+    distributes jobs to the parallel client
     """
 
     ## parse args
@@ -226,29 +228,16 @@ def batch(
     tot = len(taxdicts)
     resarr = np.zeros((tot, 7), dtype=np.float64)
     bootsarr = np.zeros((tot, nboots), dtype=np.float64)
+    paneldict = {}
 
+    ## TODO: Setup a wrapper to find and cleanup ipyclient
     ## define the function and parallelization to use, 
     ## if no ipyclient then drops back to using multiprocessing.
     if not ipyclient:
-        ## auto-start ipcluster like in ipyrad
-        #ipyclient = ip.core.parallel.get_client(**self._ipcluster)
-        #ipcluster please start an ipyparallel cluster")
+        # ipyclient = ip.core.parallel.get_client(**self._ipcluster)
         raise IPyradError("you must enter an ipyparallel.Client() object")
-
     else:
         lbview = ipyclient.load_balanced_view()
-
-    # if ipyclient:
-    #     lbview = ipyclient.load_balanced_view()
-    #     def submit_dstat_job(args):
-    #         async = lbview.apply_async(dstat, *args)
-    #         return async
-    # else:
-    #     import multiprocessing
-    #     lbview = multiprocessing.Pool()
-    #     def submit_dstat_job(args):
-    #         async = lbview.apply_async(dstat, args)
-    #         return async
 
     ## submit jobs to run on the cluster queue
     start = time.time()
@@ -273,8 +262,7 @@ def batch(
             #asyncs[idx] = lbview.apply_async(dstat, *args)
         else:
             args = [loci, test, mindict, nboots]
-            #asyncs[idx] = submit_dstat_job(args)
-            asyncs[idx] = lbview.apply_async(dstat, *args)
+            asyncs[idx] = lbview.apply(dstat, *args)
         idx += 1
 
     ## block until finished, print progress if requested.
@@ -288,16 +276,24 @@ def batch(
                         " error: {}: {}".format(job, asyncs[job].exception()))
                 ## enter results for successful jobs
                 else:
-                    #_res, _bot = asyncs[job].result()
-                    _res, _bot = asyncs[job].get()
-                    resarr[job] = _res.T.as_matrix()[:, 0]
-                    bootsarr[job] = _bot
+                    _res, _bot = asyncs[job].result()
+                    ## store D4 results
+                    if _res.shape[0] == 1:
+                        resarr[job] = _res.T.as_matrix()[:, 0]
+                        bootsarr[job] = _bot
+                    ## store D5 results                        
+                    else:   
+                        paneldict[job] = _res
+
+
+
                     del asyncs[job]
 
             ## count finished
             fin = tot - len(asyncs) 
             elap = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(tot, fin, " calculating D-stats  | {} | ".format(elap))
+            progressbar(tot, fin, 
+                " calculating D-stats  | {} | ".format(elap), spacer=0)
             time.sleep(0.1)
             if not asyncs:
                 print("")#\n")
@@ -318,6 +314,8 @@ def batch(
     ## dress up resarr as a Pandas DataFrame
     if not names:
         names = range(len(taxdicts))
+    print("resarr")
+    print(resarr)
     resarr = pd.DataFrame(resarr, 
         index=names,
         columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
@@ -367,8 +365,7 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     else:
         ## get results
         res, boots = _get_signif_5(arr, nboots)
-
-        ## make int a DataFrame
+         ## make int a DataFrame
         res = pd.DataFrame(res,
             index=["p3", "p4", "shared"], 
             columns=["Dstat", "bootmean", "bootstd", "Z", "ABxxA", "BAxxA", "nloci"]
@@ -393,11 +390,11 @@ def _loci_to_arr(loci, taxdict, mindict):
 
     ## if not mindict, make one that requires 1 in each taxon
     if isinstance(mindict, int):
-        mindict = {i:mindict for i in taxdict}
+        mindict = {i: mindict for i in taxdict}
     elif isinstance(mindict, dict):
-        mindict = {i:mindict[i] for i in taxdict}
+        mindict = {i: mindict[i] for i in taxdict}
     else:
-        mindict = {i:1 for i in taxdict}
+        mindict = {i: 1 for i in taxdict}
 
     ## raise error if names are not 'p[int]' 
     allowed_names = ['p1', 'p2', 'p3', 'p4', 'p5']
@@ -644,11 +641,11 @@ def _prop_dstat(arr):
     ## get statistic and avoid zero div  
     sbot = bot.sum()
     if  sbot != 0:
-        dstat = top.sum() / float(sbot)
+        dst = top.sum() / float(sbot)
     else:
-        dstat = 0
+        dst = 0
     
-    return abba.sum(), baba.sum(), dstat
+    return abba.sum(), baba.sum(), dst
 
 
 
@@ -665,8 +662,8 @@ def _get_boots(arr, nboots):
         ## sample with replacement
         lidx = np.random.randint(0, arr.shape[0], arr.shape[0])
         tarr = arr[lidx]
-        _, _, dstat = _prop_dstat(tarr)
-        boots[bidx] = dstat
+        _, _, dst = _prop_dstat(tarr)
+        boots[bidx] = dst
     
     ## return bootarr
     return boots
@@ -679,14 +676,14 @@ def _get_signif_4(arr, nboots):
     returns a list of stats and an array of dstat boots. Stats includes
     z-score and two-sided P-value. 
     """
-    abba, baba, dstat = _prop_dstat(arr)
+    abba, baba, dst = _prop_dstat(arr)
     boots = _get_boots(arr, nboots)
-    e, s = (boots.mean(), boots.std())
-    z = 0.
-    if s:
-        z = np.abs(e) / s
-    stats = np.array([dstat, e, s, z, abba, baba, arr.shape[0]])
-    return stats, boots
+    estimate, stddev = (boots.mean(), boots.std())
+    zscore = 0.
+    if stddev:
+        zscore = np.abs(dst) / stddev
+    stats = [dstat, estimate, stddev, zscore, abba, baba, arr.shape[0]]
+    return np.array(stats), boots
 
 
 
@@ -697,7 +694,7 @@ def _get_signif_5(arr, nboots):
     z-score and two-sided P-value. 
     """
 
-    statsarr = np.zeros((3, 6), dtype=np.float64)
+    statsarr = np.zeros((3, 7), dtype=np.float64)
     bootsarr = np.zeros((3, nboots))
 
     idx = 0
@@ -705,14 +702,14 @@ def _get_signif_5(arr, nboots):
         rows = np.array([0, 1, acol, 5])
         tarr = arr[:, rows, :]
 
-        abxa, baxa, dstat = _prop_dstat(tarr)
+        abxa, baxa, dst = _prop_dstat(tarr)
         boots = _get_boots(tarr, nboots)
-        e, s = (boots.mean(), boots.std())
-        if s:
-            z = np.abs(dstat) / s
+        estimate, stddev = (boots.mean(), boots.std())
+        if stddev:
+            zscore = np.abs(dst) / stddev
         else:
-            z = np.NaN
-        stats = np.array([dstat, e, s, abxa, baxa, z])
+            zscore = np.NaN
+        stats = [dst, estimate, stddev, zscore, abxa, baxa, arr.shape[0]]
 
         statsarr[idx] = stats
         bootsarr[idx] = boots

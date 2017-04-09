@@ -217,7 +217,7 @@ class Structure(object):
         np.random.seed(seed)
 
         ## prepare files
-        self._prepare_structure_files()
+        self._prepare_structure_files(kpop)
 
         ## check that there is a ipcluster instance running
         asyncs = []
@@ -244,11 +244,11 @@ class Structure(object):
 
 
 
-    def _prepare_structure_files(self):
+    def _prepare_structure_files(self, kpop):
         """ prepares input files for running structure"""
 
         ## remove old jobs with this same name
-        handle = os.path.join(self.workdir, self.name+"-K-*")
+        handle = os.path.join(self.workdir, self.name+"-K-{}-*".format(kpop))
         oldjobs = glob.glob(handle)
         for job in oldjobs:
             os.remove(job)
@@ -304,6 +304,7 @@ class Structure(object):
         tmp_m.close()
         tmp_e.close()
         tmp_s.close()
+
 
 
     def get_clumpp_table(self, kpop):
@@ -539,7 +540,8 @@ def _get_clumpp_table(self, kpop):
         return table
 
     else:
-        sys.stderr.write("No _f files ready in {}\n".format(self.workdir))
+        sys.stderr.write("No files ready for {}-K-{} in {}\n"\
+                         .format(self.name, kpop, self.workdir))
         return 
 
 

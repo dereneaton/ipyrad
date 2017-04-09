@@ -1457,16 +1457,18 @@ def calculate(seqnon, mapcol, nmask, tests):
         ranks[test] = np.linalg.matrix_rank(mats[test].astype(np.float64))
 
     ## get minrank, or 11
-    minrank = min(11, ranks.min())
+    minrank = int(min(11, ranks.min()))
     for test in range(3):
         qscores[test] = np.sqrt(np.sum(svds[test, minrank:]**2))
 
     ## sort to find the best qorder
     best = np.where(qscores == qscores.min())[0]
+    #best = qscores[qscores == qscores.min()][0]
     bidx = tests[best][0]
     qsnps = count_snps(mats[best][0])
 
-    return bidx, qsnps  #, qscores
+    return bidx, qsnps
+    #, qscores
     #return bidx, qscores, qsnps
 
 
@@ -1490,7 +1492,8 @@ def nworker(data, smpchunk, tests):
 
     ## get the input arrays ready
     rquartets = np.zeros((smpchunk.shape[0], 4), dtype=np.uint16)
-    rweights = np.ones(smpchunk.shape[0], dtype=np.float64)
+    rweights = None
+    #rweights = np.ones(smpchunk.shape[0], dtype=np.float64)
     rdstats = np.zeros((smpchunk.shape[0], 4), dtype=np.uint32)
 
     #times = []

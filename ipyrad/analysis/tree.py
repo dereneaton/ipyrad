@@ -8,6 +8,7 @@ import ete3 as ete
 import copy
 import toyplot
 from ..plotting.tree_panel_plot import tree_panel_plot
+from ..assemble.util import IPyradError
 
 
 class Tree(object):
@@ -28,7 +29,6 @@ class Tree(object):
 
         ## parse newick, assigns idx to nodes, returns tre, edges, verts, names
         self._decompose_tree(**kwargs)
-        #tree, edges, verts, names, coords, lines = decompose_tree(self.newick, orient=orient)
 
         ## parse admixture events
         self.admix = admix
@@ -47,6 +47,7 @@ class Tree(object):
         return Sims
 
 
+
     def root(self, outgroup=None, wildcard=None):
         ## set names or wildcard as the outgroup
         if outgroup:
@@ -55,16 +56,18 @@ class Tree(object):
             outs = [i for i in self.tree.get_leaves() if wildcard in i.name]
         else:
             raise IPyradError(\
-                "must enter either a list of outgroup names or a wildcard selector")
+            "must enter either a list of outgroup names or a wildcard selector")
         if len(outs) > 1:
             out = self.tree.get_common_ancestor(outs)
         else:
             out = outs[0]
-        self.tree.set_outgroup(out)
+
         ## we split a branch to root it, so let's double each edge so that the 
         ## distance remains the same (i.e., it would be 0.5 but we make it 1).
+        self.tree.set_outgroup(out)
         self.tree.children[0].dist = 2. * self.tree.children[0].dist
         self.tree.children[1].dist = 2. * self.tree.children[1].dist 
+        self.tree.support = 100
         newick = self.tree.write()
         self.__init__(newick=newick, 
                       admix=self.admix, 
@@ -226,7 +229,10 @@ def _decompose_tree(ttree, orient='right', use_edge_lengths=True):
         idx += 1
 
     ## create empty edges and coords arrays
-    ttree.names = names
+    ttree.node_labels = names
+    ttree.tip_labels = ttree.tree.get_leaf_names()
+    #self.tip_labels = self.tree.get_leaf_names()[::-1]
+    #self.node_labels = self.names
     ttree.edges = np.zeros((idx - 1, 2), dtype=int)
     ttree.verts = np.zeros((idx, 2), dtype=float)
     ttree._lines = []        # np.zeros((ntips-1), dtype=int)
@@ -242,7 +248,7 @@ def _decompose_tree(ttree, orient='right', use_edge_lengths=True):
             ## set the xy-axis positions of the tips
             node.y = ttree.tree.get_distance(node)
             if ult:
-                node.y = 0. #node.get_farthest_leaf(True)[1] + 1
+                node.y = 0. 
             node.x = tip_num
             tip_num -= 1
             
