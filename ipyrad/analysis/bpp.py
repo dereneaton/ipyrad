@@ -16,50 +16,13 @@ from ipyrad.assemble.util import IPyradWarningExit, DUCT
 
 
 ## The user accessible function
-def bpp(locifile, guidetree, imap, workdir="analysis-bpp", *args, **kwargs):
-    """ 
-    Creates and return an ipyrad.analysis Bpp Class object. 
-
-    Parameters:
-    -----------
-    name (str):
-        name used as an prefix for results files
-    locifile (str):
-        path to a .loci file.
-    guidetree (newick str)
-        a newick string representation of the tree
-    imap (dict):
-        a dictionary mapping sample names in the loci file to species
-        names in the guidetree.
-
-    Additional options:
-    -------------------
-    workdir (str):
-        a working directory where output files will be written. Default = "./"
-    maxloci (int):
-        maximum number of loci to parse from loci file into the bpp seq file.
-    minmap (dict):
-        minimum number of samples that must have data at a locus for each tip
-        in the guidetree in order for that locus to be retained in the bpp
-        seq file data set. 
-
-    """
-
-    ## check imap and tree
-    tree = ete.Tree(guidetree)
-    if not imap:
-        imap = {i:i for i in tree.get_leaf_names()}
-    assert isinstance(imap, dict), "you must enter an IMAP dictionary"
-    assert set(imap.keys()) == set(tree.get_leaf_names()), "IMAP keys must match guidetree names"
-
-    ## update default args
-    return Bpp(locifile, guidetree, imap, workdir, *args, **kwargs)
+#def bpp(locifile, guidetree, imap, workdir="analysis-bpp", *args, **kwargs):
 
 
 
 class Bpp(object):
     """
-    A utility function for creating input files, setting parameters, 
+    BPP analysis utility function for creating input files, setting parameters, 
     and submitting bpp jobs to run on a parallel cluster. Converts loci 
     file format data to bpp file format, i.e., concatenated phylip-like
     format, and produces imap and ctl input files for bpp. The main 
@@ -83,12 +46,15 @@ class Bpp(object):
     -----------
     params (dict):
         parameters for bpp analses used to create .ctl file
+    filters (dict):
+        parameters used to filter loci that will be included in the analysis.
 
     Functions:
     ----------
     submit_bpp_jobs():
         See documentation string for this function.
-
+    write_bpp_files():
+        See documentation string for this function.
 
     Optional parameters (object.params):
     --------------------
@@ -102,7 +68,7 @@ class Bpp(object):
         'species' will be collapsed to test whether fewer species are a better
         fit to the data than the number in the input guidetree.
     delimit_alg:
-        Species delimitation algorithm. This is a two-part tuple. The first value
+        Species delimitation algorithm is a two-part tuple. The first value
         is the algorithm (0 or 1) and the second value is a tuple of arguments
         for the given algorithm. See other ctl files for examples of what the
         delimitation line looks like. This is where you can enter the params
@@ -180,9 +146,16 @@ class Bpp(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
+        ## set the guidetree
+        self.tree = ete.Tree(guidetree)
+
         ## parsing attributes
         self.imap = imap
-        self.guidetree = guidetree
+        if not self.imap:
+            self.imap = {i:i for i in tree.get_leaf_names()}
+        assert isinstance(self.imap, dict), "you must enter an IMAP dictionary"
+        assert set(self.imap.keys()) == set(self.tree.get_leaf_names()), \
+               "IMAP keys must match guidetree names"
 
         ## filters
         self.filters = Params()
@@ -214,10 +187,10 @@ class Bpp(object):
         return_asyncs=False,
         ):
         """
-        Submits a job to run the cluster and returns an asynchronous result object.
-        The seed for the random number generator if not set is randomly drawn, 
-        and if multiple reps are submitted then each will draw subsequent random 
-        seeds after the initial seed. An ipyclient connection is required. 
+        Submits a job to run the cluster and returns an asynchronous result 
+        object. The seed for the random number generator if not set is randomly 
+        drawn, and if multiple reps are submitted then each will draw subsequent
+        random seeds after that. An ipyclient connection is required. 
         
         Parameters:
         -----------

@@ -18,56 +18,6 @@ from ipyrad.analysis.tetrad import get_spans
 # pylint: disable=R0903
 
 
-## User accessible convenience function
-def structure(name, strfile, workdir=None, mapfile=None):
-    """ 
-    Create and return an ipyrad.analysis Structure Object. This object allows
-    you to easily enter parameter setting to submit structure jobs to run in 
-    parallel on a cluster. 
-
-    Parameters
-    -----------
-    name (str):
-        A prefix name for all output files. 
-    strfile (str):
-        The path to a .str or .ustr file formatted to run in STRUCTURE. The 
-        first is expected to include all SNPs for a data set, and is meant to
-        be combined with a mapfile (see next), whereas the ustr file contains
-        a random sample of unlinked SNPs. 
-    mapfile (str):
-        The path to a .snps.map file from ipyrad. This has information about 
-        which SNPs are linked (from the same RAD locus) which allow for sampling
-        unlinked SNPs. 
-
-    Attributes:
-    ----------
-    mainparams (dict):
-        A dictionary with the mainparams used by STRUCTURE
-    extraparams (dict):
-        A dictionary with the extraparams used by STRUCTURE
-    clumppparams (dict):
-        A ditionary with the parameter settings used by CLUMPP
-    header (pandas.DataFrame):
-        Returns the header columns of the str file
-    result_files (list):
-        Returns a list of result files for finished STRUCTURE jobs submitted 
-        by this object. 
-
-    Functions:
-    ----------
-    submit_structure_jobs(*args, **kwargs):
-        Submits independent replicate jobs to run on a cluster.
-    get_clumpp_table(kpop):
-        Returns a table of results for K=kpop permuted across all replicates.
-    """ 
-    ## check params
-    ## ....
-
-    ## return Structure class Object
-    return Structure(name, strfile, workdir, mapfile)
-
-
-
 
 class _Object(object):
     """ a custom object with getter and repr, but no getkeys setkeys """
@@ -96,6 +46,7 @@ class Structure(object):
     Create and return an ipyrad.analysis Structure Object. This object allows
     you to easily enter parameter setting to submit structure jobs to run in 
     parallel on a cluster. 
+
 
     Parameters
     -----------

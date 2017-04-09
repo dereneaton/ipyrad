@@ -11,32 +11,32 @@ from ..plotting.tree_panel_plot import tree_panel_plot
 
 
 class Tree(object):
-    def __init__(self, newick=None, admix=None, orient='right'):
+    def __init__(self, newick=None, admix=None, **kwargs):
+        #, orient='right', use_edge_lengths=True):
 
         ## use default newick string if not given
         if newick:
-            ## parse and resolve polytomies
-            tree = ete.Tree(newick)
-            tree.resolve_polytomy()
-            self.newick = tree.write()
+            ## check that tree can be parsed
+            self.tree = ete.Tree(newick)
+            self.tree.ladderize()
+            self.newick = self.tree.write()
             self.admix = admix
         else:
             self.newick = "((((a,b),c),d), ((((e,f),g),h) , (((i,j),k),l)));"
+            self.tree = ete.Tree(self.newick)
+            self.tree.ladderize()
+
         ## parse newick, assigns idx to nodes, returns tre, edges, verts, names
-        tree, edges, verts, names = decompose_tree(self.newick, orient=orient)
+        self._decompose_tree(**kwargs)
+        #tree, edges, verts, names, coords, lines = decompose_tree(self.newick, orient=orient)
 
         ## parse admixture events
         self.admix = admix
         self._check_admix()
 
-        ## store values
-        self.tree = tree
-        self.edges = edges
-        self.verts = verts
-        self.names = names.values()  ## in tree plot vlshow order
 
-        ## hidden attr
-        self._orient = orient
+    def __str__(self):
+        return self.tree.__str__()
 
 
     def simulate(self, nreps=1000, admix=None, Ns=int(5e5), gen=10):
@@ -63,10 +63,14 @@ class Tree(object):
         self.tree.set_outgroup(out)
         ## we split a branch to root it, so let's double each edge so that the 
         ## distance remains the same (i.e., it would be 0.5 but we make it 1).
-        self.tree.children[0].dist = 1.
-        self.tree.children[1].dist = 1.
+        self.tree.children[0].dist = 2. * self.tree.children[0].dist
+        self.tree.children[1].dist = 2. * self.tree.children[1].dist 
         newick = self.tree.write()
-        self.__init__(newick=newick, admix=self.admix, orient=self._orient)
+        self.__init__(newick=newick, 
+                      admix=self.admix, 
+                      #orient=self._orient,
+                      #use_edge_lengths=self._use_edge_lengths
+                      )
 
 
     def _check_admix(self):
@@ -75,11 +79,18 @@ class Tree(object):
             for event in self.admix:
                 pass #print(event)
 
+
+    def _decompose_tree(self, orient='right', use_edge_lengths=True):
+        _decompose_tree(self, orient, use_edge_lengths)
+
+
     def draw(
         self, 
         show_tip_labels=True, 
+        show_node_support=False,
         use_edge_lengths=False, 
         orient="right",
+        print_args=False,
         *args,
         **kwargs):
         """
@@ -87,120 +98,30 @@ class Tree(object):
 
         Parameters:
         -----------
-            taxdicts: dict
-                Show tests as colored rectangles.
-            bootsarr: ndarray
-                Show bootstrap distributions (requires taxdicts as well)
-            yaxis: bool
-                Show the y-axis.
+            show_tip_labels: bool
+                Show tip names from tree.
             use_edge_lengths: bool
                 Use edge lengths from newick tree.
-            show_tips: bool
-                Show tip names from tree.
             pct_tree_y: float
                 proportion of canvas y-axis showing tree
             ...
         """
         ## re-decompose tree for new orient and edges args
-        tree, edges, verts, names = decompose_tree(
-            self.newick, 
-            orient=orient, 
-            use_edge_lengths=use_edge_lengths)
-        verts = verts.astype(np.float)
+        self._decompose_tree(orient=orient, use_edge_lengths=use_edge_lengths)
+
+        ## update kwargs with entered args and all other kwargs
+        dwargs = {}
+        dwargs["show_tip_labels"] = show_tip_labels
+        dwargs["show_node_support"] = show_node_support
+        dwargs.update(kwargs)
 
         ## pass to panel plotter
-        canvas, axes = tree_panel_plot(tree, edges, verts, names, 
-                                       show_tip_labels, 
-                                       use_edge_lengths, 
-                                       orient, 
-                                       *args, 
-                                       **kwargs)
-        return canvas, axes
+        canvas, axes, panel = tree_panel_plot(self, print_args, **dwargs)
+        return canvas, axes, panel
 
 
 ## DEPRECATED
-def _draw(self, 
-    show_tips, 
-    use_edge_lengths, 
-    orient, 
-    yaxis, 
-    *args, 
-    **kwargs):
-
-    ## update kwargs from defaults
-    args = {"height": min(1000, 15*len(self.tree)),
-            "width": min(1000, 15*len(self.tree)),
-            "vsize": 0, 
-            "vlshow": False, 
-            "ewidth": 3, 
-            "vlstyle": {"font-size": "18px"}, 
-            "cex": "14px", 
-            "pct_tree_y": 0.3, 
-            "pct_tree_x": 0.7, 
-            "lwd_lines": 1,
-            }
-
-    ## starting tree position will be changed if adding panel plots
-    xmin_tree = 0.
-    xmax_tree = 0.
-    ymin_tree = 0.
-    xmin_tips = 0.
-    ymin_tips = 0.
-
-    ## if orient is up or down then swap min/max x/y
-    ## ...
-
-    ## re-decompoase the tree in case orientation changed
-    tree, edges, verts, names = decompose_tree(
-        self.newick, 
-        orient=orient, 
-        use_edge_lengths=False)
-    verts = verts.astype(np.float)
-
-    ## space y-axis to fill canvas height
-
-
-
-    ## add spacer for tip names (root of tree is at zero for right and down trees)
-    pctt = 0.2 * (xmin_tree + xmin_tips)
-    xmin_tree += pctt / 2.
-    xmin_tips += pctt / 2.
-    verts[:, 1] += pctt / 2.
-
-    ## create a canvas and a single cartesian coord system
-    canvas = toyplot.Canvas(height=args['height'], width=args['width'])
-    axes = canvas.cartesian(bounds=("5%", "95%", "5%", "95%"))
-            
-    ## add the tree/graph ------------------------------------------------
-    _ = axes.graph(edges, 
-                    vcoordinates=verts, 
-                    ewidth=args["ewidth"], 
-                    ecolor=toyplot.color.near_black, 
-                    vlshow=args["vlshow"],
-                    vsize=args["vsize"],
-                    vlstyle=args["vlstyle"],
-                    vlabel=names.values())   
-
-    ## add names to tips --------------------------------------------------
-    if show_tips:
-        ## calculate coords
-        nams = [i for i in names.values() if not isinstance(i, int)]
-        spx = [tree.search_nodes(name=i)[0] for i in nams]
-        spx = np.array([i.x for i in spx], dtype=np.float)
-        spx += xmin_tree
-        if taxdicts:
-            spy = [yhs[-1] - ysp / 2.] * len(nams)
-        else:
-            spy = [ymin_test - 0.5] * len(nams)
-        _ = axes.text(spx, spy, nams,
-                        angle=-90, 
-                        color=toyplot.color.near_black,
-                        style={
-                            "font-size": args["cex"],
-                            "text-anchor" : "start",
-                            "-toyplot-anchor-shift":"0",
-                            },
-                        ) 
+def __admix():
 
     ## plot admix lines ---------------------------------
     if self.admix:
@@ -271,21 +192,24 @@ def _collapse_outgroup(tree, taxdicts):
     return tre, newtaxdicts
 
 
-## converts newick to (edges, vertices)
-def decompose_tree(newick, use_edge_lengths=True, orient=0):
+
+
+def _decompose_tree(ttree, orient='right', use_edge_lengths=True): 
     """ decomposes tree into component parts for plotting """
 
-    ## invert and short name to arg so it is similar to ape
-    ig = use_edge_lengths == False
+    ## set attributes
+    ttree._orient = orient
+    ttree._use_edge_lengths = use_edge_lengths
 
-    ## get tree
-    tre = ete.Tree(newick=newick)
-    tre.ladderize()
+    ## force ultrametric
+    #if not ttree._use_edge_lengths:
+    #    ttree.tree.convert_to_ultrametric()
+    ult = use_edge_lengths == False
 
     ## map numeric values to internal nodes from root to tips
     names = {}
     idx = 0
-    for node in tre.traverse("preorder"):
+    for node in ttree.tree.traverse("preorder"):
         if not node.is_leaf():
             if node.name:
                 names[idx] = node.name
@@ -296,133 +220,83 @@ def decompose_tree(newick, use_edge_lengths=True, orient=0):
             idx += 1
             
     ## map number to the tips, these will be the highest numbers
-    for node in tre.get_leaves(): 
+    for node in ttree.tree.get_leaves(): 
         names[idx] = node.name
         node.idx = idx
-        #node.name = str(idx)
         idx += 1
 
     ## create empty edges and coords arrays
-    edges = np.zeros((idx-1, 2), dtype=int)
-    verts = np.zeros((idx, 2), dtype=float)
+    ttree.names = names
+    ttree.edges = np.zeros((idx - 1, 2), dtype=int)
+    ttree.verts = np.zeros((idx, 2), dtype=float)
+    ttree._lines = []        # np.zeros((ntips-1), dtype=int)
+    ttree._coords = []       # np.zeros((idx * 2 - ntips), dtype=float)
 
     ## postorder: first children and then parents. This moves up the list .
     nidx = 0
-    tip_num = len(tre.get_leaves()) - 1
-    for node in tre.traverse("postorder"):
+    tip_num = len(ttree.tree.get_leaves()) - 1
+    
+    ## tips to root to fill in the verts and edges
+    for node in ttree.tree.traverse("postorder"):
         if node.is_leaf():
-            edges[nidx-1, :] = node.up.idx, node.idx
-            node.x = tip_num 
-            node.y = 0
+            ## set the xy-axis positions of the tips
+            node.y = ttree.tree.get_distance(node)
+            if ult:
+                node.y = 0. #node.get_farthest_leaf(True)[1] + 1
+            node.x = tip_num
             tip_num -= 1
-            verts[node.idx] = [node.x, node.y]                      ##
-        
+            
+            ## edges connect this vert to
+            ttree.verts[node.idx] = [node.x, node.y]
+            ttree.edges[nidx] = [node.up.idx, node.idx]
+
         elif node.is_root():
-            node.x = sum(i.x for i in node.children) / 2.
-            if ig:
-                node.y = node.get_farthest_leaf(ig)[1] + 1
-            else:
-                node.y = node.get_farthest_leaf()[1]
-            verts[node.idx] = [node.x, node.y]                      ##
+            node.y = ttree.tree.get_distance(node)
+            if ult:
+                node.y = -1 * node.get_farthest_leaf(True)[1] - 1
+            node.x = sum(i.x for i in node.children) / float(len(node.children))
+            ttree.verts[node.idx] = [node.x, node.y]
         
         else:
-            edges[nidx-1, :] = node.up.idx, node.idx
-            node.x = sum(i.x for i in node.children) / 2.
-            if ig:
-                node.y = node.get_farthest_leaf(ig)[1] + 1
-            else:
-                node.y = node.get_farthest_leaf()[1]
-            verts[node.idx] = [node.x, node.y]                      ##
+            ## create new nodes left and right
+            node.y = ttree.tree.get_distance(node)
+            if ult:
+                node.y = -1 * node.get_farthest_leaf(True)[1] - 1
+            node.x = sum(i.x for i in node.children) / float(len(node.children))
+            ttree.edges[nidx, :] = [node.up.idx, node.idx]
+            ttree.verts[node.idx] = [node.x, node.y]
         nidx += 1
-
-    ## invert for sideways trees (needs to update node.x and node.y)
-    if orient in ['down', 0]:
-        verts[:, 0] = verts[:, 0] * -1
-    if orient in ['left', 1]:
-        verts = verts[:, [1, 0]]
-    if orient in ['up', 2]:
-        verts[:, 0] = verts[:, 0] * -1
-        verts[:, 1] = verts[:, 1] * -1
-    if orient in ['right', 3]:
-        verts = verts[:, [1, 0]]
-        verts[:, 0] = verts[:, 0] * -1
-
-    ## if inverted then make left-most tree be at zero
-    verts[:, 0] += abs(verts[:, 0].min())
-
-    return tre, edges, verts, names
-
-
-## DEPRECATED
-def cladogram(newick, use_edge_lengths=True, invert=False):
-    
-    ## invert and short name to arg so it is similar to ape
-    ig = use_edge_lengths == False
-
-    ## get tree
-    tre = ete.Tree(newick=newick)
-    tre.ladderize()
-
-    ## map numeric values to internal nodes from root to tips
-    ## preorder: first parent and then children. These indices will
-    ## be used in the int edge array to map edges.
-    names = {}
-    idx = 0
-    for node in tre.traverse("preorder"):
+        
+    ## root to tips to fill in the coords and lines
+    cidx = 0
+    for node in ttree.tree.traverse():
+        ## add yourself
         if not node.is_leaf():
-            if node.name:
-                names[idx] = node.name
-            else:
-                names[idx] = idx
-                node.name = str(idx)
-            node.idx = idx
-            idx += 1
-
-    ## map number to the tips, these will be the highest numbers
-    for node in sorted(tre.get_leaves(), key=lambda x: x.name):
-        names[idx] = node.name
-        node.idx = idx
-        idx += 1
-
-    ## create empty edges and coords arrays
-    edges = np.zeros((idx-1, 2), dtype=int)
-    verts = np.zeros((idx, 2), dtype=float)
-    
-    ## postorder: first children and then parents. This moves up the list .
-    nidx = 0
-    tip_num = len(tre.get_leaves()) - 1
-    for node in tre.traverse("postorder"):
-        #for nidx in range(idx)[::-1]:
-        #node = tre.search_nodes(idx=nidx)[0]
-        if node.is_leaf():
-            edges[nidx-1, :] = node.up.idx, node.idx
-            node.x = tip_num 
-            node.y = 0
-            tip_num -= 1
-            verts[node.idx] = [node.x, node.y]
-        
-        elif node.is_root():
-            node.x = sum(i.x for i in node.children) / 2.
-            if ig:
-                node.y = node.get_farthest_leaf(ig)[1] + 1
-            else:
-                node.y = node.get_farthest_leaf()[1]
-            verts[node.idx] = [node.x, node.y]
-        
-        else:
-            edges[nidx-1, :] = node.up.idx, node.idx
-            node.x = sum(i.x for i in node.children) / 2.
-            if ig:
-                node.y = node.get_farthest_leaf(ig)[1] + 1
-            else:
-                node.y = node.get_farthest_leaf()[1]
-            verts[node.idx] = [node.x, node.y] 
-        nidx += 1
+            ttree._coords += [[node.x, node.y]]
+            pidx = cidx
+            cidx += 1
+            for child in node.children:
+                ## add children
+                ttree._coords += [[child.x, node.y], [child.x, child.y]]
+                ttree._lines += [[pidx, cidx]]    ## connect yourself to newx
+                ttree._lines += [[cidx, cidx+1]]  ## connect newx to child
+                cidx += 2
+    ttree._coords = np.array(ttree._coords, dtype=float)
+    ttree._lines = np.array(ttree._lines, dtype=int)
 
     ## invert for sideways trees
-    if invert:
-        verts[:, 1] = np.abs(verts[:, 1] - tlen)
-
-    return tre, edges, verts, names
+    if ttree._orient in ['up', 0]:
+        pass
+    if ttree._orient in ['left', 1]:
+        ttree.verts[:, 1] = ttree.verts[:, 1] * -1
+        ttree.verts = ttree.verts[:, [1, 0]]
+        ttree._coords[:, 1] = ttree._coords[:, 1] * -1
+        ttree._coords = ttree._coords[:, [1, 0]]
+    if ttree._orient in ['down', 0]:
+        ttree.verts[:, 1] = ttree.verts[:, 1] * -1
+        ttree._coords[:, 1] = ttree._coords[:, 1] * -1
+    if ttree._orient in ['right', 3]:
+        ttree.verts = ttree.verts[:, [1, 0]]
+        ttree._coords = ttree._coords[:, [1, 0]]
 
 
