@@ -253,7 +253,7 @@ def _panel_zscores(panel, axes):
                                   density=True)
         ## get hist colors
         thisz = panel.allzs[idx]
-        if thisz > panel.alpha:
+        if thisz >= panel.alpha:
             if panel.boots[idx].mean() < 0:
                 color = toyplot.color.Palette()[0]
             else:
