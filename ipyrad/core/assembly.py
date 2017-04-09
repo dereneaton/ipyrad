@@ -625,6 +625,8 @@ class Assembly(object):
                         minlist = mindat[i].replace(",", "").split()
                         popmins.update({i.split(':')[0]:int(i.split(':')[1]) \
                                         for i in minlist})
+                else:
+                    raise IPyradError(NO_MIN_SAMPLES_PER_POP)
 
             except (ValueError, IOError):
                 LOGGER.warn("Populations file may be malformed.")
@@ -1960,6 +1962,7 @@ RAW_PATH_ISDIR = """\
     You entered: {}
     """
 
+
 BAD_PROJDIR_NAME = """\
     Error: Your project_dir contains a directory with a space in the name.
     This can cause all kinds of funny problems so please rename this
@@ -2022,7 +2025,13 @@ BAD_BARCODE = """\
     Barcodes must contain only characters from this list "RKSYWMCATG".
     Doublecheck your barcodes file is properly formatted.
     """
+NO_MIN_SAMPLES_PER_POP = """\n\
+    Population assignment file must include a line indicating the minimum
+    number of samples per population. This line should come at the end
+    of the file and should be preceded by a hash sign (#), e.g.:
 
+    # pop1:3 pop2:3 pop3:3
+    """
 
 BAD_PARAMETER = """\
     Error setting parameter '{}'
