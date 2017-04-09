@@ -84,6 +84,8 @@ class Tree(object):
         _decompose_tree(self, orient, use_edge_lengths)
 
 
+    ## this is the user-interface where all options should be visible 
+    ## and documented
     def draw(
         self, 
         show_tip_labels=True, 
@@ -102,8 +104,10 @@ class Tree(object):
                 Show tip names from tree.
             use_edge_lengths: bool
                 Use edge lengths from newick tree.
-            pct_tree_y: float
-                proportion of canvas y-axis showing tree
+            show_node_support: bool
+                Show support values at nodes using a set of default 
+                options. 
+
             ...
         """
         ## re-decompose tree for new orient and edges args
@@ -200,10 +204,6 @@ def _decompose_tree(ttree, orient='right', use_edge_lengths=True):
     ## set attributes
     ttree._orient = orient
     ttree._use_edge_lengths = use_edge_lengths
-
-    ## force ultrametric
-    #if not ttree._use_edge_lengths:
-    #    ttree.tree.convert_to_ultrametric()
     ult = use_edge_lengths == False
 
     ## map numeric values to internal nodes from root to tips
