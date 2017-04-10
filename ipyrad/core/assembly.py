@@ -566,6 +566,11 @@ class Assembly(object):
         """
         Creates self.populations dictionary to save mappings of individuals to
         populations/sites, and checks that individual names match with Samples.
+        The self.populations dict keys are pop names and the values are lists
+        of length 2. The first element is the min number of samples per pop
+        for final filtering of loci, and the second element is the list of
+        samples per pop.
+
         Population assigments are used for heirarchical clustering, for
         generating summary stats, and for outputing some file types (.treemix
         for example). Internally stored as a dictionary.
@@ -582,6 +587,10 @@ class Assembly(object):
 
         Parameters
         ----------
+        TODO: NB: Using API and passing in popdict and popmins is currently 
+        unimplemented, or at least looks like it doesn't work. Leaving
+        these docs cuz Deren might have ideas about it being useful.
+
         popdict : dict
             When using the API it may be easier to simply create a dictionary
             to pass in as an argument instead of reading from an input file.
@@ -1896,7 +1905,8 @@ def _paramschecker(self, param, newvalue):
             self._link_populations()
         else:
             self.paramsdict['pop_assign_file'] = ""
-
+            ## Don't forget to possibly blank the populations dictionary
+            self.populations = {}
 
     return self
 
