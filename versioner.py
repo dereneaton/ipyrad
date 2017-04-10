@@ -3,6 +3,7 @@
 from __future__ import print_function
 import re
 import sys
+import time
 import fileinput
 import subprocess
 
@@ -47,6 +48,7 @@ for line in fileinput.input(release_file, inplace=1):
         line += "\n"
         line += version_git + "\n"
         line += "-" * len(version_git) + "\n"
+        line += "**" + time.strftime("%B %d, %Y") + "**\n\n"
         for commit in commit_lines:
             try:
                 line += "- " + commit[1] + "\n"
