@@ -4,19 +4,29 @@
 a panel plot function for baba results 
 """
 
-import numpy as np
-import ete3 as ete
+#import numpy as np
+#import ete3 as ete
+from __future__ import print_function
 import toyplot
-import itertools
+#import itertools
 ## avoid circular import by NOT import tree
 #from ipyrad.analysis.tree import Tree as tree
 
 
 class Panel(object):
-    def __init__(self, ttree):#tree, edges, verts, coords, lines, names):
+    def __init__(self, ttree):
         ## get attributes from tree object
-        for attr in ['tree', 'edges', 'verts', 'names', '_coords', '_lines', '_orient']:
-            self.__dict__[attr] = ttree.__dict__[attr]
+
+        ## should I just use a super class of ttree?
+        self.tree = ttree.tree
+        self.edges = ttree.edges
+        self.verts = ttree.verts
+        self._coords = ttree._coords
+        self._lines = ttree._lines
+        self._orient = ttree._orient
+        self.tip_labels = ttree.tip_labels
+        self.node_labels = ttree.node_labels
+        #self.names = ttree.names
 
         ## defaults panel edges
         self.xmin_tree = 0.
@@ -26,45 +36,68 @@ class Panel(object):
 
         ## default kwargs
         self.kwargs = {
+            ## edge defaults
+            "ewidth": 3, 
+
+            ## node marker defaults
             "vsize": 0, 
             "vmarker": "o",
-            "vlshow": False, 
-            "ewidth": 3, 
-            "vlstyle": {"font-size": "14px"}, 
             "vstyle": {"stroke": "#292724"},
+
+            ## node label defaults
+            "vlshow": False, 
+            "vlstyle": {"font-size": "14px"}, 
+
+            ## tip label defaults
+            "show_tip_labels": True,
+            "tip_labels": None,
+            "color_tip_labels": None,  
             "style_tip_labels": {"font-size": "12px",
                                  "text-anchor":"start", 
                                  "-toyplot-anchor-shift":"10px", 
                                  "fill": "#292724"},
-            "show_tip_labels": True,
+            ## tree style and axes
             "tree_style": "p",
             "show_axes": False,
             "debug": False,
             }
 
 
+
     def _panel_tip_labels(panel, axes):
-        ## get coordinates of text
-        names = panel.tree.get_leaf_names()
+
+        ## get tip labels. Order is from top to bottom on right-facing
+        if panel.kwargs["tip_labels"]:
+            names = panel.kwargs["tip_labels"]
+        elif panel.kwargs["tip_labels"] == False:
+            names = ["" for _ in panel.tip_labels] 
+        else:
+            names = panel.tip_labels
+
+        ## get coordinates of text from top to bottom (right-facing)
         if panel._orient in ["right"]:
             xpos = [panel.verts[:, 0].max()] * len(names)
-            ypos = range(len(panel.tree))[::-1] 
+            ypos = range(len(panel.tree))[::-1]
             angle = 0.
         elif panel._orient in ['down']:
-            xpos = range(len(panel.tree))[::-1] 
+            xpos = range(len(panel.tree))[::-1]
             ypos = [panel.verts[:, 1].min()] * len(names)
             angle = -90.
-
         tipstyle = {"font-size": "12px",
                     "text-anchor":"start", 
                     "-toyplot-anchor-shift":"10px", 
                     "fill": "#292724"}
         tipstyle.update(panel.kwargs["style_tip_labels"])
 
-        ## plot on axes
+        ## tip color overrides tipstyle[fill]
+        if panel.kwargs.get("color_tip_labels"):
+            tipstyle.pop("fill")
+
+        ## plot on axes. color is added from top to bottom (right-facing)
         _ = axes.text(xpos, ypos, names,
                 angle=angle,
                 style=tipstyle,
+                color=panel.kwargs["color_tip_labels"] #[::-1],
                 ) 
 
 
@@ -80,7 +113,7 @@ class Panel(object):
                            ewidth=self.kwargs["ewidth"], 
                            ecolor=toyplot.color.near_black, 
                            #estyle=... add round edges 
-                           vlabel=self.names.keys(),
+                           vlabel=self.node_labels.keys(),#names.keys(),
                            #vlabel=self.kwargs["vlabels"],                           
                            vlshow=self.kwargs["vlshow"],
                            vlstyle=self.kwargs["vlstyle"],
@@ -96,14 +129,16 @@ class Panel(object):
                            vsize=0.,
                            )
             ## add vertices for phylogram
-            nodestyle = {'fill': toyplot.color.to_css(toyplot.color.Palette()[0]), 
-                         'stroke': toyplot.color.to_css(toyplot.color.Palette()[0])}
+            nodestyle = {
+                'fill': toyplot.color.to_css(toyplot.color.Palette()[0]), 
+                'stroke': toyplot.color.to_css(toyplot.color.Palette()[0])
+                }
             nodestyle.update(self.kwargs["vstyle"])
             _ = axes.graph(self.edges, 
                            vcoordinates=self.verts, 
                            ewidth=0.,
                            vmarker=self.kwargs["vmarker"],
-                           vlabel=self.kwargs["vlabels"],
+                           vlabel=self.kwargs["vlabel"],
                            #vlabel=self.names.keys(),
                            vlshow=self.kwargs["vlshow"],
                            vlstyle=self.kwargs["vlstyle"], 
@@ -136,7 +171,8 @@ def tree_panel_plot(ttree,
     if panel.kwargs["show_node_support"]:
         nnodes = sum(1 for i in panel.tree.traverse()) - len(panel.tree)
         ## set node values
-        supps = [int(panel.tree.search_nodes(idx=j)[0].support) for j in range(nnodes)]
+        supps = [int(panel.tree.search_nodes(idx=j)[0].support) \
+                 for j in range(nnodes)]
         if not panel.kwargs["vsize"]:
             panel.kwargs["vsize"] = 20
         sizes = [panel.kwargs["vsize"] for j in range(nnodes)]
@@ -144,7 +180,7 @@ def tree_panel_plot(ttree,
         supps += [""] * len(panel.tree)
         sizes += [0] * len(panel.tree)
         ## override args
-        panel.kwargs["vlabels"] = supps
+        panel.kwargs["vlabel"] = supps
         panel.kwargs["vsize"] = sizes
         panel.kwargs["vlshow"] = True
         #panel.kwargs["vmarker"] = 's'  ## square
@@ -154,8 +190,11 @@ def tree_panel_plot(ttree,
             sizes[0] = 0
         #print(panel.kwargs["vlabels"])
         #print(panel.kwargs["vsize"])
+    elif panel.kwargs.get("vlabel"):
+        panel.kwargs["vlabel"] = panel.kwargs["vlabel"]
+        panel.kwargs["vlshow"] = True
     else:
-        panel.kwargs["vlabels"] = panel.names.keys()
+        panel.kwargs["vlabel"] = panel.node_labels.keys() #names.keys()
 
     ## debugger / see all options
     if print_args:

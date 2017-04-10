@@ -48,7 +48,10 @@ General notes on running ipyrad on HPC
 ---------------------------------------
 When running ipyrad on a cluster you should make sure to tell it explicitly how many 
 cores you plan to connect to with the ``-c`` flag, and also use the ``--MPI`` flag
-to allow it to efficiently access cores across multiple nodes. 
+to allow it to efficiently access cores across multiple nodes. When you use the 
+MPI flag with ipyrad make sure that you also load your HPC system-wide MPI 
+software, using the appropriate command on your system (usually something like
+`module load MPI`.)
 
 
 Submitting job scripts
