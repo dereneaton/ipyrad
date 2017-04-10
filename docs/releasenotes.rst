@@ -7,6 +7,8 @@ Release Notes
 
 0.6.11
 ------
+**March 27, 2017**
+
 - Fix a bug in PE refmapping.
 - Fix error reporting if when testing for existence of the clust_database file at beginning of step 7.
 - Fix bug reading output formats from params file.
