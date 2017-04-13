@@ -26,6 +26,7 @@ import time
 import glob
 import gzip
 import h5py
+import re
 import os
 from collections import Counter, OrderedDict
 #from ipyrad.file_conversion import *
@@ -2003,7 +2004,7 @@ def write_gphocs(data, sidx):
     ## beginning with // and ending with |x, where x in the locus id.
     ## so after this call 'loci' will contain an array
     ## of sets of each read per locus.
-    loci = infile.read().strip().split("//")[:-1]
+    loci = re.compile("\|[0-9]+\|").split(infile.read())[:-1]
 
     # Print the header, the number of loci in this file
     outfile.write(str(len(loci)) + "\n\n")
@@ -2013,12 +2014,15 @@ def write_gphocs(data, sidx):
     # Then print the data for each sample in this format:
     # <individual_name> <sequence>
     for i, loc in enumerate(loci):
+        ## Get rid of the line that contains the snp info
+        loc = loc.rsplit("\n", 1)[0]
+
         # Separate out each sequence within the loc block. 'sequences'
         # will now be a list strings containing name/sequence pairs.
         # We select each line in the locus string that starts with ">"
         names = [line.split()[0] for line in loc.strip().split("\n")]
         try:
-            sequences = [line.split()[1] for line in loc.strip().split("\n")][1:-1]
+            sequences = [line.split()[1] for line in loc.strip().split("\n")]
         except:
             pass
         # Strips off 'nnnn' separator for paired data

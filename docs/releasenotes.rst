@@ -5,6 +5,19 @@
 Release Notes
 =============
 
+0.6.14
+------
+**April 13, 2017**
+
+- Fixed CHROM/POS output for reference mapped loci.
+
+0.6.13
+------
+**April 13, 2017**
+
+- Fix gphocs output format.
+- If the user removes the population assignment file blank out the data.populations dictionary.
+
 0.6.12
 ------
 **April 10, 2017**
