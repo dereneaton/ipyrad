@@ -8,10 +8,11 @@ a panel plot function for baba results
 from __future__ import print_function
 
 import numpy as np
-#import ete3 as ete
 import toyplot
+import toytree 
 import itertools
 
+# pylint: disable=W0212
 
 ## color palette
 COLORS = {"p1": toyplot.color.Palette()[0], 
@@ -20,28 +21,31 @@ COLORS = {"p1": toyplot.color.Palette()[0],
           "p4": toyplot.color.Palette()[-1],}
 
 
+
 class Panel(object):
     def __init__(self, ttree, tests, boots, alpha):
         #tree, edges, verts, names, tests, boots, alpha):
 
         ## starting tree position will be changed if adding panel plots
-        #self.tree = tree
-        #self.edges = edges
-        #self.verts = verts
-        #self.names = names
-        #self.tests = tests
-        ## get attributes from tree object
-        for attr in ['tree', 'edges', 'verts', 'names', '_coords', '_lines', '_orient']:
-            self.__dict__[attr] = ttree.__dict__[attr]
-
+        ## get attributes from toytree object
+        self.tree = ttree
+        self.edges = ttree.edges
+        self.verts = ttree.verts
+        self.names = ttree.get_tip_labels()
+        self._coords = ttree._coords
+        self._lines = ttree._lines
+        self._orient = ttree._orient
         self.tests = tests
         self.boots = boots
+
+        ## calculate Zs on the fly from boots
         try:
             self.allzs = np.abs([i.mean() / i.std() for i in self.boots])
         except Exception:
             self.allzs = []
         self.alpha = alpha
 
+        ## panel spacing
         self.xmin_tree = 0.
         self.xmin_results = 0.
         self.xmin_zscores = 0.        
@@ -87,7 +91,7 @@ class Panel(object):
         badnames_set = set()
         for test in self.tests:
             dictnames = list(itertools.chain(*test.values()))
-            badnames = [i for i in dictnames if i not in self.names.values()]
+            badnames = [i for i in dictnames if i not in self.names]
             for name in badnames:
                 badnames_set.add(name)
         if badnames_set:
@@ -330,10 +334,10 @@ def add_rectangles(panel, axes):
     for idx, test in enumerate(panel.tests):    
         ## add test rectangles
         for tax in ["p1", "p2", "p3", "p4"]:
-            spx = [panel.tree.search_nodes(name=i)[0] for i in test[tax]]
+            spx = [panel.tree.tree.search_nodes(name=i)[0] for i in test[tax]]
             spx = np.array([panel.verts[i.idx, 0] for i in spx])
             spx.sort()
-        
+
             ## fill rectangles while leaving holes for missing taxa
             for i in xrange(spx.shape[0]):
                 ## if first
@@ -422,7 +426,7 @@ def _panel_tip_labels(panel, axes):
     #         ) 
 
     ## get coordinates of text
-    names = panel.tree.get_leaf_names()
+    names = panel.tree.get_tip_labels() #_leaf_names()
     if panel._orient in ["right"]:
         xpos = [panel.verts[:, 0].max()] * len(names)
         ypos = range(len(panel.tree))[::-1] 
@@ -475,7 +479,7 @@ def _panel_tree(panel, axes):
                        vlshow=panel.kwargs["vlshow"],
                        vsize=panel.kwargs["vsize"],
                        vlstyle=panel.kwargs["vlstyle"],
-                       vlabel=panel.names.keys(),
+                       #vlabel=panel.names, #.keys(),
                        )
     else:
         _ = axes.graph(panel._lines, 
@@ -495,7 +499,7 @@ def _panel_tree(panel, axes):
                        vlshow=panel.kwargs["vlshow"],
                        vsize=panel.kwargs["vsize"],
                        vlstyle=panel.kwargs["vlstyle"],
-                       vlabel=panel.names.keys(),
+                       #vlabel=panel.names, #.keys(),
                        )
 
 
@@ -504,10 +508,6 @@ def _panel_tree(panel, axes):
 ## the main function.
 def baba_panel_plot(
     ttree,
-    #tree,
-    #edges, 
-    #verts, 
-    #names,
     tests, 
     boots,
     show_tip_labels=True, 
@@ -525,7 +525,6 @@ def baba_panel_plot(
 
     ## create Panel plot object and set height & width
     bootsarr = np.array(boots)
-    #panel = Panel(tree, edges, verts, names, tests, bootsarr, alpha)
     panel = Panel(ttree, tests, bootsarr, alpha)
     if not kwargs.get("width"):
         panel.kwargs["width"] = min(1000, 50*len(panel.tree))

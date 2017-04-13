@@ -5,8 +5,68 @@
 Release Notes
 =============
 
+0.6.14
+------
+**April 13, 2017**
+
+- Fixed CHROM/POS output for reference mapped loci.
+
+0.6.13
+------
+**April 13, 2017**
+
+- Fix gphocs output format.
+- If the user removes the population assignment file blank out the data.populations dictionary.
+
+0.6.12
+------
+**April 10, 2017**
+
+- Prevent versioner from including merge commits in the release notes cuz they are annoying.
+- Add the date of each version to the releasenotes docs, for convenience.
+- Experimenting with adding date to releasenotes.rst
+- added more attributres to tree
+- change alpha to >=
+- tip label and node label attributes added to tree
+- tetrad ensure minrank is int
+- fix structure obj removing old files
+- lots of cleanup to baba code
+- edit to analysis docs
+- Handle pop assignment file w/o the min sample per pop line.
+- merge conflict resolved
+- bug fix for tuples in output formats json
+- sim notebook started
+- cookbook abba-baba updated
+- tetrad cookbook api added
+- added option to change line spacing on progress bar
+- major overhaul to ipyrad.analysis and plotting
+- option to buffer line spacing on cluster report
+- Removed confusing punctuation in warning message
+- Make vcf and loci output files agree about CHROM number per locus.
+- Cosmetic change to debug output.
+- Make the new debug info append instead of overwrite.
+- Fix annoying bug with output_format param I introduced recently.
+- Add platform info to default log output on startup.
+- Actually write the error to the log file on cutadapt failure.
+- Write the version and the args used to the log file for each run. This might be annoying, but it could be useful.
+- bpp randomize option added to write
+- adding bpp cookbook update
+- updating analysis tools for new bpp baba and tree
+- merge resolved
+- analysis init update for new funcs
+- apitest update
+- abba cookbook update
+- update bpp cookbook
+- small edit to HPC docs
+- tetrad formatting changing
+- updated analysis tools cookbooks
+- docs analysis page fix
+- added header to bpp convert script
+
 0.6.11
 ------
+**March 27, 2017**
+
 - Fix a bug in PE refmapping.
 - Fix error reporting if when testing for existence of the clust_database file at beginning of step 7.
 - Fix bug reading output formats from params file.

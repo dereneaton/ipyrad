@@ -273,7 +273,11 @@ def consensus(data, sample, tmpchunk, optim):
             ref_position = ""
             if "reference" in data.paramsdict["assembly_method"]:
                 try:
-                    ref_position = names[0].rsplit(";")[-3]
+                    name_string = names[0].rsplit(";")
+                    ## Only record the reference position if it's actually a refmapped locus
+                    if len(name_string) > 3:
+                        ref_position = name_string[-3]
+                        LOGGER.debug("Refpos - {}".format(ref_position))
                 except:
                     LOGGER.debug("Reference sequence chrom/pos failed for {}".format(names[0]))
                     ref_position = ""
@@ -581,7 +585,7 @@ def cleanup(data, sample, statsdicts):
                                    chunks=(optim, ),
                                    compression="gzip")
         ## only create chrom for reference-aligned data
-        if 'reference' in data.paramsdict["datatype"]:
+        if 'reference' in data.paramsdict["assembly_method"]:
             dchrom = ioh5.create_dataset("chroms", (nloci, ),
                                      dtype=h5py.special_dtype(vlen=bytes),
                                      chunks=(optim, ),
@@ -594,7 +598,7 @@ def cleanup(data, sample, statsdicts):
             end = start + optim
             dcat[start:end] = io5['cats'][:]
             dall[start:end] = io5['alls'][:]
-            if 'reference' in data.paramsdict["datatype"]:
+            if 'reference' in data.paramsdict["assembly_method"]:
                 dchrom[start:end] = io5['chroms'][:]
             start += optim
             io5.close()

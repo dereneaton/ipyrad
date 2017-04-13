@@ -11,10 +11,12 @@ __interactive__ = 1
 ## same name as the module (file), such that when we import the function
 ## it clobbers the file name as a import. 
 
-from .tree import Tree as tree
-from .baba import Baba as baba
+
+#from .tree import Tree as tree
+#from toytree import tree
 from .tetrad import Tetrad as tetrad
 from .structure import Structure as structure
+from .baba import Baba as baba
 from .bpp import Bpp as bpp
 
 

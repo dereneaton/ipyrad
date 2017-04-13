@@ -26,7 +26,6 @@ Theoretical Biology 374: 35-47
 
 from __future__ import print_function, division
 import os
-import sys
 import json
 import h5py
 import time
@@ -42,36 +41,33 @@ import ipyrad as ip
 from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
-from ipyrad.assemble.util import ObjDict, IPyradWarningExit, progressbar
+from ipyrad.assemble.util import IPyradWarningExit, progressbar
 
-## for our desired form of parallelism we will limit 1 thread per cpu
+## numba debugging
 #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
-
-## debug numba code
 #numba.config.NUMBA_DISABLE_JIT = 1
 
-## ete3 is an extra dependency not included with ipyrad
-## replace with biopython asap
 try:
-    import ete3
+    ## when you have time go back and set attrubutes on toytrees
+    from toytree import ete3mini as ete3
 except ImportError:
-    try:
-        import ete2 as ete3
-    except ImportError:
-        raise IPyradWarningExit("""
-    tetrad requires the dependency `ete3`. You can install
-    it with the command `conda install -c etetoolkit ete3`
-    Sorry for the inconvenience, this will be incorporated into the
-    ipyrad installation eventually.
+    raise IPyradWarningExit("""
+    Error: tetrad requires the dependency 'toytree', which we haven't yet
+    included in the ipyrad installation. Until then, you can install toytree
+    using conda with the following command: 
+
+    conda install toytree -c eaton-lab
     """)
 
+
+## TODO: print a warning on initial tree if a quartet has very little data
+## i.e., a pretty much empty 16x16 matrix, since its' gonna do poorly.
 
 ## set the logger
 import logging
 LOGGER = logging.getLogger(__name__)
 
-## The 16 x 16 matrix of site counts (The phylogenetic invariants). 
-## It's here just to look at. 
+## a reminder of the 16 x 16 matrix of site counts (The phylogenetic invariants). 
 PHYLO_INVARIANTS = """
     AAAA AAAC AAAG AAAT  AACA AACC AACG AACT  AAGA AAGC AAGG AAGT  AATA AATC AATG AATT
     ACAA ACAC ACAG ACAT  ACCA ACCC ACCG ACCT  ACGA ACGC ACGG ACGT  ACTA ACTC ACTG ACTT
@@ -131,7 +127,7 @@ class Tetrad(object):
     starting tree, nboots, etc.). 
     """
 
-    def __init__(self, 
+    def __init__(self,
         name, 
         workdir="analysis-tetrad",
         seqfile=None, 
@@ -193,11 +189,11 @@ class Tetrad(object):
 
         ## store tree file paths (init as None)
         self.trees = Params()
-        self._tmp = None  ## the temporary qmc tree         
-        self.trees.tree = None  #os.path.join(self.dirs, self.name+".full.tre")
-        self.trees.cons = None  #os.path.join(self.dirs, self.name+".consensus.tre")
-        self.trees.boots = None #os.path.join(self.dirs, self.name+".boots")        
-        self.trees.nhx = None   #os.path.join(self.dirs, self.name+".nhx.tre")     
+        self._tmp = None          ## the temporary qmc tree         
+        self.trees.tree = None    #os.path.join(self.dirs, self.name+".full.tre")
+        self.trees.cons = None    #os.path.join(self.dirs, self.name+".consensus.tre")
+        self.trees.boots = None   #os.path.join(self.dirs, self.name+".boots")        
+        self.trees.nhx = None     #os.path.join(self.dirs, self.name+".nhx.tre")     
         
         ## stats is written to os.path.join(self.dirs, self.name+".stats.txt")
         self.stats = Params()
@@ -539,9 +535,10 @@ class Tetrad(object):
 
         ## get starting tree, unroot, randomly resolve, ladderize
         tre = ete3.Tree(self.files.guidetreefile, format=0)
-        tre.unroot()
-        tre.resolve_polytomy(recursive=True)
-        tre.ladderize()
+        #tre = toytree.tree(self.files.guidetreefile, format=0)
+        tre.tree.unroot()
+        tre.tree.resolve_polytomy(recursive=True)
+        tre.tree.ladderize()
 
         ## randomly sample all splits of tree and convert tip names to indices
         splits = [([self.samples.index(z.name) for z in i], 
@@ -672,8 +669,10 @@ class Tetrad(object):
 
         ## read in the tmp files since qmc does not pipe
         with open(self._tmp) as intree:
-            ## convert int names back to str names
-            tmpwtre = self._renamer(ete3.Tree(intree.read().strip()))
+            ## convert int names back to str names renamer returns a newick str
+            #tmp = toytree.tree(intree.read().strip())
+            tmp = ete3.Tree(intree.read().strip())
+            tmpwtre = self._renamer(tmp)#.tree)
 
         ## save the tree
         if boot:
@@ -745,7 +744,7 @@ class Tetrad(object):
         """ write final tree files """
 
         ## print stats file location:
-        print(STATSOUT.format(opr(self.files.stats)))
+        #print(STATSOUT.format(opr(self.files.stats)))
 
         ## print finished tree information ---------------------
         print(FINALTREES.format(opr(self.trees.tree)))
@@ -762,6 +761,7 @@ class Tetrad(object):
         if len(self.samples) < 200:
             if self.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
+                #wctre = toytree.tree(self.trees.cons, format=0)
                 #wctre.unroot()
                 wctre.ladderize()
                 print(wctre.get_ascii(show_internal=True, 
@@ -769,13 +769,14 @@ class Tetrad(object):
                 print("")
             else:
                 qtre = ete3.Tree(self.trees.tree, format=0)
-                qtre.unroot()
+                #qtre = toytree.tree(self.trees.tree, format=0)
+                qtre.tree.unroot()
                 print(qtre.get_ascii())
                 print("")
 
         ## print PDF filename & tips -----------------------------
-        docslink = "ipyrad.readthedocs.io/tetrad.html"    
-        citelink = "ipyrad.readthedocs.io"
+        docslink = "toytree.readthedocs.io/"    
+        citelink = "ipyrad.readthedocs.io/tetrad.html"
         print(LINKS.format(docslink, citelink))
 
 
@@ -1119,16 +1120,23 @@ class Tetrad(object):
 ################################################################
 ## STATS FUNCTIONS
 ################################################################
-def compute_tree_stats(self):        
+def compute_tree_stats(self):
+    """ 
+    compute stats for stats file and NHX tree features
+    """
+
     ## get name indices
     names = self.samples
 
     ## get majority rule consensus tree of weighted Q bootstrap trees
     if self.nboots:
         fulltre = ete3.Tree(self.trees.tree, format=0)
+        #fulltre = toytree.tree(self.trees.tree, format=0)
+        #[toytree.tree(i.strip(), format=0).tree for i in inboots.readlines()]
         with open(self.trees.boots, 'r') as inboots:
+            #wboots = [fulltre.tree] + \
             wboots = [fulltre] + \
-              [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+            [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
         wctre, wcounts = consensus_tree(wboots, names=names)
         self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
         with open(self.trees.cons, 'w') as ocons:
@@ -1855,6 +1863,7 @@ def _build_trees(fclade_counts, namedict):
         # the clade will not be in nodes if it is a tip
         children = [nodes.pop(c) for c in clade if c in nodes]
         node = ete3.Tree(name=name)    
+        #node = toytree.tree(name=name).tree
         for child in children:
             node.add_child(child)
         if not node.is_leaf():
