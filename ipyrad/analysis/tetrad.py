@@ -43,12 +43,25 @@ from fractions import Fraction
 from collections import defaultdict
 from ipyrad.assemble.util import IPyradWarningExit, progressbar
 
-## when you have time go back and set attrubutes on toytrees
-from toytree import ete3mini as ete3
-
 ## numba debugging
 #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
 #numba.config.NUMBA_DISABLE_JIT = 1
+
+try:
+    ## when you have time go back and set attrubutes on toytrees
+    from toytree import ete3mini as ete3
+except ImportError:
+    raise IPyradWarningExit("""
+    Error: tetrad requires the dependency 'toytree', which we haven't yet
+    included in the ipyrad installation. Until then, you can install toytree
+    using conda with the following command: 
+
+    conda install toytree -c eaton-lab
+    """)
+
+
+## TODO: print a warning on initial tree if a quartet has very little data
+## i.e., a pretty much empty 16x16 matrix, since its' gonna do poorly.
 
 ## set the logger
 import logging
