@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.14
+------
+**April 13, 2017**
+
+- Fixed CHROM/POS output for reference mapped loci.
+
 0.6.13
 ------
 **April 13, 2017**
