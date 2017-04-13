@@ -15,10 +15,6 @@ from ipyrad.assemble.util import IPyradWarningExit, DUCT
 #import pandas as pd
 
 
-## The user accessible function
-#def bpp(locifile, guidetree, imap, workdir="analysis-bpp", *args, **kwargs):
-
-
 
 class Bpp(object):
     """
@@ -109,13 +105,17 @@ class Bpp(object):
     """    
 
     ## init object for params
-    def __init__(self, locifile, guidetree, imap, workdir, *args, **kwargs):
+    def __init__(self,
+        locifile, 
+        guidetree, 
+        imap, 
+        workdir, 
+        *args, 
+        **kwargs):
 
         ## path attributes
-        #self.name = name
-        self.locifile = locifile
         self.workdir = workdir
-        self.kwargs = {
+        self._kwargs = {
                 "maxloci": None,
                 "minmap": None,
                 "minsnps": 0,
@@ -132,11 +132,7 @@ class Bpp(object):
                 "cleandata": 0,
                 "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
             }
-        self.kwargs.update(kwargs)
-
-        ## check locifile (count)
-        #with open(locifile, 'r') as infile:
-        #    self.nloci = sum(1 for i in infile.read().strip().split("|\n"))
+        self._kwargs.update(kwargs)
 
         ## check workdir
         if self.workdir:
@@ -159,22 +155,22 @@ class Bpp(object):
 
         ## filters
         self.filters = Params()
-        self.filters.minmap = self.kwargs["minmap"]
-        self.filters.maxloci = self.kwargs["maxloci"]
-        self.filters.minsnps = self.kwargs["minsnps"]
+        self.filters.minmap = self._kwargs["minmap"]
+        self.filters.maxloci = self._kwargs["maxloci"]
+        self.filters.minsnps = self._kwargs["minsnps"]
 
         ## set bpp parameters with defaults
         self.params = Params()
         notparams = set(["workdir", "maxloci", "minmap", "minsnps"])
-        for key in set(self.kwargs.keys()) - notparams:
-            self.params[key] = self.kwargs[key]
+        for key in set(self._kwargs.keys()) - notparams:
+            self.params[key] = self._kwargs[key]
 
-
-    #@property
-    #def result_files(self):
-    #    """ returns the {workdir}/{name}.out.txt files produced by bpp """
-    #    path = os.path.join(self.workdir, self.name+"-r*.out.txt")
-    #    return glob.glob(path)
+        ## results files
+        self.files = Params()
+        self.files.locifile = locifile
+        self.files.mcmcfiles = []
+        self.files.outfiles = []
+        
 
 
     def submit_bpp_jobs(self, 
@@ -246,11 +242,6 @@ class Bpp(object):
             return asyncs
 
 
-    #def branch(self, name):
-    #    newbranch = copy.deepcopy(self)
-    #    newbranch.name = name
-    #    return newbranch
-
 
     def write_bpp_files(self, prefix, randomize_order=False, quiet=False):
         """ 
@@ -301,6 +292,7 @@ class Bpp(object):
             mapfile.write("\n".join(data))
 
 
+
     def _write_seqfile(self, name=False, randomize_order=False):
 
         ## handles
@@ -309,7 +301,7 @@ class Bpp(object):
         else:
             self.seqfile = os.path.join(self.workdir, "tmp.seqfile.txt")
         seqfile = open(self.seqfile, 'w')
-        with open(self.locifile) as infile:
+        with open(self.files.locifile) as infile:
             loci = infile.read().strip().split("|\n")
             nloci = len(loci)
             if randomize_order:
@@ -384,15 +376,12 @@ class Bpp(object):
         seqfile.close()    
 
 
+
     def _write_ctlfile(self, rep=None):
         """ write outfile with any args in argdict """
 
         ## A string to store ctl info
         ctl = []
-
-        ## check the tree (can do this better once we install ete3 w/ ipyrad)
-        if not self.guidetree.endswith(";"):
-            guidetree += ";"
 
         ## write the top header info
         ctl.append("seed = {}".format(self.params.seed))
@@ -401,11 +390,19 @@ class Bpp(object):
 
         path = os.path.join(self.workdir, self._name)
         if isinstance(rep, int):
-            ctl.append("mcmcfile = {}-r{}.mcmc.txt".format(path, rep))
-            ctl.append("outfile = {}-r{}.out.txt".format(path, rep))
+            mcmcfile = "{}-r{}.mcmc.txt".format(path, rep)
+            outfile = "{}-r{}.out.txt".format(path, rep)
         else:
-            ctl.append("mcmcfile = {}.mcmc.txt".format(path))
-            ctl.append("outfile = {}.out.txt".format(path))
+            mcmcfile = "{}.mcmc.txt".format(path, rep)
+            outfile = "{}.out.txt".format(path, rep)
+
+        if mcmcfile not in self.files.mcmcfiles:
+            self.files.mcmcfiles.append(mcmcfile)
+        if outfile not in self.files.outfiles:
+            self.files.outfiles.append(outfile)
+
+        ctl.append("mcmcfile = {}".format(mcmcfile))
+        ctl.append("outfile = {}".format(outfile))
 
         ## number of loci (checks that seq file exists and parses from there)
         ctl.append("nloci = {}".format(self._nloci))
@@ -429,7 +426,7 @@ class Bpp(object):
         nspecies = str(len(self.imap))
         species = " ".join(sorted(self.imap))
         ninds = " ".join([str(len(self.imap[i])) for i in sorted(self.imap)])
-        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.guidetree))
+        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.tree.write(format=9)))
 
         ## priors
         ctl.append("thetaprior = {} {}".format(*self.params.thetaprior))
@@ -455,6 +452,17 @@ class Bpp(object):
 
 
 
+    def copy(self):
+        """ 
+        returns a copy of the bpp object with the same parameter settings
+        but with the files.mcmcfiles and files.outfiles attributes cleared. 
+        """
+        newobj = copy.deepcopy(self)
+        newobj.files.mcmcfiles = []
+        newobj.files.outfiles = []
+        return newobj
+
+
 def _call_bpp(ctlfile):
     ## call the command
     proc = subprocess.Popen(
@@ -464,7 +472,6 @@ def _call_bpp(ctlfile):
         )
     comm = proc.communicate()
     return comm
-
 
 
 
@@ -485,7 +492,6 @@ class Params(object):
         for key in keys:
             _repr += _printstr.format(key, str(self[key]))
         return _repr
-
 
 
 
@@ -518,15 +524,6 @@ def _get_bpp_results(ofiles):
     return dd
     
     
-# for theta in [200, 2000]:
-#     for tau in [1000, 2000]:
-#         ofile = "delim-theta-{}-tau-{}-*.out.txt".format(theta, tau)
-#         outfiles = glob.glob(os.path.join(WDIR, ofile))
-#         print ofile
-#         print parse_bpp(outfiles)
-#         print ""
-
-
 
 
 ## GLOBALS
