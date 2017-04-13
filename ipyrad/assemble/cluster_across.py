@@ -873,7 +873,7 @@ def singlecat(data, sample, bseeds, sidx):
         onall[full[:, 0]] = nall[full[:, 2]]
         del nall
 
-        if 'reference' in data.paramsdict["datatype"]:
+        if 'reference' in data.paramsdict["assembly_method"]:
             chrom = io5["chroms"][:]
             ochrom[full[:, 0]] = chrom[full[:, 2]]
             del chrom
@@ -896,7 +896,7 @@ def singlecat(data, sample, bseeds, sidx):
     with h5py.File(smpio, 'w') as oh5:
         oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
         oh5.create_dataset("inall", data=onall, dtype=np.uint8)
-        if 'reference' in data.paramsdict["datatype"]:
+        if 'reference' in data.paramsdict["assembly_method"]:
             oh5.create_dataset("ichrom", data=ochrom, 
                                dtype=h5py.special_dtype(vlen=bytes))
 
@@ -916,7 +916,7 @@ def write_to_fullarr(data, sample, sidx):
         chunk = io5["catgs"].attrs["chunksize"][0]
         catg = io5["catgs"]
         nall = io5["nalleles"]
-        if 'reference' in data.paramsdict["datatype"]:
+        if 'reference' in data.paramsdict["assembly_method"]:
             chrom = io5["chroms"]
 
         ## adding an axis to newcatg makes it write about 1000X faster.
@@ -928,14 +928,14 @@ def write_to_fullarr(data, sample, sidx):
         with h5py.File(smpio) as indat:
             newcatg = indat["icatg"][:]
             onall = indat["inall"][:]
-            if 'reference' in data.paramsdict["datatype"]:            
+            if 'reference' in data.paramsdict["assembly_method"]:
                 ochrom = indat["ichrom"][:]
             for cidx in xrange(0, catg.shape[0], chunk):
                 #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
                 end = cidx + chunk
                 catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
                 nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
-                if 'reference' in data.paramsdict["datatype"]:                
+                if 'reference' in data.paramsdict["assembly_method"]:
                     chrom[:, sidx:sidx+1] = np.expand_dims(ochrom, axis=1)
         os.remove(smpio)
 
