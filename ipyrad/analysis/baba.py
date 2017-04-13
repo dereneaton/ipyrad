@@ -11,10 +11,10 @@
 from __future__ import print_function, division
 
 ## ipyrad tools
+import toytree
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
 from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
 from ipyrad.analysis.bpp import Params
-from ipyrad.analysis.tree import Tree as tree #decompose_tree
 from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 #import scipy.stats as st  ## used for dfoil
@@ -29,7 +29,6 @@ import time
 import os
 
 ## non-standard imports
-import ete3 as ete
 try: 
     import msprime as ms
 except ImportError:
@@ -37,9 +36,6 @@ except ImportError:
 
 ## set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
-
-## prettier printing
-# pd.options.display.float_format = '{:.4f}'.format
 
 
 class Baba(object):
@@ -154,9 +150,11 @@ class Baba(object):
         *args, 
         **kwargs):
 
+        """ draw a multi-panel figure with tree, tests, and results """
+
         ## check for attributes
         if not self.newick:
-            raise IPyradError("baba plot must have a .newick attribute (treefile)")
+            raise IPyradError("baba plot requires a newick treefile")
         if not self.tests:
             raise IPyradError("baba plot must have a .tests attribute")
 
@@ -165,7 +163,7 @@ class Baba(object):
             self.tests = [self.tests]
 
         ## re-decompose the tree
-        ttree = tree(
+        ttree = toytree.tree(
             self.newick, 
             orient='down', 
             use_edge_lengths=use_edge_lengths,
@@ -305,17 +303,13 @@ def batch(
             ipyclient.abort()
         except Exception:
             pass
-        try:
-            ipyclient.terminate()
-        except Exception:
-            pass
         raise inst
 
     ## dress up resarr as a Pandas DataFrame
     if not names:
         names = range(len(taxdicts))
-    print("resarr")
-    print(resarr)
+    #print("resarr")
+    #print(resarr)
     resarr = pd.DataFrame(resarr, 
         index=names,
         columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
@@ -501,7 +495,8 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=True):
     """
     ## make tree
     #tree = ipa.tree(newick).tree
-    tree = ete.Tree(newick)
+    #ete.Tree(newick)
+    tree = toytree.tree(newick)
     testset = set()
     
     ## constraints
@@ -512,7 +507,7 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=True):
     ## traverse root to tips. Treat the left as outgroup, then the right.
     tests = []
     ## topnode must have children
-    for topnode in tree.traverse("levelorder"):
+    for topnode in tree.tree.traverse("levelorder"):
         for oparent in topnode.children:
             for onode in oparent.traverse("levelorder"):
                 if test_constraint(onode, cdict, "p4", constraint_exact):
@@ -682,7 +677,7 @@ def _get_signif_4(arr, nboots):
     zscore = 0.
     if stddev:
         zscore = np.abs(dst) / stddev
-    stats = [dstat, estimate, stddev, zscore, abba, baba, arr.shape[0]]
+    stats = [dst, estimate, stddev, zscore, abba, baba, arr.shape[0]]
     return np.array(stats), boots
 
 

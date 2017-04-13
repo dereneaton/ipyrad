@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+""" import assembly funcs """
 
 from . import demultiplex
 from . import rawedit

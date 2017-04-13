@@ -5,13 +5,12 @@
 import os
 import sys
 import glob
-import copy
 import itertools
 import subprocess
 import numpy as np
-import ete3 as ete
+from toytree import ete3mini as ete
 from collections import Counter
-from ipyrad.assemble.util import IPyradWarningExit, DUCT
+from ipyrad.assemble.util import DUCT
 #import pandas as pd
 
 
@@ -40,7 +39,7 @@ class Bpp(object):
         dictionary must also be present in the input 'guidetree'.
     guidetree:
         A newick string species tree hypothesis [e.g., (((a,b),(c,d)),e);]
-        All species in the imap dictionary must also be present in the guidetree.
+        All taxa in the imap dictionary must also be present in the guidetree.
 
     Attributes:
     -----------
