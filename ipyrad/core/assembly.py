@@ -1149,7 +1149,7 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0, force=False, preview=False, show_cluster=0):
+    def run(self, steps=0, force=False, preview=False, ipyclient=None, show_cluster=0):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -1163,11 +1163,11 @@ class Assembly(object):
         ## wrap everything in a try statement to ensure that we save the
         ## Assembly object if it is interrupted at any point, and also
         ## to ensure proper cleanup of the ipyclient.
-        ipyclient = None
         inst = None
         try:
             ## use an existing ipcluster instance
-            ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+            if not ipyclient:
+                ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
             ## if MPI setup then we are going to wait until all engines are
