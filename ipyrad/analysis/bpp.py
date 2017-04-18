@@ -5,6 +5,7 @@
 import os
 import sys
 import glob
+import copy
 import itertools
 import subprocess
 import numpy as np
