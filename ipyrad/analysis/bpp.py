@@ -115,6 +115,7 @@ class Bpp(object):
 
         ## path attributes
         self.workdir = workdir
+        self.asyncs = []
         self._kwargs = {
                 "maxloci": None,
                 "minmap": None,
@@ -126,8 +127,8 @@ class Bpp(object):
                 "burnin": 1000,
                 "nsample": 10000,
                 "sampfreq": 2,
-                "thetaprior": (5, 5),
-                "tauprior": (4, 2, 1),
+                "thetaprior": (2, 2000),
+                "tauprior": (2, 2000, 1),
                 "usedata": 1,
                 "cleandata": 0,
                 "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
@@ -234,10 +235,12 @@ class Bpp(object):
             ## submit to engines
             async = lbview.apply(_call_bpp, ctlfile)
             asyncs.append(async)
+            self.asyncs.append(async)
 
         if not quiet:
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
                              .format(nreps, prefix, self._nloci))
+
         if return_asyncs:
             return asyncs
 
@@ -457,10 +460,25 @@ class Bpp(object):
         returns a copy of the bpp object with the same parameter settings
         but with the files.mcmcfiles and files.outfiles attributes cleared. 
         """
-        newobj = copy.deepcopy(self)
-        newobj.files.mcmcfiles = []
-        newobj.files.outfiles = []
+        ## make deepcopy of self.__dict__ but do not copy async objects
+        subdict = {i:j for i,j in self.__dict__.iteritems() if i != "asyncs"}
+        newdict = copy.deepcopy(subdict)
+
+        ## make back into a bpp object
+        newobj = Bpp(
+            locifile=newdict["files"].locifile,
+            workdir=newdict["workdir"],
+            guidetree=newdict["tree"].write(),
+            imap=newdict["imap"],
+            )
+        ## update special dict attributes but not files
+        for key, val in newobj.params.__dict__.iteritems():
+            newobj.params.__setattr__(key, self.params.__getattribute__(key))
+        for key, val in newobj.filters.__dict__.iteritems():
+            newobj.filters.__setattr__(key, self.filters.__getattribute__(key))
+
         return newobj
+
 
 
 def _call_bpp(ctlfile):
