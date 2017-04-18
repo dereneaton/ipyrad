@@ -5,6 +5,18 @@
 Release Notes
 =============
 
+0.6.15
+------
+**April 18, 2017**
+
+- Actually fix gphocs output.
+- allow passing in ipyclient in API
+- baba notebook update
+- cleaner api for bpp object
+- new analysis setup
+- updated analysis tools without ete
+- adding doc string
+
 0.6.14
 ------
 **April 13, 2017**
