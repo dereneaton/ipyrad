@@ -47,13 +47,15 @@ from ipyrad.assemble.util import IPyradWarningExit, progressbar
 #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
 #numba.config.NUMBA_DISABLE_JIT = 1
 
+
+## DO NOT REQUIRE TOYTREE TO RUN TETRAD, BUT IT CAN BE USED FOR PLOTTING
 try:
     ## when you have time go back and set attrubutes on toytrees
     from toytree import ete3mini as ete3
 except ImportError:
     raise IPyradWarningExit("""
     Error: tetrad requires the dependency 'toytree', which we haven't yet
-    included in the ipyrad installation. Until then, you can install toytree
+    included in the ipyrad installation. For now, you can install toytree
     using conda with the following command: 
 
     conda install toytree -c eaton-lab
