@@ -37,6 +37,7 @@ tldr; Video tutorial
     </div>
     <br>
 
+
 Step 1: Submit a batch script to launch a notebook server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Copy and paste the code block below into a text editor and save the script as 
@@ -68,23 +69,27 @@ This example would connect to one node with 20 cores available.
     ipnip=$(hostname -i)
 
     ## print tunneling instructions to jupyter-log-{jobid}.txt 
-    echo -e "\n"
-    echo    "  Paste ssh command in a terminal on local host (i.e., laptop)"
-    echo    "  ------------------------------------------------------------"
-    echo -e "  ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST\n"
-    echo    "  Open this address in a browser on local host; see token below"
-    echo    "  ------------------------------------------------------------"
-    echo -e "  localhost:$ipnport                                      \n\n"
+    echo -e "\n\n   Copy/Paste this in your local terminal to ssh tunnel with remote "
+    echo        "   ------------------------------------------------------------------"
+    echo        "   ssh -N -L $ipnport:$ipnip:$ipnport user@host                      "
+    echo        "   ------------------------------------------------------------------"
+    echo -e "\n\n   Then open a browser on your local machine to the following address"
+    echo        "   ------------------------------------------------------------------"
+    echo        "   localhost:$ipnport                                                "
+    echo -e     "   ------------------------------------------------------------------\n\n"
+    sleep 1
 
     ## start an ipcluster instance and launch jupyter server
-    ipcluster start --daemonize
     jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
 
 
 Multi-node MPI setup:
+~~~~~~~~~~~~~~~~~~~~~
 For this setup you will have to replace ``module load OpenMPI`` with the 
 appropriate module command to load MPI on your system. If you do not know what
-this is then look it up for your cluster or ask the system administrator. 
+this is then look it up for your cluster or ask the system administrator. In 
+this case instead of starting the `ipcluster` instance later, after we have 
+connected, we instead need to start it during the submission script. 
 
 .. code-block:: bash
 
@@ -103,18 +108,22 @@ this is then look it up for your cluster or ask the system administrator.
     ipnport=$(shuf -i8000-9999 -n1)
     ipnip=$(hostname -i)
 
-    ## print tunneling instructions to jupyter-log-{jobid}.txt 
-    echo -e "\n"
-    echo    "  Paste ssh command in a terminal on local host (i.e., laptop)"
-    echo    "  -------------------------------------------------------------"
-    echo -e "  ssh -N -L $ipnport:$ipnip:$ipnport $USER@$SLURM_SUBMIT_HOST\n"
-    echo    "  Open this address in a browser on local host; see token below"
-    echo    "  -------------------------------------------------------------"
-    echo -e "  localhost:$ipnport                                      \n\n"
+    ## print tunneling instructions to ipyrad-log file
+    echo -e "\n\n   Copy/Paste this in your local terminal to ssh tunnel with remote "
+    echo        "   ------------------------------------------------------------------"
+    echo        "   ssh -N -L $ipnport:$ipnip:$ipnport user@host                      "
+    echo        "   ------------------------------------------------------------------"
+    echo -e "\n\n   Then open a browser on your local machine to the following address"
+    echo        "   ------------------------------------------------------------------"
+    echo        "   localhost:$ipnport                                                "
+    echo -e     "   ------------------------------------------------------------------\n\n"
+    sleep 1
 
-    ## initiate MPI & start ipcluster engines using MPI
+    ## start an ipcluster instance to init MPI
     module load OpenMPI
-    ipcluster start --n=60 --engines=MPI --ip=* --daemonize
+    sleep 10
+    ipcluster start --n=40 --engines=MPI --ip=* --daemonize
+    sleep 10
 
     ## start notebook on remote host 
     jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
@@ -122,7 +131,7 @@ this is then look it up for your cluster or ask the system administrator.
 
 If you want to know the details of what this script is doing jump down to 
 the section titled 
-:ref:`The slurm_jupyter.sbatch script explained<The slurm_jupyter.sbatch script explained>`. 
+:ref:`The slurm_jupyter.sbatch script explained<The slurm_jupyter.sbatch script explained>`_. 
 For now, you can simply submit it to the cluster queue using the sbatch command.
 
 .. code-block:: bash
@@ -163,19 +172,21 @@ Security/tokens
 When you connect to the jupyter-notebook server it will likely ask for a 
 password/token. You can find an automatically generated token in your 
 jupyter-log file near the bottom. It is the long string printed after the word 
-`token`. Copy just that portion and paste it in the token cell. 
+`token`. Copy just that portion and paste it in the token cell. Alternatively, 
+although it is a bit complicated, you can setup a password following the 
+instructions on the jupyter page that pops up.
 
 Using jupyter
 ~~~~~~~~~~~~~~
-Once connected, you can open any existing notebook, or create a new one. 
+Once connected you can open any existing notebook or create a new one. 
 The notebooks are physically located on your cluster, meaning all of your data 
 and results will be saved there. I usually keep notebooks associated with 
 different projects in different directories, where each directory is also a 
 github repo, which makes them easy to share. When running ipyrad I usually set 
 the "project_dir" be a location in the scratch directory of the cluster, since
 it is faster for reading/writing large files. 
-You can see an example of this type of setup using the ipyrad API here
-(`API empirical notebook <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_).
+.. You can see an example of this type of setup using the ipyrad API here
+.. (`API empirical notebook <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_).
 
 
 The slurm_jupyter.sbatch script explained
@@ -204,10 +215,7 @@ if you run into a problem with the parallel engines, for example, you might
 have a stalled job on one of the engines. The easiest way to do this is to stop 
 the ``ipcluster`` instance by starting a new terminal from the jupyter dashboard, 
 by selecting [new]/[terminal] on the right side, and then following
-the commands below to restart ``ipcluster``. This does not *always* work for 
-reconnecting to multiple nodes over MPI, that will depend on your system, but 
-it should always work for restarting a local connection, i.e., no extra 
-arguments are passed to ipcluster. 
+the commands below to restart ``ipcluster``. 
 
 .. code-block:: bash
 
@@ -225,11 +233,16 @@ have each of them access a different subset of your engines that are available
 you can do so using the ``cluster-id`` argument to ipcluster. If you do this 
 you will need to tell ipyrad that you are using a non-default ``cluster-id`` 
 by setting it in the ipcluster info for your Assembly object (in the JSON 
-file for CLI, or in the attribute for the API). 
+file for CLI, or in the attribute for the API). Or you can connect to different
+ipyparallel "profiles". See the ipyparallel docs for more info. 
 
 
 Terminating the connection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Just cancel the job on your clusters job queue. You can close the local connections
-at any time and reconnect to them later. Remember, the serving is running on the 
-cluster. 
+To stop a running jupyter notebook just cancel the job on your cluster's queue. 
+To leave it running but close your local connection simply close the tab on your
+browser, or close the terminal running the ssh script. You can reconnect to the 
+running notebook at any time by simply running the SSH command again and 
+connecting through your browser. As long as the jupyter server is running 
+you can reconnect to it. If you disconnect and reconnect, however, it will not
+update progress bars that may have moved while you were disconnected, fyi. 

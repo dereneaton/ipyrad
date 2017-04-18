@@ -38,7 +38,6 @@ is `sbatch`, like below.
 
 
 .. parsed-literal::
-    ## submit the qsub script
     user@login$ sbatch slurm_script.sh
 
 
@@ -50,24 +49,24 @@ is `sbatch`, like below.
 
 Part I: Using multiple cores on a single node
 ---------------------------------------------
-Running ipyrad on a single node of a system is very simple, since it is 
-essentially the same as running it on your own computer. As a best practice 
-for organizing ipyrad files on your system, 
-I typically run ipyrad from the location where my params file is located, 
-and in the params file I set the full paths to my data 
-(usually in a scratch directory) and I set the `project_dir` in the params file
-(where output files will be produced) to be in the scratch directory as well. 
-The project directory will be created once the analysis starts if it does not
-exist already. 
-This allows you to keep many params files in your local directory in a 
-common place (I use a directory called ipyrad-analyses/) and to have each 
-params file write its outputs to a different directory. 
+Running ipyrad on a single node is very simple since it is essentially the 
+same process as running it on your own computer. As a best practice 
+for organizing ipyrad files on your system, I typically run ipyrad from the 
+location where my params file is located, and I use the params file itself 
+to set the explicit path to my data files. This involves setting the path to
+your raw data (usually somewhere in your scratch directory) and I also set 
+the `project_dir` to be in my scratch directory. The project directory will 
+be created once the analysis starts if it does not already exist.
+This kind of setup allows you to keep your params files in one convenient 
+place (I use a local directory called ipyrad-analyses/) and to have each 
+params file write to its own separate output location. 
 
-Below is two example submission scripts to run a single-node job on either a 
-TORQUE (qsub) or SLURM (sbatch) system:
+Below we show two example submission scripts to run a single-node job 
+on either a TORQUE (qsub) or SLURM (sbatch) system:
 
 
-Example `qsub`:
+Example *qsub* script:
+
 .. parsed-literal::
 
     #!/bin/sh
@@ -78,7 +77,7 @@ Example `qsub`:
     #PBS -q queue_name
     #PBS -l nodes=1:ppn=20
 
-    ## change into your home dir, or a specific place from there
+    ## change into the directory with your params file
     cd $PBS_O_WORKDIR/ipyrad-analyses/
 
     ## call some ipyrad commands 
@@ -122,18 +121,16 @@ And here is an example *sbatch* script:
 Part II: Running multi-node jobs
 --------------------------------
 Accessing cores from multiple nodes (essentially multiple computers) 
-requires that you use the `--MPI` flag and to tell ipyrad explicitly how 
-many cores you are planning to connect to. In addition you will need to tell
-your submission script how to connect to multiple nodes. In the case of MPI, 
-this is a case where you do need to load software that is external to ipyrad
-with a `module load` command. Use the appropriate command on your system 
-(usually something like `module load MPI`, but check to be sure what
-it is exactly on your system). Examples below:
+requires that you use the `--MPI` flag to turn on the *message passing interface*
+and that you also tell ipyrad explicitly how many cores you are planning to 
+connect to with the `-c` flag. For MPI, this is the one case where you do 
+need to load software that is external to ipyrad using a `module load` command. 
+Use the appropriate command on your system (usually something like 
+`module load MPI`, but check to be sure what it is exactly on your system). 
+Examples below:
 
+Example *qsub* script:
 
-
-
-Example `qsub`:
 .. parsed-literal::
 
     #!/bin/sh
