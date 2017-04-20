@@ -1063,7 +1063,7 @@ class Tetrad(object):
                 for ikey in curkeys:
                     if res[ikey].ready():
                         if res[ikey].successful():
-                            LOGGER.info("collecting results chunk: %s, tool %s ms", ikey, res[ikey].elapsed*1e3)
+                            #LOGGER.info("collecting results chunk: %s, tool %s ms", ikey, res[ikey].elapsed*1e3)
                             ## track finished
                             done += 1
                             ## insert results into hdf5 data base

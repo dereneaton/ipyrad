@@ -188,7 +188,7 @@ And here is an example *sbatch* script:
 Running interactive jobs
 ------------------------
 For testing purposes it is best to login interactively to a compute node. 
-This can be done on TORQUE with the *-I* argument. Sometimes you have to 
+This can be done on TORQUE with the -I argument. Sometimes you have to 
 provide additional arguments such as the name of the queue you are connecting to.
 This information should be available from your institution. Gaining access to 
 the node may be instant, or it may take hours depending on the size of your 

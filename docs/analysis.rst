@@ -32,7 +32,7 @@ This is an optional tool to use with ipyrad.
 These notebooks show example usage of the ipyrad API.
 
 + Intro to the ipyrad API <tutorial_API.html>`__
-+ `Quantify and plot shared RAD data with ipyrad <visualize.html>`__
++ Quantify and plot shared RAD data with ipyrad <visualize.html>`__
 + `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__
 + `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__
 
