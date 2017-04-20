@@ -901,12 +901,11 @@ class Tetrad(object):
         Parameters
         ----------
         quiet (bool):
-            do not print to stdout (not yet fully supported)
+            No printing to stdout (not yet fully supported)
         ipyclient (ipyparallel.Client object):
             Default is None (use running Default ipcluster instance). To use
             a different ipcluster instance start a Client class object 
             and pass it in as an argument here. 
-
         """
 
         ## wrap everything in a try statement so we can ensure that it will
@@ -930,8 +929,8 @@ class Tetrad(object):
             ## get or init quartet sampling ---------------------------
             if not self._chunksize:
                 self.nquartets = n_choose_k(len(self.samples), 4)
+                ## store N sampled quartets into the h5 array
                 if self.method != 'equal':
-                    ## store N sampled quartets into the h5 array
                     self._store_N_samples(ncpus=len(lbview))
                 else:
                     self._store_equal_samples(ncpus=len(lbview))
