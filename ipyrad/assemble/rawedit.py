@@ -596,14 +596,15 @@ def concat_multiple_inputs(data, sample):
 
         ## Only set conc2 if R2 actually exists
         conc2 = 0
-        if os.path.exists(str(sample.files.fastqs[0][1])):
+        if "pair" in data.paramsdict["datatype"]:
             cmd2 = ["cat"] + [i[1] for i in sample.files.fastqs]
             conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz")
             with open(conc2, 'w') as cout2:
                 proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
             if proc2.returncode:
-                raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
+                raise IPyradWarningExit("Error concatenating fastq files. Make sure all "\
+                    + "these files exist: {}\nError message: {}".format(cmd2, proc2.returncode))
 
         ## store new file handles
         sample.files.concat = [(conc1, conc2)]
