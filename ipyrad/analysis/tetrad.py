@@ -888,7 +888,7 @@ class Tetrad(object):
     ########################################################################
     ## Main functions
     ########################################################################
-    def run(self, force=0, quiet=0):
+    def run(self, force=0, quiet=0, ipyclient=None):
         """ 
         Run quartet inference on a SNP alignment and distribute work
         across an ipyparallel cluster (ipyclient). Unless passed an 
@@ -900,10 +900,12 @@ class Tetrad(object):
 
         Parameters
         ----------
-        force (bool):
-            ...
         quiet (bool):
-            ...
+            do not print to stdout (not yet fully supported)
+        ipyclient (ipyparallel.Client object):
+            Default is None (use running Default ipcluster instance). To use
+            a different ipcluster instance start a Client class object 
+            and pass it in as an argument here. 
 
         """
 
@@ -911,7 +913,8 @@ class Tetrad(object):
         ## save if interrupted and we will clean up the 
         try:
             ## find an ipcluster instance
-            ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+            if not ipyclient:
+                ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
             if not quiet:
