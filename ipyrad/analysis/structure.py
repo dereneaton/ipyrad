@@ -75,6 +75,11 @@ class Structure(object):
     result_files (list):
         Returns a list of result files for finished STRUCTURE jobs submitted 
         by this object. 
+    asyncs: (list):
+        A list of asynchronous result objects for each job that was 
+        submitted to the ipyclient. These can be used for debugging if 
+        a job fails.
+
 
     Functions:
     ----------
@@ -90,6 +95,7 @@ class Structure(object):
         self.mainparams = _MainParams()
         self.extraparams = _ExtraParams()
         self.clumppparams = _ClumppParams()
+        self.asyncs = []
 
         ## make workdir if it does not exist
         if workdir:
@@ -151,7 +157,6 @@ class Structure(object):
         ipyclient=None,
         seed=12345, 
         quiet=False, 
-        return_asyncs=False, 
         ):
 
         """ 
@@ -179,38 +184,38 @@ class Structure(object):
 
         quiet: (bool)
             Whether to print number of jobs submitted to stderr
-
-        return_asyncs: (bool):
-            Whether to return the asynchronous result objects for each job. The
-            default is False. These can be used for debugging if a job fails.
-
-        Returns: 
-        ---------
-        An ipyparallel or multiprocessing asynchronous result object. 
+. 
 
         Example: 
         ---------
         import ipyparallel as ipp
-        from ipyrad.analysis import Structure
+        import ipyrad.analysis as ipa
 
         ## get parallel client
         ipyclient = ipp.Client()
 
         ## get structure object
-        s = Structure(strfile="mydata.str", 
-                      workdir="structure-results",
-                      mapfile="mydata.snps.map")
+        s = ipa.structure(
+                name="test",
+                strfile="mydata.str", 
+                mapfile="mydata.snps.map",
+                workdir="structure-results",
+                )
 
-        ## set some basic params
+        ## modify some basic params
         s.mainparams.numreps = 100000
         s.mainparams.burnin = 10000
 
         ## submit many jobs
         for kpop in [3, 4, 5]:
-            s.submit_structure_jobs(kpop=kpop, nreps=10, ipyclient=ipyclient)
+            s.submit_structure_jobs(
+                kpop=kpop, 
+                nreps=10, 
+                ipyclient=ipyclient,
+                )
 
-        ## track progress
-
+        ## block until all jobs finish
+        ipyclient.wait()
 
         """
         ## initiate seed
@@ -220,27 +225,26 @@ class Structure(object):
         self._prepare_structure_files(kpop)
 
         ## check that there is a ipcluster instance running
-        asyncs = []
         for rep in xrange(nreps):
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
+            args = [self.name, self.workdir, self.extraparams.seed, 
+                        self.ntaxa, self.nsites, kpop, rep]
             if ipyclient:
                 ## call structure        
                 lbview = ipyclient.load_balanced_view()
-                async = lbview.apply(_call_structure, *(self, kpop, rep))
-                asyncs.append(async)
+                async = lbview.apply(_call_structure, *(args))
+                self.asyncs.append(async)
 
             else:
                 sys.stderr.write("submitted 1 structure job [{}-K-{}]\n"\
                                  .format(self.name, kpop))
-                comm = _call_structure(self, kpop, rep)
+                comm = _call_structure(*args)
                 return comm
 
         if ipyclient:
             if not quiet:
                 sys.stderr.write("submitted {} structure jobs [{}-K-{}]\n"\
                                 .format(nreps, self.name, kpop))
-            if return_asyncs:
-                return asyncs
 
 
 
@@ -313,19 +317,18 @@ class Structure(object):
 
 
 
-def _call_structure(sobj, kpop, rep):
+def _call_structure(name, workdir, seed, ntaxa, nsites, kpop, rep):
     """ make the subprocess call to structure """
     ## create call string
-    outname = os.path.join(sobj.workdir, 
-                "{}-K-{}-rep-{}".format(sobj.name, kpop, rep))
+    outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
     cmd = ["structure", 
-           "-m", os.path.join(sobj.workdir, "tmp.mainparams.txt"),
-           "-e", os.path.join(sobj.workdir, "tmp.extraparams.txt"),
+           "-m", os.path.join(workdir, "tmp.mainparams.txt"),
+           "-e", os.path.join(workdir, "tmp.extraparams.txt"),
            "-K", str(kpop),
-           "-D", str(sobj.extraparams.seed), 
-           "-N", str(sobj.ntaxa), 
-           "-L", str(sobj.nsites),
-           "-i", os.path.join(sobj.workdir, "tmp.strfile.txt"),
+           "-D", str(seed), 
+           "-N", str(ntaxa), 
+           "-L", str(nsites),
+           "-i", os.path.join(workdir, "tmp.strfile.txt"),
            "-o", outname]
 
     ## call the shell function
