@@ -48,7 +48,7 @@ from ipyrad.assemble.util import IPyradWarningExit, progressbar
 #numba.config.NUMBA_DISABLE_JIT = 1
 
 
-## DO NOT REQUIRE TOYTREE TO RUN TETRAD, BUT IT CAN BE USED FOR PLOTTING
+## TOYTREE is required to run TETRAD
 try:
     ## when you have time go back and set attrubutes on toytrees
     from toytree import ete3mini as ete3
@@ -742,7 +742,7 @@ class Tetrad(object):
 
 
 
-    def _finalize_stats(self):
+    def _finalize_stats(self, ipyclient):
         """ write final tree files """
 
         ## print stats file location:
@@ -754,7 +754,7 @@ class Tetrad(object):
         ## print bootstrap information --------------------------
         if self.nboots:
             ## get consensus, map values to tree edges, record stats file
-            self._compute_tree_stats()
+            self._compute_tree_stats(ipyclient)
             ## print bootstrap info
             print(BOOTTREES.format(opr(self.trees.cons),
                                    opr(self.trees.boots))) 
@@ -783,9 +783,9 @@ class Tetrad(object):
 
 
 
-    def _compute_tree_stats(self):
+    def _compute_tree_stats(self, ipyclient):
         """ writes support values as edge labels on unrooted tree """
-        compute_tree_stats(self)
+        compute_tree_stats(self, ipyclient)
 
 
 
@@ -958,9 +958,9 @@ class Tetrad(object):
             print("")
             self.files.stats = os.path.join(self.dirs, self.name+"_stats.txt")
             if not self.kwargs.get("cli"):
-                self._compute_tree_stats()
+                self._compute_tree_stats(ipyclient)
             else:
-                self._finalize_stats()               
+                self._finalize_stats(ipyclient)
 
 
         ## handle exceptions so they will be raised after we clean up below
@@ -1124,7 +1124,7 @@ class Tetrad(object):
 ################################################################
 ## STATS FUNCTIONS
 ################################################################
-def compute_tree_stats(self):
+def compute_tree_stats(self, ipyclient):
     """ 
     compute stats for stats file and NHX tree features
     """
@@ -1193,9 +1193,8 @@ def compute_tree_stats(self):
                     ostats.write("{}   {:.2f}\n".format(split, round(freq, 2)))
             ostats.write("\n")
 
-
     ## parallelized this function because it can be slogging
-    ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+    #ipyclient = ip.core.parallel.get_client(**self._ipcluster)
     lbview = ipyclient.load_balanced_view()
     
     ## store results in dicts
