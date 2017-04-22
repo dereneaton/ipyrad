@@ -47,9 +47,6 @@ LOGGER = logging.getLogger(__name__)
 ## centralized. LOCI and VCF are default. Some others are created as
 ## dependencies of others.
 
-#OUTPUT_FORMATS = ['alleles', 'phy', 'nex', 'snps', 'usnps', 'vcf',
-#                  'str', 'geno', 'treemix', 'migrate', 'gphocs']
-#OUTPUT_FORMATS = ['phy', 'nex', 'snps', 'usnps', 'str', 'geno', 'vcf']
 OUTPUT_FORMATS = {'l': 'loci',
                   'p': 'phy',
                   's': 'snps',
@@ -275,8 +272,12 @@ def make_stats(data, samples, samplecounts, locuscounts):
     try:
         smax = max([i+1 for i in varcounts if varcounts[i]])
     except Exception as inst:
-        print("\n  Empty varcounts array. Probably no samples passed filtering.")
-        raise
+        raise IPyradWarningExit("""
+    Exception: empty varcounts array. This could be because no samples 
+    passed filtering, or it could be because you have overzealous filtering.
+    Check the values for `trim_loci` and make sure you are not trimming the
+    edge too far
+    """)
 
     vardat = pd.Series(varcounts, name="var", index=range(smax)).fillna(0)
     sumd = {}
@@ -452,8 +453,6 @@ def filter_all_clusters(data, samples, ipyclient):
             ## load in the array w/ shape (hslice, 5)
             arr = np.load(ffile)
             ## store slice into full array
-            #LOGGER.info("arr is %s", arr.shape)
-            #LOGGER.info("superedge is %s", superedge.shape)
             superedge[hslice:hslice+optim, :] = arr
         io5["edges"][:, :] = superedge
         del arr, superedge
@@ -501,7 +500,7 @@ def padnames(names):
 def make_loci_and_stats(data, samples, ipyclient):
     """
     Makes the .loci file from h5 data base. Iterates by optim loci at a
-    time and write to file.
+    time and write to file. Also makes alleles file if requested.
     """
     ## start vcf progress bar
     start = time.time()
@@ -579,10 +578,13 @@ def make_loci_and_stats(data, samples, ipyclient):
     ## sort by start value
     tmploci.sort(key=lambda x: int(x.split(".")[-1]))
     ## write tmpchunks to locus file
+    alleles = 1
     with open(data.outfiles.loci, 'w') as locifile:
         for tmploc in tmploci:
             with open(tmploc, 'r') as inloc:
                 locifile.write(inloc.read())
+            #if alleles:
+            #    write_alleles(tmploci)
             os.remove(tmploc)
 
     ## make stats file from data
@@ -804,7 +806,11 @@ def filter_stacks(data, sidx, hslice):
     ## get a chunk (hslice) of loci for the selected samples (sidx)
     #superseqs = io5["seqs"][hslice[0]:hslice[1], sidx,]
     ## get an int view of the seq array
-    superints = io5["seqs"][hslice[0]:hslice[1], sidx,].view(np.int8)
+    #superints = io5["seqs"][hslice[0]:hslice[1], sidx, :].view(np.int8)
+
+    ## we need to use upper to skip lowercase allele storage
+    ## this slows down the rate of loading in data by a ton.
+    superints = np.char.upper(io5["seqs"][hslice[0]:hslice[1], sidx,]).view(np.int8)
     LOGGER.info("superints shape %s", superints)
 
     ## fill edge filter
@@ -1642,7 +1648,9 @@ def worker_make_arrays(data, sidx, hslice, optim, maxlen):
     afilt = co5["filters"][hslice:hslice+optim, :]
     aedge = co5["edges"][hslice:hslice+optim, :]
     asnps = co5["snps"][hslice:hslice+optim, :]
-    aseqs = io5["seqs"][hslice:hslice+optim, sidx, :]
+    #aseqs = io5["seqs"][hslice:hslice+optim, sidx, :]
+    ## have to run upper on seqs b/c they have lowercase storage of alleles
+    aseqs = np.char.upper(io5["seqs"][hslice:hslice+optim, sidx, :])
 
     ## which loci passed all filters
     keep = np.where(np.sum(afilt, axis=1) == 0)[0]
@@ -1721,6 +1729,7 @@ def write_phy(data, sidx, pnames):
     """
 
     ## grab seq data from tmparr
+    start = time.time()
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
         seqarr = io5["seqarr"]
@@ -1740,6 +1749,7 @@ def write_phy(data, sidx, pnames):
             ## write data rows
             for idx, name in enumerate(pnames):
                 out.write("{}{}\n".format(name, "".join(seqarr[idx, :end])))
+    LOGGER.debug("finished writing phy in: %s", time.time() - start)
 
 
 
@@ -1749,6 +1759,7 @@ def write_nex(data, sidx, pnames):
     """    
 
     ## grab seq data from tmparr
+    start = time.time()
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
         seqarr = io5["seqarr"]
@@ -1762,18 +1773,35 @@ def write_nex(data, sidx, pnames):
 
         ## write to nexus
         data.outfiles.nex = os.path.join(data.dirs.outfiles, data.name+".nex")
+
         with open(data.outfiles.nex, 'w') as out:
 
             ## write nexus seq header
             out.write(NEXHEADER.format(seqarr.shape[0], end))
 
-            ## write interleaved seqs 100 chars at a time with longname+2 before
-            for block in xrange(0, end, 100):
-                for idx, name in enumerate(pnames):
+            ## grab a big block of data
+            chunksize = 100000  # this should be a multiple of 100
+            for bidx in xrange(0, end, chunksize):
+                bigblock = seqarr[:, bidx:bidx+chunksize]
+                lend = end-bidx
+                #LOGGER.info("BIG: %s %s %s %s", bigblock.shape, bidx, lend, end)
+
+                ## write interleaved seqs 100 chars with longname+2 before
+                tmpout = []            
+                for block in xrange(0, min(chunksize, lend), 100):
                     stop = min(block+100, end)
-                    out.write("  {}{}\n".format(name, "".join(seqarr[idx, block:stop])))
-                out.write("\n")
+
+                    for idx, name in enumerate(pnames):
+                        seqdat = bigblock[idx, block:stop]
+                        tmpout.append("  {}{}\n".format(name, "".join(seqdat)))
+                    tmpout.append("\n")
+
+                ## print intermediate result and clear
+                if any(tmpout):
+                    out.write("".join(tmpout))
+            ## closer
             out.write(NEXCLOSER)
+    LOGGER.debug("finished writing nex in: %s", time.time() - start)
 
 
 
@@ -1782,6 +1810,7 @@ def write_snps_map(data):
     """ write a map file with linkage information for SNPs file"""
 
     ## grab map data from tmparr
+    start = time.time()
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
         maparr = io5["maparr"][:]
@@ -1799,7 +1828,7 @@ def write_snps_map(data):
             for idx in xrange(end):
                 ## build to list
                 line = maparr[idx, :]
-                print(line)
+                #print(line)
                 outchunk.append(\
                     "{}\trad{}_snp{}\t{}\t{}\n"\
                     .format(line[0], line[1], line[2], 0, line[3]))
@@ -1809,6 +1838,7 @@ def write_snps_map(data):
                     outchunk = []
             ## write remaining
             out.write("".join(outchunk))
+    LOGGER.debug("finished writing snps_map in: %s", time.time() - start)
 
 
 
@@ -1816,6 +1846,7 @@ def write_snps(data, sidx, pnames):
     """ write the snp string """
 
     ## grab snp data from tmparr
+    start = time.time()
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
         snparr = io5["snparr"]
@@ -1832,6 +1863,7 @@ def write_snps(data, sidx, pnames):
             out.write("{} {}\n".format(snparr.shape[0], end))
             for idx, name in enumerate(pnames):
                 out.write("{}{}\n".format(name, "".join(snparr[idx, :end])))
+    LOGGER.debug("finished writing snps in: %s", time.time() - start)
 
 
 
@@ -1862,6 +1894,7 @@ def write_str(data, sidx, pnames):
     """ Write STRUCTURE format for all SNPs and unlinked SNPs """
 
     ## grab snp and bis data from tmparr
+    start = time.time()
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
         snparr = io5["snparr"]
@@ -1909,7 +1942,7 @@ def write_str(data, sidx, pnames):
                     "\t".join([numdict[DUCT[i][0]] for i in bisarr[idx, :bend]])))
         out1.close()
         out2.close()
-
+    LOGGER.debug("finished writing str in: %s", time.time() - start)
 
 
 def write_geno(data, sidx):
@@ -1919,6 +1952,7 @@ def write_geno(data, sidx):
     """
 
     ## grab snp and bis data from tmparr
+    start = time.time()
     tmparrs = os.path.join(data.dirs.outfiles, "tmp-{}.h5".format(data.name)) 
     with h5py.File(tmparrs, 'r') as io5:
         snparr = io5["snparr"]
@@ -1983,6 +2017,7 @@ def write_geno(data, sidx):
         ## print to files
         np.savetxt(data.outfiles.geno, snpgeno.T, delimiter="", fmt="%d")
         np.savetxt(data.outfiles.ugeno, bisgeno.T, delimiter="", fmt="%d")
+    LOGGER.debug("finished writing geno in: %s", time.time() - start)
 
 
 def write_gphocs(data, sidx):
@@ -2217,7 +2252,9 @@ def vcfchunk(data, optim, sidx, start, full):
     ## same memory subsampling.
     with h5py.File(data.clust_database, 'r') as io5:
         ## apply mask to edges to aseqs and acatg
-        aseqs = io5["seqs"][hslice[0]:hslice[1], :, :].view(np.uint8)
+        #aseqs = io5["seqs"][hslice[0]:hslice[1], :, :].view(np.uint8)
+        ## need to read in seqs with upper b/c lowercase allele info
+        aseqs = np.char.upper(io5["seqs"][hslice[0]:hslice[1], :, :]).view(np.uint8)
         aseqs = aseqs[keepmask, :]
         aseqs = aseqs[:, sidx, :]
         acatg = io5["catgs"][hslice[0]:hslice[1], :, :, :]
@@ -2322,8 +2359,10 @@ def vcfchunk(data, optim, sidx, start, full):
                 raise
         else:
             try:
-                cols0[init:init+seq.shape[1]] = np.core.defchararray.add(np.array(["locus_"] * seq.shape[1]),\
-                                                                 np.char.mod('%d', start+locindex[iloc]))
+                cols0[init:init+seq.shape[1]] = \
+                    np.core.defchararray.add(\
+                        np.array(["locus_"] * seq.shape[1]),\
+                        np.char.mod('%d', start+locindex[iloc]))
                 #LOGGER.debug("Found a non-ref seq - {}".format(start+locindex[iloc]+1))
             except:
                 LOGGER.debug("Found a locus with no snps - {}".format(start+locindex[iloc]+1))

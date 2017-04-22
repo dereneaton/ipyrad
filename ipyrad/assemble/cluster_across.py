@@ -65,21 +65,27 @@ def persistent_popen_align3(data, samples, chunk):
 
     ## iterate over clusters until finished
     allstack = []
+    #istack = []    
     for ldx in xrange(len(clusts)):
         ## new alignment string for read1s and read2s
         aligned = []
+        istack = []
         lines = clusts[ldx].strip().split("\n")
         names = lines[::2]
         seqs = lines[1::2]        
         align1 = ""
         align2 = ""
 
-        ## dont both aligning if only one sequence
-        if len(names) == 1:
-            aligned.append(clusts[ldx].replace(">", "").strip())
-        elif len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
+        ## we don't allow seeds with no hits to make it here, currently
+        #if len(names) == 1:
+        #    aligned.append(clusts[ldx].replace(">", "").strip())
+
+        ## find duplicates and skip aligning but keep it for downstream.
+        if len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
             duples[ldx] = 1
-            aligned.append(clusts[ldx].replace(">", "").strip())
+            istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
+            #aligned.append(clusts[ldx].replace(">", "").strip())
+        
         else:
             ## append counter to names because muscle doesn't retain order
             names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
@@ -92,24 +98,29 @@ def persistent_popen_align3(data, samples, chunk):
                 cl1 = "\n".join(itertools.chain(*zip(names, clust1)))
                 cl2 = "\n".join(itertools.chain(*zip(names, clust2)))
 
-                ## Align the read-1s
+                ## store allele (lowercase) info
+                shape = (len(seqs), max([len(i) for i in seqs]))
+                arrseqs = np.zeros(shape, dtype="S1")
+                for row in range(arrseqs.shape[0]):
+                    seqsrow = seqs[row]
+                    arrseqs[row, :len(seqsrow)] = list(seqsrow)
+                amask = np.char.islower(arrseqs)
+                save_alleles = np.any(amask)
+
+                ## send align1 to the bash shell
                 ## TODO: check for pipe-overflow here and use files for i/o                
                 cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
                        .format(cl1, ipyrad.bins.muscle, "//")
-
-                ## send cmd1 to the bash shell
                 print(cmd1, file=proc.stdin)
 
                 ## read the stdout by line until splitter is reached
                 for line in iter(proc.stdout.readline, "//\n"):
                     align1 += line
 
-                ## align the read-2s
+                ## send align2 to the bash shell
                 ## TODO: check for pipe-overflow here and use files for i/o                
                 cmd2 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
                        .format(cl2, ipyrad.bins.muscle, "//")
-
-                ## send cmd2 to the bash shell
                 print(cmd2, file=proc.stdin)
 
                 ## read the stdout by line until splitter is reached
@@ -122,55 +133,119 @@ def persistent_popen_align3(data, samples, chunk):
                 dalign1 = dict([i.split("\n", 1) for i in la1])
                 dalign2 = dict([i.split("\n", 1) for i in la2])
                 keys = sorted(dalign1.keys(), key=DEREP)
-                aligned = []
-                for key in keys:
-                    aligned.append("\n".join(
-                        [key, 
-                         dalign1[key].replace("\n", "")+"nnnn"+\
-                         dalign2[key].replace("\n", "")]))
 
+                ## impute allele (lowercase) info back into alignments
+                for kidx, key in enumerate(keys):
+                    concatseq = dalign1[key].replace("\n", "")
+                    ## impute alleles
+                    if save_alleles:
+                        newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
+                        ## check for indels and impute to amask
+                        indidx = np.where(np.array(list(concatseq)) == "-")[0]
+                        if any(indidx):
+                            allrows = np.arange(amask.shape[1])
+                            mask = np.ones(allrows.shape[0], dtype=np.bool_)
+                            for idx in indidx:
+                                if idx < mask.shape[0]:
+                                    mask[idx] = False
+                            not_idx = allrows[mask == 1]
+                            ## fill in new data into all other spots
+                            newmask[not_idx] = amask[kidx, :not_idx.shape[0]]
+                        else:
+                            newmask = amask[kidx]
+                        
+                        ## lower the alleles
+                        concatarr = np.array(list(concatseq))
+                        concatarr[newmask] = np.char.lower(concatarr[newmask])
+                        concatseq = concatarr.tostring()
+
+                    ## fill list with aligned data
+                    aligned.append("{}\n{}".format(key, concatseq))
+
+                ## put into a dict for writing to file
+                #aligned = []
+                #for key in keys:
+                #    aligned.append("\n".join(
+                #        [key, 
+                #         dalign1[key].replace("\n", "")+"nnnn"+\
+                #         dalign2[key].replace("\n", "")]))
 
             except ValueError:
                 ## make back into strings
                 cl1 = "\n".join(["\n".join(i) for i in zip(names, seqs)])                
 
-                ## Align the read-1s 
-                ## TODO: check for pipe-overflow here and use files for i/o
+                ## store allele (lowercase) info
+                shape = (len(seqs), max([len(i) for i in seqs]))
+                arrseqs = np.zeros(shape, dtype="S1")
+                for row in range(arrseqs.shape[0]):
+                    seqsrow = seqs[row]
+                    arrseqs[row, :len(seqsrow)] = list(seqsrow)
+                amask = np.char.islower(arrseqs)
+                save_alleles = np.any(amask)
+
+                ## send align1 to the bash shell (TODO: check for pipe-overflow)
                 cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
                        .format(cl1, ipyrad.bins.muscle, "//")
-
-                ## send cmd1 to the bash shell
                 print(cmd1, file=proc.stdin)
 
                 ## read the stdout by line until splitter is reached
                 for line in iter(proc.stdout.readline, "//\n"):
                     align1 += line
 
-                ## join the aligned read1 and read2 and ensure name order match
+                ## ensure name order match
                 la1 = align1[1:].split("\n>")
                 dalign1 = dict([i.split("\n", 1) for i in la1])
                 keys = sorted(dalign1.keys(), key=DEREP)
-                aligned = []
-                for key in keys:
-                    aligned.append("\n".join(
-                        [key, dalign1[key].replace("\n", "")]))
 
+                ## put into dict for writing to file
+                for kidx, key in enumerate(keys):
+                    concatseq = dalign1[key].replace("\n", "")
+                    ## impute alleles
+                    if save_alleles:
+                        newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
+                        ## check for indels and impute to amask
+                        indidx = np.where(np.array(list(concatseq)) == "-")[0]
+                        if any(indidx):
+                            allrows = np.arange(amask.shape[1])
+                            mask = np.ones(allrows.shape[0], dtype=np.bool_)
+                            for idx in indidx:
+                                if idx < mask.shape[0]:
+                                    mask[idx] = False
+                            not_idx = allrows[mask == 1]
+                            ## fill in new data into all other spots
+                            newmask[not_idx] = amask[kidx, :not_idx.shape[0]]
+                        else:
+                            newmask = amask[kidx]
+                        
+                        ## lower the alleles
+                        concatarr = np.array(list(concatseq))
+                        concatarr[newmask] = np.char.lower(concatarr[newmask])
+                        concatseq = concatarr.tostring()
+
+                    ## fill list with aligned data
+                    aligned.append("{}\n{}".format(key, concatseq))
+                ## put aligned locus in list
+                #aligned.append("\n".join(inner_aligned))
 
             ## enforce maxlen on aligned seqs
-            aseqs = np.vstack([list(i.split()[1]) for i in aligned])
+            aseqs = np.vstack([list(i.split("\n")[1]) for i in aligned])
+            LOGGER.info("\naseqs here: %s", aseqs)
+
+            ## index names by snames order
             sidxs = [snames.index(key.rsplit("_", 1)[0]) for key in keys]
             thislen = min(maxlen, aseqs.shape[1])
-            istack = []
             for idx in xrange(aseqs.shape[0]):
                 ## enter into stack
                 newn = aligned[idx].split(";", 1)[0]
+                #newn = key[idx].split(";", 1)[0]
                 istack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
                 ## name index in sorted list (indels order)
                 sidx = sidxs[idx]
                 indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
 
-            if istack:
-                allstack.append("\n".join(istack))
+        if istack:
+            allstack.append("\n".join(istack))
+            LOGGER.info("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
 
     ## cleanup
     proc.stdout.close()
@@ -178,6 +253,8 @@ def persistent_popen_align3(data, samples, chunk):
         proc.stderr.close()
     proc.stdin.close()
     proc.wait()
+
+    #LOGGER.info("\n\nALLSTACK %s\n", "\n".join(i) for i in allstack[:5]])
 
     ## write to file after
     odx = chunk.rsplit("_")[-1]
@@ -230,11 +307,11 @@ def muscle_align_across(data, samples, chunk):
         seqs = lines[1::2]
 
         if len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
-            LOGGER.debug("Found a duplicate stack number of seqs - {}".format(len(names)))
-            duples[ldx] = 1
             ## Strip the leading > from the name or downstream dies
+            LOGGER.debug("Found a duplicate sample in the stack")
             stack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
-            LOGGER.debug("dupestack - {}".format(stack))
+            LOGGER.debug("dupestack:\n{}".format("\n".join(stack)))
+            duples[ldx] = 1
         ## don't bother aligning singletons
         elif len(names) <= 1:
             pass
@@ -273,6 +350,7 @@ def muscle_align_across(data, samples, chunk):
                     ## store the indels
                     #LOGGER.info("{} - {}".format(idx, np.where(aseqs[idx, :thislen] == "-")[0]))
                     indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
+
             except IndexError:
                 seqs = [i.replace('nnnn', '') for i in seqs]
                 string1 = muscle_call(data, names, seqs)
@@ -312,8 +390,6 @@ def muscle_align_across(data, samples, chunk):
     np.save(ifile, indels)
     dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
     np.save(dfile, duples)
-    #with h5py.File(ifile, 'w') as iofile:
-    #    iofile.create_dataset('indels', data=indels)
 
 
 
@@ -334,8 +410,8 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     jobs = {}
     for idx in xrange(len(clustbits)):
         args = [data, samples, clustbits[idx]]
-        #jobs[idx] = lbview.apply(persistent_popen_align3, *args)
-        jobs[idx] = lbview.apply(muscle_align_across, *args)
+        jobs[idx] = lbview.apply(persistent_popen_align3, *args)
+        #jobs[idx] = lbview.apply(muscle_align_across, *args)
     allwait = len(jobs)
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(20, 0, " aligning clusters     | {} | s6 |".format(elapsed))
@@ -355,7 +431,7 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
     keys = jobs.keys()
     for idx in keys:
         if not jobs[idx].successful():
-            LOGGER.error("error in muscle_align_across %s", jobs[idx].exception())
+            LOGGER.error("error in persistent_popen_align %s", jobs[idx].exception())
             raise IPyradWarningExit("error in step 6 {}".format(jobs[idx].exception()))
         del jobs[idx]
     print("")
@@ -463,13 +539,13 @@ def cluster(data, noreverse):
     ## parameters that vary by datatype
     ## (too low of cov values yield too many poor alignments)
     strand = "plus"
-    cov = 0.90
+    cov = 0.75    ##0.90
     if data.paramsdict["datatype"] == "gbs":
         strand = "both"
         cov = 0.60
     elif data.paramsdict["datatype"] == "pairgbs":
         strand = "both"
-        cov = 0.90
+        cov = 0.75   ##0.90
 
     ## get call string. Thread=0 means all (default) but we may want to set
     ## an upper limit otherwise threads=60 could clobber RAM on large dsets.
@@ -558,9 +634,10 @@ def cluster(data, noreverse):
 
 def build_h5_array(data, samples, ipyclient):
     """
-    Build full catgs file with imputed indels. catg array of prefiltered loci
-    is 4-dimensional (Big), so one big array would overload memory, we need
-    to it in slices. Calls multicat (singlecat), and fill_superseqs.
+    Sets up all of the h5 arrays that we will fill. 
+    The catg array of prefiltered loci  is 4-dimensional (Big), so one big 
+    array would overload memory, we need to fill it in slices. 
+    This will be done in multicat (singlecat) and fill_superseqs.
     """
 
     ## sort to ensure samples will be in alphabetical order, tho they should be.
@@ -585,6 +662,7 @@ def build_h5_array(data, samples, ipyclient):
     while chunklen > int(500e6):
         chunks = (chunks // 2) + (chunks % 2)
         chunklen = chunks * len(samples) * maxlen * 4
+    LOGGER.info("chunks in build_h5_array: %s", chunks)
 
     data.chunks = chunks
     LOGGER.info("data.nloci is %s", data.nloci)
@@ -598,6 +676,7 @@ def build_h5_array(data, samples, ipyclient):
                                     compression="gzip")
     superseqs = io5.create_dataset("seqs", (data.nloci, len(samples), maxlen),
                                     dtype="|S1",
+                                    #dtype=np.uint8,
                                     chunks=(chunks, len(samples), maxlen),
                                     compression='gzip')
     superalls = io5.create_dataset("nalleles", (data.nloci, len(samples)),
@@ -782,7 +861,7 @@ def multicat(data, samples, ipyclient):
         if fwait == allwait:
             break
 
-    ## wait for writing jobs to finish
+    ## wait for "write_to_fullarr" jobs to finish
     print("")
     start = time.time()
     while 1:
@@ -1007,11 +1086,10 @@ def fill_superseqs(data, samples):
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
             raise IPyradError("clustfile formatting error in %s", chunk)
-        if done:
-            break
 
         ## if chunk is full put into superseqs and reset counter
         if cloc == chunksize:
+            LOGGER.info("cloc chunk writing %s", cloc)
             superseqs[iloc-cloc:iloc] = chunkseqs
             splits[iloc-cloc:iloc] = chunkedge
             ## reset chunkseqs, chunkedge, cloc
@@ -1027,35 +1105,39 @@ def fill_superseqs(data, samples):
                 piece = chunk[0].strip().split("\n")
                 names = piece[0::2]
                 seqs = np.array([list(i) for i in piece[1::2]])
+                
                 ## fill in the separator if it exists
                 separator = np.where(np.all(seqs == 'n', axis=0))[0]
                 if np.any(separator):
                     chunkedge[cloc] = separator.min()
 
                 ## fill in the hits
-                #LOGGER.info("seqs : %s", seqs)
-                #LOGGER.info("seqs.shape : %s", seqs.shape)
+                ## seqs will be (5,) IF the seqs are variable lengths, which 
+                ## can happen if it had duplicaes AND there were indels, and 
+                ## so the indels did not get aligned
                 try:
                     shlen = seqs.shape[1]
                 except IndexError as inst:
-                    ## seqs with dupes fail to get the proper shape for some
-                    ## reason, so just set it to maxlen. They get tossed out anyway.
-                    ## TODO: It would be nice to know why this happens and not
-                    ## just let it slide. The shape of dupe seqs ends up being 
-                    ## like (3,) i.e. no length portion....
                     shlen = min([len(x) for x in seqs])
+
                 for name, seq in zip(names, seqs):
                     sidx = snames.index(name.rsplit("_", 1)[0])
-                    fill[sidx, :shlen] = seq[:maxlen]
+                    #fill[sidx, :shlen] = seq[:maxlen]
+                    fill[sidx, :shlen] = seq[:shlen]
 
                 ## PUT seqs INTO local ARRAY
                 chunkseqs[cloc] = fill
-            except Exception as inst:
-                LOGGER.info("dupe chunk {}".format(chunk))
 
-        ## increase counters
-        cloc += 1
-        iloc += 1
+            except Exception as inst:
+                LOGGER.info(inst)
+                LOGGER.info("\nfill: %s\nshlen %s\nmaxlen %s", fill.shape, shlen, maxlen)
+                LOGGER.info("dupe chunk \n{}".format("\n".join(chunk)))
+
+            ## increase counters if there was a chunk
+            cloc += 1
+            iloc += 1
+        if done:
+            break
 
     ## write final leftover chunk
     superseqs[iloc-cloc:,] = chunkseqs[:cloc]
@@ -1069,7 +1151,7 @@ def fill_superseqs(data, samples):
     LOGGER.info("done filling superseqs")
 
     ## close handle
-    os.remove(infile)
+    #os.remove(infile)
 
 
 
@@ -1335,6 +1417,8 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     """
 
     ## clean the slate
+    ## but check for new clust database name if this is a new branch
+    data.clust_database = os.path.join(data.dirs.consens, data.name+".clust.hdf5")
     if os.path.exists(data.clust_database):
         os.remove(data.clust_database)
 
@@ -1342,8 +1426,8 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
     start = time.time()
 
     ## a chunker for writing every N loci. This uses core info, meaning that
-    ## if users do not supply -n arg then it might be poorly estimated.
-    ## if no info we use detect_cpus to get info for this node.
+    ## if users do not supply -c arg then it might be poorly estimated.
+    ## if no info we use how many cores are connected right now to ipyclient
     data.cpus = data._ipcluster["cores"]
     if not data.cpus:
         data.cpus = len(ipyclient)
