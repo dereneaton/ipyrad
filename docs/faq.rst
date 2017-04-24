@@ -176,3 +176,16 @@ quality of the assembly:
 * Set phred_Qscore_offset to 43 (more aggressive trimming of low quality bases from 3' end of reads
 * Hard trim the first or last N bases from raw reads by setting e.g., trim_reads to (5, 5, 0, 0)
 * Add additional 'adapter sequences' to be filtered (any contaminant can be searched for, I have added long A-repeats in one library where this appeared common). This can be done easily in the API, but requires editing the JSON file for the CLI.
+
+I still don't understand the `max_alleles_consens` parameter
+------------------------------------------------------------
+In step 5 base calls are made with a diploid model using the parameters estimated in
+step 4. The only special case in when `max_alleles_consens` = 1, in which case the step 4
+heterozygosity estimate will be fixed to zero and the error rate will suck up all of the 
+variation within sites, and then the step 5 base calls will be haploid calls. For all 
+other values of `max_alleles_consens`, base calls are made using the diploid model using 
+the H and E values estimated in step 4. **After site base calls are made** ipyrad then counts 
+the number of alleles in each cluster. This value is now simply stored in step 5 for use 
+later in step 7 to filter loci, under the assumption that if a locus has paralogs in one 
+sample then it probably has them in other samples but there just wasn't enough variation to 
+detect them.
