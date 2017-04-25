@@ -87,6 +87,7 @@ def run(data, samples, force, ipyclient):
     ## with 'samples' taken into account. Now we create the loci file (default)
     ## output and build a stats file.
     data.outfiles.loci = os.path.join(data.dirs.outfiles, data.name+".loci")
+    data.outfiles.alleles = os.path.join(data.dirs.outfiles, data.name+".alleles.loci")
     make_loci_and_stats(data, samples, ipyclient)
 
     ## OPTIONAL OUTPUTS:
@@ -578,17 +579,44 @@ def make_loci_and_stats(data, samples, ipyclient):
     ## sort by start value
     tmploci.sort(key=lambda x: int(x.split(".")[-1]))
     ## write tmpchunks to locus file
-    alleles = 1
-    with open(data.outfiles.loci, 'w') as locifile:
-        for tmploc in tmploci:
-            with open(tmploc, 'r') as inloc:
-                locifile.write(inloc.read())
-            #if alleles:
-            #    write_alleles(tmploci)
+
+    locifile = open(data.outfiles.loci, 'w')
+    if "a" in data.paramsdict["output_formats"]:
+        inall = open(data.outfiles.alleles, 'w')
+
+    for tmploc in tmploci:
+        with open(tmploc, 'r') as inloc:
+            locdat = inloc.read()
+            locifile.write(locdat)
+
+            ## write alleles
+            if "a" in data.paramsdict["output_formats"]:            
+                inalleles = get_alleles(locdat)
+                inall.write(inalleles)
             os.remove(tmploc)
+
+    locifile.close()
+    if "a" in data.paramsdict["output_formats"]:
+        inall.close()
 
     ## make stats file from data
     make_stats(data, samples, samplecov, locuscov)
+
+
+
+def get_alleles(locdat):
+    locs = []
+    for loc in locdat.split("|\n"):
+        lines = loc.split("\n")
+        inloc = []
+        for line in lines[:-1]:
+            name, seq = line.split()
+            seq1, seq2 = splitalleles(seq)
+            inloc.append(name+"_0     "+seq1)
+            inloc.append(name+"_1     "+seq2)
+        inloc.append("//  "+lines[-1][2:])
+        locs.append("\n".join(inloc))
+    return "\n".join(locs)
 
 
 
@@ -610,7 +638,8 @@ def locichunk(args):
 
     ## get seqs db
     io5 = h5py.File(data.clust_database, 'r')
-    aseqs = io5["seqs"][hslice[0]:hslice[1], ]
+    aseqs = np.char.upper(io5["seqs"][hslice[0]:hslice[1], ])
+    #aseqs = io5["seqs"][hslice[0]:hslice[1], ]
 
     ## which loci passed all filters
     #LOGGER.info("edgfilt is %s", aedge.sum())

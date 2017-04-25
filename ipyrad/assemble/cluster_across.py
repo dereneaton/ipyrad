@@ -136,7 +136,9 @@ def persistent_popen_align3(data, samples, chunk):
 
                 ## impute allele (lowercase) info back into alignments
                 for kidx, key in enumerate(keys):
-                    concatseq = dalign1[key].replace("\n", "")
+                    concatseq = dalign1[key].replace("\n", "")+\
+                                "nnnn"+dalign2[key].replace("\n", "")
+
                     ## impute alleles
                     if save_alleles:
                         newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
@@ -158,7 +160,8 @@ def persistent_popen_align3(data, samples, chunk):
                         concatarr = np.array(list(concatseq))
                         concatarr[newmask] = np.char.lower(concatarr[newmask])
                         concatseq = concatarr.tostring()
-
+                        LOGGER.info(concatseq)
+                        
                     ## fill list with aligned data
                     aligned.append("{}\n{}".format(key, concatseq))
 
