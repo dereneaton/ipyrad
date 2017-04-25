@@ -1,0 +1,25 @@
+package:
+    name: xopen
+    version: '0.1.1'
+source:
+    fn: xopen-0.1.1.tar.gz
+    md5: 4e0e955546ee6bee4ea736b54623a671
+    url: https://pypi.python.org/packages/9a/b7/8906d6b2c4f874c0aacc676709a3d533362ac93bebc4a656c9df19421c9b/xopen-0.1.1.tar.gz#md5=4e0e955546ee6bee4ea736b54623a671
+build:
+    number: '0'
+    script: $PYTHON setup.py install --single-version-externally-managed --record record.txt
+    skip: 'False'
+requirements:
+    build:
+        - python {{PY_VER}}*,>=2.7
+    run:
+        - python {{PY_VER}}*,>=2.7
+test:
+    imports:
+        - xopen
+    #commands:
+    #    - xopen --version > /dev/null
+about:
+    home: https://pypi.python.org/pypi/xopen
+    license: MIT License
+    summary: Open compressed files transparently
