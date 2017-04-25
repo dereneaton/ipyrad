@@ -181,13 +181,14 @@ class Bpp(object):
         seed=12345,
         quiet=False,
         randomize_order=False,
-        return_asyncs=False,
         ):
         """
-        Submits a job to run the cluster and returns an asynchronous result 
-        object. The seed for the random number generator if not set is randomly 
-        drawn, and if multiple reps are submitted then each will draw subsequent
-        random seeds after that. An ipyclient connection is required. 
+        Submits bpp jobs to run on a cluster (ipyparallel Client). 
+        The seed for the random number generator if not set is randomly 
+        drawn, and if multiple reps are submitted (nreps>1) then each will 
+        draw a subsequent random seeds after that. An ipyclient connection 
+        is required. Asynchronous result objects are stored in the bpp 
+        object submitting the jobs. 
         
         Parameters:
         -----------
@@ -206,10 +207,6 @@ class Bpp(object):
             if True then when maxloci is set this will randomly sample a 
             different set of N loci in each replicate, rather than sampling
             just the first N loci < maxloci. 
-        return_asyncs (bool):
-            if True then asynchronous result objects are returned. These are 
-            useful for debugging if a job fails.
-
         """
         ## initiate random seed
         np.random.seed(seed)
@@ -240,9 +237,6 @@ class Bpp(object):
         if not quiet:
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
                              .format(nreps, prefix, self._nloci))
-
-        if return_asyncs:
-            return asyncs
 
 
 
