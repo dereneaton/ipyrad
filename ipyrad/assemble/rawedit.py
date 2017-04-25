@@ -427,6 +427,19 @@ def run2(data, samples, force, ipyclient):
     ## parallel client
     lbview = ipyclient.load_balanced_view()
 
+    ## only allow extra adapters in filters==3, 
+    ## and add poly repeats if not in list of adapters
+    if int(data.paramsdict["filter_adapters"]) == 3:
+        if not data._hackersonly["p3_adapters_extra"]:
+            for poly in ["A"*8, "T"*8, "C"*8, "G"*8]:
+                data._hackersonly["p3_adapters_extra"].append(poly)
+        if not data._hackersonly["p5_adapters_extra"]:    
+            for poly in ["A"*8, "T"*8, "C"*8, "G"*8]:
+                data._hackersonly["p5_adapters_extra"].append(poly)
+    else:
+        data._hackersonly["p5_adapters_extra"] = []
+        data._hackersonly["p3_adapters_extra"] = []
+
     ## Hard to wrap this safely. We would like it to remove leftover
     ## files if interrupted, but it seems to require a hard shutdown of 
     ## ipcluster to kill the bash jobs. Should we shut it down inside
