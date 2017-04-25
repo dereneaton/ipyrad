@@ -5,6 +5,29 @@
 Release Notes
 =============
 
+0.6.16
+------
+**April 25, 2017**
+
+- alleles output now supported
+- Additional documentation for max_alleles_consens parameter.
+- support alleles output, minor bug fixes for step6, much faster alignment step6
+- lower default 'cov' value for vsearch within clustering in RAD/ddrad/pairddrad
+- tetrad bug, use same ipyclient for consensus tree building
+- store asyncs in the structure object
+- cosmetic
+- allow passing in ipyclient explicitly in .run() in tetrad
+- fix for time stamp issue in tetrad
+- Better testing for existence of all R2 files for merged assemblies.
+- notebook updates
+- tunnel docs update
+- updated HPC docs
+- tetrad cookbook updated
+- HPC docs update
+- bpp cookbook good to go
+- update tetrad notebook
+- missing import
+
 0.6.15
 ------
 **April 18, 2017**
