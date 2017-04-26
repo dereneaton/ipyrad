@@ -5,6 +5,22 @@
 Release Notes
 =============
 
+0.6.17
+------
+**April 26, 2017**
+
+- support for alleles file in bpp tools
+- align names in alleles output
+- bugfix to name padding in .alleles output
+- slight delay between jobs
+- bpp store asyncs
+- bpp store asyncs
+- update bpp cookbook
+- testing html
+- testing html
+- new filter_adapters=3 option adds filtering of poly-repeats
+- conda recipe update for cutadapt w/o need of add-channel
+
 0.6.16
 ------
 **April 25, 2017**
