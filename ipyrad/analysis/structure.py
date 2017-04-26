@@ -4,10 +4,11 @@
 
 import os
 import glob
-import subprocess
 import sys
-import pandas as pd
+import time
+import subprocess
 import numpy as np
+import pandas as pd
 from ipyrad.analysis.tetrad import get_spans
 
 
@@ -245,6 +246,7 @@ class Structure(object):
             if not quiet:
                 sys.stderr.write("submitted {} structure jobs [{}-K-{}]\n"\
                                 .format(nreps, self.name, kpop))
+        time.sleep(1)
 
 
 
