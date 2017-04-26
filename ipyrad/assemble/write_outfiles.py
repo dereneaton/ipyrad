@@ -618,8 +618,9 @@ def get_alleles(locdat):
             seq1, seq2 = splitalleles(seq)
             inloc.append(name+"_0" + spacer * " " + seq1)
             inloc.append(name+"_1" + spacer * " " + seq2)
-        inloc.append("//  "+lines[-1][2:])
-        locs.append("\n".join(inloc))
+        if inloc:
+            inloc.append("//  "+lines[-1][2:]+"|")
+            locs.append("\n".join(inloc))
     return "\n".join(locs)
 
 
