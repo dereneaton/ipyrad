@@ -132,6 +132,7 @@ class Bpp(object):
                 "usedata": 1,
                 "cleandata": 0,
                 "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
+                "copied": False,
             }
         self._kwargs.update(kwargs)
 
@@ -147,9 +148,27 @@ class Bpp(object):
         self.tree = ete.Tree(guidetree)
 
         ## parsing attributes
-        self.imap = imap
+        self.imap = {i:j for i, j in imap.items()}
         if not self.imap:
             self.imap = {i:i for i in tree.get_leaf_names()}
+
+        ## update stats if alleles instead of loci 
+        if ('.alleles.loci' in locifile) and (not self._kwargs['copied']):
+            ## add 0/1 to names
+            keys = self.imap.keys()
+            for key in keys:
+                oldvals = self.imap[key]
+                newvals = []
+                for val in oldvals:
+                    newvals += [val+"_0", val+"_1"]
+                self.imap[key] = newvals
+
+            ## double the minmap
+            if self._kwargs['minmap']:
+                self._kwargs["minmap"] = \
+                {key: val*2 for key, val in self._kwargs['minmap'].items()}
+
+        ## checks
         assert isinstance(self.imap, dict), "you must enter an IMAP dictionary"
         assert set(self.imap.keys()) == set(self.tree.get_leaf_names()), \
                "IMAP keys must match guidetree names"
@@ -463,8 +482,10 @@ class Bpp(object):
             locifile=newdict["files"].locifile,
             workdir=newdict["workdir"],
             guidetree=newdict["tree"].write(),
-            imap=newdict["imap"],
+            imap={i:j for i, j in newdict["imap"].items()},
+            copied=True,
             )
+
         ## update special dict attributes but not files
         for key, val in newobj.params.__dict__.iteritems():
             newobj.params.__setattr__(key, self.params.__getattribute__(key))
