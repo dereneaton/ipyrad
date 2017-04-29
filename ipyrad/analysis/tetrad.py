@@ -1138,9 +1138,10 @@ def compute_tree_stats(self, ipyclient):
         #fulltre = toytree.tree(self.trees.tree, format=0)
         #[toytree.tree(i.strip(), format=0).tree for i in inboots.readlines()]
         with open(self.trees.boots, 'r') as inboots:
-            #wboots = [fulltre.tree] + \
-            wboots = [fulltre] + \
-            [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+            ## only grab as many boots as the last option said was max
+            bb = [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+            wboots = [fulltre] + bb[-self.nboots:]
+        ## infer consensus            
         wctre, wcounts = consensus_tree(wboots, names=names)
         self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
         with open(self.trees.cons, 'w') as ocons:
