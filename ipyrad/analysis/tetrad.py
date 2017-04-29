@@ -38,7 +38,7 @@ import itertools
 import subprocess
 import numpy as np
 import ipyrad as ip
-from bitarray import bitarray
+#from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
 from ipyrad.assemble.util import IPyradWarningExit, progressbar
@@ -1797,15 +1797,17 @@ def _find_clades(trees, names):
     for tree in trees:
         tree.unroot()
         for node in tree.traverse('postorder'):
-            bits = bitarray('0'*len(tree))
+            #bits = bitarray('0'*len(tree))
+            bits = np.zeros(len(tree), dtype=np.bool_)
             for child in node.iter_leaf_names():
-                bits[ndict[child]] = 1
+                bits[ndict[child]] = True
             ## if parent is root then mirror flip one child (where bit[0]=0)
             # if not node.is_root():
             #     if node.up.is_root():
             #         if bits[0]:
             #             bits.invert()
-            clade_counts[bits.to01()] += 1
+            bitstring = "".join([np.binary_repr(i) for i in bits])
+            clade_counts[bitstring] += 1
 
     ## convert to freq
     for key, val in clade_counts.items():
