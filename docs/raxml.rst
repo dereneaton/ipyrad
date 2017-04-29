@@ -19,6 +19,55 @@ More information about RAxML can be found in the
 and on the google group `raxml forum <https://groups.google.com/forum/#!topic/raxml/>`__. 
 
 
+Running raxml (threaded) on a single node
+------------------------------------------
+This is the most common code I use to analyses RAD-seq alignments. It runs 
+the (-f a) method, which performs the *standard hill-climbing algorithm* to 
+find the best scoring ML tree *and* it performs a rapid bootstrap
+analysis. We tell it how many bootstraps with the -N option.
+
+.. code:: bash
+
+    ## this is an example call to run raxml tree inference w/ bootstrapping
+    raxmlHPC-PTHREADS-AVX2 -f a \              ## do rapid-bootstrapping & full search
+                      -T 20 \                  ## number of threads available
+                      -m GTRGAMMA \            ## use GTRGAMMA model
+                      -N 100 \                 ## 100 searches from parsimony start trees
+                      -x 12345 \               ## bootstrap random seed 
+                      -p 54321 \               ## parsimony random seed
+                      -n outname \             ## a name for your output files
+                      -w outdir \              ## a directory for your output files
+                      -s inputfile.phy \       ## your sequence alignment
+                      -o outgroup1,outgroup2   ## set your outgroups!
+
+
+Optional: running RAxML interactively in a jupyter-notebook
+---------------------------------------------------------
+We have written a wrapper function to easily run simple raxml analyses in 
+a jupyter notebook. It is a convenience function that removes a lot of work 
+if you find yourself typing in the same raxml command string over and over again
+each week. See this `ipyrad analysis raxml tutorial <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__ for more details.
+
+
+Should I use the GTRCAT model?
+------------------------------
+GTRCAT is a speed improvement for modeling rate variation under the GTRGAMMA model. 
+It is particularly designed for modeling rate heterogeneity across very large trees
+(e.g., hundreds of taxa), and is not recommended for smaller trees. In fact the raxml
+docs state in **bold font** that using it for less than 50 taxa is a bad idea. If your 
+tree has >100 taxa then I would say go for it.
+
+
+Setting an outgroup
+-------------------
+If you have prior information about which clade is the outgroup I recommend 
+setting this value in the command string. List each sampled taxon
+in the outgroup comma-separated. Setting the outgroups makes your life easier.
+If you do not set the outgroup but try to re-root your tree later the node labels 
+indicating bootstrap support values can easily become misplaced in many 
+tree plotting programs. 
+
+
 Installing raxml on a cluster
 -----------------------------
 There are many versions of raxml available and the one on your system may not 
@@ -35,13 +84,12 @@ so.) I usually recommend using `conda`, which makes it quite easy to install:
 However, you will probably be able to get a bit faster performance if you 
 build raxml from source on your machine, since conda does not yet handle 
 well checking for various threading/compiling options. 
-
-As an alternative to using conda, or your HPC system's version of raxml
-(if there is one), the code below can be used to install raxml locally. 
-I will assume that your machine has AVX2 mode available. 
-This installation will put the executables in a local directory called 
-`~/local/bin/` which you will want to add to your $PATH 
-(add it to your .bashrc file).
+Therefore, as an alternative to using conda, or your HPC system's version 
+of raxml, the code below can be used to install a specific version of 
+raxml locally. In this example I install the AVX2 version after checking that
+the system I was using had AVX2 available. This installation will put the 
+executables in a local directory called `~/local/bin/` which you will want 
+to add to your $PATH (i.e., add it to your .bashrc file).
 
 .. code:: bash  
 
@@ -88,46 +136,6 @@ options in raxml to do this. The HYBRID approach makes use of MPI to distribute
 threaded jobs across different compute nodes, but I think it's pretty 
 tricky to get working right.
 
-
-Running raxml (threaded) on a single node
-------------------------------------------
-This is the most common code I use to analyses RAD-seq alignments. It runs 
-the (-f a) method, which performs the *standard hill-climbing algorithm* to 
-find the best scoring ML tree *and* it performs a rapid bootstrap
-analysis. We tell it how many bootstraps with the -N option.
-
-.. code:: bash
-
-    ## this is an example call to run raxml tree inference w/ bootstrapping
-    raxmlHPC-PTHREADS-AVX2 -f a \              ## do rapid-bootstrapping & full search
-                      -T 20 \                  ## number of threads available
-                      -m GTRGAMMA \            ## use GTRGAMMA model
-                      -N 100 \                 ## 100 searches from parsimony start trees
-                      -x 12345 \               ## bootstrap random seed 
-                      -p 54321 \               ## parsimony random seed
-                      -n outname \             ## a name for your output files
-                      -w outdir \              ## a directory for your output files
-                      -s inputfile.phy \       ## your sequence alignment
-                      -o outgroup1,outgroup2   ## set your outgroups!
-
-
-Should I use the GTRCAT model?
-------------------------------
-GTRCAT is a speed improvement for modeling rate variation under the GTRGAMMA model. 
-It is particularly designed for modeling rate heterogeneity across very large trees
-(e.g., hundreds of taxa), and is not recommended for smaller trees. In fact the raxml
-docs state in **bold font** that using it for less than 50 taxa is a bad idea. If your 
-tree has >100 taxa then I would say go for it.
-
-
-Setting an outgroup
--------------------
-If you have prior information about which clade is the outgroup I recommend 
-setting this value in the command string. List each sampled taxon
-in the outgroup comma-separated. Setting the outgroups makes your life easier.
-If you do not set the outgroup but try to re-root your tree later the node labels 
-indicating bootstrap support values can easily become misplaced in many 
-tree plotting programs. 
 
 
 Submitting an MPI HYBRID job to run on a cluster (experimental)

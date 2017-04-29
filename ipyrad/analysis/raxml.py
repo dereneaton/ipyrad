@@ -140,10 +140,20 @@ class Raxml(object):
 
     def run(self, 
         ipyclient=None, 
-        quiet=False
+        quiet=False,
+        remove_previous=False,
         ):
         """
         Submits raxml job to run on the cluster. 
+
+        Parameters
+        -----------
+        ipyclient:
+            Not yet supported... 
+        quiet: 
+            suppress print statements
+        remove_previous:
+            remove existing results files with this job name. 
         """
 
         ## attach tree paths to the results
@@ -154,20 +164,29 @@ class Raxml(object):
         f5 = os.path.join(self.params.w, "RAxML_info."+self.params.n)
 
         ## stop before trying in raxml
+        if remove_previous:
+            for oldfile in [f1, f2, f3, f4, f5]:
+                if os.path.exists(oldfile):
+                    os.remove(oldfile)
+
         if os.path.exists(f5):
             print("Error: set a new name for this job:\nFile exists: {}".format(f5))
             return 
 
+        ## TODO: add a progress bar tracker here. It could even read it from
+        ## the info file that is being written. 
         ## submit it
         if not ipyclient:
             proc = _call_raxml(self._command_list)
             self.stdout = proc[0]
             self.stderr = proc[1]
         else:
+            print("not yet supported")
+            return 
             sync = ipyclient[0].apply(_call_raxml, self._command_list)
             sync.wait()
 
-        ## error checking
+        ## TODO: error checking
         ## ...
 
         if os.path.exists(f1):
