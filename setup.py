@@ -13,9 +13,7 @@ def requires():
 
 
 def dependency_links():
-    """
-    return: the package specifications
-    """
+    """ return: the package specifications """
     with open('constraints.txt') as infile:
         return infile.read().splitlines()
 
