@@ -10,10 +10,9 @@ ease of use, and is among the most commonly used software for analyzing RAD-seq
 alignments. While it is easy to run a multi-threaded version of RAxML, which 
 can take advantage of many threads on a single machine, it is a bit more difficult
 to optimize a run that is parallized over many connected machines on 
-a HPC cluster. Here I list a few tips for running RAxML either in as a 
-multi-threaded (PTHREADS) mode, or in the MPI version. We also list some tips
-that seem to work well for analyzing large concatenated RAD-seq alignments 
-(.phy output file) from ipyrad. 
+a HPC cluster, which requires the MPI version. Below we list a few common 
+commands for analyzing large RAD-seq alignments in RAxML. This is not an 
+exhaustive tutorial, just a quick quide. 
 
 More information about RAxML can be found in the  
 `v.8.0 raxml documentation <https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj4opaa1IjRAhVB1oMKHajPAMAQFggcMAA&url=https%3A%2F%2Fbioinformatics.oxfordjournals.org%2Fcontent%2Fsuppl%2F2014%2F01%2F18%2Fbtu033.DC1%2FNewManual.pdf&usg=AFQjCNH_8fbJI7fBU6yVL74UFKRzZhftFg&sig2=3GfktJYcAdFcSxRWs0TgFw>`__ 
@@ -24,18 +23,24 @@ Installing raxml on a cluster
 -----------------------------
 There are many versions of raxml available and the one on your system may not 
 be up to date. You can ask your administrator to install the latest version, or 
-install it yourself *locally* (you do not need administrative privileges for 
-this.) I usually recommend using `conda`, but in this case recommend installing
-from source instead, since conda does not yet handle well checking for various
-threading/compiling options. 
+install it yourself *locally* (you do not need administrative privileges to do 
+so.) I usually recommend using `conda`, which makes it quite easy to install: 
 
-The code below installs three versions of raxml, the PTHREADS (threaded version), 
-MPI (can use processors from different nodes), and Hybrid
-(a mix of the first two), all with the AVX mode enabled. 
+```bash
+## one way of installing raxml is with conda
+conda install raxml -c bioconda
+```
+
+However, you will probably be able to get a bit faster performance if you 
+build raxml from source on your machine, since conda does not yet handle 
+well checking for various threading/compiling options. 
+
+As an alternative to using conda, or your HPC system's version of raxml
+(if there is one), the code below can be used to install raxml locally. 
+I will assume that your machine has AVX2 mode available. 
 This installation will put the executables in a local directory called 
 `~/local/bin/` which you will want to add to your $PATH 
 (add it to your .bashrc file).
-
 
 .. code:: bash  
 
@@ -77,15 +82,17 @@ just use the PTHREADS (threaded) version, as this will most efficiently make use
 of the cores on that node. The MPI version is needed to make use of cores spread
 across multiple nodes, however, it only offers a subset of the functions that
 are available in the threaded version. Mostly it is used for distributing many
-independent bootstrap analyses. The HYBRID approach makes use of MPI to distribute
-threaded jobs across different compute nodes. This can be the most efficient method
-but can also be a bit tricky to get working.
+independent bootstrap analyses, which later need to be combined using the 
+options in raxml to do this. The HYBRID approach makes use of MPI to distribute
+threaded jobs across different compute nodes, but I think it's pretty 
+tricky to get working right.
 
 
 Running raxml (threaded) on a single node
 ------------------------------------------
-This code run the (-f a) method, which performs the *standard hill-climbing
-algorithm* to find the best scoring ML tree *and* it performs a rapid bootstrap
+This is the most common code I use to analyses RAD-seq alignments. It runs 
+the (-f a) method, which performs the *standard hill-climbing algorithm* to 
+find the best scoring ML tree *and* it performs a rapid bootstrap
 analysis. We tell it how many bootstraps with the -N option.
 
 .. code:: bash
@@ -103,33 +110,6 @@ analysis. We tell it how many bootstraps with the -N option.
                       -o outgroup1,outgroup2   ## set your outgroups!
 
 
-
-Running raxml (HYBRID) across multiple nodes
---------------------------------------------
-The HYBRID version of raxml is best used for large-scale cluster analyses
-when you have access to many cores spread across multiple compute nodes. 
-Because this version uses MPI you must call an MPI executable 
-(e.g., mpirun) before the command to specify the number of nodes 
-and use -T to specify the number of threads per node. It is best that you are
-connected to many cores with the same number of cores. The command below 
-spreads 4 jobs across nodes running each with 20 threads. 
-
-.. code:: bash
-
-    ## this is an example call to run raxml tree inference w/ bootstrapping
-    mpirun -np 4 --map-by ppr:1:node:pe=20 raxmlHPC-HYBRID-AVX2 \
-                      -f a \    ## do rapid-bootstrapping & full search
-                      -T 20 \                    ## number of threads available
-                      -m GTRGAMMA \              ## use GTRGAMMA model
-                      -N 100 \                   ## 100 searches from parsimony start trees
-                      -x 12345 \                 ## bootstrap random seed 
-                      -p 54321 \                 ## parsimony random seed
-                      -n outname \               ## a name for your output files
-                      -w outdir \                ## a directory for your output files
-                      -s inputfile.phy \         ## your sequence alignment
-                      -o outgroup1,outgroup2     ## set your outgroups!
-
-
 Should I use the GTRCAT model?
 ------------------------------
 GTRCAT is a speed improvement for modeling rate variation under the GTRGAMMA model. 
@@ -143,13 +123,14 @@ Setting an outgroup
 -------------------
 If you have prior information about which clade is the outgroup I recommend 
 setting this value in the command string. List each sampled taxon
-in the outgroup comma-separated. Setting the outgroups now makes your life easier.
+in the outgroup comma-separated. Setting the outgroups makes your life easier.
 If you do not set the outgroup but try to re-root your tree later the node labels 
-indicating bootstrap support values can easily become misplaced. 
+indicating bootstrap support values can easily become misplaced in many 
+tree plotting programs. 
 
 
-Submitting jobs to run on a cluster
------------------------------------
+Submitting an MPI HYBRID job to run on a cluster (experimental)
+---------------------------------------------------------------
 The method we are using will distribute 100 replicate analyses across all of the
 cores you are connected to (including across multiple nodes) using MPI. 
 But we need to make sure we tell the program explicitly how we many cores 
@@ -177,7 +158,7 @@ with a name like *raxml-script.sh*.
     cd $HOME
 
     ## you can load a system-wide MPI module if available
-    #module load MPI/OpenMPI
+    module load OpenMPI
 
     ## call mpiexec and raxml, use -np for number of cores.
     ~/miniconda/bin/mpiexec -np 4 ~/local/bin/raxml-HYBRID-AVX2 \
@@ -204,9 +185,32 @@ queue that you are submitting to.
 
 Plotting the trees
 ------------------
-There are many ways to do this. I prefer using the *ape* package in R. 
-You can make a simple tree plot with the code below. 
+There are many ways to do this. I wrote a Python program called toytree which
+I prefer, but another popular alternative is the *ape* package in R. 
 
+To make a simple tree plot in python use the code below. 
+
+.. code:: python
+
+    ## load modules
+    import toyplot
+    import toytree
+
+    ## draw a tree
+    tre = toytree.tree("raxout/RAxML_bipartitions.name.tre")
+    canvas, axes = tre.draw(
+        width=400,
+        node_labels=tre.get_node_values('support'),
+        )
+
+    ## save the tree
+    toyplot.html.render(canvas, "mytree.html")
+    import toyplot.pdf
+    toyplot.pdf.render(canvas, "mytree.pdf")
+
+
+
+To make a simple tree plot in R use the code below. 
 
 .. code:: python
 
