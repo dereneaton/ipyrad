@@ -1496,7 +1496,7 @@ def nworker(data, smpchunk, tests):
         seqview = io5["bootsarr"][:]
         maparr = io5["bootsmap"][:]
 
-    ## create an N-mask array of all seq cols
+    ## create an N-mask array of all seq cols (this isn't really too slow)
     nall_mask = seqview[:] == 78
 
     ## tried numba compiling everythign below here, but was not faster
@@ -1517,12 +1517,12 @@ def nworker(data, smpchunk, tests):
 
         ## get N-containing columns in 4-array, and invariant sites.
         nmask = np.any(nall_mask[sidx], axis=0)
-        nmask += np.all(seqchunk == seqchunk[0], axis=0)
+        nmask += np.all(seqchunk == seqchunk[0], axis=0)  ## <- do we need this?
 
         ## get matrices if there are any shared SNPs
         ## returns best-tree index, qscores, and qstats
         #bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
-        bidx, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)        
+        bidx, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
         
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
