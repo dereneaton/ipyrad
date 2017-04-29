@@ -26,10 +26,11 @@ be up to date. You can ask your administrator to install the latest version, or
 install it yourself *locally* (you do not need administrative privileges to do 
 so.) I usually recommend using `conda`, which makes it quite easy to install: 
 
-```bash
-## one way of installing raxml is with conda
-conda install raxml -c bioconda
-```
+.. code:: bash
+
+    ## one way of installing raxml is with conda
+    conda install raxml -c bioconda
+
 
 However, you will probably be able to get a bit faster performance if you 
 build raxml from source on your machine, since conda does not yet handle 
