@@ -42,12 +42,12 @@ Mac install instructions for *conda*
 
     ## The curl command is used to download the installer from the web.
     ## Take note that the -O flag is a capital o not a zero.
-    curl -O https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh
+    curl -O https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh
 
     ## Install miniconda. By default it will propose installing to your
     ## home directory, which should be fine, e.g., `/home/user/miniconda2`
     ## When asked yes/no to append the miniconda directory to $PATH, say yes.
-    bash Miniconda-latest-MacOSX-x86_64.sh
+    bash Miniconda2-latest-MacOSX-x86_64.sh
 
     ## Now run the following command to reload your ~/.bash_profile so that 
     ## miniconda will be in your path. This is necessary so that the conda 
@@ -66,12 +66,12 @@ Linux install instructions for conda
 
     ## The curl command is used to download the installer from the web. Take note
     ## that the -O flag is a capital o not a zero.
-    wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh
+    wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh
 
     ## Install miniconda. Follow the directions, by default it will propose installing
     ## to your home directory, which should be fine, e.g., `/home/user/miniconda2`
     ## When asked yes/no whether to append the miniconda directory to $PATH, say yes.
-    bash Miniconda-latest-Linux-x86_64.sh
+    bash Miniconda2-latest-Linux-x86_64.sh
 
     ## You could now quit and reopen the terminal, or just run the following command
     ## which reloads your ~/.bashrc so that miniconda will now be in your path.

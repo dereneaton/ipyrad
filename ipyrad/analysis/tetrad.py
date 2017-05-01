@@ -38,7 +38,7 @@ import itertools
 import subprocess
 import numpy as np
 import ipyrad as ip
-from bitarray import bitarray
+#from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
 from ipyrad.assemble.util import IPyradWarningExit, progressbar
@@ -1138,9 +1138,10 @@ def compute_tree_stats(self, ipyclient):
         #fulltre = toytree.tree(self.trees.tree, format=0)
         #[toytree.tree(i.strip(), format=0).tree for i in inboots.readlines()]
         with open(self.trees.boots, 'r') as inboots:
-            #wboots = [fulltre.tree] + \
-            wboots = [fulltre] + \
-            [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+            ## only grab as many boots as the last option said was max
+            bb = [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
+            wboots = [fulltre] + bb[-self.nboots:]
+        ## infer consensus            
         wctre, wcounts = consensus_tree(wboots, names=names)
         self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
         with open(self.trees.cons, 'w') as ocons:
@@ -1495,7 +1496,7 @@ def nworker(data, smpchunk, tests):
         seqview = io5["bootsarr"][:]
         maparr = io5["bootsmap"][:]
 
-    ## create an N-mask array of all seq cols
+    ## create an N-mask array of all seq cols (this isn't really too slow)
     nall_mask = seqview[:] == 78
 
     ## tried numba compiling everythign below here, but was not faster
@@ -1516,12 +1517,12 @@ def nworker(data, smpchunk, tests):
 
         ## get N-containing columns in 4-array, and invariant sites.
         nmask = np.any(nall_mask[sidx], axis=0)
-        nmask += np.all(seqchunk == seqchunk[0], axis=0)
+        nmask += np.all(seqchunk == seqchunk[0], axis=0)  ## <- do we need this?
 
         ## get matrices if there are any shared SNPs
         ## returns best-tree index, qscores, and qstats
         #bidx, qscores, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
-        bidx, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)        
+        bidx, qstats = calculate(seqchunk, maparr[:, 0], nmask, tests)
         
         ## get weights from the three scores sorted. 
         ## Only save to file if the quartet has information
@@ -1797,15 +1798,17 @@ def _find_clades(trees, names):
     for tree in trees:
         tree.unroot()
         for node in tree.traverse('postorder'):
-            bits = bitarray('0'*len(tree))
+            #bits = bitarray('0'*len(tree))
+            bits = np.zeros(len(tree), dtype=np.bool_)
             for child in node.iter_leaf_names():
-                bits[ndict[child]] = 1
+                bits[ndict[child]] = True
             ## if parent is root then mirror flip one child (where bit[0]=0)
             # if not node.is_root():
             #     if node.up.is_root():
             #         if bits[0]:
             #             bits.invert()
-            clade_counts[bits.to01()] += 1
+            bitstring = "".join([np.binary_repr(i) for i in bits])
+            clade_counts[bitstring] += 1
 
     ## convert to freq
     for key, val in clade_counts.items():

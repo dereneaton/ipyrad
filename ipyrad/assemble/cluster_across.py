@@ -806,6 +806,7 @@ def multicat(data, samples, ipyclient):
 
     ## Build an array for quickly indexing consens reads from catg files.
     ## save as a npy int binary file.
+    data.tmpdir = os.path.join(data.dirs.consens, data.name+"-tmpaligns")
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp.sort")
     bseeds = os.path.join(data.dirs.consens, data.name+".tmparrs.h5")
 
@@ -824,7 +825,7 @@ def multicat(data, samples, ipyclient):
         raise IPyradWarningExit("error in fill_dups: %s", async2.exception())
 
     ## make a limited njobs view based on mem limits 
-    ## TODO: is using smallview necessary?!
+    ## is using smallview necessary? (yes, it is for bad libraries)
     smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
 
     ## make a list of jobs
@@ -1190,10 +1191,12 @@ def build_clustbits(data, ipyclient):
     progressbar(3, 0, " building clusters     | {} | s6 |".format(elapsed))
     LOGGER.info("building reads file -- loading utemp file into mem")
 
-    ## send sort job to engines. Sorted seeds allows us to work through
-    ## the utemp file one locus at a time instead of reading all into mem.
+    ## skip usorting if not force and already exists
     uhandle = os.path.join(data.dirs.consens, data.name+".utemp")
     usort = os.path.join(data.dirs.consens, data.name+".utemp.sort")
+
+    ## send sort job to engines. Sorted seeds allows us to work through
+    ## the utemp file one locus at a time instead of reading all into mem.
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
     async1 = sps.Popen(cmd, close_fds=True)
     while async1.poll() == None:
@@ -1436,18 +1439,22 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         data.cpus = len(ipyclient)
 
     ## make a vsearch input fasta file with all samples reads concat
-    binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
-    while not binput.ready():
+    clustersfile = os.path.join(data.dirs.consens, data.name+".utemp.sort")
+
+    if force or (not os.path.exists(clustersfile)):
+        binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
+        while not binput.ready():
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(100, 0, " concat/shuffle input  | {} | s6 |".format(elapsed))
+            time.sleep(0.1)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 0, " concat/shuffle input  | {} | s6 |".format(elapsed))
-        time.sleep(0.1)
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " concat/shuffle input  | {} | s6 |".format(elapsed))
-    print("")
+        progressbar(100, 100, " concat/shuffle input  | {} | s6 |".format(elapsed))
+        print("")
 
-    ## calls vsearch, uses all threads available to head node
-    cluster(data, noreverse)
+        ## calls vsearch, uses all threads available to head node
+        cluster(data, noreverse)
 
+    ## if restarting and skipping re-clustering we still enforce re-aligning
     ## make an tmpout directory. First delete if it already exists.
     ## If step 6 crashes and doesn't clean up the tmpaligns dir then
     ## bad things happen and it's tricky to debug.
@@ -1505,7 +1512,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
         removal = []
         removal.append(os.path.join(data.dirs.consens, data.name+".utemp"))
         removal.append(os.path.join(data.dirs.consens, data.name+".htemp"))
-        removal.append(os.path.join(data.dirs.consens, data.name+"_catcons.tmp"))
+        #removal.append(os.path.join(data.dirs.consens, data.name+"_catcons.tmp"))
         removal.append(os.path.join(data.dirs.consens, data.name+"_cathaps.tmp"))
         removal.append(os.path.join(data.dirs.consens, data.name+"_catshuf.tmp"))
         removal.append(os.path.join(data.dirs.consens, data.name+"_catsort.tmp"))
