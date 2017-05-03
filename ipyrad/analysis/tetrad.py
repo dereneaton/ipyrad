@@ -114,10 +114,19 @@ class Params(object):
     def __repr__(self):
         _repr = ""
         keys = sorted(self.__dict__.keys())
-        _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+        maxlen = max(20, 2 + max([len(i) for i in keys]))
+        _printstr = "{:<" + str(maxlen) + "} {:<}\n"
         for key in keys:
             _repr += _printstr.format(key, str(self[key]))
         return _repr
+
+    # def __repr__(self):
+    #     _repr = ""
+    #     keys = sorted(self.__dict__.keys())
+    #     _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+    #     for key in keys:
+    #         _repr += _printstr.format(key, str(self[key]))
+    #     return _repr
 
 
 
@@ -150,7 +159,7 @@ class Tetrad(object):
 
         ## name this assembly
         self.name = name
-        self.dirs = os.path.realpath(workdir)
+        self.dirs = os.path.abspath(os.path.expanduser(workdir))
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
 

@@ -74,13 +74,13 @@ class Raxml(object):
             "x": 12345,
             "p": 54321,
             "o": None,
-            "binary": "raxmlHPC-PTHREADS-AVX"
+            "binary": "raxmlHPC-PTHREADS-SSE3"
             }
         self._kwargs.update(kwargs)
 
         ## check workdir
         if workdir:
-            workdir = os.path.abspath(workdir)
+            workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
             workdir = os.path.curdir        
         if not os.path.exists(workdir):
@@ -98,7 +98,7 @@ class Raxml(object):
             self.params[key] = self._kwargs[key]
 
         ## attributes
-        self.phyfile = phyfile
+        self.phyfile = os.path.abspath(os.path.expanduser(phyfile))
         self.stdout = None
         self.stderr = None
 
@@ -141,7 +141,7 @@ class Raxml(object):
     def run(self, 
         ipyclient=None, 
         quiet=False,
-        remove_previous=False,
+        force=False,
         ):
         """
         Submits raxml job to run on the cluster. 
@@ -152,9 +152,25 @@ class Raxml(object):
             Not yet supported... 
         quiet: 
             suppress print statements
-        remove_previous:
+        force:
             remove existing results files with this job name. 
         """
+
+        ## check for binary
+        backup_binaries = ["raxmlHPC-PTHREADS", "raxmlHPC-PTHREADS-SSE3"]
+
+        ## check user binary first, then backups
+        for binary in [self.params.binary] + backup_binaries:
+            proc = subprocess.Popen(["which", self.params.binary], 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT).communicate()
+            ## update the binary
+            if proc:
+                self.params.binary = binary
+
+        ## if none then raise error
+        if not proc[0]:
+            raise Exception(BINARY_ERROR.format(self.params.binary))
 
         ## attach tree paths to the results
         f1 = os.path.join(self.params.w, "RAxML_bestTree."+self.params.n)
@@ -164,7 +180,7 @@ class Raxml(object):
         f5 = os.path.join(self.params.w, "RAxML_info."+self.params.n)
 
         ## stop before trying in raxml
-        if remove_previous:
+        if force:
             for oldfile in [f1, f2, f3, f4, f5]:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
@@ -230,9 +246,25 @@ class Params(object):
 
     def __repr__(self):
         _repr = ""
-        keys = sorted(self.__dict__.keys())
+        keys = sorted(self.__dict__.keys())      
         _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
         for key in keys:
-            _repr += _printstr.format(key, str(self[key]))
+            _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+            _repr += _printstr.format(key, _val)
         return _repr
 
+
+BINARY_ERROR = """
+  Binary {} not found. 
+
+  Check that you have raxml installed. If you have a different binary
+  installed you can select it using the argument 'binary'. 
+
+  For example, 
+    rax = ipa.raxml(name='test', phyfile='test.phy', binary='raxmlHPC')
+
+  or, you can set it after object creation with:
+    rax.params.binary = "raxmlHPC-PTHREADS"
+"""
+
+  

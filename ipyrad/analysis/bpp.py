@@ -138,7 +138,7 @@ class Bpp(object):
 
         ## check workdir
         if self.workdir:
-            self.workdir = os.path.abspath(self.workdir)
+            self.workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
             self.workdir = os.path.curdir        
         if not os.path.exists(self.workdir):
@@ -520,11 +520,20 @@ class Params(object):
 
     def __repr__(self):
         _repr = ""
-        keys = sorted(self.__dict__.keys())
+        keys = sorted(self.__dict__.keys())      
         _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
         for key in keys:
-            _repr += _printstr.format(key, str(self[key]))
+            _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+            _repr += _printstr.format(key, _val)
         return _repr
+        
+    # def __repr__(self):
+    #     _repr = ""
+    #     keys = sorted(self.__dict__.keys())
+    #     _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+    #     for key in keys:
+    #         _repr += _printstr.format(key, str(self[key]))
+    #     return _repr
 
 
 

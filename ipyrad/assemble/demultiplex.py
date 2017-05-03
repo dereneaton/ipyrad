@@ -1044,7 +1044,7 @@ def splitfiles(data, raws, ipyclient):
             chunklist = zcat_make_temps(data, tups, fidx, tmpdir, optim, njobs, start)
             chunkfiles[handle] = chunklist
             #chunkfiles[fidx] = chunklist
-    print("")
+    #print("")
 
     return chunkfiles
 

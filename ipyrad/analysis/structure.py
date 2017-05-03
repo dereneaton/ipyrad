@@ -100,7 +100,7 @@ class Structure(object):
 
         ## make workdir if it does not exist
         if workdir:
-            self.workdir = os.path.realpath(workdir)
+            self.workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
             self.workdir = os.path.join(os.path.curdir, "analysis-structure")
         if not os.path.exists(self.workdir):
@@ -143,6 +143,7 @@ class Structure(object):
             [self.labels, self.popdata, self.popflag], 
             index=["labels", "popdata", "popflag"]).T
         return header
+
 
     @property
     def result_files(self):
@@ -222,16 +223,32 @@ class Structure(object):
         ## initiate seed
         np.random.seed(seed)
 
+        ## check for stuructre here
+        proc = subprocess.Popen(["which", "structure"],
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT).communicate()
+        if not proc:
+            raise Exception(\
+                "structure is not installed: run `conda install structure -c ipyrad`")
+
         ## prepare files
         self._prepare_structure_files(kpop)
 
         ## check that there is a ipcluster instance running
         for rep in xrange(nreps):
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
-            args = [self.name, self.workdir, self.extraparams.seed, 
-                        self.ntaxa, self.nsites, kpop, rep]
+            args = [
+                self.name, 
+                self.workdir,
+                self.extraparams.seed, 
+                self.ntaxa, 
+                self.nsites,
+                kpop, 
+                rep]
+
             if ipyclient:
-                ## call structure        
+                ## call structure
+                print(args)
                 lbview = ipyclient.load_balanced_view()
                 async = lbview.apply(_call_structure, *(args))
                 self.asyncs.append(async)
@@ -498,6 +515,8 @@ def _get_clumpp_table(self, kpop):
         nreps = len(reps)
     else:
         ninds = nreps = 0
+    if not reps:
+        return
 
     clumphandle = os.path.join(self.workdir, "tmp.clumppparams.txt")
     self.clumppparams.kpop = kpop

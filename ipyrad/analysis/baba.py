@@ -82,7 +82,11 @@ class Baba(object):
             self.data = os.path.realpath(data)
         else:
             self.data = data
-        self.newick = newick
+
+        if isinstance(newick, toytree.tree):
+            self.newick = newick.tree.write()
+        else:
+            self.newick = newick
 
         ## store tests, check for errors
         self.tests = tests
@@ -488,14 +492,12 @@ def _loci_to_arr(loci, taxdict, mindict):
 
 
 
-def tree2tests(newick, constraint_dict=None, constraint_exact=True):
+def tree2tests(newick, constraint_dict=None, constraint_exact=False):
     """
     Returns dict of all possible four-taxon splits in a tree. Assumes
     the user has entered a rooted tree. Skips polytomies.
     """
     ## make tree
-    #tree = ipa.tree(newick).tree
-    #ete.Tree(newick)
     tree = toytree.tree(newick)
     testset = set()
     
@@ -506,6 +508,7 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=True):
 
     ## traverse root to tips. Treat the left as outgroup, then the right.
     tests = []
+    
     ## topnode must have children
     for topnode in tree.tree.traverse("levelorder"):
         for oparent in topnode.children:
@@ -521,30 +524,87 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=True):
                                 if test_constraint(p3node, cdict, "p3", constraint_exact):
                                     #print(topnode.name, onode.name, p3node.name)
                                     
-                                    ## p12 parent is sister to p3 parent
+                                    ## p12 parent is sister to p3parent
                                     p12parent = p3parent.get_sisters()[0]
                                     for p12node in p12parent.traverse("levelorder"):
-                                        if p12node.children:
-                                            p2parent = p12node.children[1]#for p2parent in p12parent.children[1]:
-                                            p1parent = p12node.children[0]
+                                        for p2parent in p12node.children:
                                             for p2node in p2parent.traverse("levelorder"):
                                                 if test_constraint(p2node, cdict, "p2", constraint_exact):
+
+                                                    ## p12 parent is sister to p3parent
+                                                    p1parent = p2parent.get_sisters()[0]
                                                     for p1node in p1parent.traverse("levelorder"):
-                                                        if test_constraint(p1node, cdict, "p1", constraint_exact):
-                                                            test = {}
-                                                            test['p4'] = onode.get_leaf_names()
-                                                            test['p3'] = p3node.get_leaf_names()
-                                                            test['p2'] = p2node.get_leaf_names()
-                                                            test['p1'] = p1node.get_leaf_names()
-                                                            x = list(itertools.chain(*[sorted(test["p4"]) + \
-                                                                                       sorted(test["p3"]) + \
-                                                                                       sorted(test["p2"]) + \
-                                                                                       sorted(test["p1"])]))
-                                                            x = "_".join(x)
-                                                            if x not in testset:
-                                                                tests.append(test)
-                                                                testset.add(x)
-        return tests
+                                                        for p1parent in p1node.children:
+                                                            for p1node in p1parent.traverse("levelorder"):
+                                                                if test_constraint(p1node, cdict, "p1", constraint_exact):
+                                                                    x = (onode.name, p3node.name, p2node.name, p1node.name)
+                                                                    test = {}
+                                                                    test['p4'] = onode.get_leaf_names()
+                                                                    test['p3'] = p3node.get_leaf_names()
+                                                                    test['p2'] = p2node.get_leaf_names()
+                                                                    test['p1'] = p1node.get_leaf_names()
+                                                                    if x not in testset:
+                                                                        tests.append(test)
+                                                                        testset.add(x)
+    return tests                                            
+
+
+
+# def tree2tests(newick, constraint_dict=None, constraint_exact=True):
+#     """
+#     Returns dict of all possible four-taxon splits in a tree. Assumes
+#     the user has entered a rooted tree. Skips polytomies.
+#     """
+#     ## make tree
+#     tree = toytree.ete3mini.Tree(newick)
+#     testset = set()
+    
+#     ## constraints
+#     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
+#     if constraint_dict:
+#         cdict.update(constraint_dict)
+
+#     ## traverse root to tips. Treat the left as outgroup, then the right.
+#     tests = []
+#     ## topnode must have children
+#     for topnode in tree.traverse("levelorder"):
+#         for oparent in topnode.children:
+#             for onode in oparent.traverse("levelorder"):
+#                 if test_constraint(onode, cdict, "p4", constraint_exact):
+#                     #print(topnode.name, onode.name)
+                    
+#                     ## p123 parent is sister to oparent
+#                     p123parent = oparent.get_sisters()[0]
+#                     for p123node in p123parent.traverse("levelorder"):
+#                         for p3parent in p123node.children:
+#                             for p3node in p3parent.traverse("levelorder"):
+#                                 if test_constraint(p3node, cdict, "p3", constraint_exact):
+#                                     #print(topnode.name, onode.name, p3node.name)
+                                    
+#                                     ## p12 parent is sister to p3 parent
+#                                     p12parent = p3parent.get_sisters()[0]
+#                                     for p12node in p12parent.traverse("levelorder"):
+#                                         if p12node.children:
+#                                             p2parent = p12node.children[1]#for p2parent in p12parent.children[1]:
+#                                             p1parent = p12node.children[0]
+#                                             for p2node in p2parent.traverse("levelorder"):
+#                                                 if test_constraint(p2node, cdict, "p2", constraint_exact):
+#                                                     for p1node in p1parent.traverse("levelorder"):
+#                                                         if test_constraint(p1node, cdict, "p1", constraint_exact):
+#                                                             test = {}
+#                                                             test['p4'] = onode.get_leaf_names()
+#                                                             test['p3'] = p3node.get_leaf_names()
+#                                                             test['p2'] = p2node.get_leaf_names()
+#                                                             test['p1'] = p1node.get_leaf_names()
+#                                                             x = list(itertools.chain(*[sorted(test["p4"]) + \
+#                                                                                        sorted(test["p3"]) + \
+#                                                                                        sorted(test["p2"]) + \
+#                                                                                        sorted(test["p1"])]))
+#                                                             x = "_".join(x)
+#                                                             if x not in testset:
+#                                                                 tests.append(test)
+#                                                                 testset.add(x)
+#         return tests
 
 
 
