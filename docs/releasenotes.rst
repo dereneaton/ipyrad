@@ -9,6 +9,10 @@ Release Notes
 ------
 **May 03, 2017**
 
+0.6.18
+------
+**May 03, 2017**
+
 - update to analysis tools
 - accepted the local bpp notebook
 - complete bpp notebook up
