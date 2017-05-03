@@ -5,6 +5,25 @@
 Release Notes
 =============
 
+0.6.18
+------
+**May 03, 2017**
+
+- update to analysis tools
+- accepted the local bpp notebook
+- complete bpp notebook up
+- notebook updates
+- cosmetic
+- cosmetic changes
+- raxml docs
+- raxml cookbook up
+- docs update
+- raxml docs updated
+- links to miniconda updated
+- fix for tetrad restarting bootstraps
+- removed bitarray dependency
+- adding restart checkpoints in step6
+
 0.6.17
 ------
 **April 26, 2017**
