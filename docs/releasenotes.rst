@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.6.19
+------
+**May 04, 2017**
+
+- Handle empty locus when building alleles file.
+- workshop notebook uploaded
+-  "Updating ipyrad/__init__.py to version - 0.6.18
+
 0.6.18
 ------
 **May 03, 2017**
