@@ -610,17 +610,21 @@ def get_alleles(locdat):
         lines = loc.split("\n")
         inloc = []
         for line in lines[:-1]:
-            LOGGER.info("line %s...", line)
-            firstspace = line.index(" ")
-            lastspace = line.rindex(" ")
-            spacer = lastspace - firstspace + 1
-            name, seq = line.split()
-            seq1, seq2 = splitalleles(seq)
-            inloc.append(name+"_0" + spacer * " " + seq1)
-            inloc.append(name+"_1" + spacer * " " + seq2)
+            try:
+                #LOGGER.info("line %s...", line)
+                firstspace = line.index(" ")
+                lastspace = line.rindex(" ")
+                spacer = lastspace - firstspace + 1
+                name, seq = line.split()
+                seq1, seq2 = splitalleles(seq)
+                inloc.append(name+"_0" + spacer * " " + seq1)
+                inloc.append(name+"_1" + spacer * " " + seq2)
+            except ValueError as inst:
+                LOGGER.debug("Found empty locus, all samples filtered.")
         if inloc:
             inloc.append("//  "+lines[-1][2:]+"|")
             locs.append("\n".join(inloc))
+
     return "\n".join(locs)
 
 
