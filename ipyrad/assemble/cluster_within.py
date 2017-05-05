@@ -1795,8 +1795,8 @@ def reconcat(data, sample):
     chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
     LOGGER.info("chunk %s", chunks)
     ## concatenate finished reads
-    sample.files.clusters = os.path.join(data.dirs.clusts,
-                                         sample.name+".clustS.gz")
+    sample.files.clusters = [(os.path.join(data.dirs.clusts,
+                                         sample.name+".clustS.gz"),0)]
     ## reconcats aligned clusters
     with gzip.open(sample.files.clusters, 'wb') as out:
         for fname in chunks:
