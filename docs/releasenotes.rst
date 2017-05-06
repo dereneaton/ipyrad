@@ -20,8 +20,6 @@ Release Notes
 - accepted the local bpp notebook
 - complete bpp notebook up
 - notebook updates
-- cosmetic
-- cosmetic changes
 - raxml docs
 - raxml cookbook up
 - docs update
@@ -57,7 +55,6 @@ Release Notes
 - lower default 'cov' value for vsearch within clustering in RAD/ddrad/pairddrad
 - tetrad bug, use same ipyclient for consensus tree building
 - store asyncs in the structure object
-- cosmetic
 - allow passing in ipyclient explicitly in .run() in tetrad
 - fix for time stamp issue in tetrad
 - Better testing for existence of all R2 files for merged assemblies.
@@ -147,7 +144,6 @@ Release Notes
 - Fix a bug in PE refmapping.
 - Fix error reporting if when testing for existence of the clust_database file at beginning of step 7.
 - Fix bug reading output formats from params file.
-- cosmetic
 - Add docs for dealing with long running jobs due to quality issues.
 - bug fix for output format empty
 - structure cookbook update
@@ -158,7 +154,6 @@ Release Notes
 - update structure cookbook for new code
 - Actually fix the output_format default if blank.
 - Set blank output formats in params to default to all formats.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Add a filter flag for samtools to push secondary alignments to the unmapped file.
 - rm old files
 - shareplot code in progress
@@ -167,28 +162,20 @@ Release Notes
 - beginnings of a migrate script
 - raxml docs updated, needs work still
 - analysis docs page update
-- cosmetic changes
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - structure parallel wrapper scripts up in analysis
-- cosmetic
 - simplifying analysis imports
 - cleanup top imports
 - Adding support for G-PhoCS output format.
 - Fix wacky reporting of mapped/unmapped reads for PE.
 - Document why we don't write out the alleles format currently.
 - module init headers
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added loci2cf script
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - update structure notebook with conda recipes
 - fileconversions updated
 - loci2cf func added
 - cookbook bucky docs up
 - loci2multinex and bucky notebook updated
 - BUCKy cookbook updated
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - bucky conda recipe up
 - fix to API access hint
 - cleaner code by moving msgs to the end
@@ -199,7 +186,6 @@ Release Notes
 0.6.10
 ------
 - Filter reference mapped reads my mapq < 30, and handle the occasional malformed region string in bam_region_to_fasta.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Handle PE muscle failing alignment.
 - Cosmetic faq.rst
 - Cosmetic faq.rst
@@ -213,12 +199,8 @@ Release Notes
 
 0.6.9
 -----
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Changed the sign on the new hackersonly parameter min_SE_refmap_overlap.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added a persistent_popen function for aligning, needs testing before implementing
-- cosmetic
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - debugger in demux was printing way too much
 - bugfix for empty lines in branching subsample file
 - Add a janky version checker to nag the user.
@@ -227,9 +209,7 @@ Release Notes
 -----
 - Actually remove the reference sequence post alignment in step 3. This was BREAKING STUFF.
 - updated notebook requirement in conda recipe
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Handle conda building pomo on different platforms.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Ooops we broke the versioner.py script. Now it's fixed.
 - conda recipe updates
 - conda recipe updates
@@ -253,7 +233,6 @@ Release Notes
 - Roll back change to revcomp reverse strand SE hits. Oops.
 - fix merge conflect with debug messages.
 - Fix a bug in refmap, and handle bad clusters in cluster_within.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Actually revcomp SE - strand reads.
 - updated HPC docs
 - updated HPC docs
@@ -263,19 +242,9 @@ Release Notes
 -----
 - bug fix in building_arrays where completely filtered array bits would raise index error -1
 - tunnel docs updates
-- minor cosmetics
 - method docs updated to say bwa
 - some conda tips added
-- tunneling docs update
-- tunneling docs update
-- tunneling docs update
-- tunneling docs update
-- tunneling docs update
-- tunneling docs update
-- tunneling docs update
-- tunneling docs update
 - fix for name parsing of non gzip files that was leaving an underscore
-- cosmetic
 - Allow get_params using the param string as well as param index
 - Update hpc docs to add the sleep command when firing up ipcluster manually.
 - Fixed some formatting issues in the FAQ.rst.
@@ -301,8 +270,6 @@ Release Notes
 -----
 - update to docs parameters
 - bug fix for merging assemblies with a mix of same named and diff named samples
-- cosmetic
-- Cosmetic change.
 
 0.6.3
 -----
@@ -316,7 +283,6 @@ Release Notes
 -----
 - Fixed malformed nexus output file.
 - cookbook updates to docs
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - updated cookbook structure pedicularis
 
 0.6.0
@@ -331,11 +297,8 @@ Release Notes
 - updating tutorial for latest version/speed
 - added docs for combining multiple plates
 - added docs for combining multiple plates
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added docs for combining multiple plates
-- cosmetic change to docs
 - Removed  from output formats defaults (it doesn't do anything)
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - baba cookbooks [unfinished] up
 - finally added osx QMC and fixed bug for same name and force flag rerun
 - put back in a remove tmpdirs call
@@ -346,20 +309,12 @@ Release Notes
 - better handling of pairgbs no bcode trimming. Now handles --length arg
 - better handling of KBD in demux. Faster compression.
 - forgot sname var in cutadaptit_single
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- cosmetic changes to rawedit
 - Fix step 2 for PE reads crashing during cutatapt.
 - Test for bz2 files in sorted_fastq_path and nag the user bcz we don't support this format.
 - Step 1 create tmp file for estimating optim chunk size in project_dir not ./
 - Add force flag to mapreads(), mostly to save time on rerunning if it crashes during finalize_mapping. Also fixed a nasty bug in refmapping.
 - Added text to faq about why PE original RAD is hard to assemble, cuz people always ask.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- cosmetic
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Better handling of loci w/ duplicate seqs per sample.
-- fkjd;afjd;ka
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Fix a bug that munged some names in branching.
 - merge conflict
 - modified for new trim param names
@@ -371,26 +326,21 @@ Release Notes
 - tested out MPI checks
 - cutadapt upgrade allow for --length option
 - Moved log file reset from init to main to prevent -r from blanking the log >:{
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Moved log file reset from __init__ to __main__
 - Don't bother aligning clusters with duplicates in step 6.
 - baba update
 - remove print statement left in code
 - same fix to names parser, better.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added comment ideas for chrompos in refmap
 - bug fix, Sample names were being oversplit if they had '.' in them
 - test labels, improved spacing, collapse_outgroups options added to baba plots
 - Fix debug message in refmap and don't raise on failure to parse reference sequence.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - attempts to make better cleanup for interrupt in API
 - some cleanup to calling steps 1,2 funcs
 - speed testing demux code with single vs multicore
 - moved setting of ['merged'] to replace filepath names to Assembly instead of main so that it also works for the API
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added a np dict-like arr to be used in baba, maybe in ref.
 - baba plotting functions added
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Better handling of tmpdir in step 6.
 - added baba cookbook
 - only map chrom pos if in reference mode
@@ -402,40 +352,30 @@ Release Notes
 - Adding manuscript analysis tree plotting for empirical PE ddRAD refmap assemblies.
 - More or less complete manuscript analysis results.
 - Actually fix vcf writing CHROM/POS information from refseq mapped reads.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Handle monomorphic loci during vcf construction.
 - removed deprecated subsample option from jointestimate
 - --ipcluster method looks for default profile and cluster-id instance
 - clode cleanup and faster haploid E inference
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - simplified cluster info printing
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - enforce ipyclient.shutdown at end of API run() if engine jobs are not stopped
 - code cleanup. Trying to allow better KBD in step2
 - lots of cleanup to DAG code. Now ok for individual samples to fail in step3, others will continue. Sorts clusters by derep before align chunking
 - Allow assemblies w/o chrom/pos data in the hdf5 to continue using the old style vcf position numbering scheme.
 - Don't print the error message about samples failing step 4 if no samples actually fail.
 - Set a size= for reference sequence to sort it to the top of the chunk prior to muscle aligning.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Allow samples with very few reads to gracefully fail step 4.
 - Better error handling during reference mapping for PE.
 - Fix error reporting in merge_pairs().
 - Add CHROM/POS info to the output vcf file. The sorting order is a little wonky.
 - Handle empty project_dir when running -r.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - a clean bighorse notebook run on 100 cores
 - Fix minor merge conflict in ref_muscle_chunker.
 - Use one persistant subprocess for finalizing mapped reads. Big speed-up. Also fix a stupid bug in estimating insert size.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Better handling of errors in merge_pairs, and more careful cleanup on error.
 - If /dev/shm exists, use it for finalizing mapped reads.
 - Handle a case where one or the other of the PE reads is empty.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - cleaner print cpus func
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Adding a new dataset to the catg and clust hdf5 files to store CHROM and POS info for reference mapped reads.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added cleanhorse notebook
 - working on notebook
 - cleanup up redundancy
@@ -443,14 +383,11 @@ Release Notes
 - MUCH FASTER MUSCLE ALIGNING. And a bug fix to a log reporter
 - bug fix to error/log handler
 - Finish manuscript refmap results analysis. Added a notebook for plotting trees from manuscript Pedicularis assembly.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Better checking for special characters in assembly names, and more informative error message.
 - added a test on big data
 - broken notebook
-- cosmetic
 - development notebook for baba
 - working on shareplots
-- cosmetic
 - testing caching numba funcs for faster run starts
 - added optional import of subprocess32
 - docs update
@@ -458,7 +395,6 @@ Release Notes
 - added option to add additional adapters to be filtered from paired data
 - Adding pairwise fst to manuscript analysis results. Begin work on raxml for manuscript analysis results.
 - Change a log message from info to warn that handles exceptions in rawedit.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - abba baba updated
 - Fixed link in tetrad doc and cosmetic change to API docs.
 - Add comments to results notebooks.
@@ -468,25 +404,9 @@ Release Notes
 - Better cleanup during refmap merge_pairs (#211).
 - update for raxml-HYBRID
 - update raxml docs
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - cleanup old code
 - update raxml docs
 - updating raxml docs
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - update to bucky cookbook
 
 0.5.15
@@ -664,7 +584,6 @@ Release Notes
 - fix for last fix
 - fix for last push gzip
 - collate with io.bufferedwriter is faster
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - faster collating of files
 - Continuing work on sim and empirical analysis.
 - rev on barcode in step2 filter pairgbs
@@ -682,30 +601,24 @@ Release Notes
 - making smoother progress bar in write vcfs
 - bugfix for jointestimate
 - testing bugfixes to jointestimate
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
-- cosmetic
 - default to no subsampling in jointestimate call
 - testing bugfixes to jointestimate
 - added hackersonly option for additional adapters to be filtered
 - bug fix to joint H,E estimate for large data sets introduced in v.0.3.14 that was yielding inflated rates.
 - fix for core count when using API
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Added plots of snp depth across loci, as well as loci counts per sample to results notebook.
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - phylogenetic_invariants notebook up
 - some notes on output formats plans
 - removed leftjust arg b/c unnecessary and doesn't work well with left trimmed data
 
 0.4.2
 -----
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Merging for Samples at any state, with warning for higher level states. Prettier printing for API. Fix to default cores setting on API.
 - fix for merged Assemblies/Samples for s2
 - fix for merged Assemblies&Samples in s3
 - removed limit on number of engines used during indexing
 - Added ddocent to manuscript analysis.
 - tutorial update
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - in progress doc notebook
 - parallel waits for all engines when engines are designated, up until timeout limit
 - parallelized loading demux files, added threads to _ipcluster dict, removed print statement from save
@@ -713,11 +626,8 @@ Release Notes
 - added step number to progress bar when in interactive mode
 - added warning message when filter=2 and no barcodes are present
 - improved kill switch in step 1
-- cosmetic changes
-- cosmetic changes
 - use select to improve cluster progress bar
 - added a CLI option to fine-tune threading
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - added dstat storage by default
 - new default trim_overhang setting and function (0,0,0,0)
 - fix for overzealous warning message on demultiplexing when allowing differences
@@ -729,10 +639,8 @@ Release Notes
 0.4.0
 -----
 - Cosmetic change
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - new sim data and notebook up
 - Added aftrRAD to the manuscript analysis horserace
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - made merging reads compatible with gzipped files from step2
 - modify help message
 - made TESTS global var, made maparr bug fix to work with no map info
@@ -741,8 +649,6 @@ Release Notes
 - more detailed Sample stats_df.s2 categories for paired data
 - made merge command compatible with gzip outputs from step2
 - simplified cutadapt code calls
-- cosmetic
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - updates to simdata notebook
 - merge conflict fix
 - new stats categories for step2 results
@@ -758,7 +664,6 @@ Release Notes
 - Merge branch 'StuntsPT-master'
 - Adding a FAQ to the docs, including some basic ipyparallel connection debugging steps.
 - Adding documentation for the  CLI flag for attaching to already running cluster.
-- Merge branch 'master' of https://github.com/StuntsPT/ipyrad into StuntsPT-master
 - Update docs to include more specifics about ambiguous bases in restriction overhang seqs.
 - Get max of max_fragment_length for all assemblies during merge()
 - Make gbs a special case for handling the restriction overhang.
@@ -787,7 +692,6 @@ Release Notes
 - new simulated data set
 - uploaded cookbook for simulating data
 - no longer register ipcluster to die at exit, but rather call shutdown explicitly for CLI in the finally call of run()
-- cosmetic changes to merge function in util
 - massive code cleanup in refmapping, though mostly cosmetic. Simplified file paths and calls to subprocess.
 - massive restructuring to organize engine jobs in a directed acyclic graph to designate dependencies to ipyparallel. Lot's of code cleanup for subprocess calls.
 - fix for progress bar cutting short in step 6. And simplified some code calling tmpdir.
@@ -821,7 +725,6 @@ Release Notes
 
 0.3.37
 ------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - Fix to allow pipe character  in chrom names of reference sequences
 - Tweak to calculation of inner mate distance (round up and cast to int)
 - Refmap: fix calc inner mate distance PE, handle samples w/ inner mate distance > max, and handle special characters in ref seq chromosome names
@@ -849,13 +752,9 @@ Release Notes
 
 0.3.36
 ------
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - hotfix for memory error in build_clusters, need to improve efficiency for super large numbers of hits
 - more speed testing on tetrad
 - merge conflict
-- cosmetic
-- cosmetic
-- Merge branch 'master' of https://github.com/dereneaton/ipyrad
 - cleaner print stats for tetrad
 - finer tuning of parallelization tetrad
 
@@ -954,7 +853,6 @@ Release Notes
 - removed future changes to demultiplex, fixed 1M array size error
 - added notes todo
 - removed unnecessary imports
-- cosmetic changes
 - removed backticks from printouts
 - removed backticks from printouts
 - removed unnecessary '\' from list of args
@@ -978,7 +876,6 @@ Release Notes
 
 0.3.23
 ------
-- cosmetic code cleanup
 - svd4tet load func improved
 - fixed bug with floating point numbers on weights. More speed improvements with fancy matrix tricks.
 - added force support to svd4tet
@@ -1014,7 +911,6 @@ Release Notes
 - minor fix to advanced tutorial
 - updated advanced tutorial
 - forgot to rm tpdir when done
-- cosmetic
 - testing s6
 
 0.3.20
@@ -1030,7 +926,6 @@ Release Notes
 0.3.19
 ------
 - fix for bug in edge trimming when assembly is branched after s6 clustering, but before s7 filtering
-- cosmetic code fix
 
 0.3.18
 ------
@@ -1061,7 +956,6 @@ Release Notes
 0.3.14
 ------
 - merge conflict fix
-- just cosmetic code cleanup.
 - set subsample to 2000 high depth clusters. Much faster, minimal decrease in accuracy. Slightly faster code in s4.
 - better memory handling. Parallelized better. Starts non-parallel cleanups while singlecats are running = things go faster.
 - cluster was commented out in s6 for speed testing
@@ -1087,7 +981,6 @@ Release Notes
 - append data.name to the tmp-chunks directory to prevent users from running multiple step1 and stepping on themselves
 - Update README.rst
 - Added force flag for merging CLI
-- cosmetic changes
 - Bug in rawedit for merged assemblies
 - much faster indel entry in step6
 - chunks size optimization
@@ -1105,7 +998,6 @@ Release Notes
 0.3.9
 -----
 - Versioner now updates the docs/releasenotes.rst
-- cosmetic changes
 - Eased back on the language in the performance expectations note
 - fixed all links to output formats file
 - blank page for recording different performance expectations

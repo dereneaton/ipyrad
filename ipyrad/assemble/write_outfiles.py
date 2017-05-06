@@ -292,9 +292,9 @@ def make_stats(data, samples, samplecounts, locuscounts):
         sumd[i] = np.sum([i*pisdat.values[i] for i in range(i+1)])
     pissums = pd.Series(sumd, name="sum_pis", index=range(smax))
 
-    print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
-          "\n## var = all variable sites (pis + autapomorphies)"+\
-          "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
+    print("\n\n\n## The distribution of SNPs (var and pis) per locus."+\
+          "\n## var = Number of loci with n variable sites (pis + autapomorphies)"+\
+          "\n## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)"+\
           "\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
           file=outstats)
     data.stats_dfs.s7_snps = pd.concat([vardat, varsums, pisdat, pissums],
