@@ -435,14 +435,6 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
 
 
-# ## This is hold-over code from pyrad V3 alignable, it's only used
-# ## by loci2vcf so you could move it there if you like
-# def most_common(L):
-#     return max(itertools.groupby(sorted(L)),
-#                key=lambda (x, v): (len(list(v)), -L.index(x)))[0]
-
-
-
 def revcomp(sequence):
     "returns reverse complement of a string"
     sequence = sequence[::-1].strip()\
