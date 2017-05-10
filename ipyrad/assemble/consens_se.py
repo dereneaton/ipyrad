@@ -12,6 +12,7 @@ import scipy.stats
 import scipy.misc
 import itertools
 import datetime
+import pandas as pd
 import numpy as np
 import time
 import h5py
@@ -19,7 +20,7 @@ import gzip
 import glob
 import os
 from ipyrad.assemble.jointestimate import recal_hidepth
-from util import *
+from util import TRANSFULL, progressbar, IPyradError, IPyradWarningExit, clustdealer, PRIORITY, MINOR
 
 from collections import Counter
 
@@ -27,83 +28,35 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 
-@memoize
-def binomprobr(base1, base2, error, het):
-    """
-    given two bases are observed at a site n1 and n2, and the error rate e, the
-    probability the site is truly aa,bb,ab is calculated using binomial
-    distribution as in Li_et al 2009, 2011, and if coverage > 500, 500
-    dereplicated reads were randomly sampled.
-    """
-    ## major allele freq
-    mjaf = base1/float(base1+base2)
-    prior_homo = ((1.-het)/2.)
-    prior_het = het
 
-    ## get probabilities. Note, b/c only allow two bases, base2 == sum-base1
-    try:
-        hetro = scipy.misc.comb(base1+base2, base1)/(2.**(base1+base2))
-    except OverflowError:
-        LOGGER.error("OVERFLOW %s %s", base1, base2)
-        hetro = 0.5
-    homoa = scipy.stats.binom.pmf(base2, base1+base2, error)
-    homob = scipy.stats.binom.pmf(base1, base1+base2, error)
-
+def get_binom(base1, base2, estE, estH):
+    """
+    return probability of base call
+    """
+        
+    prior_homo = (1. - estH) / 2.
+    prior_hete = estH
+    
     ## calculate probs
+    bsum = base1 + base2
+    hetprob = scipy.misc.comb(bsum, base1)/(2. **(bsum))
+    homoa = scipy.stats.binom.pmf(base2, bsum, estE)
+    homob = scipy.stats.binom.pmf(base1, bsum, estE)
+    
+    ## calculate probs
+    hetprob *= prior_hete
     homoa *= prior_homo
     homob *= prior_homo
-    hetro *= prior_het
-
-    ## return
-    probabilities = [homoa, homob, hetro]
-    genotypes = ['aa', 'bb', 'ab']
+    
+    ## final 
+    probabilities = [homoa, homob, hetprob]
     bestprob = max(probabilities)/float(sum(probabilities))
 
-    return [bestprob, mjaf, genotypes[probabilities.index(max(probabilities))]]
-
-
-@memoize
-def simpleconsensus(base1, base2):
-    """
-    majority consensus calling for sites with too low of coverage for
-    statistical calling. Only used with 'lowcounts' option. Returns
-    the most common base. Returns consistent alphabetical order for ties.
-    """
-    #qQn = ['aa','bb','ab']
-    maf = base1/(base1+base2)
-    return [1.0, maf, 'aa']
-
-
-
-@memoize
-def hetero(base1, base2):
-    """
-    returns IUPAC symbol for ambiguity bases, used for polymorphic sites.
-    """
-    iupac = "N"
-    order1 = TRANS.get((base1, base2))
-    order2 = TRANS.get((base2, base1))
-    if order1:
-        iupac = order1
-    elif order2:
-        iupac = order2
+    ## return
+    if hetprob > homoa:
+        return True, bestprob
     else:
-        ## one or both are Ns
-        if [base1, base2].count("N") == 2:
-            pass
-        elif base1 == "N":
-            iupac = base2
-        elif base2 == "N":
-            iupac = base1
-        ## one or both are (-)s
-        else:
-            if base1 == "-":
-                iupac = base2
-            elif base2 == "-":
-                iupac = base1
-            else:
-                LOGGER.error("unrecognized sequence: %s %s", base1, base2)
-    return iupac
+        return False, bestprob
 
 
 
@@ -190,51 +143,52 @@ def removerepeats(consens, arrayed):
 
 
 
-def consensus(data, sample, tmpchunk, optim):
+def newconsensus(data, sample, tmpchunk, optim):
+    """ 
+    new faster replacement to consensus 
     """
-    from a clust file handle, reads in all copies at a locus and sorts
-    bases at each site, tests for errors at the site according to error
-    rate, calls consensus.
-    """
+    ## do reference map funcs?
+    isref = "reference" in data.paramsdict["assembly_method"]
 
     ## temporarily store the mean estimates to Assembly
     data._este = data.stats.error_est.mean()
     data._esth = data.stats.hetero_est.mean()
 
-    ## number relative to tmp file
+    ## get number relative to tmp file
     tmpnum = int(tmpchunk.split(".")[-1])
 
     ## prepare data for reading
     clusters = open(tmpchunk, 'rb')
-    pairdealer = itertools.izip(*[iter(clusters)]*2)
-
-    ## array to store all the coverage data, including consens reads that are
-    ## excluded (for now). The reason we include the low cov data is that this
-    ## Assembly might be branched and the new one use a lower depth filter.
-    #### dimensions: nreads_in_this_chunk, max_read_length, 4 bases
+    pairdealer = itertools.izip(*[iter(clusters)]*2)    
     maxlen = data._hackersonly["max_fragment_length"]
-    #if any(x in data.paramsdict["datatype"] for x in ['pair', 'gbs']):
-    #    maxlen *= 2
 
     ## write to tmp cons to file to be combined later
-    consenshandle = os.path.join(data.dirs.consens,
-                                 sample.name+"_tmpcons."+str(tmpnum))
-    ## h5 for data storage
-    io5 = h5py.File(consenshandle.replace("_tmpcons.", "_tmpcats."), 'w')
-    catarr = io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
-    nallel = io5.create_dataset("alls", (optim, ), dtype=np.uint8)
-    
-    ## Enable storing arbitrary length strings
-    dt = h5py.special_dtype(vlen=bytes)
-    chrompos = io5.create_dataset("chroms", (optim, ), dtype=dt)
-    ## maybe could get away with uint32
-    #chrompos = io5.create_dataset("chroms", (optim, ), dtype=np.uint64)
+    consenshandle = os.path.join(
+        data.dirs.consens, sample.name+"_tmpcons."+str(tmpnum))
+    tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
+    with h5py.File(tmp5, 'w') as io5:
+        io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
+        io5.create_dataset("alls", (optim, ), dtype=np.uint8)
+        io5.create_dataset("chroms", (optim, 3), dtype=np.uint64)
+
+        ## local copies to use to fill the arrays
+        catarr = io5["cats"][:]
+        nallel = io5["alls"][:]
+        refarr = io5["chroms"][:]
+
+    ## if reference-mapped then parse the fai to get index number of chroms
+    if isref:
+        fai = pd.read_csv(data.paramsdict["reference_sequence"] + ".fai", 
+                names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+                sep="\t")
+        faidict = {j:i for i,j in enumerate(fai.scaffold)}
 
     ## store data for stats counters
     counters = {"name" : tmpnum,
                 "heteros": 0,
                 "nsites" : 0,
                 "nconsens" : 0}
+
     ## store data for what got filtered
     filters = {"depth" : 0,
                "maxh" : 0,
@@ -251,7 +205,7 @@ def consensus(data, sample, tmpchunk, optim):
         maxhet = data.paramsdict["max_Hs_consens"][0]
         maxn = data.paramsdict["max_Ns_consens"][0]
 
-    ## iterate over clusters
+    ## load the refmap dictionary if refmapping
     done = 0
     while not done:
         try:
@@ -264,34 +218,46 @@ def consensus(data, sample, tmpchunk, optim):
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
+            
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
 
             ## IF this is a reference mapped read store the chrom and pos info
-            ## This is hackish. If the reference scaffolds contain ";" this is fucked.
-            ## Just split from the right side using rsplit and negative indexing!
-            ref_position = ""
-            if "reference" in data.paramsdict["assembly_method"]:
+            ref_position = (0, 0, 0)
+            if isref:
                 try:
-                    name_string = names[0].rsplit(";")
-                    ## Only record the reference position if it's actually a refmapped locus
-                    if len(name_string) > 3:
-                        ref_position = name_string[-3]
-                        LOGGER.debug("Refpos - {}".format(ref_position))
-                except:
+                    ## parse position from name string
+                    name, _, _ = names[0].rsplit(";", 2)
+                    _, chrompos = name.split(";", 1)
+                    chrom, pos = chrompos.rsplit(":", 1)
+                    pos0, pos1 = pos.split("-")
+                    
+                    ## pull idx from .fai reference dict 
+                    chromint = faidict[chrom]
+                    ref_position = (int(chromint), int(pos0), int(pos1))
+                    
+                except Exception as inst:
                     LOGGER.debug("Reference sequence chrom/pos failed for {}".format(names[0]))
-                    ref_position = ""
-
+                    LOGGER.debug(inst)
+                    
             ## apply read depth filter
             if nfilter1(data, reps):
 
                 ## get stacks of base counts
                 sseqs = [list(seq) for seq in seqs]
                 arrayed = np.concatenate(
-                          [[seq]*rep for seq, rep in zip(sseqs, reps)])
+                    [[seq]*rep for seq, rep in zip(sseqs, reps)])
                 arrayed = arrayed[:, :maxlen]
+                
                 ## get consens call for each site, applies paralog-x-site filter
-                consens = np.apply_along_axis(basecall, 0, arrayed, data)
+                #consens = np.apply_along_axis(basecall, 0, arrayed, data)
+                consens = basecaller(
+                    arrayed, 
+                    data.paramsdict["mindepth_majrule"], 
+                    data.paramsdict["mindepth_statistical"],
+                    data._esth, 
+                    data._este,
+                    )
 
                 ## apply a filter to remove low coverage sites/Ns that
                 ## are likely sequence repeat errors. This is only applied to
@@ -308,24 +274,25 @@ def consensus(data, sample, tmpchunk, optim):
                 hidx = [i for (i, j) in enumerate(consens) \
                             if j in list("RKSYWM")]
                 nheteros = len(hidx)
-
+                
                 ## filter for max number of hetero sites
                 if nfilter2(nheteros, maxhet):
                     ## filter for maxN, & minlen
                     if nfilter3(consens, maxn):
+                        ## counter right now
+                        current = counters["nconsens"]
                         ## get N alleles and get lower case in consens
                         consens, nhaps = nfilter4(consens, hidx, arrayed)
-
                         ## store the number of alleles observed
-                        nallel[counters["nconsens"]] = nhaps
+                        nallel[current] = nhaps
 
                         ## store a reduced array with only CATG
                         catg = np.array(\
                             [np.sum(arrayed == i, axis=0)  \
                             for i in list("CATG")],
                             dtype='uint32').T
-                        catarr[counters["nconsens"], :catg.shape[0], :] = catg
-                        chrompos[counters["nconsens"]] = ref_position
+                        catarr[current, :catg.shape[0], :] = catg
+                        refarr[current] = ref_position
 
                         ## store the seqdata for tmpchunk
                         storeseq[counters["name"]] = "".join(list(consens))
@@ -341,24 +308,122 @@ def consensus(data, sample, tmpchunk, optim):
             else:
                 #LOGGER.debug("@depth")
                 filters['depth'] += 1
-    ## close file io
+                
+    ## close infile io
     clusters.close()
 
-    #LOGGER.info('writing %s', consenshandle)
-    #LOGGER.info('passed in this chunk: %s', len(storeseq))
-    #LOGGER.info('caught in this chunk: %s', filters)
+    ## write final consens string chunk
     if storeseq:
         with open(consenshandle, 'wb') as outfile:
             outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
                                    str(storeseq[key]) for key in storeseq]))
 
-    ## save tmp catg array that will be combined into hdf5 later
-    io5.close()
+    ## write to h5 array, this can be a bit slow on big data sets and is not 
+    ## currently convered by progressbar movement.
+    with h5py.File(tmp5, 'a') as io5:
+        io5["cats"][:] = catarr
+        io5["alls"][:] = nallel
+        io5["chroms"][:] = refarr
+    del catarr
+    del nallel
+    del refarr
 
-    ## final counts and return
+    ## return stats
     counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])
-
     return counters, filters
+
+
+
+def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
+    """
+    call all sites in a locus array.
+    """
+
+    ## an array to fill with consensus site calls
+    cons = np.zeros(arrayed.shape[1], dtype=np.uint8)
+    cons.fill(78)
+    arr = arrayed.view(np.uint8)
+    
+    ## iterate over columns
+    for col in xrange(arr.shape[1]):
+        ## the site of focus
+        carr = arr[:, col]
+        
+        ## make mask of N and - sites
+        mask = carr == 45
+        mask += carr == 78        
+        marr = carr[~mask]
+        
+        ## skip if only empties (e.g., N-)
+        if not marr.shape[0]:
+            cons[col] = 78
+        
+        ## skip if not variable
+        elif np.all(marr == marr[0]):
+            cons[col] = marr[0]
+        
+        ## estimate variable site call
+        else:
+            ## get allele freqs
+            counts = np.bincount(marr)
+            
+            pbase = np.argmax(counts)
+            nump = counts[pbase]
+            counts[pbase] = 0
+
+            qbase = np.argmax(counts)
+            numq = counts[qbase]
+            counts[qbase] = 0
+
+            rbase = np.argmax(counts)
+            numr = counts[rbase]
+            
+            ## based on biallelic depth
+            bidepth = nump + numq 
+            if bidepth < mindepth_majrule:
+                cons[col] = 78
+            
+            else:
+                ## if depth is too high, reduce to sampled int
+                if bidepth > 500:
+                    base1 = (500 * (nump / float(bidepth)))
+                    base2 = (500 * (numq / float(bidepth)))
+                else:
+                    base1 = nump
+                    base2 = numq
+
+                ## make statistical base call  
+                if bidepth >= mindepth_statistical:
+                    ishet, prob = get_binom(base1, base2, estE, estH)
+                    if ishet:
+                        cons[col] = TRANS[(pbase, qbase)]
+                    else:
+                        cons[col] = pbase
+                
+                ## make majrule base call
+                elif bidepth >= mindepth_majrule:
+                    if nump == numpq:
+                        cons[col] = TRANS[(pbase, qbase)]
+                    else:
+                        cons[col] = pbase
+    return cons.view("S1")
+            
+
+
+TRANS = {
+         (71, 65): 82,
+         (71, 84): 75,
+         (71, 67): 83,
+         (84, 67): 89,
+         (84, 65): 87,
+         (67, 65): 77,
+         (65, 67): 77,
+         (65, 84): 87,
+         (67, 84): 89,
+         (67, 71): 83,
+         (84, 71): 75,
+         (65, 71): 82,
+         }
 
 
 
@@ -452,7 +517,7 @@ def nfilter4(consens, hidx, arrayed):
 def storealleles(consens, hidx, alleles):
     """ store phased allele data for diploids """
     ## find the first hetero site and choose the priority base
-    ## example, if W: then priority base in T and not A. PRIORITY=(order: CATG)
+    ## example, if W: then priority base in A and not T. PRIORITY=(order: CATG)
     bigbase = PRIORITY[consens[hidx[0]]]
 
     ## find which allele has priority based on bigbase
@@ -464,7 +529,6 @@ def storealleles(consens, hidx, alleles):
     ## be stored as y, since the ordering is swapped in this case; the priority
     ## base (C versus T) is C, but C goes with the minor base at h site 1.
     #consens = list(consens)
-
     for hsite, pbase in zip(hidx[1:], bigallele[1:]):
         if PRIORITY[consens[hsite]] != pbase:
             consens[hsite] = consens[hsite].lower()
@@ -474,87 +538,12 @@ def storealleles(consens, hidx, alleles):
 
 
 
-def basecall(rsite, data):
-    """ prepares stack for making base calls """
-    ## count em
-    site = Counter(rsite)
-
-    ## remove Ns and (-)s
-    if "N" in site:
-        site.pop("N")
-    if "-" in site:
-        site.pop("-")
-
-    ## get the two most common alleles
-    if site:
-        base1 = base2 = 0
-        comms = site.most_common(2)
-        base1 = comms[0][1]
-        if len(comms) > 1:
-            base2 = comms[1][1]
-
-        ## if site depth after removing Ns, (-s) and third bases is below limit
-        bidepth = base1 + base2
-        if bidepth < data.paramsdict["mindepth_majrule"]:
-            cons = "N"
-
-        ## speedhack: make the base call using a method depending on depth
-        ## if highdepth and invariable just call the only base
-        elif (bidepth > 10) and (not base2):
-            cons = comms[0][0]
-
-        else:
-            ## if depth > 500 reduce to <500 at same proportion to avoid
-            ## large memerror in scipy.misc.comb function
-            if bidepth >= 500:
-                sbase1 = int(500 * (base1 / float(base1)))
-                sbase2 = int(500 * (base2 / float(base1)))
-            else:
-                sbase1 = base1
-                sbase2 = base2
-
-            ## And then use basecaller
-            cons = basecaller(data, sbase1, sbase2, comms)
-    else:
-        cons = "N"
-
-    return cons
-
-
-
-def basecaller(data, base1, base2, comms):
-    """ inputs data to binomprobr and gets alleles correctly oriented """
-
-    ## make statistical base call
-    if base1+base2 >= data.paramsdict["mindepth_statistical"]:
-        prob, _, who = binomprobr(base1, base2, data._este, data._esth)
-
-    elif base1+base2 >= data.paramsdict["mindepth_majrule"]:
-        prob, _, who = simpleconsensus(base1, base2)
-
-    #else:
-    #    LOGGER.error("gap in mindepth settings")
-
-    ## if the base could be called with 95% probability
-    if float(prob) >= 0.95:
-        if who != "ab":
-            ## site is homozygous
-            cons = comms[0][0]
-        else:
-            ## site is heterozygous
-            cons = hetero(*[i[0] for i in comms])
-            #LOGGER.info("GIVE: %s, GET: %s", [i[0] for i in comms], cons)
-    else:
-        cons = "N"
-    return cons
-
-
-
 def cleanup(data, sample, statsdicts):
     """
     cleaning up. optim is the size (nloci) of tmp arrays
     """
     LOGGER.info("in cleanup for: %s", sample.name)
+    isref = 'reference' in data.paramsdict["assembly_method"]
 
     ## collect consens chunk files
     combs1 = glob.glob(os.path.join(
@@ -585,11 +574,11 @@ def cleanup(data, sample, statsdicts):
                                    chunks=(optim, ),
                                    compression="gzip")
         ## only create chrom for reference-aligned data
-        if 'reference' in data.paramsdict["assembly_method"]:
-            dchrom = ioh5.create_dataset("chroms", (nloci, ),
-                                     dtype=h5py.special_dtype(vlen=bytes),
-                                     chunks=(optim, ),
-                                     compression="gzip")
+        if isref:
+            dchrom = ioh5.create_dataset("chroms", (nloci, 3), 
+                                         dtype=np.uint64, 
+                                         chunks=(optim, 3), 
+                                         compression="gzip")
 
         ## Combine all those tmp cats into the big cat
         start = 0
@@ -598,12 +587,11 @@ def cleanup(data, sample, statsdicts):
             end = start + optim
             dcat[start:end] = io5['cats'][:]
             dall[start:end] = io5['alls'][:]
-            if 'reference' in data.paramsdict["assembly_method"]:
+            if isref:
                 dchrom[start:end] = io5['chroms'][:]
             start += optim
             io5.close()
             os.remove(icat)
-    
 
     ## store the handle to the Sample
     sample.files.database = handle1
@@ -780,6 +768,7 @@ def run(data, samples, force, ipyclient):
         data.cpus = len(ipyclient.ids)
 
     ## wrap everything to ensure destruction of temp files
+    inst = ""
     try:
         ## calculate depths, if they changed.
         samples = calculate_depths(data, samples, lbview)
@@ -789,6 +778,9 @@ def run(data, samples, force, ipyclient):
 
         ## process chunks and cleanup
         process_chunks(data, samples, lasyncs, lbview)
+
+    except KeyboardInterrupt as inst:
+        raise inst
 
     finally:
         ## if process failed at any point delete tmp files
@@ -846,11 +838,11 @@ def make_chunks(data, samples, lbview):
     """
     calls chunk_clusters and tracks progress.
     """
-
     ## first progress bar
     start = time.time()
+    printstr = " chunking clusters     | {} | s5 |"
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, " chunking clusters     | {} | s5 |".format(elapsed))
+    progressbar(10, 0, printstr.format(elapsed))
 
     ## send off samples to be chunked
     lasyncs = {}
@@ -861,8 +853,7 @@ def make_chunks(data, samples, lbview):
     while 1:
         ready = [i.ready() for i in lasyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready),
-                    " chunking clusters     | {} | s5 |".format(elapsed))
+        progressbar(len(ready), sum(ready), printstr.format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")
@@ -886,22 +877,24 @@ def process_chunks(data, samples, lasyncs, lbview):
     ## send chunks to be processed
     start = time.time()
     asyncs = {sample.name:[] for sample in samples}
+    printstr = " consens calling       | {} | s5 |"
 
     ## get chunklist from results
     for sample in samples:
         clist = lasyncs[sample.name].result()
         for optim, chunkhandle in clist:
             args = (data, sample, chunkhandle, optim)
-            asyncs[sample.name].append(lbview.apply_async(consensus, *args))
+            #asyncs[sample.name].append(lbview.apply_async(consensus, *args))
+            asyncs[sample.name].append(lbview.apply_async(newconsensus, *args))
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 0, " consens calling       | {} | s5 |".format(elapsed))
+            progressbar(10, 0, printstr.format(elapsed))
 
+    ## track progress
+    allsyncs = list(itertools.chain(*[asyncs[i.name] for i in samples]))
     while 1:
-        allsyncs = list(itertools.chain(*[asyncs[i.name] for i in samples]))
         ready = [i.ready() for i in allsyncs]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready),
-                    " consens calling       | {} | s5 |".format(elapsed))
+        progressbar(len(ready), sum(ready), printstr.format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
             break
@@ -915,7 +908,7 @@ def process_chunks(data, samples, lasyncs, lbview):
     while 1:
         ready = [i.ready() for i in casyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(10, 10, " consens calling       | {} | s5 |".format(elapsed))
+        progressbar(10, 10, printstr.format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")
@@ -958,32 +951,3 @@ def process_chunks(data, samples, lasyncs, lbview):
 
 
 
-if __name__ == "__main__":
-    import ipyrad as ip
-
-    ## get path to test dir/
-    ROOT = os.path.realpath(
-       os.path.dirname(
-           os.path.dirname(
-               os.path.dirname(__file__)
-               )
-           )
-       )
-
-    ## run test on pairgbs data1
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_pairgbs", "test_pairgbs"))
-    TEST.step5(force=True)
-    print(TEST.stats)
-
-    ## run test on rad data1
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_rad", "data1"))
-    TEST.step5(force=True)
-    print(TEST.stats)
-
-    ## run test on empirical pairgbs data1
-    # TEST = ip.load.load_assembly(os.path.join(\
-    #         "/home/deren/Documents/longi_test_ip", "longi"))
-    # TEST.step5(force=True)
-    # print(TEST.stats)
