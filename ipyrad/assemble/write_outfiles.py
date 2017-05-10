@@ -2029,7 +2029,7 @@ def write_gphocs(data, sidx):
         outfile.write("\n")
 
 
-## TODO: try to recreate error data with 4's retained in output.
+
 def make_vcf(data, samples, ipyclient, full=0):
     """
     Write the full VCF for loci passing filtering. Other vcf formats are
@@ -2081,17 +2081,17 @@ def make_vcf(data, samples, ipyclient, full=0):
             for job in keys:
                 if not vasyncs[job].successful():
                     ## raise exception
-                    LOGGER.error(vasyncs[job].exception())
-                    raise IPyradWarningExit(" error in vcf build chunk {}: {}"\
-                                            .format(job, vasyncs[job].exception()))
+                    err = " error in vcf build chunk {}: {}"\
+                          .format(job, vasyncs[job].result())
+                    LOGGER.error(err)
+                    raise IPyradWarningExit(err)
                 else:
                     ## free up memory
                     del vasyncs[job]
 
             finished = total - len(vasyncs) #sum([i.ready() for i in vasyncs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(total, finished,
-                    " building vcf file     | {} | s7 |".format(elapsed))
+            progressbar(total, finished, printstr.format(elapsed))
             time.sleep(0.5)
             if not vasyncs:
                 break
@@ -2117,18 +2117,18 @@ def make_vcf(data, samples, ipyclient, full=0):
 
     ## writing full vcf file to disk
     start = time.time()
+    printstr = " writing vcf file      | {} | s7 |"
     res = lbview.apply(concat_vcf, *(data, names, full))
     ogchunks = len(glob.glob(data.outfiles.vcf+".*"))
     while 1:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         curchunks = len(glob.glob(data.outfiles.vcf+".*"))
-        progressbar(ogchunks, ogchunks-curchunks,
-                    " writing vcf file      | {} | s7 |".format(elapsed))
+        progressbar(ogchunks, ogchunks-curchunks, printstr.format(elapsed))
         time.sleep(0.1)
         if res.ready():
             break
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(1, 1, " writing vcf file      | {} | s7 |".format(elapsed))
+    progressbar(1, 1, printstr.format(elapsed))
     print("")
 
 
@@ -2271,19 +2271,6 @@ def vcfchunk(data, optim, sidx, start, full):
         genos[:] = "./.:"
 
         ## ----  build string array ----
-        ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
-        ## this is 1-indexed
-        ## np.char.mod() will cast the locus count from int to str
-
-        ## If there are any valid reference positions at this locus then we'll just
-        ## call them all the same thing. This is a little naive, since there could 
-        ## be samples with unmapped reads that cluster across with samples that
-        ## have mapped reads. Seems like a small problem.
-        ## chrompos string is formatted like this: MT:10509-10985
-        ##
-        ## We can't rely on just the first member of achrom[iloc] because the first
-        ## sample may not have had a read at that locus.
-        ## The rsplits handle scaffold names that may contain ":".
         pos = 0
         if achrom[iloc].any():
             pos = achrom[iloc][1]
@@ -2294,10 +2281,10 @@ def vcfchunk(data, optim, sidx, start, full):
                 cols1[init:init+seq.shape[1]] = pos + np.arange(seq.shape[1]) + 1
             else:
                 cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
+                cols0[init:init+seq.shape[1]] = start + locindex[iloc] + 1
 
         ## fill reference base
         alleles = reftrick(seq, GETCONS)
-        #LOGGER.info("alleles %s", alleles)
 
         ## get the info string column
         tmp0 = np.sum(catg, axis=2)
@@ -2366,13 +2353,16 @@ def vcfchunk(data, optim, sidx, start, full):
     tot = withdat.sum()
 
     ## get scaffold names
-    if os.path.exists(data.paramsdict["reference_sequence"]):
+    if (data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]) and \
+       (os.path.exists(data.paramsdict["reference_sequence"])):
         fai = pd.read_csv(data.paramsdict["reference_sequence"] + ".fai", 
                 names=['scaffold', 'size', 'sumsize', 'a', 'b'],
                 sep="\t")
         faidict = {i:j for i,j in enumerate(fai.scaffold)}
         chroms = [faidict[i] for i in cols0-1]
         cols0 = np.array(chroms)
+    else:
+        cols0 = np.array(["locus_{}".format(i) for i in cols0-1])
 
     ## Only write if there is some data that passed filtering
     if tot:
