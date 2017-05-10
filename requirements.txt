@@ -13,3 +13,4 @@ numba>=0.31
 pandas>=0.16
 h5py
 networkx
+dask

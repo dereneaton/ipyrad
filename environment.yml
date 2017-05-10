@@ -16,3 +16,4 @@ dependencies:
 - sphinx>1.2
 - numba>=0.31
 - llvmlite>=0.16
+- dask
