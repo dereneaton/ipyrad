@@ -29,6 +29,7 @@ requirements:
     - sphinx
     - networkx
     - cutadapt >=1.12
+    - dask
   run:
     - ipython >=5.0.0
     - ipyparallel >=5.1.0
@@ -46,6 +47,7 @@ requirements:
     - numpy >=1.7
     - bitarray
     - networkx
+    - dask
     - cutadapt >=1.12
   commands:
     - ipyrad -h
