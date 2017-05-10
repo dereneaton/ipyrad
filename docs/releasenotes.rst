@@ -9,6 +9,12 @@ Release Notes
 ------
 **May 10, 2017**
 
+- added dask dependency
+
+0.6.20
+------
+**May 10, 2017**
+
 - vcf building with full ref info
 - bug fix to alleles output and support vcf chrompos storage in uint64
 - simpler and slightly faster consens calls and lower memory and stores chrompos as uint64s
