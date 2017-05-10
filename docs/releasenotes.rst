@@ -5,6 +5,18 @@
 Release Notes
 =============
 
+0.6.20
+------
+**May 10, 2017**
+
+- vcf building with full ref info
+- bug fix to alleles output and support vcf chrompos storage in uint64
+- simpler and slightly faster consens calls and lower memory and stores chrompos as uint64s
+- chrompos now stored as uint64
+- reducing memory load in race conditions for parallel cutadapt jobs
+- Squash Cosmetic commit logs in releasenotes. Add more informative header in step 7 stats file.
+- Trying to catch bad alignment for PE in step 6.
+
 0.6.19
 ------
 **May 04, 2017**
