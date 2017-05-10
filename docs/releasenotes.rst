@@ -10,6 +10,14 @@ Release Notes
 **May 10, 2017**
 
 -  "Updating ipyrad/__init__.py to version - 0.6.20
+-  "Updating ipyrad/__init__.py to version - 0.6.20
+- added dask dependency
+
+0.6.20
+------
+**May 10, 2017**
+
+-  "Updating ipyrad/__init__.py to version - 0.6.20
 - added dask dependency
 
 0.6.20
