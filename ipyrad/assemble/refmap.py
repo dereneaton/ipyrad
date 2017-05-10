@@ -13,6 +13,7 @@ import re
 import gzip
 import glob
 import shutil
+
 import ipyrad
 import numpy as np
 import subprocess as sps
@@ -47,40 +48,33 @@ def sample_cleanup(data, sample):
             pass
 
 
+
 def index_reference_sequence(data, force=False):
     """ 
-    Index the reference sequence, out if it already exists.
+    Index the reference sequence, unless it already exists. Also make a mapping
+    of scaffolds to index numbers for later user in steps 5-6. 
     """
 
     ## get ref file from params
     refseq_file = data.paramsdict['reference_sequence']
-
     index_files = []
 
     ## Check for existence of index files. Default to bwa unless you specify smalt
     if "smalt" in data._hackersonly["aligner"]:
-        # These are smalt specific index files. We don't ever reference them 
-        # directly except here to make sure they exist.
+        # These are smalt index files. Only referenced here to ensure they exist
         index_files.extend([".sma", ".smi"])
     else:
         index_files.extend([".amb", ".ann", ".bwt", ".pac", ".sa"])
 
-    # samtools specific index
+    ## samtools specific index
     index_files.extend([".fai"])
 
+    ## If reference sequence already exists then bail out of this func
     if all([os.path.isfile(refseq_file+i) for i in index_files]):
-        ## Reference sequence already exists so bail out.
         return
 
-    msg = """\
-    *************************************************************
-    Indexing reference sequence with {}. 
-    This only needs to be done once, and takes just a few minutes
-    ************************************************************* """\
-    .format(data._hackersonly["aligner"])
-
     if data._headers:
-        print(msg)
+        print(INDEX_MSG.format(data._hackersonly["aligner"]))
 
     if "smalt" in data._hackersonly["aligner"]:
         ## Create smalt index for mapping
@@ -102,8 +96,6 @@ def index_reference_sequence(data, force=False):
     cmd2 = [ipyrad.bins.samtools, "faidx", refseq_file]
     LOGGER.info(" ".join(cmd2))
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
-
-    ## call the command:
     error2 = proc2.communicate()[0]
 
     ## error handling
@@ -117,7 +109,7 @@ def index_reference_sequence(data, force=False):
 
     ## print finished message
     if data._headers:
-        print("    Done indexing reference sequence")
+        print("  Done indexing reference sequence")
 
 
 
@@ -359,6 +351,7 @@ def ref_muscle_chunker(data, sample):
         LOGGER.warn(msg)
 
 
+
 def get_overlapping_reads(data, sample, regions):
     """
     For SE data, this pulls mapped reads out of sorted mapped bam files and 
@@ -454,6 +447,7 @@ def get_overlapping_reads(data, sample, regions):
             LOGGER.info("Total merged reads for {} - {}"\
                      .format(sample.name, reads_merged))
             sample.stats.reads_merged = reads_merged
+
 
 
 def split_merged_reads(outhandles, input_derep):
@@ -635,6 +629,7 @@ def bedtools_merge(data, sample):
     return result
 
 
+
 def trim_reference_sequence(fasta):
     """
     If doing PE and R1/R2 don't overlap then the reference sequence
@@ -659,6 +654,7 @@ def trim_reference_sequence(fasta):
 
     LOGGER.debug("post - {}".format(fasta[0]))
     return fasta
+
 
 
 def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
@@ -956,6 +952,7 @@ def refmap_stats(data, sample):
     sample_cleanup(data, sample)
 
 
+
 def refmap_init(data, sample, force):
     """ create some file handles for refmapping """
     ## make some persistent file handles for the refmap reads files
@@ -971,17 +968,25 @@ def refmap_init(data, sample, force):
     #    print("Skip mapping for {}. Use -f to force remapping.".format(sample.name))
 
 
+
 ## GLOBALS
+INDEX_MSG = """\
+  *************************************************************
+  Indexing reference sequence with {}. 
+  This only needs to be done once, and takes just a few minutes
+  *************************************************************"""
+
+
 NO_ZIP_BINS = """
-    Reference sequence must be uncompressed fasta or bgzip compressed,
-    your file is probably gzip compressed. The simplest fix is to gunzip
-    your reference sequence by running this command:
+  Reference sequence must be uncompressed fasta or bgzip compressed,
+  your file is probably gzip compressed. The simplest fix is to gunzip
+  your reference sequence by running this command:
 
-        gunzip {}
+      gunzip {}
 
-    Then edit your params file to remove the `.gz` from the end of the
-    path to your reference sequence file and rerun step 3 with the `-f` flag.
-    """
+  Then edit your params file to remove the `.gz` from the end of the
+  path to your reference sequence file and rerun step 3 with the `-f` flag.
+  """
 
 
 
