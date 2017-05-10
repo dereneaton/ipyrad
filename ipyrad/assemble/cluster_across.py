@@ -25,8 +25,9 @@ import select
 import datetime
 import itertools
 import numpy as np
-import ipyrad as ip
-from ipyrad.assemble.util import *
+import dask.array as da
+import ipyrad
+from ipyrad.assemble.util import IPyradWarningExit, progressbar, clustdealer
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 try:
@@ -441,7 +442,6 @@ def multi_muscle_align(data, samples, clustbits, ipyclient):
 
 
 
-
 def concatclusts(outhandle, alignbits):
     """ concatenates sorted aligned cluster tmpfiles and removes them."""
     with gzip.open(outhandle, 'wb') as out:
@@ -462,7 +462,8 @@ def build_indels(data, samples, ipyclient):
 
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 0, " database indels       | {} | s6 |".format(elapsed))
+    printstr = " database indels       | {} | s6 |"
+    progressbar(100, 0, printstr.format(elapsed))
 
     ## get file handles
     indelfiles = glob.glob(os.path.join(data.tmpdir, "indels_*.tmp.npy"))
@@ -480,7 +481,7 @@ def build_indels(data, samples, ipyclient):
     async = ipyclient[0].apply(concatclusts, *(outhandle, alignbits))
     while not async.ready():
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(alignbits), 0, " database indels       | {} | s6 |".format(elapsed))
+        progressbar(len(alignbits), 0, printstr.format(elapsed))
         time.sleep(0.1)
 
     ## get dims for full indel array
@@ -491,39 +492,38 @@ def build_indels(data, samples, ipyclient):
     ## build an indel array for ALL loci in cat.clust.gz,
     ## chunked so that individual samples can be pulled out
     ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
-    io5 = h5py.File(ipath, 'w')
-    iset = io5.create_dataset("indels",
-                              shape=(len(samples), data.nloci, maxlen),
-                              dtype=np.bool_,
-                              chunks=(1, chunksize, maxlen))
-                              #compression="gzip") this is temp why bother zip?
-                              #chunks=(len(samples), min(1000, data.nloci), maxlen),
-    ## again make sure names are ordered right
-    samples.sort(key=lambda x: x.name)
+    with h5py.File(ipath, 'w') as io5:
+        iset = io5.create_dataset(
+            "indels",
+            shape=(len(samples), data.nloci, maxlen),
+            dtype=np.bool_,
+            chunks=(1, chunksize, maxlen))
 
-    #iset.attrs["chunksize"] = (1, data.nloci, maxlen)
-    iset.attrs["samples"] = [i.name for i in samples]
+        ## again make sure names are ordered right
+        samples.sort(key=lambda x: x.name)
 
-    ## enter all tmpindel arrays into full indel array
-    done = 0
-    init = 0
-    for indf in indelfiles:
-        end = int(indf.rsplit("_", 1)[-1][:-8])
-        inarr = np.load(indf)
-        LOGGER.info('inarr shape %s', inarr.shape)
-        LOGGER.info('iset shape %s', iset.shape)
-        iset[:, init:end, :] = inarr[:, :end-init]
-        init += end-init
-        done += 1
-        #os.remove(indf)
+        #iset.attrs["chunksize"] = (1, data.nloci, maxlen)
+        iset.attrs["samples"] = [i.name for i in samples]
 
-        ## continued progress bar from multi_muscle_align
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(alignbits), done, " database indels       | {} | s6 |".format(elapsed))
+        ## enter all tmpindel arrays into full indel array
+        done = 0
+        init = 0
+        for indf in indelfiles:
+            end = int(indf.rsplit("_", 1)[-1][:-8])
+            inarr = np.load(indf)
+            LOGGER.info('inarr shape %s', inarr.shape)
+            LOGGER.info('iset shape %s', iset.shape)
+            iset[:, init:end, :] = inarr[:, :end-init]
+            init += end-init
+            done += 1
+            #os.remove(indf)
 
-    io5.close()
+            ## continued progress bar from multi_muscle_align
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(alignbits), done, printstr.format(elapsed))
+
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(100, 100, " database indels       | {} | s6 |".format(elapsed))
+    progressbar(100, 100, printstr.format(elapsed))
     print("")
 
 
@@ -553,7 +553,7 @@ def cluster(data, noreverse):
     ## get call string. Thread=0 means all (default) but we may want to set
     ## an upper limit otherwise threads=60 could clobber RAM on large dsets.
     ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
-    cmd = [ip.bins.vsearch,
+    cmd = [ipyrad.bins.vsearch,
            "-cluster_smallmem", cathaplos,
            "-strand", strand,
            "-query_cov", str(cov),
@@ -686,10 +686,14 @@ def build_h5_array(data, samples, ipyclient):
                                     dtype=np.uint8,
                                     chunks=(chunks, len(samples)),
                                     compression="gzip")
-    superchroms = io5.create_dataset("chroms", (data.nloci, len(samples)),
-                                    dtype=h5py.special_dtype(vlen=bytes),
-                                    chunks=(chunks, len(samples)),
-                                    compression="gzip")
+    #superchroms = io5.create_dataset("chroms", (data.nloci, len(samples)),
+    #                                dtype=h5py.special_dtype(vlen=bytes),
+    #                                chunks=(chunks, len(samples)),
+    #                                compression="gzip")
+    superchroms = io5.create_dataset("chroms", (data.nloci, 3), 
+                                     dtype=np.uint64, 
+                                     chunks=(chunks, 3),
+                                     compression="gzip")
 
     ## allele count storage
     supercatg.attrs["chunksize"] = (chunks, 1, maxlen, 4)
@@ -790,8 +794,9 @@ def multicat(data, samples, ipyclient):
     ## notes for improvements:
     LOGGER.info("in the multicat")
     start = time.time()
+    printstr = " indexing clusters     | {} | s6 |"
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(20, 0, " indexing clusters     | {} | s6 |".format(elapsed))
+    progressbar(20, 0, printstr.format(elapsed))
 
     ## parallel client
     lbview = ipyclient.load_balanced_view()
@@ -814,10 +819,10 @@ def multicat(data, samples, ipyclient):
     async1 = lbview.apply(get_seeds_and_hits, *(uhandle, bseeds, snames))
     async2 = lbview.apply(fill_dups_arr, data)
 
-    ## progress
+    ## progress bar for seed/hit sorting
     while not (async1.ready() and async2.ready()):
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(20, 0, " indexing clusters     | {} | s6 |".format(elapsed))
+        progressbar(20, 0, printstr.format(elapsed))
         time.sleep(0.1)
     if not async1.successful():
         raise IPyradWarningExit("error in get_seeds: %s", async1.exception())
@@ -828,51 +833,58 @@ def multicat(data, samples, ipyclient):
     ## is using smallview necessary? (yes, it is for bad libraries)
     smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
 
-    ## make a list of jobs
+    ## make sure there are no old tmp.h5 files 
+    smpios = [os.path.join(data.dirs.consens, sample.name+'.tmp.h5') \
+              for sample in samples]
+    for smpio in smpios:
+        if os.path.exists(smpio):
+            os.remove(smpio)
+
+    ## send 'singlecat()' jobs to engines
     jobs = {}
     for sample in samples:
-        ## grab just the hits for this sample
         sidx = snames.index(sample.name)
         jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
 
     ## check for finished and submit disk-writing job when finished
-    allwait = len(jobs)
-    fwait = 0
+    alljobs = len(jobs)
     while 1:
-        ## check for new jobs to submit
-        jkeys = jobs.keys()
-        for name in jkeys:
-            if jobs[name].ready():
-                if jobs[name].successful():
-                    ## get args for writing
-                    args = (data, data.samples[name], snames.index(name))
-                    ## store that job has finished
-                    fwait += 1
-                    # submit writing job
-                    LOGGER.info("sending %s:%s after %s", snames.index(name), name, last_sample)
+        ## check for finished jobs
+        curkeys = jobs.keys()
+        for key in curkeys:
+            async = jobs[key]
+            if async.ready():
+                if async.successful():
+                    ## submit cleanup for finished job
+                    args = (data, data.samples[key], snames.index(key))
                     with lbview.temp_flags(after=cleanups[last_sample]):
-                        cleanups[name] = lbview.apply(write_to_fullarr, *args)
-                    last_sample = name
-                    del jobs[name]
+                        cleanups[key] = lbview.apply(write_to_fullarr, *args)
+                    last_sample = key
+                    del jobs[key]
                 else:
-                    raise IPyradWarningExit(" error in singlecat ({}) {}"\
-                                .format(name, jobs[name].exception()))
-
-        ## print progress bar
+                    err = jobs[key].exception()
+                    errmsg = "singlecat error: {} {}".format(key, err)
+                    raise IPyradWarningExit(errmsg)
+        ## print progress or break
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(allwait, fwait, " indexing clusters     | {} | s6 |".format(elapsed))
+        progressbar(alljobs, alljobs-len(jobs), printstr.format(elapsed))
         time.sleep(0.1)
-        if fwait == allwait:
+        if not jobs:
             break
+
+    ## add the dask_chroms func for reference data
+    if 'reference' in data.paramsdict["assembly_method"]:
+        with lbview.temp_flags(after=cleanups.values()):
+            cleanups['ref'] = lbview.apply(dask_chroms, data)
 
     ## wait for "write_to_fullarr" jobs to finish
     print("")
     start = time.time()
+    printstr = " building database     | {} | s6 |"
     while 1:
         finished = [i for i in cleanups.values() if i.ready()]
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(len(cleanups), len(finished),
-                    " building database     | {} | s6 |".format(elapsed))
+        progressbar(len(cleanups), len(finished), printstr.format(elapsed))
         time.sleep(0.1)
         ## break if one failed, or if finished
         if not all([i.successful() for i in finished]):
@@ -884,10 +896,10 @@ def multicat(data, samples, ipyclient):
     for job in cleanups:
         if cleanups[job].ready():
             if not cleanups[job].successful():
-                LOGGER.error(" error in write_to_fullarr (%s) %s",
-                             job, cleanups[job].exception())
-                raise IPyradWarningExit(" error in write_to_fullarr ({}) {}"\
-                                    .format(job, cleanups[job].exception()))
+                err = " error in write_to_fullarr ({}) {}"\
+                     .format(job, cleanups[job].result())
+                LOGGER.error(err)
+                raise IPyradWarningExit(err)
 
     ## remove large indels array file and singlecat tmparr file
     ifile = os.path.join(data.dirs.consens, data.name+".tmp.indels")
@@ -895,10 +907,12 @@ def multicat(data, samples, ipyclient):
         os.remove(ifile)
     if os.path.exists(bseeds):
         os.remove(bseeds)
+    for sh5 in [os.path.join(data.dirs.consens, i.name+".tmp.h5") for i in samples]:
+        os.remove(sh5)
 
     ## print final progress
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    progressbar(10, 10, " building database     | {} | s6 |".format(elapsed))
+    progressbar(10, 10, printstr.format(elapsed))
     print("")
 
 
@@ -911,6 +925,10 @@ def singlecat(data, sample, bseeds, sidx):
     the same order as the indels array, so indels are inserted from the indel
     array that is passed in.
     """
+
+    LOGGER.info("in single cat here")
+    ## enter ref data?
+    isref = 'reference' in data.paramsdict["assembly_method"]
 
     ## grab seeds and hits info for this sample
     with h5py.File(bseeds, 'r') as io5:
@@ -925,7 +943,7 @@ def singlecat(data, sample, bseeds, sidx):
         full = np.concatenate((seeds, hits))
         full = full[full[:, 0].argsort()]
 
-    ## still using max+30 len limit, rare longer merged reads get trimmed
+    ## still using max+20 len limit, rare longer merged reads get trimmed
     ## we need to allow room for indels to be added too
     maxlen = data._hackersonly["max_fragment_length"] + 20
 
@@ -933,22 +951,17 @@ def singlecat(data, sample, bseeds, sidx):
     ## which is known from seeds and hits
     ocatg = np.zeros((data.nloci, maxlen, 4), dtype=np.uint32)
     onall = np.zeros(data.nloci, dtype=np.uint8)
-    ochrom = np.zeros(data.nloci, dtype=h5py.special_dtype(vlen=bytes))
-
-    LOGGER.info("single cat here")
+    ochrom = np.zeros((data.nloci, 3), dtype=np.uint64)
+    
     ## grab the sample's data and write to ocatg and onall
     if not sample.files.database:
-        raise IPyradWarningExit("missing catg file for sample: {}"\
-                                .format(sample.name))
+        raise IPyradWarningExit("missing catg file - {}".format(sample.name))
     with h5py.File(sample.files.database, 'r') as io5:
         ## get it and delete it
         catarr = io5["catg"][:]
-        #LOGGER.info("catarr shape %s", catarr.shape)
-        #LOGGER.info("ocatg shape %s", ocatg.shape)
         tmp = catarr[full[:, 2], :maxlen, :]
         del catarr
         ocatg[full[:, 0], :tmp.shape[1], :] = tmp
-        
         del tmp
 
         ## get it and delete it
@@ -956,7 +969,8 @@ def singlecat(data, sample, bseeds, sidx):
         onall[full[:, 0]] = nall[full[:, 2]]
         del nall
 
-        if 'reference' in data.paramsdict["assembly_method"]:
+        ## fill the reference data
+        if isref:
             chrom = io5["chroms"][:]
             ochrom[full[:, 0]] = chrom[full[:, 2]]
             del chrom
@@ -965,23 +979,18 @@ def singlecat(data, sample, bseeds, sidx):
     ipath = os.path.join(data.dirs.consens, data.name+".tmp.indels")
     with h5py.File(ipath, 'r') as ih5:
         indels = ih5["indels"][sidx, :, :maxlen]
-        #LOGGER.info("h5 indels shape %s", ih5["indels"].shape)
-        #LOGGER.info("indels shape %s", indels.shape)
 
     ## insert indels into ocatg
     newcatg = inserted_indels(indels, ocatg)
     del ocatg, indels
-
-    ## save big arrays to disk temporarily
+    
+    ## save individual tmp h5 data
     smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
-    if os.path.exists(smpio):
-        os.remove(smpio)
     with h5py.File(smpio, 'w') as oh5:
         oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
         oh5.create_dataset("inall", data=onall, dtype=np.uint8)
-        if 'reference' in data.paramsdict["assembly_method"]:
-            oh5.create_dataset("ichrom", data=ochrom, 
-                               dtype=h5py.special_dtype(vlen=bytes))
+        if isref:
+            oh5.create_dataset("ichrom", data=ochrom, dtype=np.uint64)
 
 
 
@@ -993,35 +1002,60 @@ def singlecat(data, sample, bseeds, sidx):
 ## big assemblies then we should try the other approach.
 def write_to_fullarr(data, sample, sidx):
     """ writes arrays to h5 disk """
-    ## save big arrays to disk temporarily
 
+    ## enter ref data?
+    isref = 'reference' in data.paramsdict["assembly_method"]
+    LOGGER.info("writing fullarr %s %s", sample.name, sidx)
+
+    ## save big arrays to disk temporarily
     with h5py.File(data.clust_database, 'r+') as io5:
+        ## open views into the arrays we plan to fill
         chunk = io5["catgs"].attrs["chunksize"][0]
         catg = io5["catgs"]
         nall = io5["nalleles"]
-        if 'reference' in data.paramsdict["assembly_method"]:
+        if isref:
             chrom = io5["chroms"]
 
         ## adding an axis to newcatg makes it write about 1000X faster.
-        ## so instead of e.g.,
-        ##        newcatg (1000, 150, 4) -> catg (1000, 150, 4)
-        ## we do:
-        ##        newcatg (1000, 1, 150, 4) -> catg (1000, 1, 150, 4)
         smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
         with h5py.File(smpio) as indat:
-            newcatg = indat["icatg"][:]
-            onall = indat["inall"][:]
-            if 'reference' in data.paramsdict["assembly_method"]:
-                ochrom = indat["ichrom"][:]
+
+            ## grab all of the data from this sample's arrays
+            newcatg = indat["icatg"] #[:]
+            onall = indat["inall"]   #[:]
+
+            ## enter it into the full array one chunk at a time
             for cidx in xrange(0, catg.shape[0], chunk):
-                #LOGGER.info(catg.shape, nall.shape, newcatg.shape, onall.shape, sidx)
                 end = cidx + chunk
                 catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
                 nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
-                if 'reference' in data.paramsdict["assembly_method"]:
-                    chrom[:, sidx:sidx+1] = np.expand_dims(ochrom, axis=1)
-        os.remove(smpio)
 
+
+
+def dask_chroms(data):
+    
+    ## example concatenating with dask
+    h5s = [os.path.join(data.dirs.consens, s+".tmp.h5") for s in data.samples]
+    dsets = [h5py.File(i)['/ichrom'] for i in h5s]
+    arrays = [da.from_array(dset, chunks=(10000, 3)) for dset in dsets]
+    x = da.stack(arrays, axis=2)
+
+    ## max chrom (should we check for variable hits? if so, things can get wonk)
+    maxchrom = da.max(x, axis=2)[:, 0]
+
+    ## max pos
+    maxpos = da.max(x, axis=2)[:, 2]
+
+    ## min pos
+    mask = x == 0
+    x[mask] = 18446744073709551615  ## max uint64 value
+    minpos = da.min(x, axis=2)[:, 1]
+    final = da.stack([maxchrom, minpos, maxpos], axis=1)
+    final.to_hdf5(data.clust_database, "/chroms")
+
+
+#max64 = 18446744073709551615
+#max32 = 4294967295
 
 
 @numba.jit(nopython=True)
@@ -1430,6 +1464,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## get parallel view
     start = time.time()
+    printstr = " concat/shuffle input  | {} | s6 |"
 
     ## a chunker for writing every N loci. This uses core info, meaning that
     ## if users do not supply -c arg then it might be poorly estimated.
@@ -1440,17 +1475,18 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
 
     ## make a vsearch input fasta file with all samples reads concat
     clustersfile = os.path.join(data.dirs.consens, data.name+".utemp.sort")
-
     if force or (not os.path.exists(clustersfile)):
         binput = ipyclient[0].apply(build_input_file, *[data, samples, randomseed])
         while not binput.ready():
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(100, 0, " concat/shuffle input  | {} | s6 |".format(elapsed))
+            progressbar(100, 0, printstr.format(elapsed))
             time.sleep(0.1)
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(100, 100, " concat/shuffle input  | {} | s6 |".format(elapsed))
+        progressbar(100, 100, printstr.format(elapsed))
         print("")
 
+        if not binput.successful():
+            raise IPyradWarningExit(binput.result())
         ## calls vsearch, uses all threads available to head node
         cluster(data, noreverse)
 
@@ -1524,20 +1560,20 @@ def run(data, samples, noreverse, force, randomseed, ipyclient):
                 pass
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    ## get path to test dir/
-    ROOT = os.path.realpath(
-       os.path.dirname(
-           os.path.dirname(
-               os.path.dirname(__file__)
-               )
-           )
-       )
+#     ## get path to test dir/
+#     ROOT = os.path.realpath(
+#        os.path.dirname(
+#            os.path.dirname(
+#                os.path.dirname(__file__)
+#                )
+#            )
+#        )
 
 
-    ## load test data (pairgbs)
-    DATA = ip.load_json("/home/deren/Documents/RADmissing/rad1/half_min4.json")
+#     ## load test data (pairgbs)
+#     DATA = ip.load_json("/home/deren/Documents/RADmissing/rad1/half_min4.json")
 
-    # ## run step 6
-    DATA.run("6", force=True)
+#     # ## run step 6
+#     DATA.run("6", force=True)
