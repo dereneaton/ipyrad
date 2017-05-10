@@ -52,7 +52,10 @@ for line in fileinput.input(release_file, inplace=1):
         for commit in commit_lines:
             try:
                 ## Squash merge commits from the releasenotes cuz it annoying
+                ## Also any cosmetic commits
                 if commit[1] == "Merge branch 'master' of https://github.com/dereneaton/ipyrad":
+                    continue
+                if "cosmetic" in commit[1]:
                     continue
                 line += "- " + commit[1] + "\n"
             except:

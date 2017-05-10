@@ -134,6 +134,14 @@ def persistent_popen_align3(data, samples, chunk):
                 dalign1 = dict([i.split("\n", 1) for i in la1])
                 dalign2 = dict([i.split("\n", 1) for i in la2])
                 keys = sorted(dalign1.keys(), key=DEREP)
+                keys2 = sorted(dalign2.keys(), key=DEREP)
+
+                ## Make sure R1 and R2 actually exist for each sample. If not
+                ## bail out of this cluster.
+                if not len(keys) == len(keys2):
+                    LOGGER.error("R1 and R2 results differ in length: "\
+                                    + "\nR1 - {}\nR2 - {}".format(keys, keys2))
+                    continue
 
                 ## impute allele (lowercase) info back into alignments
                 for kidx, key in enumerate(keys):
@@ -161,7 +169,7 @@ def persistent_popen_align3(data, samples, chunk):
                         concatarr = np.array(list(concatseq))
                         concatarr[newmask] = np.char.lower(concatarr[newmask])
                         concatseq = concatarr.tostring()
-                        LOGGER.info(concatseq)
+                        #LOGGER.info(concatseq)
                         
                     ## fill list with aligned data
                     aligned.append("{}\n{}".format(key, concatseq))
@@ -249,7 +257,7 @@ def persistent_popen_align3(data, samples, chunk):
 
         if istack:
             allstack.append("\n".join(istack))
-            LOGGER.info("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
+            LOGGER.debug("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
 
     ## cleanup
     proc.stdout.close()

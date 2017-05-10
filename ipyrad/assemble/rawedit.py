@@ -400,7 +400,8 @@ def cutadaptit_pairs(data, sample):
 
     ## raise errors if found
     if proc1.returncode:
-        raise IPyradWarningExit(" error [returncode={}]: {}\n{}".format(proc1.returncode, " ".join(cmdf1), res1))
+        raise IPyradWarningExit(" error [returncode={}]: {}\n{}"\
+            .format(proc1.returncode, " ".join(cmdf1), res1))
 
     LOGGER.debug("Exiting cutadaptit_pairs - {}".format(sname))
     ## return results string to be parsed outside of engine
@@ -424,9 +425,6 @@ def run2(data, samples, force, ipyclient):
     ## get samples
     subsamples = choose_samples(samples, force)
 
-    ## parallel client
-    lbview = ipyclient.load_balanced_view()
-
     ## only allow extra adapters in filters==3, 
     ## and add poly repeats if not in list of adapters
     if int(data.paramsdict["filter_adapters"]) == 3:
@@ -445,8 +443,12 @@ def run2(data, samples, force, ipyclient):
     ## ipcluster to kill the bash jobs. Should we shut it down inside
     ## here instead of in assembly?
     try:
+        ## concat is not parallelized (since it's disk limited, generally)
         subsamples = concat_reads(data, subsamples, ipyclient)
+        ## cutadapt is parallelized by ncores/2 because cutadapt spawns threads
+        lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
         run_cutadapt(data, subsamples, lbview)
+        ## cleanup is ...
         assembly_cleanup(data)
 
     except KeyboardInterrupt:
@@ -477,10 +479,10 @@ def concat_reads(data, subsamples, ipyclient):
     if any([len(i.files.fastqs) > 1 for i in subsamples]):
         ## run on single engine for now
         start = time.time()
+        printstr = " concatenating inputs  | {} | s2 |"
         finished = 0
         catjobs = {}
         for sample in subsamples:
-            ## only concat the ones that have two files
             if len(sample.files.fastqs) > 1:
                 catjobs[sample.name] = ipyclient[0].apply(\
                                        concat_multiple_inputs, *(data, sample))
@@ -491,8 +493,7 @@ def concat_reads(data, subsamples, ipyclient):
         while 1:
             finished = sum([i.ready() for i in catjobs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(catjobs), finished, 
-                       " concatenating inputs  | {} | s2 |".format(elapsed))
+            progressbar(len(catjobs), finished, printstr.format(elapsed))
             time.sleep(0.1)
             if finished == len(catjobs):
                 print("")
@@ -503,7 +504,7 @@ def concat_reads(data, subsamples, ipyclient):
             if catjobs[async].successful():
                 data.samples[async].files.concat = catjobs[async].result()
             else:
-                error = catjobs[async].exception()
+                error = catjobs[async].result()#exception()
                 LOGGER.error("error in step2 concat %s", error)
                 raise IPyradWarningExit("error in step2 concat: {}".format(error))
     else:
@@ -516,10 +517,18 @@ def concat_reads(data, subsamples, ipyclient):
 
 
 def run_cutadapt(data, subsamples, lbview):
+    """
+    sends fastq files to cutadapt
+    """
     ## choose cutadapt function based on datatype
     start = time.time()
+    printstr = " processing reads      | {} | s2 |"
     finished = 0
     rawedits = {}
+
+    ## sort subsamples so that the biggest files get submitted first
+    subsamples.sort(key=lambda x: x.stats.reads_raw, reverse=True)
+    LOGGER.info([i.stats.reads_raw for i in subsamples])
 
     ## send samples to cutadapt filtering
     if "pair" in data.paramsdict["datatype"]:
@@ -533,8 +542,7 @@ def run_cutadapt(data, subsamples, lbview):
     while 1:
         finished = sum([i.ready() for i in rawedits.values()])
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(rawedits), finished, 
-                    " processing reads      | {} | s2 |".format(elapsed))
+        progressbar(len(rawedits), finished, printstr.format(elapsed))
         time.sleep(0.1)
         if finished == len(rawedits):
             print("")
@@ -589,7 +597,7 @@ def choose_samples(samples, force):
 
 def concat_multiple_inputs(data, sample):
     """ 
-    if multiple fastq files were appended into the list of fastqs for samples
+    If multiple fastq files were appended into the list of fastqs for samples
     then we merge them here before proceeding. 
     """
 
@@ -640,22 +648,22 @@ NO_BARS_GBS_WARNING = """\
     """
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    import ipyrad as ip
+#     import ipyrad as ip
 
-    ## get path to root (ipyrad) dir/ 
-    ROOT = os.path.realpath(
-       os.path.dirname(
-           os.path.dirname(
-               os.path.dirname(__file__))))
+#     ## get path to root (ipyrad) dir/ 
+#     ROOT = os.path.realpath(
+#        os.path.dirname(
+#            os.path.dirname(
+#                os.path.dirname(__file__))))
 
-    ## run tests
-    TESTDIRS = ["test_rad", "test_pairgbs"]
+#     ## run tests
+#     TESTDIRS = ["test_rad", "test_pairgbs"]
 
-    for tdir in TESTDIRS:
-        TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", tdir, "data1"))
-        TEST.step2(force=True)
-        print(TEST.stats)
+#     for tdir in TESTDIRS:
+#         TEST = ip.load.load_assembly(os.path.join(\
+#                          ROOT, "tests", tdir, "data1"))
+#         TEST.step2(force=True)
+#         print(TEST.stats)
 

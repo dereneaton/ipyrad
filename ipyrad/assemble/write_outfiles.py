@@ -292,9 +292,9 @@ def make_stats(data, samples, samplecounts, locuscounts):
         sumd[i] = np.sum([i*pisdat.values[i] for i in range(i+1)])
     pissums = pd.Series(sumd, name="sum_pis", index=range(smax))
 
-    print("\n\n\n## The distribution of SNPs (var and pis) across loci."+\
-          "\n## var = all variable sites (pis + autapomorphies)"+\
-          "\n## pis = parsimony informative site (minor allele in >1 sample)"+\
+    print("\n\n\n## The distribution of SNPs (var and pis) per locus."+\
+          "\n## var = Number of loci with n variable sites (pis + autapomorphies)"+\
+          "\n## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)"+\
           "\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
           file=outstats)
     data.stats_dfs.s7_snps = pd.concat([vardat, varsums, pisdat, pissums],
@@ -630,22 +630,26 @@ def get_alleles(locdat):
         lines = loc.split("\n")
         inloc = []
         for line in lines[:-1]:
-            #LOGGER.info("line %s...", line)
-            firstspace = line.index(" ")
-            lastspace = line.rindex(" ")
-            spacer = lastspace - firstspace + 1
-            name, seq = line.split()
-            seq1, seq2 = splitalleles(seq)
-            LOGGER.info("""
-                seqx %s
-                seq1 %s
-                seq2 %s
-                """, seq, seq1, seq2)
-            inloc.append(name+"_0" + spacer * " " + seq1)
-            inloc.append(name+"_1" + spacer * " " + seq2)
+            try:
+                #LOGGER.info("line %s...", line)
+                firstspace = line.index(" ")
+                lastspace = line.rindex(" ")
+                spacer = lastspace - firstspace + 1
+                name, seq = line.split()
+                seq1, seq2 = splitalleles(seq)
+                LOGGER.info("""
+                    seqx %s
+                    seq1 %s
+                    seq2 %s
+                    """, seq, seq1, seq2)
+                inloc.append(name+"_0" + spacer * " " + seq1)
+                inloc.append(name+"_1" + spacer * " " + seq2)
+            except ValueError as inst:
+                LOGGER.debug("Found empty locus, all samples filtered.")
         if inloc:
             inloc.append("//  "+lines[-1][2:]+"|")
             locs.append("\n".join(inloc))
+
     return "\n".join(locs)
 
 
