@@ -509,76 +509,6 @@ def unstruct(amb):
 
 
 
-# def getsplits(filename):
-#     """ Calculate optimum splitting based on file size. Does not unzip files,
-#     assumes average rate of compression. This is a fast alternative to counting
-#     lines which takes too long on huge files.
-#     """
-#     filesize = os.stat(filename).st_size
-#     if filesize < 10000000:
-#         optim = 200000
-#     elif filesize < 4000000000:
-#         optim = 500000
-#     elif filesize < 8000000000:
-#         optim = 4000000
-#     else:
-#         optim = 8000000
-#     return optim
-
-
-
-# def zcat_make_temps(args):
-#     """
-#     Call bash command 'cat' and 'split' to split large files. The goal
-#     is to create N splitfiles where N is a multiple of the number of processors
-#     so that each processor can work on a file in parallel.
-#     """
-
-#     ## split args
-#     data, raws, num, tmpdir, optim = args
-
-#     ## get optimum lines per file
-#     if not optim:
-#         optim = getsplits(raws[0])
-#     #optim = int(optim)
-#     LOGGER.info("zcat is using optim = %s", optim)
-
-#     ## is it gzipped
-#     cat = ["cat"]
-#     if raws[0].endswith(".gz"):
-#         cat = ["gunzip", "-c"]
-
-#     ### run splitter
-#     ### The -a flag tells split how long the suffix for each split file
-#     ### should be. It uses lowercase letters of the alphabet, so `-a 4`
-#     ### will have 26^4 possible tmp file names.
-#     cmd = cat + [raws[0], "|", "split", "-a", "4",
-#                  "-l", str(optim),
-#                  "-", os.path.join(tmpdir, "chunk1_"+str(num)+"_")]
-
-#     subprocess.Popen(cmd).communicate()
-
-#     chunks1 = glob.glob(os.path.join(tmpdir, "chunk1_"+str(num)+"_*"))
-#     chunks1.sort()
-
-#     if "pair" in data.paramsdict["datatype"]:
-#         cmd = " ".join([cat, raws[1], "|", "split", "-a", "4", "-l", str(optim),
-#                   "-", os.path.join(tmpdir, "chunk2_"+str(num)+"_")])
-#         _ = subprocess.check_call(cmd, shell=True)
-
-#         chunks2 = glob.glob(os.path.join(tmpdir, "chunk2_"+str(num)+"_*"))
-#         chunks2.sort()
-
-#     else:
-#         chunks2 = [0]*len(chunks1)
-
-#     assert len(chunks1) == len(chunks2), \
-#         "R1 and R2 files are not the same length."
-
-#     return [raws[0], zip(chunks1, chunks2)]
-
-
-
 
 def clustdealer(pairdealer, optim):
     """ return optim clusters given iterators, and whether it got all or not"""
@@ -608,7 +538,11 @@ def clustdealer(pairdealer, optim):
 
 def progressbar(njobs, finished, msg="", spacer=2):
     """ prints a progress bar """
-    progress = 100*(finished / float(njobs))
+    if njobs:
+        progress = 100*(finished / float(njobs))
+    else:
+        progress = 100
+        
     hashes = '#'*int(progress/5.)
     nohash = ' '*int(20-len(hashes))
     if not ipyrad.__interactive__:

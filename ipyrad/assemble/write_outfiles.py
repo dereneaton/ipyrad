@@ -535,19 +535,8 @@ def make_loci_and_stats(data, samples, ipyclient):
     ## send jobs in chunks
     loci_asyncs = {}
     for istart in xrange(0, nloci, optim):
-        args = [data, optim, pnames, snppad, smask, istart, samplecov, locuscov]
+        args = [data, optim, pnames, snppad, smask, istart, samplecov, locuscov, 1]
         loci_asyncs[istart] = lbview.apply(locichunk, args)
-
-    ### FOR DEBUGGING
-    #ipyclient.wait()
-    #for job in loci_asyncs:
-    #    if not job.successful():
-    #        LOGGER.error("error %s", job.exception())
-
-    # ## just a waiting function for chunks to finish
-    # tmpids = list(itertools.chain(*[i.msg_ids for i in loci_asyncs]))
-    # with lbview.temp_flags(after=tmpids):
-    #     res = lbview.apply(time.sleep, 0.1)
 
     while 1:
         done = [i.ready() for i in loci_asyncs.values()]
@@ -568,7 +557,6 @@ def make_loci_and_stats(data, samples, ipyclient):
 
     ## concat and cleanup
     results = [i.get() for i in loci_asyncs.values()]
-    #results.sort(key=[int(i) for i in loci_asyncs])
     ## update dictionaries
     for chunk in results:
         samplecov += chunk[0]
@@ -578,29 +566,61 @@ def make_loci_and_stats(data, samples, ipyclient):
     tmploci = glob.glob(data.outfiles.loci+".[0-9]*")
     ## sort by start value
     tmploci.sort(key=lambda x: int(x.split(".")[-1]))
+
     ## write tmpchunks to locus file
-
     locifile = open(data.outfiles.loci, 'w')
-    if "a" in data.paramsdict["output_formats"]:
-        inall = open(data.outfiles.alleles, 'w')
-
     for tmploc in tmploci:
         with open(tmploc, 'r') as inloc:
             locdat = inloc.read()
             locifile.write(locdat)
-
-            ## write alleles
-            if "a" in data.paramsdict["output_formats"]:            
-                inalleles = get_alleles(locdat)
-                inall.write(inalleles)
             os.remove(tmploc)
-
     locifile.close()
-    if "a" in data.paramsdict["output_formats"]:
-        inall.close()
 
     ## make stats file from data
     make_stats(data, samples, samplecov, locuscov)
+
+    ## repeat for alleles output
+    if "a" in data.paramsdict["output_formats"]:
+
+        loci_asyncs = {}
+        for istart in xrange(0, nloci, optim):
+            args = [data, optim, pnames, snppad, smask, istart, samplecov, locuscov, 0]
+            loci_asyncs[istart] = lbview.apply(locichunk, args)
+
+        while 1:
+            done = [i.ready() for i in loci_asyncs.values()]
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(len(done), sum(done),
+                " building alleles      | {} | s7 |".format(elapsed))            
+            time.sleep(0.1)
+            if len(done) == sum(done):
+                print("")
+                break
+
+        ## check for errors
+        for job in loci_asyncs:
+            if loci_asyncs[job].ready() and not loci_asyncs[job].successful():
+                LOGGER.error("error in building loci [%s]: %s",
+                             job, loci_asyncs[job].exception())
+                raise IPyradWarningExit(loci_asyncs[job].exception())
+
+        ## concat and cleanup
+        #results = [i.get() for i in loci_asyncs.values()]
+
+        ## get all chunk files
+        tmploci = glob.glob(data.outfiles.loci+".[0-9]*")
+        ## sort by start value
+        tmploci.sort(key=lambda x: int(x.split(".")[-1]))
+
+        ## write tmpchunks to locus file
+        locifile = open(data.outfiles.alleles, 'w')
+        for tmploc in tmploci:
+            with open(tmploc, 'r') as inloc:
+                locdat = inloc.read()
+                inalleles = get_alleles(locdat)
+                locifile.write(inalleles)
+                os.remove(tmploc)
+        locifile.close()
 
 
 
@@ -610,12 +630,17 @@ def get_alleles(locdat):
         lines = loc.split("\n")
         inloc = []
         for line in lines[:-1]:
-            LOGGER.info("line %s...", line)
+            #LOGGER.info("line %s...", line)
             firstspace = line.index(" ")
             lastspace = line.rindex(" ")
             spacer = lastspace - firstspace + 1
             name, seq = line.split()
             seq1, seq2 = splitalleles(seq)
+            LOGGER.info("""
+                seqx %s
+                seq1 %s
+                seq2 %s
+                """, seq, seq1, seq2)
             inloc.append(name+"_0" + spacer * " " + seq1)
             inloc.append(name+"_1" + spacer * " " + seq2)
         if inloc:
@@ -630,7 +655,7 @@ def locichunk(args):
     Function from make_loci to apply to chunks. smask is sample mask.
     """
     ## parse args
-    data, optim, pnames, snppad, smask, start, samplecov, locuscov = args
+    data, optim, pnames, snppad, smask, start, samplecov, locuscov, upper = args
 
     ## this slice
     hslice = [start, start+optim]
@@ -643,14 +668,13 @@ def locichunk(args):
 
     ## get seqs db
     io5 = h5py.File(data.clust_database, 'r')
-    aseqs = np.char.upper(io5["seqs"][hslice[0]:hslice[1], ])
-    #aseqs = io5["seqs"][hslice[0]:hslice[1], ]
+    if upper:
+        aseqs = np.char.upper(io5["seqs"][hslice[0]:hslice[1], ])
+    else:
+        aseqs = io5["seqs"][hslice[0]:hslice[1], ]
 
     ## which loci passed all filters
-    #LOGGER.info("edgfilt is %s", aedge.sum())
     keep = np.where(np.sum(afilt, axis=1) == 0)[0]
-    #LOGGER.info("keep is %s", keep.sum())
-    ## store until printing
     store = []
 
     ## write loci that passed after trimming edges, then write snp string
@@ -1448,121 +1472,6 @@ def make_outfiles(data, samples, output_formats, ipyclient):
     os.remove(tmparrs)
 
 
-## DEPRECATED FOR BOSS_MAKE_ARRAYS
-## TODO: use view(np.uint8) and compile loop as numba func
-def make_arrays(data, sidx, optim, nloci):
-    """
-    Builds arrays for seq, snp, and bis data after applying locus filters,
-    and edge filteres for the seq data. These arrays are used to build outs.
-    """
-
-    ## load the h5 database
-    io5 = h5py.File(data.clust_database, 'r')
-    co5 = h5py.File(data.database, 'r')
-
-    ## make empty arrays for filling
-    maxlen = data._hackersonly["max_fragment_length"] + 20
-    maxsnp = co5["snps"][:].sum()
-
-    ## shape of arrays is sidx, we will subsample h5 w/ sidx to match. Seqarr
-    ## will actually be a fair bit smaller since its being loaded with edge
-    ## trimmed data. But for now, it could be too big.
-    seqarr = np.zeros((sum(sidx), maxlen*nloci), dtype="S1")
-    snparr = np.zeros((sum(sidx), maxsnp), dtype="S1")
-    bisarr = np.zeros((sum(sidx), nloci), dtype="S1")
-    maparr = np.zeros((maxsnp, 4), dtype=np.uint32)
-
-    ## apply all filters and write loci data
-    start = 0
-    seqleft = 0
-    snpleft = 0
-    bis = 0
-
-    ## edge filter has already been applied to snps, but has not yet been
-    ## applied to seqs. The locus filters have not been applied to either yet.
-    mapsnp = 0
-    totloc = 0
-    while start < nloci:
-        hslice = [start, start+optim]
-        afilt = co5["filters"][hslice[0]:hslice[1], :]
-        aedge = co5["edges"][hslice[0]:hslice[1], :]
-        asnps = co5["snps"][hslice[0]:hslice[1], :]
-        aseqs = io5["seqs"][hslice[0]:hslice[1], sidx, :]
-
-        ## which loci passed all filters
-        keep = np.where(np.sum(afilt, axis=1) == 0)[0]
-        #LOGGER.info("edges.shape %s", aedge.shape)
-
-        ## write loci that passed after trimming edges, then write snp string
-        for iloc in keep:
-            ## grab r1 seqs between edges
-            edg = aedge[iloc]
-
-            ## grab SNPs from seqs already sidx subsampled and edg masked.
-            ## needs to be done here before seqs are edgetrimmed.
-            getsnps = asnps[iloc].sum(axis=1).astype(np.bool)
-            snps = aseqs[iloc, :, getsnps].T
-
-            ## trim edges and split from seqs and concatenate for pairs.
-            ## this seq array will be the phy output.
-            if not "pair" in data.paramsdict["datatype"]:
-                seq = aseqs[iloc, :, edg[0]:edg[1]+1]
-            else:
-                seq = np.concatenate([aseqs[iloc, :, edg[0]:edg[1]+1],
-                                      aseqs[iloc, :, edg[2]:edg[3]+1]], axis=1)
-            #LOGGER.info("seq %s", seq.shape)
-
-            ## remove cols from seq (phy) array that are all N-
-            lcopy = seq
-            lcopy[lcopy == "-"] = "N"
-            bcols = np.all(lcopy == "N", axis=0)
-            seq = seq[:, ~bcols]
-
-            ## put into large array (could put right into h5?)
-            seqarr[:, seqleft:seqleft+seq.shape[1]] = seq
-            seqleft += seq.shape[1]
-
-            ## subsample all SNPs into an array
-            snparr[:, snpleft:snpleft+snps.shape[1]] = snps
-            snpleft += snps.shape[1]
-
-            ## Enter each snp into the map file
-            for i in xrange(snps.shape[1]):
-                ## 1-indexed loci in first column
-                ## actual locus number in second column
-                ## counter for this locus in third column
-                ## snp counter total in fourth column
-                maparr[mapsnp, :] = [totloc+1, start+iloc, i, mapsnp+1]
-                mapsnp += 1
-
-            #LOGGER.info("%s -- %s", seqleft, seqleft+seq.shape[1])
-            #LOGGER.info("%s -- %s", snps, snps.shape)
-
-            ## subsample one SNP into an array
-            if snps.shape[1]:
-                samp = np.random.randint(snps.shape[1])
-                bisarr[:, bis] = snps[:, samp]
-                bis += 1
-                totloc += 1
-
-        ## increase the counter
-        start += optim
-
-    ## trim trailing edges b/c we made the array bigger than needed.
-    ridx = np.all(seqarr == "", axis=0)
-    seqarr = seqarr[:, ~ridx]
-    ridx = np.all(snparr == "", axis=0)
-    snparr = snparr[:, ~ridx]
-    ridx = np.all(bisarr == "", axis=0)
-    bisarr = bisarr[:, ~ridx]
-    ridx = np.all(maparr == 0, axis=1)
-    maparr = maparr[~ridx, :]
-
-    ## return these three arrays which are pretty small
-    ## catg array gets to be pretty huge, so we return only
-    return seqarr, snparr, bisarr, maparr
-
-
 
 def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
     
@@ -1979,6 +1888,7 @@ def write_str(data, sidx, pnames):
     LOGGER.debug("finished writing str in: %s", time.time() - start)
 
 
+
 def write_geno(data, sidx):
     """
     write the geno output formerly used by admixture, still supported by 
@@ -2054,6 +1964,7 @@ def write_geno(data, sidx):
     LOGGER.debug("finished writing geno in: %s", time.time() - start)
 
 
+
 def write_gphocs(data, sidx):
     """
     write the g-phocs output. This code is hella ugly bcz it's copy/pasted
@@ -2123,9 +2034,10 @@ def make_vcf(data, samples, ipyclient, full=0):
     """
     ## start vcf progress bar
     start = time.time()
+    printstr = " building vcf file     | {} | s7 |"
     LOGGER.info("Writing .vcf file")
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " building vcf file     | {} | s7 |".format(elapsed))
+    progressbar(20, 0, printstr.format(elapsed))
 
     ## create outputs for v and V, gzip V to be friendly
     data.outfiles.vcf = os.path.join(data.dirs.outfiles, data.name+".vcf")
@@ -2239,6 +2151,8 @@ def concat_vcf(data, names, full):
     else:
         writer = gzip.open(data.outfiles.VCF, 'a')
 
+    ## what order do users want? The order in the original ref file?
+    ## Sorted by the size of chroms? that is the order in faidx.
     ## If reference mapping then it's nice to sort the vcf data by
     ## CHROM and POS. This is doing a very naive sort right now, so the
     ## CHROM will be ordered, but not the pos within each chrom.
@@ -2294,22 +2208,10 @@ def vcfchunk(data, optim, sidx, start, full):
         acatg = io5["catgs"][hslice[0]:hslice[1], :, :, :]
         acatg = acatg[keepmask, :]
         acatg = acatg[:, sidx, :, :]
+        achrom = io5["chroms"][hslice[0]:hslice[1]]
+        achrom = achrom[keepmask, :]        
 
-        ## Just take the first chrom/pos info for each base position
-        ## This tests for the 'chroms' dataset in io5 and falls back
-        ## to the 'old' CHROM/POS vcf output if it doesn't exist.
-        ## This just prevents a breaking change in the transition from
-        ## 0.5.15 to 0.6. 
-        if "/chroms" in io5:
-            achrom = io5["chroms"][hslice[0]:hslice[1]]
-            achrom = achrom[keepmask, :]
-            achrom = achrom[:, sidx]
-        else:
-            achrom = np.array([])
-
-    #LOGGER.info('keepmask %s', keepmask)
     LOGGER.info('acatg.shape %s', acatg.shape)
-
     ## to save memory some columns are stored in diff dtypes until printing
     if not full:
         with h5py.File(data.database, 'r') as co5:
@@ -2320,12 +2222,12 @@ def vcfchunk(data, optim, sidx, start, full):
         maxsnplen = snps.sum()
 
     ## vcf info to fill, this is bigger than the actual array
-    #nrows = (keepmask.sum()*maxlen)
     nrows = maxsnplen
-    cols0 = np.zeros(nrows, dtype=h5py.special_dtype(vlen=bytes))
+    cols0 = np.zeros(nrows, dtype=np.uint64) #h5py.special_dtype(vlen=bytes))
     cols1 = np.zeros(nrows, dtype=np.uint32)
     cols34 = np.zeros((nrows, 2), dtype="S3")
     cols7 = np.zeros((nrows, 1), dtype="S20")
+
     ## when nsamples is high this blows up memory (e.g., dim=(5M x 500))
     ## so we'll instead create a list of arrays with 10 samples at a time.
     ## maybe later replace this with a h5 array
@@ -2340,7 +2242,6 @@ def vcfchunk(data, optim, sidx, start, full):
     locindex = np.where(keepmask)[0]
     for iloc in xrange(aseqs.shape[0]):
         edg = aedge[iloc]
-        #LOGGER.info('edg %s', edg)
         ## grab all seqs between edges
         if not 'pair' in data.paramsdict["datatype"]:
             seq = aseqs[iloc, :, edg[0]:edg[1]+1]
@@ -2369,7 +2270,6 @@ def vcfchunk(data, optim, sidx, start, full):
         ## fill (CHR) chromosome/contig (reference) or RAD-locus (denovo)
         ## this is 1-indexed
         ## np.char.mod() will cast the locus count from int to str
-        #LOGGER.error("seq.shape {} - seq.shape[1] {}".format(seq.shape, seq.shape[1]))
 
         ## If there are any valid reference positions at this locus then we'll just
         ## call them all the same thing. This is a little naive, since there could 
@@ -2382,38 +2282,14 @@ def vcfchunk(data, optim, sidx, start, full):
         ## The rsplits handle scaffold names that may contain ":".
         pos = 0
         if achrom[iloc].any():
-            try:
-                #LOGGER.debug("iloc {} - achrom {}".format(iloc, achrom.shape))
-                chrompos = [z for z in achrom[iloc] if ":" in z][0]
-                #LOGGER.debug("Found a refmap seq - {}:{}".format(chrompos.rsplit(":", 1)[0], chrompos.rsplit(":", 1)[1]))
-                cols0[init:init+seq.shape[1]] = np.array([chrompos.rsplit(":", 1)[0]] * seq.shape[1])
-                pos = int(chrompos.rsplit(":", 1)[1].split("-")[0])
-            except:
-                LOGGER.debug("Found a bad ref achrom array - iloc {} - start - {}".format(iloc, start))
-                raise
-        else:
-            try:
-                cols0[init:init+seq.shape[1]] = \
-                    np.core.defchararray.add(\
-                        np.array(["locus_"] * seq.shape[1]),\
-                        np.char.mod('%d', start+locindex[iloc]))
-                #LOGGER.debug("Found a non-ref seq - {}".format(start+locindex[iloc]+1))
-            except:
-                LOGGER.debug("Found a locus with no snps - {}".format(start+locindex[iloc]+1))
-                continue
-
-        ## fill (POS) position
-        ## If there was a successful mapping to the reference sequence then
-        ## the variable `pos` here will equal the STARTPOS of the alignment.
-        ## If no mapping then it'll be 0, so will have no effect on denovo loci.
-        ##
-        ## This is also a little naive. For example if the alignment includes
-        ## indels at all then the POS numbering will not be exact with respect
-        ## to the reference. :-/
-        if full:
-            cols1[init:init+seq.shape[1]] = pos + np.arange(seq.shape[1]) + 1
-        else:
+            pos = achrom[iloc][1]
+            cols0[init:init+seq.shape[1]] = achrom[iloc][0] + 1
             cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
+        else:
+            if full:
+                cols1[init:init+seq.shape[1]] = pos + np.arange(seq.shape[1]) + 1
+            else:
+                cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
 
         ## fill reference base
         alleles = reftrick(seq, GETCONS)
@@ -2485,6 +2361,15 @@ def vcfchunk(data, optim, sidx, start, full):
     withdat = cols0 != 0
     tot = withdat.sum()
 
+    ## get scaffold names
+    if os.path.exists(data.paramsdict["reference_sequence"]):
+        fai = pd.read_csv(data.paramsdict["reference_sequence"] + ".fai", 
+                names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+                sep="\t")
+        faidict = {i:j for i,j in enumerate(fai.scaffold)}
+        chroms = [faidict[i] for i in cols0-1]
+        cols0 = np.array(chroms)
+
     ## Only write if there is some data that passed filtering
     if tot:
         LOGGER.debug("Writing data to vcf")
@@ -2498,18 +2383,18 @@ def vcfchunk(data, optim, sidx, start, full):
             ## for cols0 and cols1 the 'newaxis' slice and the transpose
             ## are for turning the 1d arrays into column vectors.
             np.savetxt(writer,
-                        np.concatenate(
-                           (cols0[:tot][np.newaxis].T,
-                            cols1[:tot][np.newaxis].T,
-                            np.array([["."]]*tot, dtype="S1"),
-                            cols34[:tot, :],
-                            np.array([["13", "PASS"]]*tot, dtype="S4"),
-                            cols7[:tot, :],
-                            np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
-                            htmp["vcf"][:tot, :],
-                            ),
-                            axis=1),
-                        delimiter="\t", fmt="%s")
+                np.concatenate(
+                   (cols0[:tot][np.newaxis].T,
+                    cols1[:tot][np.newaxis].T,
+                    np.array([["."]]*tot, dtype="S1"),
+                    cols34[:tot, :],
+                    np.array([["13", "PASS"]]*tot, dtype="S4"),
+                    cols7[:tot, :],
+                    np.array([["GT:DP:CATG"]]*tot, dtype="S10"),
+                    htmp["vcf"][:tot, :],
+                    ),
+                    axis=1),
+                delimiter="\t", fmt="%s")
         except Exception as inst:
             LOGGER.error("Error building vcf file - ".format(inst))
             raise
