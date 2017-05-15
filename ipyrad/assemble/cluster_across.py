@@ -28,7 +28,7 @@ import numpy as np
 import dask.array as da
 import ipyrad
 from ipyrad.assemble.util import IPyradWarningExit, progressbar, clustdealer
-from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
+#from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 try:
     import subprocess32 as sps
@@ -284,125 +284,6 @@ def persistent_popen_align3(data, samples, chunk):
 
 
 DEREP = lambda x: int(x.split(";")[-1][1:])
-
-
-
-### DEPRECATED IN PLACE OF persistent_popen_align3
-def muscle_align_across(data, samples, chunk):
-    """
-    Reads in a chunk of the rebuilt clusters. Aligns clusters and writes
-    tmpaligned chunk of seqs. Also fills a tmparray with indels locations.
-    tmpchunk and tmparr will be compiled by multi_muscle_align func.
-    """
-
-    ## snames to ensure sorted order
-    samples.sort(key=lambda x: x.name)
-    snames = [sample.name for sample in samples]
-
-    ## data are already chunked, read in the whole thing
-    with open(chunk, 'rb') as infile:
-        clusts = infile.read().split("//\n//\n")[:-1]
-
-    ## tmparray to store indel information, for super huge data it may
-    ## be necessary to build h5 here instead of below. Quick test shows that
-    ## (300, 2M, 300) will give a memory error.
-    maxlen = data._hackersonly["max_fragment_length"] + 20
-    indels = np.zeros((len(samples), len(clusts), maxlen), dtype=np.bool_)
-    duples = np.zeros(len(clusts), dtype=np.bool_)
-
-    ## iterate over clusters and align, record excluded loci containing dups
-    out = []
-    for ldx in xrange(len(clusts)):
-        stack = []
-        lines = clusts[ldx].strip().split("\n")
-        names = lines[::2]
-        seqs = lines[1::2]
-
-        if len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
-            ## Strip the leading > from the name or downstream dies
-            LOGGER.debug("Found a duplicate sample in the stack")
-            stack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
-            LOGGER.debug("dupestack:\n{}".format("\n".join(stack)))
-            duples[ldx] = 1
-        ## don't bother aligning singletons
-        elif len(names) <= 1:
-            pass
-        else:
-            ## append counter to end of names b/c muscle doesn't retain order
-            names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
-
-            ## split seqs before align if PE. If 'nnnn' not found (single end
-            ## or merged reads) then `except` will pass it to SE alignment.
-            ## The other case where `except` will pass is if one or the other
-            ## of the PE reads is empty. In this case the split() won't fail
-            ## but the call to parsemuscle() will raise an index error. The
-            ## SE code downstream will strip the "nnnn" and proceed as usual.
-            try:
-                seqs1 = [i.split("nnnn")[0] for i in seqs]
-                seqs2 = [i.split("nnnn")[1] for i in seqs]
-                string1 = muscle_call(data, names, seqs1)
-                string2 = muscle_call(data, names, seqs2)
-                anames, aseqs1 = parsemuscle(data, string1)
-                anames, aseqs2 = parsemuscle(data, string2)
-                ## resort so they're in same order
-                aseqs = ["{}nnnn{}".format(i, j) for i, j in zip(aseqs1, aseqs2)]
-                aseqs = np.array([list(i) for i in aseqs])
-                thislen = min(maxlen, aseqs.shape[1])
-                sidxs = [snames.index(anames[idx].rsplit("_", 1)[0]) for idx \
-                         in xrange(aseqs.shape[0])]
-                ## if dups
-                if len(set(sidxs)) != aseqs.shape[0]:
-                    duples[ldx] = 1
-                for idx in xrange(aseqs.shape[0]):
-                    newn = anames[idx].rsplit(';', 1)[0]
-                    ## save to aligned cluster
-                    stack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
-                    ## name index from sorted list (indels order)
-                    sidx = sidxs[idx]
-                    ## store the indels
-                    #LOGGER.info("{} - {}".format(idx, np.where(aseqs[idx, :thislen] == "-")[0]))
-                    indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
-
-            except IndexError:
-                seqs = [i.replace('nnnn', '') for i in seqs]
-                string1 = muscle_call(data, names, seqs)
-                anames, aseqs = parsemuscle(data, string1)
-                ## aseqs is the length of the data
-                aseqs = np.array([list(i) for i in aseqs])
-                ## this len is at most maxlen
-                thislen = min(maxlen, aseqs.shape[1])
-                ## get sname indexes of samples, also used to check for dups
-                sidxs = [snames.index(anames[idx].rsplit("_", 1)[0]) for idx \
-                         in xrange(aseqs.shape[0])]
-                ## if no dups
-                if len(set(sidxs)) != aseqs.shape[0]:
-                    duples[ldx] = 1
-                ## arrange data into the correct order to input to indels arr
-                for idx in xrange(aseqs.shape[0]):
-                    newn = anames[idx].rsplit(';', 1)[0]
-                    ## name index from sorted list (indels order)
-                    sidx = sidxs[idx] #snames.index(anames[idx].rsplit("_", 1)[0])
-                    ## save to aligned cluster
-                    stack.append("{}\n{}".format(newn, aseqs[idx, :thislen].tostring()))
-                    ## store the indels
-                    indels[sidx, ldx, :thislen] = aseqs[idx, :thislen] == "-"
-
-        if stack:
-            out.append("\n".join(stack))
-
-    ## write to file after
-    odx = chunk.rsplit("_")[-1]
-    alignfile = os.path.join(data.tmpdir, "align_{}.fa".format(odx))
-    with open(alignfile, 'wb') as outfile:
-        outfile.write("\n//\n//\n".join(out)+"\n")
-        os.remove(chunk)
-
-    ## save indels array to tmp dir
-    ifile = os.path.join(data.tmpdir, "indels_{}.tmp.npy".format(odx))
-    np.save(ifile, indels)
-    dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
-    np.save(dfile, duples)
-
 
 
 def multi_muscle_align(data, samples, clustbits, ipyclient):
