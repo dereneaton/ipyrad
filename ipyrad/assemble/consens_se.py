@@ -228,9 +228,7 @@ def newconsensus(data, sample, tmpchunk, optim):
                 try:
                     ## parse position from name string
                     name, _, _ = names[0].rsplit(";", 2)
-                    _, chrompos = name.split(";", 1)
-                    chrom, pos = chrompos.rsplit(":", 1)
-                    pos0, pos1 = pos.split("-")
+                    chrom, pos0, pos1 = name.rsplit(":", 2)
                     
                     ## pull idx from .fai reference dict 
                     chromint = faidict[chrom]
