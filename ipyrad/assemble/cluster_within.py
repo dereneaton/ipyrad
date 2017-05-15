@@ -1569,7 +1569,9 @@ PRINTSTR = {
     "ref_muscle_chunker" : "finalize mapping ",
     "muscle_chunker" :     "chunking         ",
     "muscle_align" :       "aligning         ",
-    "reconcat" :           "concatenating    "
+    "reconcat" :           "concatenating    ",
+    "ref_build_and_muscle_chunk" : 
+                           "building clusters",
     }
 
 
@@ -1579,6 +1581,7 @@ FUNCDICT = {
     "cluster" :            cluster,
     "build_clusters" :     build_clusters,
     "ref_muscle_chunker" : ref_muscle_chunker,
+    "ref_build_and_muscle_chunk" : ref_build_and_muscle_chunk,    
     "muscle_chunker" :     muscle_chunker,
     "muscle_align" :       align_and_parse, #muscle_align,
     "reconcat" :           reconcat
@@ -1596,8 +1599,9 @@ JOBORDER = {
     "reference" : [
         "derep_concat_split",
         "mapreads",
-        "ref_muscle_chunker",
-        "muscle_chunker"
+        "ref_build_and_muscle_chunk",
+        #"ref_muscle_chunker",
+        #"muscle_chunker"
         ], 
     "denovo+reference" : [
         "derep_concat_split",
