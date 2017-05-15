@@ -409,188 +409,6 @@ def aligned_indel_filter(clust, max_internal_indels):
     return 0
 
 
-## deprecated in 3, still used in 6 for now
-def muscle_align(data, sample, chunk, maxindels):
-    """ aligns reads, does split then aligning for paired reads """
-
-    ## data are already chunked, read in the whole thing. bail if no data.
-    try:
-        handle = os.path.join(data.tmpdir, "{}_chunk_{}.ali"\
-                              .format(sample.name, chunk))
-        with open(handle, 'rb') as infile:
-            clusts = infile.read().split("//\n//\n")
-        if not clusts[0]:
-            return 0
-    except IOError:
-        LOGGER.debug("skipping empty chunk - %s", handle)
-        return 0
-
-    LOGGER.debug("aligning chunk %s", handle)
-    ## storage and a counter for discarded clusters due to poor alignment
-    out = []
-    highindels = 0
-
-    ## iterate over clusters and align
-    for clust in clusts:
-        stack = []
-        lines = clust.strip().split("\n")
-        names = lines[::2]
-        seqs = lines[1::2]
-        badalign = 0
-
-        ## append counter to end of names b/c muscle doesn't retain order
-        names = [j+str(i) for i, j in enumerate(names)]
-
-        ## don't bother aligning singletons
-        if len(names) == 1:
-            stack = ["{}\n{}".format(names[0], seqs[0])]
-        else:
-            ## split seqs if paired end seqs
-            try:
-                seqs1 = [i.split("nnnn")[0] for i in seqs]
-                seqs2 = [i.split("nnnn")[1] for i in seqs]
-                ## muscle align
-                string1 = muscle_call(data, names[:200], seqs1[:200])
-                string2 = muscle_call(data, names[:200], seqs2[:200])
-                ## resort so they're in same order as original
-                anames, aseqs1 = parsemuscle(data, string1)
-                anames, aseqs2 = parsemuscle(data, string2)
-                ## get leftlimit of seed, no hits can go left of this
-                ## this can save pairgbs from garbage
-                idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
-                leftlimit = min(0, idxs)
-                aseqs1 = [i[leftlimit:] for i in aseqs1]
-                ## preserve order in ordereddict
-                aseqs = zip(aseqs1, aseqs2)
-
-                ## append to somedic if not bad align
-                for i in xrange(len(anames)):
-                    ## filter for max internal indels
-                    intindels1 = aseqs[i][0].rstrip('-').lstrip('-').count('-')
-                    intindels2 = aseqs[i][1].rstrip('-').lstrip('-').count('-')
-
-                    if (intindels1 <= maxindels) and (intindels2 <= maxindels):
-                        stack.append("{}\n{}nnnn{}".format(anames[i], aseqs[i][0], aseqs[i][1]))
-
-                    else:
-                        highindels += 1
-                        badalign = 1
-                        LOGGER.info("""
-                              high indels: %s
-                              1, 2, max: (%s, %s, %s)
-                              """, aseqs[i], intindels1, intindels2, maxindels)
-
-            except IndexError:
-                ## if nnnn is not present in ALL seqs, then we end up here, and
-                ## so we should remove "nnnn" spacer from any seqs that had it
-                seqs = [i.replace('nnnn', '') for i in seqs]
-                string1 = muscle_call(data, names[:200], seqs[:200])
-                anames, aseqs = parsemuscle(data, string1)
-
-                ## Get left and right limits, no hits can go outside of this.
-                ## This can save gbs overlap data significantly.
-                if 'gbs' in data.paramsdict['datatype']:
-
-                    ## do not allow any indels left of seed's left side
-                    aseqs = np.array([list(i) for i in aseqs])
-                    leftlimit = max(0, np.min(np.where(aseqs[0] != "-")[0]))
-
-                    ## right filter is the revcomped seq that goes least right
-                    isrev = np.array([i.split(";")[-1][0] == "-" for i in anames])
-
-                    if np.sum(isrev):
-                        revd = aseqs[isrev, :]
-                        maxrev = [np.max(np.where(i != "-")[0]) for i in revd]
-                        rightlimit = np.min(maxrev)
-                    else:
-                        rightlimit = aseqs.shape[1]
-
-                    ## trim all ready down to the trimmed edge length
-                    aseqs = aseqs[:, leftlimit:rightlimit]
-                    allindels = np.all(aseqs == "-", axis=1)
-                    aseqs = aseqs[~allindels, :]
-                    anames = list(np.array(anames)[~allindels])
-
-                    ## if all seqs were trimmed then skip this loc
-                    if not anames:
-                        continue
-                    ## make seqs from array back into lists
-                    aseqs = [i.tostring() for i in aseqs]
-
-                badalign = 0
-                for i in range(len(anames)):
-                    ## filter for max internal indels
-                    intind = aseqs[i].rstrip('-').lstrip('-').count('-')
-                    if intind <= maxindels:
-                        stack.append("{}\n{}".format(anames[i], aseqs[i]))
-                    else:
-                        highindels += 1
-                        badalign = 1
-                        LOGGER.info("high indels: %s", aseqs[i])
-
-        ## finally, add to outstack if alignment is good
-        if stack:
-            if not badalign:
-                out.append("\n".join(stack))
-
-    ## write to file after
-    outhandle = handle.rsplit(".", 1)[0]+".aligned"
-    with open(outhandle, 'wb') as outfile:
-        outfile.write("\n//\n//\n".join(out)+"\n")
-
-    ## remove the old tmp file
-    os.remove(handle)
-    return highindels
-
-
-## deprecated in 3, still used in 6 for now
-def parsemuscle(data, out):
-    """
-    parse muscle string output into two *sorted* lists.
-    """
-    ## remove '>' and split lines
-    lines = out[1:].split("\n>")
-    ## grab the names
-    names = [line.split("\n", 1)[0] for line in lines]
-    ## grab the seqs
-    seqs = [line.split("\n", 1)[1].replace("\n", "") for line in lines]
-    tups = zip(names, seqs)
-    ## who knew, zip(*) is the inverse of zip
-    try:
-        anames, aseqs = zip(*sorted(tups,
-                            key=lambda x: int(x[0].split(";")[-1][1:])))
-    except:
-        LOGGER.error("bad tups - {}".format(tups))
-    ## remove reference if present
-    if "_REF;+0" in anames[0]:
-        return anames[1:], aseqs[1:]
-    else:
-        return anames, aseqs
-
-
-## deprecated in 3, still used in 6 for now
-def muscle_call(data, names, seqs):
-    """
-    Makes subprocess call to muscle. A little faster than before.
-    TODO: Need to make sure this works on super large strings and does not
-    overload the PIPE buffer.
-    """ 
-
-    ## make input string
-    inputstr = "\n".join(["{}\n{}".format(i, j) for i, j in zip(names, seqs)])
-    cmd = [ipyrad.bins.muscle, "-quiet"]
-
-    ## increase gap penalty if reference region is included
-    ## This could use more testing/refining!
-    if "_REF;+0" in names:
-        cmd += ["-gapopen", "-1200"]
-
-    ## make a call arg
-    proc1 = sps.Popen(cmd, stdin=sps.PIPE, stdout=sps.PIPE, close_fds=True)
-    ## return result
-    return proc1.communicate(inputstr)[0]
-
-
 
 def build_clusters(data, sample, maxindels):
     """
@@ -1335,50 +1153,53 @@ def muscle_chunker(data, sample):
     computing core. Because the largest clusters are at the beginning of the 
     clusters file, assigning equal clusters to each file would put all of the 
     large cluster, that take longer to align, near the top. So instead we 
-    randomly distribute the clusters among the files. 
+    randomly distribute the clusters among the files. If assembly method is
+    reference then this step is just a placeholder and nothing happens. 
     """
     ## log our location for debugging
     LOGGER.info("inside muscle_chunker")
 
-    ## get the number of clusters
-    clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-    with iter(gzip.open(clustfile, 'rb')) as clustio:
-        nloci = sum(1 for i in clustio if "//" in i) // 2
-        #tclust = clustio.read().count("//")//2
-        optim = (nloci//20) + (nloci%20)
-        LOGGER.info("optim for align chunks: %s", optim)
+    ## only chunk up denovo data, refdata has its own chunking method which 
+    ## makes equal size chunks, instead of uneven chunks like in denovo
+    if data.paramsdict["assembly_method"] != "reference":
+        ## get the number of clusters
+        clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+        with iter(gzip.open(clustfile, 'rb')) as clustio:
+            nloci = sum(1 for i in clustio if "//" in i) // 2
+            #tclust = clustio.read().count("//")//2
+            optim = (nloci//20) + (nloci%20)
+            LOGGER.info("optim for align chunks: %s", optim)
 
-    ## write optim clusters to each tmp file
-    clustio = gzip.open(clustfile, 'rb')
-    inclusts = iter(clustio.read().strip().split("//\n//\n"))
-    
+        ## write optim clusters to each tmp file
+        clustio = gzip.open(clustfile, 'rb')
+        inclusts = iter(clustio.read().strip().split("//\n//\n"))
+        
+        ## splitting loci so first file is smaller and last file is bigger
+        inc = optim // 10
+        for idx in range(10):
+            ## how big is this chunk?
+            this = optim + (idx * inc)
+            left = nloci-this
+            if idx == 9:
+                ## grab everything left
+                grabchunk = list(itertools.islice(inclusts, int(1e9)))
+            else:
+                ## grab next chunks-worth of data
+                grabchunk = list(itertools.islice(inclusts, this))
+                nloci = left
 
-    ## splitting loci so first file is smaller and last file is bigger
-    inc = optim // 10
-    for idx in range(10):
-        ## how big is this chunk?
-        this = optim + (idx * inc)
-        left = nloci-this
-        if idx == 9:
-            ## grab everything left
-            grabchunk = list(itertools.islice(inclusts, int(1e9)))
-        else:
-            ## grab next chunks-worth of data
-            grabchunk = list(itertools.islice(inclusts, this))
-            nloci = left
+            ## write the chunk to file
+            tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx))
+            with open(tmpfile, 'wb') as out:
+                out.write("//\n//\n".join(grabchunk))
 
         ## write the chunk to file
-        tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx))
-        with open(tmpfile, 'wb') as out:
-            out.write("//\n//\n".join(grabchunk))
-
-    ## write the chunk to file
-    #grabchunk = list(itertools.islice(inclusts, left))
-    #if grabchunk:
-    #    tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_9.ali")
-    #    with open(tmpfile, 'a') as out:
-    #        out.write("\n//\n//\n".join(grabchunk))
-    clustio.close()
+        #grabchunk = list(itertools.islice(inclusts, left))
+        #if grabchunk:
+        #    tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_9.ali")
+        #    with open(tmpfile, 'a') as out:
+        #        out.write("\n//\n//\n".join(grabchunk))
+        clustio.close()
 
 
 
@@ -1545,8 +1366,7 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
                 if os.path.exists(data.tmpdir):
                     shutil.rmtree(data.tmpdir)
                 ## get all refmap_derep.fastqs
-                rdereps = glob.glob(os.path.join(data.dirs.edits,
-                                     "*-refmap_derep.fastq"))
+                rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
                 ## Remove the unmapped fastq files
                 for rmfile in rdereps:
                     os.remove(rmfile)
@@ -1600,8 +1420,8 @@ JOBORDER = {
         "derep_concat_split",
         "mapreads",
         "ref_build_and_muscle_chunk",
+        "muscle_chunker",  ## <- doesn't do anything but hold back aligning jobs
         #"ref_muscle_chunker",
-        #"muscle_chunker"
         ], 
     "denovo+reference" : [
         "derep_concat_split",
