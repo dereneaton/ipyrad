@@ -167,6 +167,7 @@ class Raxml(object):
             ## update the binary
             if proc:
                 self.params.binary = binary
+                break
 
         ## if none then raise error
         if not proc[0]:
