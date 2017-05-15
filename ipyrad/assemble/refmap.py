@@ -9,11 +9,9 @@ end of step3
 from __future__ import print_function
 
 import os
-import re
 import gzip
-import glob
 import shutil
-
+import pysam
 import ipyrad
 import numpy as np
 import subprocess as sps
@@ -139,12 +137,6 @@ def mapreads(data, sample, nthreads, force):
     umap1file = os.path.join(data.dirs.edits, sample.name+"-tmp-umap1.fastq")
     umap2file = os.path.join(data.dirs.edits, sample.name+"-tmp-umap2.fastq")        
 
-    ## These are persistent file handles that were already set in setup_dirs()
-    ## sample.files.unmapped_reads = os.path.join(data.dirs.edits, 
-    ##                               sample.name+"-refmap_derep.fastq")mumapfile
-    ## sample.files.mapped_reads = os.path.join(data.dirs.refmapping, 
-    ##                                          sample.name+"-mapped-sorted.bam")
-
     ## split the derepfile into the two handles we designate
     if "pair" in data.paramsdict["datatype"]:
         sample.files.split1 = os.path.join(data.dirs.edits, sample.name+"-split1.fastq")
@@ -177,7 +169,7 @@ def mapreads(data, sample, nthreads, force):
     ##         0x800 (supplementary alignment)
     ##   -U = Write out all reads that don't pass the -F filter 
     ##        (all unmapped reads go to this file).
-    ##
+
     ## TODO: Should eventually add `-q 13` to filter low confidence mapping.
     ## If you do this it will throw away some fraction of reads. Ideally you'd
     ## catch these and throw them in with the rest of the unmapped reads, but
@@ -317,11 +309,166 @@ def mapreads(data, sample, nthreads, force):
     ## <sample>-refmap_derep.fq will be the final output
     if 'pair' in data.paramsdict["datatype"]:
         LOGGER.info("Merging unmapped reads {} {}".format(umap1file, umap2file))
+        merge_pairs_after_refmapping(data, [(umap1file, umap2file)], mumapfile)
         ## merge_pairs wants the files to merge in this stupid format,
         ## also the first '1' at the end means revcomp R2, and the
         ## second 1 means "really merge" don't just join w/ nnnn
-        merge_pairs(data, [(umap1file, umap2file)], mumapfile, 1, 1)
+        #merge_pairs(data, [(umap1file, umap2file)], mumapfile, 1, 1)
 
+
+
+def fetch_cluster_pairs(samfile, chrom, rstart, rend):
+    """ 
+    Builds a paired cluster from the refmapped data.
+    """
+    ## store pairs
+    rdict = {}
+    clust = []
+
+    ## grab the region and make tuples of info
+    iterreg = samfile.fetch(chrom, rstart, rend)
+
+    ## use dict to match up read pairs
+    for read in iterreg:
+        if read.qname not in rdict:
+            rdict[read.qname] = [read]
+        else:
+            rdict[read.qname].append(read)
+
+    ## sort dict keys so highest derep is first ('seed')
+    sfunc = lambda x: int(x.split(";size=")[1].split(";")[0])
+    rkeys = sorted(rdict.keys(), key=sfunc, reverse=True)
+    
+    ## get blocks from the seed for filtering, bail out if seed is not paired
+    try:
+        read1, read2 = rdict[rkeys[0]]
+    except ValueError:
+        return 0
+
+    ## swap reads in seed
+    if not read1.is_read1:
+        _ = read1
+        read1 = read2
+        read2 = _
+
+    ## the starting blocks for the seed
+    poss = read1.get_reference_positions() + read2.get_reference_positions()
+    seed_r1start = min(poss)
+    seed_r2end = max(poss)
+
+    ## store the seed -------------------------------------------
+    if read1.is_reverse:
+        if read2.is_reverse:
+            seq = revcomp(read1.seq) + "nnnn" + revcomp(read2.seq)
+        else:
+            seq = revcomp(read1.seq) + "nnnn" + read2.seq[::-1]
+    else:
+        if read2.is_reverse:
+            seq = read1.seq + "nnnn" + comp(read2.seq)
+        else:
+            seq = read1.seq + "nnnn" + read2.seq
+
+    ## store, could write orient but just + for now.
+    size = sfunc(rkeys[0])
+    clust.append(">{}:{}:{};size={};*\n{}"\
+        .format(chrom, seed_r1start, seed_r2end, size, seq))
+            
+    ## store the hits to the seed -------------------------------
+    for key in rkeys[1:]:
+        skip = False
+        try:
+            read1, read2 = rdict[key]
+        except ValueError:
+            ## enter values that will make this read get skipped
+            read1 = rdict[key][0]
+            read2 = read1
+            skip = True
+
+        ## swap reads
+        if not read1.is_read1:
+            _ = read1
+            read1 = read2
+            read2 = _
+        
+        ## orient reads and filter out ones that will not align well b/c 
+        ## they do not overlap enough with the seed
+        poss = read1.get_reference_positions() + read2.get_reference_positions()
+        minpos = min(poss)
+        maxpos = max(poss)
+        if (abs(minpos - seed_r1start) < 50) and \
+           (abs(maxpos - seed_r2end) < 50) and \
+           (not skip):
+            ## store the seq
+            if read1.is_reverse:
+                if read2.is_reverse:
+                    seq = revcomp(read1.seq) + "nnnn" + revcomp(read2.seq)
+                else:
+                    seq = revcomp(read1.seq) + "nnnn" + read2.seq[::-1]
+            else:
+                if read2.is_reverse:
+                    seq = read1.seq + "nnnn" + comp(read2.seq)
+                else:
+                    seq = read1.seq + "nnnn" + read2.seq
+                            
+            ## store, could write orient but just + for now.
+            size = sfunc(key)
+            clust.append(">{}:{}:{};size={};+\n{}"\
+                .format(chrom, minpos, maxpos, size, seq))
+        else:
+            ## seq is excluded, though, we could save it and return 
+            ## it as a separate cluster that will be aligned separately.
+            pass
+    
+    return clust
+
+
+
+def ref_build_and_muscle_chunk(data, sample):
+    """ 
+    1. Run bedtools to get all overlapping regions
+    2. Parse out reads from regions using pysam and dump into chunk files. 
+       We measure it out to create 10 chunk files per sample. 
+    3. If we really wanted to speed this up, though it is pretty fast already, 
+       we could parallelize it since we can easily break the regions into 
+       a list of chunks. 
+    """
+
+    ## get regions using bedtools
+    regions = bedtools_merge(data, sample).strip().split("\n")
+    nregions = len(regions)
+    chunksize = (nregions / 10) + (nregions % 10)
+
+    ## create an output file to write clusters to
+    idx = 0
+    tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali")
+    
+    ## build clusters for aligning with muscle from the sorted bam file
+    samfile = pysam.AlignmentFile(
+        "./tortas_refmapping/PZ70-mapped-sorted.bam", "rb")
+
+    ## fill clusts list and dump periodically
+    clusts = []
+    nclusts = 0
+    for region in regions:
+        chrom, pos1, pos2 = region.split()
+        clust = fetch_cluster_pairs(samfile, chrom, int(pos1), int(pos2))
+        if clust:
+            clusts.append("\n".join(clust))
+            nclusts += 1
+
+            if nclusts == chunksize:
+                ## write to file
+                with open(tmpfile.format(idx), 'w') as tmp:
+                    tmp.write("\n//\n//\n".join(clusts)+"\n//\n//\n")
+                idx += 1
+                nclusts = 0
+                clusts = []
+    if clusts:
+        ## write remaining to file
+        with open(tmpfile.format(idx), 'w') as tmp:
+            tmp.write("\n//\n//\n".join(clusts)+"\n//\n//\n")
+        clusts = []
+    
 
 
 def ref_muscle_chunker(data, sample):
@@ -393,8 +540,7 @@ def get_overlapping_reads(data, sample, regions):
         outfile.write("\n//\n//\n")
 
     ## Make a process to pass in to bam_region_to_fasta so we can just reuse
-    ## it over and over rather than recreating a bunch of subprocesses. Saves
-    ## hella time.
+    ## it rather than recreating a bunch of subprocesses. Saves hella time.
     proc1 = sps.Popen("sh", stdin=sps.PIPE, stdout=sps.PIPE, universal_newlines=True)
 
     # Wrap this in a try so we can easily locate errors
