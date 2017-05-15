@@ -10,6 +10,7 @@ from __future__ import print_function
 
 import os
 import gzip
+import glob
 import shutil
 import pysam
 import ipyrad
@@ -443,8 +444,8 @@ def ref_build_and_muscle_chunk(data, sample):
     tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali")
     
     ## build clusters for aligning with muscle from the sorted bam file
-    samfile = pysam.AlignmentFile(
-        "./tortas_refmapping/PZ70-mapped-sorted.bam", "rb")
+    samfile = pysam.AlignmentFile(sample.files.mapped_reads, 'rb')
+    #"./tortas_refmapping/PZ70-mapped-sorted.bam", "rb")
 
     ## fill clusts list and dump periodically
     clusts = []
@@ -469,6 +470,8 @@ def ref_build_and_muscle_chunk(data, sample):
             tmp.write("\n//\n//\n".join(clusts)+"\n//\n//\n")
         clusts = []
     
+    chunkfiles = glob.glob(os.path.join(data.tmpdir, sample.name+"_chunk_*.ali"))
+    LOGGER.info("created chunks %s", chunkfiles)
 
 
 def ref_muscle_chunker(data, sample):
