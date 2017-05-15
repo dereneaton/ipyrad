@@ -764,7 +764,7 @@ def multicat(data, samples, ipyclient):
     ## add the dask_chroms func for reference data
     if 'reference' in data.paramsdict["assembly_method"]:
         with lbview.temp_flags(after=cleanups.values()):
-            cleanups['ref'] = lbview.apply(dask_chroms, data)
+            cleanups['ref'] = lbview.apply(dask_chroms, *(data, samples))
 
     ## wait for "write_to_fullarr" jobs to finish
     print("")
@@ -893,7 +893,7 @@ def write_to_fullarr(data, sample, sidx):
     """ writes arrays to h5 disk """
 
     ## enter ref data?
-    isref = 'reference' in data.paramsdict["assembly_method"]
+    #isref = 'reference' in data.paramsdict["assembly_method"]
     LOGGER.info("writing fullarr %s %s", sample.name, sidx)
 
     ## save big arrays to disk temporarily
@@ -902,8 +902,8 @@ def write_to_fullarr(data, sample, sidx):
         chunk = io5["catgs"].attrs["chunksize"][0]
         catg = io5["catgs"]
         nall = io5["nalleles"]
-        if isref:
-            chrom = io5["chroms"]
+        #if isref:
+        #    chrom = io5["chroms"]
 
         ## adding an axis to newcatg makes it write about 1000X faster.
         smpio = os.path.join(data.dirs.consens, sample.name+'.tmp.h5')
@@ -921,27 +921,33 @@ def write_to_fullarr(data, sample, sidx):
 
 
 
-def dask_chroms(data):
+def dask_chroms(data, samples):
+    """
+    A dask relay function to fill chroms for all samples
+    """
     
     ## example concatenating with dask
-    h5s = [os.path.join(data.dirs.consens, s+".tmp.h5") for s in data.samples]
-    dsets = [h5py.File(i)['/ichrom'] for i in h5s]
+    h5s = [os.path.join(data.dirs.consens, s.name+".tmp.h5") for s in samples]
+    handles = [h5py.File(i) for i in h5s]
+    dsets = [i['/ichrom'] for i in handles]
     arrays = [da.from_array(dset, chunks=(10000, 3)) for dset in dsets]
-    x = da.stack(arrays, axis=2)
+    stack = da.stack(arrays, axis=2)
 
     ## max chrom (should we check for variable hits? if so, things can get wonk)
-    maxchrom = da.max(x, axis=2)[:, 0]
+    maxchrom = da.max(stack, axis=2)[:, 0]
 
     ## max pos
-    maxpos = da.max(x, axis=2)[:, 2]
+    maxpos = da.max(stack, axis=2)[:, 2]
 
     ## min pos
-    mask = x == 0
-    x[mask] = 18446744073709551615  ## max uint64 value
-    minpos = da.min(x, axis=2)[:, 1]
+    mask = stack == 0
+    stack[mask] = 18446744073709551615  ## max uint64 value
+    minpos = da.min(stack, axis=2)[:, 1]
     final = da.stack([maxchrom, minpos, maxpos], axis=1)
     final.to_hdf5(data.clust_database, "/chroms")
 
+    ## close the h5 handles
+    _ = [i.close() for i in handles]
 
 #max64 = 18446744073709551615
 #max32 = 4294967295
