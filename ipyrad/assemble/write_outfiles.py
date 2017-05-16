@@ -600,7 +600,7 @@ def make_loci_and_stats(data, samples, ipyclient):
         ## check for errors
         for job in loci_asyncs:
             if loci_asyncs[job].ready() and not loci_asyncs[job].successful():
-                LOGGER.error("error in building loci [%s]: %s",
+                LOGGER.error("error in building alleles [%s]: %s",
                              job, loci_asyncs[job].exception())
                 raise IPyradWarningExit(loci_asyncs[job].exception())
 
@@ -650,7 +650,7 @@ def get_alleles(locdat):
             inloc.append("//  "+lines[-1][2:]+"|")
             locs.append("\n".join(inloc))
 
-    return "\n".join(locs)
+    return "\n".join(locs) + "\n"
 
 
 
