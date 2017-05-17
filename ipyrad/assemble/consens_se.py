@@ -362,7 +362,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
         
         ## estimate variable site call
         else:
-            ## get allele freqs
+            ## get allele freqs (first-most, second, third = p, q, r)
             counts = np.bincount(marr)
             
             pbase = np.argmax(counts)
@@ -393,14 +393,17 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                 ## make statistical base call  
                 if bidepth >= mindepth_statistical:
                     ishet, prob = get_binom(base1, base2, estE, estH)
-                    if ishet:
-                        cons[col] = TRANS[(pbase, qbase)]
+                    if prob < 0.95:
+                        cons[col] = 78
                     else:
-                        cons[col] = pbase
+                        if ishet:
+                            cons[col] = TRANS[(pbase, qbase)]
+                        else:
+                            cons[col] = pbase
                 
                 ## make majrule base call
                 elif bidepth >= mindepth_majrule:
-                    if nump == numpq:
+                    if nump == numq:
                         cons[col] = TRANS[(pbase, qbase)]
                     else:
                         cons[col] = pbase
