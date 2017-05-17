@@ -12,8 +12,8 @@ class Raxml(object):
 
     Parameters:
     -----------
-    phyfile: str
-        The .phy formated sequence file. An alias for '-s'. 
+    data: str
+        The phylip formated sequence file (.phy from ipyrad). An alias for '-s'. 
     name: str
         The name for this run. An alias for '-n'.
     workdir: str
@@ -58,14 +58,13 @@ class Raxml(object):
 
     ## init object for params
     def __init__(self,
-        phyfile,
+        data,
         name="test",
         workdir="analysis-raxml", 
         *args, 
         **kwargs):
 
         ## path attributes
-        #self.asyncs = []
         self._kwargs = {
             "f": "a", 
             "T": 4,
@@ -74,7 +73,7 @@ class Raxml(object):
             "x": 12345,
             "p": 54321,
             "o": None,
-            "binary": "raxmlHPC-PTHREADS-SSE3"
+            "binary": "",
             }
         self._kwargs.update(kwargs)
 
@@ -90,15 +89,18 @@ class Raxml(object):
         self.params = Params()
         self.params.n = name
         self.params.w = workdir
-        self.params.s = phyfile
+        self.params.s = os.path.abspath(os.path.expanduser(data))
+
+        ## find the binary
+        if not self._kwargs["binary"]:
+            self.params.binary = _find_binary()
 
         ## set params
-        notparams = set(["workdir", "name", "phyfile"])
+        notparams = set(["workdir", "name", "data"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
         ## attributes
-        self.phyfile = os.path.abspath(os.path.expanduser(phyfile))
         self.stdout = None
         self.stderr = None
 
@@ -156,18 +158,7 @@ class Raxml(object):
             remove existing results files with this job name. 
         """
 
-        ## check for binary
-        backup_binaries = ["raxmlHPC-PTHREADS", "raxmlHPC-PTHREADS-SSE3"]
 
-        ## check user binary first, then backups
-        for binary in [self.params.binary] + backup_binaries:
-            proc = subprocess.Popen(["which", self.params.binary], 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT).communicate()
-            ## update the binary
-            if proc:
-                self.params.binary = binary
-                break
 
         ## if none then raise error
         if not proc[0]:
@@ -223,6 +214,28 @@ class Raxml(object):
 
 
 
+def _find_binary():
+    ## check for binary
+    list_binaries = [
+        "raxmlHPC-PTHREADS-AVX2",
+        "raxmlHPC-PTHREADS-AVX",            
+        "raxmlHPC-PTHREADS-SSE3",
+        "raxmlHPC-PTHREADS", 
+        ]
+
+    ## check user binary first, then backups
+    for binary in list_binaries:
+        proc = subprocess.Popen(["which", binary],
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT).communicate()
+        ## update the binary
+        if proc:
+            return binary
+
+    ## if not binaries found
+    raise Exception("cannot find raxml binary")
+
+
 def _call_raxml(command_list):
     """ call the command as sps """
     proc = subprocess.Popen(
@@ -262,7 +275,7 @@ BINARY_ERROR = """
   installed you can select it using the argument 'binary'. 
 
   For example, 
-    rax = ipa.raxml(name='test', phyfile='test.phy', binary='raxmlHPC')
+    rax = ipa.raxml(name='test', data='test.phy', binary='raxmlHPC')
 
   or, you can set it after object creation with:
     rax.params.binary = "raxmlHPC-PTHREADS"
