@@ -169,7 +169,7 @@ def newconsensus(data, sample, tmpchunk, optim):
     with h5py.File(tmp5, 'w') as io5:
         io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
         io5.create_dataset("alls", (optim, ), dtype=np.uint8)
-        io5.create_dataset("chroms", (optim, 3), dtype=np.uint64)
+        io5.create_dataset("chroms", (optim, 3), dtype=np.int64)
 
         ## local copies to use to fill the arrays
         catarr = io5["cats"][:]
@@ -223,7 +223,9 @@ def newconsensus(data, sample, tmpchunk, optim):
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
 
             ## IF this is a reference mapped read store the chrom and pos info
-            ref_position = (0, 0, 0)
+            ## -1 defaults to indicating an anonymous locus, since we are using
+            ## the faidict as 0 indexed. If chrompos fails it defaults to -1
+            ref_position = (-1, 0, 0)
             if isref:
                 try:
                     ## parse position from name string
@@ -233,7 +235,7 @@ def newconsensus(data, sample, tmpchunk, optim):
                     pos0, pos1 = pos.split("-")
                     
                     ## pull idx from .fai reference dict 
-                    chromint = faidict[chrom]
+                    chromint = faidict[chrom] + 1
                     ref_position = (int(chromint), int(pos0), int(pos1))
                     
                 except Exception as inst:
@@ -576,7 +578,7 @@ def cleanup(data, sample, statsdicts):
         ## only create chrom for reference-aligned data
         if isref:
             dchrom = ioh5.create_dataset("chroms", (nloci, 3), 
-                                         dtype=np.uint64, 
+                                         dtype=np.int64, 
                                          chunks=(optim, 3), 
                                          compression="gzip")
 
