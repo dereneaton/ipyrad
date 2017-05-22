@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.22
+------
+**May 22, 2017**
+
+- Fixed bug in vcf output for reference mapped.
+
 0.6.21
 ------
 **May 19, 2017**
