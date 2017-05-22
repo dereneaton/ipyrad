@@ -2365,10 +2365,12 @@ def vcfchunk(data, optim, sidx, start, full):
         ## This is hax, but it's the only way it will work. The faidict uses positive numbers
         ## for reference sequence mapped loci for the CHROM/POS info, and it uses negative
         ## numbers for anonymous loci. Both are 1 indexed, which is where that last `+ 2` comes from.
-        faidict.update({-i:"locus_{}".format(i-1) for i in xrange(start+1, start + aseqs.shape[0] + 2)})
+        faidict.update({-i:"locus_{}".format(i-1) for i in xrange(start+1, start + optim + 2)})
         chroms = [faidict[i] for i in cols0]
     except Exception as inst:
-        LOGGER.error("Invalid chromosome dictionary index: {}".format(inst))
+        LOGGER.error("Invalid chromosome dictionary indexwat: {}".format(inst))
+        LOGGER.debug("faidict {}".format([str(k)+"/"+str(v) for k, v in faidict.items() if "locus" in v]))
+        LOGGER.debug("chroms {}".format([x for x in cols0 if x < 0]))
         raise
     cols0 = np.array(chroms)
     #else:
