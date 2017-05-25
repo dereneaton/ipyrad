@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.24
+------
+**May 25, 2017**
+
+- Bug fix for "numpq" nameerror
+
 0.6.23
 ------
 **May 24, 2017**
