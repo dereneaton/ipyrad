@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.23
+------
+**May 24, 2017**
+
+- bug fix for numq error in s5
+
 0.6.22
 ------
 **May 22, 2017**
