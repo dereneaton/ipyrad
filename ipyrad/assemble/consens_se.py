@@ -407,7 +407,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                 
                 ## make majrule base call
                 elif bidepth >= mindepth_majrule:
-                    if nump == numpq:
+                    if nump == numq:
                         cons[col] = TRANS[(pbase, qbase)]
                     else:
                         cons[col] = pbase
