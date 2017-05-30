@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.25
+------
+**May 30, 2017**
+
+- Fix a bug in refmap that was retaining the reference sequence in the final clust file on rare occasions.
+
 0.6.24
 ------
 **May 25, 2017**
