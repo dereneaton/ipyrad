@@ -1308,9 +1308,9 @@ def filter_indels(data, superints, edgearr):
             ## if data at this locus (not already filtered by edges/minsamp)
             if block.shape[1] > 1:
                 sums = maxind_numba(block)
-                LOGGER.info("maxind numba %s %s", idx, sums)
-                LOGGER.info("sums, maxinds[0], compare: %s %s %s",
-                             sums, maxinds[0], sums > maxinds[0])
+                #LOGGER.info("maxind numba %s %s", idx, sums)
+                #LOGGER.info("sums, maxinds[0], compare: %s %s %s",
+                #             sums, maxinds[0], sums > maxinds[0])
                 if sums > maxinds[0]:
                     ifilter[idx] = True
 
