@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.26
+------
+**June 01, 2017**
+
+- Step 4 - Handle the case where no clusters have sufficient depth for statistical basecalling.
+
 0.6.25
 ------
 **May 30, 2017**
