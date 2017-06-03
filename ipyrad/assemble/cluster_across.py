@@ -27,7 +27,7 @@ import itertools
 import numpy as np
 import dask.array as da
 import ipyrad
-from ipyrad.assemble.util import IPyradWarningExit, progressbar, clustdealer
+from ipyrad.assemble.util import IPyradWarningExit, progressbar, clustdealer, fullcomp
 from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 try:
