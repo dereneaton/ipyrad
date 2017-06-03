@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.6.27
+------
+**June 03, 2017**
+
+- Step 6 import fullcomp from util.
+
 0.6.26
 ------
 **June 01, 2017**
