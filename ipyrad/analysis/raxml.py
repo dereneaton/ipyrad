@@ -6,13 +6,17 @@ import os
 import subprocess
 
 
+## alias
+OPJ = os.path.join
+
+
 class Raxml(object):
     """
     RAxML analysis utility function for running simple commands. 
 
     Parameters:
     -----------
-    phyfile: str
+    data: str
         The .phy formated sequence file. An alias for '-s'. 
     name: str
         The name for this run. An alias for '-n'.
@@ -58,7 +62,7 @@ class Raxml(object):
 
     ## init object for params
     def __init__(self,
-        phyfile,
+        data,
         name="test",
         workdir="analysis-raxml", 
         *args, 
@@ -90,25 +94,25 @@ class Raxml(object):
         self.params = Params()
         self.params.n = name
         self.params.w = workdir
-        self.params.s = phyfile
+        self.params.s = data
 
         ## set params
-        notparams = set(["workdir", "name", "phyfile"])
+        notparams = set(["workdir", "name", "data"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
         ## attributes
-        self.phyfile = os.path.abspath(os.path.expanduser(phyfile))
+        self.data = os.path.abspath(os.path.expanduser(data))
         self.stdout = None
         self.stderr = None
 
         ## results files        
         self.trees = Params()
-        self.trees.bestTree = None
-        self.trees.bipartitionsBranchLabels = None
-        self.trees.bipartitions = None
-        self.trees.boostrap = None
-        self.trees.info = None
+        self.trees.bestTree = OPJ(workdir, "RAxML_bestTree."+name)
+        self.trees.bipartitionsBranchLabels = OPJ(workdir, "RAxML_bipartitionsBranchLabels."+name)
+        self.trees.bipartitions = OPJ(workdir, "RAxML_bipartitions."+name)
+        self.trees.bootstrap = OPJ(workdir, "RAxML_bootstrap."+name)
+        self.trees.info = OPJ(workdir, "RAxML_info."+name)
 
 
     @property
@@ -144,7 +148,10 @@ class Raxml(object):
         force=False,
         ):
         """
-        Submits raxml job to run on the cluster. 
+        Submits raxml job to run. If no ipyclient object is provided then 
+        the function will block until the raxml run is finished. If an ipyclient
+        is provided then the job is sent to a remote engine and an asynchronous 
+        result object is returned which can be queried or awaited until it finishes.
 
         Parameters
         -----------
@@ -153,7 +160,7 @@ class Raxml(object):
         quiet: 
             suppress print statements
         force:
-            remove existing results files with this job name. 
+            overwrite existing results files with this job name. 
         """
 
         ## check for binary
@@ -254,6 +261,7 @@ class Params(object):
         return _repr
 
 
+
 BINARY_ERROR = """
   Binary {} not found. 
 
@@ -261,7 +269,7 @@ BINARY_ERROR = """
   installed you can select it using the argument 'binary'. 
 
   For example, 
-    rax = ipa.raxml(name='test', phyfile='test.phy', binary='raxmlHPC')
+    rax = ipa.raxml(name='test', data='test.phy', binary='raxmlHPC')
 
   or, you can set it after object creation with:
     rax.params.binary = "raxmlHPC-PTHREADS"

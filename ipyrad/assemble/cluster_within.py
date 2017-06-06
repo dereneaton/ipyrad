@@ -1131,13 +1131,10 @@ def derep_and_sort(data, infile, outfile, nthreads):
     dereplication that we need for 3rad (5/29/15 iao).
     """
 
+    ## datatypes options
     strand = "plus"
     if "gbs" in data.paramsdict["datatype"]:
         strand = "both"
-
-    ## testing bailouts (comment out)
-    #if "1A_0" in infile:
-    #    infile = 'xxx'
 
     ## pipe in a gzipped file
     if infile.endswith(".gz"):
@@ -1421,32 +1418,34 @@ def derep_concat_split(data, sample, nthreads):
     ## report location for debugging
     LOGGER.info("INSIDE derep %s", sample.name)
 
-    ## concatenate edits files within Samples if an Assembly was formed from
-    ## merging several assemblies. This returns a new sample.files.edits with
-    ## the concat file. No change if not merged Assembly.
-    #sample = concat_edits(data, sample)
+    ## MERGED ASSEMBIES ONLY:
+    ## concatenate edits files within Samples. Returns a new sample.files.edits 
+    ## with the concat file. No change if not merged Assembly.
     sample.files.edits = concat_multiple_edits(data, sample)
-    LOGGER.info("Passed concat edits")
 
+    ## PAIRED DATA ONLY:
     ## Denovo: merge or concat fastq pairs [sample.files.pairs]
     ## Reference: only concat fastq pairs  []
-    ## Denovo + Reference:
+    ## Denovo + Reference: ...
     if 'pair' in data.paramsdict['datatype']:
         ## merge pairs that overlap and concatenate non-overlapping pairs with
         ## a "nnnn" separator. merge_pairs takes the unmerged files list as an
         ## argument because we're reusing this code in the refmap pipeline.
-        LOGGER.debug("Merging pairs - %s", sample.files.edits)
+        LOGGER.debug("Merging pairs - %s", sample.files.edits)        
+
         ## If doing any reference mapping do not merge only concatenate so the
         ## reads can be split later and mapped separately.
         merge = rcomp = 1
         if "reference" in data.paramsdict["assembly_method"]:
             merge = rcomp = 0
 
-        ## merge R1 and R2 before we derep
+        ## merge R1 and R2 before we derep and store results
         mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
         nmerged = merge_pairs(data, sample.files.edits, mergefile, rcomp, merge)
         sample.files.edits = [(mergefile, )]
         sample.stats.reads_merged = nmerged
+        
+        ## logging
         LOGGER.info("Merged pairs %s %s", sample.name, sample.stats.reads_merged)
         LOGGER.debug("Merged file - {}".format(sample.files.edits))
 
