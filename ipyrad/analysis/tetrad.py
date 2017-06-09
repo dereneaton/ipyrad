@@ -41,12 +41,11 @@ import ipyrad as ip
 #from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
-from ipyrad.assemble.util import IPyradWarningExit, progressbar
+from ipyrad.assemble.util import IPyradWarningExit, progressbar, Params
 
 ## numba debugging
 #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
 #numba.config.NUMBA_DISABLE_JIT = 1
-
 
 ## TOYTREE is required to run TETRAD
 try:
@@ -98,36 +97,6 @@ PHYLO_INVARIANTS = """
 ## Tetrad inference Class Object
 #############################################################################
 #############################################################################
-
-
-
-class Params(object):
-    """ 
-    A dict-like object for storing params values with a custom repr
-    """
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __repr__(self):
-        _repr = ""
-        keys = sorted(self.__dict__.keys())
-        maxlen = max(20, 2 + max([len(i) for i in keys]))
-        _printstr = "{:<" + str(maxlen) + "} {:<}\n"
-        for key in keys:
-            _repr += _printstr.format(key, str(self[key]))
-        return _repr
-
-    # def __repr__(self):
-    #     _repr = ""
-    #     keys = sorted(self.__dict__.keys())
-    #     _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-    #     for key in keys:
-    #         _repr += _printstr.format(key, str(self[key]))
-    #     return _repr
-
 
 
 
@@ -219,6 +188,7 @@ class Tetrad(object):
         ## init the seq data and samples
         if load:
             self._load_json(self.name, self.dirs)
+            self._parse_names()
 
         elif seqfile:
             if initarr:
@@ -772,8 +742,6 @@ class Tetrad(object):
         if len(self.samples) < 200:
             if self.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
-                #wctre = toytree.tree(self.trees.cons, format=0)
-                #wctre.unroot()
                 wctre.ladderize()
                 print(wctre.get_ascii(show_internal=True, 
                                       attributes=["dist", "name"]))
@@ -936,6 +904,7 @@ class Tetrad(object):
             lbview = ipyclient.load_balanced_view(targets=targets)
 
             ## get or init quartet sampling ---------------------------
+            ## if load=True then chunksize will exist and this will skip
             if not self._chunksize:
                 self.nquartets = n_choose_k(len(self.samples), 4)
                 ## store N sampled quartets into the h5 array
@@ -1018,7 +987,10 @@ class Tetrad(object):
 
 
 
-
+    ## TODO: THis can be reworked to send chunks and have the engines read 
+    ## in the data instead of sending the array of data to the engine. Just
+    ## make sure to purge the engine memory when finished. This will simplify
+    ## task farming so we can send all the tasks at once. 
     def inference(self, start, lbview):
         """ 
         Inference sends slices of jobs to the parallel engines for computing
@@ -1074,7 +1046,6 @@ class Tetrad(object):
                 for ikey in curkeys:
                     if res[ikey].ready():
                         if res[ikey].successful():
-                            #LOGGER.info("collecting results chunk: %s, tool %s ms", ikey, res[ikey].elapsed*1e3)
                             ## track finished
                             done += 1
                             ## insert results into hdf5 data base
@@ -1234,10 +1205,6 @@ def compute_tree_stats(self, ipyclient):
     ## return as NHX format with extra info
     with open(self.trees.nhx, 'w') as outtre:
         outtre.write(wctre.write(format=0, features=features))
-
-    ## close the client view
-    ipyclient.close()
-
 
 
 
@@ -1561,13 +1528,6 @@ MIDSTREAM_MESSAGE = """
 """
 ## require method to be same as loaded type
 ## assert method == data..method, MIDSTREAM_MESSAGE.format(method)
-
-LOADING_MESSAGE = """\
-  Continuing checkpointed analysis: {}
-    sampling method: {}
-    bootstrap checkpoint: {}
-    array checkpoint: {}
-"""
 
 LOADING_RANDOM = """\
     loading {} random quartet samples to infer a starting tree 
