@@ -40,6 +40,7 @@ if not ip.__interactive__:
 
 
 
+
 class Assembly(object):
     """ An ipyrad Assembly class object.
 
@@ -138,6 +139,7 @@ class Assembly(object):
 
         ## outfiles locations
         self.outfiles = ObjDict()
+        self.outfiles.loci = ""
 
         ## storing supercatg file
         self.clust_database = ""
