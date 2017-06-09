@@ -10,7 +10,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.tetrad import get_spans
-
+from ipyrad.assemble.util import Params
 
 # pylint: disable=W0142
 # pylint: disable=W0212
@@ -18,26 +18,26 @@ from ipyrad.analysis.tetrad import get_spans
 # pylint: disable=R0902
 # pylint: disable=R0903
 
+OPJ = os.path.join
 
+# class _Object(object):
+#     """ a custom object with getter and repr, but no getkeys setkeys """
 
-class _Object(object):
-    """ a custom object with getter and repr, but no getkeys setkeys """
+#     def __getitem__(self, key):
+#         return self.__dict__[key]
 
-    def __getitem__(self, key):
-        return self.__dict__[key]
+#     def __setitem__(self, key, value):
+#         self.__dict__[key] = value
 
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __repr__(self):
-        _repr = ""
-        keys = sorted(self.__dict__.keys())
-        maxlen = max(20, 2 + max([len(i) for i in keys]))
-        #maxlen = 20
-        _printstr = "{:<" + str(maxlen) + "} {:<}\n"
-        for key in keys:
-            _repr += _printstr.format(key, str(self[key]))
-        return _repr
+#     def __repr__(self):
+#         _repr = ""
+#         keys = sorted(self.__dict__.keys())
+#         maxlen = max(20, 2 + max([len(i) for i in keys]))
+#         #maxlen = 20
+#         _printstr = "{:<" + str(maxlen) + "} {:<}\n"
+#         for key in keys:
+#             _repr += _printstr.format(key, str(self[key]))
+#         return _repr
 
 
 
@@ -84,15 +84,15 @@ class Structure(object):
 
     Functions:
     ----------
-    submit_structure_jobs(*args, **kwargs):
+    run(*args, **kwargs):
         Submits independent replicate jobs to run on a cluster.
     get_clumpp_table(kpop):
         Returns a table of results for K=kpop permuted across all replicates.
     
     """    
-    def __init__(self, name, strfile, workdir=None, mapfile=None):
+    def __init__(self, name, data, workdir=None, mapfile=None):
         self.name = name
-        self.strfile = os.path.realpath(strfile)
+        self.data = os.path.abspath(os.path.expanduser(data))
         self.mainparams = _MainParams()
         self.extraparams = _ExtraParams()
         self.clumppparams = _ClumppParams()
@@ -102,12 +102,12 @@ class Structure(object):
         if workdir:
             self.workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
-            self.workdir = os.path.join(os.path.curdir, "analysis-structure")
+            self.workdir = OPJ(os.path.curdir, "analysis-structure")
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
         ## check that strfile exists, print and parse some info from it
-        with open(strfile) as ifile:
+        with open(data) as ifile:
             lines = ifile.readlines()
             self.ntaxa = len(lines)//2
             self.nsites = len(lines[0].strip().split()[1:])
@@ -148,12 +148,12 @@ class Structure(object):
     @property
     def result_files(self):
         """ returns a list of files that have finished structure """
-        reps = os.path.join(self.workdir, self.name+"-K-*-rep-*_f")
+        reps = OPJ(self.workdir, self.name+"-K-*-rep-*_f")
         repfiles = glob.glob(reps)
         return repfiles
 
 
-    def submit_structure_jobs(self,
+    def run(self,
         kpop, 
         nreps, 
         ipyclient=None,
@@ -199,7 +199,7 @@ class Structure(object):
         ## get structure object
         s = ipa.structure(
                 name="test",
-                strfile="mydata.str", 
+                data="mydata.str", 
                 mapfile="mydata.snps.map",
                 workdir="structure-results",
                 )
@@ -210,7 +210,7 @@ class Structure(object):
 
         ## submit many jobs
         for kpop in [3, 4, 5]:
-            s.submit_structure_jobs(
+            s.run(
                 kpop=kpop, 
                 nreps=10, 
                 ipyclient=ipyclient,
@@ -231,12 +231,19 @@ class Structure(object):
             raise Exception(\
                 "structure is not installed: run `conda install structure -c ipyrad`")
 
-        ## prepare files
-        self._prepare_structure_files(kpop)
+        ## remove old jobs with this same name
+        handle = OPJ(self.workdir, self.name+"-K-{}-*".format(kpop))
+        oldjobs = glob.glob(handle)
+        for job in oldjobs:
+            os.remove(job)
 
         ## check that there is a ipcluster instance running
         for rep in xrange(nreps):
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
+
+            ## prepare files
+            self._prepare_structure_files(kpop, rep)
+
             args = [
                 self.name, 
                 self.workdir,
@@ -248,7 +255,6 @@ class Structure(object):
 
             if ipyclient:
                 ## call structure
-                print(args)
                 lbview = ipyclient.load_balanced_view()
                 async = lbview.apply(_call_structure, *(args))
                 self.asyncs.append(async)
@@ -267,23 +273,20 @@ class Structure(object):
 
 
 
-    def _prepare_structure_files(self, kpop):
+    def _prepare_structure_files(self, kpop, rep):
         """ prepares input files for running structure"""
-
-        ## remove old jobs with this same name
-        handle = os.path.join(self.workdir, self.name+"-K-{}-*".format(kpop))
-        oldjobs = glob.glob(handle)
-        for job in oldjobs:
-            os.remove(job)
 
         ## check params
         self.mainparams.numreps = int(self.mainparams.numreps)
         self.mainparams.burnin = int(self.mainparams.burnin)
 
         ## write tmp files for the job
-        tmp_m = open(os.path.join(self.workdir, "tmp.mainparams.txt"), 'w')
-        tmp_e = open(os.path.join(self.workdir, "tmp.extraparams.txt"), 'w')
-        tmp_s = open(os.path.join(self.workdir, "tmp.strfile.txt"), 'w')
+        file_m = OPJ(self.workdir, ".{}-K-{}-rep-{}.tmp-main".format(self.name, kpop, rep))
+        file_e = OPJ(self.workdir, ".{}-K-{}-rep-{}.tmp-extra".format(self.name, kpop, rep))
+        file_s = OPJ(self.workdir, ".{}-K-{}-rep-{}.tmp-str".format(self.name, kpop, rep))
+        tmp_m = open(file_m, 'w')
+        tmp_e = open(file_e, 'w')
+        tmp_s = open(file_s, 'w')
 
         ## write params files
         tmp_m.write(self.mainparams._asfile())
@@ -294,7 +297,7 @@ class Structure(object):
         assert len(self.popdata) == len(self.labels), \
             "popdata list must be the same length as the number of taxa"
 
-        with open(self.strfile) as ifile:
+        with open(self.data) as ifile:
             _data = ifile.readlines()
             ## header
             header = np.array([i.strip().split("\t")[:5] for i in _data])
@@ -339,15 +342,19 @@ class Structure(object):
 def _call_structure(name, workdir, seed, ntaxa, nsites, kpop, rep):
     """ make the subprocess call to structure """
     ## create call string
+    file_m = OPJ(workdir, ".{}-K-{}-rep-{}.tmp-main".format(name, kpop, rep))
+    file_e = OPJ(workdir, ".{}-K-{}-rep-{}.tmp-extra".format(name, kpop, rep))
+    file_s = OPJ(workdir, ".{}-K-{}-rep-{}.tmp-str".format(name, kpop, rep))
     outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
+
     cmd = ["structure", 
-           "-m", os.path.join(workdir, "tmp.mainparams.txt"),
-           "-e", os.path.join(workdir, "tmp.extraparams.txt"),
+           "-m", file_m,
+           "-e", file_e,
            "-K", str(kpop),
            "-D", str(seed), 
            "-N", str(ntaxa), 
            "-L", str(nsites),
-           "-i", os.path.join(workdir, "tmp.strfile.txt"),
+           "-i", file_s,
            "-o", outname]
 
     ## call the shell function
@@ -355,11 +362,17 @@ def _call_structure(name, workdir, seed, ntaxa, nsites, kpop, rep):
                             stdout=subprocess.PIPE, 
                             stderr=subprocess.STDOUT)
     comm = proc.communicate()
+
+    ## cleanup
+    oldfiles = [file_m, file_e, file_s]
+    for oldfile in oldfiles:
+        if os.path.exists(oldfile):
+            os.remove(oldfile)
     return comm
 
 
 
-class _MainParams(_Object):
+class _MainParams(Params):
     """
     A dictionary object of mainparams parameter arguments to STRUCTURE. 
     See STRUCTURE docs for details on their function. Modify by setting as 
@@ -393,7 +406,7 @@ class _MainParams(_Object):
 
 
 
-class _ExtraParams(_Object):
+class _ExtraParams(Params):
     """
     A dictionary object of extraparams parameter arguments to STRUCTURE. 
     See STRUCTURE docs for details on their function. Modify by setting as 
@@ -464,7 +477,7 @@ class _ExtraParams(_Object):
 
 
 
-class _ClumppParams(_Object):
+class _ClumppParams(Params):
     """
     A dictionary object of params arguments to CLUMPP.
     See CLUMPP docs for details on their function. Modify by setting as 
