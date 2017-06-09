@@ -4,7 +4,7 @@
 
 import os
 import subprocess
-
+from ipyrad.assemble.util import Params
 
 ## alias
 OPJ = os.path.join
@@ -94,15 +94,18 @@ class Raxml(object):
         self.params = Params()
         self.params.n = name
         self.params.w = workdir
-        self.params.s = data
 
         ## set params
         notparams = set(["workdir", "name", "data"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
+        ## check binary
+        self._get_binary()
+
         ## attributes
-        self.data = os.path.abspath(os.path.expanduser(data))
+        self.params.s = os.path.abspath(os.path.expanduser(data))
+        self.async = None
         self.stdout = None
         self.stderr = None
 
@@ -146,6 +149,7 @@ class Raxml(object):
         ipyclient=None, 
         quiet=False,
         force=False,
+        block=False,
         ):
         """
         Submits raxml job to run. If no ipyclient object is provided then 
@@ -161,7 +165,59 @@ class Raxml(object):
             suppress print statements
         force:
             overwrite existing results files with this job name. 
+        block:
+            will block progress in notebook until job finishes, even if job
+            is running on a remote ipyclient.
         """
+
+        ## attach tree paths to the results
+        #f1 = os.path.join(self.params.w, "RAxML_bestTree."+self.params.n)
+        #f2 = os.path.join(self.params.w, "RAxML_bipartitionsBranchLabels."+self.params.n)
+        #f3 = os.path.join(self.params.w, "RAxML_bipartitions."+self.params.n)
+        #f4 = os.path.join(self.params.w, "RAxML_bootstrap."+self.params.n)
+        #f5 = os.path.join(self.params.w, "RAxML_info."+self.params.n)
+
+        ## stop before trying in raxml
+        if force:
+            for key, oldfile in self.trees:
+                if os.path.exists(oldfile):
+                    os.remove(oldfile)
+            #for oldfile in [f1, f2, f3, f4, f5]:
+            #    if os.path.exists(oldfile):
+            #        os.remove(oldfile)
+        if os.path.exists(self.trees.info):
+            print("Error: set a new name for this job:\nFile exists: {}"\
+                  .format(self.trees.info))
+            return 
+
+        ## TODO: add a progress bar tracker here. It could even read it from
+        ## the info file that is being written. 
+
+        ## submit it
+        if not ipyclient:
+            proc = _call_raxml(self._command_list)
+            self.stdout = proc[0]
+            self.stderr = proc[1]
+        else:
+            ## find all hosts and submit job to the host with most available engines
+            lbview = ipyclient.load_balanced_view()
+            self.async = lbview.apply(_call_raxml, self._command_list)
+
+        ## initiate random seed
+        if not quiet:
+            if not ipyclient:
+                ## look for errors
+                if "Overall execution time" not in self.stdout:
+                    print("Error in raxml run\n" + self.stdout)
+                else:
+                    print("job {} finished successfully".format(self.params.n))
+            else:
+                print("job {} submitted to cluster".format(self.params.n))
+
+
+
+    def _get_binary(self):
+        """ find binaries available"""
 
         ## check for binary
         backup_binaries = ["raxmlHPC-PTHREADS", "raxmlHPC-PTHREADS-SSE3"]
@@ -179,54 +235,6 @@ class Raxml(object):
         if not proc[0]:
             raise Exception(BINARY_ERROR.format(self.params.binary))
 
-        ## attach tree paths to the results
-        f1 = os.path.join(self.params.w, "RAxML_bestTree."+self.params.n)
-        f2 = os.path.join(self.params.w, "RAxML_bipartitionsBranchLabels."+self.params.n)
-        f3 = os.path.join(self.params.w, "RAxML_bipartitions."+self.params.n)
-        f4 = os.path.join(self.params.w, "RAxML_bootstrap."+self.params.n)
-        f5 = os.path.join(self.params.w, "RAxML_info."+self.params.n)
-
-        ## stop before trying in raxml
-        if force:
-            for oldfile in [f1, f2, f3, f4, f5]:
-                if os.path.exists(oldfile):
-                    os.remove(oldfile)
-
-        if os.path.exists(f5):
-            print("Error: set a new name for this job:\nFile exists: {}".format(f5))
-            return 
-
-        ## TODO: add a progress bar tracker here. It could even read it from
-        ## the info file that is being written. 
-        ## submit it
-        if not ipyclient:
-            proc = _call_raxml(self._command_list)
-            self.stdout = proc[0]
-            self.stderr = proc[1]
-        else:
-            print("not yet supported")
-            return 
-            sync = ipyclient[0].apply(_call_raxml, self._command_list)
-            sync.wait()
-
-        ## TODO: error checking
-        ## ...
-
-        if os.path.exists(f1):
-            self.trees.bestTree = f1
-        if os.path.exists(f2):
-            self.trees.bipartitionsBranchLabels = f2
-        if os.path.exists(f3):
-            self.trees.bipartitions = f3
-        if os.path.exists(f4):
-            self.trees.boostrap = f4
-        if os.path.exists(f5):
-            self.trees.info = f5
-
-        ## initiate random seed
-        if not quiet:
-            print("job {} finished successfully".format(self.params.n))
-
 
 
 def _call_raxml(command_list):
@@ -238,27 +246,6 @@ def _call_raxml(command_list):
         )
     comm = proc.communicate()
     return comm
-
-
-
-class Params(object):
-    """ 
-    A dict-like object for storing params values with a custom repr
-    """
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __repr__(self):
-        _repr = ""
-        keys = sorted(self.__dict__.keys())      
-        _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-        for key in keys:
-            _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-            _repr += _printstr.format(key, _val)
-        return _repr
 
 
 
