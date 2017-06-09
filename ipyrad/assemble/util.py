@@ -53,6 +53,63 @@ class IPyradWarningExit(SystemExit):
             SystemExit.__init__(self, *args, **kwargs)
 
 
+## utility functions/classes
+class Params(object):
+    """ 
+    A dict-like object for storing params values with a custom repr
+    that shortens file paths, and which makes attributes easily viewable
+    through tab completion in a notebook while hiding other funcs, attrs, that
+    are in normal dicts. 
+    """
+    def __len__(self):
+        return len(self.__dict__)
+
+    def __iter__(self):
+        for attr, value in self.__dict__.iteritems():
+            yield attr, value
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
+    def __repr__(self):
+        _repr = ""
+        keys = sorted(self.__dict__.keys())
+        if keys:
+            _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+            for key in keys:
+                _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+                _repr += _printstr.format(key, _val)
+        return _repr
+
+
+
+# ## A better storage class than ObjDict for params
+# class Params(object):
+#     """ 
+#     A dict-like object for storing params values with a custom repr
+#     """
+#     def __getitem__(self, key):
+#         return self.__dict__[key]
+
+#     def __setitem__(self, key, value):
+#         self.__dict__[key] = value
+
+#     def __repr__(self):
+#         _repr = ""
+#         keys = sorted(self.__dict__.keys())
+#         if keys:
+#             _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+#             _repr += "{\n"
+#             for key in keys:
+#                 _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+#                 _repr += _printstr.format(key+":", _val+",")
+#             _repr += "}"
+#         return _repr
+
+
 
 class ObjDict(dict):
     """
