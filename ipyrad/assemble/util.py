@@ -391,7 +391,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                    "--threads", "2",
                    "--fastq_allowmergestagger"]
 
-            LOGGER.info("merge cmd: %s", cmd)
+            LOGGER.debug("merge cmd: %s", " ".join(cmd))
             proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
             try:
                 res = proc.communicate()[0]

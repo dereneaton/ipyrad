@@ -600,7 +600,7 @@ def make_loci_and_stats(data, samples, ipyclient):
         ## check for errors
         for job in loci_asyncs:
             if loci_asyncs[job].ready() and not loci_asyncs[job].successful():
-                LOGGER.error("error in building loci [%s]: %s",
+                LOGGER.error("error in building alleles [%s]: %s",
                              job, loci_asyncs[job].exception())
                 raise IPyradWarningExit(loci_asyncs[job].exception())
 
@@ -650,7 +650,7 @@ def get_alleles(locdat):
             inloc.append("//  "+lines[-1][2:]+"|")
             locs.append("\n".join(inloc))
 
-    return "\n".join(locs)
+    return "\n".join(locs) + "\n"
 
 
 
@@ -1308,9 +1308,9 @@ def filter_indels(data, superints, edgearr):
             ## if data at this locus (not already filtered by edges/minsamp)
             if block.shape[1] > 1:
                 sums = maxind_numba(block)
-                LOGGER.info("maxind numba %s %s", idx, sums)
-                LOGGER.info("sums, maxinds[0], compare: %s %s %s",
-                             sums, maxinds[0], sums > maxinds[0])
+                #LOGGER.info("maxind numba %s %s", idx, sums)
+                #LOGGER.info("sums, maxinds[0], compare: %s %s %s",
+                #             sums, maxinds[0], sums > maxinds[0])
                 if sums > maxinds[0]:
                     ifilter[idx] = True
 
@@ -2227,7 +2227,7 @@ def vcfchunk(data, optim, sidx, start, full):
 
     ## vcf info to fill, this is bigger than the actual array
     nrows = maxsnplen
-    cols0 = np.zeros(nrows, dtype=np.uint64) #h5py.special_dtype(vlen=bytes))
+    cols0 = np.zeros(nrows, dtype=np.int64) #h5py.special_dtype(vlen=bytes))
     cols1 = np.zeros(nrows, dtype=np.uint32)
     cols34 = np.zeros((nrows, 2), dtype="S3")
     cols7 = np.zeros((nrows, 1), dtype="S20")
@@ -2272,16 +2272,17 @@ def vcfchunk(data, optim, sidx, start, full):
 
         ## ----  build string array ----
         pos = 0
-        if achrom[iloc].any():
+        ## If any < 0 this indicates an anonymous locus in denovo+ref assembly
+        if achrom[iloc][0] > 0:
             pos = achrom[iloc][1]
-            cols0[init:init+seq.shape[1]] = achrom[iloc][0] + 1
+            cols0[init:init+seq.shape[1]] = achrom[iloc][0]
             cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
         else:
             if full:
                 cols1[init:init+seq.shape[1]] = pos + np.arange(seq.shape[1]) + 1
             else:
                 cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
-                cols0[init:init+seq.shape[1]] = start + locindex[iloc] + 1
+                cols0[init:init+seq.shape[1]] = (start + locindex[iloc] + 1) * -1
 
         ## fill reference base
         alleles = reftrick(seq, GETCONS)
@@ -2353,16 +2354,27 @@ def vcfchunk(data, optim, sidx, start, full):
     tot = withdat.sum()
 
     ## get scaffold names
+    faidict = {}
     if (data.paramsdict["assembly_method"] in ["reference", "denovo+reference"]) and \
        (os.path.exists(data.paramsdict["reference_sequence"])):
         fai = pd.read_csv(data.paramsdict["reference_sequence"] + ".fai", 
                 names=['scaffold', 'size', 'sumsize', 'a', 'b'],
                 sep="\t")
-        faidict = {i:j for i,j in enumerate(fai.scaffold)}
-        chroms = [faidict[i] for i in cols0-1]
-        cols0 = np.array(chroms)
-    else:
-        cols0 = np.array(["locus_{}".format(i) for i in cols0-1])
+        faidict = {i+1:j for i,j in enumerate(fai.scaffold)}
+    try:
+        ## This is hax, but it's the only way it will work. The faidict uses positive numbers
+        ## for reference sequence mapped loci for the CHROM/POS info, and it uses negative
+        ## numbers for anonymous loci. Both are 1 indexed, which is where that last `+ 2` comes from.
+        faidict.update({-i:"locus_{}".format(i-1) for i in xrange(start+1, start + optim + 2)})
+        chroms = [faidict[i] for i in cols0]
+    except Exception as inst:
+        LOGGER.error("Invalid chromosome dictionary indexwat: {}".format(inst))
+        LOGGER.debug("faidict {}".format([str(k)+"/"+str(v) for k, v in faidict.items() if "locus" in v]))
+        LOGGER.debug("chroms {}".format([x for x in cols0 if x < 0]))
+        raise
+    cols0 = np.array(chroms)
+    #else:
+    #    cols0 = np.array(["locus_{}".format(i) for i in cols0-1])
 
     ## Only write if there is some data that passed filtering
     if tot:

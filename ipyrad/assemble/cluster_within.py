@@ -600,8 +600,12 @@ def build_clusters(data, sample, maxindels):
     By default, we set maxindels=6 for this step (within-sample clustering).
     """
 
+    ## If reference assembly then here we're clustering the unmapped reads
+    if "reference" in data.paramsdict["assembly_method"]:
+        derepfile = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+    else:
+        derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     ## i/o vsearch files
-    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
@@ -1141,17 +1145,18 @@ def derep_and_sort(data, infile, outfile, nthreads):
         catcmd = ["gunzip", "-c", infile]
     else:
         catcmd = ["cat", infile]
-    LOGGER.info("catcmd %s", catcmd)
 
     ## do dereplication with vsearch
     cmd = [ipyrad.bins.vsearch,
-            "-derep_fulllength", "-",
-            "-strand", strand,
-            "-output", outfile,
-            "-threads", str(nthreads),
-            "-fasta_width", str(0),
-            "-fastq_qmax", "1000",
-            "-sizeout"]
+            "--derep_fulllength", "-",
+            "--strand", strand,
+            "--output", outfile,
+            "--threads", str(nthreads),
+            "--fasta_width", str(0),
+            "--fastq_qmax", "1000",
+            "--sizeout", 
+            "--relabel_md5",
+            ]
     LOGGER.info("derep cmd %s", cmd)
 
     ## run vsearch
@@ -1428,26 +1433,18 @@ def derep_concat_split(data, sample, nthreads):
     ## Reference: only concat fastq pairs  []
     ## Denovo + Reference: ...
     if 'pair' in data.paramsdict['datatype']:
-        ## merge pairs that overlap and concatenate non-overlapping pairs with
-        ## a "nnnn" separator. merge_pairs takes the unmerged files list as an
-        ## argument because we're reusing this code in the refmap pipeline.
-        LOGGER.debug("Merging pairs - %s", sample.files.edits)        
-
-        ## If doing any reference mapping do not merge only concatenate so the
-        ## reads can be split later and mapped separately.
-        merge = rcomp = 1
-        if "reference" in data.paramsdict["assembly_method"]:
-            merge = rcomp = 0
-
-        ## merge R1 and R2 before we derep and store results
+        ## the output file handle for merged reads
         mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
-        nmerged = merge_pairs(data, sample.files.edits, mergefile, rcomp, merge)
+
+        ## modify behavior of merging if reference
+        if "reference" in data.paramsdict["assembly_method"]:
+            nmerged = merge_pairs(data, sample.files.edits, mergefile, 0, 0)
+        else:
+            nmerged = merge_pairs(data, sample.files.edits, mergefile, 1, 1)
+
+        ## store results
         sample.files.edits = [(mergefile, )]
         sample.stats.reads_merged = nmerged
-        
-        ## logging
-        LOGGER.info("Merged pairs %s %s", sample.name, sample.stats.reads_merged)
-        LOGGER.debug("Merged file - {}".format(sample.files.edits))
 
     ## 3rad uses random adapters to identify pcr duplicates. We will
     ## remove pcr dupes here. Basically append the radom adapter to
@@ -1553,12 +1550,6 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
             try:
                 if os.path.exists(data.tmpdir):
                     shutil.rmtree(data.tmpdir)
-                ## get all refmap_derep.fastqs
-                rdereps = glob.glob(os.path.join(data.dirs.edits,
-                                     "*-refmap_derep.fastq"))
-                ## Remove the unmapped fastq files
-                for rmfile in rdereps:
-                    os.remove(rmfile)
 
             except Exception as _:
                 LOGGER.warning("failed to cleanup files/dirs")

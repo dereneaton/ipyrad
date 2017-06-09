@@ -161,13 +161,19 @@ def recal_hidepth(data, sample):
         ## calculate how many are hidepth
         hidepths = depths >= majrdepth
         stathidepths = depths >= statdepth
-        
+
         keepmj = depths[hidepths]
         keepst = depths[stathidepths]
 
-        ## set assembly maxlen for sample
-        statlens = maxlens[stathidepths]        
-        statlen = int(statlens.mean() + (2.*statlens.std()))        
+        try:
+            ## set assembly maxlen for sample
+            statlens = maxlens[stathidepths]
+            statlen = int(statlens.mean() + (2.*statlens.std()))
+        except:
+            ## If no clusters have depth sufficient for statistical basecalling
+            ## then stathidepths will be empty and all hell breaks loose, so
+            ## we'll raise here and than catch the exception in optim()
+            raise IPyradError("No clusts with depth sufficient for statistical basecalling.")
 
         LOGGER.info("%s %s %s", maxlens.shape, maxlens.mean(), maxlens.std())
         maxlens = maxlens[hidepths]
@@ -178,7 +184,6 @@ def recal_hidepth(data, sample):
         sample.stats_dfs.s3["clusters_hidepth"] = keepmj.shape[0]        
 
     return sample, keepmj.shape[0], maxlen, keepst.shape[0], statlen
-
 
 
 def stackarray(data, sample):
@@ -263,53 +268,71 @@ def stackarray(data, sample):
 def optim(data, sample):
     """ func scipy optimize to find best parameters"""
 
-    ## get array of all clusters data
-    stacked = stackarray(data, sample)
+    hetero = 0.01
+    errors = 0.001
 
-    ## get base frequencies
-    bfreqs = stacked.sum(axis=0) / float(stacked.sum())
-    #bfreqs = bfreqs**2
-    #LOGGER.debug(bfreqs)
-    if np.isnan(bfreqs).any():
-        raise IPyradWarningExit(" Bad stack in getfreqs; {} {}"\
-               .format(sample.name, bfreqs))
+    ## A flag for communicating with sample_cleanup so a nice warning
+    ## message can be displayed.
+    success = False
 
-    ## put into array, count array items as Byte strings
-    tstack = Counter([j.tostring() for j in stacked])
+    try:
+        ## get array of all clusters data
+        stacked = stackarray(data, sample)
 
-    ## get keys back as arrays and store vals as separate arrays
-    ustacks = np.array([np.fromstring(i, dtype=np.uint64) \
-                        for i in tstack.iterkeys()])
+        ## get base frequencies
+        bfreqs = stacked.sum(axis=0) / float(stacked.sum())
+        #bfreqs = bfreqs**2
+        #LOGGER.debug(bfreqs)
+        if np.isnan(bfreqs).any():
+            raise IPyradWarningExit(" Bad stack in getfreqs; {} {}"\
+                   .format(sample.name, bfreqs))
 
-    ## make bi-allelic only
-    #tris = np.where(np.sum(ustacks > 0, axis=1) > 2)
-    #for tri in tris:
-    #    minv = np.min(ustacks[tri][ustacks[tri] > 0])
-    #    delv = np.where(ustacks[tri] == minv)[0][0]
-    #    ustacks[tri, delv] = 0
+        ## put into array, count array items as Byte strings
+        tstack = Counter([j.tostring() for j in stacked])
 
-    counts = np.array(tstack.values())
-    ## cleanup    
-    del tstack
+        ## get keys back as arrays and store vals as separate arrays
+        ustacks = np.array([np.fromstring(i, dtype=np.uint64) \
+                            for i in tstack.iterkeys()])
 
-    ## if data are haploid fix H to 0
-    if int(data.paramsdict["max_alleles_consens"]) == 1:
-        pstart = np.array([0.001], dtype=np.float64)
-        hetero = 0.
-        errors = scipy.optimize.fmin(get_haploid_lik, pstart,
-                                    (bfreqs, ustacks, counts),
-                                     disp=False,
-                                     full_output=False)
-    ## or do joint diploid estimates
-    else:
-        pstart = np.array([0.01, 0.001], dtype=np.float64)
-        hetero, errors = scipy.optimize.fmin(nget_diploid_lik, pstart,
-                                            (bfreqs, ustacks, counts), 
-                                            maxfun=50, 
-                                            maxiter=50,
-                                            disp=False,
-                                            full_output=False)
-    return hetero, errors
+        ## make bi-allelic only
+        #tris = np.where(np.sum(ustacks > 0, axis=1) > 2)
+        #for tri in tris:
+        #    minv = np.min(ustacks[tri][ustacks[tri] > 0])
+        #    delv = np.where(ustacks[tri] == minv)[0][0]
+        #    ustacks[tri, delv] = 0
+
+        counts = np.array(tstack.values())
+        ## cleanup
+        del tstack
+
+        ## if data are haploid fix H to 0
+        if int(data.paramsdict["max_alleles_consens"]) == 1:
+            pstart = np.array([0.001], dtype=np.float64)
+            hetero = 0.
+            errors = scipy.optimize.fmin(get_haploid_lik, pstart,
+                                        (bfreqs, ustacks, counts),
+                                         disp=False,
+                                         full_output=False)
+        ## or do joint diploid estimates
+        else:
+            pstart = np.array([0.01, 0.001], dtype=np.float64)
+            hetero, errors = scipy.optimize.fmin(nget_diploid_lik, pstart,
+                                                (bfreqs, ustacks, counts),
+                                                maxfun=50,
+                                                maxiter=50,
+                                                disp=False,
+                                                full_output=False)
+        success = True
+
+    except IPyradError as inst:
+        ## recal_hidepth raises this exception if there are no clusters that
+        ## have depth sufficient for statistical basecalling. In this case
+        ## we just set the default hetero and errors values to 0.01/0.001
+        ## which is the default.
+        LOGGER.debug("Found sample with no clusters hidepth - {}".format(sample.name))
+        pass
+
+    return hetero, errors, success
 
 
 
@@ -383,8 +406,8 @@ def submit(data, subsamples, ipyclient):
         ## cleanup
         for job in jobs:
             if jobs[job].successful():
-                hest, eest = jobs[job].result()
-                sample_cleanup(data.samples[job], hest, eest)
+                hest, eest, success = jobs[job].result()
+                sample_cleanup(data.samples[job], hest, eest, success)
             else:
                 LOGGER.error("  Sample %s failed with error %s", 
                              job, jobs[job].exception())
@@ -399,7 +422,7 @@ def submit(data, subsamples, ipyclient):
 
 
 
-def sample_cleanup(sample, hest, eest):
+def sample_cleanup(sample, hest, eest, success):
     """ 
     Stores results to the Assembly object, writes to stats file, 
     and cleans up temp files 
@@ -412,6 +435,13 @@ def sample_cleanup(sample, hest, eest):
     ## sample full assigments
     sample.stats_dfs.s4.hetero_est = hest
     sample.stats_dfs.s4.error_est = eest
+
+    ## In rare cases no hidepth clusters for statistical basecalling
+    ## so we warn the user, but carry on with default values
+    if not success:
+        msg = """    Info: Sample {} - No clusters have sufficient depth for statistical
+          basecalling. Setting default heterozygosity/error to 0.01/0.001.""".format(sample.name)
+        print(msg)
 
 
 

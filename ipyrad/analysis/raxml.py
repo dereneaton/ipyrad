@@ -170,6 +170,23 @@ class Raxml(object):
             is running on a remote ipyclient.
         """
 
+        ## check for binary
+        backup_binaries = ["raxmlHPC-PTHREADS", "raxmlHPC-PTHREADS-SSE3"]
+
+        ## check user binary first, then backups
+        for binary in [self.params.binary] + backup_binaries:
+            proc = subprocess.Popen(["which", self.params.binary], 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT).communicate()
+            ## update the binary
+            if proc:
+                self.params.binary = binary
+                break
+
+        ## if none then raise error
+        if not proc[0]:
+            raise Exception(BINARY_ERROR.format(self.params.binary))
+
         ## attach tree paths to the results
         #f1 = os.path.join(self.params.w, "RAxML_bestTree."+self.params.n)
         #f2 = os.path.join(self.params.w, "RAxML_bipartitionsBranchLabels."+self.params.n)
