@@ -20,26 +20,6 @@ from ipyrad.assemble.util import Params
 
 OPJ = os.path.join
 
-# class _Object(object):
-#     """ a custom object with getter and repr, but no getkeys setkeys """
-
-#     def __getitem__(self, key):
-#         return self.__dict__[key]
-
-#     def __setitem__(self, key, value):
-#         self.__dict__[key] = value
-
-#     def __repr__(self):
-#         _repr = ""
-#         keys = sorted(self.__dict__.keys())
-#         maxlen = max(20, 2 + max([len(i) for i in keys]))
-#         #maxlen = 20
-#         _printstr = "{:<" + str(maxlen) + "} {:<}\n"
-#         for key in keys:
-#             _repr += _printstr.format(key, str(self[key]))
-#         return _repr
-
-
 
 ## These are almost all default values.
 class Structure(object):
