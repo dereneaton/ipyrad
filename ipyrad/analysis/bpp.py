@@ -1,4 +1,4 @@
-#!/usr/bin/python 
+#!/usr/bin/env python
 
 """ convert loci file to bpp format input files """
 
@@ -181,7 +181,7 @@ class Bpp(object):
 
         ## set bpp parameters with defaults
         self.params = Params()
-        notparams = set(["workdir", "maxloci", "minmap", "minsnps"])
+        notparams = set(["workdir", "maxloci", "minmap", "minsnps", "copied"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
