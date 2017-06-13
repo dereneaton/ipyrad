@@ -40,7 +40,8 @@ def sample_cleanup(data, sample):
     samplesam = os.path.join(data.dirs.refmapping, sample.name+".sam")
     split1 = os.path.join(data.dirs.edits, sample.name+"-split1.fastq")
     split2 = os.path.join(data.dirs.edits, sample.name+"-split2.fastq")
-    for f in [umap1file, umap2file, unmapped, samplesam, split1, split2]:
+    refmap_derep = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+    for f in [umap1file, umap2file, unmapped, samplesam, split1, split2, refmap_derep]:
         try:
             os.remove(f)
         except:
@@ -230,7 +231,8 @@ def mapreads(data, sample, nthreads, force):
 
     ## this is gonna read in the unmapped files, args are added below, 
     ## and it will output fastq formatted unmapped reads for merging.
-    cmd5 = [ipyrad.bins.samtools, "bam2fq", 
+    ## -v 45 sets the default qscore arbitrarily high
+    cmd5 = [ipyrad.bins.samtools, "bam2fq", "-v 45",
             os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")]
 
     ## Insert additional arguments for paired data to the commands.
@@ -933,12 +935,11 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
         read2 = "{}-R2".format(prefix)
         merged = "{}-merged".format(prefix)
 
-        ## command to do the 'view' in samtools
-        ## cmd1 = [ipyrad.bins.samtools, "view", "-b", bamf, rstring_id0]
-        ## cmd2 = [ipyrad.bins.samtools, "bam2fq", "-1", read1, "-2", read2, "-"]
-
+        ## Grab all the reads that map to this genomic location and dump
+        ## fastq to R1 and R2 files.
+        ## `-v 45` sets the default qscore to something high
         cmd1 = " ".join([ipyrad.bins.samtools, "view", "-b", bamf, rstring_id0])
-        cmd2 = " ".join([ipyrad.bins.samtools, "bam2fq", "-1", read1, "-2", read2, "-", "; echo __done__"])
+        cmd2 = " ".join([ipyrad.bins.samtools, "bam2fq", "-v", "45", "-1", read1, "-2", read2, "-", "; echo __done__"])
         cmd = " | ".join([cmd1, cmd2])
 
         print(cmd, file=proc1.stdin)
@@ -1091,7 +1092,6 @@ def refmap_stats(data, sample):
     ## R1 and R2, so here if PE divide the results by 2 to stay consistent
     ## with how we've been reporting R1 and R2 as one "read pair"
     if "pair" in data.paramsdict["datatype"]:
-        LOGGER.debug("watwatwat")
         sample.stats["refseq_unmapped_reads"] = int(result1.split()[0]) / 2
         sample.stats["refseq_mapped_reads"] = int(result2.split()[0]) / 2
     else:

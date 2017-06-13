@@ -418,8 +418,12 @@ def build_clusters(data, sample, maxindels):
     By default, we set maxindels=6 for this step (within-sample clustering).
     """
 
+    ## If reference assembly then here we're clustering the unmapped reads
+    if "reference" in data.paramsdict["assembly_method"]:
+        derepfile = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+    else:
+        derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     ## i/o vsearch files
-    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
@@ -1365,11 +1369,13 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
             try:
                 if os.path.exists(data.tmpdir):
                     shutil.rmtree(data.tmpdir)
+                #<<<<<<< HEAD
                 ## get all refmap_derep.fastqs
                 rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
                 ## Remove the unmapped fastq files
                 for rmfile in rdereps:
                     os.remove(rmfile)
+                #=======
 
             except Exception as _:
                 LOGGER.warning("failed to cleanup files/dirs")
