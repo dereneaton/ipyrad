@@ -19,15 +19,6 @@ from .structure import Structure as structure
 from .baba import Baba as baba
 from .bpp import Bpp as bpp
 from .raxml import Raxml as raxml
-#from .treemix import treemix
+from .treemix import Treemix as treemix
 
-
-
-
-
-
-#import tetrad.tetrad as tetrad #
-#import baba.baba as baba
-#import baba
-#from .tetrad.tetrad import tetrad
 
