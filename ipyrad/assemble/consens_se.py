@@ -802,6 +802,7 @@ def calculate_depths(data, samples, lbview):
 
     ## send jobs to be processed on engines
     start = time.time()
+    printstr = " calculating depths    | {} | s5 |"
     recaljobs = {}
     maxlens = []
     for sample in samples:
@@ -811,8 +812,7 @@ def calculate_depths(data, samples, lbview):
     while 1:
         ready = [i.ready() for i in recaljobs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready),
-                    " calculating depths    | {} | s5 |".format(elapsed))
+        progressbar(len(ready), sum(ready), printstr.format(elapsed))
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")
