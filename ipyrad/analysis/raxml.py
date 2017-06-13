@@ -81,7 +81,7 @@ class Raxml(object):
         if workdir:
             workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
-            workdir = os.path.curdir        
+            workdir = os.path.abspath(os.path.curdir)
         if not os.path.exists(workdir):
             os.makedirs(workdir)
 
@@ -96,7 +96,7 @@ class Raxml(object):
             self.params.binary = _find_binary()
 
         ## set params
-        notparams = set(["workdir", "name", "data"])
+        notparams = set(["workdir", "name", "data", "binary"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
@@ -158,11 +158,10 @@ class Raxml(object):
             remove existing results files with this job name. 
         """
 
-
-
+        
         ## if none then raise error
-        if not proc[0]:
-            raise Exception(BINARY_ERROR.format(self.params.binary))
+        #if not proc[0]:
+        #    raise Exception(BINARY_ERROR.format(self.params.binary))
 
         ## attach tree paths to the results
         f1 = os.path.join(self.params.w, "RAxML_bestTree."+self.params.n)
@@ -229,7 +228,7 @@ def _find_binary():
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.STDOUT).communicate()
         ## update the binary
-        if proc:
+        if proc[0]:
             return binary
 
     ## if not binaries found
