@@ -102,7 +102,7 @@ class Structure(object):
         if workdir:
             self.workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
-            self.workdir = os.path.join(os.path.curdir, "analysis-structure")
+            self.workdir = os.path.join(os.path.abspath('.'), "analysis-structure")
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
@@ -220,7 +220,7 @@ class Structure(object):
         ipyclient.wait()
 
         """
-        ## initiate seed
+        ## initiate starting seed
         np.random.seed(seed)
 
         ## check for stuructre here
@@ -231,13 +231,20 @@ class Structure(object):
             raise Exception(\
                 "structure is not installed: run `conda install structure -c ipyrad`")
 
-        ## prepare files
-        self._prepare_structure_files(kpop)
+        ## start load balancer
+        if ipyclient:
+            lbview = ipyclient.load_balanced_view()
 
         ## check that there is a ipcluster instance running
         for rep in xrange(nreps):
+
+            ## sample random seed for this rep
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
+
+            ## prepare files (randomly subsamples snps if mapfile)
+            mname, ename, sname = self.write_structure_files(kpop, rep)
             args = [
+                mname, ename, sname,
                 self.name, 
                 self.workdir,
                 self.extraparams.seed, 
@@ -248,8 +255,6 @@ class Structure(object):
 
             if ipyclient:
                 ## call structure
-                print(args)
-                lbview = ipyclient.load_balanced_view()
                 async = lbview.apply(_call_structure, *(args))
                 self.asyncs.append(async)
 
@@ -263,11 +268,10 @@ class Structure(object):
             if not quiet:
                 sys.stderr.write("submitted {} structure jobs [{}-K-{}]\n"\
                                 .format(nreps, self.name, kpop))
-        time.sleep(1)
 
 
 
-    def _prepare_structure_files(self, kpop):
+    def write_structure_files(self, kpop, rep):
         """ prepares input files for running structure"""
 
         ## remove old jobs with this same name
@@ -280,10 +284,13 @@ class Structure(object):
         self.mainparams.numreps = int(self.mainparams.numreps)
         self.mainparams.burnin = int(self.mainparams.burnin)
 
-        ## write tmp files for the job
-        tmp_m = open(os.path.join(self.workdir, "tmp.mainparams.txt"), 'w')
-        tmp_e = open(os.path.join(self.workdir, "tmp.extraparams.txt"), 'w')
-        tmp_s = open(os.path.join(self.workdir, "tmp.strfile.txt"), 'w')
+        ## write tmp files for the job. Rando avoids filename conflict.
+        mname = os.path.join(self.workdir, "tmp-{}-{}-{}.mainparams.txt".format(self.name, kpop, rep))
+        ename = os.path.join(self.workdir, "tmp-{}-{}-{}.extraparams.txt".format(self.name, kpop, rep))
+        sname = os.path.join(self.workdir, "tmp-{}-{}-{}.strfile.txt".format(self.name, kpop, rep))
+        tmp_m = open(mname, 'w')
+        tmp_e = open(ename, 'w')
+        tmp_s = open(sname, 'w')
 
         ## write params files
         tmp_m.write(self.mainparams._asfile())
@@ -327,6 +334,7 @@ class Structure(object):
         tmp_m.close()
         tmp_e.close()
         tmp_s.close()
+        return mname, ename, sname
 
 
 
@@ -336,18 +344,18 @@ class Structure(object):
 
 
 
-def _call_structure(name, workdir, seed, ntaxa, nsites, kpop, rep):
+def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpop, rep):
     """ make the subprocess call to structure """
     ## create call string
     outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
     cmd = ["structure", 
-           "-m", os.path.join(workdir, "tmp.mainparams.txt"),
-           "-e", os.path.join(workdir, "tmp.extraparams.txt"),
+           "-m", mname, 
+           "-e", ename, 
            "-K", str(kpop),
            "-D", str(seed), 
            "-N", str(ntaxa), 
            "-L", str(nsites),
-           "-i", os.path.join(workdir, "tmp.strfile.txt"),
+           "-i", sname, 
            "-o", outname]
 
     ## call the shell function
@@ -355,6 +363,12 @@ def _call_structure(name, workdir, seed, ntaxa, nsites, kpop, rep):
                             stdout=subprocess.PIPE, 
                             stderr=subprocess.STDOUT)
     comm = proc.communicate()
+
+    ## clean up tmp files
+    os.remove(mname)
+    os.remove(ename)
+    os.remove(sname)
+
     return comm
 
 
