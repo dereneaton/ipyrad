@@ -55,7 +55,7 @@ class Raxml(object):
 
     Functions:
     ----------
-    submit_raxml_job()
+    run()
         submits a raxml job to locally or on an ipyparallel client cluster. 
 
     """    
@@ -170,38 +170,11 @@ class Raxml(object):
             is running on a remote ipyclient.
         """
 
-        ## check for binary
-        backup_binaries = ["raxmlHPC-PTHREADS", "raxmlHPC-PTHREADS-SSE3"]
-
-        ## check user binary first, then backups
-        for binary in [self.params.binary] + backup_binaries:
-            proc = subprocess.Popen(["which", self.params.binary], 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT).communicate()
-            ## update the binary
-            if proc:
-                self.params.binary = binary
-                break
-
-        ## if none then raise error
-        if not proc[0]:
-            raise Exception(BINARY_ERROR.format(self.params.binary))
-
-        ## attach tree paths to the results
-        #f1 = os.path.join(self.params.w, "RAxML_bestTree."+self.params.n)
-        #f2 = os.path.join(self.params.w, "RAxML_bipartitionsBranchLabels."+self.params.n)
-        #f3 = os.path.join(self.params.w, "RAxML_bipartitions."+self.params.n)
-        #f4 = os.path.join(self.params.w, "RAxML_bootstrap."+self.params.n)
-        #f5 = os.path.join(self.params.w, "RAxML_info."+self.params.n)
-
         ## stop before trying in raxml
         if force:
             for key, oldfile in self.trees:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
-            #for oldfile in [f1, f2, f3, f4, f5]:
-            #    if os.path.exists(oldfile):
-            #        os.remove(oldfile)
         if os.path.exists(self.trees.info):
             print("Error: set a new name for this job:\nFile exists: {}"\
                   .format(self.trees.info))
@@ -209,7 +182,6 @@ class Raxml(object):
 
         ## TODO: add a progress bar tracker here. It could even read it from
         ## the info file that is being written. 
-
         ## submit it
         if not ipyclient:
             proc = _call_raxml(self._command_list)
