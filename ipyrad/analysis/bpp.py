@@ -1,4 +1,4 @@
-#!/usr/bin/python 
+#!/usr/bin/env python
 
 """ convert loci file to bpp format input files """
 
@@ -47,7 +47,7 @@ class Bpp(object):
 
     Functions:
     ----------
-    submit_bpp_jobs():
+    run():
         See documentation string for this function.
     write_bpp_files():
         See documentation string for this function.
@@ -181,7 +181,7 @@ class Bpp(object):
 
         ## set bpp parameters with defaults
         self.params = Params()
-        notparams = set(["workdir", "maxloci", "minmap", "minsnps"])
+        notparams = set(["workdir", "maxloci", "minmap", "minsnps", "copied"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
@@ -193,7 +193,7 @@ class Bpp(object):
         
 
 
-    def submit_bpp_jobs(self, 
+    def run(self,
         prefix,
         nreps, 
         ipyclient, 

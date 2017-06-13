@@ -29,7 +29,7 @@ like using branching to assemble data sets under a range of parameter settings,
 and assemble data with respect to a reference genome.
 
    + `Introductory tutorial <tutorial_intro_cli.html>`__
-   + `Advanced tutorial <tutorial_intro_cli.html>`__   
+   + `Advanced tutorial <tutorial_advanced_cli.html>`__   
    + `Running on ipyrad on HPC <HPC_script.html>`__
 
 

@@ -27,7 +27,7 @@ import itertools
 import numpy as np
 import dask.array as da
 import ipyrad
-from ipyrad.assemble.util import IPyradWarningExit, progressbar, clustdealer
+from ipyrad.assemble.util import IPyradWarningExit, progressbar, clustdealer, fullcomp
 #from ipyrad.assemble.cluster_within import muscle_call, parsemuscle
 
 try:
@@ -580,7 +580,7 @@ def build_h5_array(data, samples, ipyclient):
     #                                chunks=(chunks, len(samples)),
     #                                compression="gzip")
     superchroms = io5.create_dataset("chroms", (data.nloci, 3), 
-                                     dtype=np.uint64, 
+                                     dtype=np.int64, 
                                      chunks=(chunks, 3),
                                      compression="gzip")
 
@@ -840,7 +840,7 @@ def singlecat(data, sample, bseeds, sidx):
     ## which is known from seeds and hits
     ocatg = np.zeros((data.nloci, maxlen, 4), dtype=np.uint32)
     onall = np.zeros(data.nloci, dtype=np.uint8)
-    ochrom = np.zeros((data.nloci, 3), dtype=np.uint64)
+    ochrom = np.zeros((data.nloci, 3), dtype=np.int64)
     
     ## grab the sample's data and write to ocatg and onall
     if not sample.files.database:
@@ -879,7 +879,7 @@ def singlecat(data, sample, bseeds, sidx):
         oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
         oh5.create_dataset("inall", data=onall, dtype=np.uint8)
         if isref:
-            oh5.create_dataset("ichrom", data=ochrom, dtype=np.uint64)
+            oh5.create_dataset("ichrom", data=ochrom, dtype=np.int64)
 
 
 
@@ -941,7 +941,7 @@ def dask_chroms(data, samples):
 
     ## min pos
     mask = stack == 0
-    stack[mask] = 18446744073709551615  ## max uint64 value
+    stack[mask] = 9223372036854775807  ## max int64 value
     minpos = da.min(stack, axis=2)[:, 1]
     final = da.stack([maxchrom, minpos, maxpos], axis=1)
     final.to_hdf5(data.clust_database, "/chroms")
@@ -949,7 +949,8 @@ def dask_chroms(data, samples):
     ## close the h5 handles
     _ = [i.close() for i in handles]
 
-#max64 = 18446744073709551615
+#max int64 = 9223372036854775807
+#max uint64 = 18446744073709551615
 #max32 = 4294967295
 
 

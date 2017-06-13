@@ -953,6 +953,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
     dereplication that we need for 3rad (5/29/15 iao).
     """
 
+    ## datatypes options
     strand = "plus"
     if "gbs" in data.paramsdict["datatype"]:
         strand = "both"
@@ -1243,14 +1244,15 @@ def derep_concat_split(data, sample, nthreads):
     ## report location for debugging
     LOGGER.info("INSIDE derep %s", sample.name)
 
-    ## concat edits files within Samples if an Assembly was formed from
-    ## merging several assemblies. This returns a new sample.files.edits with
-    ## the concat file. No change if not merged Assembly.
+    ## MERGED ASSEMBIES ONLY:
+    ## concatenate edits files within Samples. Returns a new sample.files.edits 
+    ## with the concat file. No change if not merged Assembly.
     sample.files.edits = concat_multiple_edits(data, sample)
 
+    ## PAIRED DATA ONLY:
     ## Denovo: merge or concat fastq pairs [sample.files.pairs]
     ## Reference: only concat fastq pairs  []
-    ## Denovo + Reference:
+    ## Denovo + Reference: ...
     if 'pair' in data.paramsdict['datatype']:
         ## the output file handle for merged reads
         mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")

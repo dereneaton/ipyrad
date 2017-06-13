@@ -10,7 +10,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.tetrad import get_spans
-
+from ipyrad.assemble.util import Params
 
 # pylint: disable=W0142
 # pylint: disable=W0212
@@ -18,27 +18,7 @@ from ipyrad.analysis.tetrad import get_spans
 # pylint: disable=R0902
 # pylint: disable=R0903
 
-
-
-class _Object(object):
-    """ a custom object with getter and repr, but no getkeys setkeys """
-
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __repr__(self):
-        _repr = ""
-        keys = sorted(self.__dict__.keys())
-        maxlen = max(20, 2 + max([len(i) for i in keys]))
-        #maxlen = 20
-        _printstr = "{:<" + str(maxlen) + "} {:<}\n"
-        for key in keys:
-            _repr += _printstr.format(key, str(self[key]))
-        return _repr
-
+OPJ = os.path.join
 
 
 ## These are almost all default values.
@@ -84,15 +64,15 @@ class Structure(object):
 
     Functions:
     ----------
-    submit_structure_jobs(*args, **kwargs):
+    run(*args, **kwargs):
         Submits independent replicate jobs to run on a cluster.
     get_clumpp_table(kpop):
         Returns a table of results for K=kpop permuted across all replicates.
     
     """    
-    def __init__(self, name, strfile, workdir=None, mapfile=None):
+    def __init__(self, name, data, workdir=None, mapfile=None):
         self.name = name
-        self.strfile = os.path.realpath(strfile)
+        self.data = os.path.abspath(os.path.expanduser(data))
         self.mainparams = _MainParams()
         self.extraparams = _ExtraParams()
         self.clumppparams = _ClumppParams()
@@ -102,18 +82,21 @@ class Structure(object):
         if workdir:
             self.workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
-            self.workdir = os.path.join(os.path.abspath('.'), "analysis-structure")
+            self.workdir = OPJ(os.path.abspath('.'), "analysis-structure")
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
         ## check that strfile exists, print and parse some info from it
-        with open(strfile) as ifile:
+        with open(data) as ifile:
             lines = ifile.readlines()
             self.ntaxa = len(lines)//2
             self.nsites = len(lines[0].strip().split()[1:])
             self.labels = [i.split('\t')[0].strip() for i in lines][::2]
             self.popdata = [i.split('\t')[1] for i in lines][::2]
             self.popflag = [i.split('\t')[2] for i in lines][::2]
+            self.locdata = [i.split('\t')[3] for i in lines][::2]
+            self.phenotype = [i.split('\t')[4] for i in lines][::2]
+            #self.extra = [i.split('\t')[5] for i in lines][::2] #default extracols=0
             del lines
 
         ## if mapfile then parse it to an array
@@ -140,20 +123,20 @@ class Structure(object):
     @property
     def header(self):
         header = pd.DataFrame(
-            [self.labels, self.popdata, self.popflag], 
-            index=["labels", "popdata", "popflag"]).T
+            [self.labels, self.popdata, self.popflag, self.locdata, self.phenotype],
+            index=["labels", "popdata", "popflag", "locdata", "phenotype"]).T
         return header
 
 
     @property
     def result_files(self):
         """ returns a list of files that have finished structure """
-        reps = os.path.join(self.workdir, self.name+"-K-*-rep-*_f")
+        reps = OPJ(self.workdir, self.name+"-K-*-rep-*_f")
         repfiles = glob.glob(reps)
         return repfiles
 
 
-    def submit_structure_jobs(self,
+    def run(self,
         kpop, 
         nreps, 
         ipyclient=None,
@@ -199,7 +182,7 @@ class Structure(object):
         ## get structure object
         s = ipa.structure(
                 name="test",
-                strfile="mydata.str", 
+                data="mydata.str", 
                 mapfile="mydata.snps.map",
                 workdir="structure-results",
                 )
@@ -210,7 +193,7 @@ class Structure(object):
 
         ## submit many jobs
         for kpop in [3, 4, 5]:
-            s.submit_structure_jobs(
+            s.run(
                 kpop=kpop, 
                 nreps=10, 
                 ipyclient=ipyclient,
@@ -234,6 +217,12 @@ class Structure(object):
         ## start load balancer
         if ipyclient:
             lbview = ipyclient.load_balanced_view()
+
+        ## remove old jobs with this same name
+        handle = OPJ(self.workdir, self.name+"-K-{}-*".format(kpop))
+        oldjobs = glob.glob(handle)
+        for job in oldjobs:
+            os.remove(job)
 
         ## check that there is a ipcluster instance running
         for rep in xrange(nreps):
@@ -271,23 +260,17 @@ class Structure(object):
 
 
 
-    def write_structure_files(self, kpop, rep):
+    def write_structure_files(self, kpop, rep=1):
         """ prepares input files for running structure"""
-
-        ## remove old jobs with this same name
-        handle = os.path.join(self.workdir, self.name+"-K-{}-*".format(kpop))
-        oldjobs = glob.glob(handle)
-        for job in oldjobs:
-            os.remove(job)
 
         ## check params
         self.mainparams.numreps = int(self.mainparams.numreps)
         self.mainparams.burnin = int(self.mainparams.burnin)
 
         ## write tmp files for the job. Rando avoids filename conflict.
-        mname = os.path.join(self.workdir, "tmp-{}-{}-{}.mainparams.txt".format(self.name, kpop, rep))
-        ename = os.path.join(self.workdir, "tmp-{}-{}-{}.extraparams.txt".format(self.name, kpop, rep))
-        sname = os.path.join(self.workdir, "tmp-{}-{}-{}.strfile.txt".format(self.name, kpop, rep))
+        mname = OPJ(self.workdir, "tmp-{}-{}-{}.mainparams.txt".format(self.name, kpop, rep))
+        ename = OPJ(self.workdir, "tmp-{}-{}-{}.extraparams.txt".format(self.name, kpop, rep))
+        sname = OPJ(self.workdir, "tmp-{}-{}-{}.strfile.txt".format(self.name, kpop, rep))
         tmp_m = open(mname, 'w')
         tmp_e = open(ename, 'w')
         tmp_s = open(sname, 'w')
@@ -301,7 +284,7 @@ class Structure(object):
         assert len(self.popdata) == len(self.labels), \
             "popdata list must be the same length as the number of taxa"
 
-        with open(self.strfile) as ifile:
+        with open(self.data) as ifile:
             _data = ifile.readlines()
             ## header
             header = np.array([i.strip().split("\t")[:5] for i in _data])
@@ -319,8 +302,8 @@ class Structure(object):
                     self.popflag = [1 for i in self.popdata]
                     header[:, 2] = 1
                 else:
-                    header[::2, 2] = self.popdata
-                    header[1::2, 2] = self.popdata
+                    header[::2, 2] = self.popflag
+                    header[1::2, 2] = self.popflag
 
             ## subsample SNPs if mapfile is present
             if isinstance(self.maparr, np.ndarray):
@@ -348,6 +331,7 @@ def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpo
     """ make the subprocess call to structure """
     ## create call string
     outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
+
     cmd = ["structure", 
            "-m", mname, 
            "-e", ename, 
@@ -364,16 +348,16 @@ def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpo
                             stderr=subprocess.STDOUT)
     comm = proc.communicate()
 
-    ## clean up tmp files
-    os.remove(mname)
-    os.remove(ename)
-    os.remove(sname)
-
+    ## cleanup
+    oldfiles = [mname, ename, sname]
+    for oldfile in oldfiles:
+        if os.path.exists(oldfile):
+            os.remove(oldfile)
     return comm
 
 
 
-class _MainParams(_Object):
+class _MainParams(Params):
     """
     A dictionary object of mainparams parameter arguments to STRUCTURE. 
     See STRUCTURE docs for details on their function. Modify by setting as 
@@ -407,7 +391,7 @@ class _MainParams(_Object):
 
 
 
-class _ExtraParams(_Object):
+class _ExtraParams(Params):
     """
     A dictionary object of extraparams parameter arguments to STRUCTURE. 
     See STRUCTURE docs for details on their function. Modify by setting as 
@@ -478,7 +462,7 @@ class _ExtraParams(_Object):
 
 
 
-class _ClumppParams(_Object):
+class _ClumppParams(Params):
     """
     A dictionary object of params arguments to CLUMPP.
     See CLUMPP docs for details on their function. Modify by setting as 

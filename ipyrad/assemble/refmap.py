@@ -901,7 +901,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
     try:
         name, seq = ref.strip().split("\n", 1)
         seq = "".join(seq.split("\n"))
-        fasta = ["{}_REF;size={};+\n{}".format(name, 10000, seq)]
+        fasta = ["{}_REF;size={};+\n{}".format(name, 1000000, seq)]
     except ValueError as inst:
         LOGGER.error("ref failed to parse - {}".format(ref))
         LOGGER.error(" ".join(cmd1))
@@ -1056,6 +1056,7 @@ def bam_region_to_fasta(data, sample, proc1, chrom, region_start, region_end):
             ## regions that look like this: scaffold262:299039-299036
             ## Just carry on, it's not a big deal.
             LOGGER.debug("Got a bad region string: {}".format(inst))
+            return ""
         except (OSError, ValueError, Exception) as inst:
             ## Once in a blue moon something fsck and it breaks the
             ## assembly. No reason to give up if .001% of reads fail

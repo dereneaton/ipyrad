@@ -189,3 +189,22 @@ the number of alleles in each cluster. This value is now simply stored in step 5
 later in step 7 to filter loci, under the assumption that if a locus has paralogs in one 
 sample then it probably has them in other samples but there just wasn't enough variation to 
 detect them.
+
+Why does it look like ipyrad is only using 1/2 the cores I assign, and what does the `-t` flag do?
+--------------------------------------------------------------------------------------------------
+Most steps of ipyrad perform parallelization by multiprocessing, meaning that jobs are 
+split into smaller bits and distributed among all of the available cores. However, some 
+parts of the analysis also use multithreading, where a single function is performed over 
+multiple cores. More complicated, parts like step3 perform several multithreaded jobs in 
+parallel using multiprocessing... you still with me? The -c argument is the total number 
+of cores that are available, while the -t argument allows more fine-tuned control of how 
+the multithreaded functions will be distributed among those cores. For example, the 
+default with 40 cores and -t=2 would be to start 20 2-threaded vsearch jobs. There are 
+some parts of the code that cannot proceed until other parts finish, so at some points 
+the code may run while using fewer than the total number of cores available, which is 
+likely what you are seeing in step 3. Basically, it will not start the aligning step 
+until all of the samples have finished clustering. It's all fairly complicated, but we 
+generally try to keep everything working as efficiently as possible. If you have just 
+one or two samples that are much bigger (have more data) than the rest, and they are 
+taking much longer to cluster, then you may see a speed improvement by increasing the 
+threading argument (e.g., -t 4).

@@ -183,8 +183,8 @@ def main():
         os.remove(ip.__debugflag__)
     if args.debug:
         print("\n  ** Enabling debug mode ** ")
-        ip.debug_on()
-        atexit.register(ip.debug_off)      
+        ip._debug_on()
+        #atexit.register(ip._debug_off)
 
     ## if JSON, load existing Tetrad analysis -----------------------
     if args.json:
@@ -249,12 +249,12 @@ def main():
     if args.ipcluster:
         data._ipcluster["cluster_id"] = ""
     else:
+        ## register with a "ip- name"
         data = register_ipcluster(data)
 
     ## message about whether we are continuing from existing
-    if data.checkpoint.boots or data.checkpoint.arr:
-        print(ipa.tetrad.LOADING_MESSAGE.format(data.name, 
-              data.method, data.checkpoint.boots, data.checkpoint.arr))
+    if data.checkpoint.boots:
+        print(LOADING_MESSAGE.format(data.name, data.method, data.checkpoint.boots))
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
@@ -278,6 +278,15 @@ Use the force argument (-f) to overwrite old analysis files, or,
 Use the JSON argument (-j {}/{}.tet.json) 
 to continue analysis of '{}' from last checkpoint.
 """
+
+
+LOADING_MESSAGE = """\
+Continuing checkpointed analysis: {}
+  sampling method: {}
+  bootstrap checkpoint: {}
+"""
+
+
 
 
 if __name__ == "__main__": 

@@ -5,6 +5,60 @@
 Release Notes
 =============
 
+0.6.27
+------
+**June 03, 2017**
+
+- Step 6 import fullcomp from util.
+
+0.6.26
+------
+**June 01, 2017**
+
+- Step 4 - Handle the case where no clusters have sufficient depth for statistical basecalling.
+
+0.6.25
+------
+**May 30, 2017**
+
+- Fix a bug in refmap that was retaining the reference sequence in the final clust file on rare occasions.
+
+0.6.24
+------
+**May 25, 2017**
+
+- Bug fix for "numpq" nameerror
+
+0.6.23
+------
+**May 24, 2017**
+
+- bug fix for numq error in s5
+
+0.6.22
+------
+**May 22, 2017**
+
+- Fixed bug in vcf output for reference mapped.
+
+0.6.21
+------
+**May 19, 2017**
+
+- Fix new chrom/pos mechanism to work for all assembly methods.
+- Change chroms dtype to int64. Reference sequence CHROM is now 1-indexed. Anonymous loci are -1 indexed.
+- Switch chroms dataset dtype to int64.
+- Fix for alleles output.
+- Fix nasty PE refmap merging issue.
+- Fix massive bug in how unmapped reads are handled in refmap.
+- added md5 names to derep and simplified code readability within pairmerging
+- fix for binary finder
+- added dask to conda recipe
+-  "Updating ipyrad/__init__.py to version - 0.6.20
+-  "Updating ipyrad/__init__.py to version - 0.6.20
+-  "Updating ipyrad/__init__.py to version - 0.6.20
+- added dask dependency
+
 0.6.20
 ------
 **May 10, 2017**
