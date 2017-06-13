@@ -618,7 +618,7 @@ def make_loci_and_stats(data, samples, ipyclient):
             with open(tmploc, 'r') as inloc:
                 locdat = inloc.read()
                 inalleles = get_alleles(locdat)
-                locifile.write(inalleles)
+                locifile.write(inalleles + "\n")
                 os.remove(tmploc)
         locifile.close()
 
