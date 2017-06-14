@@ -108,8 +108,8 @@ class Bpp(object):
     def __init__(self,
         locifile, 
         guidetree, 
-        imap, 
-        workdir, 
+        imap=None, 
+        workdir=None, 
         *args, 
         **kwargs):
 
@@ -148,9 +148,10 @@ class Bpp(object):
         self.tree = ete.Tree(guidetree)
 
         ## parsing attributes
-        self.imap = {i:j for i, j in imap.items()}
-        if not self.imap:
+        if not imap:
             self.imap = {i:i for i in tree.get_leaf_names()}
+        else:
+            self.imap = {i:j for i, j in imap.items()}
 
         ## update stats if alleles instead of loci 
         if ('.alleles.loci' in locifile) and (not self._kwargs['copied']):
@@ -194,7 +195,7 @@ class Bpp(object):
 
 
     def run(self,
-        prefix,
+        name,
         nreps, 
         ipyclient, 
         seed=12345,
@@ -211,7 +212,7 @@ class Bpp(object):
         
         Parameters:
         -----------
-        prefix (str):
+        name (str):
             a prefix name for output files produced by these bpp runs.
         nreps (int):
             submits nreps replicate jobs to the cluster each with a different 
@@ -231,7 +232,7 @@ class Bpp(object):
         np.random.seed(seed)
 
         ## prepare files
-        self._name = prefix
+        self._name = name
         self._write_seqfile()
         self._write_mapfile()
 
@@ -255,17 +256,17 @@ class Bpp(object):
 
         if not quiet:
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
-                             .format(nreps, prefix, self._nloci))
+                             .format(nreps, name, self._nloci))
 
 
 
-    def write_bpp_files(self, prefix, randomize_order=False, quiet=False):
+    def write_bpp_files(self, name, randomize_order=False, quiet=False):
         """ 
         Writes bpp files (.ctl, .seq, .imap) to the working directory. 
 
         Parameters:
         ------------
-        prefix (str):
+        name (str):
             a prefix name for the output files
         randomize_order (bool):
             whether to randomize the locus order, this will allow you to 
@@ -276,7 +277,7 @@ class Bpp(object):
         """
 
         ## remove any old jobs with this same job name
-        oldjobs = glob.glob(os.path.join(self.workdir, prefix+"*.ctl.txt"))
+        oldjobs = glob.glob(os.path.join(self.workdir, name+"*.ctl.txt"))
         for job in oldjobs:
             os.remove(job)
 
@@ -284,14 +285,14 @@ class Bpp(object):
         ## ...
 
         ## write tmp files for the job
-        self._name = prefix
+        self._name = name
         self._write_seqfile(True)
         self._write_mapfile(True)
         self._write_ctlfile()
 
         if not quiet:
             sys.stderr.write("input files created for job {} ({} loci)\n"\
-                             .format(prefix, self._nloci))
+                             .format(name, self._nloci))
 
 
 
