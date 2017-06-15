@@ -6,10 +6,22 @@ import copy
 import subprocess
 import itertools
 import numpy as np
+import pandas as pd
 from ipyrad.assemble.util import Params
 from ipyrad.analysis.tetrad import get_spans
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS
 
+try:
+    import toytree
+except ImportError:
+    print("""
+    Required dependency 'toytree' is missing. You can install it
+    with the following command:
+
+        conda install toytree -c eaton-lab
+
+    """)
+    raise
 
 ## alias
 OPJ = os.path.join
@@ -122,7 +134,7 @@ class Treemix(object):
         ## results
         self.tree = ""
         self.admixture = []
-        self.cov = np.zeros()
+        self.cov = []
 
 
     @property
@@ -281,7 +293,7 @@ class Treemix(object):
         stdout, err = proc.communicate()
 
         ## check for errors
-        ## ...
+                ## ...
 
         ## get tree and admix from output files 
         with gzip.open(self.files.treeout) as tmp:
@@ -295,6 +307,45 @@ class Treemix(object):
             for adx in data[1:]:
                 weight, _, _, _, clade1, clade2 = adx.strip().split()
                 self.admixture.append((clade1, clade2, weight))
+
+        ## get a toytree
+        tre = toytree.tree(self.tree)
+
+        ## order admixture 
+        for aidx in range(len(self.admixture)):
+            admix = self.admixture[aidx]
+
+            source = toytree.tree(admix[0]+";")
+            if len(source.tree) == 1:
+                sodx = tre.tree.search_nodes(name=source.tree.name)[0].idx
+            else:
+                sodx = tre.tree.get_common_ancestor(source.get_tip_labels()).idx
+
+            sink = toytree.tree(admix[1]+";")
+            if len(sink.tree) == 1:
+                sidx = tre.tree.search_nodes(name=sink.tree.name)[0].idx
+            else:
+                sidx = tre.tree.get_common_ancestor(sink.get_tip_labels()).idx
+
+            self.admixture[aidx] = (
+                int(sodx),
+                float(admix[0].rsplit(":", 1)[1]), 
+                int(sidx),
+                float(admix[1].rsplit(":", 1)[1]), 
+                float(admix[2]))
+
+        ## parse the cov
+        dat = pd.read_csv(self.files.cov, 
+                      sep=" ", 
+                      header=None, 
+                      index_col=0, 
+                      skiprows=1)
+
+        ## sort into tree label order
+        dat.columns = dat.index
+        dat = dat.ix[tre.get_tip_labels()]
+        dat = dat.T.ix[tre.get_tip_labels()]
+        self.cov = dat.as_matrix()
 
 
 
