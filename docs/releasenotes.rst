@@ -5,6 +5,54 @@
 Release Notes
 =============
 
+0.7.0
+-----
+**June 15, 2017**
+
+- put a temporary block on denovo+ref
+- cookbooks
+- cookbook updates
+- added treemix ipa funcs
+- conda recipe
+- update conda recipe
+- notebook updates
+- mods to bpp ipa object
+- hide treemix for now
+- added notebook for popdata structure ipa
+- merge conflict
+- missing newline in alleles
+- ipa fix raxml
+- ipa structure file clobber fix
+- merge conflict
+- update bpp notebook
+- ipa analysis updates
+- cleaner API attr on structure object
+- cleaner API attr on raxml object
+- cleaner API attr on bpp object
+- Adding docs for the -t flag.
+- bpp notebook update:
+- bpp notebook update:
+- updated tetrad notebook
+- updated analysis notebooks
+- merge conflict resolve
+- toying with new save/load structure
+- consens bug fix
+- added general Params object to utils. Currently used in analysis tools, future should replace the ObjDict object in ipyrad
+- replaced params object in structure analysis tools and fixed so rep jobs to do not overwrite
+- changed bpp command to run() in analysis tools
+- cleaner raxml object in analysis tools
+- Fix bad link in docs.
+- better method to find raxml binary in analysis tools
+- consens bugfix for new ipmlementation
+- ensure h5 files are closed after dask func
+- fix to parse chrom pos info from new consens name format
+- removed deprecated align funcs
+- removed hardcoded path used in testing
+- removed deprecated align funcs. Made it so build_clusters() does nothing for 'reference' method since there is a separate method in ref for chunking clusters
+- some new simpler merge funcs
+- make new ref funcs work with dag map
+- new build funcs usign pysam
+
 0.6.27
 ------
 **June 03, 2017**
