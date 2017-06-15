@@ -476,6 +476,7 @@ def ref_build_and_muscle_chunk(data, sample):
     LOGGER.info("created chunks %s", chunkfiles)
 
 
+
 def ref_muscle_chunker(data, sample):
     """ 
     Run bedtools to get all overlapping regions. Pass this list into the func
