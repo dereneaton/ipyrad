@@ -3,10 +3,10 @@ channels:
 - ipyrad
 dependencies:
 - python=2.7
-- pip>8.0
+- pip>=9.0
 - cython
 - ipython>=5.0
-- ipyparallel>=5.1
+- ipyparallel>=6.0.2
 - jupyter
 - numpy>1.9
 - scipy>0.10

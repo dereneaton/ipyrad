@@ -1,0 +1,42 @@
+# This file created by conda-build 2.0.7
+# meta.yaml template originally from:
+# /opt/recipe, last modified Mon May  8 18:30:27 2017
+# ------------------------------------------------
+
+package:
+    name: bcftools
+    version: 1.4.1
+source:
+    fn: bcftools-1.4.1.tar.bz2
+    md5: 103729569ca3e265b13d2fed5775016e
+    url: https://github.com/samtools/bcftools/releases/download/1.4.1/bcftools-1.4.1.tar.bz2
+build:
+    number: '0'
+requirements:
+    build:
+        - gcc
+        - gcc
+        - zlib
+        - bzip2
+        - curl
+        - xz
+    run:
+        - libgcc
+        - zlib
+        - bzip2
+        - curl
+        - xz
+test:
+    commands:
+        - bcftools -h
+        - bcftools --version
+        - bcftools plugin -lv
+about:
+    home: https://github.com/samtools/bcftools
+    license: MIT
+    summary: BCFtools is a set of utilities that manipulate variant calls in the Variant
+        Call Format (VCF) and its binary counterpart BCF. All commands work transparently
+        with both VCFs and BCFs, both uncompressed and BGZF-compressed.  Most commands
+        accept VCF, bgzipped VCF and BCF with filetype detected automatically even
+        when streaming from a pipe. Indexed VCF and BCF will work in all situations.
+        Un-indexed VCF and BCF and streams will work in most, but not all situations.
