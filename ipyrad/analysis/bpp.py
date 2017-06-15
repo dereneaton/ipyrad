@@ -44,6 +44,10 @@ class Bpp(object):
         parameters for bpp analses used to create .ctl file
     filters (dict):
         parameters used to filter loci that will be included in the analysis.
+    workdir (str)
+        Default output path is "./analysis-bpp" which will be created if it 
+        does not exist. If you enter a different output directly it will 
+        similarly be created if it does not exist.
 
     Functions:
     ----------
@@ -106,6 +110,7 @@ class Bpp(object):
 
     ## init object for params
     def __init__(self,
+        name,
         locifile, 
         guidetree, 
         imap=None, 
@@ -114,7 +119,7 @@ class Bpp(object):
         **kwargs):
 
         ## path attributes
-        self.workdir = workdir
+        self.name = name
         self.asyncs = []
         self._kwargs = {
                 "maxloci": None,
@@ -137,10 +142,10 @@ class Bpp(object):
         self._kwargs.update(kwargs)
 
         ## check workdir
-        if self.workdir:
+        if workdir:
             self.workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
-            self.workdir = os.path.curdir        
+            self.workdir = os.path.join(os.path.curdir, "analysis-bpp")
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
@@ -195,7 +200,6 @@ class Bpp(object):
 
 
     def run(self,
-        name,
         nreps, 
         ipyclient, 
         seed=12345,
@@ -212,8 +216,6 @@ class Bpp(object):
         
         Parameters:
         -----------
-        name (str):
-            a prefix name for output files produced by these bpp runs.
         nreps (int):
             submits nreps replicate jobs to the cluster each with a different 
             random seed drawn starting from the starting seed. 
@@ -232,9 +234,9 @@ class Bpp(object):
         np.random.seed(seed)
 
         ## prepare files
-        self._name = name
-        self._write_seqfile()
-        self._write_mapfile()
+        self._name = self.name
+        self._write_seqfile(name=self._name)
+        self._write_mapfile(name=self._name)
 
         ## load-balancer
         lbview = ipyclient.load_balanced_view()
@@ -256,18 +258,16 @@ class Bpp(object):
 
         if not quiet:
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
-                             .format(nreps, name, self._nloci))
+                             .format(nreps, self._name, self._nloci))
 
 
 
-    def write_bpp_files(self, name, randomize_order=False, quiet=False):
+    def write_bpp_files(self, randomize_order=False, quiet=False):
         """ 
         Writes bpp files (.ctl, .seq, .imap) to the working directory. 
 
         Parameters:
         ------------
-        name (str):
-            a prefix name for the output files
         randomize_order (bool):
             whether to randomize the locus order, this will allow you to 
             sample different subsets of loci in different replicates when
@@ -277,7 +277,8 @@ class Bpp(object):
         """
 
         ## remove any old jobs with this same job name
-        oldjobs = glob.glob(os.path.join(self.workdir, name+"*.ctl.txt"))
+        self._name = self.name
+        oldjobs = glob.glob(os.path.join(self.workdir, self._name+"*.ctl.txt"))
         for job in oldjobs:
             os.remove(job)
 
@@ -285,14 +286,13 @@ class Bpp(object):
         ## ...
 
         ## write tmp files for the job
-        self._name = name
         self._write_seqfile(True)
         self._write_mapfile(True)
         self._write_ctlfile()
 
         if not quiet:
             sys.stderr.write("input files created for job {} ({} loci)\n"\
-                             .format(name, self._nloci))
+                             .format(self._name, self._nloci))
 
 
 
@@ -469,17 +469,29 @@ class Bpp(object):
 
 
 
-    def copy(self):
+    def copy(self, name):
         """ 
-        returns a copy of the bpp object with the same parameter settings
-        but with the files.mcmcfiles and files.outfiles attributes cleared. 
+        Returns a copy of the bpp object with the same parameter settings
+        but with the files.mcmcfiles and files.outfiles attributes cleared, 
+        and with a new 'name' attribute. 
+        
+        Parameters
+        ----------
+        name (str):
+            A name for the new copied bpp object that will be used for the 
+            output files created by the object. 
+
         """
+
         ## make deepcopy of self.__dict__ but do not copy async objects
         subdict = {i:j for i,j in self.__dict__.iteritems() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
         ## make back into a bpp object
+        if name == self.name:
+            raise Exception("new object must have a different 'name' than its parent")
         newobj = Bpp(
+            name=name,
             locifile=newdict["files"].locifile,
             workdir=newdict["workdir"],
             guidetree=newdict["tree"].write(),
@@ -493,6 +505,7 @@ class Bpp(object):
         for key, val in newobj.filters.__dict__.iteritems():
             newobj.filters.__setattr__(key, self.filters.__getattribute__(key))
 
+        ## new object must have a different name than it's parent
         return newobj
 
 

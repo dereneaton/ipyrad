@@ -19,6 +19,6 @@ from .structure import Structure as structure
 from .baba import Baba as baba
 from .bpp import Bpp as bpp
 from .raxml import Raxml as raxml
-#from .treemix import Treemix as treemix
+from .treemix import Treemix as treemix
 
 
