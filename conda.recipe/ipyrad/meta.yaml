@@ -15,7 +15,7 @@ requirements:
     - python {{PY_VER}}*,>=2.7
     - cython
     - h5py
-    - ipyparallel >=5.1.0
+    - ipyparallel >=6.0.2
     - ipython >=5.0.0
     - jupyter_client
     - jupyter
@@ -30,9 +30,10 @@ requirements:
     - networkx
     - cutadapt >=1.12
     - dask
+    - pysam
   run:
     - ipython >=5.0.0
-    - ipyparallel >=5.1.0
+    - ipyparallel >=6.0.2
     - cython
     - scipy >=0.16
     - h5py
@@ -45,10 +46,10 @@ requirements:
     - pandas
     - mpi4py
     - numpy >=1.7
-    - bitarray
     - networkx
     - dask
     - cutadapt >=1.12
+    - pysam
   commands:
     - ipyrad -h
 
