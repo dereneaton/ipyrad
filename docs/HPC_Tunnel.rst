@@ -159,7 +159,8 @@ however, then it is better to start the ipcluster instance separately in its
 own separate job submission script. Here is an example. Importantly, we will 
 tell ipcluster to use a specific `--profile` name, in this case named `MPI60`, 
 to indicate that we're connecting to 60 cores using MPI. When we connect
-to the client later we will need to provide the profile name. 
+to the client later we will need to provide the profile name. I name this file
+``slurm_ipcluster_MPI.sbatch``. 
 
 For this setup we also add a command to load the MPI module. You will probably
 need to modify ``module load OpenMPI`` to whatever the appropriate module 
@@ -188,8 +189,8 @@ it up or ask the system administrator.
     ipcluster start --n=60 --engines=MPI --ip='*' --profile='MPI60'
 
 
-Connecting to the ipcluster instance
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Connecting to the ipcluster instance in Python
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 When you are in the jupyter notebook you can connect to this ipcluster
 instance with the following Python code: 
 
@@ -244,7 +245,8 @@ if you run into a problem with the parallel engines, for example, you might
 have a stalled job on one of the engines. The easiest way to do this is to stop 
 the ``ipcluster`` instance by starting a new terminal from the jupyter dashboard, 
 by selecting [new]/[terminal] on the right side, and then following
-the commands below to restart ``ipcluster``. 
+the commands below to restart ``ipcluster``. Or, if you are using the multi-node
+setup then you can restart the ipcluster instance by resubmitting an sbatch script.
 
 .. code-block:: bash
 
