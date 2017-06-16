@@ -319,6 +319,81 @@ def mapreads(data, sample, nthreads, force):
         #merge_pairs(data, [(umap1file, umap2file)], mumapfile, 1, 1)
 
 
+def fetch_cluster_se(data, samfile, chrom, rstart, rend):
+    """
+    Builds a single end cluster from the refmapped data.
+    """
+    ## store pairs
+    rdict = {}
+    clust = []
+
+    ## grab the region and make tuples of info
+    iterreg = samfile.fetch(chrom, rstart, rend)
+
+    ## use dict to match up read pairs
+    for read in iterreg:
+        if read.qname not in rdict:
+            rdict[read.qname] = read
+
+    ## sort dict keys so highest derep is first ('seed')
+    sfunc = lambda x: int(x.split(";size=")[1].split(";")[0])
+    rkeys = sorted(rdict.keys(), key=sfunc, reverse=True)
+
+    ## get blocks from the seed for filtering, bail out if seed is not paired
+    try:
+        read1 = rdict[rkeys[0]]
+    except ValueError:
+        LOGGER.error("Found bad cluster, skipping - key:{} rdict:{}".format(rkeys[0], rdict))
+        return ""
+
+    ## the starting blocks for the seed
+    poss = read1.get_reference_positions()
+    seed_r1start = min(poss)
+    seed_r1end = max(poss)
+
+    ## store the seed -------------------------------------------
+    if read1.is_reverse:
+        seq = revcomp(read1.seq)
+    else:
+        seq = read1.seq
+
+    ## store, could write orient but just + for now.
+    size = sfunc(rkeys[0])
+    clust.append(">{}:{}:{};size={};*\n{}"\
+        .format(chrom, seed_r1start, seed_r1end, size, seq))
+
+    ## store the hits to the seed -------------------------------
+    for key in rkeys[1:]:
+        skip = False
+        try:
+            read1 = rdict[key]
+        except ValueError:
+            ## enter values that will make this read get skipped
+            read1 = rdict[key][0]
+            skip = True
+
+        ## orient reads and filter out ones that will not align well b/c
+        ## they do not overlap enough with the seed
+        poss = read1.get_reference_positions()
+        minpos = min(poss)
+        maxpos = max(poss)
+        if (abs(minpos - seed_r1start) < data._hackersonly["min_SE_refmap_overlap"]) and \
+           (abs(maxpos - seed_r1end) < data._hackersonly["min_SE_refmap_overlap"]) and \
+           (not skip):
+            ## store the seq
+            if read1.is_reverse:
+                    seq = revcomp(read1.seq)
+
+            ## store, could write orient but just + for now.
+            size = sfunc(key)
+            clust.append(">{}:{}:{};size={};+\n{}"\
+                .format(chrom, minpos, maxpos, size, seq))
+        else:
+            ## seq is excluded, though, we could save it and return
+            ## it as a separate cluster that will be aligned separately.
+            pass
+
+    return clust
 
 def fetch_cluster_pairs(samfile, chrom, rstart, rend):
     """ 
@@ -454,7 +529,11 @@ def ref_build_and_muscle_chunk(data, sample):
     nclusts = 0
     for region in regions:
         chrom, pos1, pos2 = region.split()
-        clust = fetch_cluster_pairs(samfile, chrom, int(pos1), int(pos2))
+        if "pair" in data.paramsdict["datatype"]:
+            clust = fetch_cluster_pairs(samfile, chrom, int(pos1), int(pos2))
+        else:
+            clust = fetch_cluster_se(data, samfile, chrom, int(pos1), int(pos2))
+            
         if clust:
             clusts.append("\n".join(clust))
             nclusts += 1
