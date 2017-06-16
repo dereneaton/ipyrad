@@ -91,7 +91,7 @@ class Treemix(object):
         self.params.bootstrap = 0
         self.params.cormig = 0
         self.params.climb = 0
-        self.params.noss = 0
+        #self.params.noss = 0
         self.params.root = None
         self.params.se = 0
         self.params.global_ = 0
@@ -161,7 +161,10 @@ class Treemix(object):
                         args += ["-"+key, str(val[0]), str(val[1])]
                 elif key == "global_":
                     if val:
-                        args += ["-"+key[:-1], str(val)]
+                        args += ["-"+key[:-1]]
+                elif key in ["se", "global"]:  #noss
+                    if val:
+                        args += ["-"+key]
                 else:
                     if val:
                         args += ["-"+key, str(val)]
