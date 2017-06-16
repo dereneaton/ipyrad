@@ -69,70 +69,27 @@ This example would connect to one node with 20 cores available.
     ipnip=$(hostname -i)
 
     ## print tunneling instructions to jupyter-log-{jobid}.txt 
-    echo -e "\n\n   Copy/Paste this in your local terminal to ssh tunnel with remote "
-    echo        "   ------------------------------------------------------------------"
-    echo        "   ssh -N -L $ipnport:$ipnip:$ipnport user@host                      "
-    echo        "   ------------------------------------------------------------------"
-    echo -e "\n\n   Then open a browser on your local machine to the following address"
-    echo        "   ------------------------------------------------------------------"
-    echo        "   localhost:$ipnport                                                "
-    echo -e     "   ------------------------------------------------------------------\n\n"
-    sleep 1
+    echo -e "
+        Copy/Paste this in your local terminal to ssh tunnel with remote 
+        -----------------------------------------------------------------
+        ssh -N -L $ipnport:$ipnip:$ipnport user@host                     
+        -----------------------------------------------------------------
+
+        Then open a browser on your local machine to the following address
+        ------------------------------------------------------------------
+        localhost:$ipnport  (prefix w/ https:// if using password)
+        ------------------------------------------------------------------
+        "
 
     ## start an ipcluster instance and launch jupyter server
-    jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
-
-
-Multi-node MPI setup:
-~~~~~~~~~~~~~~~~~~~~~
-For this setup you will have to replace ``module load OpenMPI`` with the 
-appropriate module command to load MPI on your system. If you do not know what
-this is then look it up for your cluster or ask the system administrator. In 
-this case instead of starting the `ipcluster` instance later, after we have 
-connected, we instead need to start it during the submission script. 
-
-.. code-block:: bash
-
-    #!/bin/bash
-    #SBATCH --partition general
-    #SBATCH --nodes 3
-    #SBATCH --ntasks-per-node 20
-    #SBATCH --exclusive
-    #SBATCH --time 30-00:00:00
-    #SBATCH --mem-per-cpu 4000
-    #SBATCH --job-name jptr60
-    #SBATCH --output jupyter-log-%J.txt
-
-    ## get tunneling info
-    XDG_RUNTIME_DIR=""
-    ipnport=$(shuf -i8000-9999 -n1)
-    ipnip=$(hostname -i)
-
-    ## print tunneling instructions to ipyrad-log file
-    echo -e "\n\n   Copy/Paste this in your local terminal to ssh tunnel with remote "
-    echo        "   ------------------------------------------------------------------"
-    echo        "   ssh -N -L $ipnport:$ipnip:$ipnport user@host                      "
-    echo        "   ------------------------------------------------------------------"
-    echo -e "\n\n   Then open a browser on your local machine to the following address"
-    echo        "   ------------------------------------------------------------------"
-    echo        "   localhost:$ipnport                                                "
-    echo -e     "   ------------------------------------------------------------------\n\n"
-    sleep 1
-
-    ## start an ipcluster instance to init MPI
-    module load OpenMPI
-    sleep 10
-    ipcluster start --n=40 --engines=MPI --ip=* --daemonize
-    sleep 10
-
-    ## start notebook on remote host 
     jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
 
 
 If you want to know the details of what this script is doing jump down to 
 the section titled 
 :ref:`The slurm_jupyter.sbatch script explained<The slurm_jupyter.sbatch script explained>`_. 
-For now, you can simply submit it to the cluster queue using the sbatch command.
+Now submit the sbatch script the cluster to reserve the node and start the 
+jupyter notebook server running on it.
 
 .. code-block:: bash
 
@@ -140,23 +97,24 @@ For now, you can simply submit it to the cluster queue using the sbatch command.
 
 
 
-Connecting to the jupyter server
+Step 2: Connecting to the jupyter server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 After submitting your sbatch script to the queue you can check to see if
-it has started with the ``squeue`` command. Once it starts information will 
-be printed to the log file, ``jupyter-log-{jobid}.txt``. Use the command
-``less`` to look at this file and you should see something like below. 
+it has started with the ``squeue -u {username}`` command. 
+Once it starts information will be printed to the log file which 
+we named ``jupyter-log-{jobid}.txt``. Use the command ``less`` 
+to look at this file and you should see something like below. 
 
 .. code-block:: yaml
 
-     Paste ssh command in a terminal on local host (i.e., laptop)
+     Copy/paste this in your local terminal to ssh tunnel with remote
      ---------------------------------------------------------------- 
-     ssh -N -L 8193:xx.yyy.zzz:8193 user@remote.hpc.edu
+     ssh -N -L 8193:xx.yyy.zzz:8193 user@host
      ---------------------------------------------------------------
  
-     Open this address in a browser on local host; see token below
+     Then open a browser on your local machine to the following address
      ------------------------------------------------------------------
-     http://localhost:8193
+     localhost:8193  (prefix w/ https:// if using password)
      ------------------------------------------------------------------
 
 Follow the instructions and paste the `ssh` code block into a terminal on your 
@@ -167,6 +125,7 @@ jupyter-notebook through your browser. You can close the SSH tunnel at any time
 the notebook will continue running on the cluster. You can also re-connect to it 
 later by re-opening the tunnel with the same SSH command.
 
+
 Security/tokens
 ~~~~~~~~~~~~~~~~
 When you connect to the jupyter-notebook server it will likely ask for a 
@@ -175,6 +134,7 @@ jupyter-log file near the bottom. It is the long string printed after the word
 `token`. Copy just that portion and paste it in the token cell. Alternatively, 
 although it is a bit complicated, you can setup a password following the 
 instructions on the jupyter page that pops up.
+
 
 Using jupyter
 ~~~~~~~~~~~~~~
@@ -187,6 +147,75 @@ the "project_dir" be a location in the scratch directory of the cluster, since
 it is faster for reading/writing large files. 
 .. You can see an example of this type of setup using the ipyrad API here
 .. (`API empirical notebook <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_).
+
+
+Multi-node MPI setup:
+~~~~~~~~~~~~~~~~~~~~~
+In the example above we started a notebook on a node with 20 cores available. 
+Once connected, the first I would do is typically to start an ipcluster instance
+running in a terminal so that I can use it to parallelize computations
+(see our `ipyparallel tutorial`__). If you want to connect to multiple nodes, 
+however, then it is better to start the ipcluster instance separately in its 
+own separate job submission script. Here is an example. Importantly, we will 
+tell ipcluster to use a specific `--profile` name, in this case named `MPI60`, 
+to indicate that we're connecting to 60 cores using MPI. When we connect
+to the client later we will need to provide the profile name. 
+
+For this setup we also add a command to load the MPI module. You will probably
+need to modify ``module load OpenMPI`` to whatever the appropriate module 
+name is for MPI on your system. If you do not know what this is then look
+it up or ask the system administrator. 
+
+
+.. code-block:: bash
+
+    #!/bin/bash
+    #SBATCH --partition general
+    #SBATCH --nodes 3
+    #SBATCH --ntasks-per-node 20
+    #SBATCH --exclusive
+    #SBATCH --time 30-00:00:00
+    #SBATCH --mem-per-cpu 4000
+    #SBATCH --job-name MPI60
+    #SBATCH --output ipcluster-log-%J.txt
+
+    ## Print ipcluster info to ipcluster-log-{jobid}.txt 
+    echo "Starting ipcluster with --profile=$profile"
+
+    ## Start an ipcluster instance. This server will run until killed.
+    module load OpenMPI
+    sleep 10
+    ipcluster start --n=60 --engines=MPI --ip='*' --profile='MPI60'
+
+
+Connecting to the ipcluster instance
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+When you are in the jupyter notebook you can connect to this ipcluster
+instance with the following Python code: 
+
+
+.. code-block:: python
+    
+    import ipyrad as ip
+    import ipyparallel as ipp
+
+    ## connect to the client
+    ipyclient = ipp.Client(profile="MPI60")
+
+    ## print how many engines are connected
+    print(len(ipyclient), 'cores')
+
+    ## or, use ipyrad to print cluster info
+    print(ip.cluster_info(ipyclient))
+
+
+.. code-block:: yaml
+
+    60 cores
+    host compute node: [20 cores] on c14n02.farnam.hpc.yale.edu
+    host compute node: [20 cores] on c14n03.farnam.hpc.yale.edu
+    host compute node: [20 cores] on c14n04.farnam.hpc.yale.edu
+
 
 
 The slurm_jupyter.sbatch script explained
