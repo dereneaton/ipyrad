@@ -93,6 +93,8 @@ class Treemix(object):
         self.params.climb = 0
         self.params.noss = 0
         self.params.root = None
+        self.params.se = 0
+        self.params.global_ = 0
 
         ## if mapfile then parse it to an array
         if mapfile:
@@ -132,9 +134,12 @@ class Treemix(object):
         self.files.vertices = OPJ(self.workdir, self.name+".vertices.gz")
 
         ## results
-        self.tree = ""
-        self.admixture = []
-        self.cov = []
+        self.results = Params()
+        self.results.tree = ""
+        self.results.admixture = []
+        self.results.cov = []
+        self.results.covse = []
+        self.results.modelcov = []   
 
 
     @property
@@ -154,6 +159,9 @@ class Treemix(object):
                 if key == "g":
                     if val[0]:
                         args += ["-"+key, str(val[0]), str(val[1])]
+                elif key == "global_":
+                    if val:
+                        args += ["-"+key[:-1], str(val)]
                 else:
                     if val:
                         args += ["-"+key, str(val)]
@@ -282,38 +290,57 @@ class Treemix(object):
 
 
 
-    def run(self, quiet=True):
+    def run(self, ipyclient=None, quiet=True):
 
         ## call command
         self.write_output_file(quiet=True)
+        self._call_treemix()
+        self._parse_results()
+
+        #if ipyclient:
+        #    lbview = ipyclient.load_balanced_view()
+        #    command = self._command_list, 
+        #    self.async = lbview.apply()
+        
+        ## check for errors
+        ## ...
+        ## parse result files
+        #with lbview(temp_flags=self.async):
+        #    lbview.apply(self._parse_results())
+
+
+
+    def _call_treemix(self):
         proc = subprocess.Popen(
-            self._command_list, 
+            self._command_list,
             stderr=subprocess.STDOUT,
             stdout=subprocess.PIPE)
         stdout, err = proc.communicate()
+        return stdout
 
-        ## check for errors
-                ## ...
 
+
+
+    def _parse_results(self):
         ## get tree and admix from output files 
         with gzip.open(self.files.treeout) as tmp:
             data = tmp.readlines()
 
             ## store the tree
-            self.tree = data[0].strip()
-            self.admixture = []
+            self.results.tree = data[0].strip()
+            self.results.admixture = []
 
             ## get admix events
             for adx in data[1:]:
-                weight, _, _, _, clade1, clade2 = adx.strip().split()
-                self.admixture.append((clade1, clade2, weight))
+                weight, jweight, jse, pval, clade1, clade2 = adx.strip().split()
+                self.results.admixture.append((clade1, clade2, weight, jweight, jse, pval))
 
         ## get a toytree
-        tre = toytree.tree(self.tree)
+        tre = toytree.tree(self.results.tree)
 
         ## order admixture 
-        for aidx in range(len(self.admixture)):
-            admix = self.admixture[aidx]
+        for aidx in range(len(self.results.admixture)):
+            admix = self.results.admixture[aidx]
 
             source = toytree.tree(admix[0]+";")
             if len(source.tree) == 1:
@@ -327,25 +354,37 @@ class Treemix(object):
             else:
                 sidx = tre.tree.get_common_ancestor(sink.get_tip_labels()).idx
 
-            self.admixture[aidx] = (
+            self.results.admixture[aidx] = (
                 int(sodx),
                 float(admix[0].rsplit(":", 1)[1]), 
                 int(sidx),
                 float(admix[1].rsplit(":", 1)[1]), 
-                float(admix[2]))
+                float(admix[2]), 
+                #float(admix[3]), 
+                #float(admix[4]),
+                #float(admix[5]),
+                )
 
         ## parse the cov
-        dat = pd.read_csv(self.files.cov, 
-                      sep=" ", 
-                      header=None, 
-                      index_col=0, 
-                      skiprows=1)
+        names = tre.get_tip_labels()
+        self.results.cov = _parse_matrix(self.files.cov, names)
+        self.results.covse = _parse_matrix(self.files.covse, names)
+        self.results.modelcov = _parse_matrix(self.files.modelcov, names)
 
-        ## sort into tree label order
-        dat.columns = dat.index
-        dat = dat.ix[tre.get_tip_labels()]
-        dat = dat.T.ix[tre.get_tip_labels()]
-        self.cov = dat.as_matrix()
+
+
+def _parse_matrix(mfile, names):
+    dat = pd.read_csv(mfile,
+                  sep=" ", 
+                  header=None, 
+                  index_col=0, 
+                  skiprows=1)
+
+    ## sort into tree label order
+    dat.columns = dat.index
+    dat = dat.ix[names]
+    dat = dat.T.ix[names]
+    return dat.as_matrix()
 
 
 
