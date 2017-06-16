@@ -5,6 +5,27 @@
 Release Notes
 =============
 
+0.7.1
+-----
+**June 16, 2017**
+
+- Actually handle SE reference sequence clustering.
+- Prevent empty clust files from raising an error. Probably only impacts sim data.
+- If debug the retain the bed regions per sample as a file in the refmap directory.
+- updated tunnel docs
+- HPC tunnel update
+- support for parsing supervised structure analyses in ipa
+- HPC tunnel docs update
+- update analysis docs
+- update analysis docs
+- update analysis docs
+- update analysis docs
+- ipa.treemix params
+- more params added to ipa.treemix
+- cookbook update treemix
+- fix to conda rec
+- treemix ipa updates
+
 0.7.0
 -----
 **June 15, 2017**
