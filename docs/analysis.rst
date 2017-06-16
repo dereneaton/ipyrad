@@ -6,16 +6,18 @@
 Analysis tools
 ==============
 
-ipyrad_ includes a suite of analysis tools for comparing and visualizing
-the size and completeness of assembled RAD-seq data sets, for
-calculating population-genetic statistics, and for performing comparative
-genomic analyses. In addition, there of course countless other tools available
-for the downstream analysis of RAD-seq data. In this section of the documentation
-we hope to provide many examples to guide users through such analyses. Many
-examples are shared in the form of Jupyter Notebooks, which are a useful tool
-for doing reproducible science, and our first tutorial provides a crash course
-if using Jupyter with ipyrad. You can follow along and use these tutorials 
-without Jupyter as well. 
+ipyrad_ includes a suite of analysis tools that are designed to make it 
+easy to run inference programs (e.g., STRUCTURE, TREEMIX, BPP) on the data
+in an efficient way by sampling distributions of loci or SNPs from your RAD
+data, grouping individuals into populations, filtering for missing data, 
+and parallelizing computation. 
+
+In this section of the documentation we have a number of example analyses
+in the form of Jupyter notebooks, which is a useful tool for doing 
+reproducible science. In fact, ipyrad has been designed since its inception 
+for the goal of working seamlessly within jupyter. Check out the tutorials 
+below on using ipyrad in Jupyter using its Python API. Then check out the
+analysis tools notebooks. 
 
 
 Using Jupyter notebooks 
@@ -41,12 +43,24 @@ These notebooks show example usage of the ipyrad API.
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 These notebook show how to do parallelized downstream analyses in Jupyter-notebooks.
 
-+ `RAxML phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
++ `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `TETRAD quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>`__
 + `STRUCTURE population strutcure <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-structure-pedicularis.ipynb>`__
 + `BPP species tree and delimitation <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bpp-species-delimitation.ipynb>`__
 + `TREEMIX admixture graph inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-treemix-pedicularis.ipynb>`__
 + `BUCKY concordance tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
 
+
+*command line programs*
+^^^^^^^^^^^^^^^^^^^^^^^
+These pages discuss further information about some command-line analysis programs.
+
++ `RAxML phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
++ `TETRAD command line <http://ipyrad.readthedocs.io/tetrad.html>`__   
+
 .. + ABBA BABA test for introgression <cookbook-dstats>`__
 .. + PCA analysis of genetic structure <cookbook-PCA>`__
+
+Other jupyter notebooks (ipyrad in the wild)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++ You can contribute here. Let us know.
