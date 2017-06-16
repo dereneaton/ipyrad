@@ -739,7 +739,7 @@ class Tetrad(object):
                                    opr(self.trees.boots))) 
 
         ## print the ASCII tree only if its small
-        if len(self.samples) < 200:
+        if len(self.samples) < 50:
             if self.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
                 wctre.ladderize()
@@ -754,8 +754,8 @@ class Tetrad(object):
                 print("")
 
         ## print PDF filename & tips -----------------------------
-        docslink = "toytree.readthedocs.io/"    
-        citelink = "ipyrad.readthedocs.io/tetrad.html"
+        docslink = "https://toytree.readthedocs.io/"    
+        citelink = "https://ipyrad.readthedocs.io/tetrad.html"
         print(LINKS.format(docslink, citelink))
 
 
