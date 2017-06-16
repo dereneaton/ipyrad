@@ -19,10 +19,10 @@ requirements:
     - ipython >=5.0.0
     - jupyter_client
     - jupyter
-    - notebook >=4.3
+    - notebook >=5.0
     - mpi4py
     - nbconvert
-    - numba >=0.31
+    - numba >=0.33
     - numpy >=1.7
     - pandas >=0.16
     - scipy >=0.16
@@ -38,10 +38,10 @@ requirements:
     - scipy >=0.16
     - h5py
     - nbconvert
-    - numba >=0.31
+    - numba >=0.33
     - jupyter_client
     - jupyter
-    - notebook >=4.3
+    - notebook >=5.0
     - sphinx
     - pandas
     - mpi4py
