@@ -40,9 +40,10 @@ Downstream analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 These notebook show how to do parallelized downstream analyses in Jupyter-notebooks.
 
-+ `phylogenetic inference with RAxML <http://ipyrad.readthedocs.io/raxml.html>`__
-+ `concordance tree inference with BUCKy (parallel) <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
-+ `STRUCTURE analysis (parallel) <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-structure-pedicularis.ipynb>`__
-+ `quartet species tree inference with tetrad <http://ipyrad.readthedocs.io/tetrad.html>`__
++ `RAxML -- phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
++ `STRUCTURE -- population strutcure <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-structure-pedicularis.ipynb>`__
++ `BPP -- species tree and delimitation <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bpp-species-delimitation.ipynb>`__
++ `TETRAD -- quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>
++ `BUCKY -- concordance tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
 + ABBA BABA test for introgression <cookbook-dstats>`__
 + PCA analysis of genetic structure <cookbook-PCA>`__
