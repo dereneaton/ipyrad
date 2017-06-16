@@ -25,9 +25,9 @@ Using Jupyter notebooks
 This is an optional tool to use with ipyrad, but one that we strongly recommend. 
 
 + `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
-+ `Intro to ipyparallel <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
++ `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
 + `Using ipyrad with jupyter on HPC <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
-+ `Using ipyrad with jupyter and git <...>`__
++ `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
 
 
 *ipyrad* API assembly
@@ -45,10 +45,11 @@ These notebook show how to do parallelized downstream analyses in Jupyter-notebo
 
 + `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `TETRAD quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>`__
-+ `STRUCTURE population strutcure <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-structure-pedicularis.ipynb>`__
++ `STRUCTURE population structure <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-structure-pedicularis.ipynb>`__
 + `BPP species tree and delimitation <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bpp-species-delimitation.ipynb>`__
 + `TREEMIX admixture graph inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-treemix-pedicularis.ipynb>`__
 + `BUCKY concordance tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
++ `STRUCTURE with pop assignments <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/example-structure-popdata.ipynb>`__
 
 
 *command line programs*
