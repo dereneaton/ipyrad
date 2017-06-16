@@ -10,37 +10,16 @@ Release Notes
 **June 15, 2017**
 
 - put a temporary block on denovo+ref
-- cookbooks
-- cookbook updates
 - added treemix ipa funcs
-- conda recipe
 - update conda recipe
-- notebook updates
-- mods to bpp ipa object
-- hide treemix for now
-- added notebook for popdata structure ipa
-- merge conflict
-- missing newline in alleles
-- ipa fix raxml
-- ipa structure file clobber fix
-- merge conflict
-- update bpp notebook
-- ipa analysis updates
-- cleaner API attr on structure object
-- cleaner API attr on raxml object
-- cleaner API attr on bpp object
-- Adding docs for the -t flag.
-- bpp notebook update:
-- bpp notebook update:
+- added notebook for structure with popdata
 - updated tetrad notebook
-- updated analysis notebooks
-- merge conflict resolve
-- toying with new save/load structure
-- consens bug fix
-- added general Params object to utils. Currently used in analysis tools, future should replace the ObjDict object in ipyrad
-- replaced params object in structure analysis tools and fixed so rep jobs to do not overwrite
-- changed bpp command to run() in analysis tools
-- cleaner raxml object in analysis tools
+- update bpp notebook
+- fix missing newline in alleles
+- ipa structure file clobber fix
+- cleaner and more consistent API attr on ipa objects
+- Added docs for the -t flag.
+- fix in ipa.structure so replicate jobs to do not overwrite
 - Fix bad link in docs.
 - better method to find raxml binary in analysis tools
 - consens bugfix for new ipmlementation
@@ -102,24 +81,6 @@ Release Notes
 - added md5 names to derep and simplified code readability within pairmerging
 - fix for binary finder
 - added dask to conda recipe
--  "Updating ipyrad/__init__.py to version - 0.6.20
--  "Updating ipyrad/__init__.py to version - 0.6.20
--  "Updating ipyrad/__init__.py to version - 0.6.20
-- added dask dependency
-
-0.6.20
-------
-**May 10, 2017**
-
--  "Updating ipyrad/__init__.py to version - 0.6.20
--  "Updating ipyrad/__init__.py to version - 0.6.20
-- added dask dependency
-
-0.6.20
-------
-**May 10, 2017**
-
--  "Updating ipyrad/__init__.py to version - 0.6.20
 - added dask dependency
 
 0.6.20
@@ -127,11 +88,6 @@ Release Notes
 **May 10, 2017**
 
 - added dask dependency
-
-0.6.20
-------
-**May 10, 2017**
-
 - vcf building with full ref info
 - bug fix to alleles output and support vcf chrompos storage in uint64
 - simpler and slightly faster consens calls and lower memory and stores chrompos as uint64s
