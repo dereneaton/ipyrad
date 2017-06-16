@@ -340,8 +340,12 @@ def align_and_parse(handle, max_internal_indels=8):
     """ much faster implementation for aligning chunks """
 
     ## data are already chunked, read in the whole thing. bail if no data.
-    with open(handle, 'rb') as infile:
-        clusts = infile.read().split("//\n//\n")
+    try:
+        with open(handle, 'rb') as infile:
+            clusts = infile.read().split("//\n//\n")
+    except IOError:
+        LOGGER.debug("skipping empty chunk - %s", handle)
+        return 0
 
     ## bail if no data
     if not clusts[0]:
@@ -1371,13 +1375,11 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
             try:
                 if os.path.exists(data.tmpdir):
                     shutil.rmtree(data.tmpdir)
-                #<<<<<<< HEAD
                 ## get all refmap_derep.fastqs
                 rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
                 ## Remove the unmapped fastq files
                 for rmfile in rdereps:
                     os.remove(rmfile)
-                #=======
 
             except Exception as _:
                 LOGGER.warning("failed to cleanup files/dirs")
