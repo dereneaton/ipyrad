@@ -5,7 +5,7 @@
 import os
 import glob
 import sys
-import time
+import re
 import subprocess
 import numpy as np
 import pandas as pd
@@ -514,7 +514,7 @@ def _get_clumpp_table(self, kpop):
     else:
         ninds = nreps = 0
     if not reps:
-        return
+        return "no result files found"
 
     clumphandle = os.path.join(self.workdir, "tmp.clumppparams.txt")
     self.clumppparams.kpop = kpop
@@ -582,7 +582,7 @@ def _concat_reps(self, kpop):
             os.path.join(self.workdir, 
                 self.name+"-K-{}-rep-*_f".format(kpop)))
         for rep in repfiles:
-            result = Rep(rep)
+            result = Rep(rep, kpop=kpop)
             reps.append(result)
             outfile.write(result.stable)
     return reps
@@ -607,19 +607,23 @@ def _concat_reps(self, kpop):
 
 class Rep(object):
     """ parsed structure result file object """
-    def __init__(self, repfile):
+    def __init__(self, repfile, kpop):
         self.repfile = repfile
         self.est_lnlik = 0
         self.mean_lnlik = 0
         self.var_lnlik = 0
         self.alpha = 0
         self.inds = 0
-        
-        ## get table string        
-        self.stable = self.parse()
+        self.kpop = kpop
         
 
-    def parse(self):
+        ## get table string        
+        psearch = re.compile(r"\)   :  ")
+        dsearch = re.compile(r"\)    \d :  ")
+        self.stable = self.parse(psearch, dsearch)
+
+
+    def parse(self, psearch, dsearch):
         """ parse an _f structure output file """
         stable = ""
         with open(self.repfile) as orep:
@@ -636,7 +640,11 @@ class Rep(object):
                     self.alpha = float(line.split()[-1])
 
                 ## matrix lines
-                if ")   :  " in line:
+                nonline = psearch.search(line)
+                popline = dsearch.search(line)
+
+                #if ")   :  " in line:
+                if nonline:
                     ## check if sample is supervised...
                     abc = line.strip().split()
                     outstr = "{}{}{}".format(
@@ -647,6 +655,22 @@ class Rep(object):
                     )
                     self.inds += 1
                     stable += outstr+"\n"
+
+                elif popline:
+                    ## check if sample is supervised...
+                    abc = line.strip().split()
+                    prop = ["0.000"] * self.kpop
+                    pidx = int(abc[3]) - 1
+                    prop[pidx] = "1.000"
+                    outstr = "{}{}{}".format(
+                        " ".join([abc[0], abc[0], abc[2], 
+                                  abc[0].split('.')[0]]),
+                        " :  ",
+                        " ".join(prop)
+                    )
+                    self.inds += 1
+                    stable += outstr+"\n"
+
             stable += "\n"
         return stable
 
