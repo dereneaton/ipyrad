@@ -180,13 +180,17 @@ it up or ask the system administrator.
     #SBATCH --job-name MPI60
     #SBATCH --output ipcluster-log-%J.txt
 
+    ## set the profile name here
+    profile="MPI60"
+
     ## Print ipcluster info to ipcluster-log-{jobid}.txt 
     echo "Starting ipcluster with --profile=$profile"
 
     ## Start an ipcluster instance. This server will run until killed.
     module load OpenMPI
     sleep 10
-    ipcluster start --n=60 --engines=MPI --ip='*' --profile='MPI60'
+    ipcluster start --n=60 --engines=MPI --ip='*' --profile=$profile
+
 
 
 Connecting to the ipcluster instance in Python
