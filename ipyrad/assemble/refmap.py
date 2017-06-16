@@ -16,7 +16,7 @@ import pysam
 import ipyrad
 import numpy as np
 import subprocess as sps
-from util import *
+from ipyrad.assemble.util import *
 from ipyrad.assemble.rawedit import comp
 
 import logging
@@ -462,6 +462,7 @@ def ref_build_and_muscle_chunk(data, sample):
             if nclusts == chunksize:
                 ## write to file
                 with open(tmpfile.format(idx), 'w') as tmp:
+                    LOGGER.debug("Writing tmpfile - {}".format(tmpfile.format(idx)))
                     tmp.write("\n//\n//\n".join(clusts)+"\n//\n//\n")
                 idx += 1
                 nclusts = 0
@@ -774,6 +775,11 @@ def bedtools_merge(data, sample):
     ## check for errors and do cleanup
     if proc2.returncode:
         raise IPyradWarningExit("error in %s: %s", cmd2, result)
+
+    ## Write the bedfile out, because it's useful sometimes.
+    if os.path.exists(ipyrad.__debugflag__):
+        with open(os.path.join(data.dirs.refmapping, sample.name + ".bed"), 'w') as outfile:
+            outfile.write(result)
 
     ## Report the number of regions we're returning
     nregions = len(result.strip().split("\n"))
