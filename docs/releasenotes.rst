@@ -5,6 +5,33 @@
 Release Notes
 =============
 
+0.7.0
+-----
+**June 15, 2017**
+
+- put a temporary block on denovo+ref
+- added treemix ipa funcs
+- update conda recipe
+- added notebook for structure with popdata
+- updated tetrad notebook
+- update bpp notebook
+- fix missing newline in alleles
+- ipa structure file clobber fix
+- cleaner and more consistent API attr on ipa objects
+- Added docs for the -t flag.
+- fix in ipa.structure so replicate jobs to do not overwrite
+- Fix bad link in docs.
+- better method to find raxml binary in analysis tools
+- consens bugfix for new ipmlementation
+- ensure h5 files are closed after dask func
+- fix to parse chrom pos info from new consens name format
+- removed deprecated align funcs
+- removed hardcoded path used in testing
+- removed deprecated align funcs. Made it so build_clusters() does nothing for 'reference' method since there is a separate method in ref for chunking clusters
+- some new simpler merge funcs
+- make new ref funcs work with dag map
+- new build funcs usign pysam
+
 0.6.27
 ------
 **June 03, 2017**
@@ -54,24 +81,6 @@ Release Notes
 - added md5 names to derep and simplified code readability within pairmerging
 - fix for binary finder
 - added dask to conda recipe
--  "Updating ipyrad/__init__.py to version - 0.6.20
--  "Updating ipyrad/__init__.py to version - 0.6.20
--  "Updating ipyrad/__init__.py to version - 0.6.20
-- added dask dependency
-
-0.6.20
-------
-**May 10, 2017**
-
--  "Updating ipyrad/__init__.py to version - 0.6.20
--  "Updating ipyrad/__init__.py to version - 0.6.20
-- added dask dependency
-
-0.6.20
-------
-**May 10, 2017**
-
--  "Updating ipyrad/__init__.py to version - 0.6.20
 - added dask dependency
 
 0.6.20
@@ -79,11 +88,6 @@ Release Notes
 **May 10, 2017**
 
 - added dask dependency
-
-0.6.20
-------
-**May 10, 2017**
-
 - vcf building with full ref info
 - bug fix to alleles output and support vcf chrompos storage in uint64
 - simpler and slightly faster consens calls and lower memory and stores chrompos as uint64s

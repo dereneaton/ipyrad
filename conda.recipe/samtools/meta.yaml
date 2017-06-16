@@ -1,0 +1,34 @@
+# This file created by conda-build 2.0.7
+# meta.yaml template originally from:
+# /opt/recipe, last modified Mon May  8 18:30:27 2017
+# ------------------------------------------------
+
+package:
+    name: samtools
+    version: 1.4.1
+source:
+    fn: samtools-1.4.1.tar.bz2
+    md5: 4860d6a8f85c6965a7e82fb11afbde13
+    url: https://github.com/samtools/samtools/releases/download/1.4.1/samtools-1.4.1.tar.bz2
+build:
+    number: '0'
+    skip: 'False'
+requirements:
+    build:
+        - gcc
+        - zlib
+        - bzip2
+        - curl
+        - xz
+    run:
+        - libgcc
+        - zlib
+        - curl
+        - xz
+test:
+    commands:
+        - samtools --help
+about:
+    home: https://github.com/samtools/samtools
+    license: MIT
+    summary: Tools for dealing with SAM, BAM and CRAM files

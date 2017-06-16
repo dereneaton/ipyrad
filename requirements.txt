@@ -2,10 +2,10 @@ pip
 sphinx
 cython
 ipython
-ipyparallel>=5.0.1
+ipyparallel>=6.0.2
 ipykernel
 jupyter
-notebook>=4.3
+notebook>=5.0
 nbconvert
 scipy>0.10
 numpy>=1.9

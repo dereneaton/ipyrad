@@ -1,0 +1,29 @@
+package:
+    name: treemix
+    version: {{ environ.get('GIT_DESCRIBE_TAG', '') }}
+
+source:
+    git_url: https://bitbucket.org/nygcresearch/treemix.git
+
+build:
+    number: '0'
+    script: build.sh
+    skip: 'False'
+
+requirements:
+    build:
+        - gsl
+        - boost
+    run:
+        - gsl
+        - boost
+test:
+    commands:
+        - treemix -h > /dev/null
+
+about:
+    home: https://bitbucket.org/nygcresearch/treemix
+    license: GPLV3
+    summary: population splitting and mixing from genome-wide allele frequency data.
+
+

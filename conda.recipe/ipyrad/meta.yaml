@@ -15,14 +15,14 @@ requirements:
     - python {{PY_VER}}*,>=2.7
     - cython
     - h5py
-    - ipyparallel >=5.1.0
+    - ipyparallel >=6.0.2
     - ipython >=5.0.0
     - jupyter_client
     - jupyter
-    - notebook >=4.3
+    - notebook >=5.0
     - mpi4py
     - nbconvert
-    - numba >=0.31
+    - numba >=0.33
     - numpy >=1.7
     - pandas >=0.16
     - scipy >=0.16
@@ -30,25 +30,26 @@ requirements:
     - networkx
     - cutadapt >=1.12
     - dask
+    - pysam
   run:
     - ipython >=5.0.0
-    - ipyparallel >=5.1.0
+    - ipyparallel >=6.0.2
     - cython
     - scipy >=0.16
     - h5py
     - nbconvert
-    - numba >=0.31
+    - numba >=0.33
     - jupyter_client
     - jupyter
-    - notebook >=4.3
+    - notebook >=5.0
     - sphinx
     - pandas
     - mpi4py
     - numpy >=1.7
-    - bitarray
     - networkx
     - dask
     - cutadapt >=1.12
+    - pysam
   commands:
     - ipyrad -h
 

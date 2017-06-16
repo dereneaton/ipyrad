@@ -1,4 +1,4 @@
-ipyparallel>=5.1
+ipyparallel>=6.0.2
 ipython>=5.0
 pandas>=0.18
 numba>=0.31
