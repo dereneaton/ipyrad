@@ -82,8 +82,15 @@ def cluster_info(
     else:
         ipyclient = client
 
-    ## report 
-    hosts = ipyclient[:].apply_sync(_socket.gethostname)
+    ## get engine data, skips busy engines.
+    hosts = []
+    for eid in ipyclient.ids:
+        engine = ipyclient[eid]
+        if not engine.outstanding:
+            hosts.append(engine.apply(_socket.gethostname))
+
+    ## report it
+    hosts = [i.get() for i in hosts]
     result = []
     if spacer:
         spacer = " " * spacer
@@ -94,7 +101,8 @@ def cluster_info(
     for hostname in set(hosts):
         result.append(spacer+"host compute node: [{} cores] on {}"\
                       .format(hosts.count(hostname), hostname))
-    
+
+    ## clean up if engine was started just for the report
     if not client:
         ipyclient.close()
     return "\n".join(result)
