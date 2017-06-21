@@ -38,7 +38,6 @@ import itertools
 import subprocess
 import numpy as np
 import ipyrad as ip
-#from bitarray import bitarray
 from fractions import Fraction
 from collections import defaultdict
 from ipyrad.assemble.util import IPyradWarningExit, progressbar, Params
@@ -199,15 +198,17 @@ class Tetrad(object):
 
         ## if quartets not entered then sample all
         total = n_choose_k(len(self.samples), 4)
-        if self.method != "all":
+        if self.method == "all":
+            self.nquartets = total
+        else:
+            ## if you entered a number bigger than total, then use 'all'
             if int(self.nquartets) >= total:
                 self.method = "all"
                 self.nquartets = total
                 print("nquartets > total: switching to method='all' ")
+            ## if use entered nquartets...
             if not self.nquartets:
                 raise IPyradWarningExit("must enter nquartets value w/ method='random'")
-        else:
-            self.nquartets = total
             
         
 
