@@ -670,6 +670,7 @@ class Tetrad(object):
 
 
 
+    ## TODO: Don't dump bad/random quartets...
     def _dump_qmc(self):
         """ 
         Makes a reduced array that excludes quartets with no information and 
@@ -748,8 +749,9 @@ class Tetrad(object):
                 print("")
             else:
                 qtre = ete3.Tree(self.trees.tree, format=0)
+                qtre.ladderize()
                 #qtre = toytree.tree(self.trees.tree, format=0)
-                qtre.tree.unroot()
+                #qtre.tree.unroot()
                 print(qtre.get_ascii())
                 print("")
 
