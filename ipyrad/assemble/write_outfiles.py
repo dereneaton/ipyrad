@@ -372,6 +372,7 @@ def filter_all_clusters(data, samples, ipyclient):
 
         ## create job queue
         start = time.time()
+        printstr = " filtering loci        | {} | s7 |"
         fasyncs = {}
         submitted = 0
         while submitted < nloci:
@@ -384,7 +385,7 @@ def filter_all_clusters(data, samples, ipyclient):
             readies = [i.ready() for i in fasyncs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(readies), sum(readies),
-                " filtering loci        | {} | s7 |".format(elapsed))
+                printstr.format(elapsed), spacer=data._spacer)
             time.sleep(0.1)
             if sum(readies) == len(readies):
                 print("")
@@ -505,8 +506,9 @@ def make_loci_and_stats(data, samples, ipyclient):
     """
     ## start vcf progress bar
     start = time.time()
+    printstr = " building loci/stats   | {} | s7 |"
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, " building loci/stats   | {} | s7 |".format(elapsed))
+    progressbar(20, 0, printstr.format(elapsed), spacer=data._spacer)
 
     ## get some db info
     with h5py.File(data.clust_database, 'r') as io5:
@@ -541,8 +543,7 @@ def make_loci_and_stats(data, samples, ipyclient):
     while 1:
         done = [i.ready() for i in loci_asyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(done), sum(done),
-            " building loci/stats   | {} | s7 |".format(elapsed))
+        progressbar(len(done), sum(done), printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if len(done) == sum(done):
             print("")
@@ -591,7 +592,8 @@ def make_loci_and_stats(data, samples, ipyclient):
             done = [i.ready() for i in loci_asyncs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(done), sum(done),
-                " building alleles      | {} | s7 |".format(elapsed))            
+                " building alleles      | {} | s7 |".format(elapsed), 
+                spacer=data._spacer)  
             time.sleep(0.1)
             if len(done) == sum(done):
                 print("")
@@ -1457,7 +1459,8 @@ def make_outfiles(data, samples, output_formats, ipyclient):
         readies = [i.ready() for i in results.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         progressbar(len(readies), sum(readies),
-            " writing outfiles      | {} | s7 |".format(elapsed))
+            " writing outfiles      | {} | s7 |".format(elapsed), 
+            spacer=data._spacer)
         time.sleep(0.1)
         if all(readies):
             break
@@ -1554,7 +1557,8 @@ def boss_make_arrays(data, sidx, optim, nloci, ipyclient):
             time.sleep(0.1)
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(njobs, njobs-len(asyncs), 
-                " building arrays       | {} | s7 |".format(elapsed))
+                " building arrays       | {} | s7 |".format(elapsed), 
+                spacer=data._spacer)
             
             ## are we done?
             if not asyncs:
@@ -2041,7 +2045,7 @@ def make_vcf(data, samples, ipyclient, full=0):
     printstr = " building vcf file     | {} | s7 |"
     LOGGER.info("Writing .vcf file")
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(20, 0, printstr.format(elapsed))
+    progressbar(20, 0, printstr.format(elapsed), spacer=data._spacer)
 
     ## create outputs for v and V, gzip V to be friendly
     data.outfiles.vcf = os.path.join(data.dirs.outfiles, data.name+".vcf")
@@ -2091,7 +2095,7 @@ def make_vcf(data, samples, ipyclient, full=0):
 
             finished = total - len(vasyncs) #sum([i.ready() for i in vasyncs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(total, finished, printstr.format(elapsed))
+            progressbar(total, finished, printstr.format(elapsed), spacer=data._spacer)
             time.sleep(0.5)
             if not vasyncs:
                 break
@@ -2123,12 +2127,12 @@ def make_vcf(data, samples, ipyclient, full=0):
     while 1:
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         curchunks = len(glob.glob(data.outfiles.vcf+".*"))
-        progressbar(ogchunks, ogchunks-curchunks, printstr.format(elapsed))
+        progressbar(ogchunks, ogchunks-curchunks, printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if res.ready():
             break
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(1, 1, printstr.format(elapsed))
+    progressbar(1, 1, printstr.format(elapsed), spacer=data._spacer)
     print("")
 
 
