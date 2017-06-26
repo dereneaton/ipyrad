@@ -6,6 +6,7 @@ parts of the pipeline
 
 # pylint: disable=E1101
 # pylint: disable=W0212
+# pylint: disable=W0142
 
 from __future__ import print_function
 import os
@@ -84,30 +85,6 @@ class Params(object):
                 _repr += _printstr.format(key, _val)
         return _repr
 
-
-
-# ## A better storage class than ObjDict for params
-# class Params(object):
-#     """ 
-#     A dict-like object for storing params values with a custom repr
-#     """
-#     def __getitem__(self, key):
-#         return self.__dict__[key]
-
-#     def __setitem__(self, key, value):
-#         self.__dict__[key] = value
-
-#     def __repr__(self):
-#         _repr = ""
-#         keys = sorted(self.__dict__.keys())
-#         if keys:
-#             _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-#             _repr += "{\n"
-#             for key in keys:
-#                 _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-#                 _repr += _printstr.format(key+":", _val+",")
-#             _repr += "}"
-#         return _repr
 
 
 
@@ -758,7 +735,7 @@ def clustdealer(pairdealer, optim):
 
 
 
-def progressbar(njobs, finished, msg="", spacer=2):
+def progressbar(njobs, finished, msg="", spacer="  "):
     """ prints a progress bar """
     if njobs:
         progress = 100*(finished / float(njobs))
@@ -769,13 +746,9 @@ def progressbar(njobs, finished, msg="", spacer=2):
     nohash = ' '*int(20-len(hashes))
     if not ipyrad.__interactive__:
         msg = msg.rsplit("|", 2)[0]
-    print("\r{}[{}] {:>3}% {} "\
-          .format(
-              " " * spacer,
-              hashes+nohash, 
-              int(progress), 
-              msg),
-              end="")
+
+    args = [spacer, hashes+nohash, int(progress), msg]
+    print("\r{}[{}] {:>3}% {} ".format(*args), end="")
     sys.stdout.flush()
 
 
