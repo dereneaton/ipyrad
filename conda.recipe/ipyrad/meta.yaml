@@ -30,7 +30,7 @@ requirements:
     - networkx
     - cutadapt >=1.12
     - dask
-    - pysam
+    - pysam >=11.2
   run:
     - ipython >=5.0.0
     - ipyparallel >=6.0.2
@@ -49,7 +49,7 @@ requirements:
     - networkx
     - dask
     - cutadapt >=1.12
-    - pysam
+    - pysam >=11.2
   commands:
     - ipyrad -h
 
