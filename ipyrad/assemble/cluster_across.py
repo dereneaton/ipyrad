@@ -1632,7 +1632,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient, substeps=None):
     ## this assembly left off (unless force) and build step list from there.
     if not force:
         if hasattr(data, '_checkpoint'):
-            substeps = range(data._checkpoint, 8)
+            substeps = range(min(1, data._checkpoint), 8)
 
     ## build substeps list to subset which funtions need to be run
     if not substeps:
