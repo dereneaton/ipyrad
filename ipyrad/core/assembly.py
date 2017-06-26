@@ -7,6 +7,11 @@
 # pylint: disable=W0142
 # pylint: disable=W0212
 # pylint: disable=C0301
+# pylint: disable=R0915
+# pylint: disable=R0914
+# pylint: disable=R0913
+# pylint: disable=R0912
+# pylint: disable=R0902
 
 from __future__ import print_function
 import os
@@ -89,6 +94,12 @@ class Assembly(object):
 
     def __init__(self, name, quiet=False, **kwargs):
 
+        ## record whether we're in the CLI or API
+        if kwargs.get("cli"):
+            self._cli = True
+        else:
+            self._cli = False
+
         ## Make sure assembly name is not empty
         if not name:
             raise IPyradParamsError(REQUIRE_ASSEMBLY_NAME)
@@ -98,9 +109,10 @@ class Assembly(object):
         ## This will raise an error immediately if there are bad chars in name.
         self._check_name(name)
 
+        ## print name, can't use run() spacer b/c no ipcluster settings yet.
         self.name = name
         if not quiet:
-            print("  New Assembly: {}".format(self.name))
+            print("{}New Assembly: {}".format(self._spacer, self.name))
 
         ## Store assembly version #
         self._version = ip.__version__
@@ -122,6 +134,9 @@ class Assembly(object):
         ## print headers, this is used as a 'quiet' option
         ## or to control differences in printing between API and CLI
         self._headers = 0
+
+        ## used to set checkpoints within step 6
+        self._checkpoint = 0
 
         ## statsfiles is a dict with file locations
         ## stats_dfs is a dict with pandas dataframes
@@ -185,6 +200,7 @@ class Assembly(object):
                              "edits": "",
                              "clusts": "",
                              "consens": "",
+                             "across": "",
                              "outfiles": ""})
 
         ## Default hackers only parameters dictionary
@@ -210,6 +226,17 @@ class Assembly(object):
 
     def __str__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
+
+
+    ## CLI- auto-launch uses a specific cluster-id
+    @property
+    def _spacer(self):
+        """ return print spacer for CLI versus API """
+        if self._cli:
+            return "  "
+        else:
+            return ""
+
 
     @property
     def stats(self):
@@ -257,7 +284,8 @@ class Assembly(object):
             raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
 
 
-    def _link_fastqs(self, path=None, force=False, append=False, splitnames="_", fields=None, ipyclient=None):
+    def _link_fastqs(self, path=None, force=False, append=False, splitnames="_",
+        fields=None, ipyclient=None):
         """
         Create Sample objects from demultiplexed fastq files in sorted_fastq_path,
         or append additional fastq files to existing Samples. This provides
@@ -323,13 +351,13 @@ class Assembly(object):
         ## get path to data files
         if not path:
             path = self.paramsdict["sorted_fastq_path"]
-        #print(LINKING_TO_MSG.format(path))
 
         ## but grab fastq/fq/gz, and then sort
         fastqs = glob.glob(path)
         ## Assert files are not .bz2 format
         if any([i for i in fastqs if i.endswith(".bz2")]):
-            raise(IPyradError(NO_SUPPORT_FOR_BZ2.format(path)))
+            raise IPyradError(NO_SUPPORT_FOR_BZ2.format(path))
+
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
@@ -462,11 +490,12 @@ class Assembly(object):
         ## wait for link jobs to finish if parallel
         if ipyclient:
             start = time.time()
+            printstr = ' loading reads         | {} | s1 |'
             while 1:
                 fin = [i.ready() for i in linkjobs.values()]
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(len(fin), sum(fin),
-                    ' loading reads         | {} | s1 |'.format(elapsed))
+                    printstr.format(elapsed), spacer=self._spacer)
                 time.sleep(0.1)
                 if len(fin) == sum(fin):
                     print("")
@@ -491,15 +520,15 @@ class Assembly(object):
             if 'pair' in self.paramsdict["datatype"]:
                 linked = linked*2
             if self._headers:
-                print("  {} fastq files loaded to {} Samples.".\
-                      format(linked, len(self.samples)))
+                print("{}{} fastq files loaded to {} Samples.".\
+                      format(self._spacer, linked, len(self.samples)))
             ## save the location where these files are located
             self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
 
         if appended:
             if self._headers:
-                print("  {} fastq files appended to {} existing Samples.".\
-                      format(appended, len(self.samples)))
+                print("{}{} fastq files appended to {} existing Samples.".\
+                      format(self._spacer, appended, len(self.samples)))
 
         ## save step-1 stats. We don't want to write this to the fastq dir, b/c
         ## it is not necessarily inside our project dir. Instead, we'll write 
@@ -819,7 +848,8 @@ class Assembly(object):
         if (newname == self.name or os.path.exists(
                                     os.path.join(self.paramsdict["project_dir"],
                                     newname+".assembly"))):
-            print("    Assembly object named {} already exists".format(newname))
+            print("{}Assembly object named {} already exists"\
+                  .format(self._spacer, newname))
 
         else:
             ## Make sure the new name doesn't have any wacky characters
@@ -835,8 +865,7 @@ class Assembly(object):
             newobj.paramsdict["assembly_name"] = newname
 
             if subsamples and infile:
-                print("Attempting to branch passing in subsample names "\
-                        "and an input file, ignoring `subsamples` argument")
+                print(BRANCH_NAMES_AND_INPUT)
 
             if infile:
                 if infile[0] == "-":
@@ -855,7 +884,8 @@ class Assembly(object):
                     if sname in self.samples:
                         newobj.samples[sname] = copy.deepcopy(self.samples[sname])
                     else:
-                        print("  Sample name not found: {}".format(sname))
+                        print("Sample name not found: {}".format(sname))
+
                 ## reload sample dict w/o non subsamples
                 newobj.samples = {name:sample for name, sample in \
                            newobj.samples.items() if name in subsamples}
@@ -899,9 +929,11 @@ class Assembly(object):
         ## print headers
         if self._headers:
             if sfiles:
-                print("\n  Step 1: Loading sorted fastq data to Samples")
+                print("\n{}Step 1: Loading sorted fastq data to Samples"\
+                      .format(self._spacer))
             else:
-                print("\n  Step 1: Demultiplexing fastq data to Samples")
+                print("\n{}Step 1: Demultiplexing fastq data to Samples"\
+                    .format(self._spacer))
 
         ## if Samples already exist then no demultiplexing
         if self.samples:
@@ -1037,8 +1069,16 @@ class Assembly(object):
 
 
 
-    def _step6func(self, samples, noreverse, force, randomseed, ipyclient):
-        """ hidden function to start Step 6"""
+    def _step6func(self, 
+        samples, 
+        noreverse, 
+        force, 
+        randomseed, 
+        ipyclient, 
+        **kwargs):
+        """ 
+        Hidden function to start Step 6. 
+        """
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1063,8 +1103,14 @@ class Assembly(object):
 
         ## run if this point is reached. We no longer check for existing
         ## h5 file, since checking Sample states should suffice.
-        assemble.cluster_across.run(self, csamples, noreverse,
-                                    force, randomseed, ipyclient)
+        assemble.cluster_across.run(
+            self, 
+            csamples, 
+            noreverse,
+            force, 
+            randomseed, 
+            ipyclient, 
+            **kwargs)
 
 
 
@@ -1151,7 +1197,8 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0, force=False, preview=False, ipyclient=None, show_cluster=0):
+    def run(self, steps=0, force=False, preview=False, ipyclient=None, 
+        show_cluster=0, **kwargs):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -1169,14 +1216,15 @@ class Assembly(object):
         try:
             ## use an existing ipcluster instance
             if not ipyclient:
-                ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+                args = self._ipcluster.items() + [("spacer", self._spacer)]
+                ipyclient = ip.core.parallel.get_client(**dict(args))
 
             ## print a message about the cluster status
             ## if MPI setup then we are going to wait until all engines are
             ## ready so that we can print how many cores started on each
             ## host machine exactly.
             if (not ip.__interactive__) or show_cluster:
-                print(ip.cluster_info(client=ipyclient))
+                ip.cluster_info(ipyclient=ipyclient, spacer=self._spacer)
 
             ## get the list of steps to run
             if isinstance(steps, int):
@@ -1185,7 +1233,7 @@ class Assembly(object):
 
             ## print an Assembly name header if inside API
             if ip.__interactive__:
-                print("\n  Assembly: {}".format(self.name))
+                print("\n{}Assembly: {}".format(self._spacer, self.name))
 
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
@@ -1217,7 +1265,7 @@ class Assembly(object):
 
             if '6' in steps:
                 self._step6func(samples=None, noreverse=0, randomseed=12345,
-                                force=force, ipyclient=ipyclient)
+                                force=force, ipyclient=ipyclient, **kwargs)
                 self.save()
                 ipyclient.purge_everything()
 
@@ -2123,21 +2171,24 @@ FIRST_RUN_4 = """\
     """
 FIRST_RUN_5 = """\
     No Samples ready for clustering. First run step 5.
-    """
+"""
 FIRST_RUN_6 = """\
     Database file {} not found. First run step 6.
-    """
+"""
 
 NO_RAW_FILE = """\
     The value entered for the path to the raw fastq file is unrecognized.
     Please be sure this path is correct. Double check the file name and
     the file extension. If it is a relative path be sure the path is
     correct with respect to the directory you're running ipyrad from.
-    You entered - {}
-    """
+    You entered: {}
+"""
 
-LINKING_TO_MSG = """\
-  Loading data from: {}"""
+BRANCH_NAMES_AND_INPUT = \
+"""
+    Attempting to branch passing in subsample names
+    and an input file, ignoring 'subsamples' argument
+"""
 
 ########################################################
 
