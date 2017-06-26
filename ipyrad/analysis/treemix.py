@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import os
 import gzip
 import copy
@@ -207,12 +208,12 @@ class Treemix(object):
         """
 
         ## make deepcopy of self.__dict__ but do not copy async objects
-        subdict = {i:j for i,j in self.__dict__.iteritems() if i != "asyncs"}
+        subdict = {i:j for i, j in self.__dict__.iteritems() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
         ## make back into a bpp object
         if name == self.name:
-            raise Exception("new object must have a different 'name' than its parent")
+            raise Exception("new object name must be different from its parent")
 
         newobj = Treemix(
             data=newdict["data"],
@@ -241,10 +242,8 @@ class Treemix(object):
             
             ## parse file for header and data
             _data = ifile.readlines()
-            ntaxa, nsites = map(int, _data[0].strip().split())
-            if not quiet:
-                print('ntaxa {}; nSNPs {}'.format(ntaxa, nsites))
-            
+            ntaxa, nsites = [int(i) for i in _data[0].strip().split()]
+
             ## parse names and seqs
             names = []
             seqs = []
@@ -282,10 +281,18 @@ class Treemix(object):
                              np.sum(pcounts[idxs, :], axis=0))
                     ]
                 fdict[key] = counts
-                
             ## order fdict names
             fnames = sorted(fdict.keys())
-    
+
+        nwritten = sub.sum()
+        if not nwritten:
+            print("Error: No SNPs passed filtering")
+            return 
+
+        if not quiet:
+            print('ntaxa {}; nSNPs total {}; nSNPs written {}'\
+                  .format(ntaxa, nsites, nwritten))
+
         with open(OPJ(self.workdir, self.name+".treemix.in.gz"), 'w') as outf:
             outf.write(" ".join(fnames)+"\n")
             farr = np.array([fdict[i] for i in fnames]).T
