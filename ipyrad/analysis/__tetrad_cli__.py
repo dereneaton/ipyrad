@@ -13,8 +13,6 @@ import logging
 import random
 import sys
 import os
-import atexit
-
 import ipyrad.analysis as ipa
 
 # pylint: disable=W0212
@@ -44,9 +42,12 @@ def parse_command_line():
      tetrad -j test.tet.json -b 100 -f      ## force restart of 'test'
 
   * Sampling modes: 'equal' uses guide tree to sample quartets more efficiently 
-     tetrad -s data.snps -m all                         ## sample all quartets
-     tetrad -s data.snps -m random -q 1e6 -x 123        ## sample 1M randomly
-     tetrad -s data.snps -m equal -q 1e6 -t guide.tre   ## sample 1M across tree
+     tetrad -s data.snps.phy -m all                       ## sample all quartets
+     tetrad -s data.snps.phy -m random -q 1e6 -x 123      ## sample 1M randomly
+     tetrad -s data.snps.phy -m equal -q 1e6 -t guide.tre ## sample 1M across tree
+
+  * Connect to running ipcluster instance with profile='pname' [optional]
+     tetrad -s data.snps.phy --ipcluster pname
 
   * HPC optimization: Set -c to the number of nodes to improve efficiency
      tetrad -s data.phy -c 16               ## e.g., use 16 cores across 4 nodes
@@ -121,8 +122,11 @@ def parse_command_line():
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
 
-    parser.add_argument("--ipcluster", action='store_true',
-        help="connect to ipcluster instance with profile=default")
+    #parser.add_argument("--ipcluster", action='store_true',
+    #    help="connect to ipcluster, set profile (default='')")
+    parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
+        type=str, nargs="?", #default="default", 
+        help="connect to ipcluster profile (default: 'default')")
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -131,6 +135,10 @@ def parse_command_line():
 
     ## parse args
     args = parser.parse_args()
+
+    ## if no ipcluster profile is set the use the 'default' profile
+    if not args.ipcluster:
+        args.ipcluster = "default"
 
     ## RAISE errors right away for some bad argument combinations:
     if args.method not in ["random", "equal", "all"]:
@@ -166,7 +174,6 @@ def parse_command_line():
 
 
 
-
 def main():
     """ main function """
 
@@ -184,7 +191,6 @@ def main():
     if args.debug:
         print("\n  ** Enabling debug mode ** ")
         ip._debug_on()
-        #atexit.register(ip._debug_off)
 
     ## if JSON, load existing Tetrad analysis -----------------------
     if args.json:
@@ -218,6 +224,7 @@ def main():
                               nboots=args.boots, 
                               nquartets=args.nquartets, 
                               cli=True,
+                              profile=args.ipcluster,
                               )
             ## if not quiet...
             print("tetrad instance: {}".format(args.name))
@@ -230,26 +237,19 @@ def main():
     if args.boots:
         data.nboots = int(args.boots)
 
-    ## set CLI ipcluster terms
-    data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
-
-    ## if more ipcluster args from command-line then use those
-    if args.MPI:
-        data._ipcluster["engines"] = "MPI"
-        if not args.cores:
-            raise IPyradWarningExit("must provide -c argument with --MPI")
-    else:
-        data._ipcluster["engines"] = "Local"
-
-    ## launch a NEW ipcluster instance and register "cluster_id" 
-    ## for later destruction, and to avoid conflicts between 
-    ## simultaneous ipcluster instances. If a user wanted to use 
-    ## an ipcluster instance that is already running instead then 
-    ## they have to use the API, or to have set args.ipcluster
-    if args.ipcluster:
+    ## if ipyclient is running (and matched profile) then use that one
+    if args.ipcluster != "default":
         data._ipcluster["cluster_id"] = ""
+        data._ipcluster["profile"] = args.ipcluster
     else:
-        ## register with a "ip- name"
+        ## set CLI ipcluster terms
+        data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
+        data._ipcluster["engines"] = "Local"
+        if args.MPI:
+            data._ipcluster["engines"] = "MPI"
+            if not args.cores:
+                raise IPyradWarningExit("must provide -c argument with --MPI")
+        ## register to have a cluster-id with "ip- name"
         data = register_ipcluster(data)
 
     ## message about whether we are continuing from existing

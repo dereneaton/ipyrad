@@ -493,7 +493,7 @@ def concat_reads(data, subsamples, ipyclient):
         while 1:
             finished = sum([i.ready() for i in catjobs.values()])
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(len(catjobs), finished, printstr.format(elapsed))
+            progressbar(len(catjobs), finished, printstr.format(elapsed), spacer=data._spacer)
             time.sleep(0.1)
             if finished == len(catjobs):
                 print("")
@@ -542,7 +542,7 @@ def run_cutadapt(data, subsamples, lbview):
     while 1:
         finished = sum([i.ready() for i in rawedits.values()])
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(rawedits), finished, printstr.format(elapsed))
+        progressbar(len(rawedits), finished, printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if finished == len(rawedits):
             print("")

@@ -9,14 +9,12 @@ import time
 import json
 import pandas as pd
 import ipyrad as ip
-import numpy as np
 from copy import deepcopy
 from ipyrad.assemble.util import *
 from collections import OrderedDict
 
 # pylint: disable=W0212
 # pylint: disable=W0142
-
 
 
 def test_assembly(data):
@@ -50,9 +48,10 @@ def test_assembly(data):
 
 
 def update_assembly(data):
-    """ Create a new Assembly() and convert as many of our old params to the new
-        version as we can. Also report out any parameters that are removed
-        and what their values are. 
+    """ 
+    Create a new Assembly() and convert as many of our old params to the new
+    version as we can. Also report out any parameters that are removed
+    and what their values are. 
     """
 
     print("##############################################################")
@@ -122,6 +121,7 @@ def save_json(data):
     #### samples save only keys
     datadict = OrderedDict([
         ("_version", data.__dict__["_version"]),
+        ("_checkpoint", data.__dict__["_checkpoint"]),
         ("name", data.__dict__["name"]), 
         ("dirs", data.__dict__["dirs"]),
         ("paramsdict", data.__dict__["paramsdict"]),
@@ -167,9 +167,11 @@ def save_json(data):
 
 
 
-def load_json(path, quiet=False):
-    """ Load a json serialized object and ensure it matches to the current 
-    Assembly object format """
+def load_json(path, quiet=False, cli=False):
+    """ 
+    Load a json serialized object and ensure it matches to the current 
+    Assembly object format 
+    """
 
     ## load the JSON string and try with name+.json
     checkfor = [path+".json", path]
@@ -187,7 +189,7 @@ def load_json(path, quiet=False):
         oldname = fullj["assembly"].pop("name")
         olddir = fullj["assembly"]["dirs"]["project"]
         oldpath = os.path.join(olddir, os.path.splitext(oldname)[0]+".json")
-        null = ip.Assembly(oldname, quiet=True)
+        null = ip.Assembly(oldname, quiet=True, cli=cli)
 
     except (UnboundLocalError, AttributeError) as inst:
         raise IPyradWarningExit("""
@@ -199,8 +201,8 @@ def load_json(path, quiet=False):
     ## print msg with shortpath
     if not quiet:
         oldpath = oldpath.replace(os.path.expanduser("~"), "~")
-        print("  loading Assembly: {}".format(oldname))
-        print("  from saved path: {}".format(oldpath))
+        print("{}loading Assembly: {}".format(null._spacer, oldname))
+        print("{}from saved path: {}".format(null._spacer, oldpath))
 
     ## First get the samples. Create empty sample dict of correct length 
     samplekeys = fullj["assembly"].pop("samples")
@@ -238,14 +240,12 @@ def load_json(path, quiet=False):
         LOGGER.warning("""
     Load assembly error resetting hackersonly dict element. We will just use
     the default value in the current assembly.""")
-    #Here was the param that failed: {} - {}
-    #The error: {}
-    #""".format(param, val, inst))
 
     ## Check remaining attributes of Assembly and Raise warning if attributes
     ## do not match up between old and new objects
     newkeys = null.__dict__.keys()
     oldkeys = fullj["assembly"].keys()
+
     ## find shared keys and deprecated keys
     sharedkeys = set(oldkeys).intersection(set(newkeys))
     lostkeys = set(oldkeys).difference(set(newkeys))

@@ -96,7 +96,7 @@ def showstats(parsedict):
     """.format(project_dir)
         raise IPyradError(msg)
 
-    data = ip.load_json(my_assembly, quiet=True)
+    data = ip.load_json(my_assembly, quiet=True, cli=True)
 
     print("\nSummary stats of Assembly {}".format(data.name) \
          +"\n------------------------------------------------")
@@ -225,7 +225,8 @@ def merge_assemblies(args):
 
 
 def getassembly(args, parsedict):
-    """ loads assembly or creates a new one and set its params from 
+    """ 
+    loads assembly or creates a new one and set its params from 
     parsedict. Does not launch ipcluster. 
     """
 
@@ -251,9 +252,10 @@ def getassembly(args, parsedict):
     try:
         ## If 1 and force then go ahead and create a new assembly
         if ('1' in args.steps) and args.force:
-            data = ip.Assembly(assembly_name)
+            data = ip.Assembly(assembly_name, cli=True)
         else:
-            data = ip.load_json(assembly_file)
+            data = ip.load_json(assembly_file, cli=True)
+            data._cli = True
 
     except IPyradWarningExit as _:
         ## if no assembly is found then go ahead and make one
@@ -263,7 +265,7 @@ def getassembly(args, parsedict):
                 .format(assembly_file))
         else:
             ## create a new assembly object
-            data = ip.Assembly(assembly_name)
+            data = ip.Assembly(assembly_name, cli=True)
 
     ## for entering some params...
     for param in parsedict:
@@ -443,7 +445,7 @@ def main():
     if args.new:
         ## Create a tmp assembly, call write_params to make default params.txt
         try:
-            tmpassembly = ip.Assembly(args.new, quiet=True)
+            tmpassembly = ip.Assembly(args.new, quiet=True, cli=True)
             tmpassembly.write_params("params-{}.txt".format(args.new), 
                                      force=args.force)
         except Exception as inst:

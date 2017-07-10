@@ -108,8 +108,8 @@ class Tetrad(object):
 
     def __init__(self,
         name, 
+        seqfile=None,  
         workdir="analysis-tetrad",
-        seqfile=None, 
         mapfile=None, 
         method='all', 
         guidetreefile=None, 
@@ -119,6 +119,8 @@ class Tetrad(object):
         initarr=True, 
         load=False,
         quiet=False,
+        profile="default",
+        cluster_id="",
         *args, 
         **kwargs):
 
@@ -133,14 +135,24 @@ class Tetrad(object):
 
         ## store default cluster information 
         self._ipcluster = {
-            "cluster_id" : "",
-            "profile" : "default", 
-            "engines" : "Local", 
-            "quiet" : 0, 
-            "timeout" : 60, 
-            "cores" : 0}
+            "cluster_id": cluster_id,
+            "profile": profile,
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0}
 
-        ## Sampling method attributes
+        ## Sampling method attributes (not yet implemented as params)
+        self.params = Params()
+        self.params.method = method
+        self.params.nboots = nboots
+        self.params.nquartets = nquartets
+
+        ## private attributes
+        self._chunksize = 0
+        self._resolve = resolve
+
+        ## current implement of params
         self.method = method
         self.nboots = nboots
         self.nquartets = nquartets
@@ -164,7 +176,7 @@ class Tetrad(object):
         self.files.mapfile = mapfile
         self.files.guidetreefile = guidetreefile
         self.files.qdump = None
-        self.files.stats = None
+        self.files.stats = None #os.path.join(self.dirs, self.name+"_stats.txt")
 
         ## store tree file paths (init as None)
         self.trees = Params()
@@ -226,7 +238,8 @@ class Tetrad(object):
             if oldfile:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
-        ## reinit
+
+        ## reinit the tetrad object data.
         self.__init__(
             name=self.name, 
             seqfile=self.files.seqfile, 
@@ -239,12 +252,15 @@ class Tetrad(object):
             nquartets=self.nquartets, 
             initarr=True, 
             quiet=True,
+            profile=self._ipcluster["profile"],
+            cluster_id=self._ipcluster["cluster_id"],
+            cli=self.kwargs.get("cli")
             )
 
 
 
     def _parse_names(self):
-        ## parse samples from the sequence file
+        """ parse sample names from the sequence file"""
         self.samples = []
         with iter(open(self.files.seqfile, 'r')) as infile:
             infile.next().strip().split()
@@ -737,11 +753,10 @@ class Tetrad(object):
             ## get consensus, map values to tree edges, record stats file
             self._compute_tree_stats(ipyclient)
             ## print bootstrap info
-            print(BOOTTREES.format(opr(self.trees.cons),
-                                   opr(self.trees.boots))) 
+            print(BOOTTREES.format(opr(self.trees.cons), opr(self.trees.boots))) 
 
         ## print the ASCII tree only if its small
-        if len(self.samples) < 50:
+        if len(self.samples) < 20:
             if self.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
                 wctre.ladderize()
@@ -868,48 +883,55 @@ class Tetrad(object):
     ########################################################################
     ## Main functions
     ########################################################################
-    def run(self, force=0, quiet=0, ipyclient=None):
+    def run(self, force=0, verbose=2, ipyclient=None):
         """ 
         Run quartet inference on a SNP alignment and distribute work
         across an ipyparallel cluster (ipyclient). Unless passed an 
         ipyclient explicitly, it looks for a running ipcluster instance
-        running from the "default" profile, and will raise an exception
-        if one is not found within a set time limit. Parameter settings
-        influencing the run (e.g., nquartets, sampling method) should
+        running from the defautl ("") profile, and will raise an exception
+        if one is not found within a set time limit. If not using the default
+        profile then you can set "profile" as an argument to the tetrad object. 
+        Parameter settings influencing the run (e.g., nquartets, method) should
         be set on the tetrad Class object itself. 
 
         Parameters
         ----------
-        quiet (bool):
-            No printing to stdout (not yet fully supported)
+        force (bool):
+            Overwrite results for an object with this name if they exist.
+        verbose (int):
+            0=print nothing, 1=print progress bars, 2=print progress bars and
+            print cluster info. 
         ipyclient (ipyparallel.Client object):
             Default is None (use running Default ipcluster instance). To use
             a different ipcluster instance start a Client class object 
             and pass it in as an argument here. 
         """
 
+        ## clear object results and data if force=True
+        if force:
+            self.refresh()
+
         ## wrap everything in a try statement so we can ensure that it will
         ## save if interrupted and we will clean up the 
         try:
-            ## find an ipcluster instance
+            ## find an ipcluster instance (looks for default unless profile)
             if not ipyclient:
                 ipyclient = ip.core.parallel.get_client(**self._ipcluster)
 
             ## print a message about the cluster status
-            if not quiet:
-                print(ip.cluster_info(ipyclient))
+            if verbose == 2:
+                ip.cluster_info(ipyclient)
 
             ## grab 2 engines from each host (2 multi-thread jobs per host)
-            rdict = ipyclient[:].apply(socket.gethostname).get_dict()
-            hosts = set(rdict.values())
-            hostdict = {host: [i for i in rdict if rdict[i] == host] for host in hosts}
-            targets = list(itertools.chain(*[hostdict[i][:2] for i in hostdict]))
+            ## skips over engines that are busy running something else to avoid
+            ## blocking if user is sharing an ipcluster.
+            targets = get_targets(ipyclient)
             lbview = ipyclient.load_balanced_view(targets=targets)
 
             ## get or init quartet sampling ---------------------------
             ## if load=True then chunksize will exist and this will skip
             if not self._chunksize:
-                self.nquartets = n_choose_k(len(self.samples), 4)
+                #self.nquartets = n_choose_k(len(self.samples), 4)
                 ## store N sampled quartets into the h5 array
                 if self.method != 'equal':
                     self._store_N_samples(ncpus=len(lbview))
@@ -919,24 +941,36 @@ class Tetrad(object):
             ## calculate invariants for the full array ----------------
             start = time.time()            
             if not self.trees.tree:
-                print("inferring {} induced quartet trees".format(self.nquartets))
-                self.inference(start, lbview)
-                print("")
+                if verbose:
+                    print("inferring {} induced quartet trees".format(self.nquartets))
+                self._inference(start, lbview, quiet=verbose == 0)
+                if verbose:
+                    print("")
+            else:
+                if verbose:
+                    print("initial tree already inferred")
 
             ## calculate for bootstraps -------------------------------            
             start = time.time()
-            while self.checkpoint.boots < self.nboots:
-                if self.files.mapfile:
-                    self._sample_bootseq_array_map()
+            if self.nboots:
+                if self.checkpoint.boots == self.nboots:
+                    if verbose:
+                        print("{} bootstrap trees already inferred".format(self.nboots))
                 else:
-                    self._sample_bootseq_array() 
+                    while self.checkpoint.boots < self.nboots:
+                        ## resample bootsstrap seqarray
+                        if self.files.mapfile:
+                            self._sample_bootseq_array_map()
+                        else:
+                            self._sample_bootseq_array() 
 
-                ## start boot inference, (1-indexed !!!)
-                self.checkpoint.boots += 1
-                self.inference(start, lbview)
+                        ## start boot inference, (1-indexed !!!)
+                        self.checkpoint.boots += 1
+                        self._inference(start, lbview, quiet=verbose == 0)
+                if verbose:
+                    print("")
 
-            ## write outputs with bootstraps
-            print("")
+            ## write outputs with bootstraps ---------------------------
             self.files.stats = os.path.join(self.dirs, self.name+"_stats.txt")
             if not self.kwargs.get("cli"):
                 self._compute_tree_stats(ipyclient)
@@ -990,11 +1024,7 @@ class Tetrad(object):
 
 
 
-    ## TODO: THis can be reworked to send chunks and have the engines read 
-    ## in the data instead of sending the array of data to the engine. Just
-    ## make sure to purge the engine memory when finished. This will simplify
-    ## task farming so we can send all the tasks at once. 
-    def inference(self, start, lbview):
+    def _inference(self, start, lbview, quiet=False):
         """ 
         Inference sends slices of jobs to the parallel engines for computing
         and collects the results into the output hdf5 array as they finish. 
@@ -1020,19 +1050,23 @@ class Tetrad(object):
         ## initial progress bar
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
         if not self.checkpoint.boots:
-            progressbar(1, 0, 
-                " initial tree | {} | ".format(elapsed), spacer=0)
+            printstr = " initial tree | {} | "
+            if not quiet:
+                progressbar(1, 0, printstr.format(elapsed), spacer=0)
+                
         else:
-            progressbar(self.nboots, self.checkpoint.boots, 
-                " boot {:<7} | {} | ".format(self.checkpoint.boots, elapsed), 
-                spacer=0)
+            printstr = " boot {:<7} | {} | "
+            if not quiet:
+                progressbar(self.nboots, self.checkpoint.boots, 
+                    printstr.format(self.checkpoint.boots, elapsed), spacer=0)
 
-        ## distribute jobs across nodes
+        ## submit all jobs to be distributed across nodes
         res = {}
         for _ in xrange(njobs):
             ## get chunk of quartet samples and send to a worker engine
             qidx = jobiter.next()
             LOGGER.info('submitting chunk: %s', qidx)
+            #res[qidx] = lbview.apply(nworker, *[self, qidx, TESTS])
             with h5py.File(self.database.input, 'r') as inh5:
                 smps = inh5["samples"][qidx:qidx+self._chunksize]
                 res[qidx] = lbview.apply(nworker, *[self, smps, TESTS])
@@ -1079,16 +1113,17 @@ class Tetrad(object):
             ## print progress unless bootstrapping, diff progbar for that.
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             if not self.checkpoint.boots:
-                progressbar(njobs, done, 
-                    " initial tree | {} | ".format(elapsed), spacer=0)
+                if not quiet:
+                    progressbar(njobs, done, printstr.format(elapsed), spacer=0)
             else:
-                progressbar(self.nboots, self.checkpoint.boots, 
-                    " boot {:<7} | {} | ".format(self.checkpoint.boots, elapsed), 
-                    spacer=0)
+                if not quiet:
+                    progressbar(self.nboots, self.checkpoint.boots, 
+                        printstr.format(self.checkpoint.boots, elapsed), 
+                        spacer=0)
 
             ## done is counted on finish, so this means we're done
             if njobs == done:
-               break
+                break
 
         ## dump quartets to a file
         self._dump_qmc()
@@ -1101,6 +1136,32 @@ class Tetrad(object):
 
         ## reset the checkpoint_arr
         self.checkpoint.arr = 0
+
+
+
+def get_targets(ipyclient):
+    """ 
+    A function to find 2 engines per hostname on the ipyclient.
+    We'll assume that the CPUs are hyperthreaded, which is why
+    we grab two. If they are not then no foul. Two multi-threaded
+    jobs will be run on each of the 2 engines per host.
+    """
+    ## fill hosts with async[gethostname] 
+    hosts = []
+    for eid in ipyclient.ids:
+        engine = ipyclient[eid]
+        if not engine.outstanding:
+            hosts.append(engine.apply(socket.gethostname))
+
+    ## capture results of asyncs
+    hosts = [i.get() for i in hosts]
+    hostset = set(hosts)
+    hostzip = zip(hosts, ipyclient.ids)
+    hostdict = {host: [i[1] for i in hostzip if i[0] == host] for host in hostset}
+    targets = list(itertools.chain(*[hostdict[i][:2] for i in hostdict]))
+
+    ## return first two engines from each host
+    return targets
 
 
 
@@ -1117,54 +1178,31 @@ def compute_tree_stats(self, ipyclient):
 
     ## get majority rule consensus tree of weighted Q bootstrap trees
     if self.nboots:
+        
+        ## Tree object
         fulltre = ete3.Tree(self.trees.tree, format=0)
-        #fulltre = toytree.tree(self.trees.tree, format=0)
-        #[toytree.tree(i.strip(), format=0).tree for i in inboots.readlines()]
+        fulltre.unroot()
+
+        ## only grab as many boots as the last option said was max
         with open(self.trees.boots, 'r') as inboots:
-            ## only grab as many boots as the last option said was max
             bb = [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
             wboots = [fulltre] + bb[-self.nboots:]
-        ## infer consensus            
+        
+        ## infer consensus tree and write to file
         wctre, wcounts = consensus_tree(wboots, names=names)
         self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
         with open(self.trees.cons, 'w') as ocons:
             ocons.write(wctre.write(format=0))
+    else:
+        wctre = ete3.Tree(self.trees.tree, format=0)
+        wctre.unroot()
 
     ## build stats file and write trees
     self.trees.nhx = os.path.join(self.dirs, self.name + ".nhx")
     with open(self.files.stats, 'w') as ostats:
 
         ## print Tetrad info
-        ostats.write("## Analysis info\n")
-        ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
-        ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
-        ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.seqfile))
-        ostats.write("{:<30}  {:<20}\n".format("Map_file", self.files.mapfile))
-        used_treefile = [self.files.guidetreefile if self.method == 'equal' else None][0]
-        ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
-        ostats.write("\n")
-
-        ## get Tetrad stats
-        ostats.write("## quartet statistics (coming soon!!)\n")
-        ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
-        proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
-        ostats.write("{:<30}  {:<20.1f}\n".format("percent_sampled_of_total", proportion))
-        mean_loci = 0
-        mean_snps = 0
-        mean_weight = 0
-        mean_dstat = 0
-        ostats.write("{:<30}  {:<20}\n".format("Mean_N_loci_per_split", mean_loci))
-        ostats.write("{:<30}  {:<20}\n".format("Mean_SNPs_per_split", mean_snps))
-        ostats.write("{:<30}  {:<20}\n".format("Mean_quartet_weight", mean_weight))
-        ostats.write("{:<30}  {:<20}\n".format("Mean_abba_baba", mean_dstat))
-        ostats.write("\n")
-
-        ## print tree output files info
-        ostats.write("## Tree files\n")
-        ostats.write("{:<30}  {:<20}\n".format("Initial_tree", self.trees.tree))
-        ostats.write("{:<30}  {:<20}\n".format("bootstrap_replicates", self.trees.boots))
-        ostats.write("{:<30}  {:<20}\n".format("extended_majrule_consens", self.trees.cons))            
-        ostats.write("\n")
+        #ostats.write(STATS_STRING.format(**self.stats))
 
         ## print bootstrap splits
         if self.nboots:
@@ -1178,19 +1216,20 @@ def compute_tree_stats(self, ipyclient):
             ostats.write("\n")
 
     ## parallelized this function because it can be slogging
-    #ipyclient = ip.core.parallel.get_client(**self._ipcluster)
     lbview = ipyclient.load_balanced_view()
     
     ## store results in dicts
     qtots = {}
     qsamp = {}
-    tots = set(wctre.get_leaf_names())
+    tots = sum(1 for i in wctre.iter_leaves())
+    totn = set(wctre.get_leaf_names())
+
     ## iterate over node traversal. 
     for node in wctre.traverse():
         ## this is slow, needs to look at every sampled quartet
         ## so we send it be processed on an engine
         qtots[node] = lbview.apply(_get_total, *(tots, node))
-        qsamp[node] = lbview.apply(_get_sampled, *(self, tots, node, names))
+        qsamp[node] = lbview.apply(_get_sampled, *(self, totn, node))
 
     ## wait for jobs to finish
     ipyclient.wait()
@@ -1201,7 +1240,7 @@ def compute_tree_stats(self, ipyclient):
         total = qtots[node].result()
         sampled = qsamp[node].result()
         ## store the results to the tree            
-        node.add_feature("quartets_possible", total)
+        node.add_feature("quartets_total", total)
         node.add_feature("quartets_sampled", sampled)
     features = ["quartets_total", "quartets_sampled"]
 
@@ -1589,7 +1628,7 @@ def resolve_ambigs(tmpseq):
 
 
 
-@numba.jit(nopython=True)#, cache=True)
+@numba.jit(nopython=True)
 def get_spans(maparr, spans):
     """ get span distance for each locus in original seqarray """
     ## start at 0, finds change at 1-index of map file
@@ -1648,8 +1687,6 @@ def fill_boot(seqarr, newboot, newmap, spans, loci):
 
     ## return the concatenated cols
     return newboot, newmap
-
-
 
 
 
@@ -1860,39 +1897,105 @@ def _build_trees(fclade_counts, namedict):
 
     
 
+#def _get_total(tots, node):
+#    """ get total number of quartets possible for a split """
+#    down = set(node.get_leaf_names())
+#    up = tots - down
+#    return n_choose_k(len(down), 2) * n_choose_k(len(up), 2)
+ 
+
 def _get_total(tots, node):
-    """ get total number of quartets possible for a split """
-    down = set(node.get_leaf_names())
-    up = tots - down
-    return n_choose_k(len(down), 2) * n_choose_k(len(up), 2)
+    """ get total number of quartets possible for a split"""
+    if (node.is_leaf() or node.is_root()):
+        return 0
+    else:
+        ## get counts on down edges
+        down_r, down_l = node.children
+        lendr = sum(1 for i in down_r.iter_leaves())
+        lendl = sum(1 for i in down_l.iter_leaves())
+
+        ## get count on up edge sister
+        up_r = node.get_sisters()[0]
+        lenur = sum(1 for i in up_r.iter_leaves())
+
+        ## everyone else
+        lenul = tots - (lendr + lendl + lenur)
+
+        ## return product
+        return lendr * lendl * lenur * lenul
+
+
+
+def _get_sampled(data, totn, node):
+    """ get total number of quartets possible for a split"""
+    ## convert tip names to ints
+    names = sorted(totn)
+    cdict = {name: idx for idx, name in enumerate(names)}
     
+    ## skip some nodes
+    if (node.is_leaf() or node.is_root()):
+        return 0
+    else:
+        ## get counts on down edges
+        down_r, down_l = node.children
+        lendr = set(cdict[i] for i in down_r.get_leaf_names())
+        lendl = set(cdict[i] for i in down_l.get_leaf_names())
 
-    
-def _get_sampled(data, tots, node, names):
-    """ get how many quartets were sampled that are informative for a split"""
-    ## get leaves up and down
-    down = set(node.get_leaf_names())
-    up = tots - down
+        ## get count on up edge sister
+        up_r = node.get_sisters()[0]
+        lenur = set(cdict[i] for i in up_r.get_leaf_names())
 
-    ## get up and down as index
-    idxd = set([names.index(i) for i in down])
-    idxu = set([names.index(i) for i in up])
+        ## everyone else
+        lenul = set(cdict[i] for i in totn - set.union(lendr, lendl, lenur))
 
-    ## find how many sampled quartets span each edge
-    sampled = 0
-
-    ## do chunks at a time in case qrts is huge
     idx = 0
+    sampled = 0
     with h5py.File(data.database.output, 'r') as io5:
-        qrts = io5["quartets"][idx:idx+data._chunksize]
-        for qrt in qrts:
-            sqrt = set(qrt)
-            if len(sqrt.intersection(idxd)) > 1:
-                if len(sqrt.intersection(idxu)) > 1:
-                    sampled += 1
-            idx += data._chunksize
+        end = io5["quartets"].shape[0]
+        while 1:
+            ## break condition
+            if idx >= end:
+                break
 
+            ## counts matches
+            qrts = io5["quartets"][idx:idx+data._chunksize]
+            for qrt in qrts:
+                sqrt = set(qrt)
+                if all([sqrt.intersection(i) for i in [lendr, lendl, lenur, lenul]]):
+                    sampled += 1
+
+            ## increase span
+            idx += data._chunksize
     return sampled
+
+
+
+    
+# def _get_sampled(data, tots, node, names):
+#     """ get how many quartets were sampled that are informative for a split"""
+#     ## get leaves up and down
+#     down = set(node.get_leaf_names())
+#     up = tots - down
+
+#     ## get up and down as index
+#     idxd = set([names.index(i) for i in down])
+#     idxu = set([names.index(i) for i in up])
+
+#     ## find how many sampled quartets span each edge
+#     sampled = 0
+
+#     ## do chunks at a time in case qrts is huge
+#     idx = 0
+#     with h5py.File(data.database.output, 'r') as io5:
+#         qrts = io5["quartets"][idx:idx+data._chunksize]
+#         for qrt in qrts:
+#             sqrt = set(qrt)
+#             if len(sqrt.intersection(idxd)) > 1:
+#                 if len(sqrt.intersection(idxu)) > 1:
+#                     sampled += 1
+#             idx += data._chunksize
+
+#     return sampled
 
 
 
@@ -1921,9 +2024,54 @@ ASCII_TREE = """\
 """
 
 LINKS = """\
-* For tips on plotting trees: {}     
-* For tips on citing this software: {} 
+* For tree plotting see: {}     
+* To cite this software see: {} 
 """
+
+STATS_STRING = """\
+## tetrad analysis info
+version: {version}
+date: {date}
+name: {name}
+seqfile: {seqfile}
+mapfile: {mapfile}
+guidetree: {guidetree}
+
+## tetrad analysis stats
+N_sampled_quartets: {n_quartets}
+proportion_sampled: {prop}
+"""
+
+# ostats.write("## Analysis info\n")
+# ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
+# ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
+# ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.seqfile))
+# ostats.write("{:<30}  {:<20}\n".format("Map_file", self.files.mapfile))
+# used_treefile = [self.files.guidetreefile if self.method == 'equal' else None][0]
+# ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
+# ostats.write("\n")
+
+# ## get Tetrad stats
+# ostats.write("## quartet statistics (coming soon!!)\n")
+# ostats.write("{:<30}  {:<20}\n".format("N_sampled_quartets", self.nquartets))
+# proportion = 100*(self.nquartets / float(n_choose_k(len(self.samples), 4)))
+# ostats.write("{:<30}  {:<20.1f}\n".format("percent_sampled_of_total", proportion))
+# mean_loci = 0
+# mean_snps = 0
+# mean_weight = 0
+# mean_dstat = 0
+# ostats.write("{:<30}  {:<20}\n".format("Mean_N_loci_per_split", mean_loci))
+# ostats.write("{:<30}  {:<20}\n".format("Mean_SNPs_per_split", mean_snps))
+# ostats.write("{:<30}  {:<20}\n".format("Mean_quartet_weight", mean_weight))
+# ostats.write("{:<30}  {:<20}\n".format("Mean_abba_baba", mean_dstat))
+# ostats.write("\n")
+
+# ## print tree output files info
+# ostats.write("## Tree files\n")
+# ostats.write("{:<30}  {:<20}\n".format("Initial_tree", self.trees.tree))
+# ostats.write("{:<30}  {:<20}\n".format("bootstrap_replicates", self.trees.boots))
+# ostats.write("{:<30}  {:<20}\n".format("extended_majrule_consens", self.trees.cons))            
+# ostats.write("\n")
 
 ########################################################################
 ## JUNK

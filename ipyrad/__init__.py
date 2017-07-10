@@ -62,27 +62,9 @@ if __loglevel__ == "DEBUG":
     _LOGGER.debug("Engine init")
 
 
-
-def cluster_info(
-    client=None, 
-    cluster_id="", 
-    profile="default",
-    engines="Local", 
-    timeout=60, 
-    cores=0, 
-    quiet=True,
-    spacer=0,
-    **kwargs):
-    """ report info on the ipcluster instance """  
-
-    ## get the client
-    if not client:
-        ipyclient = _get_client(cluster_id, profile, 
-                                engines, timeout, cores, quiet)
-    else:
-        ipyclient = client
-
-    ## get engine data, skips busy engines.
+def cluster_info(ipyclient, spacer=""):
+    """ reports host and engine info for an ipyclient """    
+    ## get engine data, skips busy engines.    
     hosts = []
     for eid in ipyclient.ids:
         engine = ipyclient[eid]
@@ -92,20 +74,10 @@ def cluster_info(
     ## report it
     hosts = [i.get() for i in hosts]
     result = []
-    if spacer:
-        spacer = " " * spacer
-    elif not __interactive__:
-        spacer = "  "
-    else:
-        spacer = ""
     for hostname in set(hosts):
-        result.append(spacer+"host compute node: [{} cores] on {}"\
-                      .format(hosts.count(hostname), hostname))
-
-    ## clean up if engine was started just for the report
-    if not client:
-        ipyclient.close()
-    return "\n".join(result)
+        result.append("{}host compute node: [{} cores] on {}"\
+            .format(spacer, hosts.count(hostname), hostname))
+    print "\n".join(result)
 
 
 

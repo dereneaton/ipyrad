@@ -576,7 +576,7 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(10, 0, " {}     | {} | s3 |"\
-                .format(PRINTSTR["derep_concat_split"], elapsed))
+        .format(PRINTSTR["derep_concat_split"], elapsed), spacer=data._spacer)
 
     ## TODO: for HPC systems this should be done to make sure targets are spread
     ## among different nodes.
@@ -635,7 +635,7 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     ## we only print the first error message.
     sfailed = set()
     for funcstr in joborder + ["muscle_align", "reconcat"]:
-        errfunc, sfails, msgs = trackjobs(funcstr, results)
+        errfunc, sfails, msgs = trackjobs(funcstr, results, spacer=data._spacer)
         if errfunc:
             for sidx in xrange(len(sfails)):
                 sname = sfails[sidx]
@@ -782,7 +782,7 @@ def _plot_dag(dag, results, snames):
 
 
 
-def trackjobs(func, results):
+def trackjobs(func, results, spacer):
     """
     Blocks and prints progress for just the func being requested from a list
     of submitted engine jobs. Returns whether any of the jobs failed.
@@ -800,8 +800,8 @@ def trackjobs(func, results):
         ## how many of this func have finished so far
         ready = [i[1].ready() for i in asyncs]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready),
-                    " {}     | {} | s3 |".format(PRINTSTR[func], elapsed))
+        printstr = " {}     | {} | s3 |".format(PRINTSTR[func], elapsed)
+        progressbar(len(ready), sum(ready), printstr, spacer=spacer)
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")

@@ -390,14 +390,14 @@ def submit(data, subsamples, ipyclient):
     ## wrap in a try statement so that stats are saved for finished samples.
     ## each job is submitted to cleanup as it finishes
     start = time.time() 
+    printstr = " inferring [H, E]      | {} | s4 |"
     try:
         kbd = 0
         ## wait for jobs to finish
         while 1:
             fin = [i.ready() for i in jobs.values()]
             elapsed = datetime.timedelta(seconds=int(time.time() - start))
-            progressbar(len(fin), sum(fin), 
-                " inferring [H, E]      | {} | s4 |".format(elapsed))
+            progressbar(len(fin), sum(fin), printstr.format(elapsed), spacer=data._spacer)
             time.sleep(0.1)
             if len(fin) == sum(fin):
                 print("")

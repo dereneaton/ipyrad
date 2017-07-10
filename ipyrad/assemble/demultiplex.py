@@ -213,7 +213,22 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
     getbarcode = get_barcode_func(data, longbar)
 
     ## get quart iterator of reads
-    quarts = get_quart_iter(tups)
+    if tups[0].endswith(".gz"):
+        ofunc = gzip.open
+    else:
+        ofunc = open
+
+    ## create iterators 
+    ofile1 = ofunc(tups[0], 'r')
+    fr1 = iter(ofile1) 
+    quart1 = itertools.izip(fr1, fr1, fr1, fr1)
+    if tups[1]:
+        ofile2 = ofunc(tups[1], 'r')
+        fr2 = iter(ofile2)  
+        quart2 = itertools.izip(fr2, fr2, fr2, fr2)
+        quarts = itertools.izip(quart1, quart2)
+    else:
+        quarts = itertools.izip(quart1, iter(int, 1))
 
     ## go until end of the file
     while 1:
@@ -362,7 +377,17 @@ def get_quart_iter(tups):
         quart2 = itertools.izip(fr2, fr2, fr2, fr2)
         quarts = itertools.izip(quart1, quart2)
     else:
+        ofile2 = 0
         quarts = itertools.izip(quart1, iter(int, 1))
+
+    ## make a generator
+    def feedme(quarts):
+        for quart in quarts:
+            yield quart
+    genquarts = feedme(quarts)
+
+    ## return generator and handles
+    return genquarts, ofile1, ofile2
 
 
 
@@ -548,6 +573,24 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
 
 
 
+def writetofastq(data, dsort, read):
+    """ 
+    Writes sorted data 'dsort dict' to a tmp files
+    """
+    if read == 1:
+        rrr = "R1"
+    else:
+        rrr = "R2"
+
+    for sname in dsort:
+        ## skip writing if empty. Write to tmpname
+        handle = os.path.join(data.dirs.fastqs, 
+                "{}_{}_.fastq".format(sname, rrr))
+        with open(handle, 'a') as out:
+            out.write("".join(dsort[sname]))
+
+
+
 def writetofile(data, dsort, read, pid):
     """ 
     Writes sorted data 'dsort dict' to a tmp files
@@ -563,6 +606,30 @@ def writetofile(data, dsort, read, pid):
                 "tmp_{}_{}_{}.fastq".format(sname, rrr, pid))
         with open(handle, 'a') as out:
             out.write("".join(dsort[sname]))
+
+
+
+def new_collate_files(data, sname, tmp1s, tmp2s):
+    
+    ## outfile handle (before gzip)
+    out1 = os.path.join(data.dirs.fastqs, "{}_R1_.fastq".format(sname))
+
+    ## build command
+    cmd1 = ["cat"]
+    for tmpfile in tmp1s:
+        cmd1 += tmpfile
+
+    ## run concat command
+    proc = sps.Popen(cmd1, stderr=sps.PIPE, stdout=out)
+    proc.communicate()
+
+    ## run compression on the file
+    ## first look to see if pigz is available
+    proc = sps.Popen(['which', 'pigz'], stderr=sps.PIPE, stdout=sps.PIPE).communicate()
+    if proc[0].strip():
+        compress = ["pigz", "-p", "4"]
+    else:
+        compress = ["gzip"]
 
 
 
@@ -659,7 +726,7 @@ def prechecks2(data, force):
     ## create fastq dir
     data.dirs.fastqs = opj(pdir, data.name+"_fastqs")
     if os.path.exists(data.dirs.fastqs) and force:
-        print(OVERWRITING_FASTQS.format(data.dirs.fastqs))
+        print(OVERWRITING_FASTQS)#.format(data.dirs.fastqs))
         shutil.rmtree(data.dirs.fastqs)
     if not os.path.exists(data.dirs.fastqs):
         os.mkdir(data.dirs.fastqs)
@@ -797,7 +864,7 @@ def prechecks(data, preview, force):
         os.mkdir(project_dir)
     data.dirs.fastqs = os.path.join(project_dir, data.name+"_fastqs")
     if os.path.exists(data.dirs.fastqs) and force:
-        print(OVERWRITING_FASTQS.format(data.dirs.fastqs))
+        print(OVERWRITING_FASTQS)#.format(data.dirs.fastqs))
         shutil.rmtree(data.dirs.fastqs)
     if not os.path.exists(data.dirs.fastqs):
         os.mkdir(data.dirs.fastqs)
@@ -1000,6 +1067,45 @@ def run2(data, ipyclient, force):
             _cleanup_and_die(data)
 
 
+def run3(data, ipyclient, force):
+    """
+    One input file (or pair) is run on two processors, one for reading 
+    and decompressing the data, and the other for demuxing it.
+    """
+
+    ## get file handles, name-lens, cutters, and matchdict
+    raws, longbar, cutters, matchdict = prechecks2(data, force)
+
+    ## wrap funcs to ensure we can kill tmpfiles
+    kbd = 0
+    try:
+        ## send chunks to be demux'd
+        args = (data, raws, cutters, longbar, matchdict, ipyclient)
+        statdicts = demux3(*args)
+
+        ## build stats from dictionaries
+        perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts
+        make_stats(data, perfile, fsamplehits, fbarhits, fmisses, fdbars)
+
+
+    except KeyboardInterrupt:
+        print("\n  ...interrupted, just a second while we ensure proper cleanup")
+        kbd = 1
+        raise
+
+    ## cleanup
+    finally:
+        ## cleaning up the tmpdir is safe from ipyclient
+        tmpdir = os.path.join(data.paramsdict["project_dir"], "tmp-chunks-"+data.name)
+        if os.path.exists(tmpdir):
+            shutil.rmtree(tmpdir)
+
+        if kbd:
+            raise KeyboardInterrupt("s1")
+        else:
+            _cleanup_and_die(data)
+
+
 
 def _cleanup_and_die(data):
     """ cleanup func for step 1 """
@@ -1038,13 +1144,12 @@ def splitfiles(data, raws, ipyclient):
         ## if number of lines is > 20M then just submit it
         if nosplit:
             chunkfiles[handle] = [tups]
-            #chunkfiles[fidx] = [tups]
         else:
             ## chunk the file using zcat_make_temps
             chunklist = zcat_make_temps(data, tups, fidx, tmpdir, optim, njobs, start)
             chunkfiles[handle] = chunklist
-            #chunkfiles[fidx] = chunklist
-    #print("")
+    if not nosplit:
+        print("")
 
     return chunkfiles
 
@@ -1055,9 +1160,10 @@ def concat_chunks(data, ipyclient):
 
     ## collate files progress bar
     start = time.time()
+    printstr = ' writing/compressing   | {} | s1 |'
     lbview = ipyclient.load_balanced_view()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, ' writing/compressing   | {} | s1 |'.format(elapsed))            
+    progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer) 
     ## get all the files
     ftmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.fastq"))
 
@@ -1088,8 +1194,7 @@ def concat_chunks(data, ipyclient):
     while 1:
         ready = [i.ready() for i in writers]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(total, sum(ready), 
-                    ' writing/compressing   | {} | s1 |'.format(elapsed))            
+        progressbar(total, sum(ready), printstr.format(elapsed), spacer=data._spacer) 
         time.sleep(0.1)
         if all(ready):
             print("")
@@ -1097,11 +1202,149 @@ def concat_chunks(data, ipyclient):
 
 
 
+def demux3(data, rawfiles, cutters, longbar, matchdict):
+
+    ## store counters
+    chunksize = int(1e6)
+    perfile = {}
+    #start = time.time()
+
+    ## choose func for finding barcode
+    if longbar[1] == 'same':
+        if data.paramsdict["datatype"] == '2brad':
+            def getbarcode(_, read1, longbar):
+                """ find barcode for 2bRAD data """
+                return read1[1][-longbar[0]:]
+        else:
+            def getbarcode(_, read1, longbar):
+                """ finds barcode for invariable length barcode data """
+                return read1[1][:longbar[0]]
+    else:
+        def getbarcode(cutters, read1, longbar):
+            """ finds barcode for variable barcode lengths"""
+            return findbcode(cutters, longbar, read1)    
+
+    ## start streaming data in 
+    for rawtup in rawfiles:
+
+        ## get the read generator
+        handle = rawtup[0].rsplit("/", 1)[1]
+        filestat = np.zeros(3)
+        gen, handle1, handle2 = get_quart_iter(rawtup)
+
+        ## dictionaries to store hits samples and barcodes, and misses.
+        samplehits = {}
+        barhits = {}
+        misses = {"_": 0}
+        dsort1 = {} 
+        dsort2 = {} 
+        dbars = {} 
+        for sname in data.barcodes:
+            samplehits[sname] = 0
+            dsort1[sname] = []
+            dsort2[sname] = []
+            dbars[sname] = set()
+        for barc in matchdict:
+            barhits[barc] = 0
+
+        ## iterate over the file 
+        for read1, read2 in gen:
+            filestat[0] += 1
+
+            ## Parse barcode. Use the parsing function selected above.
+            if '3rad' in data.paramsdict["datatype"]:
+                barcode1 = find3radbcode(cutters=cutters, longbar=longbar, read1=read1)
+                barcode2 = find3radbcode(cutters=cutters, longbar=(longbar[2], longbar[1]), read1=read2)
+                barcode = barcode1 + "+" + barcode2
+            else:
+                barcode = getbarcode(cutters, read1, longbar)
+            sname_match = matchdict.get(barcode)
+
+            if sname_match:
+                ## need to be lists to modify them
+                read1 = list(read1)
+                if read2:
+                    read2 = list(read2)
+
+                ## record the match
+                filestat[1] += 1
+                filestat[2] += 1
+                dbars[sname_match].add(barcode)
+                samplehits[sname_match] += 1
+                barhits[barcode] += 1
+                if barhits.get(barcode):
+                    barhits[barcode] += 1
+                else:
+                    barhits[barcode] = 1
+
+                ## trim off barcode
+                lenbar = len(barcode)
+                if data.paramsdict["datatype"] == "3rad":
+                    lenbar = len(barcode1)
+                if data.paramsdict["datatype"] == "2brad":
+                    read1[1] = read1[1][:-lenbar]
+                    read1[3] = read1[3][:-lenbar]
+                else:
+                    read1[1] = read1[1][lenbar:]
+                    read1[3] = read1[3][lenbar:]
+
+                ## trim barcode from R2 and more for 3rad
+                if data.paramsdict["datatype"] == "3rad":
+                    read2 = list(read2)
+                    read2[1] = read2[1][len(barcode2):]
+                    read2[3] = read2[3][len(barcode2):]
+
+                ## append to dsort
+                dsort1[sname_match].append("".join(read1))
+                if "pair" in data.paramsdict["datatype"]:
+                    dsort2[sname_match].append("".join(read2))
+
+            else:
+                ## did not match to a sample
+                misses["_"] += 1
+                ## but store that a barcode was observed
+                if barcode:
+                    filestat[1] += 1
+
+            ## write to file and clear dictionaries
+            if not filestat[0] % chunksize:
+                ## dump reads to file
+                writetofastq(data, dsort1, 1)
+                if 'pair' in data.paramsdict["datatype"]:
+                    writetofastq(data, dsort2, 2)
+                ## clear out dsorts
+                for sample in data.barcodes:
+                    dsort1[sample] = []
+                    dsort2[sample] = []
+
+        ## close open files
+        handle1.close()
+        if rawtup[1]:
+            handle2.close()
+        perfile[handle] = filestat
+
+        ## write the remaining reads to file
+        writetofastq(data, dsort1, 1)
+        if 'pair' in data.paramsdict["datatype"]:
+            writetofastq(data, dsort2, 2)
+
+    ## return stats in saved pickle b/c return_queue is too small
+    ## and the size of the match dictionary can become quite large
+    #samplestats = [samplehits, barhits, misses, dbars]
+    #outname = os.path.join(data.dirs.fastqs, "tmp_{}_{}.p".format(epid, fnum))
+    #with open(outname, 'w') as wout:
+    #    pickle.dump([filestat, samplestats], wout)
+    #return outname
+    return perfile, fsamplehits, fbarhits, fmisses, fdbars
+                     
+
+
 def demux2(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
     """ submit chunks to be sorted """
 
     ## parallel stuff
     start = time.time()
+    printstr = ' sorting reads         | {} | s1 |'
     lbview = ipyclient.load_balanced_view()
 
     ## store statcounters and async results in dicts
@@ -1140,8 +1383,7 @@ def demux2(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
         fin = [i for i, j in filesort.items() if j[1].ready()]
         #fin = [i for i in jobs if i[1].ready()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(total, done, 
-          ' sorting reads         | {} | s1 |'.format(elapsed))
+        progressbar(total, done, printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
 
         ## should we break?
@@ -1171,6 +1413,7 @@ def demux(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
 
     ## parallel stuff
     start = time.time()
+    printstr = ' sorting reads         | {} | s1 |'
     lbview = ipyclient.load_balanced_view()
 
     ## store statcounters and async results in dicts
@@ -1204,8 +1447,7 @@ def demux(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
         while 1:
             fin = [i for i, j in filesort.items() if j.ready()]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(total, done, 
-            ' sorting reads         | {} | s1 |'.format(elapsed))
+            progressbar(total, done, printstr.format(elapsed), spacer=data._spacer)
             time.sleep(0.1)
 
             ## should we break?
@@ -1227,8 +1469,9 @@ def demux(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
 
         ## keep tacking progreess during writing stage
         start = time.time()
+        printstr = ' writing/compressing   | {} | s1 |'
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(10, 0, ' writing/compressing   | {} | s1 |'.format(elapsed))
+        progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer)
 
 
     except KeyboardInterrupt:
@@ -1276,8 +1519,7 @@ def demux(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
         while 1:
             ready = [i.ready() for i in writers]
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(total, sum(ready), 
-                    ' writing/compressing   | {} | s1 |'.format(elapsed))            
+            progressbar(total, sum(ready), printstr.format(elapsed), spacer=data._spacer)  
             time.sleep(0.1)
             if all(ready):
                 print("")
@@ -1343,8 +1585,8 @@ def wrapped_run(data, preview, ipyclient, force):
     start = time.time()
 
     ## set up parallel client. Don't allow more than 10 processors here.
-    lbview = ipyclient.load_balanced_view()#threads=[:20])
-    limited = ipyclient.load_balanced_view(targets=ipyclient.ids[:10])
+    #lbview = ipyclient.load_balanced_view()
+    tiny = ipyclient.load_balanced_view(targets=ipyclient.ids[:4])
 
     ## Each engine will use os.getpid() to get its pid number and will
     ## only write to outfiles with that pid suffix
@@ -1382,6 +1624,7 @@ def wrapped_run(data, preview, ipyclient, force):
     ## chunkfiles[1] = [(a21,b21),(a22,b22),(a23,b23),(a24,b24)]    
     chunkfiles = {}
     start = time.time()
+    printstr = ' chunking large files  | {} | s1 |'
 
     for fidx, tups in enumerate(raws):
         ## if number of lines is > 20M then just submit it
@@ -1394,27 +1637,13 @@ def wrapped_run(data, preview, ipyclient, force):
             ## chunk the file using zcat_make_temps
             ## this can't really be parallelized unless I/O is parallelized, 
             ## we just pass it one engine so we can keep the timer counting
-            #async = ipyclient[0].apply(zcat_make_temps, 
-            #                           *(data, tups, fidx, tmpdir, optim))
             chunk = zcat_make_temps(data, tups, fidx, tmpdir, optim, start)
             chunkfiles[fidx] = chunk
-
-            ## get the chunk names
-            ## TODO: this progress bar could be improved to update when it finds
-            ## more files in the tmpdir, and count until the num it expects will
-            ## be created.
-            #while not async.ready():
-            #    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            #    progressbar(data.cpus, fidx, 
-            #        ' chunking large files  | {} | s1 |'.format(elapsed))        
-            #    time.sleep(0.1)
-            #chunkfiles[fidx] = async.result()
-            ## make an empty list for when we analyze this chunk
             filesort[fidx] = []
 
     ## finished
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 10, ' chunking large files  | {} | s1 |'.format(elapsed))        
+    progressbar(10, 10, printstr.format(elapsed), spacer=data._spacer)        
     print("")
 
     #####################################
@@ -1427,18 +1656,18 @@ def wrapped_run(data, preview, ipyclient, force):
         for tups in tuplist:
             LOGGER.info("tups %s", tups)
             args = [data, tups, cutters, longbar, matchdict, fidx]
-            filesort[fidx].append(limited.apply(barmatch, *args))
+            filesort[fidx].append(tiny.apply(barmatch, *args))
 
     ########################################
     ## collect finished results as they come
     ########################################    
     start = time.time()
+    printstr = ' sorting reads         | {} | s1 |'
     done = 0
     while 1:
         ## progress report
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(total, done, 
-        ' sorting reads         | {} | s1 |'.format(elapsed))
+        progressbar(total, done, printstr.format(elapsed), spacer=data._spacer)
 
         ## get the finished jobs
         for fidx in filesort.iterkeys():
@@ -1461,13 +1690,14 @@ def wrapped_run(data, preview, ipyclient, force):
             time.sleep(0.1)
 
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 10, ' sorting reads         | {} | s1 |'.format(elapsed))
+    progressbar(10, 10, printstr.format(elapsed), spacer=data._spacer)
     print("")
 
     ## collate files progress bar
     start = time.time()
+    printstr = ' writing/compressing   | {} | s1 |'
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, ' writing/compressing   | {} | s1 |'.format(elapsed))            
+    progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer)         
     ## get all the files
     ftmps = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.fastq"))
 
@@ -1494,15 +1724,12 @@ def wrapped_run(data, preview, ipyclient, force):
     for sname in data.barcodes:
         tmp1s = sorted(r1dict[sname])
         tmp2s = sorted(r2dict[sname])
-        #writers.append(ipyclient[0].apply(collate_files, *[data, sname, tmp1s, tmp2s]))
-        writers.append(lbview.apply(collate_files, 
-                       *[data, sname, tmp1s, tmp2s]))
+        writers.append(tiny.apply(collate_files, *[data, sname, tmp1s, tmp2s]))
 
     while 1:
         ready = [i.ready() for i in writers]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(total, sum(ready), 
-                    ' writing/compressing   | {} | s1 |'.format(elapsed))            
+        progressbar(total, sum(ready), printstr.format(elapsed), spacer=data._spacer) 
         time.sleep(0.1)
         if all(ready):
             print("")
@@ -1554,6 +1781,8 @@ def zcat_make_temps(data, raws, num, tmpdir, optim, njobs, start):
     so that each processor can work on a file in parallel.
     """
 
+    printstr = ' chunking large files  | {} | s1 |'
+
     ## split args
     tmpdir = os.path.realpath(tmpdir)
     LOGGER.info("zcat is using optim = %s", optim)
@@ -1583,8 +1812,7 @@ def zcat_make_temps(data, raws, num, tmpdir, optim, njobs, start):
             if not isinstance(proc3.poll(), int):
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 done = len(glob.glob(os.path.join(tmpdir, 'chunk1_*')))
-                progressbar(njobs, min(njobs, done),
-                    ' chunking large files  | {} | s1 |'.format(elapsed))
+                progressbar(njobs, min(njobs, done), printstr.format(elapsed), spacer=data._spacer)
                 time.sleep(0.1)
             else:
                 res = proc3.communicate()[0]
@@ -1613,8 +1841,7 @@ def zcat_make_temps(data, raws, num, tmpdir, optim, njobs, start):
                 if not isinstance(proc4.poll(), int):
                     elapsed = datetime.timedelta(seconds=int(time.time()-start))
                     done = len(glob.glob(os.path.join(tmpdir, 'chunk1_*')))
-                    progressbar(njobs, min(njobs, done),
-                        ' chunking large files  | {} | s1 |'.format(elapsed))
+                    progressbar(njobs, min(njobs, done), printstr.format(elapsed), data._spacer)
                     time.sleep(0.1)
                 else:
                     res = proc4.communicate()[0]
@@ -1640,8 +1867,7 @@ def zcat_make_temps(data, raws, num, tmpdir, optim, njobs, start):
         "R1 and R2 files are not the same length."
 
     ## ensure full progress bar b/c estimates njobs could be off
-    progressbar(10, 10, ' chunking large files  | {} | s1 |'.format(elapsed))
-
+    progressbar(10, 10, printstr.format(elapsed), spacer=data._spacer)
     return zip(chunks1, chunks2)
 
 
@@ -1658,9 +1884,8 @@ NO_RAWS = """\
     """
 
 OVERWRITING_FASTQS = """\
-    [force] overwriting fastq files previously *created by ipyrad* in:
-    {}
-    This does not affect your *original/raw data files*"""
+  [force] overwriting fastq files previously created by ipyrad.
+  This _does not_ affect your original/raw data files."""
 
 
 if __name__ == "__main__":
