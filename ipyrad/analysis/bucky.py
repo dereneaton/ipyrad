@@ -314,6 +314,7 @@ class Bucky(object):
                 break
 
 
+
     def _write_nex(self, mdict, nlocus):
         """ 
         function that takes a dictionary mapping names to sequences, 
@@ -354,6 +355,16 @@ class Bucky(object):
         minidir = os.path.realpath(os.path.join(self.workdir, self.name))
         trees1 = glob.glob(os.path.join(minidir, "*.run1.t"))
         trees2 = glob.glob(os.path.join(minidir, "*.run2.t"))
+
+        ## clear existing files 
+        existing = glob.glob(os.path.join(self.workdir, self.name, "*.sumt"))
+        if any(existing):
+            if force:
+                for rfile in existing:
+                    os.remove(rfile)
+            else:
+                path = os.path.join(self.workdir, self.name)
+                raise IPyradWarningExit(EXISTING_SUMT_FILES.format(path))
 
         ## load balancer
         lbview = ipyclient.load_balanced_view()
@@ -396,6 +407,16 @@ class Bucky(object):
         ## get all the nexus files for this object
         minidir = os.path.realpath(os.path.join(self.workdir, self.name))
         nexus_files = glob.glob(os.path.join(minidir, "*.nex"))
+
+        ## clear existing files 
+        existing = glob.glob(os.path.join(self.workdir, self.name, "*.nex"))
+        if any(existing):
+            if force:
+                for rfile in existing:
+                    os.remove(rfile)
+            else:
+                path = os.path.join(self.workdir, self.name)
+                raise IPyradWarningExit(EXISTING_NEX_FILES.format(path))
 
         ## load balancer
         lbview = ipyclient.load_balanced_view()
@@ -467,15 +488,20 @@ class Bucky(object):
         ## submit each to be processed
         asyncs = []
         for alpha in alphas:
-            args = [
-                alpha, 
-                self.params.bucky_nchains, 
-                self.params.bucky_nreps, 
-                self.params.bucky_niter, 
-                os.path.join(outroot, "CF-a"+str(alpha)),
-                infiles]
-            async = lbview.apply(_call_bucky, *args)
-            asyncs.append(async)
+            pathname = os.path.join(outroot, "CF-a"+str(alpha))
+            if (os.path.exists(pathname)) and (force!=True):
+                print("BUCKy results already exist for this object at alpha={}\n".format(alpha) +\
+                      "use force=True to overwrite existing results")
+            else:
+                args = [
+                    alpha, 
+                    self.params.bucky_nchains, 
+                    self.params.bucky_nreps, 
+                    self.params.bucky_niter, 
+                    pathname,
+                    infiles]
+                async = lbview.apply(_call_bucky, *args)
+                asyncs.append(async)
 
         ## track progress
         start = time.time()
@@ -608,6 +634,13 @@ EXISTING_NEX_FILES = """\
 Nexus files linked to this object (i.e., same workdir & name)
 already exist at {}. 
 To remove the existing files and write new nexus files use the
+argument force=True. 
+"""
+
+EXISTING_SUMT_FILES = """\
+Sumtree (sumt) files linked to this object (i.e., same workdir & name)
+already exist at {}. 
+To remove the existing files and write new sumt files use the
 argument force=True. 
 """
 
