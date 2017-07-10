@@ -9,6 +9,13 @@ Release Notes
 -----
 **July 10, 2017**
 
+- update conda recipe
+- update pysam to correct version
+
+0.7.2
+-----
+**July 10, 2017**
+
 - bucky cookbook up
 - bucky cookbook up
 - check multiple barcodes in samples that were merge of technical replicates
