@@ -15,7 +15,6 @@ build:
 requirements:
     build:
         - gcc
-        - gcc
         - zlib
         - bzip2
         - curl
