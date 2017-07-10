@@ -46,6 +46,9 @@ from ipyrad.assemble.util import IPyradWarningExit, progressbar, Params
 #numba.config.NUMBA_DEFAULT_NUM_THREADS = 1
 #numba.config.NUMBA_DISABLE_JIT = 1
 
+## also set the numpy threads using ctypes...
+## ...
+
 ## TOYTREE is required to run TETRAD
 try:
     ## when you have time go back and set attrubutes on toytrees
@@ -1052,13 +1055,13 @@ class Tetrad(object):
         if not self.checkpoint.boots:
             printstr = " initial tree | {} | "
             if not quiet:
-                progressbar(1, 0, printstr.format(elapsed), spacer=0)
+                progressbar(1, 0, printstr.format(elapsed), spacer="")
                 
         else:
             printstr = " boot {:<7} | {} | "
             if not quiet:
                 progressbar(self.nboots, self.checkpoint.boots, 
-                    printstr.format(self.checkpoint.boots, elapsed), spacer=0)
+                    printstr.format(self.checkpoint.boots, elapsed), spacer="")
 
         ## submit all jobs to be distributed across nodes
         res = {}
@@ -1114,12 +1117,12 @@ class Tetrad(object):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             if not self.checkpoint.boots:
                 if not quiet:
-                    progressbar(njobs, done, printstr.format(elapsed), spacer=0)
+                    progressbar(njobs, done, printstr.format(elapsed), spacer="")
             else:
                 if not quiet:
                     progressbar(self.nboots, self.checkpoint.boots, 
                         printstr.format(self.checkpoint.boots, elapsed), 
-                        spacer=0)
+                        spacer="")
 
             ## done is counted on finish, so this means we're done
             if njobs == done:
