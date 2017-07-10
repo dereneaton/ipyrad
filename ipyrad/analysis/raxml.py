@@ -179,7 +179,7 @@ class Raxml(object):
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
         if os.path.exists(self.trees.info):
-            print("Error: set a new name for this job:\nFile exists: {}"\
+            print("Error: set a new name for this job or use Force flag.\nFile exists: {}"\
                   .format(self.trees.info))
             return 
 
