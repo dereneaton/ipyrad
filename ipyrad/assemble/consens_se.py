@@ -814,7 +814,7 @@ def calculate_depths(data, samples, lbview):
     while 1:
         ready = [i.ready() for i in recaljobs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), printstr.format(elapsed))
+        progressbar(len(ready), sum(ready), printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")
@@ -845,7 +845,7 @@ def make_chunks(data, samples, lbview):
     start = time.time()
     printstr = " chunking clusters     | {} | s5 |"
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, printstr.format(elapsed))
+    progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer)
 
     ## send off samples to be chunked
     lasyncs = {}
@@ -856,7 +856,7 @@ def make_chunks(data, samples, lbview):
     while 1:
         ready = [i.ready() for i in lasyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), printstr.format(elapsed))
+        progressbar(len(ready), sum(ready), printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")
@@ -890,14 +890,14 @@ def process_chunks(data, samples, lasyncs, lbview):
             #asyncs[sample.name].append(lbview.apply_async(consensus, *args))
             asyncs[sample.name].append(lbview.apply_async(newconsensus, *args))
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 0, printstr.format(elapsed))
+            progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer)
 
     ## track progress
     allsyncs = list(itertools.chain(*[asyncs[i.name] for i in samples]))
     while 1:
         ready = [i.ready() for i in allsyncs]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), printstr.format(elapsed))
+        progressbar(len(ready), sum(ready), printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if len(ready) == sum(ready):
             break
@@ -911,7 +911,7 @@ def process_chunks(data, samples, lasyncs, lbview):
     while 1:
         ready = [i.ready() for i in casyncs.values()]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(10, 10, printstr.format(elapsed))
+        progressbar(10, 10, printstr.format(elapsed), spacer=data._spacer)
         time.sleep(0.1)
         if len(ready) == sum(ready):
             print("")

@@ -593,7 +593,7 @@ def make_loci_and_stats(data, samples, ipyclient):
             elapsed = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(len(done), sum(done),
                 " building alleles      | {} | s7 |".format(elapsed), 
-                spacer=data._spacer)  
+                spacer=data._spacer)
             time.sleep(0.1)
             if len(done) == sum(done):
                 print("")
@@ -620,7 +620,7 @@ def make_loci_and_stats(data, samples, ipyclient):
             with open(tmploc, 'r') as inloc:
                 locdat = inloc.read()
                 inalleles = get_alleles(locdat)
-                locifile.write(inalleles + "\n")
+                locifile.write(inalleles)
                 os.remove(tmploc)
         locifile.close()
 
