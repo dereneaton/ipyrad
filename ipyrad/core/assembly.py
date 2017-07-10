@@ -40,9 +40,8 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 ## turn off traceback for the CLI
-if not ip.__interactive__:
-    sys.tracebacklimit = 0
-
+#if not ip.__interactive__:
+#    sys.tracebacklimit = 0
 
 
 
@@ -562,6 +561,19 @@ class Assembly(object):
             ## make sure bars are upper case
             bdf[1] = bdf[1].str.upper()
 
+            ## if replicates are present then print a warning
+            reps = bdf[0].unique().shape[0] != bdf[0].shape[0]
+            if reps:
+                print("{spacer}Warning: technical replicates (same name) will be combined."\
+                      .format(**{'spacer': self._spacer}))
+                ## add -technical-replicate-N to replicate names
+                reps = [i for i in bdf[0] if list(bdf[0]).count(i) > 1]
+                ureps = list(set(reps))
+                for name in ureps:
+                    idxs = bdf[bdf[0] == ureps[0]].index.tolist()
+                    for num, idx in enumerate(idxs):
+                        bdf.ix[idx][0] = bdf.ix[idx][0] + "-technical-replicate-" + str(num+1)
+
             ## make sure chars are all proper
             if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
                 LOGGER.warn(BAD_BARCODE)
@@ -707,8 +719,8 @@ class Assembly(object):
             for index, (key, value) in enumerate(self.paramsdict.items()):
                 if isinstance(value, str):
                     value = value.replace(fullcurdir+"/", "./")
-                sys.stdout.write("  {:<4}{:<28}{:<45}\n"\
-                    .format(index, key, value))
+                sys.stdout.write("{}{:<4}{:<28}{:<45}\n"\
+                    .format(self._spacer, index, key, value))
         else:
             try:
                 if int(param):
@@ -1223,7 +1235,7 @@ class Assembly(object):
             ## if MPI setup then we are going to wait until all engines are
             ## ready so that we can print how many cores started on each
             ## host machine exactly.
-            if (not ip.__interactive__) or show_cluster:
+            if (self._cli) or show_cluster:
                 ip.cluster_info(ipyclient=ipyclient, spacer=self._spacer)
 
             ## get the list of steps to run
@@ -1232,8 +1244,8 @@ class Assembly(object):
             steps = sorted(list(steps))
 
             ## print an Assembly name header if inside API
-            if ip.__interactive__:
-                print("\n{}Assembly: {}".format(self._spacer, self.name))
+            if not self._cli:
+                print("Assembly: {}".format(self.name))
 
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
