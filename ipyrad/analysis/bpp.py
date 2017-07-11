@@ -37,6 +37,7 @@ class Bpp(object):
     guidetree:
         A newick string species tree hypothesis [e.g., (((a,b),(c,d)),e);]
         All taxa in the imap dictionary must also be present in the guidetree.
+        Tree can also be a filename of a newick string.
 
     Attributes:
     -----------
@@ -154,7 +155,7 @@ class Bpp(object):
 
         ## parsing attributes
         if not imap:
-            self.imap = {i:i for i in tree.get_leaf_names()}
+            self.imap = {i:i for i in self.tree.get_leaf_names()}
         else:
             self.imap = {i:j for i, j in imap.items()}
 
@@ -200,11 +201,12 @@ class Bpp(object):
 
 
     def run(self,
-        nreps, 
         ipyclient, 
+        nreps=1, 
         seed=12345,
         quiet=False,
         randomize_order=False,
+        force=False,
         ):
         """
         Submits bpp jobs to run on a cluster (ipyparallel Client). 
@@ -229,6 +231,9 @@ class Bpp(object):
             if True then when maxloci is set this will randomly sample a 
             different set of N loci in each replicate, rather than sampling
             just the first N loci < maxloci. 
+        force (bool):
+            Overwrite existing files with the same name. Default=False, skip
+            over existing files.
         """
         ## initiate random seed
         np.random.seed(seed)
@@ -245,16 +250,25 @@ class Bpp(object):
         asyncs = []
         for job in xrange(nreps):
 
-            ## change seed and ctl for each rep
-            self.params.seed = np.random.randint(0, 1e9, 1)[0]
-            ctlfile = self._write_ctlfile(rep=job)
-            if randomize_order:
-                self._write_seqfile(randomize_order)
+            ## find ctlfile name
+            ctlhandle = os.path.realpath(
+                "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), job))
 
-            ## submit to engines
-            async = lbview.apply(_call_bpp, ctlfile)
-            asyncs.append(async)
-            self.asyncs.append(async)
+            ## skip if ctlfile exists
+            if (not force) and (os.path.exists(ctlhandle)):
+                print("Named ctl file exists. Use force=True to overwrite\nFilename:{}"\
+                      .format(ctlhandle))
+            else:
+                ## change seed and ctl for each rep
+                self.params.seed = np.random.randint(0, 1e9, 1)[0]
+                ctlfile = self._write_ctlfile(rep=job)
+                if randomize_order:
+                    self._write_seqfile(randomize_order)
+
+                ## submit to engines
+                async = lbview.apply(_call_bpp, ctlfile)
+                asyncs.append(async)
+                self.asyncs.append(async)
 
         if not quiet:
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
@@ -286,8 +300,8 @@ class Bpp(object):
         ## ...
 
         ## write tmp files for the job
-        self._write_seqfile(True)
-        self._write_mapfile(True)
+        self._write_seqfile(name=True, randomize_order=randomize_order)
+        self._write_mapfile(name=True)
         self._write_ctlfile()
 
         if not quiet:
@@ -299,9 +313,11 @@ class Bpp(object):
     def _write_mapfile(self, name=False):
         ## write the imap file:
         if name:
-            self.mapfile = os.path.join(self.workdir, self._name+".imapfile.txt")
+            self.mapfile = os.path.realpath(
+                os.path.join(self.workdir, self._name+".imapfile.txt"))
         else:
-            self.mapfile = os.path.join(self.workdir, "tmp.imapfile.txt")
+            self.mapfile = os.path.realpath(
+                os.path.join(self.workdir, "tmp.imapfile.txt"))
 
         with open(self.mapfile, 'w') as mapfile:
             data = ["{:<30} {}".format(val, key) for key \
@@ -314,9 +330,11 @@ class Bpp(object):
 
         ## handles
         if name: 
-            self.seqfile = os.path.join(self.workdir, self._name+".seqfile.txt")
+            self.seqfile = os.path.realpath(
+                os.path.join(self.workdir, self._name+".seqfile.txt"))
         else:
-            self.seqfile = os.path.join(self.workdir, "tmp.seqfile.txt")
+            self.seqfile = os.path.realpath(
+                os.path.join(self.workdir, "tmp.seqfile.txt"))
         seqfile = open(self.seqfile, 'w')
         with open(self.files.locifile) as infile:
             loci = infile.read().strip().split("|\n")
@@ -325,7 +343,12 @@ class Bpp(object):
                 np.random.shuffle(loci)
 
         ## all samples
-        samples = list(itertools.chain(*self.imap.values()))
+        samples = []
+        for mapl in self.imap.values():
+            if isinstance(mapl, list):
+                samples += mapl
+            else:
+                samples.append(mapl)
 
         ## iterate over loci, printing to outfile
         nkept = 0
@@ -405,7 +428,7 @@ class Bpp(object):
         ctl.append("seqfile = {}".format(self.seqfile))
         ctl.append("Imapfile = {}".format(self.mapfile))
 
-        path = os.path.join(self.workdir, self._name)
+        path = os.path.realpath(os.path.join(self.workdir, self._name))
         if isinstance(rep, int):
             mcmcfile = "{}-r{}.mcmc.txt".format(path, rep)
             outfile = "{}-r{}.out.txt".format(path, rep)
@@ -459,9 +482,11 @@ class Bpp(object):
 
         ## write out the ctl file
         if isinstance(rep, int):
-            ctlhandle = "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), rep)
+            ctlhandle = os.path.realpath(
+                "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), rep))
         else:
-            ctlhandle = "{}.ctl.txt".format(os.path.join(self.workdir, self._name))
+            ctlhandle = os.path.realpath(
+                "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
         with open(ctlhandle, 'w') as out:
             out.write("\n".join(ctl))
 
@@ -541,14 +566,6 @@ class Params(object):
             _repr += _printstr.format(key, _val)
         return _repr
         
-    # def __repr__(self):
-    #     _repr = ""
-    #     keys = sorted(self.__dict__.keys())
-    #     _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-    #     for key in keys:
-    #         _repr += _printstr.format(key, str(self[key]))
-    #     return _repr
-
 
 
 class Result_00(object):

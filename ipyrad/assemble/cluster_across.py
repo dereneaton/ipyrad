@@ -475,12 +475,13 @@ def call_cluster(data, noreverse, ipyclient):
         if async.stdout:
             prog = int(async.stdout.split()[-1])
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        progressbar(100, prog, printstr.format(elapsed), spacer=data._spacer)
-        time.sleep(0.5)
         if async.ready():
+            progressbar(100, prog, printstr.format(elapsed), spacer=data._spacer)
             print("")
             break
-
+        else:
+            time.sleep(0.5)
+        
     ## store log result
     data.stats_files.s6 = os.path.join(data.dirs.across, "s6_cluster_stats.txt")
 
@@ -1612,7 +1613,7 @@ def clean_and_build_concat(data, samples, randomseed, ipyclient):
 
 
 
-def run(data, samples, noreverse, force, randomseed, ipyclient, substeps=None):
+def run(data, samples, noreverse, force, randomseed, ipyclient, **kwargs):
     """
     For step 6 the run function is sub divided a bit so that users with really
     difficult assemblies can possibly interrupt and restart the step from a 
@@ -1628,27 +1629,42 @@ def run(data, samples, noreverse, force, randomseed, ipyclient, substeps=None):
      7. Enter seq data & cleanup
     """
 
+    ## if force then set checkpoint to zero and run all substeps for just
+    ## the user specified steps. 
+    if force:
+        data._checkpoint = 0
+        if kwargs.get('substeps'):
+            substeps = kwargs.get('substeps')
+        else:  
+            substeps = range(1, 8)
+
     ## if {data}._checkpoint attribute exists then find the checkpoint where
     ## this assembly left off (unless force) and build step list from there.
-    if not force:
-        if hasattr(data, '_checkpoint'):
-            substeps = range(min(1, data._checkpoint), 8)
+    else:
+        if kwargs.get('substeps'):
+            substeps = kwargs.get('substeps')
+        else:  
+            if hasattr(data, '_checkpoint'):
+                substeps = range(max(1, data._checkpoint), 8)
+            else:
+                data._checkpoint = 0
+                substeps = range(1, 8)
 
     ## build substeps list to subset which funtions need to be run
-    if not substeps:
-        substeps = [1, 2, 3, 4, 5, 6, 7]
-    else:
-        if isinstance(substeps, (int, float, str)):
-            substeps = [substeps]
-            substeps = [int(i) for i in substeps]
+    if isinstance(substeps, (int, float, str)):
+        substeps = [substeps]
+        substeps = [int(i) for i in substeps]
 
     ## print continuation message
     if substeps[0] != 1:
-        print("{}Continuing from checkpoint (use 'force' arg to restart instead)"\
-              .format(data._spacer))
+        print("{}Continuing from checkpoint 6.{}"\
+              .format(data._spacer, substeps[0]))
+    LOGGER.info("checkpoint = %s", data._checkpoint)
+    LOGGER.info("substeps = %s", substeps)
 
     ## Set variables on data that are needed for all steps;
-    data.dirs.across = os.path.join(data.paramsdict["project_dir"], data.name+"_across")
+    data.dirs.across = os.path.realpath(
+        os.path.join(data.paramsdict["project_dir"], data.name+"_across"))
     data.tmpdir = os.path.join(data.dirs.across, data.name+"-tmpalign")
     data.clust_database = os.path.join(data.dirs.across, data.name+".clust.hdf5")
     if not os.path.exists(data.dirs.across):
@@ -1710,11 +1726,17 @@ def run(data, samples, noreverse, force, randomseed, ipyclient, substeps=None):
         ## FILL SUPERSEQS and fills edges(splits) for paired-end data
         fill_superseqs(data, samples)
         data._checkpoint = 7
+
+        ## remove files but not dir (used in step 1 too)
         cleanup_tempfiles(data)
+        ## remove the tmpdir
+        if os.path.exists(data.tmpdir):
+            shutil.rmtree(data.tmpdir)
 
         ## set sample states
         for sample in samples:
             sample.stats.state = 6
+        print("")
 
 
 
@@ -1733,15 +1755,16 @@ def cleanup_tempfiles(data):
             os.remove(tmp)
 
     ## remove cluster related files
-    removal = []
-    removal.append(os.path.join(data.dirs.across, data.name+".utemp"))
-    removal.append(os.path.join(data.dirs.across, data.name+".htemp"))
-    removal.append(os.path.join(data.dirs.across, data.name+"_catcons.tmp"))
-    removal.append(os.path.join(data.dirs.across, data.name+"_cathaps.tmp"))
-    removal.append(os.path.join(data.dirs.across, data.name+"_catshuf.tmp"))
-    removal.append(os.path.join(data.dirs.across, data.name+"_catsort.tmp"))
-    removal.append(os.path.join(data.dirs.across, data.name+".tmparrs.h5"))
-    removal.append(os.path.join(data.dirs.across, data.name+".tmp.indels.hdf5"))
+    removal = [
+        os.path.join(data.dirs.across, data.name+".utemp"),
+        os.path.join(data.dirs.across, data.name+".htemp"),
+        os.path.join(data.dirs.across, data.name+"_catcons.tmp"),
+        os.path.join(data.dirs.across, data.name+"_cathaps.tmp"),
+        os.path.join(data.dirs.across, data.name+"_catshuf.tmp"),
+        os.path.join(data.dirs.across, data.name+"_catsort.tmp"),
+        os.path.join(data.dirs.across, data.name+".tmparrs.h5"),
+        os.path.join(data.dirs.across, data.name+".tmp.indels.hdf5"),
+        ]
     for rfile in removal:
         if os.path.exists(rfile):
             os.remove(rfile)
@@ -1751,5 +1774,6 @@ def cleanup_tempfiles(data):
     for smpio in smpios:
         if os.path.exists(smpio):
             os.remove(smpio)
+
 
 

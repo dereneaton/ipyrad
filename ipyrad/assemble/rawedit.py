@@ -94,7 +94,7 @@ def parse_single_results(data, sample, res1):
         LOGGER.info(res1)
 
     else:
-        print("  No reads passed filtering in Sample: {}".format(sample.name))
+        print("{}No reads passed filtering in Sample: {}".format(data._spacer, sample.name))
 
 
 
@@ -176,7 +176,9 @@ def cutadaptit_single(data, sample):
     """
 
     sname = sample.name
-    ## if (GBS, ddRAD) then use second cut site with adapter.
+    ## if (GBS, ddRAD) we look for the second cut site + adapter. For single-end
+    ## data we don't bother trying to remove the second barcode since it's not
+    ## as critical as with PE data.
     if data.paramsdict["datatype"] != "rad":
         adapter = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
                   data._hackersonly["p3_adapter"]
@@ -218,10 +220,11 @@ def cutadaptit_single(data, sample):
         cmdf1.insert(1, str(data.paramsdict["phred_Qscore_offset"]))
         cmdf1.insert(1, "--quality-base")
 
-
+    ## if filter_adapters==3 then p3_adapters_extra will already have extra
+    ## poly adapters added to its list. 
     if int(data.paramsdict["filter_adapters"]) > 1:
         ## first enter extra cuts (order of input is reversed)
-        for extracut in data._hackersonly["p3_adapters_extra"][::-1]:
+        for extracut in list(set(data._hackersonly["p3_adapters_extra"]))[::-1]:
             cmdf1.insert(1, extracut)
             cmdf1.insert(1, "-a")
         ## then put the main cut so it appears first in command
@@ -247,6 +250,7 @@ def cutadaptit_single(data, sample):
 
 
 
+## BEING MODIFIED FOR MULTIPLE BARCODES
 def cutadaptit_pairs(data, sample):
     """
     Applies trim & filters to pairs, including adapter detection. If we have
@@ -276,21 +280,38 @@ def cutadaptit_pairs(data, sample):
     ## cut site too to be safe. Problem is we don't always know the barcode if 
     ## users demultiplexed their data elsewhere. So, if barcode is missing we 
     ## do a very fuzzy match before the adapter and trim it out. 
+
+    ## this just got more complicated now that we allow merging technical
+    ## replicates in step 1 since a single sample might have multiple barcodes
+    ## associated with it and so we need to search for multiple adapter+barcode
+    ## combinations.
+    ## We will assume that if they are 'linking_barcodes()' here then there are
+    ## no technical replicates in the barcodes file. If there ARE technical
+    ## replicates, then they should run step1 so they are merged, in which case
+    ## the sample specific barcodes will be saved to each Sample under its
+    ## .barcode attribute as a list. 
+
     if not data.barcodes:
         ## try linking barcodes again in case user just added a barcodes path
-        ## after receiving the warning
+        ## after receiving the warning. We assume no technical replicates here.
         try:
             data._link_barcodes()
         except Exception as inst:
             LOGGER.warning("  error adding barcodes info: %s", inst)
 
+    ## barcodes are present meaning they were parsed to the samples in step 1.
     if data.barcodes:
         try:
-            adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
+            adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] + \
                        data._hackersonly["p3_adapter"]
-            adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1]+\
-                       fullcomp(data.barcodes[sample.name])[::-1]+\
-                       data._hackersonly["p5_adapter"] ## <- should this be revcomp?
+            if isinstance(sample.barcode, list):
+                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] + \
+                           fullcomp(sample.barcode[0])[::-1] + \
+                           data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
+            else:
+                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] + \
+                           fullcomp(sample.barcode)[::-1] + \
+                           data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
         except KeyError as inst:
             msg = """
     Sample name does not exist in the barcode file. The name in the barcode file
@@ -373,9 +394,20 @@ def cutadaptit_pairs(data, sample):
         cmdf1.insert(1, "--quality-base")
 
     if int(data.paramsdict["filter_adapters"]) > 1:
+        ## if technical replicates then add other copies
+        if isinstance(sample.barcode, list):
+            for extrabar in sample.barcode[1:]:
+                data._hackersonly["p5_adapters_extra"] += \
+                    fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] + \
+                    fullcomp(extrabar)[::-1] + \
+                    data._hackersonly["p5_adapter"]
+                data._hackersonly["p5_adapters_extra"] += \
+                    fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] + \
+                    data._hackersonly["p3_adapter"]
+
         ## first enter extra cuts
-        zcut1 = data._hackersonly["p3_adapters_extra"][::-1]
-        zcut2 = data._hackersonly["p5_adapters_extra"][::-1]
+        zcut1 = list(set(data._hackersonly["p3_adapters_extra"]))[::-1]
+        zcut2 = list(set(data._hackersonly["p5_adapters_extra"]))[::-1]
         for ecut1, ecut2 in zip(zcut1, zcut2):
             cmdf1.insert(1, ecut1)
             cmdf1.insert(1, "-a")
