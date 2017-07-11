@@ -32,7 +32,8 @@ requirements:
     - networkx
     - cutadapt >=1.12
     - dask
-    - pysam >=0.11.2.2
+    - pysam >=0.10.0
+    #- pysam >=0.11.2.2
   run:
     - ipython >=5.0.0
     - ipyparallel >=6.0.2
@@ -51,10 +52,11 @@ requirements:
     - networkx
     - dask
     - cutadapt >=1.12
-    - pysam >=0.11.2.2
+    #- pysam >=0.11.2.2
+    - pysam >=0.10.0
 
-#  commands:
-#    - ipyrad -h
+  commands:
+    - ipyrad -h
 
 about:
   home: http://github.com/dereneaton/ipyrad
