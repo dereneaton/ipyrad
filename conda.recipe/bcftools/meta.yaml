@@ -11,7 +11,6 @@ source:
     md5: 103729569ca3e265b13d2fed5775016e
     url: https://github.com/samtools/bcftools/releases/download/1.4.1/bcftools-1.4.1.tar.bz2
 build:
-    number: '0'
 requirements:
     build:
         - gcc

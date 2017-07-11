@@ -9,6 +9,7 @@ build:
   script: build.sh
   number: {{ environ.get('GIT_DESCRIBE_NUMBER', 0) }}
   binary_relocation: true
+  noarch: python
 
 requirements:
   build:
