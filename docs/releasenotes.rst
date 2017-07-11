@@ -10,41 +10,29 @@ Release Notes
 **July 10, 2017**
 
 - update conda recipe
-- update pysam to correct version
-
-0.7.2
------
-**July 10, 2017**
-
-- bucky cookbook up
-- bucky cookbook up
-- check multiple barcodes in samples that were merge of technical replicates
-- merge technical replicates in demux
-- spacer fixing and fix for alleles output error
-- added checkpointing to step 6. Added cli detection for better spacer printing. Allow merging of technical replicates in barcodes file.
-- update spacers
+- update pysam to correct version (0.11.2.2)
 - added bucky ipa code
-- bpp bug fixes full path names
-- API userguide merge
-- API user guide docs
-- cookbook API userguide
-- require >=11.2 pysam version
-- min checkpoint is actually 1 not 0
+- bucky cookbook up
+- automatically merges technical replicates in demux
+- check multiple barcodes in samples that were merge of technical replicates
+- fix for alleles output error
+- Added checkpointing/restarting from interrupt to step 6. 
+- Added cli detection for better spacer printing. 
+- bpp bug fixe to ensure full path names
+- API user guide docs update.
 - cookcook updates tetrad and treemix
 - new _cli, _checkpoint, and _spacer attributes, and new 'across' dir for step 6
 - load sets cli=False by default, and it saves checkpoint info
 - allow profile with ipcluster
-- spacers for progress bars
-- spacers for progress bars
-- built in checkpointing for step 6
-- spacers in progress bars
 - treemix report if no data is written (i.e., all filtered)
-- fix to allow setting nquartets again. Better integration of API/CLI. Spacer for progress bars. Bug fix to Tree drawing when no boots. Fix for compatibility with new toytree rooting bug fix for saving features.
-- CLI now allows for profile name for ipcluster
+- fix to allow setting nquartets again. 
+- Better integration of API/CLI. 
+- Bug fix to Tree drawing when no boots in tetrad. 
+- tetrad fix for compatibility with new toytree rooting bug fix for saving features.
 - cli is now an attribute of the Assembly object that is set to True by __main__ at runtime, otherwise 0.
 - cluster_info() now prints instead of return
 - rehaul of bucky ipa tools
-- prin cluster_info now skips busy engines
+- print cluster_info now skips busy engines
 - unroot tetrad tree on complete
 
 0.7.1
@@ -58,9 +46,6 @@ Release Notes
 - HPC tunnel update
 - support for parsing supervised structure analyses in ipa
 - HPC tunnel docs update
-- update analysis docs
-- update analysis docs
-- update analysis docs
 - update analysis docs
 - ipa.treemix params
 - more params added to ipa.treemix
