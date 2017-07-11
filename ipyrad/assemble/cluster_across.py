@@ -1074,18 +1074,11 @@ def singlecat(data, sample, bseeds, sidx, nloci):
     
     ## save individual tmp h5 data
     smpio = os.path.join(data.dirs.across, sample.name+'.tmp.h5')
-    try:
-        with h5py.File(smpio, 'w') as oh5:
-            oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
-            oh5.create_dataset("inall", data=onall, dtype=np.uint8)
-            if isref:
-                oh5.create_dataset("ichrom", data=ochrom, dtype=np.int64)
-
-    ## if anything goes wrong then make sure to remove the file otherwise
-    ## we might try to enter it into the superarray.
-    except Exception:
-        if os.path.exists(smpio):
-            os.remove(smpio)
+    with h5py.File(smpio, 'w') as oh5:
+        oh5.create_dataset("icatg", data=newcatg, dtype=np.uint32)
+        oh5.create_dataset("inall", data=onall, dtype=np.uint8)
+        if isref:
+            oh5.create_dataset("ichrom", data=ochrom, dtype=np.int64)
 
 
 
@@ -1122,10 +1115,6 @@ def write_to_fullarr(data, sample, sidx):
                 end = cidx + chunk
                 catg[cidx:end, sidx:sidx+1, :] = np.expand_dims(newcatg[cidx:end, :], axis=1)
                 nall[:, sidx:sidx+1] = np.expand_dims(onall, axis=1)
-
-    ## removal is important in this case so we know that it finished entry
-    if os.path.exists(smpio):
-        os.remove(smpio)
 
 
 
