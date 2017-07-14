@@ -475,6 +475,7 @@ def call_cluster(data, noreverse, ipyclient):
         if async.stdout:
             prog = int(async.stdout.split()[-1])
         elapsed = datetime.timedelta(seconds=int(time.time() - start))
+        progressbar(100, prog, printstr.format(elapsed), spacer=data._spacer)
         if async.ready():
             progressbar(100, prog, printstr.format(elapsed), spacer=data._spacer)
             print("")
@@ -1481,7 +1482,15 @@ def build_input_file(data, samples, randomseed):
     ## get all of the consens handles for samples that have consens reads
     ## this is better than using sample.files.consens for selecting files
     ## b/c if they were moved we only have to edit data.dirs.consens
-    conshandles = [os.path.join(data.dirs.consens, sample.name+".consens.gz") \
+
+    ## scratch the statement above, people shouldn't be moving files, 
+    ## they should be using merge/branch, and so sample.files.consens
+    ## is needed to keep track of samples from different dirs if they
+    ## are later merged into the same assembly.
+    #conshandles = [os.path.join(data.dirs.consens, sample.name+".consens.gz") \
+    #              for sample in samples if \
+    #              sample.stats.reads_consens]
+    conshandles = [sample.files.consens[0] \
                   for sample in samples if \
                   sample.stats.reads_consens]
     conshandles.sort()
