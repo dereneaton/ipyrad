@@ -1678,7 +1678,7 @@ def _paramschecker(self, param, newvalue):
         ## this is checked again during step 1 and will raise an error
         ## if you try demultiplexing without a barcodes file
         else:
-            self.paramsdict['barcodes_path'] = ""
+            self.paramsdict['barcodes_path'] = newvalue
 
 
     ## `Merged:` in newvalue for sorted_fastq_path indicates that this
@@ -1746,7 +1746,8 @@ def _paramschecker(self, param, newvalue):
             ## alternatives I could think of.
             if "3rad" in self.paramsdict['datatype'] and not \
             self.paramsdict['sorted_fastq_path'].strip():
-                self._link_barcodes()
+                if not "Merged:" in self.paramsdict['barcodes_path']:
+                    self._link_barcodes()
 
     elif param == 'restriction_overhang':
         newvalue = _tuplecheck(newvalue, str)
