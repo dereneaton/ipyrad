@@ -17,3 +17,4 @@ scipy>0.10
 sphinx
 networkx
 dask
+pysam>=0.10.0

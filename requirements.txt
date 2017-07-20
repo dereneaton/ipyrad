@@ -14,3 +14,4 @@ pandas>=0.16
 h5py
 networkx
 dask
+pysam>=0.10.0
