@@ -1325,7 +1325,7 @@ def sort_seeds(uhandle, usort):
 
 
 
-def build_clustbits(data, ipyclient):
+def build_clustbits(data, ipyclient, force):
     """
     Reconstitutes clusters from .utemp and htemp files and writes them
     to chunked files for aligning in muscle.
@@ -1343,21 +1343,23 @@ def build_clustbits(data, ipyclient):
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
     progressbar(3, 0, printstr.format(elapsed), spacer=data._spacer)
 
-    ## skip usorting if not force and already exists
     uhandle = os.path.join(data.dirs.across, data.name+".utemp")
     usort = os.path.join(data.dirs.across, data.name+".utemp.sort")
 
-    ## send sort job to engines. Sorted seeds allows us to work through
-    ## the utemp file one locus at a time instead of reading all into mem.
-    LOGGER.info("building reads file -- loading utemp file into mem")
-    async1 = lbview.apply(sort_seeds, *(uhandle, usort))
-    while 1:
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(3, 0, printstr.format(elapsed), spacer=data._spacer)
-        if async1.ready():
-            break
-        else:
-            time.sleep(0.1)
+    ## skip usorting if not force and already exists
+    if not os.path.exists(usort) or force:
+
+        ## send sort job to engines. Sorted seeds allows us to work through
+        ## the utemp file one locus at a time instead of reading all into mem.
+        LOGGER.info("building reads file -- loading utemp file into mem")
+        async1 = lbview.apply(sort_seeds, *(uhandle, usort))
+        while 1:
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            progressbar(3, 0, printstr.format(elapsed), spacer=data._spacer)
+            if async1.ready():
+                break
+            else:
+                time.sleep(0.1)
 
     ## send count seeds job to engines.
     async2 = lbview.apply(count_seeds, usort)
@@ -1689,7 +1691,7 @@ def run(data, samples, noreverse, force, randomseed, ipyclient, **kwargs):
     ## will not be deleted until either step 6-6 is complete, or the force flag
     ## is used. This will clear the tmpdir if it is run.
     if 3 in substeps:
-        build_clustbits(data, ipyclient)
+        build_clustbits(data, ipyclient, force)
         data._checkpoint = 3
 
     ## muscle align the cluster bits and create tmp hdf5 indel arrays for the
