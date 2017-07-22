@@ -310,7 +310,9 @@ def optim(data, sample):
             pstart = np.array([0.001], dtype=np.float64)
             hetero = 0.
             errors = scipy.optimize.fmin(get_haploid_lik, pstart,
-                                        (bfreqs, ustacks, counts),
+                                         (bfreqs, ustacks, counts),
+                                         maxfun=50,
+                                         maxiter=50,
                                          disp=False,
                                          full_output=False)
         ## or do joint diploid estimates
@@ -341,7 +343,8 @@ def run(data, samples, force, ipyclient):
 
     # if haploid data
     if data.paramsdict["max_alleles_consens"] == 1:
-        print("  Applying haploid-based test (infer E with H fixed to 0).")
+        print("{}Applying haploid-based test (infer E with H fixed to 0)"\
+              .format(data._spacer))
 
     subsamples = []
 
@@ -411,6 +414,7 @@ def submit(data, subsamples, ipyclient):
             else:
                 LOGGER.error("  Sample %s failed with error %s", 
                              job, jobs[job].exception())
+                raise IPyradWarningExit(jobs[job].result())
 
     except KeyboardInterrupt as kbd:
         pass
@@ -429,12 +433,12 @@ def sample_cleanup(sample, hest, eest, success):
     """
     ## sample summary assignments
     sample.stats.state = 4
-    sample.stats.hetero_est = hest
-    sample.stats.error_est = eest
+    sample.stats.hetero_est = float(hest)
+    sample.stats.error_est = float(eest)
 
     ## sample full assigments
-    sample.stats_dfs.s4.hetero_est = hest
-    sample.stats_dfs.s4.error_est = eest
+    sample.stats_dfs.s4.hetero_est = float(hest)
+    sample.stats_dfs.s4.error_est = float(eest)
 
     ## In rare cases no hidepth clusters for statistical basecalling
     ## so we warn the user, but carry on with default values

@@ -11,3 +11,4 @@
                                      '-Wl,-x']
          else:
              if not ext.extra_link_args:
+

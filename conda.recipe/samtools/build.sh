@@ -12,7 +12,7 @@ sed -i.bak 's#misc/varfilter.py##g' Makefile
 # Remove rdynamic which can cause build issues on OSX
 # https://sourceforge.net/p/samtools/mailman/message/34699333/
 sed -i.bak 's/ -rdynamic//g' Makefile
-sed -i.bak 's/ -rdynamic//g' htslib-$PKG_VERSION/configure
+sed -i.bak 's/ -rdynamic//g' htslib-1.3.1/configure
 
 export CPPFLAGS="-I$PREFIX/include"
 export LDFLAGS="-L$PREFIX/lib"
@@ -25,3 +25,5 @@ cd ..
 # https://github.com/samtools/samtools/issues/577
 ./configure --prefix=$PREFIX --enable-libcurl --without-curses
 make install prefix=$PREFIX LIBS+=-lcrypto LIBS+=-lcurl
+
+
