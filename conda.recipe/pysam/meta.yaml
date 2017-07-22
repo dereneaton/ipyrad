@@ -22,17 +22,11 @@ requirements:
         - setuptools
         - zlib
         - curl
-        - htslib >=1.3,<1.4
-        - samtools >=1.3,<1.4
-        - bcftools >=1.3,<1.4
     run:
         - libgcc
         - python
         - zlib
         - curl
-        - htslib >=1.3,<1.4
-        - samtools >=1.3,<1.4
-        - bcftools >=1.3,<1.4
 test:
     imports:
         - pysam
