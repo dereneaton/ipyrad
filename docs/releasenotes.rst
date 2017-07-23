@@ -5,6 +5,33 @@
 Release Notes
 =============
 
+0.7.3
+-----
+**July 23, 2017**
+
+- Better handling for restarting jobs in substeps of step 6.
+- Fixed the fscking pysam conda-build scripts for osx.
+- Add patch for pysam build on osx
+- Fix for conda-build v3 breaking meta.yaml
+- Using htslib internal to pysam and removing bcftools/htslib/samtools direct dependencies.
+- Add force flag to force building clusters if utemp exists.
+- conda recipe updates
+- updateing conda recipe
+- ensure stats are saved as floats
+- fix to bug introduced just now to track progress during s6 clustering
+- Fix an issue with merged assemblies and 3rad.
+- fix for step 6 checkpoints for reference-based analyses
+- conda recipe tweaking
+- conda recipe updates
+- fix to conda recipes
+- update bucky cookbook
+- added shareplot code
+- bucky ipa update remove old files
+- conda recipe updated
+-  "Updating ipyrad/__init__.py to version - 0.7.2
+- update conda recipe
+- update pysam to correct version
+
 0.7.2
 -----
 **July 10, 2017**
