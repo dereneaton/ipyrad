@@ -1336,6 +1336,7 @@ def build_clustbits(data, ipyclient, force):
     uhandle = os.path.join(data.dirs.across, data.name+".utemp")
     usort = os.path.join(data.dirs.across, data.name+".utemp.sort")
 
+    async1 = ""
     ## skip usorting if not force and already exists
     if not os.path.exists(usort) or force:
 
@@ -1379,9 +1380,13 @@ def build_clustbits(data, ipyclient, force):
 
     ## check for errors
     for job in [async1, async2, async3]:
-        if not job.successful():
-            raise IPyradWarningExit(job.result())
-
+        try:
+            if not job.successful():
+                raise IPyradWarningExit(job.result())
+        except AttributeError:
+            ## If we skip usorting then async1 == "" so the call to
+            ## successful() raises, but we can ignore it.
+            pass
 
 
 def sub_build_clustbits(data, usort, nseeds):
