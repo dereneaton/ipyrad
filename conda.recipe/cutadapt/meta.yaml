@@ -7,7 +7,6 @@ source:
     url: https://pypi.python.org/packages/41/9e/5b673f766dcf2dd787e0e6c9f08c4eea6f344ea8fce824241db93cc2175f/cutadapt-1.12.tar.gz#md5=27039acb5ae6259f82abfcff186bee7a
 build:
     number: '0'
-    script: build.sh
     skip: 'False'
 requirements:
     build:

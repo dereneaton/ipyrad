@@ -6,7 +6,6 @@ source:
   git_url: https://github.com/dereneaton/ipyrad.git
 
 build:
-  script: build.sh
   number: {{ environ.get('GIT_DESCRIBE_NUMBER', 0) }}
   binary_relocation: true
 

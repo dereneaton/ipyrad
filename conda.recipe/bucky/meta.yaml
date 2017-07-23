@@ -7,7 +7,6 @@ source:
 
 build:
   number: '0'
-  script: build.sh
   skip: 'False'
 
 about:
