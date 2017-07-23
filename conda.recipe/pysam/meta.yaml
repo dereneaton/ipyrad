@@ -13,20 +13,18 @@ source:
     patches:  # [osx]
       - osx_rpath.patch [osx]
 build:
-    binary_relocation: 'False'
     number: '3'
     skip: 'False'
 requirements:
     build:
         - gcc
         - cython
-        - python
+        - python {{PY_VER}}*,>=2.7
         - setuptools
         - zlib
         - curl
     run:
         - libgcc
-        - python
         - zlib
         - curl
 test:
