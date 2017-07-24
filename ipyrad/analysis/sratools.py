@@ -85,7 +85,6 @@ class SRA(object):
         if self.is_project:
 
             ## get Run data
-            print("\rFetching project data...", end="")
             srrs, accs = self.fetch_runinfo()
             sys.stdout.flush()
 
@@ -97,12 +96,15 @@ class SRA(object):
             ## iterate over and download
             fn = 0
             for srr, acc in zip(srrs, accs):
-                print("\rDownloading file {} of {}: {}.fastq.gz"\
-                    .format(fn+1, len(srr), acc), end="")
+
+                ## print filename
+                fpath = os.path.join(self.workdir, acc+".fastq.gz")
+                print("\rDownloading file {} of {}: {}"\
+                    .format(fn+1, len(srrs), fpath), end="")
                 self._accession = srr
 
+                ## skip if exists and not force
                 skip = False
-                fpath = os.path.join(self.workdir, acc+".fastq.gz")
                 if force:
                     if os.path.exists(fpath):
                         os.remove(fpath)
@@ -124,14 +126,16 @@ class SRA(object):
 
 
     def _report(self, N):
-        print("{} fastq files downloaded to {}".format(N, self.workdir))
+        print("\r{} fastq files downloaded to {}".format(N, self.workdir))
 
 
     def fetch_runinfo(self):
         """
         Call esearch to grep SRR info for a project (SRP). 
         Returns two lists: SRRs and ACCs. 
-         """
+        """
+        print("\rFetching project data...", end="")
+
         es_cmd = [
             "esearch", 
             "-db", "sra", 
