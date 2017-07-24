@@ -110,7 +110,7 @@ def run(data, samples, force, ipyclient):
 
     ## print friendly message
     shortpath = data.dirs.outfiles.replace(os.path.expanduser("~"), "~")
-    print("{}Outfiles written to: {}".format(data._spacer, shortpath))
+    print("{}Outfiles written to: {}\n".format(data._spacer, shortpath))
 
 
 
