@@ -38,7 +38,13 @@ class SRA(object):
     def __init__(self, 
         accession,
         workdir,
+        paired=False
         ):
+
+        ## TODO:
+        if paired:
+            raise IPyradWarningExit(
+                "sorry, paired data is not yet supported, stay tuned.")
 
         ## check imports
         for binary in ['fastq-dump', 'esearch']:
@@ -77,9 +83,18 @@ class SRA(object):
 
         ## download files
         if self.is_project:
+
+            ## get Run data
             print("\rFetching project data...", end="")
             srrs, accs = self.fetch_runinfo()
             sys.stdout.flush()
+
+            ## if Run has samples with same name (replicates) then 
+            ## we need to include the accessions in the file names
+            if len(set(accs)) != len(accs):
+                accs = (i+"-"+j for i, j in zip(accs, srrs))
+
+            ## iterate over and download
             fn = 0
             for srr, acc in zip(srrs, accs):
                 print("\rDownloading file {} of {}: {}.fastq.gz"\
@@ -89,9 +104,10 @@ class SRA(object):
                 skip = False
                 fpath = os.path.join(self.workdir, acc+".fastq.gz")
                 if force:
-                    os.remove(fpath)
-                else:
                     if os.path.exists(fpath):
+                        os.remove(fpath)
+                else:
+                    if os.path.exists(fpath):                
                         skip = True
                         sys.stdout.flush()
                         print(" - skip - already exists in workdir")
@@ -133,8 +149,9 @@ class SRA(object):
             "-f", "1,30",
         ]
 
+        ## this will grep SRR for SRPs, and ERR for ERPs, etc. 
         grep_cmd = [
-            "grep", "SRR"
+            "grep", self.accession[:2]+"R"
         ]
 
         ## pipe commands together
@@ -149,7 +166,7 @@ class SRA(object):
             SRRs, ACCs = zip(*[i.split(",") for i in srrlist])
             return SRRs, ACCs 
         else:
-            raise IPyradWarningExit("no samples found in {}".format(accession))
+            raise IPyradWarningExit("no samples found in {}".format(self.accession))
 
 
 
