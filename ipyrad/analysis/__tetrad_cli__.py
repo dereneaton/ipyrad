@@ -209,7 +209,7 @@ def main():
             if args.force:
                 ipa.tetrad(name=args.name, 
                            workdir=args.workdir, 
-                           seqfile=args.seq, 
+                           data=args.seq, 
                            initarr=False, 
                            quiet=True).refresh()
 
@@ -217,7 +217,7 @@ def main():
             data = ipa.tetrad(name=args.name, 
                               workdir=args.workdir, 
                               method=args.method, 
-                              seqfile=args.seq, 
+                              data=args.seq, 
                               resolve=args.resolve,
                               mapfile=args.map, 
                               guidetreefile=args.tree, 

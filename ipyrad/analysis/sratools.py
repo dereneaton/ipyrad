@@ -116,6 +116,10 @@ class SRA(object):
                 start = time.time()
                 for srr, acc in zip(srrs, accs):
 
+                    ## clean up acc if it is not nicely formatted
+                    ## i.e., do not allow spaces, ...
+                    acc = acc.replace(" ", "_")
+
                     ## print filename
                     fpath = os.path.join(self.workdir, acc+".fastq.gz")
                     self._accession = srr
@@ -145,6 +149,7 @@ class SRA(object):
                     progressbar(tots, ready, printstr.format(elapsed), spacer="")
                     time.sleep(0.1)
                     if tots == ready:
+                        print("")
                         break
                 self._report(tots)
 
@@ -231,7 +236,7 @@ class SRA(object):
 
 
     def _report(self, N):
-        print("\r{} fastq files downloaded to {}".format(N, self.workdir))
+        print("{} fastq files downloaded to {}".format(N, self.workdir))
 
 
     def fetch_runinfo(self):
