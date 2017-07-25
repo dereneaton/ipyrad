@@ -12,6 +12,8 @@
 from __future__ import print_function
 import os
 import sys
+import time
+import datetime
 import subprocess as sps
 from ipyrad.assemble.util import IPyradWarningExit, progressbar
 
@@ -69,8 +71,111 @@ class SRA(object):
             raise IPyradWarningExit(ACCESSION_ID)
 
 
+    ## a lazy way to combine the parallel and serial run commands
+    def run(self, force=False, ipyclient=None):
+        """
+        Download the accessions into a the designated workdir. 
+        If file already exists it will only be overwritten if 
+        force=True. Temporary files are removed. 
+        """
+        if ipyclient:
+            self._prun(force=force, ipyclient=ipyclient)
+        else:
+            self._run(force=force, ipyclient=ipyclient)
 
-    def run(self, force=False):
+
+    def _prun(self, force=False, ipyclient=None):
+        """
+        Download the accessions into a the designated workdir. 
+        If file already exists it will only be overwritten if 
+        force=True. Temporary files are removed. 
+        """
+
+        ## ensure output directory
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
+
+        ## TODO: parallelize with ipyclient...
+        lbview = ipyclient.load_balanced_view()
+
+        ## wrap in a try statement to shutdown on interrupt
+        try:
+            ## download files
+            if self.is_project:
+                ## get Run data
+                srrs, accs = self.fetch_runinfo()
+
+                ## if Run has samples with same name (replicates) then 
+                ## we need to include the accessions in the file names
+                if len(set(accs)) != len(accs):
+                    accs = (i+"-"+j for i, j in zip(accs, srrs))
+
+                ## iterate over and download
+                skipped = 0
+                asyncs = []
+                start = time.time()
+                for srr, acc in zip(srrs, accs):
+
+                    ## print filename
+                    fpath = os.path.join(self.workdir, acc+".fastq.gz")
+                    self._accession = srr
+
+                    ## skip if exists and not force
+                    skip = False
+                    if force:
+                        if os.path.exists(fpath):
+                            os.remove(fpath)
+                    else:
+                        if os.path.exists(fpath):
+                            skip = True
+                            skipped += 1
+                    if not skip:
+                        async = lbview.apply(_call_fastq_dump_on_SRRs, *(self, acc))
+                        asyncs.append(async)
+                
+                if skipped:
+                    print("\nSkipping {} samples already present in workdir"\
+                        .format(skipped))
+
+                tots = len(srrs)
+                printstr = " Downloading fastq files | {} | "
+                while 1:
+                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                    ready = sum([i.ready() for i in asyncs])
+                    progressbar(tots, ready, printstr.format(elapsed), spacer="")
+                    time.sleep(0.1)
+                    if tots == ready:
+                        break
+                self._report(tots)
+
+                ## check for fails
+                for async in asyncs:
+                    if not async.successful():
+                        raise IPyradWarningExit(async.result())
+
+            else:
+                self._accession = self.accession
+                _call_fastq_dump_on_SRRs(self)
+                self.report(1)
+
+        except KeyboardInterrupt as inst:
+            if ipyclient:
+                raise IPyradWarningExit("interrupted -- ipcluster shutdown")
+            else:
+                raise IPyradWarningExit("interrupted")
+
+        finally:
+            if not ipyclient.outstanding:
+                ipyclient.purge_everything()
+            else:
+                ## nanny: kill the engines left running, report kill.
+                ipyclient.shutdown(hub=True, block=False)
+                ipyclient.close()
+                print("\nwarning: ipcluster shutdown and must be restarted")
+
+
+
+    def _run(self, force=False, ipyclient=None):
         """
         Download the accessions into a the designated workdir. 
         If file already exists it will only be overwritten if 
@@ -114,14 +219,14 @@ class SRA(object):
                         sys.stdout.flush()
                         print(" - skip - already exists in workdir")
                 if not skip:
-                    self._call_fastq_dump_on_SRRs(rename=acc)
+                    _call_fastq_dump_on_SRRs(self, rename=acc)
                 sys.stdout.flush()
                 fn += 1
             self._report(fn)
 
         else:
             self._accession = self.accession
-            self._call_fastq_dump_on_SRRs()
+            _call_fastq_dump_on_SRRs(self)
             self.report(1)
 
 
@@ -174,33 +279,33 @@ class SRA(object):
 
 
 
-    def _call_fastq_dump_on_SRRs(self, rename=None):
-        """
-        calls fastq-dump on SRRs, relabels fastqs by their accession
-        names, and writes them to the workdir.
-        """
+def _call_fastq_dump_on_SRRs(self, rename=None):
+    """
+    calls fastq-dump on SRRs, relabels fastqs by their accession
+    names, and writes them to the workdir.
+    """
 
-        ## build command
-        fd_cmd = [
-            "fastq-dump", self._accession, 
-            "--accession", rename, 
-            "--outdir", self.workdir, 
-            "--gzip",
-            ]
+    ## build command
+    fd_cmd = [
+        "fastq-dump", self._accession, 
+        "--accession", rename, 
+        "--outdir", self.workdir, 
+        "--gzip",
+        ]
 
-        ## call fq dump command
-        proc = sps.Popen(fd_cmd)
-        proc.communicate()
+    ## call fq dump command
+    proc = sps.Popen(fd_cmd)
+    proc.communicate()
 
-        ## delete the stupid temp sra file from the place 
-        ## that it is very hard-coded to be written to.
-        srafile = os.path.join(
-            os.path.expanduser("~"), 
-            "ncbi", 
-            "public", 
-            "sra", 
-            self._accession+".sra")
-        if os.path.exists(srafile):
-            os.remove(srafile)
+    ## delete the stupid temp sra file from the place 
+    ## that it is very hard-coded to be written to.
+    srafile = os.path.join(
+        os.path.expanduser("~"), 
+        "ncbi", 
+        "public", 
+        "sra", 
+        self._accession+".sra")
+    if os.path.exists(srafile):
+        os.remove(srafile)
 
 

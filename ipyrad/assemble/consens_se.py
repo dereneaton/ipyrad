@@ -386,8 +386,8 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
             else:
                 ## if depth is too high, reduce to sampled int
                 if bidepth > 500:
-                    base1 = (500 * (nump / float(bidepth)))
-                    base2 = (500 * (numq / float(bidepth)))
+                    base1 = int(500 * (nump / float(bidepth)))
+                    base2 = int(500 * (numq / float(bidepth)))
                 else:
                     base1 = nump
                     base2 = numq
@@ -395,6 +395,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                 ## make statistical base call  
                 if bidepth >= mindepth_statistical:
                     ishet, prob = get_binom(base1, base2, estE, estH)
+                    #LOGGER.info("ishet, prob, b1, b2: %s %s %s %s", ishet, prob, base1, base2)
                     if prob < 0.95:
                         cons[col] = 78
                     else:
@@ -404,7 +405,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                             cons[col] = pbase
                 
                 ## make majrule base call
-                elif bidepth >= mindepth_majrule:
+                else: #if bidepth >= mindepth_majrule:
                     if nump == numq:
                         cons[col] = TRANS[(pbase, qbase)]
                     else:
