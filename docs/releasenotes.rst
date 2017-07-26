@@ -5,6 +5,13 @@
 Release Notes
 =============
 
+0.7.5
+-----
+**July 26, 2017**
+
+- Added error handling in persistent_popen_align3
+- Catch bad seeds in step 6 sub_build_clustbits().
+
 0.7.4
 -----
 **July 26, 2017**
