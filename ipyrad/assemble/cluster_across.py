@@ -181,6 +181,10 @@ def persistent_popen_align3(data, samples, chunk):
                 #        [key, 
                 #         dalign1[key].replace("\n", "")+"nnnn"+\
                 #         dalign2[key].replace("\n", "")]))
+            except IndexError as inst:
+                LOGGER.debug("Error in PE - ldx: {}".format())
+                LOGGER.debug("Vars: {}".format(dict(globals(), **locals())))
+                raise
 
             except ValueError:
                 ## make back into strings
