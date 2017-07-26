@@ -217,7 +217,7 @@ def persistent_popen_align3(data, samples, chunk):
                         newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
                         ## check for indels and impute to amask
                         indidx = np.where(np.array(list(concatseq)) == "-")[0]
-                        if any(indidx):
+                        if indidx.size:
                             allrows = np.arange(amask.shape[1])
                             mask = np.ones(allrows.shape[0], dtype=np.bool_)
                             for idx in indidx:
@@ -257,7 +257,7 @@ def persistent_popen_align3(data, samples, chunk):
 
         if istack:
             allstack.append("\n".join(istack))
-            LOGGER.debug("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
+            #LOGGER.debug("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
 
     ## cleanup
     proc.stdout.close()
