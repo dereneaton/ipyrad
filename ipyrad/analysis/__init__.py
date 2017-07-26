@@ -21,4 +21,4 @@ from .raxml import Raxml as raxml
 from .bucky import Bucky as bucky
 from .baba import Baba as baba
 from .bpp import Bpp as bpp
-
+from .sratools import SRA as sratools

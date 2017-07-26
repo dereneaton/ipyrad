@@ -92,14 +92,15 @@ class Treemix(object):
         self.params.bootstrap = 0
         self.params.cormig = 0
         self.params.climb = 0
-        #self.params.noss = 0
+        self.params.noss = 0
+        self.params.seed = np.random.randint(0, int(1e9))
         self.params.root = None
         self.params.se = 0
         self.params.global_ = 0
 
         ## if mapfile then parse it to an array
-        if mapfile:
-            with open(mapfile) as inmap:
+        if self.mapfile:
+            with open(self.mapfile) as inmap:
                 maparr = np.genfromtxt(inmap)[:, [0, 3]].astype(np.uint64)
                 spans = np.zeros((maparr[-1, 0], 2), np.uint64)
                 spans = get_spans(maparr, spans)
@@ -163,7 +164,7 @@ class Treemix(object):
                 elif key == "global_":
                     if val:
                         args += ["-"+key[:-1]]
-                elif key in ["se", "global"]:  #noss
+                elif key in ["se", "global", "noss"]: 
                     if val:
                         args += ["-"+key]
                 else:
@@ -193,7 +194,7 @@ class Treemix(object):
         return samp
 
 
-
+ 
     def copy(self, name):
         """ 
         Returns a copy of the treemix object with the same parameter settings
@@ -211,9 +212,9 @@ class Treemix(object):
         subdict = {i:j for i, j in self.__dict__.iteritems() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
-        ## make back into a bpp object
-        if name == self.name:
-            raise Exception("new object name must be different from its parent")
+        ## make back into a Treemix object
+        #if name == self.name:
+        #    raise Exception("new object name must be different from its parent")
 
         newobj = Treemix(
             data=newdict["data"],
@@ -222,6 +223,7 @@ class Treemix(object):
             imap={i:j for i, j in newdict["imap"].items()},
             mapfile=newdict['mapfile'],
             minmap={i:j for i, j in newdict["minmap"].items()},
+            seed=np.random.randint(0, int(1e9)),
             )
 
         ## update special dict attributes but not files
@@ -262,7 +264,7 @@ class Treemix(object):
             pcounts, scounts = _get_counts(seqarr)
             
             ## [optional] subsample by mapfile
-            if self.maparr:
+            if self.mapfile:
                 sub = self._subsample()
                 pcounts = pcounts[:, sub]
                 scounts = scounts[:, sub]
@@ -330,18 +332,20 @@ class Treemix(object):
 
 
 
-
     def _parse_results(self):
         ## get tree and admix from output files 
         with gzip.open(self.files.treeout) as tmp:
             data = tmp.readlines()
 
             ## store the tree
-            self.results.tree = data[0].strip()
+            k = 0
+            if self.params.noss:
+                k += 1
+            self.results.tree = data[k].strip()
             self.results.admixture = []
 
             ## get admix events
-            for adx in data[1:]:
+            for adx in data[k+1:]:
                 weight, jweight, jse, pval, clade1, clade2 = adx.strip().split()
                 self.results.admixture.append((clade1, clade2, weight, jweight, jse, pval))
 
@@ -449,7 +453,6 @@ def _get_counts(seqarr):
     return priarr, secarr
 
     
-
 
 def _call_treemix(command_list):
     """ call the command as sps """

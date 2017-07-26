@@ -153,7 +153,7 @@ def persistent_popen_align3(data, samples, chunk):
                         newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
                         ## check for indels and impute to amask
                         indidx = np.where(np.array(list(concatseq)) == "-")[0]
-                        if any(indidx):
+                        if indidx.size:
                             allrows = np.arange(amask.shape[1])
                             mask = np.ones(allrows.shape[0], dtype=np.bool_)
                             for idx in indidx:
@@ -221,7 +221,7 @@ def persistent_popen_align3(data, samples, chunk):
                         newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
                         ## check for indels and impute to amask
                         indidx = np.where(np.array(list(concatseq)) == "-")[0]
-                        if any(indidx):
+                        if indidx.size:
                             allrows = np.arange(amask.shape[1])
                             mask = np.ones(allrows.shape[0], dtype=np.bool_)
                             for idx in indidx:
@@ -261,7 +261,7 @@ def persistent_popen_align3(data, samples, chunk):
 
         if istack:
             allstack.append("\n".join(istack))
-            LOGGER.debug("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
+            #LOGGER.debug("\n\nSTACK (%s)\n%s\n", duples[ldx], "\n".join(istack))
 
     ## cleanup
     proc.stdout.close()
@@ -1340,6 +1340,7 @@ def build_clustbits(data, ipyclient, force):
     uhandle = os.path.join(data.dirs.across, data.name+".utemp")
     usort = os.path.join(data.dirs.across, data.name+".utemp.sort")
 
+    async1 = ""
     ## skip usorting if not force and already exists
     if not os.path.exists(usort) or force:
 
@@ -1383,9 +1384,13 @@ def build_clustbits(data, ipyclient, force):
 
     ## check for errors
     for job in [async1, async2, async3]:
-        if not job.successful():
-            raise IPyradWarningExit(job.result())
-
+        try:
+            if not job.successful():
+                raise IPyradWarningExit(job.result())
+        except AttributeError:
+            ## If we skip usorting then async1 == "" so the call to
+            ## successful() raises, but we can ignore it.
+            pass
 
 
 def sub_build_clustbits(data, usort, nseeds):
@@ -1428,36 +1433,39 @@ def sub_build_clustbits(data, usort, nseeds):
             except StopIteration:
                 break
 
-            ## if same seed, append match
-            if seed != lastseed:
-
-                ## store the last fseq, count it, and clear it
-                if fseqs:
-                    seqlist.append("\n".join(fseqs))
-                    seqsize += 1
-                    fseqs = []
-                ## occasionally write to file
-                if seqsize >= optim:
-                    if seqlist:
-                        loci += seqsize
-                        with open(os.path.join(data.tmpdir,
-                            data.name+".chunk_{}".format(loci)), 'w') as clustsout:
-                            LOGGER.debug("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
-                            clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
-                        ## reset list and counter
-                        seqlist = []
-                        seqsize = 0
-
-                ## store the new seed on top of fseq
-                fseqs.append(">{}\n{}".format(seed, allcons[seed]))
-                lastseed = seed
-
-            ## add match to the seed
-            seq = allcons[hit]
-            ## revcomp if orientation is reversed
-            if ori == "-":
-                seq = fullcomp(seq)[::-1]
-            fseqs.append(">{}\n{}".format(hit, seq))
+            try:
+                ## if same seed, append match
+                if seed != lastseed:
+                    ## store the last fseq, count it, and clear it
+                    if fseqs:
+                        seqlist.append("\n".join(fseqs))
+                        seqsize += 1
+                        fseqs = []
+                    ## occasionally write to file
+                    if seqsize >= optim:
+                        if seqlist:
+                            loci += seqsize
+                            with open(os.path.join(data.tmpdir,
+                                data.name+".chunk_{}".format(loci)), 'w') as clustsout:
+                                LOGGER.debug("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
+                                clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+                            ## reset list and counter
+                            seqlist = []
+                            seqsize = 0
+    
+                    ## store the new seed on top of fseq
+                    fseqs.append(">{}\n{}".format(seed, allcons[seed]))
+                    lastseed = seed
+    
+                ## add match to the seed
+                seq = allcons[hit]
+                ## revcomp if orientation is reversed
+                if ori == "-":
+                    seq = fullcomp(seq)[::-1]
+                fseqs.append(">{}\n{}".format(hit, seq))
+            except KeyError as inst:
+                ## Caught bad seed or hit? Log and continue.
+                LOGGER.error("Bad Seed/Hit: seqsize {}\tloci {}\tseed {}\thit {}".format(seqsize, loci, seed, hit))
 
     ## write whatever is left over to the clusts file
     if fseqs:

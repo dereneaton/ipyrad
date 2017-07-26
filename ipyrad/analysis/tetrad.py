@@ -111,7 +111,7 @@ class Tetrad(object):
 
     def __init__(self,
         name, 
-        seqfile=None,  
+        data=None,  
         workdir="analysis-tetrad",
         mapfile=None, 
         method='all', 
@@ -130,6 +130,10 @@ class Tetrad(object):
         ## interactive or CLI
         self.kwargs = kwargs
 
+        ## legacy support for 'seqfile' instead of 'data'
+        if (not data) and (self.kwargs.get('seqfile')):
+            data = self.kwargs.get('seqfile')
+
         ## name this assembly
         self.name = name
         self.dirs = os.path.abspath(os.path.expanduser(workdir))
@@ -143,7 +147,8 @@ class Tetrad(object):
             "engines": "Local", 
             "quiet": 0, 
             "timeout": 60, 
-            "cores": 0}
+            "cores": 0, 
+            "threads" : 2}
 
         ## Sampling method attributes (not yet implemented as params)
         self.params = Params()
@@ -175,7 +180,7 @@ class Tetrad(object):
 
         ## input files
         self.files = Params()
-        self.files.seqfile = seqfile
+        self.files.data = data
         self.files.mapfile = mapfile
         self.files.guidetreefile = guidetreefile
         self.files.qdump = None
@@ -204,12 +209,12 @@ class Tetrad(object):
             self._load_json(self.name, self.dirs)
             self._parse_names()
 
-        elif seqfile:
+        elif data:
             if initarr:
                 self._init_seqarray(quiet=quiet)
                 self._parse_names()
         else:
-            raise IPyradWarningExit("must enter a seqfile argument.")
+            raise IPyradWarningExit("must enter a data (sequence file) argument.")
 
         ## if quartets not entered then sample all
         total = n_choose_k(len(self.samples), 4)
@@ -245,7 +250,7 @@ class Tetrad(object):
         ## reinit the tetrad object data.
         self.__init__(
             name=self.name, 
-            seqfile=self.files.seqfile, 
+            data=self.files.data, 
             mapfile=self.files.mapfile,
             workdir=self.dirs,
             method=self.method,
@@ -265,7 +270,7 @@ class Tetrad(object):
     def _parse_names(self):
         """ parse sample names from the sequence file"""
         self.samples = []
-        with iter(open(self.files.seqfile, 'r')) as infile:
+        with iter(open(self.files.data, 'r')) as infile:
             infile.next().strip().split()
             while 1:
                 try:
@@ -285,11 +290,11 @@ class Tetrad(object):
         3) convert to uint8 for smaller memory load and faster computation
         """
 
-        ## read in the seqfile
+        ## read in the data (seqfile)
         try:
-            spath = open(self.files.seqfile, 'r')
+            spath = open(self.files.data, 'r')
         except IOError:
-            raise IPyradWarningExit(NO_SNP_FILE.format(self.files.seqfile))
+            raise IPyradWarningExit(NO_SNP_FILE.format(self.files.data))
         line = spath.readline().strip().split()
         ntax = int(line[0])
         nbp = int(line[1])
@@ -864,7 +869,7 @@ class Tetrad(object):
 
         ## set old attributes into new tetrad object
         self.name = fullj["name"]
-        self.files.seqfile = fullj["files"]["seqfile"]
+        self.files.data = fullj["files"]["data"]
         self.files.mapfile = fullj["files"]["mapfile"]        
         self.dirs = fullj["dirs"]
         self.method = fullj["method"]
@@ -919,7 +924,8 @@ class Tetrad(object):
         try:
             ## find an ipcluster instance (looks for default unless profile)
             if not ipyclient:
-                ipyclient = ip.core.parallel.get_client(**self._ipcluster)
+                args = self._ipcluster.items() + [("spacer", 0)] #self._spacer)]                
+                ipyclient = ip.core.parallel.get_client(**dict(args)) #self._ipcluster)
 
             ## print a message about the cluster status
             if verbose == 2:
@@ -2036,7 +2042,7 @@ STATS_STRING = """\
 version: {version}
 date: {date}
 name: {name}
-seqfile: {seqfile}
+data: {data}
 mapfile: {mapfile}
 guidetree: {guidetree}
 
@@ -2048,7 +2054,7 @@ proportion_sampled: {prop}
 # ostats.write("## Analysis info\n")
 # ostats.write("{:<30}  {:<20}\n".format("Name", self.name))
 # ostats.write("{:<30}  {:<20}\n".format("Sampling_method", self.method))
-# ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.seqfile))
+# ostats.write("{:<30}  {:<20}\n".format("Sequence_file", self.files.data))
 # ostats.write("{:<30}  {:<20}\n".format("Map_file", self.files.mapfile))
 # used_treefile = [self.files.guidetreefile if self.method == 'equal' else None][0]
 # ostats.write("{:<30}  {:<20}\n".format("Guide_tree", used_treefile))
