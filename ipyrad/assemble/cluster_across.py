@@ -1429,36 +1429,39 @@ def sub_build_clustbits(data, usort, nseeds):
             except StopIteration:
                 break
 
-            ## if same seed, append match
-            if seed != lastseed:
-
-                ## store the last fseq, count it, and clear it
-                if fseqs:
-                    seqlist.append("\n".join(fseqs))
-                    seqsize += 1
-                    fseqs = []
-                ## occasionally write to file
-                if seqsize >= optim:
-                    if seqlist:
-                        loci += seqsize
-                        with open(os.path.join(data.tmpdir,
-                            data.name+".chunk_{}".format(loci)), 'w') as clustsout:
-                            LOGGER.debug("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
-                            clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
-                        ## reset list and counter
-                        seqlist = []
-                        seqsize = 0
-
-                ## store the new seed on top of fseq
-                fseqs.append(">{}\n{}".format(seed, allcons[seed]))
-                lastseed = seed
-
-            ## add match to the seed
-            seq = allcons[hit]
-            ## revcomp if orientation is reversed
-            if ori == "-":
-                seq = fullcomp(seq)[::-1]
-            fseqs.append(">{}\n{}".format(hit, seq))
+            try:
+                ## if same seed, append match
+                if seed != lastseed:
+                    ## store the last fseq, count it, and clear it
+                    if fseqs:
+                        seqlist.append("\n".join(fseqs))
+                        seqsize += 1
+                        fseqs = []
+                    ## occasionally write to file
+                    if seqsize >= optim:
+                        if seqlist:
+                            loci += seqsize
+                            with open(os.path.join(data.tmpdir,
+                                data.name+".chunk_{}".format(loci)), 'w') as clustsout:
+                                LOGGER.debug("writing chunk - seqsize {} loci {} {}".format(seqsize, loci, clustsout.name))
+                                clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+                            ## reset list and counter
+                            seqlist = []
+                            seqsize = 0
+    
+                    ## store the new seed on top of fseq
+                    fseqs.append(">{}\n{}".format(seed, allcons[seed]))
+                    lastseed = seed
+    
+                ## add match to the seed
+                seq = allcons[hit]
+                ## revcomp if orientation is reversed
+                if ori == "-":
+                    seq = fullcomp(seq)[::-1]
+                fseqs.append(">{}\n{}".format(hit, seq))
+            except KeyError as inst:
+                ## Caught bad seed or hit? Log and continue.
+                LOGGER.error("Bad Seed/Hit: seqsize {}\tloci {}\tseed {}\thit {}".format(seqsize, loci, seed, hit))
 
     ## write whatever is left over to the clusts file
     if fseqs:
