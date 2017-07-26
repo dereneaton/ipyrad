@@ -5,6 +5,21 @@
 Release Notes
 =============
 
+0.7.4
+-----
+**July 26, 2017**
+
+- Actually fix the step 6 boolean mask error.
+- Fix for boolean mask array length bug in step 6.
+- add -noss option for treemix ipa
+- mods to tetrad and sratools ipa
+- ensure ints not floats for high depth base counts
+- sratools updates
+- improvements to sratools
+- added extra line ending to step7 final print statement
+- add dask to environment.yaml
+- added sratools to ipyrad.analysis
+
 0.7.3
 -----
 **July 23, 2017**
