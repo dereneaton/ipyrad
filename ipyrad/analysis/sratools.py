@@ -118,7 +118,9 @@ class SRA(object):
 
                     ## clean up acc if it is not nicely formatted
                     ## i.e., do not allow spaces, ...
-                    acc = acc.replace(" ", "_")
+                    acc = acc.replace(" ", "_")\
+                             .replace('"', "")\
+                             .replace("'", "")
 
                     ## print filename
                     fpath = os.path.join(self.workdir, acc+".fastq.gz")
