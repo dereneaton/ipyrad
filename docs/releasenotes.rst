@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.7.7
+-----
+**July 27, 2017**
+
+- Proper support for demux 2brad.
+
 0.7.6
 -----
 **July 27, 2017**
