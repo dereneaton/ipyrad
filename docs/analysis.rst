@@ -27,7 +27,7 @@ This is an optional tool to use with ipyrad, but one that we strongly recommend.
 + `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
 + `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
 + `Using ipyrad with jupyter on HPC <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
-+ `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
+.. + `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
 
 
 *ipyrad* API assembly
@@ -36,8 +36,11 @@ These notebooks show example usage of the ipyrad API.
 
 .. + Intro to the ipyrad API <tutorial_API.html>`__
 .. + Quantify and plot shared RAD data with ipyrad <visualize.html>`__
-+ `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__
-+ `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__
++ `Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis%20.ipynb>`__ (run in jupyter-notebook)  
++ `Finch API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-2-Finches.ipynb>`__ (run in jupyter-notebook)  
+
+.. + `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__
+.. + `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__
 
 *ipyrad* API analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -54,7 +57,8 @@ These notebook show how to do parallelized downstream analyses in Jupyter-notebo
 
 *command line programs*
 ^^^^^^^^^^^^^^^^^^^^^^^
-These pages discuss further information about some command-line analysis programs.
+These pages discuss further information about some command-line analysis tools 
+that are frequently used with RAD-seq data.  
 
 + `RAxML phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
 + `TETRAD command line <http://ipyrad.readthedocs.io/tetrad.html>`__   
