@@ -295,7 +295,7 @@ def batch(
             fin = tot - len(asyncs) 
             elap = datetime.timedelta(seconds=int(time.time()-start))
             progressbar(tot, fin, 
-                " calculating D-stats  | {} | ".format(elap), spacer=0)
+                " calculating D-stats  | {} | ".format(elap), spacer="")
             time.sleep(0.1)
             if not asyncs:
                 print("")#\n")
