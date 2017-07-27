@@ -5,6 +5,17 @@
 Release Notes
 =============
 
+0.7.6
+-----
+**July 27, 2017**
+
+- Fix very nasty refmap SE bug.
+- update tutorials -- added APIs
+- update tutorials -- added APIs
+- testing MBL slideshow
+- API cookbooks updated
+- cleanup of badnames in sratools
+
 0.7.5
 -----
 **July 26, 2017**
