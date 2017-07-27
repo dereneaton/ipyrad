@@ -382,8 +382,9 @@ def fetch_cluster_se(data, samfile, chrom, rstart, rend):
            (not skip):
             ## store the seq
             if read1.is_reverse:
-                    seq = revcomp(read1.seq)
-
+                seq = revcomp(read1.seq)
+            else:
+                seq = read1.seq
             ## store, could write orient but just + for now.
             size = sfunc(key)
             clust.append(">{}:{}:{};size={};+\n{}"\
