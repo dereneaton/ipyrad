@@ -28,8 +28,8 @@ produced by each step of an assembly. Next, try some advanced methods,
 like using branching to assemble data sets under a range of parameter settings, 
 and assemble data with respect to a reference genome.
 
-   + `Introductory tutorial <tutorial_intro_cli.html>`__
-   + `Advanced tutorial <tutorial_advanced_cli.html>`__   
+   + `Introductory tutorial <tutorial_intro_cli.html>`__ (command line)  
+   + `Advanced tutorial <tutorial_advanced_cli.html>`__ (command line)  
    + `Running on ipyrad on HPC <HPC_script.html>`__
 
 
@@ -44,10 +44,10 @@ analysis cookbook recipes, below. The others include tips for optimizing
 ipyrad for use with that data type. 
 
 
-   + `Pedicularis CLI <pedicularis_.html>`__  
-   + `see ipyrad API cookbooks <http://ipyrad.readthedocs.io/analysis.html>`__  
-   + more coming soon...
-
+   + `Pedicularis CLI <pedicularis_.html>`__ (command line)  
+   + `Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis%20.ipynb>`__ (run in jupyter-notebook)  
+   + `Finch API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-2-Finches.ipynb>__ (run in jupyter-notebook)  
+   + `see more ipyrad API cookbooks here <http://ipyrad.readthedocs.io/analysis.html>`__  
 
     .. pedicularis_api.rst
     .. viburnum.rst
