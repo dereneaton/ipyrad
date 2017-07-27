@@ -311,8 +311,9 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
                 lenbar = len(barcode1)
     
             if data.paramsdict["datatype"] == '2brad':
-                read1[1] = read1[1][:-lenbar]
-                read1[3] = read1[3][:-lenbar]
+                overlen = len(cutters[0][0]) + lenbar + 1
+                read1[1] = read1[1][:-overlen] + "\n"
+                read1[3] = read1[3][:-overlen] + "\n"
             else:
                 read1[1] = read1[1][lenbar:]
                 read1[3] = read1[3][lenbar:]
@@ -378,9 +379,9 @@ def get_barcode_func(data, longbar):
     ## build func for finding barcode
     if longbar[1] == 'same':
         if data.paramsdict["datatype"] == '2brad':
-            def getbarcode(_, read1, longbar):
+            def getbarcode(cutters, read1, longbar):
                 """ find barcode for 2bRAD data """
-                return read1[1][-longbar[0]:]
+                return read1[1][:-(len(cutters[0][0]) + 1)][-longbar[0]:]
 
         else:
             def getbarcode(_, read1, longbar):
@@ -475,9 +476,11 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
     ## get func for finding barcode
     if longbar[1] == 'same':
         if data.paramsdict["datatype"] == '2brad':
-            def getbarcode(_, read1, longbar):
+            def getbarcode(cutters, read1, longbar):
                 """ find barcode for 2bRAD data """
-                return read1[1][-longbar[0]:]
+                ## +1 is for the \n at the end of the sequence line
+                lencut = len(cutters[0][0]) + 1
+                return read1[1][:-lencut][-longbar[0]:]
         else:
             def getbarcode(_, read1, longbar):
                 """ finds barcode for invariable length barcode data """
@@ -554,9 +557,12 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
                 ## Iff 3rad trim the len of the first barcode
                 lenbar = len(barcode1)
     
+            ## for 2brad we trim the barcode AND the synthetic overhang
+            ## The `+1` is because it trims the newline
             if data.paramsdict["datatype"] == '2brad':
-                read1[1] = read1[1][:-lenbar]
-                read1[3] = read1[3][:-lenbar]
+                overlen = len(cutters[0][0]) + lenbar + 1
+                read1[1] = read1[1][:-overlen] + "\n"
+                read1[3] = read1[3][:-overlen] + "\n"
             else:
                 read1[1] = read1[1][lenbar:]
                 read1[3] = read1[3][lenbar:]
@@ -1277,7 +1283,9 @@ def demux3(data, rawfiles, cutters, longbar, matchdict):
         if data.paramsdict["datatype"] == '2brad':
             def getbarcode(_, read1, longbar):
                 """ find barcode for 2bRAD data """
-                return read1[1][-longbar[0]:]
+                ## +1 is for the \n at the end of the sequence line
+                lencut = len(cutters[0][0]) + 1
+                return read1[1][:-lencut][-longbar[0]:]
         else:
             def getbarcode(_, read1, longbar):
                 """ finds barcode for invariable length barcode data """
@@ -1345,8 +1353,9 @@ def demux3(data, rawfiles, cutters, longbar, matchdict):
                 if data.paramsdict["datatype"] == "3rad":
                     lenbar = len(barcode1)
                 if data.paramsdict["datatype"] == "2brad":
-                    read1[1] = read1[1][:-lenbar]
-                    read1[3] = read1[3][:-lenbar]
+                    overlen = len(cutters[0][0]) + lenbar + 1
+                    read1[1] = read1[1][:-overlen] + "\n"
+                    read1[3] = read1[3][:-overlen] + "\n"
                 else:
                     read1[1] = read1[1][lenbar:]
                     read1[3] = read1[3][lenbar:]
