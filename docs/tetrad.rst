@@ -13,11 +13,15 @@ by Chifman and Kubatko (2015) in their software *SVDQuartets*.
 
 What does *tetrad* do differently from *svdquartets*?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Not all that much currently. But we have several plans for future differences. 
-Importantly, though, the code is free and open source, easy to install, 
-and can be highly parallelized on a HPC cluster. The *tetrad* software is new 
-and still has a lot of room for improvements in terms of speed, so stay tuned
-as we work on it. Currently, for smallish trees it is fast enough to finish in a 
+Not much currently. But we hope to add more in the future.
+One advantage for now is sipmly the the code is free and open source, 
+easy to install, and can be highly parallelized on a HPC cluster. In 
+addition, being written in Python, we're working on developing it 
+as a fairly easy to understand learning tool for understanding quartet
+inferece from phylogenetic invariants (site count patterns). 
+The *tetrad* software is new and still has a lot of room for 
+improvements in terms of speed, so stay tuned as we work on it, or 
+join us in developing it. Currently, for smallish trees it is fast enough to finish in a 
 few seconds. It can handle enormous sized data sets in terms of the number of SNPs, 
 but it slows down quite a lot when the number of tips becomes large (e.g., >100). 
 
