@@ -24,9 +24,9 @@ Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 This is an optional tool to use with ipyrad, but one that we strongly recommend. 
 
-+ `Video intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__  
++ `Video intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
++ `Using ipyrad with jupyter on HPC <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
 .. + `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
-+ `Using ipyrad with jupyter on HPC <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__  
 .. + `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
 
 
