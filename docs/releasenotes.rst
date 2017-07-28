@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.7.8
+-----
+**July 28, 2017**
+
+- bpp randomize-order argument bugfix
+- added .draw to treemix object
+- update tuts
+
 0.7.7
 -----
 **July 27, 2017**
