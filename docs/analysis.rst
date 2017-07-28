@@ -36,7 +36,7 @@ These notebooks show example usage of the ipyrad API.
 
 .. + Intro to the ipyrad API <tutorial_API.html>`__
 .. + Quantify and plot shared RAD data with ipyrad <visualize.html>`__
-+ `Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis%20.ipynb>`__ (run in jupyter-notebook)  
++ `Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__ (run in jupyter-notebook)
 + `Finch API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-2-Finches.ipynb>`__ (run in jupyter-notebook)  
 
 .. + `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__
