@@ -263,7 +263,7 @@ class Bpp(object):
                 self.params.seed = np.random.randint(0, 1e9, 1)[0]
                 ctlfile = self._write_ctlfile(rep=job)
                 if randomize_order:
-                    self._write_seqfile(randomize_order)
+                    self._write_seqfile(randomize_order=randomize_order)
 
                 ## submit to engines
                 async = lbview.apply(_call_bpp, ctlfile)
