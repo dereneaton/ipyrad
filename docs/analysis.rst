@@ -24,9 +24,9 @@ Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 This is an optional tool to use with ipyrad, but one that we strongly recommend. 
 
-+ `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__
-+ `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
-+ `Using ipyrad with jupyter on HPC <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__
++ `Video intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__  
+.. + `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
++ `Using ipyrad with jupyter on HPC <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__  
 .. + `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
 
 
@@ -44,7 +44,8 @@ These notebooks show example usage of the ipyrad API.
 
 *ipyrad* API analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-These notebook show how to do parallelized downstream analyses in Jupyter-notebooks.
+These notebook show how to do parallelized downstream analyses in Jupyter-notebooks, and to 
+generate advanced input files for many programs using the ipyrad analysis tools. 
 
 + `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `TETRAD quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>`__
