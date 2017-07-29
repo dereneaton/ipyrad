@@ -922,10 +922,10 @@ class Tetrad(object):
         ## wrap everything in a try statement so we can ensure that it will
         ## save if interrupted and we will clean up the 
         try:
-            ## find an ipcluster instance (looks for default unless profile)
+            ## launch and connect to ipcluster instance if doesn't exist
             if not ipyclient:
-                args = self._ipcluster.items() + [("spacer", 0)] #self._spacer)]                
-                ipyclient = ip.core.parallel.get_client(**dict(args)) #self._ipcluster)
+                args = self._ipcluster.items() + [("spacer", "")] 
+                ipyclient = ip.core.parallel.get_client(**dict(args)) 
 
             ## print a message about the cluster status
             if verbose == 2:
