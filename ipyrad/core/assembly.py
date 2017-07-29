@@ -1340,10 +1340,6 @@ class Assembly(object):
             if inst:
                 self._cleanup_and_die(inst)
 
-            ## a final spacer
-            if self._headers:
-                print("")
-
 
     def _cleanup_and_die(self, inst):
         """
