@@ -5,6 +5,7 @@ from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import register_ipcluster
 from ipyrad.assemble.util import IPyradError, IPyradWarningExit, detect_cpus
+import ipyparallel as ipp
 import pkg_resources
 import ipyrad as ip
 import argparse
@@ -397,9 +398,9 @@ def parse_command_line():
         help="run ipyrad in preview mode. Subset the input file so it'll run"\
             + "quickly so you can verify everything is working")
 
-    parser.add_argument("--ipcluster", action='store_true',
-        help="connect to running ipcluster instance with default cluster-id=''")
-
+    parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
+        type=str, nargs="?", const="default",
+        help="connect to ipcluster profile (default: 'default')")
 
     ## if no args then return help message
     if len(sys.argv) == 1:
@@ -530,25 +531,24 @@ def main():
             data = getassembly(args, parsedict)
 
             ## set CLI ipcluster terms
-            data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
             data._ipcluster["threads"] = args.threads
 
-            ## if more ipcluster args from command-line then use those
-            if args.MPI:
-                data._ipcluster["engines"] = "MPI"
-                if not args.cores:
-                    raise IPyradWarningExit(_MPI_CORES_ERROR)
-            else:
-                data._ipcluster["engines"] = "Local"
-
-            ## launch a NEW ipcluster instance and register "cluster_id" 
-            ## for later destruction, and to avoid conflicts between 
-            ## simultaneous ipcluster instances. If a user wanted to use 
-            ## an ipcluster instance that is already running instead then 
-            ## they have to use the API, or to have set args.ipcluster
+            ## if ipyclient is running (and matched profile) then use that one
             if args.ipcluster:
-                data._ipcluster["cluster_id"] = ""
+                ipyclient = ipp.Client(profile=args.ipcluster)
+                data._ipcluster["cores"] = len(ipyclient)
+
+            ## if not then we need to register and launch an ipcluster instance
             else:
+                ## set CLI ipcluster terms
+                ipyclient = None
+                data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
+                data._ipcluster["engines"] = "Local"
+                if args.MPI:
+                    data._ipcluster["engines"] = "MPI"
+                    if not args.cores:
+                        raise IPyradWarningExit("must provide -c argument with --MPI")
+                ## register to have a cluster-id with "ip- name"
                 data = register_ipcluster(data)
 
             ## set to print headers
@@ -556,9 +556,13 @@ def main():
 
             ## run assembly steps
             steps = list(args.steps)
-            data.run(steps=steps, force=args.force, preview=args.preview, show_cluster=1)
+            data.run(
+                steps=steps, 
+                force=args.force, 
+                preview=args.preview, 
+                show_cluster=1, 
+                ipyclient=ipyclient)
                      
-
         if args.results:
             showstats(parsedict)
 
