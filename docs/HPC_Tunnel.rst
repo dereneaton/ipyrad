@@ -3,32 +3,113 @@
 
 .. _HPCscript:
 
-Run jupyter-notebook on an HPC cluster
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Running jupyter-notebooks locally and remotely (on HPC)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The *ipyrad* API was specifically designed for use inside 
-`jupyter-notebooks <http://jupyter.org>`_,  
-a tool for reproducible science. 
-Notebooks allow you to run interactive code that can be documented with 
-embedded Markdown to create a shareable and executable document.
-Running *ipyrad* interactively in a notebook is easy to do on 
-a laptop or workstation. Simply type ``jupyter-notebook`` into a terminal
-and a notebook dashboard will open in your default browser.
-For more information see our [introductory tutorial on the ipyrad API] (coming soon). 
-
-Running jupyter-notebooks on a remote HPC cluster is only slightly more 
-difficult, but hugely advantageous, because you have access to massively 
-more computing power. This tutorial explains how to start a notebook server
-on your HPC cluster, and connect to it from your local computer (i.e., your laptop), 
-so that you can interact with the notebook in your browser but still have 
-the heavy computation occurring remotely on a cluster. 
-Instructions below are for the SLURM (sbatch) job submission 
-system, we have additional examples available for [TORQUE (qsub) submission 
-scripts] (soon) and [others] (soon). 
+`jupyter-notebooks <http://jupyter.org>`_, a tool for reproducible science.
+This section of the documentation is about how to start and run jupyter
+notebooks, which you can then use to run your ipyrad analyses using
+the ipyrad API. For instructions on how to use the ipyrad API 
+(after you have a notebook started) go here: (:ref:`ipyrad API <API>`__). 
+An example of a complete notebook showing assembly and analysis of 
+a RAD data set with the ipyrad API can be found here:
+(`Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__).
 
 
-tldr; Video tutorial
-~~~~~~~~~~~~~~~~~~~~~
+(:ref:`full API example <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`).  
+
+Jupyter notebooks allow you to run interactive code that can be 
+documented with embedded Markdown (words and fancy text) 
+to create a shareable and executable document. 
+Running *ipyrad* interactively in a notebook 
+is easy to do on a laptop or workstation, and slightly more difficult
+to run an HPC cluster, but after reading this tutorial you will 
+hopefully find it easy to do. If this is your
+first time using jupyter it will be easiest to start by trying 
+it on your laptop first before trying to use jupyter on a cluster. 
+In the case of running on a cluster our example below include an 
+example job submission script for SLURM, but other job 
+submission systems should be similar. 
+
+
+The following tools are used in this section:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++ ipyrad (used for RAD-seq assembly)  
++ jupyter-notebook (an environment in which we run Python code)  
++ ipcluster (used to parallelize code within a notebook)  
++ ssh (used to connect to a notebook running on HPC)  
+
+
+Starting a jupyter-notebook **locally**
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To start a jupyter-notebook on your local computer (e.g., laptop)
+execute the command below in a terminal. This will start a local 
+notebook server and open a window in your default web-browser. 
+Leave the server running the terminal. You will not need to 
+touch that again until you want to stop the notebook server.
+You can now interact with the notebook server through your 
+web-browser. You should see a page showing the files and folders
+in your directory where you started the notebook. In the upper
+right you will see a tab where you can select <new> and then 
+<Python 2> to start a new Python notebook.
+
+.. code-block:: bash
+
+    jupyter-notebook
+
+
+Starting a jupyter-notebook **remotely**
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Because jupyter works by sending and receiving information 
+(i.e., it's a server) it is easy to run a jupyter notebook through 
+your browser even if the notebook server is running on a remote computer 
+that is far away, for example on a computing cluster. Start by 
+assigning a password to your notebook server which will give it 
+added security. 
+
+.. code-block:: bash
+
+    ## Run this on the remote mahcine (i.e., the cluster)
+    ## It will ask you to enter a password which will be 
+    ## encrypted and stored for use when connecting.
+    jupyter-notebook password
+
+
+.. code-block:: bash
+
+    ## Run this on the remote machine (i.e., the cluster)
+    jupyter-notebook --no-browser --ip=$(hostname -i) --port=9999  
+
+
+Once the notebook starts it will print some information including 
+the IP address of the machine your are connected to (this will something
+like 10.115.0.25), and the port number that it is using (this will
+probably be 9999 if that is what you entered above, however, if 9999
+is already in use then it will select a different port number, so check
+the output). You will need these to pieces of information, the IP-address
+and the port number, for the next command. Replace the values that are 
+between brackets with appropriate values. 
+
+
+.. code-block:: bash
+
+    ## Run this on your local machine (i.e., your laptop)
+    ssh -N -L <port>:<ip-address>:<port> <user>@<login>
+
+
+.. code-block:: bash
+
+    ## This would be an example with real values entered:
+    ssh -N -L 9999:10.115.0.25:9999 deren@hpc.columbia.edu  
+
+
+
+Starting jupyter through a batch script:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+tldr; short video tutorial.
 
 .. raw:: html
 
@@ -38,8 +119,8 @@ tldr; Video tutorial
     <br>
 
 
-Step 1: Submit a batch script to launch a notebook server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 1: Submit a batch script to start jupyter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Copy and paste the code block below into a text editor and save the script as 
 ``slurm_jupyter.sbatch``. The #SBATCH section of the script may need to be edited 
 slightly to conform to your cluster. The stdout (output) of the job will be 
@@ -85,20 +166,19 @@ This example would connect to one node with 20 cores available.
     jupyter-notebook --no-browser --port=$ipnport --ip=$ipnip
 
 
-If you want to know the details of what this script is doing jump down to 
-the section titled 
-:ref:`The slurm_jupyter.sbatch script explained<The slurm_jupyter.sbatch script explained>`_. 
-Now submit the sbatch script the cluster to reserve the node and start the 
-jupyter notebook server running on it.
+Now submit the sbatch script to the cluster to reserve the node and 
+start the jupyter notebook server running on it. The notebook server 
+will continue running until it hits the walltime limit, or you stop it.
 
 .. code-block:: bash
 
-    user@login-node$ sbatch slurm_jupyter.sbatch
+    ## submit the job script to your cluster job scheduler
+    sbatch slurm_jupyter.sbatch
 
 
 
 Step 2: Connecting to the jupyter server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 After submitting your sbatch script to the queue you can check to see if
 it has started with the ``squeue -u {username}`` command. 
 Once it starts information will be printed to the log file which 
@@ -122,35 +202,40 @@ local machine (e.g., laptop). This creates the SSH tunnel from your local
 machine to the port on the cluster where the jupyter server is running. 
 As long as the SSH tunnel is open you will be able to interact with the 
 jupyter-notebook through your browser. You can close the SSH tunnel at any time 
-the notebook will continue running on the cluster. You can also re-connect to it 
-later by re-opening the tunnel with the same SSH command.
+and the notebook will continue running on the cluster. You can 
+re-connect to it later by re-opening the tunnel with the same SSH command.
+
+
+.. code-block:: bash
+
+    ## This would be an example with real values entered:
+    ssh -N -L 8193:10.115.0.25:8193 deren@hpc.columbia.edu  
 
 
 Security/tokens
 ~~~~~~~~~~~~~~~~
-When you connect to the jupyter-notebook server it will likely ask for a 
-password/token. You can find an automatically generated token in your 
-jupyter-log file near the bottom. It is the long string printed after the word 
-`token`. Copy just that portion and paste it in the token cell. Alternatively, 
-although it is a bit complicated, you can setup a password following the 
-instructions on the jupyter page that pops up.
+If you did not create a password earlier, then when you connect to 
+the jupyter-notebook server it will ask you for a password/token. 
+You can find an automatically generated token in your jupyter-log 
+file near the bottom. It is the long string printed after the word 
+`token`. Copy just that portion and paste it in the token cell. I 
+find it easier to use password. See the jupyter documentation for how
+to setup further security. 
 
 
 Using jupyter
 ~~~~~~~~~~~~~~
-Once connected you can open any existing notebook or create a new one. 
+Once connected you can open an existing notebook or create a new one. 
 The notebooks are physically located on your cluster, meaning all of your data 
 and results will be saved there. I usually keep notebooks associated with 
 different projects in different directories, where each directory is also a 
 github repo, which makes them easy to share. When running ipyrad I usually set 
 the "project_dir" be a location in the scratch directory of the cluster, since
 it is faster for reading/writing large files. 
-.. You can see an example of this type of setup using the ipyrad API here
-.. (`API empirical notebook <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb-WB-Pedicularis.ipynb>`_).
 
 
-Multi-node MPI setup:
-~~~~~~~~~~~~~~~~~~~~~
+Using ipcluster on a multi-node MPI setup:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In the example above we started a notebook on a node with 20 cores available. 
 Once connected, the first I would do is typically to start an ipcluster instance
 running in a terminal so that I can use it to parallelize computations
@@ -183,9 +268,6 @@ it up or ask the system administrator.
     ## set the profile name here
     profile="MPI60"
 
-    ## Print ipcluster info to ipcluster-log-{jobid}.txt 
-    echo "Starting ipcluster with --profile=$profile"
-
     ## Start an ipcluster instance. This server will run until killed.
     module load OpenMPI
     sleep 10
@@ -195,8 +277,13 @@ it up or ask the system administrator.
 
 Connecting to the ipcluster instance in Python
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-When you are in the jupyter notebook you can connect to this ipcluster
-instance with the following Python code: 
+Now when you are in the jupyter notebook you can connect to this ipcluster
+instance -- which is running as a completely separate job on your cluster -- 
+with the following simple Python code. The object ``ipyclient`` can then
+be used to distribute your computation on the remote cluster. When you
+run ipyrad pass the ipyclient object to tell it this is the cluster you want
+computation to occur on. The results of your computation will still be 
+printed in your jupyter notebook.
 
 
 .. code-block:: python
@@ -211,7 +298,7 @@ instance with the following Python code:
     print(len(ipyclient), 'cores')
 
     ## or, use ipyrad to print cluster info
-    print(ip.cluster_info(ipyclient))
+    ip.cluster_info(ipyclient)
 
 
 .. code-block:: yaml
@@ -222,24 +309,32 @@ instance with the following Python code:
     host compute node: [20 cores] on c14n04.farnam.hpc.yale.edu
 
 
+When running the ipyrad API you would distribute work by passing the
+ipyclient object in the ipyclient argument. See the ipyrad API for more
+information. 
+
+.. code-block:: python
+
+    ## run step 3 of ipyrad assembly across 60 cores of the cluster    
+    data.run(steps='3', ipyclient=ipyclient)
+
+
 
 The slurm_jupyter.sbatch script explained
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-What is the sbatch script doing? The ``XDG_RUNTIME_DIR`` command is a little obscure 
-and simply fixes a bug where SLURM otherwise sets this variable to something that
+So what is the sbatch script above doing? 
+The ``XDG_RUNTIME_DIR`` command is a little obscure, it simply fixes a 
+bug where SLURM otherwise sets this variable to something that
 is incompatible with jupyter. The ``ipnport`` is a random number between 8000-9999
 that selects which port we will use to send data on. The ``ipnip`` is the ip 
 address of the login node that we are tunneling through. The ``echo`` commands 
-simply print the tunneling information to the log file. In the multi-node 
-script there is an additional argument for loading the MPI module, which isn't
-necessary on all clusters, some initiate MPI automatically when we run ipcluster, 
-but the safest bet is to always load your system MPI module. The final two 
-commands are the most important. The first starts an ``ipcluster`` 
-instance which will ensure that we can connect to all of the requested CPUs. 
-There are many ways to start the parallel client (see the ipyparallel docs), 
-but the arguments we used should generally work for most systems.
-The final command starts the ``jupyter-notebook`` server, telling it
-to forward data to the port that we specified, from the IP address we specified. 
+simply print the tunneling information to the log file. 
+
+In the multi-node ipcluster script we use a the ``module load``
+command to load the system-wide MPI software. Then we call ipcluster
+with arguments to find cores across all available nodes using MPI, and
+we provide a name (profile) for this cluster so it will be easy 
+to connect to.
 
 
 Restarting ipcluster
@@ -249,8 +344,9 @@ if you run into a problem with the parallel engines, for example, you might
 have a stalled job on one of the engines. The easiest way to do this is to stop 
 the ``ipcluster`` instance by starting a new terminal from the jupyter dashboard, 
 by selecting [new]/[terminal] on the right side, and then following
-the commands below to restart ``ipcluster``. Or, if you are using the multi-node
-setup then you can restart the ipcluster instance by resubmitting an sbatch script.
+the commands below to restart ``ipcluster``. If you are using a multi-node
+setup then you will need to resubmit the ipcluster job through a script in 
+order to connect to multiple computers again. 
 
 .. code-block:: bash
 
@@ -261,23 +357,14 @@ setup then you can restart the ipcluster instance by resubmitting an sbatch scri
     ipcluster start
 
 
-Connecting multiple notebook at once
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you want to run multiple notebooks simultaneously in different tabs and 
-have each of them access a different subset of your engines that are available
-you can do so using the ``cluster-id`` argument to ipcluster. If you do this 
-you will need to tell ipyrad that you are using a non-default ``cluster-id`` 
-by setting it in the ipcluster info for your Assembly object (in the JSON 
-file for CLI, or in the attribute for the API). Or you can connect to different
-ipyparallel "profiles". See the ipyparallel docs for more info. 
-
-
 Terminating the connection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-To stop a running jupyter notebook just cancel the job on your cluster's queue. 
-To leave it running but close your local connection simply close the tab on your
-browser, or close the terminal running the ssh script. You can reconnect to the 
-running notebook at any time by simply running the SSH command again and 
-connecting through your browser. As long as the jupyter server is running 
-you can reconnect to it. If you disconnect and reconnect, however, it will not
-update progress bars that may have moved while you were disconnected, fyi. 
+To stop a running jupyter notebook just cancel the job on your cluster's queue, 
+or if working locally, just press control-c in the terminal window. If you 
+disconnect from a remote notebook and later reconnect you can continue 
+using the notebook without needed to restart it by going to the menu and 
+select kernel reconnect. If progress bars were printing output while you 
+were disconnected it may not show up, but the job will have kept running.
+The loss of progress bars is a shortcoming that will likely be 
+fixed in the near future. 
+

@@ -5,6 +5,7 @@ from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import register_ipcluster
 from ipyrad.assemble.util import IPyradWarningExit, detect_cpus
+import ipyparallel as ipp
 import pkg_resources
 import ipyrad as ip
 import numpy as np
@@ -122,10 +123,8 @@ def parse_command_line():
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
 
-    #parser.add_argument("--ipcluster", action='store_true',
-    #    help="connect to ipcluster, set profile (default='')")
     parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
-        type=str, nargs="?", #default="default", 
+        type=str, nargs="?", const="default",
         help="connect to ipcluster profile (default: 'default')")
 
     ## if no args then return help message
@@ -135,10 +134,6 @@ def parse_command_line():
 
     ## parse args
     args = parser.parse_args()
-
-    ## if no ipcluster profile is set the use the 'default' profile
-    if not args.ipcluster:
-        args.ipcluster = "default"
 
     ## RAISE errors right away for some bad argument combinations:
     if args.method not in ["random", "equal", "all"]:
@@ -224,7 +219,6 @@ def main():
                               nboots=args.boots, 
                               nquartets=args.nquartets, 
                               cli=True,
-                              profile=args.ipcluster,
                               )
             ## if not quiet...
             print("tetrad instance: {}".format(args.name))
@@ -237,12 +231,18 @@ def main():
     if args.boots:
         data.nboots = int(args.boots)
 
+    ## set CLI ipcluster terms
+    #data._ipcluster["threads"] = args.threads
+
     ## if ipyclient is running (and matched profile) then use that one
-    if args.ipcluster != "default":
-        data._ipcluster["cluster_id"] = ""
-        data._ipcluster["profile"] = args.ipcluster
+    if args.ipcluster:
+        ipyclient = ipp.Client(profile=args.ipcluster)
+        data._ipcluster["cores"] = len(ipyclient)
+
+    ## if not then we need to register and launch an ipcluster instance
     else:
         ## set CLI ipcluster terms
+        ipyclient = None
         data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
         data._ipcluster["engines"] = "Local"
         if args.MPI:
@@ -258,7 +258,7 @@ def main():
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
-    data.run(force=args.force)
+    data.run(force=args.force, ipyclient=ipyclient)
 
 
 
