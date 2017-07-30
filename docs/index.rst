@@ -41,6 +41,7 @@ Documentation
    userguide.rst
    notebooks.rst
    tutorials.rst
+   HPC_Tunnel.rst
    analysis.rst
    citing.rst
    releasenotes.rst
