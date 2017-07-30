@@ -363,7 +363,7 @@ def merge_pairs_after_refmapping(data, two_files, merged_out):
            "--fasta_width", "0",
            "--fastq_minmergelen", minlen,
            "--fastq_maxns", str(maxn),
-           "--fastq_minovlen", "20",
+           "--fastq_minovlen", "10",
            "--fastq_maxdiffs", "4",
            "--label_suffix", "_m1",
            "--fastq_qmax", "1000",
