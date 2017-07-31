@@ -9,7 +9,7 @@ but requires a little more work up front to learn the necessary tools
 for using it. This includes knowing some very rudimentary Python, and
 setting up a Jupyter notebook.
 
-.. code:: ipython2
+.. code:: python
 
     import ipyrad as ip
 
@@ -49,7 +49,7 @@ little space since we might type the name many times. Below that, we use
 the print statement to print the version number of *ipyrad*. This is
 good practice to keep a record of which software version we are using.
 
-.. code:: ipython2
+.. code:: python
 
     ## this is a comment, it is not executed, but the code below it is.
     import ipyrad as ip
@@ -92,7 +92,7 @@ params.txt file, we store the new Assembly information in a Python
 variable. This can be named anything you want. Below I name the variable
 *data1* so it is easy to remember that the Assembly name is also data1.
 
-.. code:: ipython2
+.. code:: python
 
     ## create an Assembly object named data1. 
     data1 = ip.Assembly("data1")
@@ -112,7 +112,7 @@ associated with it, analogous to the params file in the command line
 tool. You can view and modify these parameters using two arguments to
 the Assembly object, ``set_params()`` and ``get_params()``.
 
-.. code:: ipython2
+.. code:: python
 
     ## setting/modifying parameters for this Assembly object
     data1.set_params('project_dir', "pedicularis")
@@ -170,7 +170,7 @@ value to be a float (decimal). It's hard to catch every possible error,
 but we've tried to catch many of the most common errors in parameter
 settings.
 
-.. code:: ipython2
+.. code:: python
 
     ## this is expected to raise an error, since the clust_threshold 
     ## parameter cannot be 2.0
@@ -221,7 +221,7 @@ name of your Assembly variable, followed by a '.', and then press . This
 will use tab-completion to list all of the available options. Below I
 print a few examples.
 
-.. code:: ipython2
+.. code:: python
 
     print data1.name
 
@@ -231,7 +231,7 @@ print a few examples.
     data1
 
 
-.. code:: ipython2
+.. code:: python
 
     ## another example attribute listing directories
     ## associated with this object. Most are empty b/c
@@ -270,7 +270,7 @@ data files. Because we've already entered the path to our data files in
 ``sorted_fastq_path`` of our Asssembly object, we can go ahead and run
 step 1 to create Sample objects that are linked to the data files.
 
-.. code:: ipython2
+.. code:: python
 
     ## run step 1 to create Samples objects
     data1.run("1")
@@ -292,7 +292,7 @@ run. If a step has already been run on your samples they will be skipped
 and it will print a warning. You can enforce overwriting the existing
 data using the force flag.
 
-.. code:: ipython2
+.. code:: python
 
     ## The force flag allows you to re-run a step that is already finished
     data1.run("1", force=True)
@@ -313,7 +313,7 @@ specific profile name then you will need to connect to it using the
 ipyparallel library and then pass the connection client object to
 ipyrad. I'll show an example of that here.
 
-.. code:: ipython2
+.. code:: python
 
     ## this is the explicit way to connect to ipcluster
     import ipyparallel
@@ -324,7 +324,7 @@ ipyrad. I'll show an example of that here.
     ## if you used a named profile then enter that
     ipyclient = ipyparallel.Client(profile="default")
 
-.. code:: ipython2
+.. code:: python
 
     ## call the run function of ipyrad and pass it the ipyclient
     ## process that you want the work distributed on.
@@ -346,7 +346,7 @@ from the attribute ``.Samples``. They are stored as a dictionary in
 which the keys are Sample names and the values of the dictionary are the
 Sample objects.
 
-.. code:: ipython2
+.. code:: python
 
     ## Sample objects stored as a dictionary
     data1.samples
@@ -384,7 +384,7 @@ This was a stylistic choice to provide a cleaner output for analyses
 inside Jupyter notebooks. You can view the cluster information when
 running the step functions by adding the argument ``show_cluster=True``.
 
-.. code:: ipython2
+.. code:: python
 
     ## run step 1 to create Samples objects
     data1.run("1", show_cluster=True, force=True)
@@ -407,7 +407,7 @@ stats of all Sample class objects that they contain, which provides an
 easy way to view results. This includes ``.stats`` attribute, and the
 ``.stats_dfs`` attributes for each step.
 
-.. code:: ipython2
+.. code:: python
 
     ## print full stats summary
     print data1.stats
@@ -431,7 +431,7 @@ easy way to view results. This includes ``.stats`` attribute, and the
     41954_cyathophylloides      1    2199613
 
 
-.. code:: ipython2
+.. code:: python
 
     ## print full stats for step 1 (in this case it's the same but for other
     ## steps the stats_dfs often contains more information.)
@@ -465,7 +465,7 @@ objects much more easily, such as when you want to provide a list of
 Sample names in order to subsample (exclude samples) during the
 branching process. Below is an example.
 
-.. code:: ipython2
+.. code:: python
 
     ## access all Sample names in data1
     allsamples = data1.samples.keys()
@@ -490,7 +490,7 @@ branching process. Below is an example.
     41954_cyathophylloides
 
 
-.. code:: ipython2
+.. code:: python
 
     ## Drop the two samples from this list that have "prz" in their names.
     ## This is an easy programmatic way to remove the outgroup samples
@@ -550,7 +550,7 @@ In the example below we will create 8 complete Assemblies which vary in
 three different parameter combinations (filter\_setting,
 clust\_threshold, and min\_sample).
 
-.. code:: ipython2
+.. code:: python
 
     ## Start by creating an initial assembly, setting the path to your data, 
     ## and running step1. I set a project-dir so that all of our data sets
@@ -572,7 +572,7 @@ clust\_threshold, and min\_sample).
     [####################] 100%  writing/compressing   | 0:00:00 | s1 | 
 
 
-.. code:: ipython2
+.. code:: python
 
     ## let's create a dictionary to hold the finished assemblies
     adict = {}
@@ -783,7 +783,7 @@ base calls and the other makes diploid base calls. Then I merged the
 Assemblies back together so that all Samples are assembled together in
 steps 6 and 7.
 
-.. code:: ipython2
+.. code:: python
 
     ## run an assembly up to step 3
     data.run("123", force=True)
@@ -873,7 +873,7 @@ based on the presence of characters in their names that define them
 this makes group assignments much easier than having to write every
 sample name by hand.
 
-.. code:: ipython2
+.. code:: python
 
     ## create a branch for a population-filtered assembly
     pops = data3.branch("populations")
@@ -897,7 +897,7 @@ sample name by hand.
 
 
 
-.. code:: ipython2
+.. code:: python
 
     ## run assembly
     pops.run("7")
@@ -926,7 +926,7 @@ This updates the JSON file. Additionally, Assembly objects have a
 function called ``.write_params()`` which can be invoked to create a
 params file for use by the *ipyrad* command line tool.
 
-.. code:: ipython2
+.. code:: python
 
     ## save assembly object (also auto-saves after every run() command)
     data1.save()
