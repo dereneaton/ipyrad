@@ -12,13 +12,10 @@ The *ipyrad* API was specifically designed for use inside
 This section of the documentation is about how to start and run jupyter
 notebooks, which you can then use to run your ipyrad analyses using
 the ipyrad API. For instructions on how to use the ipyrad API 
-(after you have a notebook started) go here: (:ref:`ipyrad API <API>`). 
+(after you have a notebook started) go here: (:ref:`ipyrad API <API_userguide>`). 
 An example of a complete notebook showing assembly and analysis of 
 a RAD data set with the ipyrad API can be found here:
 (`Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__).
-
-
-(:ref:`full API example <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`).  
 
 Jupyter notebooks allow you to run interactive code that can be 
 documented with embedded Markdown (words and fancy text) 
@@ -104,6 +101,11 @@ between brackets with the appropriate values.
     ## This would be an example with real values entered:
     ssh -N -L 9999:10.115.0.25:9999 deren@hpc.columbia.edu  
 
+
+You will now be able to connect to the jupyter notebook on your 
+local machine (i.e., laptop) by going to the web address 
+``localhost:<port>`` where you enter in the port number your 
+notebook is being served on.
 
 
 Starting jupyter through a batch script:

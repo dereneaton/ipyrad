@@ -28,9 +28,10 @@ produced by each step of an assembly. Next, try some advanced methods,
 like using branching to assemble data sets under a range of parameter settings, 
 and assemble data with respect to a reference genome.
 
-   + `Introductory tutorial <tutorial_intro_cli.html>`__ (command line)  
-   + `Advanced tutorial <tutorial_advanced_cli.html>`__ (command line)  
-   + `Running on ipyrad on HPC <HPC_script.html>`__
+   + `Introductory tutorial to the ipyrad CLI <tutorial_intro_cli.html>`__ (command line)  
+   + `Advanced tutorial to the ipyrad CLI <tutorial_advanced_cli.html>`__ (command line)  
+   + `Running on ipyrad on HPC <HPC_script.html>`__  
+   + `Introductory tutorial to the ipyrad API <API_userguide.html>`__  
 
 
 .. _empirical_example:
@@ -42,7 +43,6 @@ empirical data sets representing different data types. The first analysis
 (Eaton and Ree, 2013) can be assembled very quickly, and is re-used in our 
 analysis cookbook recipes, below. The others include tips for optimizing 
 ipyrad for use with that data type. 
-
 
    + `Pedicularis CLI <pedicularis_.html>`__ (command line)  
    + `Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__ (run in jupyter-notebook)  
