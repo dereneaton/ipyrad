@@ -6,8 +6,8 @@
 
 .. _tutorials:
 
-Tutorials
-=========
+Tutorials (running ipyrad)
+==========================
 
 The ipyrad_ command line interface (CLI) is accessed through a terminal. Use 
 the -help (-h) flag to print a help screen with a description of the main 
@@ -31,7 +31,7 @@ and assemble data with respect to a reference genome.
    + `Introductory tutorial to the ipyrad CLI <tutorial_intro_cli.html>`__ (command line)  
    + `Advanced tutorial to the ipyrad CLI <tutorial_advanced_cli.html>`__ (command line)  
    + `Running on ipyrad on HPC <HPC_script.html>`__  
-   + `Introductory tutorial to the ipyrad API <API_userguide.html>`__  
+   + `Introductory tutorial to the ipyrad API <API_user-guide.html>`__  
 
 
 .. _empirical_example:
