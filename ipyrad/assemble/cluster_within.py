@@ -162,7 +162,6 @@ def sample_cleanup(data, sample):
         refmap_stats(data, sample)
 
     log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
-    LOGGER.debug("loglevel = {}".format(log_level))
 
     if not log_level == "DEBUG":
         ## Clean up loose files only if not in DEBUG

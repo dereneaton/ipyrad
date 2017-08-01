@@ -444,7 +444,8 @@ def merge_after_pysam(data, clust):
     This is for pysam post-flight merging. The input is a cluster
     for an individual locus. We have to split the clusters, write
     R1 and R2 to files then call merge_pairs(). This is not ideal,
-    it's slow, but it works.
+    it's slow, but it works. This is the absolute worst way to do this,
+    it bounces all the files for each locus off the disk. I/O _hog_.
     """
     try:
         r1file = tempfile.NamedTemporaryFile(mode='wb', delete=False,
@@ -461,6 +462,8 @@ def merge_after_pysam(data, clust):
             ## Have to munge the sname to make it look like fastq format
             sname = "@" + sname[1:]
             r1, r2 = seq.split("nnnn")
+            ## vsearch wants r2 to be oriented how it expects.
+            r2 = r2[::-1]
             r1dat.append("{}\n{}\n{}\n{}".format(sname, r1, "+", "B"*(len(r1))))
             r2dat.append("{}\n{}\n{}\n{}".format(sname, r2, "+", "B"*(len(r2))))
 
@@ -488,13 +491,15 @@ def merge_after_pysam(data, clust):
                 ## put sname back
                 sname = ">" + sname[1:]
                 clust.extend([sname.strip(), seq.strip()])
-
     except:
         LOGGER.info("Error in merge_pairs post-refmap.")
         raise
     finally:
         for i in [r1file.name, r2file.name, merged_file]:
             if os.path.exists(i):
+                log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
+                ## uncomment this to shit ALL over the filesystem. 
+                ## if not log_level == "DEBUG":
                 os.remove(i)
 
     return clust
