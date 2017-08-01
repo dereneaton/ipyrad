@@ -551,14 +551,14 @@ def ref_build_and_muscle_chunk(data, sample):
                 ## write to file
                 with open(tmpfile.format(idx), 'w') as tmp:
                     LOGGER.debug("Writing tmpfile - {}".format(tmpfile.format(idx)))
-                    tmp.write("\n//\n//\n".join(clusts)+"\n//\n//\n")
+                    tmp.write("\n//\n//\n".join(clusts))
                 idx += 1
                 nclusts = 0
                 clusts = []
     if clusts:
         ## write remaining to file
         with open(tmpfile.format(idx), 'w') as tmp:
-            tmp.write("\n//\n//\n".join(clusts)+"\n//\n//\n")
+            tmp.write("\n//\n//\n" + ("\n//\n//\n".join(clusts)))
         clusts = []
     
     chunkfiles = glob.glob(os.path.join(data.tmpdir, sample.name+"_chunk_*.ali"))

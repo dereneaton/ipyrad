@@ -281,7 +281,7 @@ def persistent_popen_align3(clusts, maxseqs=200):
             ## Malformed clust. Dictionary creation with only 1 element will raise.
             except ValueError as inst:
                 LOGGER.debug("Bad PE cluster - {}\nla1 - {}\nla2 - {}".format(\
-                                lclust, la1, la2))
+                                clust, la1, la2))
 
             ## Either reads are SE, or at least some pairs are merged.
             except IndexError:
@@ -359,7 +359,10 @@ def align_and_parse(handle, max_internal_indels=8):
     highindels = 0
 
     ## iterate over clusters sending each to muscle, splits and aligns pairs
-    aligned = persistent_popen_align3(clusts, 200)
+    try:
+        aligned = persistent_popen_align3(clusts, 200)
+    except:
+        LOGGER.debug("Error in handle - {}".format(handle))
 
     ## store good alignments to be written to file
     refined = []
@@ -386,7 +389,9 @@ def align_and_parse(handle, max_internal_indels=8):
             outfile.write("\n//\n//\n".join(refined)+"\n")
 
     ## remove the old tmp file
-    os.remove(handle)
+    log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
+    if not log_level == "DEBUG":
+        os.remove(handle)
     return highindels
 
 
@@ -1378,15 +1383,18 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 
         finally:
             ## this can fail if jobs were not stopped properly and are still
-            ## writing to tmpdir.
+            ## writing to tmpdir. don't cleanup if debug is on.
             try:
-                if os.path.exists(data.tmpdir):
-                    shutil.rmtree(data.tmpdir)
-                ## get all refmap_derep.fastqs
-                rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
-                ## Remove the unmapped fastq files
-                for rmfile in rdereps:
-                    os.remove(rmfile)
+                log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
+                if not log_level == "DEBUG":
+
+                    if os.path.exists(data.tmpdir):
+                        shutil.rmtree(data.tmpdir)
+                    ## get all refmap_derep.fastqs
+                    rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
+                    ## Remove the unmapped fastq files
+                    for rmfile in rdereps:
+                        os.remove(rmfile)
 
             except Exception as _:
                 LOGGER.warning("failed to cleanup files/dirs")

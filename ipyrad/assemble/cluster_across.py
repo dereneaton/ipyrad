@@ -507,7 +507,7 @@ def cluster(data, noreverse):
     ## (too low of cov values yield too many poor alignments)
     strand = "plus"
     cov = 0.75    ##0.90
-    if data.paramsdict["datatype"] == "gbs":
+    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.60
     elif data.paramsdict["datatype"] == "pairgbs":
