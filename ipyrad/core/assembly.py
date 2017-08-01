@@ -220,7 +220,8 @@ class Assembly(object):
                         ("query_cov", None),
                         ("smalt_index_wordlen", 8),
                         ("aligner", "bwa"),
-                        ("min_SE_refmap_overlap", 17)
+                        ("min_SE_refmap_overlap", 17),
+                        ("refmap_merge_PE", True)
         ])
 
     def __str__(self):
