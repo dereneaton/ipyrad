@@ -161,20 +161,24 @@ def sample_cleanup(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
 
-    ## Clean up loose files
-    ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
-    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
-    mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
-    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
-    usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
-    hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
-    clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+    log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
+    LOGGER.debug("loglevel = {}".format(log_level))
 
-    for f in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
-        try:
-            os.remove(f)
-        except:
-            pass
+    if not log_level == "DEBUG":
+        ## Clean up loose files only if not in DEBUG
+        ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
+        derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+        mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
+        uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+        usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
+        hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+        clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+
+        for f in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 
 
@@ -1215,28 +1219,31 @@ def muscle_chunker(data, sample):
 def reconcat(data, sample):
     """ takes aligned chunks (usually 10) and concatenates them """
 
-    ## get chunks
-    chunks = glob.glob(os.path.join(data.tmpdir,
-             sample.name+"_chunk_[0-9].aligned"))
+    try:
+        ## get chunks
+        chunks = glob.glob(os.path.join(data.tmpdir,
+                 sample.name+"_chunk_[0-9].aligned"))
 
-    ## sort by chunk number, cuts off last 8 =(aligned)
-    chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
-    LOGGER.info("chunk %s", chunks)
-    ## concatenate finished reads
-    sample.files.clusters = os.path.join(data.dirs.clusts,
-                                         sample.name+".clustS.gz")
-    ## reconcats aligned clusters
-    with gzip.open(sample.files.clusters, 'wb') as out:
-        for fname in chunks:
-            with open(fname) as infile:
-                dat = infile.read()
-                ## avoids mess if last chunk was empty
-                if dat.endswith("\n"):
-                    out.write(dat+"//\n//\n")
-                else:
-                    out.write(dat+"\n//\n//\n")
-            os.remove(fname)
-
+        ## sort by chunk number, cuts off last 8 =(aligned)
+        chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
+        LOGGER.info("chunk %s", chunks)
+        ## concatenate finished reads
+        sample.files.clusters = os.path.join(data.dirs.clusts,
+                                             sample.name+".clustS.gz")
+        ## reconcats aligned clusters
+        with gzip.open(sample.files.clusters, 'wb') as out:
+            for fname in chunks:
+                with open(fname) as infile:
+                    dat = infile.read()
+                    ## avoids mess if last chunk was empty
+                    if dat.endswith("\n"):
+                        out.write(dat+"//\n//\n")
+                    else:
+                        out.write(dat+"\n//\n//\n")
+                os.remove(fname)
+    except Exception as inst:
+        LOGGER.error("Error in reconcat {}".format(inst))
+        raise
 
 
 def derep_concat_split(data, sample, nthreads):
