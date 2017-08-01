@@ -959,7 +959,8 @@ def derep_and_sort(data, infile, outfile, nthreads):
 
     ## datatypes options
     strand = "plus"
-    if "gbs" in data.paramsdict["datatype"]:
+    if "gbs" in data.paramsdict["datatype"]\
+        or "2brad" in data.paramsdict["datatype"]:
         strand = "both"
 
     ## pipe in a gzipped file
@@ -1099,7 +1100,7 @@ def cluster(data, sample, nthreads):
     strand = "plus"
     cov = 0.75
     minsl = 0.5
-    if data.paramsdict["datatype"] == "gbs":
+    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.5
         minsl = 0.5
