@@ -439,6 +439,66 @@ def merge_pairs_after_refmapping(data, two_files, merged_out):
     return nmerged
 
 
+def merge_after_pysam(data, clust):
+    """
+    This is for pysam post-flight merging. The input is a cluster
+    for an individual locus. We have to split the clusters, write
+    R1 and R2 to files then call merge_pairs(). This is not ideal,
+    it's slow, but it works.
+    """
+    try:
+        r1file = tempfile.NamedTemporaryFile(mode='wb', delete=False,
+                                            dir=data.dirs.edits,
+                                            suffix="_R1_.fastq")
+        r2file = tempfile.NamedTemporaryFile(mode='wb', delete=False,
+                                            dir=data.dirs.edits,
+                                            suffix="_R2_.fastq")
+
+        r1dat = []
+        r2dat = []
+        for locus in clust:
+            sname, seq = locus.split("\n")
+            ## Have to munge the sname to make it look like fastq format
+            sname = "@" + sname[1:]
+            r1, r2 = seq.split("nnnn")
+            r1dat.append("{}\n{}\n{}\n{}".format(sname, r1, "+", "B"*(len(r1))))
+            r2dat.append("{}\n{}\n{}\n{}".format(sname, r2, "+", "B"*(len(r2))))
+
+        r1file.write("\n".join(r1dat))
+        r2file.write("\n".join(r2dat))
+        r1file.close()
+        r2file.close()
+
+        ## Read in the merged data and format to return as a clust
+        merged_file = tempfile.NamedTemporaryFile(mode='wb',
+                                            dir=data.dirs.edits,
+                                            suffix="_merged.fastq").name
+
+        clust = []
+        merge_pairs(data, [(r1file.name, r2file.name)], merged_file, 0, 1)
+
+        with open(merged_file) as infile:
+            quarts = itertools.izip(*[iter(infile)]*4)
+
+            while 1:
+                try:
+                    sname, seq, _, _ = quarts.next()
+                except StopIteration:
+                    break
+                ## put sname back
+                sname = ">" + sname[1:]
+                clust.extend([sname.strip(), seq.strip()])
+
+    except:
+        LOGGER.info("Error in merge_pairs post-refmap.")
+        raise
+    finally:
+        for i in [r1file.name, r2file.name, merged_file]:
+            if os.path.exists(i):
+                os.remove(i)
+
+    return clust
+
 
 def merge_pairs(data, two_files, merged_out, revcomp, merge):
     """
@@ -640,6 +700,80 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
 
     return nmerged
 
+## Doesn't work right now.
+def merge_pair_pipes(data, sample, clust):
+    r1_inpipe_name = os.path.join(data.tmpdir, 'r1_in')
+    r2_inpipe_name = os.path.join(data.tmpdir, 'r2_in')
+    unmapped1 = tempfile.NamedTemporaryFile()
+    unmapped2 = tempfile.NamedTemporaryFile()
+    merged = tempfile.NamedTemporaryFile()
+    pipelist = [r1_inpipe_name, r2_inpipe_name]
+    try:
+        r1reads, r2reads = map(lambda x: x.split("nnnn"), clust)
+    except:
+        LOGGER.debug("bad clust")
+        raise
+
+    def childR1( ):
+        LOGGER.debug("Entering c1 {} {}".format(data, sample))
+        pipeout = os.open(r1_inpipe_name, os.O_WRONLY)
+        for line in r1reads:
+            os.write(pipeout, line)
+        os.close(pipeout)
+
+    def childR2( ):
+        LOGGER.debug("Entering c2 {} {}".format(data, sample))
+        pipeout = os.open(r2_inpipe_name, os.O_WRONLY)
+        for line in r2reads:
+            os.write(pipeout, line)
+        os.close(pipeout)
+
+    def vsearch( ):
+        LOGGER.debug("entering vsearch")
+        cmd = ["/Users/iovercast/miniconda2/bin/vsearch",
+               "--fastq_mergepairs", r1_inpipe_name,
+               "--reverse", r2_inpipe_name,
+               "--fastqout", merged.name,
+               "--fastqout_notmerged_fwd", unmapped1,
+               "--fastqout_notmerged_rev", unmapped2,
+               "--fasta_width", "0",
+               "--fastq_minmergelen", "32",
+               "--fastq_maxns", "6",
+               "--fastq_minovlen", "10",
+               "--fastq_maxdiffs", "4",
+               "--label_suffix", "_m1",
+               "--fastq_qmax", "1000",
+               "--threads", "2",
+               "--fastq_allowmergestagger"]
+        proc = subprocess.Popen(cmd)
+        ret = proc.communicate()
+
+    joblist = [childR1, childR2]
+    for pipe in pipelist:
+        if os.path.exists(pipe):
+            os.unlink(pipe)
+        if not os.path.exists(pipe):
+            os.mkfifo(pipe)
+
+    children = []
+    isparent = True
+    for job in joblist:
+        child = os.fork()
+        if child:
+            children.append(child)
+        else:
+            isparent = False
+            job()
+            os._exit(0)
+
+    if isparent:
+        for child in children:
+            os.wait3(child)
+
+    with open(merged, 'r'):
+        clusts = merged.read()
+        LOGGER.error("lenmerged = {}".format(len(clusts)))
+        return clusts
 
 
 def revcomp(sequence):
