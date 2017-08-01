@@ -4,21 +4,19 @@
 .. _HPCscript:
 
 
-Running jupyter-notebooks locally and remotely (on HPC)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jupyter and the ipyrad API
+===========================
 
 The *ipyrad* API was specifically designed for use inside 
 `jupyter-notebooks <http://jupyter.org>`_, a tool for reproducible science.
 This section of the documentation is about how to start and run jupyter
 notebooks, which you can then use to run your ipyrad analyses using
 the ipyrad API. For instructions on how to use the ipyrad API 
-(after you have a notebook started) go here: (:ref:`ipyrad API <API>`__). 
+(after you have a notebook started) go here: 
+(:ref:`ipyrad API <API_user-guide>`). 
 An example of a complete notebook showing assembly and analysis of 
 a RAD data set with the ipyrad API can be found here:
 (`Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__).
-
-
-(:ref:`full API example <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`).  
 
 Jupyter notebooks allow you to run interactive code that can be 
 documented with embedded Markdown (words and fancy text) 
@@ -84,13 +82,13 @@ added security.
 
 
 Once the notebook starts it will print some information including 
-the IP address of the machine your are connected to (this will something
+the IP address of the machine you're connected to (this will be something
 like 10.115.0.25), and the port number that it is using (this will
-probably be 9999 if that is what you entered above, however, if 9999
-is already in use then it will select a different port number, so check
-the output). You will need these to pieces of information, the IP-address
+likely be 9999, however, if that port is already in use then it 
+will select a different port number, so check the output). 
+You will need these two pieces of information, the IP-address
 and the port number, for the next command. Replace the values that are 
-between brackets with appropriate values. 
+between brackets with the appropriate values. 
 
 
 .. code-block:: bash
@@ -104,6 +102,11 @@ between brackets with appropriate values.
     ## This would be an example with real values entered:
     ssh -N -L 9999:10.115.0.25:9999 deren@hpc.columbia.edu  
 
+
+You will now be able to connect to the jupyter notebook on your 
+local machine (i.e., laptop) by going to the web address 
+``localhost:<port>`` where you enter in the port number your 
+notebook is being served on.
 
 
 Starting jupyter through a batch script:

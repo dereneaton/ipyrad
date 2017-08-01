@@ -396,7 +396,7 @@ def fetch_cluster_se(data, samfile, chrom, rstart, rend):
 
     return clust
 
-def fetch_cluster_pairs(samfile, chrom, rstart, rend):
+def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
     """ 
     Builds a paired cluster from the refmapped data.
     """
@@ -497,7 +497,15 @@ def fetch_cluster_pairs(samfile, chrom, rstart, rend):
             ## seq is excluded, though, we could save it and return 
             ## it as a separate cluster that will be aligned separately.
             pass
-    
+    ## merge the pairs prior to returning them
+    ## Remember, we already tested for quality scores, so
+    ## merge_after_pysam will generate arbitrarily high scores
+    ## It would be nice to do something here like test if
+    ## the average insert length + 2 stdv is > 2*read len
+    ## so you can switch off merging for mostly non-overlapping data
+    if data._hackersonly["refmap_merge_PE"]:
+        clust = merge_after_pysam(data, clust)
+
     return clust
 
 
@@ -531,7 +539,7 @@ def ref_build_and_muscle_chunk(data, sample):
     for region in regions:
         chrom, pos1, pos2 = region.split()
         if "pair" in data.paramsdict["datatype"]:
-            clust = fetch_cluster_pairs(samfile, chrom, int(pos1), int(pos2))
+            clust = fetch_cluster_pairs(data, samfile, chrom, int(pos1), int(pos2))
         else:
             clust = fetch_cluster_se(data, samfile, chrom, int(pos1), int(pos2))
             

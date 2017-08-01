@@ -22,21 +22,67 @@ COLORS = {"p1": toyplot.color.Palette()[0],
 
 
 
+
+## the main function.
+def baba_panel_plot(
+    ttree,
+    tests, 
+    boots,
+    show_tip_labels=True, 
+    show_test_labels=True, 
+    use_edge_lengths=False, 
+    collapse_outgroup=False, 
+    pct_tree_x=0.4, 
+    pct_tree_y=0.2,
+    alpha=3.0,
+    *args, 
+    **kwargs):
+    """
+    signature...
+    """
+
+    ## create Panel plot object and set height & width
+    bootsarr = np.array(boots)
+    panel = Panel(ttree, tests, bootsarr, alpha)
+    if not kwargs.get("width"):
+        panel.kwargs["width"] = min(1000, 50*len(panel.tree))
+    if not kwargs.get("height"):
+        panel.kwargs["height"] = min(1000, 50*len(panel.tests))   
+
+    ## update defaults with kwargs & update size based on ntips & ntests
+    kwargs.update(dict(pct_tree_x=pct_tree_x, pct_tree_y=pct_tree_y))
+    panel.kwargs.update(kwargs)
+
+    ## create a canvas and a single cartesian coord system
+    canvas = toyplot.Canvas(height=panel.kwargs['height'], width=panel.kwargs['width'])
+    axes = canvas.cartesian(bounds=("10%", "90%", "5%", "95%"))    
+    axes.show = False
+
+    ## add panels to axes
+    panel.panel_tree(axes)
+    panel.panel_test(axes)
+    panel.panel_tip_labels(axes)
+    if isinstance(boots, np.ndarray):
+        panel.panel_results(axes)
+    return canvas, axes, panel
+
+
+
+
 class Panel(object):
     def __init__(self, ttree, tests, boots, alpha):
         #tree, edges, verts, names, tests, boots, alpha):
 
         ## starting tree position will be changed if adding panel plots
         ## get attributes from toytree object
+        ttree._decompose_tree(
+            orient='down', 
+            use_edge_lengths=False, 
+            fixed_order=ttree._fixed_order)
         self.tree = ttree
-        self.edges = ttree.edges
-        self.verts = ttree.verts
-        self.names = ttree.get_tip_labels()
-        self._coords = ttree._coords
-        self._lines = ttree._lines
-        self._orient = ttree._orient
         self.tests = tests
         self.boots = boots
+        self.names = self.tree.get_tip_labels()
 
         ## calculate Zs on the fly from boots
         try:
@@ -100,7 +146,7 @@ class Panel(object):
 
     @property
     def xpos(self):
-        return self.verts[:, 0][self.verts[:, 1] == self.verts[:, 1].min()]
+        return self.tree.verts[:, 0][self.tree.verts[:, 1] == self.tree.verts[:, 1].min()]
     @property
     def xspacer(self):
         return abs(self.xpos[1] - self.xpos[0])
@@ -128,7 +174,6 @@ class Panel(object):
     ## if results then plot them
     def panel_results(self, axes):
         _panel_zscores(self, axes)
-
 
 
 
@@ -273,9 +318,9 @@ def _panel_zscores(panel, axes):
         heights = np.column_stack([[yline for i in mags], mags])
         axes.fill(
             xran[:-1], 
-            heights, 
-            baseline="stacked",
-            color=["white", color],
+            heights[:, 1],
+            baseline=heights[:, 0],
+            color=color,
             #style={"stroke": [toyplot.color.to_css(color)]},
             )
 
@@ -294,8 +339,6 @@ def _panel_zscores(panel, axes):
         vlshow=False,
         estyle={"stroke-dasharray": "5, 5"},
         )     
-
-
 
 
 def _panel_test(panel, axes):
@@ -329,13 +372,12 @@ def _panel_test(panel, axes):
     add_rectangles(panel, axes)
 
 
-
 def add_rectangles(panel, axes):
     for idx, test in enumerate(panel.tests):    
         ## add test rectangles
         for tax in ["p1", "p2", "p3", "p4"]:
             spx = [panel.tree.tree.search_nodes(name=i)[0] for i in test[tax]]
-            spx = np.array([panel.verts[i.idx, 0] for i in spx])
+            spx = np.array([panel.tree.verts[i.idx, 0] for i in spx])
             spx.sort()
 
             ## fill rectangles while leaving holes for missing taxa
@@ -408,7 +450,6 @@ def add_test_numbers(panel, axes):
         )   
     
 
-
 def _panel_tip_labels(panel, axes):
     ## get coordinates of text
     # names = [i for i in panel.names.values() if not isinstance(i, int)]
@@ -427,15 +468,15 @@ def _panel_tip_labels(panel, axes):
 
     ## get coordinates of text
     names = panel.tree.get_tip_labels() #_leaf_names()
-    if panel._orient in ["right"]:
-        xpos = [panel.verts[:, 0].max()] * len(names)
-        ypos = range(len(panel.tree))[::-1] 
-        angle = 0.
-    elif panel._orient in ['down']:
-        xpos = range(len(panel.tree))[::-1]
-        ypos = [panel.ymin_test] * len(names) 
-        #ypos = [panel.verts[:, 1].min()] * len(names)
-        angle = -90.
+    #if panel._orient in ["right"]:
+    #    xpos = [panel.tree.verts[:, 0].max()] * len(names)
+    #    ypos = range(len(panel.tree))[::-1] 
+    #    angle = 0.
+    #elif panel._orient in ['down']:
+    xpos = range(len(panel.tree))[::-1]
+    ypos = [panel.ymin_test] * len(names) 
+    #ypos = [panel.verts[:, 1].min()] * len(names)
+    angle = -90.
 
     tipstyle = {"font-size": "12px",
                 "text-anchor":"start", 
@@ -452,10 +493,10 @@ def _panel_tip_labels(panel, axes):
 
 def _panel_tree(panel, axes):
     ## space for the tree
-    panel.xmin_tree = panel.verts[:, 0].min()    
-    panel.xmax_tree = panel.verts[:, 0].max()
-    panel.ymin_tree = panel.verts[:, 1].min()
-    panel.ymax_tree = panel.verts[:, 1].max()
+    panel.xmin_tree = panel.tree.verts[:, 0].min()    
+    panel.xmax_tree = panel.tree.verts[:, 0].max()
+    panel.ymin_tree = panel.tree.verts[:, 1].min()
+    panel.ymax_tree = panel.tree.verts[:, 1].max()
 
     ## debug the panel
     if panel.kwargs["debug"]:
@@ -466,91 +507,17 @@ def _panel_tree(panel, axes):
             panel.xmax_tree,
             panel.ymin_tree,
             panel.ymax_tree,
-            color=toyplot.color.Palette()[2], 
+            color='red',#toyplot.color.Palette()[2], 
             opacity=0.5,
             )
-
-    ## add the graph
-    if panel.kwargs["tree_style"] in ["c", "cladogram"]:
-        _ = axes.graph(panel.edges, 
-                       vcoordinates=panel.verts, 
-                       ewidth=panel.kwargs["ewidth"], 
-                       ecolor=toyplot.color.near_black, 
-                       vlshow=panel.kwargs["vlshow"],
-                       vsize=panel.kwargs["vsize"],
-                       vlstyle=panel.kwargs["vlstyle"],
-                       #vlabel=panel.names, #.keys(),
-                       )
-    else:
-        _ = axes.graph(panel._lines, 
-                       vcoordinates=panel._coords, 
-                       ewidth=panel.kwargs["ewidth"], 
-                       ecolor=toyplot.color.near_black, 
-                       #vlshow=panel.kwargs["vlshow"],
-                       vsize=0.,
-                       vlshow=False,
-                       #vlstyle=panel.kwargs["vlstyle"],
-                       #vlabel=panel.names.keys(),
-                       )
-        _ = axes.graph(panel.edges, 
-                       vcoordinates=panel.verts, 
-                       ewidth=0.,
-                       ecolor=toyplot.color.near_black, 
-                       vlshow=panel.kwargs["vlshow"],
-                       vsize=panel.kwargs["vsize"],
-                       vlstyle=panel.kwargs["vlstyle"],
-                       #vlabel=panel.names, #.keys(),
-                       )
+    ## add tree to the axes
+    panel.tree.draw(
+        orient='down', 
+        tip_labels=False,
+        axes=axes
+        )
 
 
-
-
-## the main function.
-def baba_panel_plot(
-    ttree,
-    tests, 
-    boots,
-    show_tip_labels=True, 
-    show_test_labels=True, 
-    use_edge_lengths=False, 
-    collapse_outgroup=False, 
-    pct_tree_x=0.4, 
-    pct_tree_y=0.2,
-    alpha=3.0,
-    *args, 
-    **kwargs):
-    """
-    signature...
-    """
-
-    ## create Panel plot object and set height & width
-    bootsarr = np.array(boots)
-    panel = Panel(ttree, tests, bootsarr, alpha)
-    if not kwargs.get("width"):
-        panel.kwargs["width"] = min(1000, 50*len(panel.tree))
-    if not kwargs.get("height"):
-        panel.kwargs["height"] = min(1000, 50*len(panel.tests))   
-
-    ## update defaults with kwargs & update size based on ntips & ntests
-    kwargs.update(dict(pct_tree_x=pct_tree_x, pct_tree_y=pct_tree_y))
-    panel.kwargs.update(kwargs)
-
-    ## create a canvas and a single cartesian coord system
-    canvas = toyplot.Canvas(height=panel.kwargs['height'], width=panel.kwargs['width'])
-    axes = canvas.cartesian(bounds=("10%", "90%", "5%", "95%"))    
-    axes.show = False
-
-    ## add panels to axes
-    panel.panel_tree(axes)
-    panel.panel_test(axes)
-    panel.panel_tip_labels(axes)
-    if isinstance(boots, np.ndarray):
-        panel.panel_results(axes)
-    return canvas, axes, panel
-    
-
-
-    
 def _panel_hist(axes, panel, dwargs):
     ## get bounds on hist
     rmax = np.max(np.abs(panel.boots))
