@@ -466,15 +466,17 @@ def call_cluster(data, noreverse, ipyclient):
     on a high memory node. 
     """
     ## todo: find host with the most engines, for now just using first.
-    bighost = ipyclient[0]
+    #bighost = ipyclient[0]
+    lbview = ipyclient.load_balanced_view()
 
     ## submit job to host
-    async = bighost.apply(cluster, *(data, noreverse))
+    async = lbview.apply(cluster, *(data, noreverse))
     
     ## track progress
     prog = 0
     start = time.time()
     printstr = " clustering across     | {} | s6 |"
+    
     while 1:
         if async.stdout:
             prog = int(async.stdout.split()[-1])
@@ -486,7 +488,7 @@ def call_cluster(data, noreverse, ipyclient):
             break
         else:
             time.sleep(0.5)
-        
+
     ## store log result
     data.stats_files.s6 = os.path.join(data.dirs.across, "s6_cluster_stats.txt")
 
@@ -539,6 +541,8 @@ def cluster(data, noreverse):
         strand = "plus"  # -leftjust "
 
     try:
+        ## this seems to start vsearch on a different pid than the engine
+        ## and so it's hard to kill... 
         LOGGER.info(cmd)
         (dog, owner) = pty.openpty()
         proc = sps.Popen(cmd, stdout=owner, stderr=owner, close_fds=True)
@@ -574,6 +578,11 @@ def cluster(data, noreverse):
         proc.wait()
         print(100)
 
+
+    except KeyboardInterrupt:
+        LOGGER.info("interrupted vsearch here: %s", proc.pid)
+        os.kill(proc.pid, 2)
+        raise KeyboardInterrupt()
     except sps.CalledProcessError as inst:
         raise IPyradWarningExit("""
         Error in vsearch: \n{}\n{}""".format(inst, sps.STDOUT))
@@ -584,7 +593,7 @@ def cluster(data, noreverse):
     finally:
         data.stats_files.s6 = logfile
         ## cleanup processes
-        del proc, dog, owner
+        #del proc, dog, owner
 
 
 

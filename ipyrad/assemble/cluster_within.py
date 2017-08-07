@@ -984,7 +984,15 @@ def derep_and_sort(data, infile, outfile, nthreads):
     ## run vsearch
     proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
-    errmsg = proc2.communicate()[0]
+
+    try:
+        errmsg = proc2.communicate()[0]
+    except KeyboardInterrupt:
+        proc1.kill()
+        proc2.kill()
+        LOGGER.info("this is where I want it to interrupt")
+        raise KeyboardInterrupt()
+
     if proc2.returncode:
         LOGGER.error("error inside derep_and_sort %s", errmsg)
         raise IPyradWarningExit(errmsg)

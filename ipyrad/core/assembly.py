@@ -88,7 +88,7 @@ class Assembly(object):
     object
          A new assembly object is returned.
 
-     """
+    """
 
 
     def __init__(self, name, quiet=False, **kwargs):
@@ -124,7 +124,8 @@ class Assembly(object):
             "quiet" : 0,
             "timeout" : 120,
             "cores" : 0, #detect_cpus(),
-            "threads" : 2
+            "threads" : 2,
+            "pids": {},
             }
         for key, val in kwargs.items():
             if key in self._ipcluster:
@@ -1247,6 +1248,18 @@ class Assembly(object):
             if not self._cli:
                 print("Assembly: {}".format(self.name))
 
+            ## store ipyclient engine pids to the Assembly so we can 
+            ## hard-interrupt them later if assembly is interrupted. 
+            ## Only stores pids of engines that aren't busy at this moment, 
+            ## otherwise it would block here while waiting to find their pids.
+            self._ipcluster["pids"] = {}
+            for eid in ipyclient.ids:
+                engine = ipyclient[eid]
+                if not engine.outstanding:
+                    pid = engine.apply(os.getpid).get()
+                    self._ipcluster["pids"][eid] = pid
+            #ipyclient[:].apply(os.getpid).get_dict()
+
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
             if '1' in steps:
@@ -1289,8 +1302,8 @@ class Assembly(object):
 
         ## handle exceptions so they will be raised after we clean up below
         except KeyboardInterrupt as inst:
+            print("\n  Keyboard Interrupt by user")
             LOGGER.info("assembly interrupted by user.")
-            raise IPyradWarningExit("\n  Keyboard Interrupt by user. Cleaning up...")
 
         except IPyradWarningExit as inst:
             LOGGER.error("IPyradWarningExit: %s", inst)
@@ -1306,49 +1319,57 @@ class Assembly(object):
 
         ## close client when done or interrupted
         finally:
-            ## save the Assembly
-            self.save()
+            try:
+                ## save the Assembly
+                self.save()
 
-            ## can't close client if it was never open
-            if ipyclient:
+                ## can't close client if it was never open
+                if ipyclient:
 
-                ## abort any jobs still running
-                try:
-                    ipyclient.abort()
-                except ipp.NoEnginesRegistered:
-                    pass
+                    ## send SIGINT (2) to all engines
+                    try:
+                        ipyclient.abort()
+                        time.sleep(1)
+                        LOGGER.info("pids %s", self._ipcluster["pids"].items())
+                        LOGGER.info("queue %s", ipyclient.queue_status())
+                        for engine_id, pid in self._ipcluster["pids"].items():
+                            if ipyclient.queue_status()[engine_id]["tasks"]:
+                                os.kill(pid, 2)
+                                LOGGER.info('interrupted engine {} w/ SIGINT to {}'\
+                                        .format(engine_id, pid))
+                        time.sleep(1)
+                        LOGGER.info("queue %s", ipyclient.queue_status())
+                    except ipp.NoEnginesRegistered:
+                        pass
 
-                ## if CLI stop ipcluster and close client
-                if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
-                    LOGGER.info("  shutting down engines")
-                    ipyclient.shutdown(hub=True, block=False)
-                    ipyclient.close()
-                    LOGGER.info("  finished shutdown")
-                        
-                ## if API, stop jobs and clean queue
-                else:
-                    if not ipyclient.outstanding:
-                        ipyclient.purge_everything()
-                    else:
-                        ## nanny: kill the engines left running, report kill.
+                    ## if CLI, stop jobs and shutdown. Don't use _cli here 
+                    ## because you can have a CLI object but use the --ipcluster
+                    ## flag, in which case we don't want to kill ipcluster.
+                    if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
+                        LOGGER.info("  shutting down engines")
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
-                        print("\n  warning: ipcluster shutdown and must be restarted")
+                        LOGGER.info("  finished shutdown")
+                    else:
+                        if not ipyclient.outstanding:
+                            ipyclient.purge_everything()
+                        else:
+                            ## nanny: kill everything, something bad happened
+                            ipyclient.shutdown(hub=True, block=False)
+                            ipyclient.close()
+                            print("\nwarning: ipcluster shutdown and must be restarted")
+                    
+                ## reraise the error now that we're cleaned up
+                if inst:
+                    print(inst)
+                    #print("")
+                    #raise IPyradWarningExit(inst
 
-            ## cleanup funcs, may not be needed when ipyparallel gets a nanny 
-            ## func, eventually. Only catches KBD at the moment.
-            if inst:
-                self._cleanup_and_die(inst)
+            ## if exception is close and save, print and ignore
+            except Exception as inst2:
+                print("warning: error during shutdown:\n{}".format(inst2))
+                LOGGER.error("shutdown warning: %s", inst2)
 
-
-    def _cleanup_and_die(self, inst):
-        """
-        cleanup funcs that can only be run after ipcluster shutdown
-        """
-        if inst == "s1":
-            ip.assemble.demultiplex._cleanup_and_die(self)
-        if inst == "s2":
-            ip.assemble.rawedit._cleanup_and_die(self)
 
 
 
