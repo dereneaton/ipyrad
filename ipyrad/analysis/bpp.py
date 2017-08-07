@@ -9,11 +9,23 @@ import copy
 import itertools
 import subprocess
 import numpy as np
-from toytree import ete3mini as ete
+
 from collections import Counter
 from ipyrad.assemble.util import DUCT
 #import pandas as pd
 
+
+try:
+    ## when you have time go back and set attrubutes on toytrees
+    from toytree import ete3mini as ete
+except ImportError:
+    raise IPyradWarningExit("""
+    Error: bpp requires the dependency 'toytree', which we haven't yet
+    included in the ipyrad installation. For now, you can install toytree
+    using conda with the following command: 
+
+    conda install toytree -c eaton-lab
+    """)
 
 
 class Bpp(object):
@@ -239,9 +251,9 @@ class Bpp(object):
         np.random.seed(seed)
 
         ## prepare files
-        self._name = self.name
-        self._write_seqfile(name=self._name)
-        self._write_mapfile(name=self._name)
+        #self._name = self.name
+        #self._write_seqfile(name=self._name)
+        #self._write_mapfile(name=self._name)
 
         ## load-balancer
         lbview = ipyclient.load_balanced_view()
@@ -250,20 +262,24 @@ class Bpp(object):
         asyncs = []
         for job in xrange(nreps):
 
-            ## find ctlfile name
+            ## make repname and make ctl filename
+            self._name = "{}_r{}".format(self.name, job)
             ctlhandle = os.path.realpath(
-                "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), job))
+                os.path.join(self.workdir, "{}.ctl.txt".format(self._name)))
 
             ## skip if ctlfile exists
             if (not force) and (os.path.exists(ctlhandle)):
                 print("Named ctl file exists. Use force=True to overwrite\nFilename:{}"\
                       .format(ctlhandle))
             else:
-                ## change seed and ctl for each rep
+                ## change seed and ctl for each rep, this writes into the ctl
+                ## file the correct name for the other files which share the 
+                ## same rep number in their names.
                 self.params.seed = np.random.randint(0, 1e9, 1)[0]
-                ctlfile = self._write_ctlfile(rep=job)
+                self._write_mapfile()
                 if randomize_order:
                     self._write_seqfile(randomize_order=randomize_order)
+                ctlfile = self._write_ctlfile()#rep=job)
 
                 ## submit to engines
                 async = lbview.apply(_call_bpp, ctlfile)
@@ -300,8 +316,8 @@ class Bpp(object):
         ## ...
 
         ## write tmp files for the job
-        self._write_seqfile(name=True, randomize_order=randomize_order)
-        self._write_mapfile(name=True)
+        self._write_seqfile(randomize_order=randomize_order)
+        self._write_mapfile()#name=True)
         self._write_ctlfile()
 
         if not quiet:
@@ -310,15 +326,16 @@ class Bpp(object):
 
 
 
-    def _write_mapfile(self, name=False):
+    def _write_mapfile(self):#, name=False):
         ## write the imap file:
-        if name:
-            self.mapfile = os.path.realpath(
-                os.path.join(self.workdir, self._name+".imapfile.txt"))
-        else:
-            self.mapfile = os.path.realpath(
-                os.path.join(self.workdir, "tmp.imapfile.txt"))
-
+        #if name:
+        #    self.mapfile = os.path.realpath(
+        #        os.path.join(self.workdir, self._name+".imapfile.txt"))
+        #else:
+        #self.mapfile = os.path.realpath(
+        #    os.path.join(self.workdir, "tmp.imapfile.txt"))
+        self.mapfile = os.path.realpath(
+            os.path.join(self.workdir, self._name+".imapfile.txt"))
         with open(self.mapfile, 'w') as mapfile:
             data = ["{:<30} {}".format(val, key) for key \
                     in sorted(self.imap) for val in self.imap[key]]
@@ -326,15 +343,17 @@ class Bpp(object):
 
 
 
-    def _write_seqfile(self, name=False, randomize_order=False):
+    def _write_seqfile(self, randomize_order=False):
 
         ## handles
-        if name: 
-            self.seqfile = os.path.realpath(
-                os.path.join(self.workdir, self._name+".seqfile.txt"))
-        else:
-            self.seqfile = os.path.realpath(
-                os.path.join(self.workdir, "tmp.seqfile.txt"))
+        #if name: 
+        #    self.seqfile = os.path.realpath(
+        #        os.path.join(self.workdir, self._name+".seqfile.txt"))
+        #else:
+        #    self.seqfile = os.path.realpath(
+        #        os.path.join(self.workdir, "tmp.seqfile.txt"))
+        self.seqfile = os.path.realpath(
+            os.path.join(self.workdir, self._name+".seqfile.txt"))
         seqfile = open(self.seqfile, 'w')
         with open(self.files.locifile) as infile:
             loci = infile.read().strip().split("|\n")
@@ -417,7 +436,7 @@ class Bpp(object):
 
 
 
-    def _write_ctlfile(self, rep=None):
+    def _write_ctlfile(self):#, rep=None):
         """ write outfile with any args in argdict """
 
         ## A string to store ctl info
@@ -429,12 +448,14 @@ class Bpp(object):
         ctl.append("Imapfile = {}".format(self.mapfile))
 
         path = os.path.realpath(os.path.join(self.workdir, self._name))
-        if isinstance(rep, int):
-            mcmcfile = "{}-r{}.mcmc.txt".format(path, rep)
-            outfile = "{}-r{}.out.txt".format(path, rep)
-        else:
-            mcmcfile = "{}.mcmc.txt".format(path, rep)
-            outfile = "{}.out.txt".format(path, rep)
+        mcmcfile = "{}.mcmc.txt".format(path)
+        outfile = "{}.out.txt".format(path)
+        # if isinstance(rep, int):
+        #     mcmcfile = "{}-r{}.mcmc.txt".format(path, rep)
+        #     outfile = "{}-r{}.out.txt".format(path, rep)
+        # else:
+        #     mcmcfile = "{}.mcmc.txt".format(path, rep)
+        #     outfile = "{}.out.txt".format(path, rep)
 
         if mcmcfile not in self.files.mcmcfiles:
             self.files.mcmcfiles.append(mcmcfile)
@@ -481,12 +502,14 @@ class Bpp(object):
         ctl.append("nsample = {}".format(self.params.nsample))
 
         ## write out the ctl file
-        if isinstance(rep, int):
-            ctlhandle = os.path.realpath(
-                "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), rep))
-        else:
-            ctlhandle = os.path.realpath(
+        ctlhandle = os.path.realpath(
                 "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
+        # if isinstance(rep, int):
+        #     ctlhandle = os.path.realpath(
+        #         "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), rep))
+        # else:
+        #     ctlhandle = os.path.realpath(
+        #         "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
         with open(ctlhandle, 'w') as out:
             out.write("\n".join(ctl))
 
