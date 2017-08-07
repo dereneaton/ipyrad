@@ -5,6 +5,29 @@
 Release Notes
 =============
 
+0.7.9
+-----
+**August 07, 2017**
+
+- cleaner shutdown of tetrad on interrupt. Bugfix to stats counter for quartets sampled value. Cleaner API access by grouoping attributes into params attr.
+- cleanup rawedit to shutdown cleaner when interrupted
+- modified run wrapper in assembly object to allow for cleaner shutdown of ipyclient engines
+- bug fix so that randomize_order writes separate seqfiles for each rep in bpp analysis tool
+- Adding error handling, prevent tmp files being cleaned up during DEBUG, and fix tmp-align files for PE refmap.
+- Derep and cluster 2brad on both strands.
+- Actually fix refmap PE merging.
+- Fix merging for PE refmap.
+- Add a switch to _not_ delete temp files if DEBUG is on. Helpful.
+- 2 new merge functions for PE refmap. One is slowwwww, the other uses pipes, but doesn't work 100% yet.
+- New hackersonly parameter to switch merging PE after refmap.
+- bugfix to ipa baba plotting function for updated toyplot
+- Reduce minovlen length for merging reference mapped PE reads.
+- docs update
+- docs update
+- improved design of --ipcluster flag in tetrad CLI
+- improved design of --ipcluster flag in tetrad CLI
+- improved design of --ipcluster flag in ipyrad CLI
+
 0.7.8
 -----
 **July 28, 2017**
