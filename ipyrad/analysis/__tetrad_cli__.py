@@ -206,6 +206,7 @@ def main():
                            workdir=args.workdir, 
                            data=args.seq, 
                            initarr=False, 
+                           cli=True,
                            quiet=True).refresh()
 
             ## create new tetrad object

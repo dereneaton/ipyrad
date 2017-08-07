@@ -122,16 +122,21 @@ class Tetrad(object):
         initarr=True, 
         load=False,
         quiet=False,
-        profile="default",
-        cluster_id="",
         *args, 
         **kwargs):
 
-        ## interactive or CLI
+        ## check additional arguments from kwargs including support
+        ## for deprecated args like seqfile.
         self.kwargs = kwargs
 
+        ## record whether we're in the CLI or API
+        if kwargs.get("cli"):
+            self._cli = True
+        else:
+            self._cli = False
+
         ## legacy support for 'seqfile' instead of 'data'
-        if (not data) and (self.kwargs.get('seqfile')):
+        if self.kwargs.get('seqfile'):
             data = self.kwargs.get('seqfile')
 
         ## name this assembly
@@ -142,13 +147,15 @@ class Tetrad(object):
 
         ## store default cluster information 
         self._ipcluster = {
-            "cluster_id": cluster_id,
-            "profile": profile,
+            "cluster_id": "", 
+            "profile": "default",
             "engines": "Local", 
             "quiet": 0, 
             "timeout": 60, 
             "cores": 0, 
-            "threads" : 2}
+            "threads" : 2,
+            "pids": {},
+            }
 
         ## Sampling method attributes (not yet implemented as params)
         self.params = Params()
@@ -157,13 +164,6 @@ class Tetrad(object):
         self.params.nquartets = nquartets
 
         ## private attributes
-        self._chunksize = 0
-        self._resolve = resolve
-
-        ## current implement of params
-        self.method = method
-        self.nboots = nboots
-        self.nquartets = nquartets
         self._chunksize = 0
         self._resolve = resolve
 
@@ -196,7 +196,7 @@ class Tetrad(object):
         
         ## stats is written to os.path.join(self.dirs, self.name+".stats.txt")
         self.stats = Params()
-        self.stats.n_quartets_sampled = self.nquartets
+        self.stats.n_quartets_sampled = self.params.nquartets
         #self.stats.prop_quartets_sampled = None
 
         ## checkpointing information
@@ -218,16 +218,16 @@ class Tetrad(object):
 
         ## if quartets not entered then sample all
         total = n_choose_k(len(self.samples), 4)
-        if self.method == "all":
-            self.nquartets = total
+        if self.params.method == "all":
+            self.params.nquartets = total
         else:
             ## if you entered a number bigger than total, then use 'all'
-            if int(self.nquartets) >= total:
-                self.method = "all"
-                self.nquartets = total
+            if int(self.params.nquartets) >= total:
+                self.params.method = "all"
+                self.params.nquartets = total
                 print("nquartets > total: switching to method='all' ")
             ## if use entered nquartets...
-            if not self.nquartets:
+            if not self.params.nquartets:
                 raise IPyradWarningExit("must enter nquartets value w/ method='random'")
             
         
@@ -247,23 +247,27 @@ class Tetrad(object):
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
 
+        ## store old ipcluster info
+        oldcluster = copy.deepcopy(self._ipcluster)
+
         ## reinit the tetrad object data.
         self.__init__(
             name=self.name, 
             data=self.files.data, 
             mapfile=self.files.mapfile,
             workdir=self.dirs,
-            method=self.method,
+            method=self.params.method,
             guidetreefile=self.files.guidetreefile,
             resolve=self._resolve, 
-            nboots=self.nboots, 
-            nquartets=self.nquartets, 
+            nboots=self.params.nboots, 
+            nquartets=self.params.nquartets, 
             initarr=True, 
             quiet=True,
-            profile=self._ipcluster["profile"],
-            cluster_id=self._ipcluster["cluster_id"],
             cli=self.kwargs.get("cli")
             )
+
+        ## retain the same ipcluster info
+        self._ipcluster = oldcluster
 
 
 
@@ -442,17 +446,17 @@ class Tetrad(object):
         doing I/O, but small enough that jobs finish often for checkpointing.
         """
         breaks = 2
-        if self.nquartets < 5000:
+        if self.params.nquartets < 5000:
             breaks = 1
-        if self.nquartets > 100000:
+        if self.params.nquartets > 100000:
             breaks = 4
-        if self.nquartets > 500000:
+        if self.params.nquartets > 500000:
             breaks = 8
 
         ## chunk up the data
-        self._chunksize = (self.nquartets // (breaks * ncpus) + \
-                          (self.nquartets % (breaks * ncpus)))
-        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self._chunksize)
+        self._chunksize = (self.params.nquartets // (breaks * ncpus) + \
+                          (self.params.nquartets % (breaks * ncpus)))
+        LOGGER.info("nquarts = %s, chunk = %s", self.params.nquartets, self._chunksize)
 
         ## 'samples' stores the indices of the quartet. 
         ## `quartets` stores the correct quartet in the order (1,2|3,4)
@@ -462,11 +466,11 @@ class Tetrad(object):
         ## create h5 OUT empty arrays
         with h5py.File(self.database.output, 'w') as io5:
             io5.create_dataset("quartets", 
-                               (self.nquartets, 4), 
+                               (self.params.nquartets, 4), 
                                dtype=np.uint16, 
                                chunks=(self._chunksize, 4))
             io5.create_dataset("qstats", 
-                               (self.nquartets, 4), 
+                               (self.params.nquartets, 4), 
                                dtype=np.uint32, 
                                chunks=(self._chunksize, 4))
             io5.create_group("qboots")
@@ -476,7 +480,7 @@ class Tetrad(object):
         with h5py.File(self.database.input, 'a') as io5:
             ## create data sets
             io5.create_dataset("samples", 
-                               (self.nquartets, 4), 
+                               (self.params.nquartets, 4), 
                                dtype=np.uint16, 
                                chunks=(self._chunksize, 4),
                                compression='gzip')
@@ -487,8 +491,8 @@ class Tetrad(object):
             i = 0
 
             ## fill chunksize at a time for efficiency
-            while i < self.nquartets:
-                if self.method != "all":
+            while i < self.params.nquartets:
+                if self.params.method != "all":
                     ## grab the next random 1000
                     qiter = []
                     while len(qiter) < min(self._chunksize, io5["samples"].shape[0]):
@@ -516,25 +520,25 @@ class Tetrad(object):
         
         ## choose chunker for h5 arr
         breaks = 2
-        if self.nquartets < 5000:
+        if self.params.nquartets < 5000:
             breaks = 1
-        if self.nquartets > 100000:
+        if self.params.nquartets > 100000:
             breaks = 4
-        if self.nquartets > 500000:
+        if self.params.nquartets > 500000:
             breaks = 8
 
-        self._chunksize = (self.nquartets // (breaks * ncpus) + \
-                         (self.nquartets % (breaks * ncpus)))
-        LOGGER.info("nquarts = %s, chunk = %s", self.nquartets, self._chunksize)
+        self._chunksize = (self.params.nquartets // (breaks * ncpus) + \
+                         (self.params.nquartets % (breaks * ncpus)))
+        LOGGER.info("nquarts = %s, chunk = %s", self.params.nquartets, self._chunksize)
 
         ## create h5 OUT empty arrays
         with h5py.File(self.database.output, 'w') as io5:
             io5.create_dataset("quartets", 
-                               (self.nquartets, 4), 
+                               (self.params.nquartets, 4), 
                                dtype=np.uint16, 
                                chunks=(self._chunksize, 4))
             io5.create_dataset("qstats", 
-                               (self.nquartets, 4), 
+                               (self.params.nquartets, 4), 
                                dtype=np.uint32, 
                                chunks=(self._chunksize, 4))
             io5.create_group("qboots")
@@ -561,7 +565,7 @@ class Tetrad(object):
         qiters = []
 
         ## how many min quartets are we gonna sample from each split?
-        squarts = self.nquartets // len(splits)
+        squarts = self.params.nquartets // len(splits)
 
         ## how many iterators can be sampled to saturation?
         nsaturation = 0
@@ -581,7 +585,7 @@ class Tetrad(object):
             ## have to check it against the 'sampled' set.
             else:
                 qiter = (random_product(split[0], split[1]) for _ \
-                         in xrange(self.nquartets))
+                         in xrange(self.params.nquartets))
                 nsaturation += 1
 
             ## store all iterators into a list
@@ -602,7 +606,7 @@ class Tetrad(object):
         with h5py.File(self.database.input, 'a') as io5:
             ## create data sets
             io5.create_dataset("samples", 
-                               (self.nquartets, 4), 
+                               (self.params.nquartets, 4), 
                                dtype=np.uint16, 
                                chunks=(self._chunksize, 4),
                                compression='gzip')
@@ -614,7 +618,7 @@ class Tetrad(object):
             random_target = 0
 
             ## keep filling quartets until nquartets are sampled
-            while i < self.nquartets:
+            while i < self.params.nquartets:
                 qdat = []
                 ## keep filling this chunk until its full
                 while len(qdat) < self._chunksize:
@@ -710,7 +714,7 @@ class Tetrad(object):
         outfile = open(self.files.qdump, 'w')
 
         ## todo: should pull quarts order in randomly? or doesn't matter?
-        for idx in xrange(0, self.nquartets, self._chunksize):
+        for idx in xrange(0, self.params.nquartets, self._chunksize):
             ## get mask of zero weight quartets
             #mask = io5["weights"][idx:idx+self.chunksize] != 0
             #weight = io5["weights"][idx:idx+self.chunksize][mask]
@@ -757,7 +761,7 @@ class Tetrad(object):
         print(FINALTREES.format(opr(self.trees.tree)))
 
         ## print bootstrap information --------------------------
-        if self.nboots:
+        if self.params.nboots:
             ## get consensus, map values to tree edges, record stats file
             self._compute_tree_stats(ipyclient)
             ## print bootstrap info
@@ -765,7 +769,7 @@ class Tetrad(object):
 
         ## print the ASCII tree only if its small
         if len(self.samples) < 20:
-            if self.nboots:
+            if self.params.nboots:
                 wctre = ete3.Tree(self.trees.cons, format=0)
                 wctre.ladderize()
                 print(wctre.get_ascii(show_internal=True, 
@@ -872,7 +876,7 @@ class Tetrad(object):
         self.files.data = fullj["files"]["data"]
         self.files.mapfile = fullj["files"]["mapfile"]        
         self.dirs = fullj["dirs"]
-        self.method = fullj["method"]
+        self.params.method = fullj["method"]
         self._init_seqarray(quiet=quiet)
         self._parse_names()
 
@@ -921,6 +925,7 @@ class Tetrad(object):
 
         ## wrap everything in a try statement so we can ensure that it will
         ## save if interrupted and we will clean up the 
+        inst = None
         try:
             ## launch and connect to ipcluster instance if doesn't exist
             if not ipyclient:
@@ -937,12 +942,16 @@ class Tetrad(object):
             targets = get_targets(ipyclient)
             lbview = ipyclient.load_balanced_view(targets=targets)
 
+            ## store ipyclient pids to the ipcluster instance so we can 
+            ## hard-kill them later. 
+            self._ipcluster["pids"] = ipyclient[:].apply(os.getpid).get_dict()
+
             ## get or init quartet sampling ---------------------------
             ## if load=True then chunksize will exist and this will skip
             if not self._chunksize:
                 #self.nquartets = n_choose_k(len(self.samples), 4)
                 ## store N sampled quartets into the h5 array
-                if self.method != 'equal':
+                if self.params.method != 'equal':
                     self._store_N_samples(ncpus=len(lbview))
                 else:
                     self._store_equal_samples(ncpus=len(lbview))
@@ -951,7 +960,7 @@ class Tetrad(object):
             start = time.time()            
             if not self.trees.tree:
                 if verbose:
-                    print("inferring {} induced quartet trees".format(self.nquartets))
+                    print("inferring {} induced quartet trees".format(self.params.nquartets))
                 self._inference(start, lbview, quiet=verbose == 0)
                 if verbose:
                     print("")
@@ -961,12 +970,12 @@ class Tetrad(object):
 
             ## calculate for bootstraps -------------------------------            
             start = time.time()
-            if self.nboots:
-                if self.checkpoint.boots == self.nboots:
+            if self.params.nboots:
+                if self.checkpoint.boots == self.params.nboots:
                     if verbose:
-                        print("{} bootstrap trees already inferred".format(self.nboots))
+                        print("{} bootstrap trees already inferred".format(self.params.nboots))
                 else:
-                    while self.checkpoint.boots < self.nboots:
+                    while self.checkpoint.boots < self.params.nboots:
                         ## resample bootsstrap seqarray
                         if self.files.mapfile:
                             self._sample_bootseq_array_map()
@@ -991,17 +1000,14 @@ class Tetrad(object):
         except KeyboardInterrupt as inst:
             LOGGER.info("assembly interrupted by user.")
             print("\nKeyboard Interrupt by user. Cleaning up...")
-            raise
 
         except IPyradWarningExit as inst:
             LOGGER.info("IPyradWarningExit: %s", inst)
             print(inst)
-            raise 
 
         except Exception as inst:
             LOGGER.info("caught an unknown exception %s", inst)
             print("\n  Exception found: {}".format(inst))
-            raise
 
         ## close client when done or interrupted
         finally:
@@ -1011,6 +1017,19 @@ class Tetrad(object):
                 
                 ## can't close client if it was never open
                 if ipyclient:
+
+                    ## send SIGINT (2) to all engines
+                    ipyclient.abort()
+                    LOGGER.info("what %s", self._ipcluster["pids"])
+                    for engine_id, pid in self._ipcluster["pids"].items():
+                        LOGGER.info("eid %s", engine_id)
+                        LOGGER.info("pid %s", pid)
+                        LOGGER.info("queue %s", ipyclient.queue_status()[engine_id]["queue"])
+                        if ipyclient.queue_status()[engine_id]["queue"]:
+                            LOGGER.info('interrupting engine {} w/ SIGINT to {}'\
+                                        .format(engine_id, pid))
+                            os.kill(pid, 2)
+                    time.sleep(1)
 
                     ## if CLI, stop jobs and shutdown
                     if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
@@ -1022,13 +1041,17 @@ class Tetrad(object):
                         if not ipyclient.outstanding:
                             ipyclient.purge_everything()
                         else:
-                            ## nanny: kill the engines left running, report kill.
+                            ## nanny: kill everything, something bad happened
                             ipyclient.shutdown(hub=True, block=False)
                             ipyclient.close()
-                            print("\n  warning: ipcluster shutdown and must be restarted")
-            
+                            print("\nwarning: ipcluster shutdown and must be restarted")
+                
+                ## reraise the error now that we're cleaned up
+                if inst:
+                    raise inst
             ## if exception is close and save, print and ignore
             except Exception as inst2:
+                print("warning: error during shutdown:\n{}".format(inst2))
                 LOGGER.error("shutdown warning: %s", inst2)
 
 
@@ -1040,11 +1063,11 @@ class Tetrad(object):
         """
 
         ## an iterator to distribute sampled quartets in chunks
-        gen = xrange(self.checkpoint.arr, self.nquartets, self._chunksize)
+        gen = xrange(self.checkpoint.arr, self.params.nquartets, self._chunksize)
         njobs = sum(1 for _ in gen)
         jobiter = iter(gen)
         LOGGER.info("chunksize: %s, start: %s, total: %s, njobs: %s", \
-            self._chunksize, self.checkpoint.arr, self.nquartets, njobs)
+            self._chunksize, self.checkpoint.arr, self.params.nquartets, njobs)
 
         ## if bootstrap create an output array for results unless we are 
         ## restarting an existing boot, then use the one already present
@@ -1052,7 +1075,7 @@ class Tetrad(object):
         with h5py.File(self.database.output, 'r+') as out:
             if key not in out["qboots"].keys():
                 out["qboots"].create_dataset(key, 
-                                            (self.nquartets, 4), 
+                                            (self.params.nquartets, 4), 
                                             dtype=np.uint32, 
                                             chunks=(self._chunksize, 4))
 
@@ -1066,7 +1089,7 @@ class Tetrad(object):
         else:
             printstr = " boot {:<7} | {} | "
             if not quiet:
-                progressbar(self.nboots, self.checkpoint.boots, 
+                progressbar(self.params.nboots, self.checkpoint.boots, 
                     printstr.format(self.checkpoint.boots, elapsed), spacer="")
 
         ## submit all jobs to be distributed across nodes
@@ -1126,7 +1149,7 @@ class Tetrad(object):
                     progressbar(njobs, done, printstr.format(elapsed), spacer="")
             else:
                 if not quiet:
-                    progressbar(self.nboots, self.checkpoint.boots, 
+                    progressbar(self.params.nboots, self.checkpoint.boots, 
                         printstr.format(self.checkpoint.boots, elapsed), 
                         spacer="")
 
@@ -1186,7 +1209,7 @@ def compute_tree_stats(self, ipyclient):
     names = self.samples
 
     ## get majority rule consensus tree of weighted Q bootstrap trees
-    if self.nboots:
+    if self.params.nboots:
         
         ## Tree object
         fulltre = ete3.Tree(self.trees.tree, format=0)
@@ -1195,7 +1218,7 @@ def compute_tree_stats(self, ipyclient):
         ## only grab as many boots as the last option said was max
         with open(self.trees.boots, 'r') as inboots:
             bb = [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
-            wboots = [fulltre] + bb[-self.nboots:]
+            wboots = [fulltre] + bb[-self.params.nboots:]
         
         ## infer consensus tree and write to file
         wctre, wcounts = consensus_tree(wboots, names=names)
@@ -1214,7 +1237,7 @@ def compute_tree_stats(self, ipyclient):
         #ostats.write(STATS_STRING.format(**self.stats))
 
         ## print bootstrap splits
-        if self.nboots:
+        if self.params.nboots:
             ostats.write("## splits observed in {} trees\n".format(len(wboots)))
             for i, j in enumerate(self.samples):
                 ostats.write("{:<3} {}\n".format(i, j))
@@ -1918,8 +1941,15 @@ def _get_total(tots, node):
     if (node.is_leaf() or node.is_root()):
         return 0
     else:
-        ## get counts on down edges
-        down_r, down_l = node.children
+        ## Get counts on down edges. 
+        ## How to treat polytomies here?
+        if len(node.children) > 2:
+            down_r = node.children[0]
+            down_l = node.children[1]
+            for child in node.children[2:]:
+                down_l += child
+        else:
+            down_r, down_l = node.children
         lendr = sum(1 for i in down_r.iter_leaves())
         lendl = sum(1 for i in down_l.iter_leaves())
 
@@ -1936,7 +1966,7 @@ def _get_total(tots, node):
 
 
 def _get_sampled(data, totn, node):
-    """ get total number of quartets possible for a split"""
+    """ get total number of quartets sampled for a split"""
     ## convert tip names to ints
     names = sorted(totn)
     cdict = {name: idx for idx, name in enumerate(names)}
@@ -1946,7 +1976,14 @@ def _get_sampled(data, totn, node):
         return 0
     else:
         ## get counts on down edges
-        down_r, down_l = node.children
+        if len(node.children) > 2:
+            down_r = node.children[0]
+            down_l = node.children[1]
+            for child in node.children[2:]:
+                down_l += child
+        else:
+            down_r, down_l = node.children
+
         lendr = set(cdict[i] for i in down_r.get_leaf_names())
         lendl = set(cdict[i] for i in down_l.get_leaf_names())
 
