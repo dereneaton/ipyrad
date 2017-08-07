@@ -470,37 +470,27 @@ def run2(data, samples, force, ipyclient):
         data._hackersonly["p5_adapters_extra"] = []
         data._hackersonly["p3_adapters_extra"] = []
 
-    ## Hard to wrap this safely. We would like it to remove leftover
-    ## files if interrupted, but it seems to require a hard shutdown of 
-    ## ipcluster to kill the bash jobs. Should we shut it down inside
-    ## here instead of in assembly?
-    try:
-        ## concat is not parallelized (since it's disk limited, generally)
-        subsamples = concat_reads(data, subsamples, ipyclient)
-        ## cutadapt is parallelized by ncores/2 because cutadapt spawns threads
-        lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
-        run_cutadapt(data, subsamples, lbview)
-        ## cleanup is ...
-        assembly_cleanup(data)
-
-    except KeyboardInterrupt:
-        print("\n ...interrupted, just a minute while we ensure proper cleanup")
-        raise KeyboardInterrupt("s2")
+    ## concat is not parallelized (since it's disk limited, generally)
+    subsamples = concat_reads(data, subsamples, ipyclient)
+    ## cutadapt is parallelized by ncores/2 because cutadapt spawns threads
+    lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
+    run_cutadapt(data, subsamples, lbview)
+    ## cleanup is ...
+    assembly_cleanup(data)
 
 
+# def _cleanup_and_die(data):
+#     """ Interrupt required ipyclient.shutdown to kill jobs. This is called
+#     after to ensure file cleanup. Not yet implemented."""
 
-def _cleanup_and_die(data):
-    """ Interrupt required ipyclient.shutdown to kill jobs. This is called
-    after to ensure file cleanup. Not yet implemented."""
-
-    samples = data.samples.keys()
-    concats = [os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz") \
-               for sample in samples]
-    concats += [os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz") \
-               for sample in samples]
-    for conc in concats:
-        if os.path.exists(conc):
-            os.remove(conc)
+#     samples = data.samples.keys()
+#     concats = [os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz") \
+#                for sample in samples]
+#     concats += [os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz") \
+#                for sample in samples]
+#     for conc in concats:
+#         if os.path.exists(conc):
+#             os.remove(conc)
 
 
 
