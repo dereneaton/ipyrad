@@ -161,20 +161,23 @@ def sample_cleanup(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
 
-    ## Clean up loose files
-    ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
-    derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
-    mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
-    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
-    usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
-    hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
-    clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+    log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
 
-    for f in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
-        try:
-            os.remove(f)
-        except:
-            pass
+    if not log_level == "DEBUG":
+        ## Clean up loose files only if not in DEBUG
+        ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
+        derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+        mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
+        uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
+        usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
+        hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+        clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+
+        for f in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 
 
@@ -278,7 +281,7 @@ def persistent_popen_align3(clusts, maxseqs=200):
             ## Malformed clust. Dictionary creation with only 1 element will raise.
             except ValueError as inst:
                 LOGGER.debug("Bad PE cluster - {}\nla1 - {}\nla2 - {}".format(\
-                                lclust, la1, la2))
+                                clust, la1, la2))
 
             ## Either reads are SE, or at least some pairs are merged.
             except IndexError:
@@ -356,7 +359,10 @@ def align_and_parse(handle, max_internal_indels=8):
     highindels = 0
 
     ## iterate over clusters sending each to muscle, splits and aligns pairs
-    aligned = persistent_popen_align3(clusts, 200)
+    try:
+        aligned = persistent_popen_align3(clusts, 200)
+    except:
+        LOGGER.debug("Error in handle - {}".format(handle))
 
     ## store good alignments to be written to file
     refined = []
@@ -383,7 +389,9 @@ def align_and_parse(handle, max_internal_indels=8):
             outfile.write("\n//\n//\n".join(refined)+"\n")
 
     ## remove the old tmp file
-    os.remove(handle)
+    log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
+    if not log_level == "DEBUG":
+        os.remove(handle)
     return highindels
 
 
@@ -959,7 +967,8 @@ def derep_and_sort(data, infile, outfile, nthreads):
 
     ## datatypes options
     strand = "plus"
-    if "gbs" in data.paramsdict["datatype"]:
+    if "gbs" in data.paramsdict["datatype"]\
+        or "2brad" in data.paramsdict["datatype"]:
         strand = "both"
 
     ## pipe in a gzipped file
@@ -1107,7 +1116,7 @@ def cluster(data, sample, nthreads):
     strand = "plus"
     cov = 0.75
     minsl = 0.5
-    if data.paramsdict["datatype"] == "gbs":
+    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.5
         minsl = 0.5
@@ -1223,28 +1232,31 @@ def muscle_chunker(data, sample):
 def reconcat(data, sample):
     """ takes aligned chunks (usually 10) and concatenates them """
 
-    ## get chunks
-    chunks = glob.glob(os.path.join(data.tmpdir,
-             sample.name+"_chunk_[0-9].aligned"))
+    try:
+        ## get chunks
+        chunks = glob.glob(os.path.join(data.tmpdir,
+                 sample.name+"_chunk_[0-9].aligned"))
 
-    ## sort by chunk number, cuts off last 8 =(aligned)
-    chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
-    LOGGER.info("chunk %s", chunks)
-    ## concatenate finished reads
-    sample.files.clusters = os.path.join(data.dirs.clusts,
-                                         sample.name+".clustS.gz")
-    ## reconcats aligned clusters
-    with gzip.open(sample.files.clusters, 'wb') as out:
-        for fname in chunks:
-            with open(fname) as infile:
-                dat = infile.read()
-                ## avoids mess if last chunk was empty
-                if dat.endswith("\n"):
-                    out.write(dat+"//\n//\n")
-                else:
-                    out.write(dat+"\n//\n//\n")
-            os.remove(fname)
-
+        ## sort by chunk number, cuts off last 8 =(aligned)
+        chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
+        LOGGER.info("chunk %s", chunks)
+        ## concatenate finished reads
+        sample.files.clusters = os.path.join(data.dirs.clusts,
+                                             sample.name+".clustS.gz")
+        ## reconcats aligned clusters
+        with gzip.open(sample.files.clusters, 'wb') as out:
+            for fname in chunks:
+                with open(fname) as infile:
+                    dat = infile.read()
+                    ## avoids mess if last chunk was empty
+                    if dat.endswith("\n"):
+                        out.write(dat+"//\n//\n")
+                    else:
+                        out.write(dat+"\n//\n//\n")
+                os.remove(fname)
+    except Exception as inst:
+        LOGGER.error("Error in reconcat {}".format(inst))
+        raise
 
 
 def derep_concat_split(data, sample, nthreads):
@@ -1379,15 +1391,18 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 
         finally:
             ## this can fail if jobs were not stopped properly and are still
-            ## writing to tmpdir.
+            ## writing to tmpdir. don't cleanup if debug is on.
             try:
-                if os.path.exists(data.tmpdir):
-                    shutil.rmtree(data.tmpdir)
-                ## get all refmap_derep.fastqs
-                rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
-                ## Remove the unmapped fastq files
-                for rmfile in rdereps:
-                    os.remove(rmfile)
+                log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
+                if not log_level == "DEBUG":
+
+                    if os.path.exists(data.tmpdir):
+                        shutil.rmtree(data.tmpdir)
+                    ## get all refmap_derep.fastqs
+                    rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
+                    ## Remove the unmapped fastq files
+                    for rmfile in rdereps:
+                        os.remove(rmfile)
 
             except Exception as _:
                 LOGGER.warning("failed to cleanup files/dirs")
