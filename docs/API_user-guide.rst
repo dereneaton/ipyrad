@@ -217,8 +217,8 @@ Attributes of Assembly objects
 
 Assembly objects have many attributes which you can access to learn more
 about your Assembly. To see the full list of options you can type the
-name of your Assembly variable, followed by a '.', and then press . This
-will use tab-completion to list all of the available options. Below I
+name of your Assembly variable, followed by a `'.'`, and then press `<tab>`.
+This will use tab-completion to list all of the available options. Below I
 print a few examples.
 
 .. code:: python

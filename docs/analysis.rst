@@ -24,28 +24,24 @@ Using Jupyter notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 This is an optional tool to use with ipyrad, but one that we strongly recommend. 
 
+
 + `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__ (Video)
 + `Running jupyter on a HPC cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__  
 .. + `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
 .. + `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
 
 
-*ipyrad* API assembly
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+*ipyrad* API full example notebooks
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 These notebooks show example usage of the ipyrad API.
 
-.. + Intro to the ipyrad API <tutorial_API.html>`__
-.. + Quantify and plot shared RAD data with ipyrad <visualize.html>`__
 + `Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__ (run in jupyter-notebook)
 + `Finch API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-2-Finches.ipynb>`__ (run in jupyter-notebook)  
 
-.. + `Example RAD assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ficus-rad/blob/master/Ficus_Jander_assembly.ipynb>`__
-.. + `Example PE GBS assembly with ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/pedicularis-WB-GBS/blob/master/nb1-WB-assembly.ipynb>`__
 
 *ipyrad* API analysis tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-These notebook show how to do parallelized downstream analyses in Jupyter-notebooks, and to 
-generate advanced input files for many programs using the ipyrad analysis tools. 
+These notebook show how to do parallelized downstream analyses in Jupyter-notebooks, and to generate advanced input files for many programs using the ipyrad analysis tools. 
 
 + `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `TETRAD quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>`__
@@ -64,8 +60,6 @@ that are frequently used with RAD-seq data.
 + `RAxML phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
 + `TETRAD command line <http://ipyrad.readthedocs.io/tetrad.html>`__   
 
-.. + ABBA BABA test for introgression <cookbook-dstats>`__
-.. + PCA analysis of genetic structure <cookbook-PCA>`__
 
 Other jupyter notebooks (ipyrad in the wild)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

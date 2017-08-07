@@ -9,9 +9,8 @@
 
 The ipyrad API
 ===============
-The API_ (application program interface) for ipyrad_ is a way of directly 
-accessing the nuts and bolts of ipyrad_ using Python_, and in particular
-we have written it to work interactively in IPython_. 
+The API (application program interface) for ipyrad is a way of directly 
+accessing the nuts and bolts of ipyrad using Python. 
 This has a number of advantages over the CLI_ (command line interface) 
 in that there is greater flexibility for creating highly 
 complex branching assemblies, or for applying ipyrad_ in a 
@@ -26,12 +25,6 @@ started in order to parallelize your code. This can be started locally
 by opening a separate terminal and running (``ipcluster start -n=10``)
 to start 10 engines. Or, to run your code on a remote cluster set up
 your ipcluster instance following `this tutorial <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__.
-
-Cookbooks -- coming soon
-----------------
-We plan to add example cookbook recipes of IPython code that 
-can used to perform non-standard procedures in ipyrad that
-are not easily implemented in the CLI. 
 
 
 Two main functions of the API
