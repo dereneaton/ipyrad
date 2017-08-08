@@ -289,7 +289,7 @@ class Bucky(object):
         ## check the steps argument
         if not steps:
             steps = [1, 2, 3, 4]
-        if isinstance(steps, str):
+        if isinstance(steps, (int, str):
             steps = [int(i) for i in steps]
         if isinstance(steps, list):
             if not all(isinstance(i, int) for i in steps):
@@ -304,7 +304,7 @@ class Bucky(object):
         if 3 in steps:
             self.run_mbsum(force=force, quiet=quiet, ipyclient=ipyclient)
         if 4 in steps:
-            self.run_bucky(froce=force, quiet=quiet, ipyclient=ipyclient)
+            self.run_bucky(force=force, quiet=quiet, ipyclient=ipyclient)
 
         ## make sure jobs are done if waiting (TODO: maybe make this optional)
         ipyclient.wait()
