@@ -12,7 +12,6 @@ import numpy as np
 
 from collections import Counter
 from ipyrad.assemble.util import DUCT
-#import pandas as pd
 
 
 try:
@@ -34,12 +33,12 @@ class Bpp(object):
     and submitting bpp jobs to run on a parallel cluster. Converts loci 
     file format data to bpp file format, i.e., concatenated phylip-like
     format, and produces imap and ctl input files for bpp. The main 
-    function to run jobs is submit_bpp_jobs(). 
+    functions are 'write_bpp_files()' and 'run()'.
 
     Parameters:
     -----------
-    locifile:
-        A .loci file produced by ipyrad.
+    data:
+        A .loci or .alleles.loci file produced by ipyrad.
     imap:
         A Python dictionary with 'species' names as keys, and lists of sample
         names for the values. Any sample that is not included in the imap
@@ -124,8 +123,8 @@ class Bpp(object):
     ## init object for params
     def __init__(self,
         name,
-        locifile, 
-        guidetree, 
+        data=None,
+        guidetree=None, 
         imap=None, 
         workdir=None, 
         *args, 
@@ -154,6 +153,19 @@ class Bpp(object):
             }
         self._kwargs.update(kwargs)
 
+        ## support for legacy args
+        if self._kwargs.get("locifile"):
+            data = self._kwargs.get("locifile")
+        if not data:
+            raise IPyradWarningExit(
+                "must enter a 'data' argument (an ipyrad .loci file).")
+
+        ## set the guidetree
+        if not guidetree:
+            raise IPyradWarningExit(
+                "must enter a 'guidetree' argument (a newick file or string).")
+        self.tree = ete.Tree(guidetree)
+
         ## check workdir
         if workdir:
             self.workdir = os.path.abspath(os.path.expanduser(workdir))
@@ -162,9 +174,6 @@ class Bpp(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        ## set the guidetree
-        self.tree = ete.Tree(guidetree)
-
         ## parsing attributes
         if not imap:
             self.imap = {i:i for i in self.tree.get_leaf_names()}
@@ -172,7 +181,7 @@ class Bpp(object):
             self.imap = {i:j for i, j in imap.items()}
 
         ## update stats if alleles instead of loci 
-        if ('.alleles.loci' in locifile) and (not self._kwargs['copied']):
+        if ('.alleles.loci' in data) and (not self._kwargs['copied']):
             ## add 0/1 to names
             keys = self.imap.keys()
             for key in keys:
@@ -206,7 +215,7 @@ class Bpp(object):
 
         ## results files
         self.files = Params()
-        self.files.locifile = locifile
+        self.files.data = data
         self.files.mcmcfiles = []
         self.files.outfiles = []
         
@@ -215,7 +224,6 @@ class Bpp(object):
     def run(self,
         ipyclient, 
         nreps=1, 
-        seed=12345,
         quiet=False,
         randomize_order=False,
         force=False,
@@ -235,8 +243,6 @@ class Bpp(object):
             random seed drawn starting from the starting seed. 
         ipyclient (ipyparallel.Client)
             an ipyparallel.Client object connected to a running cluster. 
-        seed (int):
-            an integer used to initiate the random number generator
         quiet (bool):
             whether to print that the jobs have been submitted
         randomize_order (bool):
@@ -248,12 +254,7 @@ class Bpp(object):
             over existing files.
         """
         ## initiate random seed
-        np.random.seed(seed)
-
-        ## prepare files
-        #self._name = self.name
-        #self._write_seqfile(name=self._name)
-        #self._write_mapfile(name=self._name)
+        np.random.seed(self.params.seed)
 
         ## load-balancer
         lbview = ipyclient.load_balanced_view()
@@ -275,11 +276,11 @@ class Bpp(object):
                 ## change seed and ctl for each rep, this writes into the ctl
                 ## file the correct name for the other files which share the 
                 ## same rep number in their names.
-                self.params.seed = np.random.randint(0, 1e9, 1)[0]
+                #self.params._seed = np.random.randint(0, 1e9, 1)[0]
                 self._write_mapfile()
                 if randomize_order:
                     self._write_seqfile(randomize_order=randomize_order)
-                ctlfile = self._write_ctlfile()#rep=job)
+                ctlfile = self._write_ctlfile()
 
                 ## submit to engines
                 async = lbview.apply(_call_bpp, ctlfile)
@@ -328,12 +329,6 @@ class Bpp(object):
 
     def _write_mapfile(self):#, name=False):
         ## write the imap file:
-        #if name:
-        #    self.mapfile = os.path.realpath(
-        #        os.path.join(self.workdir, self._name+".imapfile.txt"))
-        #else:
-        #self.mapfile = os.path.realpath(
-        #    os.path.join(self.workdir, "tmp.imapfile.txt"))
         self.mapfile = os.path.realpath(
             os.path.join(self.workdir, self._name+".imapfile.txt"))
         with open(self.mapfile, 'w') as mapfile:
@@ -346,16 +341,10 @@ class Bpp(object):
     def _write_seqfile(self, randomize_order=False):
 
         ## handles
-        #if name: 
-        #    self.seqfile = os.path.realpath(
-        #        os.path.join(self.workdir, self._name+".seqfile.txt"))
-        #else:
-        #    self.seqfile = os.path.realpath(
-        #        os.path.join(self.workdir, "tmp.seqfile.txt"))
         self.seqfile = os.path.realpath(
             os.path.join(self.workdir, self._name+".seqfile.txt"))
         seqfile = open(self.seqfile, 'w')
-        with open(self.files.locifile) as infile:
+        with open(self.files.data) as infile:
             loci = infile.read().strip().split("|\n")
             nloci = len(loci)
             if randomize_order:
@@ -540,7 +529,7 @@ class Bpp(object):
             raise Exception("new object must have a different 'name' than its parent")
         newobj = Bpp(
             name=name,
-            locifile=newdict["files"].locifile,
+            data=newdict["files"].data,
             workdir=newdict["workdir"],
             guidetree=newdict["tree"].write(),
             imap={i:j for i, j in newdict["imap"].items()},
