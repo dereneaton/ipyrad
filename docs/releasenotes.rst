@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.7.10
+------
+**August 08, 2017**
+
+- fix misspelled force option in ipa bucky tool
+- bpp ipa tool changed 'locifile' arg to 'data' but still support old arg, and removed 'seed' arg from run so that the only 'seed' arg is in paramsdict
+- bugfix to not remove nex files in bucky ipa tool
+
 0.7.9
 -----
 **August 07, 2017**
