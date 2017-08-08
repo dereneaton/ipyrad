@@ -1063,8 +1063,6 @@ class Assembly(object):
         ## print header
         if self._headers:
             print("\n  Step 5: Consensus base calling ")
-        #else:
-        #    print("")
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
