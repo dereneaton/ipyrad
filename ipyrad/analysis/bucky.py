@@ -296,7 +296,7 @@ class Bucky(object):
                 raise IPyradWarningExit("steps must be a list of integers")
 
         ## run steps ------------------------------------------------------
-        ## todo: wrap this function so it plays nice when interrupted.
+        ## TODO: wrap this function so it plays nice when interrupted.
         if 1 in steps:
             self.write_nexus_files(force=force, quiet=quiet)
         if 2 in steps:
@@ -306,12 +306,8 @@ class Bucky(object):
         if 4 in steps:
             self.run_bucky(froce=force, quiet=quiet, ipyclient=ipyclient)
 
-        ## track progress asyncs
-        while 1:
-            if self.asyncs:
-                print('jobs are running')
-            else:
-                break
+        ## make sure jobs are done if waiting (TODO: maybe make this optional)
+        ipyclient.wait()
 
 
 
@@ -409,14 +405,17 @@ class Bucky(object):
         nexus_files = glob.glob(os.path.join(minidir, "*.nex"))
 
         ## clear existing files 
-        existing = glob.glob(os.path.join(self.workdir, self.name, "*.nex"))
+        #existing = glob.glob(os.path.join(self.workdir, self.name, "*.nex"))
+        existing = glob.glob(os.path.join(minidir, "*.nex.*"))
         if any(existing):
             if force:
                 for rfile in existing:
                     os.remove(rfile)
             else:
-                path = os.path.join(self.workdir, self.name)
-                raise IPyradWarningExit(EXISTING_NEX_FILES.format(path))
+                raise IPyradWarningExit(EXISTING_NEXdot_FILES.format(minidir))
+
+        ## write new nexus files, or should users do that before this?
+        #self.write_nexus_files(force=True)
 
         ## load balancer
         lbview = ipyclient.load_balanced_view()
@@ -633,8 +632,15 @@ end;
 EXISTING_NEX_FILES = """\
 Nexus files linked to this object (i.e., same workdir & name)
 already exist at {}. 
-To remove the existing files and write new nexus files use the
+To remove the existing files and write new files use the
 argument force=True. 
+"""
+
+EXISTING_NEXdot_FILES = """\
+Result files linked to this object (i.e., same workdir & name)
+already exist at {}. 
+To remove the existing files and write new mb result files use 
+the argument force=True. 
 """
 
 EXISTING_SUMT_FILES = """\
