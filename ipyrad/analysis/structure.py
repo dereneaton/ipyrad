@@ -10,7 +10,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.tetrad import get_spans
-from ipyrad.assemble.util import Params
+from ipyrad.assemble.util import Params, IPyradWarningExit
 
 # pylint: disable=W0142
 # pylint: disable=W0212
@@ -169,7 +169,6 @@ class Structure(object):
 
         quiet: (bool)
             Whether to print number of jobs submitted to stderr
-. 
 
         Example: 
         ---------
