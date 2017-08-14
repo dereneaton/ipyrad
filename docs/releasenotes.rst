@@ -9,6 +9,13 @@ Release Notes
 ------
 **August 14, 2017**
 
+- removed repeat printing of error statements
+- added more warning and reports to bpp analysis tool
+
+0.7.11
+------
+**August 14, 2017**
+
 - better error checking in bucky run commandipa tools
 - added workdir default name to sra tools ipa tool
 - improved error checking in step 6
