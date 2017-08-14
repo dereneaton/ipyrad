@@ -1358,11 +1358,11 @@ class Assembly(object):
                             ipyclient.close()
                             print("\nwarning: ipcluster shutdown and must be restarted")
                     
-                ## reraise the error now that we're cleaned up
-                if inst:
-                    print(inst)
-                    #print("")
-                    #raise IPyradWarningExit(inst
+                ## reraise the error now that we're cleaned up ..., this isn't necessary.
+                #if inst:
+                #    print(inst)
+                #    #print("")
+                #    #raise IPyradWarningExit(inst
 
             ## if exception is close and save, print and ignore
             except Exception as inst2:
