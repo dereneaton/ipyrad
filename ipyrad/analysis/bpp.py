@@ -11,7 +11,7 @@ import subprocess
 import numpy as np
 
 from collections import Counter
-from ipyrad.assemble.util import DUCT
+from ipyrad.assemble.util import DUCT, IPyradWarningExit
 
 
 try:
@@ -124,9 +124,9 @@ class Bpp(object):
     def __init__(self,
         name,
         data=None,
+        workdir="analysis-bpp", 
         guidetree=None, 
         imap=None, 
-        workdir=None, 
         *args, 
         **kwargs):
 
@@ -174,13 +174,23 @@ class Bpp(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        ## parsing attributes
+        ## parsing imap dictionary, or create simple 1-1 mapping
         if not imap:
-            self.imap = {i:i for i in self.tree.get_leaf_names()}
+            self.imap = {i:[i] for i in self.tree.get_leaf_names()}
         else:
-            self.imap = {i:j for i, j in imap.items()}
+            self.imap = {}
+            for key, val in imap.items():
+                if isinstance(val, (int, str)):
+                    self.imap[key] = [str(val)]
+                elif isinstance(val, list):
+                    self.imap[key] = val
+                else:
+                    raise IPyradWarningExit("imap dictionary is not properly formatted")
 
         ## update stats if alleles instead of loci 
+        if not self._kwargs["minmap"]:
+            self._kwargs["minmap"] = {i:1 for i in self.tree.get_leaf_names()}
+
         if ('.alleles.loci' in data) and (not self._kwargs['copied']):
             ## add 0/1 to names
             keys = self.imap.keys()
@@ -191,15 +201,15 @@ class Bpp(object):
                     newvals += [val+"_0", val+"_1"]
                 self.imap[key] = newvals
 
-            ## double the minmap
-            if self._kwargs['minmap']:
-                self._kwargs["minmap"] = \
+            ## double the minmap (copied attribute protects from double 2X)
+            self._kwargs["minmap"] = \
                 {key: val*2 for key, val in self._kwargs['minmap'].items()}
 
         ## checks
         assert isinstance(self.imap, dict), "you must enter an IMAP dictionary"
         assert set(self.imap.keys()) == set(self.tree.get_leaf_names()), \
-               "IMAP keys must match guidetree names"
+               "IMAP keys must match guidetree names: \n{}\n{}"\
+               .format(self.imap.keys(), self.tree.get_leaf_names())
 
         ## filters
         self.filters = Params()
