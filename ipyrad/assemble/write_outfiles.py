@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 
-""" Apply filters and write output files. The basic body plan of this
+""" 
+Apply filters and write output files. The basic body plan of this
 code is as follows:
   * Read in the final aligned clusters file
   * Make sizeable chunks of loci
@@ -8,6 +9,7 @@ code is as follows:
   * Combine output of parallel filters into final loci file
   * Write out the output in full vcf format
 """
+
 # pylint: disable=W0142
 # pylint: disable=E1101
 # pylint: disable=W0212
@@ -29,7 +31,6 @@ import h5py
 import re
 import os
 from collections import Counter, OrderedDict
-#from ipyrad.file_conversion import *
 from ipyrad import __version__
 from util import *
 
@@ -2072,8 +2073,8 @@ def make_vcf(data, samples, ipyclient, full=0):
     ## send jobs in chunks
     vasyncs = {}
     total = 0
-    for init in xrange(0, nloci, optim):
-        vasyncs[init] = lbview.apply(vcfchunk, *(data, optim, sidx, init, full))
+    for chunk in xrange(0, nloci, optim):
+        vasyncs[chunk] = lbview.apply(vcfchunk, *(data, optim, sidx, chunk, full))
         total += 1
 
     ## tmp files get left behind and intensive processes are left running when a
@@ -2185,7 +2186,7 @@ def concat_vcf(data, names, full):
 
 
 
-def vcfchunk(data, optim, sidx, start, full):
+def vcfchunk(data, optim, sidx, chunk, full):
     """
     Function called within make_vcf to run chunks on separate engines.
     """
@@ -2194,7 +2195,7 @@ def vcfchunk(data, optim, sidx, start, full):
     maxlen = data._hackersonly["max_fragment_length"] + 20
 
     ## get data sliced (optim chunks at a time)
-    hslice = [start, start+optim]
+    hslice = [chunk, chunk+optim]
 
     ## read all taxa from disk (faster), then subsample taxa with sidx and
     ## keepmask to greatly reduce the memory load
@@ -2233,7 +2234,7 @@ def vcfchunk(data, optim, sidx, start, full):
     nrows = maxsnplen
     cols0 = np.zeros(nrows, dtype=np.int64) #h5py.special_dtype(vlen=bytes))
     cols1 = np.zeros(nrows, dtype=np.uint32)
-    cols34 = np.zeros((nrows, 2), dtype="S3")
+    cols34 = np.zeros((nrows, 2), dtype="S5")
     cols7 = np.zeros((nrows, 1), dtype="S20")
 
     ## when nsamples is high this blows up memory (e.g., dim=(5M x 500))
@@ -2286,7 +2287,7 @@ def vcfchunk(data, optim, sidx, start, full):
                 cols1[init:init+seq.shape[1]] = pos + np.arange(seq.shape[1]) + 1
             else:
                 cols1[init:init+seq.shape[1]] = pos + np.where(snpidx)[0] + 1
-                cols0[init:init+seq.shape[1]] = (start + locindex[iloc] + 1) * -1
+                cols0[init:init+seq.shape[1]] = (chunk + locindex[iloc] + 1) * -1
 
         ## fill reference base
         alleles = reftrick(seq, GETCONS)
@@ -2369,7 +2370,7 @@ def vcfchunk(data, optim, sidx, start, full):
         ## This is hax, but it's the only way it will work. The faidict uses positive numbers
         ## for reference sequence mapped loci for the CHROM/POS info, and it uses negative
         ## numbers for anonymous loci. Both are 1 indexed, which is where that last `+ 2` comes from.
-        faidict.update({-i:"locus_{}".format(i-1) for i in xrange(start+1, start + optim + 2)})
+        faidict.update({-i:"locus_{}".format(i-1) for i in xrange(chunk+1, chunk + optim + 2)})
         chroms = [faidict[i] for i in cols0]
     except Exception as inst:
         LOGGER.error("Invalid chromosome dictionary indexwat: {}".format(inst))
@@ -2384,9 +2385,9 @@ def vcfchunk(data, optim, sidx, start, full):
     if tot:
         LOGGER.debug("Writing data to vcf")
         if not full:
-            writer = open(data.outfiles.vcf+".{}".format(start), 'w')
+            writer = open(data.outfiles.vcf+".{}".format(chunk), 'w')
         else:
-            writer = gzip.open(data.outfiles.vcf+".{}".format(start), 'w')
+            writer = gzip.open(data.outfiles.vcf+".{}".format(chunk), 'w')
 
         try:
             ## write in iterations b/c it can be freakin huge.
