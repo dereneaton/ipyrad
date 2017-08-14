@@ -374,6 +374,10 @@ def build_indels(data, samples, ipyclient):
         else:
             time.sleep(0.1)
 
+    ## check for errors
+    if not async.successful():
+        raise IPyradWarningExit(async.result())
+
     ## start subfunc
     async = lbview.apply(sub_build_indels, *(data, samples))
     
@@ -490,6 +494,7 @@ def call_cluster(data, noreverse, ipyclient):
             time.sleep(0.5)
 
     ## store log result
+    ipyclient.wait()
     data.stats_files.s6 = os.path.join(data.dirs.across, "s6_cluster_stats.txt")
 
 
