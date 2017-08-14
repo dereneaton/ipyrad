@@ -289,8 +289,8 @@ class Bucky(object):
         ## check the steps argument
         if not steps:
             steps = [1, 2, 3, 4]
-        if isinstance(steps, (int, str):
-            steps = [int(i) for i in steps]
+        if isinstance(steps, (int, str)):
+            steps = [int(i) for i in [steps]]
         if isinstance(steps, list):
             if not all(isinstance(i, int) for i in steps):
                 raise IPyradWarningExit("steps must be a list of integers")
@@ -390,8 +390,9 @@ class Bucky(object):
                 time.sleep(0.1)
 
         ## check success
-        if not async.successful():
-            raise IPyradWarningExit(async.result())
+        for async in asyncs:
+            if not async.successful():
+                raise IPyradWarningExit(async.result())
 
 
 
