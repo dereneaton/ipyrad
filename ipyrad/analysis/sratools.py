@@ -39,7 +39,7 @@ class SRA(object):
     """ ipyrad.analysis SRA download object"""
     def __init__(self, 
         accession,
-        workdir,
+        workdir="sra-fastq-data",
         paired=False
         ):
 
