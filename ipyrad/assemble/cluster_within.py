@@ -1415,16 +1415,16 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 THREADED_FUNCS = ["derep_concat_split", "cluster", "mapreads"]
 
 PRINTSTR = {
-    "derep_concat_split" : "dereplicating    ",
-    "mapreads" :           "mapping          ",
-    "cluster" :            "clustering       ",
-    "build_clusters" :     "building clusters",
-    "ref_muscle_chunker" : "finalize mapping ",
-    "muscle_chunker" :     "chunking         ",
-    "muscle_align" :       "aligning         ",
-    "reconcat" :           "concatenating    ",
+    "derep_concat_split" : "dereplicating     ",
+    "mapreads" :           "mapping           ",
+    "cluster" :            "clustering        ",
+    "build_clusters" :     "building clusters ",
+    "ref_muscle_chunker" : "finalize mapping  ",
+    "muscle_chunker" :     "chunking          ",
+    "muscle_align" :       "aligning          ",
+    "reconcat" :           "concatenating     ",
     "ref_build_and_muscle_chunk" : 
-                           "building clusters",
+                           "fetch mapped reads",
     }
 
 
@@ -1461,7 +1461,7 @@ JOBORDER = {
         "mapreads",
         "cluster",
         "build_clusters",
-        "ref_muscle_chunker",
+        "ref_build_and_muscle_chunk",
         "muscle_chunker"
         ], 
     "denovo-reference" : [
