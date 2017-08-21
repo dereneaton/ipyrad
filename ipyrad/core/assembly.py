@@ -1728,13 +1728,13 @@ def _paramschecker(self, param, newvalue):
 
     elif param == 'assembly_method':
         ## TEMPORARY BLOCK ON DENOVO+REFERENCE METHOD
-        if newvalue == "denovo+reference":
-            raise IPyradWarningExit("""
-    Error: The 'denovo+reference' method is temporarily blocked while we 
-    refactor it to greatly improve the speed. You can either revert to an
-    older version (pre v.0.7.0) or wait for the next update to resume using
-    this method. 
-    """)
+#        if newvalue == "denovo+reference":
+#            raise IPyradWarningExit("""
+#    Error: The 'denovo+reference' method is temporarily blocked while we 
+#    refactor it to greatly improve the speed. You can either revert to an
+#    older version (pre v.0.7.0) or wait for the next update to resume using
+#    this method. 
+#    """)
 
         methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
         assert newvalue in methods, BAD_ASSEMBLY_METHOD.format(newvalue)

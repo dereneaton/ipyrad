@@ -505,6 +505,7 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
     ## so you can switch off merging for mostly non-overlapping data
     if data._hackersonly["refmap_merge_PE"]:
         clust = merge_after_pysam(data, clust)
+        #clust = merge_pair_pipes(data, clust)
 
     return clust
 
@@ -528,6 +529,13 @@ def ref_build_and_muscle_chunk(data, sample):
     ## create an output file to write clusters to
     idx = 0
     tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali")
+    fopen = open
+
+    ## If reference+denovo we drop the reads back into clust.gz
+    ## and let the muscle_chunker do it's thing back in cluster_within
+    if data.paramsdict["assembly_method"] == "denovo+reference":
+        tmpfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+        fopen = gzip.open
     
     ## build clusters for aligning with muscle from the sorted bam file
     samfile = pysam.AlignmentFile(sample.files.mapped_reads, 'rb')
@@ -549,21 +557,25 @@ def ref_build_and_muscle_chunk(data, sample):
 
             if nclusts == chunksize:
                 ## write to file
-                with open(tmpfile.format(idx), 'w') as tmp:
+                with fopen(tmpfile.format(idx), 'a') as tmp:
                     LOGGER.debug("Writing tmpfile - {}".format(tmpfile.format(idx)))
+                    if data.paramsdict["assembly_method"] == "denovo+reference":
+                        ## This is dumb, but for this method you need to prepend the
+                        ## separator to maintain proper formatting of clust.gz
+                        tmp.write("//\n//\n")
                     tmp.write("\n//\n//\n".join(clusts))
                 idx += 1
                 nclusts = 0
                 clusts = []
     if clusts:
         ## write remaining to file
-        with open(tmpfile.format(idx), 'w') as tmp:
+        with fopen(tmpfile.format(idx), 'a') as tmp:
             tmp.write("\n//\n//\n" + ("\n//\n//\n".join(clusts)))
         clusts = []
     
-    chunkfiles = glob.glob(os.path.join(data.tmpdir, sample.name+"_chunk_*.ali"))
-    LOGGER.info("created chunks %s", chunkfiles)
-
+    if not data.paramsdict["assembly_method"] == "denovo+reference":
+        chunkfiles = glob.glob(os.path.join(data.tmpdir, sample.name+"_chunk_*.ali"))
+        LOGGER.info("created chunks %s", chunkfiles)
 
 
 def ref_muscle_chunker(data, sample):
