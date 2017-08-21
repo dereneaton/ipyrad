@@ -11,7 +11,6 @@ import ipyrad as ip
 import numpy as np
 import argparse
 import logging
-import random
 import sys
 import os
 import ipyrad.analysis as ipa
@@ -35,7 +34,7 @@ def parse_command_line():
 
   * Read in sequence/SNP data file, provide linkage, output name, ambig option. 
      tetrad -s data.snps.phy -n test             ## input phylip and give name
-     tetrad -s data.snps.phy -l data.snps.map    ## use one SNP per locus
+     tetrad -s data.snps.phy -l data.snps.map    ## sample one SNP per locus
      tetrad -s data.snps.phy -n noambigs -r 0    ## do not use hetero sites
 
   * Load saved/checkpointed analysis from '.tet.json' file, or force restart. 
@@ -47,16 +46,19 @@ def parse_command_line():
      tetrad -s data.snps.phy -m random -q 1e6 -x 123      ## sample 1M randomly
      tetrad -s data.snps.phy -m equal -q 1e6 -t guide.tre ## sample 1M across tree
 
-  * Connect to running ipcluster instance with profile='pname' [optional]
-     tetrad -s data.snps.phy --ipcluster pname
+  * Connect to N cores on a computer (default without -c arg is to use all avail.)
+     tetrad -s data.snps.phy -c 20
 
-  * HPC optimization: Set -c to the number of nodes to improve efficiency
-     tetrad -s data.phy -c 16               ## e.g., use 16 cores across 4 nodes
+  * Start an MPI cluster to connect to nodes across multiple available hosts.
+     tetrad -s data.snps.phy --MPI     
 
-  * Documentation: http://ipyrad.readthedocs.org/en/latest/
+  * Connect to a manually started ipcluster instance with default or named profile
+     tetrad -s data.snps.phy --ipcluster        ## connects to default profile
+     tetrad -s data.snps.phy --ipcluster pname  ## connects to profile='pname'
+
+  * Further documentation: http://ipyrad.readthedocs.io/analysis.html
     """)
 
-    ## add arguments 
 
     ## get version from ipyrad 
     ipyversion = str(pkg_resources.get_distribution('ipyrad'))
@@ -66,12 +68,9 @@ def parse_command_line():
     parser.add_argument('-f', "--force", action='store_true',
         help="force overwrite of existing data")
 
-    #parser.add_argument('-q', "--quiet", action='store_true',
-    #    help="do not print to stderror or stdout.")
-
     parser.add_argument('-s', metavar="seq", dest="seq",
         type=str, default=None,
-        help="path to input phylip file (SNPs of full sequence file)")
+        help="path to input phylip file (only SNPs)")
 
     parser.add_argument('-j', metavar='json', dest="json",
         type=str, default=None,
@@ -111,7 +110,7 @@ def parse_command_line():
 
     parser.add_argument("-c", metavar="CPUs/cores", dest="cores",
         type=int, default=0,
-        help="setting n Nodes improves parallel efficiency on HPC")
+        help="setting -c improves parallel efficiency with --MPI")
 
     parser.add_argument("-x", metavar="random_seed", dest="rseed",
         type=int, default=None,
@@ -122,6 +121,9 @@ def parse_command_line():
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
+
+    parser.add_argument("--invariants", action='store_true',
+        help="save a (large) database of all invariants")
 
     parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
         type=str, nargs="?", const="default",
@@ -141,21 +143,21 @@ def parse_command_line():
         """ "all", "random", or "equal.\n""")
 
     ## if 'random' require nquarts argument
-    if args.method == 'random':
-        if not args.nquartets:
-            raise IPyradWarningExit(\
-            "  Number of quartets (-q) is required with method = random\n")
+    #if args.method == 'random':
+    #    if not args.nquartets:
+    #        raise IPyradWarningExit(\
+    #        "  Number of quartets (-q) is required with method = random\n")
 
     ## if 'equal' method require starting tree and nquarts
-    if args.method == 'equal':
-        raise IPyradWarningExit(\
-            "  The equal sampling method is currently for developers only.\n")
-        if not args.nquartets:
-            raise IPyradWarningExit(\
-            "  Number of quartets (-q) is required with method = equal\n")
-        if not args.tree:
-            raise IPyradWarningExit(\
-            "  Input guide tree (-t) is required with method = equal\n")
+    # if args.method == 'equal':
+    #     raise IPyradWarningExit(\
+    #         "  The equal sampling method is currently for developers only.\n")
+    #     if not args.nquartets:
+    #         raise IPyradWarningExit(\
+    #         "  Number of quartets (-q) is required with method = equal\n")
+    #     if not args.tree:
+    #         raise IPyradWarningExit(\
+    #         "  Input guide tree (-t) is required with method = equal\n")
 
     ## required args
     if not any(x in ["seq", "json"] for x in vars(args).keys()):
@@ -178,7 +180,6 @@ def main():
 
     ## set random seed
     np.random.seed(args.rseed)
-    random.seed(args.rseed)
 
     ## debugger----------------------------------------
     if os.path.exists(ip.__debugflag__):
@@ -189,25 +190,29 @@ def main():
 
     ## if JSON, load existing Tetrad analysis -----------------------
     if args.json:
-        #data = ipa.tetrad.load_json(args.json)
         data = ipa.tetrad(name=args.name, workdir=args.workdir, load=True)
         ## if force then remove all results
         if args.force:
-            data.refresh()
+            data._refresh()
 
     ## else create a new tmp assembly for the seqarray-----------------
     else:
         ## create new Tetrad class Object if it doesn't exist
         newjson = os.path.join(args.workdir, args.name+'.tet.json')
+        ## if not quiet...
+        print("tetrad instance: {}".format(args.name))
+
         if (not os.path.exists(newjson)) or args.force:
             ## purge any files associated with this name if forced
             if args.force:
+                ## init an object in the correct location just to refresh
                 ipa.tetrad(name=args.name, 
                            workdir=args.workdir, 
                            data=args.seq, 
                            initarr=False, 
+                           save_invariants=args.invariants,
                            cli=True,
-                           quiet=True).refresh()
+                           quiet=True)._refresh()
 
             ## create new tetrad object
             data = ipa.tetrad(name=args.name, 
@@ -216,24 +221,19 @@ def main():
                               data=args.seq, 
                               resolve=args.resolve,
                               mapfile=args.map, 
-                              guidetreefile=args.tree, 
+                              guidetree=args.tree, 
                               nboots=args.boots, 
                               nquartets=args.nquartets, 
                               cli=True,
+                              save_invariants=args.invariants,
                               )
-            ## if not quiet...
-            print("tetrad instance: {}".format(args.name))
-
         else:
             raise SystemExit(QUARTET_EXISTS\
             .format(args.name, args.workdir, args.workdir, args.name, args.name))
 
     ## boots can be set either for a new object or loaded JSON to continue it
     if args.boots:
-        data.nboots = int(args.boots)
-
-    ## set CLI ipcluster terms
-    #data._ipcluster["threads"] = args.threads
+        data.params.nboots = int(args.boots)
 
     ## if ipyclient is running (and matched profile) then use that one
     if args.ipcluster:
@@ -255,7 +255,8 @@ def main():
 
     ## message about whether we are continuing from existing
     if data.checkpoint.boots:
-        print(LOADING_MESSAGE.format(data.name, data.method, data.checkpoint.boots))
+        print(LOADING_MESSAGE.format(
+            data.name, data.params.method, data.checkpoint.boots))
 
     ## run tetrad main function within a wrapper. The wrapper creates an 
     ## ipyclient view and appends to the list of arguments to run 'run'. 
