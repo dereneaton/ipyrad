@@ -13,8 +13,12 @@ from __future__ import print_function
 import os
 import sys
 import time
+import shutil
 import datetime
+import pandas as pd
+import multiprocessing
 import subprocess as sps
+import ipyparallel as ipp
 from ipyrad.assemble.util import IPyradWarningExit, progressbar
 
 
@@ -40,13 +44,7 @@ class SRA(object):
     def __init__(self, 
         accession,
         workdir="sra-fastq-data",
-        paired=False
         ):
-
-        ## TODO:
-        if paired:
-            raise IPyradWarningExit(
-                "sorry, paired data is not yet supported, stay tuned.")
 
         ## check imports
         for binary in ['fastq-dump', 'esearch']:
@@ -61,6 +59,19 @@ class SRA(object):
         self.workdir = os.path.abspath(os.path.expanduser(workdir))
         self.is_sample = False
         self.is_project = False
+        self._oldtmpdir = None
+
+        ## cluster attributes
+        self._ipcluster = {
+            "cluster_id": "", 
+            "profile": "default",
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0, 
+            "threads" : 2,
+            "pids": {},
+            }
 
         ## 
         if any([i in self.accession for i in ["SRR", "ERR", "DRR"]]):        
@@ -71,80 +82,195 @@ class SRA(object):
             raise IPyradWarningExit(ACCESSION_ID)
 
 
+
     ## a lazy way to combine the parallel and serial run commands
-    def run(self, force=False, ipyclient=None):
+    def run(self, 
+        force=False, 
+        ipyclient=None, 
+        name_fields=30, 
+        name_separator="_", 
+        dry_run=False):
         """
         Download the accessions into a the designated workdir. 
-        If file already exists it will only be overwritten if 
-        force=True. Temporary files are removed. 
+
+        Parameters
+        ----------
+        force: (bool)
+            If force=True then existing files with the same name
+            will be overwritten. 
+
+        ipyclient: (ipyparallel.Client)
+            If provided, work will be distributed across a parallel
+            client, otherwise download will be run on a single core.
+
+        name_fields: (int, str):
+            Provide the index of the name fields to be used as a prefix
+            for fastq output files. The default is 30, which is the 
+            SampleName field. Use sra.fetch_fields to see all available
+            fields and their indices. A likely alternative is 1 (Run). 
+            If multiple are listed then they will be joined by a "_" 
+            character. For example (29,30) would yield something like:
+            latin-name_sample-name (e.g., mus_musculus-NR10123).
+
+        dry_run: (bool)
+            If True then a table of file names that _would_ be downloaded
+            will be shown, but the actual files will note be downloaded.
         """
-        if ipyclient:
-            self._prun(force=force, ipyclient=ipyclient)
-        else:
-            self._run(force=force, ipyclient=ipyclient)
 
-
-    def _prun(self, force=False, ipyclient=None):
-        """
-        Download the accessions into a the designated workdir. 
-        If file already exists it will only be overwritten if 
-        force=True. Temporary files are removed. 
-        """
-
-        ## ensure output directory
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir)
-
-        ## TODO: parallelize with ipyclient...
-        lbview = ipyclient.load_balanced_view()
-
-        ## wrap in a try statement to shutdown on interrupt
+        ## temporarily set directory for tmpfiles used by fastq-dump
+        ## if this fails then just skip it.
         try:
-            ## download files
-            if self.is_project:
-                ## get Run data
-                srrs, accs = self.fetch_runinfo()
+            ## ensure output directory, also used as tmpdir
+            if not os.path.exists(self.workdir):
+                os.makedirs(self.workdir)
 
-                ## if Run has samples with same name (replicates) then 
-                ## we need to include the accessions in the file names
-                if len(set(accs)) != len(accs):
-                    accs = (i+"-"+j for i, j in zip(accs, srrs))
+            ## get original directory for sra files 
+            ## probably /home/ncbi/public/sra by default.
+            self._set_vdbconfig_path()
 
-                ## iterate over and download
-                skipped = 0
-                asyncs = []
-                start = time.time()
-                for srr, acc in zip(srrs, accs):
+            ## register ipyclient for cleanup
+            self._ipcluster["pids"] = {}
+            for eid in ipyclient.ids:
+                engine = ipyclient[eid]
+                if not engine.outstanding:
+                    pid = engine.apply(os.getpid).get()
+                    self._ipcluster["pids"][eid] = pid               
 
-                    ## clean up acc if it is not nicely formatted
-                    ## i.e., do not allow spaces, ...
-                    acc = acc.replace(" ", "_")\
-                             .replace('"', "")\
-                             .replace("'", "")
+            ## submit jobs to engines or local 
+            self._submit_jobs(
+                force=force, 
+                ipyclient=ipyclient, 
+                name_fields=name_fields, 
+                name_separator=name_separator,
+                dry_run=dry_run,
+                )
 
-                    ## print filename
-                    fpath = os.path.join(self.workdir, acc+".fastq.gz")
-                    self._accession = srr
+        ## exceptions to catch, cleanup and handle ipyclient interrupts
+        except KeyboardInterrupt:
+            print("keyboard interrupt...")
 
-                    ## skip if exists and not force
-                    skip = False
-                    if force:
-                        if os.path.exists(fpath):
-                            os.remove(fpath)
-                    else:
-                        if os.path.exists(fpath):
-                            skip = True
-                            skipped += 1
-                    if not skip:
-                        async = lbview.apply(_call_fastq_dump_on_SRRs, *(self, acc))
+        finally:
+            ## reset working sra path
+            self._restore_vdbconfig_path()
+
+            ## if it made a new sra directory then it should be empty when 
+            ## we are finished if all .sra files were removed. If so, then
+            ## let's also remove the dir. if not empty, leave it.
+            sradir = os.path.join(self.workdir, "sra")
+            if os.path.exists(sradir) and (not os.listdir(sradir)):
+                shutil.rmtree(sradir)
+
+            ## cleanup ipcluster shutdown
+            if ipyclient:
+                ## send SIGINT (2) to all engines still running tasks
+                try:
+                    ipyclient.abort()
+                    time.sleep(0.5)
+                    for engine_id, pid in self._ipcluster["pids"].items():
+                        if ipyclient.queue_status()[engine_id]["tasks"]:
+                            os.kill(pid, 2)
+                        time.sleep(0.1)
+                except ipp.NoEnginesRegistered:
+                    pass
+                ## clean memory space
+                if not ipyclient.outstanding:
+                    ipyclient.purge_everything()
+                ## uh oh, kill everything, something bad happened
+                else:
+                    ipyclient.shutdown(hub=True, block=False)
+                    ipyclient.close()
+                    print("\nwarning: ipcluster shutdown and must be restarted")
+                    
+
+
+    def _submit_jobs(self, 
+        force, 
+        ipyclient, 
+        name_fields, 
+        name_separator, 
+        dry_run):
+        """
+        Download the accessions into a the designated workdir. 
+        If file already exists it will only be overwritten if 
+        force=True. Temporary files are removed. 
+        """
+
+        ## get Run data with default fields (1,4,6,30)
+        df = self.fetch_runinfo(range(31))
+        sys.stdout.flush()
+
+        ## if not ipyclient then use multiprocessing
+        if ipyclient:
+            lb = ipyclient.load_balanced_view()
+
+        ## if Run has samples with same name (replicates) then 
+        ## we need to include the accessions in the file names
+        if name_fields:
+            ## indexing requires -1 ints
+            fields = [int(i)-1 for i in fields_checker(name_fields)]
+            ## make accession names, no spaces allowed
+            df['Accession'] = pd.Series(df[df.columns[fields[0]]], index=df.index)
+            for field in fields[1:]:
+                df.Accession += name_separator + df[df.columns[field]]
+            df.Accession = [i.replace(" ", "_") for i in df.Accession]    
+            ## check that names are unique
+            if not df.Accession.shape[0] == df.Accession.unique().shape[0]:
+                raise IPyradWarningExit("names are not unique:\n{}"\
+                    .format(df.Accession))
+
+        ## backup default naming scheme
+        else:
+            if len(set(df.SampleName)) != len(df.SampleName):
+                accs = (i+"-"+j for i, j in zip(df.SampleName, df.Run))
+                df.Accession = accs
+            else:
+                df.Accession = df.SampleName
+
+        if dry_run:
+            print("\rThe following files will be written to: {}".format(self.workdir))
+            print("{}\n".format(df.Accession))
+        else:
+            ## iterate over and download
+            asyncs = []
+            for idx in df.index:
+
+                ## get args for this run
+                srr = df.Run[idx]
+                outname = df.Accession[idx]
+                paired = df.spots_with_mates.values.astype(int).nonzero()[0].any()
+                fpath = os.path.join(self.workdir, outname+".fastq.gz")
+
+                ## single job progress bar
+                if not ipyclient:
+                    print("\rDownloading file {} of {}: {}".\
+                        format(idx+1, df.Accession.shape[0], fpath), end="")                
+
+                ## skip if exists and not force
+                skip = False
+                if force:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                else:
+                    if os.path.exists(fpath):                
+                        skip = True
+                        sys.stdout.flush()
+                        print(" - skip - already exists in workdir")
+
+                ## submit job to run
+                if not skip:
+                    args = (self, srr, outname, paired)
+                    if ipyclient:
+                        async = lb.apply_async(call_fastq_dump_on_SRRs, *args)
                         asyncs.append(async)
-                
-                if skipped:
-                    print("\nSkipping {} samples already present in workdir"\
-                        .format(skipped))
+                    else:
+                        call_fastq_dump_on_SRRs(*args)
+                        sys.stdout.flush()
 
-                tots = len(srrs)
+            ## progress bar while blocking parallel
+            if ipyclient:
+                tots = df.Accession.shape[0]
                 printstr = " Downloading fastq files | {} | "
+                start = time.time()
                 while 1:
                     elapsed = datetime.timedelta(seconds=int(time.time()-start))
                     ready = sum([i.ready() for i in asyncs])
@@ -160,94 +286,41 @@ class SRA(object):
                     if not async.successful():
                         raise IPyradWarningExit(async.result())
 
-            else:
-                self._accession = self.accession
-                _call_fastq_dump_on_SRRs(self)
-                self.report(1)
-
-        except KeyboardInterrupt as inst:
-            if ipyclient:
-                raise IPyradWarningExit("interrupted -- ipcluster shutdown")
-            else:
-                raise IPyradWarningExit("interrupted")
-
-        finally:
-            if not ipyclient.outstanding:
-                ipyclient.purge_everything()
-            else:
-                ## nanny: kill the engines left running, report kill.
-                ipyclient.shutdown(hub=True, block=False)
-                ipyclient.close()
-                print("\nwarning: ipcluster shutdown and must be restarted")
-
-
-
-    def _run(self, force=False, ipyclient=None):
-        """
-        Download the accessions into a the designated workdir. 
-        If file already exists it will only be overwritten if 
-        force=True. Temporary files are removed. 
-        """
-
-        ## ensure output directory
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir)
-
-        ## download files
-        if self.is_project:
-
-            ## get Run data
-            srrs, accs = self.fetch_runinfo()
-            sys.stdout.flush()
-
-            ## if Run has samples with same name (replicates) then 
-            ## we need to include the accessions in the file names
-            if len(set(accs)) != len(accs):
-                accs = (i+"-"+j for i, j in zip(accs, srrs))
-
-            ## iterate over and download
-            fn = 0
-            for srr, acc in zip(srrs, accs):
-
-                ## print filename
-                fpath = os.path.join(self.workdir, acc+".fastq.gz")
-                print("\rDownloading file {} of {}: {}"\
-                    .format(fn+1, len(srrs), fpath), end="")
-                self._accession = srr
-
-                ## skip if exists and not force
-                skip = False
-                if force:
-                    if os.path.exists(fpath):
-                        os.remove(fpath)
-                else:
-                    if os.path.exists(fpath):                
-                        skip = True
-                        sys.stdout.flush()
-                        print(" - skip - already exists in workdir")
-                if not skip:
-                    _call_fastq_dump_on_SRRs(self, rename=acc)
-                sys.stdout.flush()
-                fn += 1
-            self._report(fn)
-
-        else:
-            self._accession = self.accession
-            _call_fastq_dump_on_SRRs(self)
-            self.report(1)
 
 
     def _report(self, N):
         print("{} fastq files downloaded to {}".format(N, self.workdir))
 
 
-    def fetch_runinfo(self):
+    @property
+    def fetch_fields(self):
+        fields = pd.DataFrame(data=[COLNAMES, range(1, len(COLNAMES)+1)]).T
+        fields.columns=['field', 'index']
+        return fields
+
+
+    def fetch_runinfo(self, fields=None):
         """
-        Call esearch to grep SRR info for a project (SRP). 
-        Returns two lists: SRRs and ACCs. 
+        Call esearch to grep SRR info for a project (SRP). Use the command
+        sra.fetch_fields to see available fields to be fetched. This function
+        returns a DataFrame with runinfo for the selected fields.
+
+        Parameters:
+        -----------
+        Fields: (tuple or list)
+            The default fields returned are 1-30. You can enter a list 
+            or tuple of fewer numbers to select fewer fields. Example, 
+            (1,4,6,29,30) returns a neat dataframe with Run IDs, 
+            Number of reads (SE and PE), ScientificName, and SampleName. 
         """
         print("\rFetching project data...", end="")
 
+        ## if no entry then fetch (nearly) all fields.
+        if fields == None:  
+            fields = range(30)
+        fields = fields_checker(fields)
+
+        ## command strings
         es_cmd = [
             "esearch", 
             "-db", "sra", 
@@ -262,57 +335,159 @@ class SRA(object):
         cut_cmd = [
             "cut", 
             "-d", ",", 
-            "-f", "1,30",
-        ]
-
-        ## this will grep SRR for SRPs, and ERR for ERPs, etc. 
-        grep_cmd = [
-            "grep", self.accession[:2]+"R"
+            "-f", ",".join(fields),
         ]
 
         ## pipe commands together
         proc1 = sps.Popen(es_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
         proc2 = sps.Popen(ef_cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
         proc3 = sps.Popen(cut_cmd, stdin=proc2.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc4 = sps.Popen(grep_cmd, stdin=proc3.stdout, stderr=sps.STDOUT, stdout=sps.PIPE)
-        o, e = proc4.communicate()
+        o, e = proc3.communicate()
+        proc2.stdout.close()
+        proc1.stdout.close()
         
         if o:
-            srrlist = o.strip().split("\n")
-            SRRs, ACCs = zip(*[i.split(",") for i in srrlist])
-            return SRRs, ACCs 
+            vals = o.strip().split("\n")
+            names = vals[0].split(",")
+            items = [i.split(",") for i in vals[1:]]
+            return pd.DataFrame(items, columns=names)
         else:
             raise IPyradWarningExit("no samples found in {}".format(self.accession))
 
 
+    def _set_vdbconfig_path(self):
 
-def _call_fastq_dump_on_SRRs(self, rename=None):
+        ## get original path
+        proc = sps.Popen(
+            ['vdb-config', '-p'], 
+            stderr=sps.STDOUT, stdout=sps.PIPE)
+        o, e = proc.communicate()
+        self._oldtmpdir = o.split("default-path>")[1][:-2]
+
+        ## set new temp dir 
+        proc = sps.Popen(
+            ['vdb-config', '-s', 
+            'repository/user/main/public/root='+self.workdir], 
+            stderr=sps.STDOUT, stdout=sps.PIPE)
+        o, e = proc.communicate()
+        #print('setting tmpdir to {}'.format(self.workdir))
+
+
+    def _restore_vdbconfig_path(self):
+        ## set temp dir 
+        if not self._oldtmpdir:
+            self._oldtmpdir = os.path.join(os.path.expanduser("~"), "ncbi")
+        proc = sps.Popen(
+            ['vdb-config', '-s', 
+            'repository/user/main/public/root='+self._oldtmpdir],
+            stderr=sps.STDOUT, stdout=sps.PIPE)
+        o, e = proc.communicate()
+        #print('restoring tmpdir to {}'.format(self._oldtmpdir))
+
+
+
+def call_fastq_dump_on_SRRs(self, srr, outname, paired):
     """
     calls fastq-dump on SRRs, relabels fastqs by their accession
-    names, and writes them to the workdir.
+    names, and writes them to the workdir. Saves temp sra files
+    in the designated tmp folder and immediately removes them.
     """
 
-    ## build command
+    ## build command for fastq-dumping
     fd_cmd = [
-        "fastq-dump", self._accession, 
-        "--accession", rename, 
+        "fastq-dump", srr,
+        "--accession", outname,
         "--outdir", self.workdir, 
         "--gzip",
         ]
+    if paired:
+        fd_cmd += ["--split-files"]
 
     ## call fq dump command
     proc = sps.Popen(fd_cmd)
-    proc.communicate()
+    o, e = proc.communicate()
 
     ## delete the stupid temp sra file from the place 
-    ## that it is very hard-coded to be written to.
-    srafile = os.path.join(
-        os.path.expanduser("~"), 
-        "ncbi", 
-        "public", 
-        "sra", 
-        self._accession+".sra")
+    ## that it is very hard-coded to be written to, and 
+    ## LEFT IN, for some crazy reason.
+    srafile = os.path.join(self.workdir, "sra", srr+".sra")
     if os.path.exists(srafile):
         os.remove(srafile)
 
+
+
+def fields_checker(fields):
+    """
+    returns a fields argument formatted as a list of strings.
+    and doesn't allow zero.
+    """
+    ## make sure fields will work
+    if isinstance(fields, int):
+        fields = str(fields)
+    if isinstance(fields, str):
+        if "," in fields:
+            fields = [str(i) for i in fields.split(",")]
+        else:
+            fields = [str(fields)]
+    elif isinstance(fields, (tuple, list)):
+        fields = [str(i) for i in fields]
+    else:
+        raise IPyradWarningExit("fields not properly formatted")
+
+    ## do not allow zero in fields
+    fields = [i for i in fields if i != '0']
+
+    return fields
+
+
+
+COLNAMES = [
+ 'Run',
+ 'ReleaseDate',
+ 'LoadDate',
+ 'spots',
+ 'bases',
+ 'spots_with_mates',
+ 'avgLength',
+ 'size_MB',
+ 'AssemblyName',
+ 'download_path',
+ 'Experiment',
+ 'LibraryName',
+ 'LibraryStrategy',
+ 'LibrarySelection',
+ 'LibrarySource',
+ 'LibraryLayout',
+ 'InsertSize',
+ 'InsertDev',
+ 'Platform',
+ 'Model',
+ 'SRAStudy',
+ 'BioProject',
+ 'Study_Pubmed_id',
+ 'ProjectID',
+ 'Sample',
+ 'BioSample',
+ 'SampleType',
+ 'TaxID',
+ 'ScientificName',
+ 'SampleName',
+ 'g1k_pop_code',
+ 'source',
+ 'g1k_analysis_group',
+ 'Subject_ID',
+ 'Sex',
+ 'Disease',
+ 'Tumor',
+ 'Affection_Status',
+ 'Analyte_Type',
+ 'Histological_Type',
+ 'Body_Site',
+ 'CenterName',
+ 'Submission',
+ 'dbgap_study_accession',
+ 'Consent',
+ 'RunHash',
+ 'ReadHash',
+ ]
 
