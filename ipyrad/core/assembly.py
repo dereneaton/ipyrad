@@ -346,8 +346,6 @@ class Assembly(object):
                                         self.name+"_fastqs")
         if not os.path.exists(self.paramsdict["project_dir"]):
             os.mkdir(self.paramsdict["project_dir"])
-        #if not os.path.exists(self.dirs.fastqs):
-        #    os.mkdir(self.dirs.fastqs)
 
         ## get path to data files
         if not path:
@@ -358,11 +356,9 @@ class Assembly(object):
         ## Assert files are not .bz2 format
         if any([i for i in fastqs if i.endswith(".bz2")]):
             raise IPyradError(NO_SUPPORT_FOR_BZ2.format(path))
-
         fastqs = [i for i in fastqs if i.endswith(".gz") \
                                     or i.endswith(".fastq") \
                                     or i.endswith(".fq")]
-        LOGGER.debug("linking these files:\n{}".format(fastqs))
         fastqs.sort()
         LOGGER.debug("Linking these fastq files:\n{}".format(fastqs))
 
@@ -374,31 +370,40 @@ class Assembly(object):
         ## link pairs into tuples
         if 'pair' in self.paramsdict["datatype"]:
             ## check that names fit the paired naming convention
-            r1_files = [i for i in fastqs if "_R1_" in i]
-            r2_files = [i.replace("_R1_", "_R2_") for i in r1_files]
+            ## trying to support flexible types (_R2_, _2.fastq)
+            r1_try1 = [i for i in fastqs if "_R1_" in i]
+            r1_try2 = [i for i in fastqs if i.endswith("_1.fastq.gz")]
+            r1_try3 = [i for i in fastqs if i.endswith("_R1.fastq.gz")]
 
-            if r1_files:
-                if not any(["_R1_" in i for i in fastqs]):
-                    raise IPyradError(
-                        "    The sequence _R1_ must be present in file names.")
-            else:
-                raise IPyradError(PAIRED_FILENAMES_ERROR)
+            r2_try1 = [i for i in fastqs if "_R2_" in i]
+            r2_try2 = [i for i in fastqs if i.endswith("_2.fastq.gz")]
+            r2_try3 = [i for i in fastqs if i.endswith("_R2.fastq.gz")]
+
+            r1s = [r1_try1, r1_try2, r1_try3]
+            r2s = [r2_try1, r2_try2, r2_try3]
+
+            ## check that something was found
+            if not r1_try1 + r1_try2 + r1_try3:
+                raise IPyradWarningExit(
+                    "Paired filenames are improperly formatted. See Documentation")
+
+            ## find the one with the right number of R1s
+            for idx, tri in enumerate(r1s):
+                if len(tri) == len(fastqs)/2:
+                    break
+            r1_files = r1s[idx]
+            r2_files = r2s[idx]
 
             if len(r1_files) != len(r2_files):
-                raise IPyradError(R1_R2_name_error\
+                raise IPyradWarningExit(R1_R2_name_error\
                     .format(len(r1_files), len(r2_files)))
-
-            ## Test R2 files actually exist
-            if not all([os.path.exists(x) for x in r2_files]):
-                examples = [i for i in r2_files if not os.path.exists(i)]
-                examples = "\n".join(examples)
-                raise IPyradError(MISSING_PAIRFILE_ERROR.format(examples))
 
             fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
 
         ## data are not paired, create empty tuple pair
         else:
             ## print warning if _R2_ is in names when not paired
+            idx = 0
             if any(["_R2_" in i for i in fastqs]):
                 print(NAMES_LOOK_PAIRED_WARNING)
             fastqs = [(i, "") for i in fastqs]
@@ -424,7 +429,12 @@ class Assembly(object):
             linkedinc = 0
             appendinc = 0
             ## remove file extension from name
-            sname = _name_from_file(fastqtuple[0], splitnames, fields)
+            if idx == 0:
+                sname = _name_from_file(fastqtuple[0], splitnames, fields)
+            elif idx == 1:
+                sname = os.path.basename(fastqtuple[0].rsplit("_1.fastq.gz", 1)[0])
+            elif idx == 2:
+                sname = os.path.basename(fastqtuple[0].rsplit("_R1.fastq.gz", 1)[0])
             LOGGER.debug("New Sample name {}".format(sname))
 
             if sname not in self.samples:
