@@ -567,7 +567,7 @@ def _call_mbsum(rep1, rep2, outname):
            rep1, 
            rep2]
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc.communicate()
+    stdout = proc.communicate()
 
     ## check for errors
     if proc.returncode:
