@@ -250,7 +250,7 @@ def cutadaptit_single(data, sample):
 
 
 
-## BEING MODIFIED FOR MULTIPLE BARCODES
+## BEING MODIFIED FOR MULTIPLE BARCODES (i.e., merged samples. NOT PERFECT YET)
 def cutadaptit_pairs(data, sample):
     """
     Applies trim & filters to pairs, including adapter detection. If we have
@@ -302,16 +302,21 @@ def cutadaptit_pairs(data, sample):
     ## barcodes are present meaning they were parsed to the samples in step 1.
     if data.barcodes:
         try:
-            adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] + \
-                       data._hackersonly["p3_adapter"]
+            adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+                         + data._hackersonly["p3_adapter"]
             if isinstance(sample.barcode, list):
-                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] + \
-                           fullcomp(sample.barcode[0])[::-1] + \
-                           data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
+                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
+                         + fullcomp(sample.barcode[0])[::-1] \
+                         + data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
+
+            elif isinstance(data.barcodes[sample.name], list):
+                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
+                         + data.barcodes[sample.name][0][::-1] \
+                         + data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
             else:
-                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] + \
-                           fullcomp(sample.barcode)[::-1] + \
-                           data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
+                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
+                         + fullcomp(data.barcodes[sample.name])[::-1] \
+                         + data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
         except KeyError as inst:
             msg = """
     Sample name does not exist in the barcode file. The name in the barcode file
