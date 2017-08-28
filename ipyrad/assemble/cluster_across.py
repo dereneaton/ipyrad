@@ -22,6 +22,7 @@ import numba
 import shutil
 import random
 import select
+import socket
 import datetime
 import itertools
 import numpy as np
@@ -469,12 +470,50 @@ def call_cluster(data, noreverse, ipyclient):
     distributes 'cluster()' function to an ipyclient to make sure it runs
     on a high memory node. 
     """
-    ## todo: find host with the most engines, for now just using first.
-    #bighost = ipyclient[0]
+    ## Find host with the most engines, for now just using first.
     lbview = ipyclient.load_balanced_view()
 
-    ## submit job to host
-    async = lbview.apply(cluster, *(data, noreverse))
+    ## request engine data, skips busy engines.    
+    asyncs = {}
+    for eid in ipyclient.ids:
+        engine = ipyclient[eid]
+        if not engine.outstanding:
+            asyncs[eid] = engine.apply(socket.gethostname)
+    ## get results
+    hosts = {}
+    for key in asyncs:
+        hosts[key] = asyncs[key].get()
+    ## count them
+    results = {}
+    for eid, hostname in hosts.items():
+        if hostname in results:
+            results[hostname].append(eid)
+        else:
+            results[hostname] = [eid] 
+
+    ## which is largest
+    hosts = sorted(results.items(), key=lambda x: len(x[1]), reverse=True)
+    _, eids = hosts[0]
+    bighost = ipyclient[eids[0]]
+
+    ## nthreads is len eids, or ipcluster.threads, unless ipcluster.threads 
+    ## is really small, then we assume threads should not apply here.
+    ##    ipyrad -p params.txt -s 6 -c 20 would give:
+    ##    min(20, max(2, 10)) = 8
+    ## while 
+    ##    ipyrad -p params.txt -s 6 -c 20 -t 4 would give:
+    ##    min(20, max(4, 10)) = 10
+    ## and 
+    ##    ipyrad -p params.txt -s 6 -c 20 -t 15 would give:
+    ##    min(20, max(15, 10)) = 15
+    ## and
+    ##    ipyrad -p params.txt -s 6 -c 16 --MPI (on 2 X 8-core nodes) would give:
+    ##    min(8, max(2, 10)) = 8
+    nthreads = min(len(eids), max(data._ipcluster["threads"], 10))
+
+    ## submit job to the host with the most
+    async = bighost.apply(cluster, *(data, noreverse, nthreads))
+    #async = lbview.apply(cluster, *(data, noreverse, nthreads))
     
     ## track progress
     prog = 0
@@ -499,7 +538,7 @@ def call_cluster(data, noreverse, ipyclient):
 
 
 
-def cluster(data, noreverse):
+def cluster(data, noreverse, nthreads):
     """
     Calls vsearch for clustering across samples.
     """
@@ -521,9 +560,7 @@ def cluster(data, noreverse):
         strand = "both"
         cov = 0.75   ##0.90
 
-    ## get call string. Thread=0 means all (default) but we may want to set
-    ## an upper limit otherwise threads=60 could clobber RAM on large dsets.
-    ## old userfield: -userfields query+target+id+gaps+qstrand+qcov" \
+    ## nthreads is calculated in 'call_cluster()'
     cmd = [ipyrad.bins.vsearch,
            "-cluster_smallmem", cathaplos,
            "-strand", strand,
@@ -536,7 +573,7 @@ def cluster(data, noreverse):
            "-maxaccepts", "1",
            "-maxrejects", "0",
            "-fasta_width", "0",
-           "-threads", "0",
+           "-threads", str(nthreads), #"0",
            "-fulldp",
            "-usersort",
            "-log", logfile]
