@@ -129,12 +129,13 @@ class SRA(object):
             self._set_vdbconfig_path()
 
             ## register ipyclient for cleanup
-            self._ipcluster["pids"] = {}
-            for eid in ipyclient.ids:
-                engine = ipyclient[eid]
-                if not engine.outstanding:
-                    pid = engine.apply(os.getpid).get()
-                    self._ipcluster["pids"][eid] = pid               
+            if ipyclient:
+                self._ipcluster["pids"] = {}
+                for eid in ipyclient.ids:
+                    engine = ipyclient[eid]
+                    if not engine.outstanding:
+                        pid = engine.apply(os.getpid).get()
+                        self._ipcluster["pids"][eid] = pid               
 
             ## submit jobs to engines or local 
             self._submit_jobs(
@@ -362,7 +363,7 @@ class SRA(object):
             ['vdb-config', '-p'], 
             stderr=sps.STDOUT, stdout=sps.PIPE)
         o, e = proc.communicate()
-        self._oldtmpdir = o.split("default-path>")[1][:-2]
+        self._oldtmpdir = o.split("root>")[1][:-2]
 
         ## set new temp dir 
         proc = sps.Popen(
@@ -404,7 +405,7 @@ def call_fastq_dump_on_SRRs(self, srr, outname, paired):
         fd_cmd += ["--split-files"]
 
     ## call fq dump command
-    proc = sps.Popen(fd_cmd)
+    proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     o, e = proc.communicate()
 
     ## delete the stupid temp sra file from the place 
