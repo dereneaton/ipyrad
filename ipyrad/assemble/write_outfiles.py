@@ -867,7 +867,7 @@ def filter_stacks(data, sidx, hslice):
 
     ## open h5 handles
     io5 = h5py.File(data.clust_database, 'r')
-    co5 = h5py.File(data.database, 'r+')
+    co5 = h5py.File(data.database, 'r')
     ## get a chunk (hslice) of loci for the selected samples (sidx)
     #superseqs = io5["seqs"][hslice[0]:hslice[1], sidx,]
     ## get an int view of the seq array
@@ -1268,11 +1268,17 @@ def filter_maxhet(data, superints, edgearr):
     ## int or float is made at assembly load time
     maxhet = data.paramsdict["max_shared_Hs_locus"]
     if isinstance(maxhet, float):
-        maxhet = np.array(superints.shape[1]*maxhet, dtype=np.int16)
+        ## get an array with maxhet fraction * ntaxa with data for each locus
+        #maxhet = np.array(superints.shape[1]*maxhet, dtype=np.int16)
+        maxhet = np.floor(
+            maxhet * (superints.shape[1] - 
+                np.all(superints == 78, axis=2).sum(axis=1))).astype(np.int16)
     elif isinstance(maxhet, int):
-        maxhet = np.array(maxhet, dtype=np.int16)
+        maxhet = np.zeros(superints.shape[0], dtype=np.int16)
+        maxhet.fill(data.paramsdict["max_shared_Hs_locus"])
 
     ## an empty array to fill with failed loci
+    LOGGER.info("--------------maxhet mins %s", maxhet)
     hetfilt = np.zeros(superints.shape[0], dtype=np.bool)
     hetfilt = maxhet_numba(superints, edgearr, maxhet, hetfilt)
     LOGGER.info("--------------maxhet sums %s", hetfilt.sum())
@@ -1360,8 +1366,11 @@ def maxhet_numba(superints, edgearr, maxhet, hetfilt):
             count2s[fidx] = subcount
 
         ## check against max
-        if (count1s.max() > maxhet) or (count2s.max() > maxhet):
+        if count1s.max() > maxhet[idx]:
             hetfilt[idx] = True
+        elif count2s.size:
+            if count2s.max() > maxhet[idx]:
+                hetfilt[idx] = True
     return hetfilt
 
 ## MAKE GLOBAL
