@@ -5,6 +5,25 @@
 Release Notes
 =============
 
+0.7.12
+------
+**August 28, 2017**
+
+- update ezrad notebook
+- ezrad-test notebook up
+- Update cookbook-empirical-API-1-pedicularis.ipynb
+- big improvements to sratools ipa, now better fetch function, easier renaming, and wraps utility to reassign ncbi dump locations
+- fix for bucky bug in error reporting
+- wrote tetrad CLI to work with new tetrad object
+- rewrite of tetrad, cleaner code big speed improvements
+- allow more flexible name entry for paired data, i.e., allow _R1.fastq, or _1.fastq instead of only _R1_.fastq, etc.
+- Fixed denovo+reference assembly method.
+- update bpp cookbook
+- update bpp cookbook
+-  "Updating ipyrad/__init__.py to version - 0.7.11
+- removed repeat printing of error statements
+- added more warning and reports to bpp analysis tool
+
 0.7.11
 ------
 **August 14, 2017**
