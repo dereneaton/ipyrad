@@ -1339,15 +1339,12 @@ class Assembly(object):
                     try:
                         ipyclient.abort()
                         time.sleep(1)
-                        LOGGER.info("pids %s", self._ipcluster["pids"].items())
-                        LOGGER.info("queue %s", ipyclient.queue_status())
                         for engine_id, pid in self._ipcluster["pids"].items():
                             if ipyclient.queue_status()[engine_id]["tasks"]:
                                 os.kill(pid, 2)
                                 LOGGER.info('interrupted engine {} w/ SIGINT to {}'\
                                         .format(engine_id, pid))
                         time.sleep(1)
-                        LOGGER.info("queue %s", ipyclient.queue_status())
                     except ipp.NoEnginesRegistered:
                         pass
 
@@ -1368,12 +1365,6 @@ class Assembly(object):
                             ipyclient.close()
                             print("\nwarning: ipcluster shutdown and must be restarted")
                     
-                ## reraise the error now that we're cleaned up ..., this isn't necessary.
-                #if inst:
-                #    print(inst)
-                #    #print("")
-                #    #raise IPyradWarningExit(inst
-
             ## if exception is close and save, print and ignore
             except Exception as inst2:
                 print("warning: error during shutdown:\n{}".format(inst2))
