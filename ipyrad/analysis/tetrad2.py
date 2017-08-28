@@ -128,10 +128,16 @@ class Tetrad(object):
         ## input files
         self.files = Params()
         self.files.data = data
-        self.files.mapfile = os.path.abspath(os.path.expanduser(mapfile))
-        self.files.tree = os.path.abspath(os.path.expanduser(guidetree))
+        self.files.mapfile = mapfile
+        self.files.tree = guidetree
         self.files.qdump = None
         self.files.stats = None 
+
+        ## fill in files
+        if mapfile:
+            self.files.mapfile = os.path.abspath(os.path.expanduser(mapfile))
+        if guidetree:
+            self.files.tree = os.path.abspath(os.path.expanduser(guidetree))
         ## check file paths:
         if self.files.mapfile:
             if not os.path.exists(self.files.mapfile):
@@ -714,13 +720,14 @@ class Tetrad(object):
                     dtype=np.uint16,
                     chunks=(self._chunksize, 16, 16))
 
-        ## start progress bar
+        ## start progress bar if new or skip if bootstrapping
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        printstr = "initial tree      | {} | "
         if self.checkpoint.boots:
             printstr = "bootstrap trees   | {} | "
-        if not quiet:
-            progressbar(1, 0, printstr.format(elapsed), spacer="")
+        else:
+            printstr = "initial tree      | {} | "
+            if not quiet:
+                progressbar(1, 0, printstr.format(elapsed), spacer="")
 
         ## submit jobs distriuted across the cluster.
         asyncs = {}
@@ -775,7 +782,11 @@ class Tetrad(object):
         ## reset the checkpoint arr
         self.checkpoint.arr = 0
 
-        if not quiet:
+        ## print spacer if finished first tree or last boot.
+        if (not self.checkpoint.boots) and (not quiet):
+            print("")
+
+        if (self.checkpoint.boots == self.params.nboots) and (not quiet):
             print("")
 
 
@@ -800,6 +811,7 @@ class Tetrad(object):
                     io5[key][chunk:chunk+chunksize] = invs
                 else:
                     io5["invariants/boot0"][chunk:chunk+chunksize] = invs
+
 
     ## THE MAIN RUN COMMANDS ----------------------------------------
     ## This distributes the parallel jobs and wraps functions for 
