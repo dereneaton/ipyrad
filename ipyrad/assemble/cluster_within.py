@@ -44,9 +44,17 @@ LOGGER = logging.getLogger(__name__)
 
 def get_quick_depths(data, sample):
     """ iterate over clustS files to get data """
-    ## set cluster file handles
-    sample.files.clusters = os.path.join(
-                                data.dirs.clusts, sample.name+".clustS.gz")
+
+    ## use existing sample cluster path if it exists, since this
+    ## func can be used in step 4 and that can occur after merging
+    ## assemblies after step3, and if we then referenced by data.dirs.clusts
+    ## the path would be broken.
+    if sample.files.clusters:
+        pass
+    else:
+        ## set cluster file handles
+        sample.files.clusters = os.path.join(
+            data.dirs.clusts, sample.name+".clustS.gz")
 
     ## get new clustered loci
     fclust = data.samples[sample.name].files.clusters
@@ -808,7 +816,7 @@ def trackjobs(func, results, spacer):
         ## how many of this func have finished so far
         ready = [i[1].ready() for i in asyncs]
         elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        printstr = " {}     | {} | s3 |".format(PRINTSTR[func], elapsed)
+        printstr = " {}    | {} | s3 |".format(PRINTSTR[func], elapsed)
         progressbar(len(ready), sum(ready), printstr, spacer=spacer)
         time.sleep(0.1)
         if len(ready) == sum(ready):
@@ -1257,6 +1265,7 @@ def reconcat(data, sample):
     except Exception as inst:
         LOGGER.error("Error in reconcat {}".format(inst))
         raise
+
 
 
 def derep_concat_split(data, sample, nthreads):
