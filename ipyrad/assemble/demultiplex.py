@@ -1106,7 +1106,6 @@ def run2(data, ipyclient, force):
     except KeyboardInterrupt:
         print("\n  ...interrupted, just a second while we ensure proper cleanup")
         kbd = 1
-        raise
 
     ## cleanup
     finally:
@@ -1119,6 +1118,14 @@ def run2(data, ipyclient, force):
             raise KeyboardInterrupt("s1")
         else:
             _cleanup_and_die(data)
+
+
+def _cleanup_and_die(data):
+    """ cleanup func for step 1 """
+    tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
+    tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.p"))
+    for tmpf in tmpfiles:            
+        os.remove(tmpf)
 
 
 ## EXPERIMENTAL; not yet implemented. Tries to skip chunking big files. Maybe 
@@ -1129,15 +1136,34 @@ def run3(data, ipyclient, force):
     and decompressing the data, and the other for demuxing it.
     """
 
-    ## get file handles, name-lens, cutters, and matchdict
+    start = time.time()
+    ## get file handles, name-lens, cutters, and matchdict, 
+    ## and remove any existing files if a previous run failed.
     raws, longbar, cutters, matchdict = prechecks2(data, force)
 
     ## wrap funcs to ensure we can kill tmpfiles
     kbd = 0
     try:
-        ## send chunks to be demux'd
-        args = (data, raws, cutters, longbar, matchdict, ipyclient)
-        statdicts = demux3(*args)
+        ## send chunks to be demux'd, nothing is parallelized yet.
+        lbview = ipyclient.load_balanced_view()
+        args = (data, raws, cutters, longbar, matchdict)
+        async = lbview.apply(demux3, *args)
+
+        ## track progress
+        while 1:
+            ## how many of this func have finished so far
+            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            printstr = ' writing/compressing   | {} | s1 |'
+            progressbar(len(ready), sum(ready), printstr, spacer=spacer)
+            time.sleep(0.1)
+            if async.ready():
+                print("")
+                break
+        
+        if async.successful():
+            statdicts = async.get()
+        else:
+            raise IPyradWarningExit(async.get())
 
         ## build stats from dictionaries
         perfile, fsamplehits, fbarhits, fmisses, fdbars = statdicts
@@ -1147,7 +1173,6 @@ def run3(data, ipyclient, force):
     except KeyboardInterrupt:
         print("\n  ...interrupted, just a second while we ensure proper cleanup")
         kbd = 1
-        raise
 
     ## cleanup
     finally:
@@ -1156,19 +1181,14 @@ def run3(data, ipyclient, force):
         if os.path.exists(tmpdir):
             shutil.rmtree(tmpdir)
 
+        tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
+        tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.p"))
+        for tmpf in tmpfiles:
+            if os.path.exists(tmpf):
+                os.remove(tmpf)
+
         if kbd:
-            raise KeyboardInterrupt("s1")
-        else:
-            _cleanup_and_die(data)
-
-
-
-def _cleanup_and_die(data):
-    """ cleanup func for step 1 """
-    tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
-    tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.p"))
-    for tmpf in tmpfiles:            
-        os.remove(tmpf)
+            raise 
 
 
 
@@ -1271,7 +1291,7 @@ def concat_chunks(data, ipyclient):
 
 
 ## EXPERIMENTAL; NOT YET IMPLEMENTED
-def demux3(data, rawfiles, cutters, longbar, matchdict):
+def demux3(data, raws, cutters, longbar, matchdict):
 
     ## store counters
     chunksize = int(1e6)
@@ -1296,11 +1316,15 @@ def demux3(data, rawfiles, cutters, longbar, matchdict):
             return findbcode(cutters, longbar, read1)    
 
     ## start streaming data in 
-    for rawtup in rawfiles:
+    for rawtup in raws:
 
         ## get the read generator
         handle = rawtup[0].rsplit("/", 1)[1]
         filestat = np.zeros(3)
+
+        ## this returns a generator (gen) to grab pairs of sequences 
+        ## 4-lines at a time, and it returns the two open file objects
+        ## so we can close them later.
         gen, handle1, handle2 = get_quart_iter(rawtup)
 
         ## dictionaries to store hits samples and barcodes, and misses.
@@ -1407,7 +1431,7 @@ def demux3(data, rawfiles, cutters, longbar, matchdict):
     #with open(outname, 'w') as wout:
     #    pickle.dump([filestat, samplestats], wout)
     #return outname
-    return perfile, fsamplehits, fbarhits, fmisses, fdbars
+    return perfile, samplehits, barhits, misses, dbars
                      
 
 
@@ -1417,10 +1441,10 @@ def demux2(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
     calls putstats().
     """
 
-    ## parallel stuff
+    ## parallel stuff, limit to 1/4 of available cores for RAM limits.
     start = time.time()
     printstr = ' sorting reads         | {} | s1 |'
-    lbview = ipyclient.load_balanced_view()
+    lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
 
     ## store statcounters and async results in dicts
     perfile = {}
@@ -1535,7 +1559,8 @@ def demux(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
             for job in fin:
                 if filesort[job].successful():
                     pfile = filesort[job].result()
-                    if result:
+                    #if result:
+                    if pfile:
                         ## check if this needs to return data
                         putstats(pfile, handle, statdicts)
                         
@@ -1948,9 +1973,7 @@ def zcat_make_temps(data, raws, num, tmpdir, optim, njobs, start):
 
 
 
-
 ## GLOBALS
-
 NO_BARS = """\
     Barcodes file not found. You entered: '{}'
     """
