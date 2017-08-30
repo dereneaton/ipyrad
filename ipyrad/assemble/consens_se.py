@@ -794,6 +794,10 @@ def run(data, samples, force, ipyclient):
         for tmpchunk in tmpcons:
             os.remove(tmpchunk)
 
+        ## Finished step 5. Set step 6 checkpoint to 0 to force
+        ## re-running from scratch.
+        data._checkpoint = 0
+
 
 
 def calculate_depths(data, samples, lbview):
