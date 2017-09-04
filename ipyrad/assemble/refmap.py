@@ -204,6 +204,15 @@ def mapreads(data, sample, nthreads, force):
                 "-M",
                 data.paramsdict['reference_sequence']
                 ] + sample.files.dereps
+        ## Insert optional flags for bwa
+        try:
+            bwa_args = data._hackersonly["bwa_args"].split()
+            bwa_args.reverse()
+            for arg in bwa_args:
+                cmd1.insert(2, arg)
+        except KeyError:
+            ## Do nothing
+            pass
         cmd1_stdout = open(os.path.join(data.dirs.refmapping, sample.name+".sam"), 'w')
         cmd1_stderr = None
 
