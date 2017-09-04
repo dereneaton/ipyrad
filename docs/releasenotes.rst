@@ -5,6 +5,20 @@
 Release Notes
 =============
 
+0.7.13
+------
+**September 04, 2017**
+
+- Add support for optional bwa flags in hackersonly.
+- Force resetting the step 6 checkpointing if step 5 is re-run.
+- fix for max_shared_Hs when a proportion instead of a fixed number. Now the proportion is applied to every locus based on teh number of samples in that locus, not the total N samples
+- access barcode from assembly not sample unless multiple barcodes per sample. Simpler.
+- added back in core throttling in demux step b/c it is IO limited
+- fix to progress bar fsck, and fix to cluster location used in step4 that was breaking if assemblies were merged between 3 and 4
+- step 6 clustering uses threading options from users for really large systems to avoid RAM limits
+- fix for progress bar printing in tetrad, and to args entry when no tree or map file
+- fix to default ncbi sratools path
+
 0.7.12
 ------
 **August 28, 2017**
