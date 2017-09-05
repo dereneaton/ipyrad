@@ -72,7 +72,7 @@ class Tetrad(object):
         method='all', 
         nquartets=0, 
         nboots=0, 
-        resolve=True, 
+        resolve_ambigs=True, 
         load=False,
         quiet=False,
         save_invariants=False,
@@ -110,11 +110,11 @@ class Tetrad(object):
         self.params.method = method
         self.params.nboots = nboots
         self.params.nquartets = nquartets
+        self.params.resolve_ambigs = resolve_ambigs
+        self.params.save_invariants = save_invariants
 
         ## private attributes
         self._chunksize = 0
-        self._resolve = resolve
-        self._save_invariants = save_invariants
         self._tmp = None
 
         ## self.populations ## if we allow grouping samples
@@ -265,7 +265,7 @@ class Tetrad(object):
 
             ## resolve ambiguous IUPAC codes, this is done differently each rep.
             ## everything below here (resolve, index) is done each rep.
-            if self._resolve:
+            if self.params.resolve_ambigs:
                 tmpseq = resolve_ambigs(tmpseq)
 
             ## convert CATG bases to matrix indices, nothing else matters.
@@ -308,7 +308,8 @@ class Tetrad(object):
             workdir=self.dirs,
             method=self.params.method,
             guidetree=self.files.tree,
-            resolve=self._resolve, 
+            resolve_ambigs=self.params.resolve_ambigs,
+            save_invariants=self.params.save_invariants,
             nboots=self.params.nboots, 
             nquartets=self.params.nquartets, 
             initarr=True, 
@@ -338,7 +339,7 @@ class Tetrad(object):
 
             ## resolve ambiguous bases randomly. We do this each time so that
             ## we get different resolutions.
-            if self._resolve:
+            if self.params.resolve_ambigs:
                 tmpseq = resolve_ambigs(tmpseq)
         
             ## convert CATG bases to matrix indices
@@ -379,7 +380,7 @@ class Tetrad(object):
 
             ## resolve ambiguous bases randomly. We do this each time so that
             ## we get different resolutions.
-            if self._resolve:
+            if self.params.resolve_ambigs:
                 tmpseq = resolve_ambigs(tmpseq)
 
             ## convert CATG bases to matrix indices
@@ -404,6 +405,7 @@ class Tetrad(object):
         large so that we don't spend a lot of time doing I/O, but small 
         enough that jobs finish often for checkpointing.
         """
+
         breaks = 2
         if self.params.nquartets < 5000:
             breaks = 1
@@ -415,7 +417,7 @@ class Tetrad(object):
             breaks = 32
 
         ## chunk up the data
-        ncpus = len(ipyclient)
+        ncpus = len(ipyclient)    
         self._chunksize = (self.params.nquartets // (breaks * ncpus) \
                         + (self.params.nquartets % (breaks * ncpus)))
 
@@ -588,23 +590,21 @@ class Tetrad(object):
             qtots[node] = lbview.apply(get_total, *(tots, node))
             qsamp[node] = lbview.apply(get_sampled, *(self, totn, node))
 
-        ## wait for jobs to finish
+        ## wait for jobs to finish (+1 to lenjob is for final progress printer)
         alljobs = qtots.values() + qsamp.values()
-        lenjobs = len(alljobs)
+        lenjobs = len(alljobs) + 1
         printstr = "calculating stats | {} | "
+        done = 0
         while 1:
             if not quiet:
                 done = sum([i.ready() for i in alljobs])
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 progressbar(lenjobs, done, 
                     printstr.format(elapsed), spacer="")
-            if lenjobs == done:
+            if (lenjobs - 1) == done:
                 break
             else:
                 time.sleep(0.1)
-        if not quiet:
-            print("")
-
         ## store results in the tree object
         for node in ctre.traverse():
             total = qtots[node].result()
@@ -612,6 +612,12 @@ class Tetrad(object):
             node.add_feature("quartets_total", total)
             node.add_feature("quartets_sampled", sampled)
         features = ["quartets_total", "quartets_sampled"]
+
+        ## update final progress
+        elapsed = datetime.timedelta(seconds=int(time.time()-start))        
+        progressbar(1, 1, printstr.format(elapsed), spacer="")
+        if not quiet:
+            print("")
 
         ## write tree in NHX format 
         with open(self.trees.nhx, 'w') as outtre:
@@ -786,7 +792,7 @@ class Tetrad(object):
         if (not self.checkpoint.boots) and (not quiet):
             print("")
 
-        if (self.checkpoint.boots == self.params.nboots) and (not quiet):
+        elif (self.checkpoint.boots == self.params.nboots) and (not quiet):
             print("")
 
 
@@ -805,7 +811,7 @@ class Tetrad(object):
             io5['quartets'][chunk:chunk+chunksize] = qrts
 
             ## entered as 0-indexed !
-            if self._save_invariants:
+            if self.params.save_invariants:
                 if self.checkpoint.boots:
                     key = "invariants/boot{}".format(self.checkpoint.boots)
                     io5[key][chunk:chunk+chunksize] = invs
