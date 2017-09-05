@@ -7,6 +7,12 @@ Release Notes
 
 0.7.13
 ------
+**September 05, 2017**
+
+- API style modifications to tetrad
+
+0.7.13
+------
 **September 04, 2017**
 
 - Add support for optional bwa flags in hackersonly.
