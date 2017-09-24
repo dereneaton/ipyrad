@@ -218,7 +218,7 @@ def newconsensus(data, sample, tmpchunk, optim):
             piece = chunk[0].strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
-            
+
             ## pull replicate read info from seqs
             reps = [int(sname.split(";")[-2][5:]) for sname in names]
 
