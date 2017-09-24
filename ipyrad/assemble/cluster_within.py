@@ -315,7 +315,7 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
                     ## find seed of the cluster
                     seed = [i for i in lines if i.split(";")[-1][0]=="*"][0]
                     lines.pop(lines.index(seed))
-                    lines = [seed] + sorted(lines[1:], key=DEREP, reverse=True)
+                    lines = [seed] + sorted(lines, key=DEREP, reverse=True)
                 except ValueError as inst:
                     ## Lines is empty. This means the call to muscle alignment failed.
                     ## Not sure how to handle this, but it happens only very rarely.
