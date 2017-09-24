@@ -993,7 +993,10 @@ def get_edges(data, superints, splits):
     ## edge overhangs are trimmed to min(4, minsamp), and then additional
     ## number of columns is trimmed based on edgetrims values.
     ## A special case, -1 value means no trim at all.
-    minedge = np.int16(min(4, data.paramsdict["min_samples_locus"]))
+    if data.paramsdict["min_samples_locus"] <= 4:
+        minedge = np.int16(data.paramsdict["min_samples_locus"])
+    else:
+        minedge = np.int16(max(4, data.paramsdict["min_samples_locus"]))
 
     ## convert all - to N to make this easier
     nodashints = copy.deepcopy(superints)#.copy()
