@@ -186,17 +186,17 @@ def cutadaptit_single(data, sample):
         if data.paramsdict["datatype"] == "gbs":
             ## make full adapter (-revcompcut-revcompbarcode-adapter)
             adapter = \
-                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-                fullcomp(data.barcodes[sample.name])[::-1]+\
-                data._hackersonly["p3_adapter"]
+                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+              + fullcomp(data.barcodes[sample.name])[::-1] \
+              + data._hackersonly["p3_adapter"]
             ## add incomplete adapter to extras (-recompcut-adapter)
             data._hackersonly["p3_adapters_extra"].append(
-                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-                data._hackersonly["p3_adapter"])
+                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+              + data._hackersonly["p3_adapter"])
         else:
             adapter = \
-                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-                data._hackersonly["p3_adapter"]
+                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+              + data._hackersonly["p3_adapter"]
 
     ## get length trim parameter from new or older version of ipyrad params
     trim5r1 = trim3r1 = []
@@ -325,7 +325,7 @@ def cutadaptit_pairs(data, sample):
                 bcode = fullcomp(data.barcodes[sample.name])[::-1]
             ## add full adapter (-revcompcut-revcompbcode-adapter)
             adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
-                        + bcode +\
+                        + bcode \
                         + data._hackersonly["p5_adapter"]      
         except KeyError as inst:
             msg = """
