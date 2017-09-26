@@ -12,5 +12,6 @@ export LDFLAGS="-L$PREFIX/lib"
 
 #export HTSLIB_LIBRARY_DIR=$PREFIX/lib
 #export HTSLIB_INCLUDE_DIR=$PREFIX/include
+#export HTSLIB_CONFIGURE_OPTIONS=--disable-plugins
 $PYTHON setup.py install
 
