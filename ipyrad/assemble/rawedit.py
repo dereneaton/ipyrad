@@ -179,11 +179,24 @@ def cutadaptit_single(data, sample):
     ## if (GBS, ddRAD) we look for the second cut site + adapter. For single-end
     ## data we don't bother trying to remove the second barcode since it's not
     ## as critical as with PE data.
-    if data.paramsdict["datatype"] != "rad":
-        adapter = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-                  data._hackersonly["p3_adapter"]
-    else:
+    if data.paramsdict["datatype"] == "rad":
         adapter = data._hackersonly["p3_adapter"]
+    else:
+        ## if GBS then the barcode can also be on the other side. 
+        if data.paramsdict["datatype"] == "gbs":
+            ## make full adapter (-revcompcut-revcompbarcode-adapter)
+            adapter = \
+                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+              + fullcomp(data.barcodes[sample.name])[::-1] \
+              + data._hackersonly["p3_adapter"]
+            ## add incomplete adapter to extras (-recompcut-adapter)
+            data._hackersonly["p3_adapters_extra"].append(
+                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+              + data._hackersonly["p3_adapter"])
+        else:
+            adapter = \
+                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+              + data._hackersonly["p3_adapter"]
 
     ## get length trim parameter from new or older version of ipyrad params
     trim5r1 = trim3r1 = []
@@ -303,20 +316,17 @@ def cutadaptit_pairs(data, sample):
     if data.barcodes:
         try:
             adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
-                         + data._hackersonly["p3_adapter"]
+                        + data._hackersonly["p3_adapter"]
             if isinstance(sample.barcode, list):
-                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
-                         + fullcomp(sample.barcode[0])[::-1] \
-                         + data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
-
+                bcode = fullcomp(sample.barcode[0])[::-1]
             elif isinstance(data.barcodes[sample.name], list):
-                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
-                         + data.barcodes[sample.name][0][::-1] \
-                         + data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
+                bcode = fullcomp(data.barcodes[sample.name][0][::-1])
             else:
-                adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
-                         + fullcomp(data.barcodes[sample.name])[::-1] \
-                         + data._hackersonly["p5_adapter"]      ## <- should this be revcomp?
+                bcode = fullcomp(data.barcodes[sample.name])[::-1]
+            ## add full adapter (-revcompcut-revcompbcode-adapter)
+            adapter2 = fullcomp(data.paramsdict["restriction_overhang"][0])[::-1] \
+                        + bcode \
+                        + data._hackersonly["p5_adapter"]      
         except KeyError as inst:
             msg = """
     Sample name does not exist in the barcode file. The name in the barcode file

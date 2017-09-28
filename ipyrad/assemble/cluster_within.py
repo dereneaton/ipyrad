@@ -190,7 +190,7 @@ def sample_cleanup(data, sample):
 
 
 ## winner, rigorously testing in sequential and parallel against other funcs
-def persistent_popen_align3(clusts, maxseqs=200):
+def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     """ keeps a persistent bash shell open and feeds it muscle alignments """
 
     ## create a separate shell for running muscle in, this is much faster
@@ -260,7 +260,6 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 dalign1 = dict([i.split("\n", 1) for i in la1])
                 dalign2 = dict([i.split("\n", 1) for i in la2])
                 align1 = []
-                #keys = dalign1.keys()
                 try:
                     keys = sorted(dalign1.keys(), key=DEREP, reverse=True)
                 except ValueError as inst:
@@ -270,21 +269,17 @@ def persistent_popen_align3(clusts, maxseqs=200):
                                 .format(clust, lines))
                     continue
 
+                ## put seed at top of alignment
+                seed = [i for i in keys if i.split(";")[-1][0]=="*"][0]
+                keys.pop(keys.index(seed))
+                keys = [seed] + keys
                 for key in keys:
                     align1.append("\n".join([key, 
                                     dalign1[key].replace("\n", "")+"nnnn"+\
                                     dalign2[key].replace("\n", "")]))
 
-                ## deprecated from old function, we now assume by this point 
-                ## that your data are properly filtered.
-                ## get leftlimit of seed, no hits can go left of this
-                ## this can save pairgbs from being garbage
-                #idxs = [i for i, j in enumerate(aseqs1[0]) if j != "-"]
-                #leftlimit = min(0, idxs)
-                #aseqs1 = [i[leftlimit:] for i in aseqs1]
-
                 ## append aligned cluster string
-                aligned.append("\n".join(align1))
+                aligned.append("\n".join(align1).strip())
 
             ## Malformed clust. Dictionary creation with only 1 element will raise.
             except ValueError as inst:
@@ -312,7 +307,10 @@ def persistent_popen_align3(clusts, maxseqs=200):
                 lines = align1[1:].split("\n>")
 
                 try:
-                    lines.sort(key=DEREP, reverse=True)
+                    ## find seed of the cluster and put it on top.
+                    seed = [i for i in lines if i.split(";")[-1][0]=="*"][0]
+                    lines.pop(lines.index(seed))
+                    lines = [seed] + sorted(lines, key=DEREP, reverse=True)
                 except ValueError as inst:
                     ## Lines is empty. This means the call to muscle alignment failed.
                     ## Not sure how to handle this, but it happens only very rarely.
@@ -320,18 +318,17 @@ def persistent_popen_align3(clusts, maxseqs=200):
                                 .format(clust, lines))
                     continue
 
-                ## Remove the reference sequence post alignment
-                if "_REF;" in lines[0]:
-                    lines = lines[1:]
-
+                ## format remove extra newlines from muscle
                 aa = [i.split("\n", 1) for i in lines]
                 align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
-                align1 = "\n".join(align1).strip()
+                
+                ## trim edges in sloppy gbs/ezrad data. Maybe relevant to other types too...
+                if is_gbs:
+                    align1 = gbs_trim(align1)
 
                 ## append to aligned
-                aligned.append(align1)
-            
-                
+                aligned.append("\n".join(align1).strip())
+               
     # cleanup
     proc.stdout.close()
     if proc.stderr:
@@ -343,17 +340,67 @@ def persistent_popen_align3(clusts, maxseqs=200):
     return aligned   
 
 
+def gbs_trim(align1):
+    """
+    No reads can go past the left of the seed, or right of the least extended
+    reverse complement match. Example below. m is a match. u is an area where 
+    lots of mismatches typically occur. The cut sites are shown.
+    
+    Original locus*
+    Seed           TGCAG************************************-----------------------
+    Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-----------------------
+    Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-----------------------------
+    Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm------------------------
+    Revcomp-match  ------------------------mmmmmmmmmmmmmmmmmmmmmmmmmmmCTGCAuuuuuuuu
+    Revcomp-match  ---------------mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmCTGCAuuuuuuuuuuuuuu
+    Revcomp-match  --------------------------------mmmmmmmmmmmmmmmmmmmmmmmmmmmCTGCA
+    Revcomp-match  ------------------------mmmmmmmmmmmmmmmmmmmmmmmmmmmCTGCAuuuuuuuu
+
+    Trimmed locus*
+    Seed           TGCAG************************************---------
+    Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm---------
+    Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm---------------
+    Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm----------
+    Revcomp-match  ------------------------mmmmmmmmmmmmmmmmmmmmmmmmmm
+    Revcomp-match  ---------------mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmCTGCA
+    Revcomp-match  --------------------------------mmmmmmmmmmmmmmmmmm
+    Revcomp-match  ------------------------mmmmmmmmmmmmmmmmmmmmmmmmmm
+    """
+    leftmost = rightmost = None
+    dd = {k:v for k,v in [j.rsplit("\n", 1) for j in align1]}
+    seed = [i for i in dd.keys() if i.rsplit(";")[-1][0] == "*"][0]
+    leftmost = [i != "-" for i in dd[seed]].index(True)
+    revs = [i for i in dd.keys() if i.rsplit(";")[-1][0] == "-"]
+    if revs:
+        subright = max([[i!="-" for i in seq[::-1]].index(True) \
+            for seq in [dd[i] for i in revs]])
+    else:
+        subright = 0
+    rightmost = len(dd[seed]) - subright
+
+    ## if locus got clobbered then print place-holder NNN
+    names, seqs = zip(*[i.rsplit("\n", 1) for i in align1])
+    if rightmost > leftmost:
+        newalign1 = [n+"\n"+i[leftmost:rightmost] for i,n in zip(seqs, names)]
+    else:
+        newalign1 = [n+"\nNNN" for i,n in zip(seqs, names)]
+    return newalign1
+
+
 ## quick lambda func to get derep number from reads
 DEREP = lambda x: int(x.split("=")[-1].split(";")[0])
 
 
-def align_and_parse(handle, max_internal_indels=8):
+## max-internal-indels could be modified if we add it to hackerz dict.
+def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     """ much faster implementation for aligning chunks """
 
     ## data are already chunked, read in the whole thing. bail if no data.
     try:
         with open(handle, 'rb') as infile:
             clusts = infile.read().split("//\n//\n")
+            ## remove any empty spots
+            clusts = [i for i in clusts if i]
     except IOError:
         LOGGER.debug("skipping empty chunk - %s", handle)
         return 0
@@ -368,9 +415,11 @@ def align_and_parse(handle, max_internal_indels=8):
 
     ## iterate over clusters sending each to muscle, splits and aligns pairs
     try:
-        aligned = persistent_popen_align3(clusts, 200)
-    except:
-        LOGGER.debug("Error in handle - {}".format(handle))
+        aligned = persistent_popen_align3(clusts, 200, is_gbs)
+    except Exception as inst:
+        LOGGER.debug("Error in handle - {} - {}".format(handle, inst))
+        #raise IPyradWarningExit("error hrere {}".format(inst))
+        aligned = []        
 
     ## store good alignments to be written to file
     refined = []
@@ -417,13 +466,13 @@ def aligned_indel_filter(clust, max_internal_indels):
         intindels1 = [i.rstrip("-").lstrip("-").count("-") for i in seq1]
         intindels2 = [i.rstrip("-").lstrip("-").count("-") for i in seq2]
         intindels = intindels1 + intindels2
-        if any(intindels) > max_internal_indels:
+        if max(intindels) > max_internal_indels:
             return 1
        
     except IndexError:
         seq1 = lclust[1::2]
         intindels = [i.rstrip("-").lstrip("-").count("-") for i in seq1]
-        if any(intindels) > max_internal_indels:
+        if max(intindels) > max_internal_indels:
             return 1 
     
     return 0
@@ -487,31 +536,32 @@ def build_clusters(data, sample, maxindels):
             ## same seed, append match
             if seed != lastseed:
                 seedsseen.add(seed)
-                ## store the last fseq, count it, and clear fseq
+                ## store the last cluster (fseq), count it, and clear fseq
                 if fseqs:
-                    ## sort fseqs by derep
-                    fseqs.sort(key=lambda x: \
+                    ## sort fseqs by derep after pulling out the seed
+                    fseqs = [fseqs[0]] + sorted(fseqs[1:], key=lambda x: \
                         int(x.split(";size=")[1].split(";")[0]), reverse=True)                    
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
 
-                ## occasionally write to file
+                ## occasionally write/dump stored clusters to file and clear mem
                 if not seqsize % 10000:
                     if seqlist:
                         clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
                         ## reset list and counter
                         seqlist = []
 
-                ## store the new seed on top of fseq
+                ## store the new seed on top of fseq list
                 fseqs.append(">{}*\n{}".format(seed, alldereps[seed]))
                 lastseed = seed
 
             ## add match to the seed
-            seq = alldereps[hit]
             ## revcomp if orientation is reversed (comp preserves nnnn)
             if ori == "-":
-                seq = comp(seq)[::-1]
+                seq = comp(alldereps[hit])[::-1]
+            else:
+                seq = alldereps[hit]
             ## only save if not too many indels
             if int(ind) <= maxindels:
                 fseqs.append(">{}{}\n{}".format(hit, ori, seq))
@@ -567,7 +617,8 @@ def setup_dirs(data):
         os.mkdir(data.dirs.clusts)
 
     ## make a tmpdir for align files
-    data.tmpdir = os.path.join(pdir, data.name+'-tmpalign')
+    data.tmpdir = os.path.abspath(os.path.expanduser(
+        os.path.join(pdir, data.name+'-tmpalign')))
     if not os.path.exists(data.tmpdir):
         os.mkdir(data.tmpdir)
 
@@ -587,11 +638,14 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     DAG setup, calling different functions.
     """
 
+    ## is datatype gbs? used in alignment-trimming by align_and_parse()
+    is_gbs = bool("gbs" in data.paramsdict["datatype"])
+
     ## Two view objects, threaded and unthreaded
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, " {}     | {} | s3 |"\
+    progressbar(10, 0, " {}      | {} | s3 |"\
         .format(PRINTSTR["derep_concat_split"], elapsed), spacer=data._spacer)
 
     ## TODO: for HPC systems this should be done to make sure targets are spread
@@ -632,7 +686,7 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
         elif funcstr in ["muscle_align"]:
             handle = os.path.join(data.tmpdir, 
                         "{}_chunk_{}.ali".format(sample.name, chunk))
-            args = [handle, maxindels]
+            args = [handle, maxindels, is_gbs]
         else:
             args = [data, sample]
 
@@ -652,6 +706,7 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     sfailed = set()
     for funcstr in joborder + ["muscle_align", "reconcat"]:
         errfunc, sfails, msgs = trackjobs(funcstr, results, spacer=data._spacer)
+        LOGGER.info("{}-{}-{}".format(errfunc, sfails, msgs))
         if errfunc:
             for sidx in xrange(len(sfails)):
                 sname = sfails[sidx]
@@ -802,6 +857,9 @@ def trackjobs(func, results, spacer):
     """
     Blocks and prints progress for just the func being requested from a list
     of submitted engine jobs. Returns whether any of the jobs failed.
+
+    func = str
+    results = dict of asyncs
     """
 
     ## TODO: try to insert a better way to break on KBD here.
@@ -823,18 +881,27 @@ def trackjobs(func, results, spacer):
             print("")
             break
 
+    sfails = []
+    errmsgs = []
+    for job in asyncs:
+        if not job[1].successful():
+            sfails.append(job[0])
+            errmsgs.append(job[1].result())
+
+    return func, sfails, errmsgs
+
     ## did any samples fail?
-    success = [i[1].successful() for i in asyncs]
+    #success = [i[1].successful() for i in asyncs]
 
     ## return functionstring and error message on failure
-    if not all(success):
-        ## get error messages
-        errmsgs = [i[1].exception() for i in asyncs if not i[1].successful()]
-        ## get samlpes that failed
-        sfails = [i[0].split("-", 2)[-1] for i in asyncs if not i[1].successful()]
-        return func, sfails, errmsgs
-    else:
-        return 0, [], []
+    #if not all(success):
+    #    ## get error messages
+    #    errmsgs = [i[1].exception() for i in asyncs if not i[1].successful()]
+    #    ## get samlpes that failed
+    #    sfails = [i[0].split("-", 2)[-1] for i in asyncs if not i[1].successful()]
+    #    return func, sfails, errmsgs
+    #else:
+    #    return 0, [], []
 
 
 
