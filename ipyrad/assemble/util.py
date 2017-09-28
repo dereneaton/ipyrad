@@ -462,8 +462,6 @@ def merge_after_pysam(data, clust):
             ## Have to munge the sname to make it look like fastq format
             sname = "@" + sname[1:]
             r1, r2 = seq.split("nnnn")
-            ## vsearch wants r2 to be oriented how it expects.
-            r2 = r2[::-1]
             r1dat.append("{}\n{}\n{}\n{}".format(sname, r1, "+", "B"*(len(r1))))
             r2dat.append("{}\n{}\n{}\n{}".format(sname, r2, "+", "B"*(len(r2))))
 
@@ -486,6 +484,19 @@ def merge_after_pysam(data, clust):
             while 1:
                 try:
                     sname, seq, _, _ = quarts.next()
+                    ## Vsearch expects R2 oriented how it would be in a raw data file
+                    ## i.e. revcomp, and that's also how it returns it
+                    ## but we want to maintain the genomic orientation so R1 and
+                    ## R2 are both on the + strand and both in ascending positional order
+                    ## so here if the reads don't merge we have to revcomp R2
+                    if not "_m1" in sname.rsplit(";", 1)[1]:
+                        try:
+                            R1, R2 = seq.split("nnnn")
+                            seq = R1 + "nnnn" + revcomp(R2)
+                        except ValueError as inst:
+                            LOGGER.error("Failed merge_after_pysam: {} {}".format(sname, seq))
+                            raise
+
                 except StopIteration:
                     break
                 ## put sname back

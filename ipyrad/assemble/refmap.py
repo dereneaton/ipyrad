@@ -433,28 +433,19 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
     except ValueError:
         return 0
 
-    ## swap reads in seed
-    if not read1.is_read1:
-        _ = read1
-        read1 = read2
-        read2 = _
-
     ## the starting blocks for the seed
     poss = read1.get_reference_positions() + read2.get_reference_positions()
     seed_r1start = min(poss)
     seed_r2end = max(poss)
 
     ## store the seed -------------------------------------------
+    ## Simplify. R1 and R2 are always on opposite strands, but the
+    ## orientation is variable. We revcomp and order the reads to
+    ## preserve genomic order.
     if read1.is_reverse:
-        if read2.is_reverse:
-            seq = revcomp(read1.seq) + "nnnn" + revcomp(read2.seq)
-        else:
-            seq = revcomp(read1.seq) + "nnnn" + read2.seq[::-1]
+        seq =  read2.seq + "nnnn" + revcomp(read1.seq)
     else:
-        if read2.is_reverse:
-            seq = read1.seq + "nnnn" + comp(read2.seq)
-        else:
-            seq = read1.seq + "nnnn" + read2.seq
+        seq = read1.seq + "nnnn" + revcomp(read2.seq)
 
     ## store, could write orient but just + for now.
     size = sfunc(rkeys[0])
@@ -472,12 +463,6 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
             read2 = read1
             skip = True
 
-        ## swap reads
-        if not read1.is_read1:
-            _ = read1
-            read1 = read2
-            read2 = _
-        
         ## orient reads and filter out ones that will not align well b/c 
         ## they do not overlap enough with the seed
         poss = read1.get_reference_positions() + read2.get_reference_positions()
@@ -488,16 +473,10 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
            (not skip):
             ## store the seq
             if read1.is_reverse:
-                if read2.is_reverse:
-                    seq = revcomp(read1.seq) + "nnnn" + revcomp(read2.seq)
-                else:
-                    seq = revcomp(read1.seq) + "nnnn" + read2.seq[::-1]
+                seq = read2.seq + "nnnn" + revcomp(read1.seq)
             else:
-                if read2.is_reverse:
-                    seq = read1.seq + "nnnn" + comp(read2.seq)
-                else:
-                    seq = read1.seq + "nnnn" + read2.seq
-                            
+                seq = read1.seq + "nnnn" + revcomp(read2.seq)
+
             ## store, could write orient but just + for now.
             size = sfunc(key)
             clust.append(">{}:{}:{};size={};+\n{}"\
@@ -517,7 +496,6 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
         #clust = merge_pair_pipes(data, clust)
 
     return clust
-
 
 
 def ref_build_and_muscle_chunk(data, sample):
