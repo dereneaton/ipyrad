@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.7.15
+------
+**October 01, 2017**
+
+- Fix conda build issue.
+
 0.7.14
 ------
 **September 28, 2017**
