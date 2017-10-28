@@ -401,13 +401,11 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
             clusts = infile.read().split("//\n//\n")
             ## remove any empty spots
             clusts = [i for i in clusts if i]
-    except IOError:
-        LOGGER.debug("skipping empty chunk - %s", handle)
-        return 0
-
-    ## bail if no data
-    if not clusts[0]:
-        LOGGER.debug("skipping empty chunk - %s", handle)
+            ## Skip entirely empty chunks
+            if not clusts:
+                raise IPyradError
+    except (IOError, IPyradError):
+        LOGGER.debug("skipping empty chunk - {}".format(handle))
         return 0
 
     ## count discarded clusters for printing to stats later
