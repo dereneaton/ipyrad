@@ -5,6 +5,12 @@
 Release Notes
 =============
 
+0.7.17
+------
+**October 28, 2017**
+
+- Properly handle empty chunks during alignment. Very annoying.
+
 0.7.16
 ------
 **October 28, 2017**
