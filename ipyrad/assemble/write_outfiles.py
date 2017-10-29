@@ -880,7 +880,7 @@ def filter_stacks(data, sidx, hslice):
     ## we need to use upper to skip lowercase allele storage
     ## this slows down the rate of loading in data by a ton.
     superints = np.char.upper(io5["seqs"][hslice[0]:hslice[1], sidx,]).view(np.int8)
-    LOGGER.info("superints shape %s", superints)
+    LOGGER.info("superints shape {}".format(superints.shape))
 
     ## fill edge filter
     ## get edges of superseqs and supercats, since edges need to be trimmed
