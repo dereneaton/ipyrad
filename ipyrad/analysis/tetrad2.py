@@ -26,6 +26,7 @@ Theoretical Biology 374: 35-47
 
 from __future__ import print_function, division
 import os
+import sys
 import json
 import h5py
 import time
@@ -423,19 +424,16 @@ class Tetrad(object):
 
         ## create h5 OUT empty arrays
         ## 'quartets' stores the inferred quartet relationship (1 x 4)
-        ## 'qstats' records the invariants count matrix (16 x 16). 
-        ## This can get huge, so we need to choose the dtype wisely. What is 
-        ## the max number of times any site pattern (excluding invariable sites
-        ## since we don't include them), will come up for any quartet? It 
-        ## seems like max uint16 value of 4294967295 is good enough.
-        ## its risky, but we could also try uint8 with max of 65535...
-        ## we could also gzip this if it's too big, but that will slow us down.
+        ## This can get huge, so we need to choose the dtype wisely. 
+        ## the values are simply the index of the taxa, so uint16 is good.
         with h5py.File(self.database.output, 'w') as io5:
             io5.create_dataset("quartets", 
                                (self.params.nquartets, 4), 
                                dtype=np.uint16, 
                                chunks=(self._chunksize, 4))
-            ## group for bootstrap invariant matrices ((16, 16), uint16)
+            ## group for bootstrap invariant matrices ((16, 16), uint32)
+            ## these store the actual matrix counts. dtype uint32 can store
+            ## up to 4294967295. More than enough. uint16 max is 65535.
             ## the 0 boot is the original seqarray.
             io5.create_group("invariants")
 
@@ -717,6 +715,7 @@ class Tetrad(object):
         jobs = range(self.checkpoint.arr, self.params.nquartets, self._chunksize)
 
         ## if this is a bootstrap then init a new boot array in the database
+        ## max val is 65535 in here if uint16
         bootkey = "boot{}".format(self.checkpoint.boots)
         with h5py.File(self.database.output, 'r+') as io5:
             if bootkey not in io5["invariants"].keys():
@@ -1474,9 +1473,12 @@ NO_SNP_FILE = """\
 def set_mkl_thread_limit(cores):
     """
     set mkl thread limit and return old value so we can reset
-    when finished.
+    when finished. 
     """
-    mkl_rt = ctypes.CDLL('libmkl_rt.so')
+    if "linux" in sys.platform:
+        mkl_rt = ctypes.CDLL('libmkl_rt.so')
+    else:
+        mkl_rt = ctypes.CDLL('libmkl_rt.dylib')
     oldlimit = mkl_rt.mkl_get_max_threads()
     mkl_rt.mkl_set_num_threads(ctypes.byref(ctypes.c_int(cores)))
     return oldlimit
