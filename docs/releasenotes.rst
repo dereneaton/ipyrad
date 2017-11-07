@@ -5,6 +5,43 @@
 Release Notes
 =============
 
+0.7.17
+------
+**October 28, 2017**
+
+- Properly handle empty chunks during alignment. Very annoying.
+
+0.7.16
+------
+**October 28, 2017**
+
+- Fix SE reference bug causing lots of rm_duplicates.
+- Lowered min_se_refmap_overlap and removed useless code to recalibrate it based on filter_min_trim_len.
+- Actually fix conda package.
+- aslkfljsdjsdffd i don't know how this shit works.
+- Fixing build still.
+- Fix typo in meta.yaml.
+
+0.7.15
+------
+**October 01, 2017**
+
+- Fix conda build issue.
+
+0.7.14
+------
+**September 28, 2017**
+
+- Fix orientation of R2 for pe refmap reads.
+- better error reporting, and ensure * at top of stacks
+- quickfix from last commit, keep first st seq after pop to seed in align
+- edge trim in s7 cuts at 4 or minsamp
+- added adapter-barcode order checking for cases where merged samples, and pegbs data is analyzed either as pe or forced into se.
+- update to gbs edge trimming, stricter filtering on partial overlapping seqs
+- Add a comment line to the pysam conda build to make it easier to build on systems with older glibc.
+-  "Updating ipyrad/__init__.py to version - 0.7.13
+- API style modifications to tetrad
+
 0.7.13
 ------
 **September 05, 2017**

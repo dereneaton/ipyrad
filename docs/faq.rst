@@ -208,3 +208,16 @@ generally try to keep everything working as efficiently as possible. If you have
 one or two samples that are much bigger (have more data) than the rest, and they are 
 taking much longer to cluster, then you may see a speed improvement by increasing the 
 threading argument (e.g., -t 4).
+
+How to fix the GLIBC error
+--------------------------
+If you ever see something that looks like this `/lib64/libc.so.6: version `GLIBC_2.14' not found`
+it's probably because you are on a cluster and it's using an old version of GLIBC. To
+fix this you need to recompile whatever binary isn't working on your crappy old machine.
+Easiest way to do this is a conda local build and install. Using `bpp` as the example:
+
+```
+git clone https://github.com/dereneaton/ipyrad.git
+conda build ipyrad/conda.recipe/bpp/
+conda install --use-local bpp
+```
