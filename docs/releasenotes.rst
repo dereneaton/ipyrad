@@ -5,6 +5,23 @@
 Release Notes
 =============
 
+0.7.17
+------
+**October 28, 2017**
+
+- Properly handle empty chunks during alignment. Very annoying.
+
+0.7.16
+------
+**October 28, 2017**
+
+- Fix SE reference bug causing lots of rm_duplicates.
+- Lowered min_se_refmap_overlap and removed useless code to recalibrate it based on filter_min_trim_len.
+- Actually fix conda package.
+- aslkfljsdjsdffd i don't know how this shit works.
+- Fixing build still.
+- Fix typo in meta.yaml.
+
 0.7.15
 ------
 **October 01, 2017**

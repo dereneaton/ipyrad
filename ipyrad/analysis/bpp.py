@@ -26,6 +26,13 @@ except ImportError:
     conda install toytree -c eaton-lab
     """)
 
+MISSING_IMPORTS = """
+You are missing required packages to use ipa.bpp.
+First run the following conda install command:
+
+  conda install -c ipyrad bpp
+"""
+
 
 class Bpp(object):
     """
@@ -130,10 +137,12 @@ class Bpp(object):
         *args, 
         **kwargs):
 
+
         ## path attributes
         self.name = name
         self.asyncs = []
         self._kwargs = {
+                "binary": "bpp",
                 "maxloci": None,
                 "minmap": None,
                 "minsnps": 0,
@@ -152,6 +161,14 @@ class Bpp(object):
                 "copied": False,
             }
         self._kwargs.update(kwargs)
+
+        ## check that bpp is installed and in path
+        for binary in [self._kwargs["binary"]]:
+            if not subprocess.call("type " + binary, 
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE) == 0:
+                raise IPyradWarningExit(MISSING_IMPORTS)        
 
         ## support for legacy args
         if self._kwargs.get("locifile"):
@@ -293,7 +310,7 @@ class Bpp(object):
                 ctlfile = self._write_ctlfile()
 
                 ## submit to engines
-                async = lbview.apply(_call_bpp, ctlfile)
+                async = lbview.apply(_call_bpp, (self._kwargs["binary"], ctlfile))
                 asyncs.append(async)
                 self.asyncs.append(async)
 
@@ -557,7 +574,7 @@ class Bpp(object):
 
 
 
-def _call_bpp(ctlfile):
+def _call_bpp(binary, ctlfile):
     ## call the command
     proc = subprocess.Popen(
         ["bpp", ctlfile], 

@@ -332,12 +332,35 @@ def fetch_cluster_se(data, samfile, chrom, rstart, rend):
     """
     Builds a single end cluster from the refmapped data.
     """
+
+    ## If SE then we enforce the minimum overlap distance to avoid the
+    ## staircase syndrome of multiple reads overlapping just a little.
+    overlap_buffer = data._hackersonly["min_SE_refmap_overlap"]
+
+    ## the *_buff variables here are because we have to play patty
+    ## cake here with the rstart/rend vals because we want pysam to
+    ## enforce the buffer for SE, but we want the reference sequence
+    ## start and end positions to print correctly for downstream.
+    rstart_buff = rstart + overlap_buffer
+    rend_buff = rend - overlap_buffer
+
+    ## Reads that map to only very short segements of the reference
+    ## sequence will return buffer end values that are before the
+    ## start values causing pysam to complain. Very short mappings.
+    if rstart_buff > rend_buff:
+        tmp = rstart_buff
+        rstart_buff = rend_buff
+        rend_buff = tmp
+    ## Buffering can't make start and end equal or pysam returns nothing.
+    if rstart_buff == rend_buff:
+        rend_buff += 1
+
     ## store pairs
     rdict = {}
     clust = []
+    iterreg = []
 
-    ## grab the region and make tuples of info
-    iterreg = samfile.fetch(chrom, rstart, rend)
+    iterreg = samfile.fetch(chrom, rstart_buff, rend_buff)
 
     ## use dict to match up read pairs
     for read in iterreg:
@@ -356,7 +379,7 @@ def fetch_cluster_se(data, samfile, chrom, rstart, rend):
         return ""
 
     ## the starting blocks for the seed
-    poss = read1.get_reference_positions()
+    poss = read1.get_reference_positions(full_length=True)
     seed_r1start = min(poss)
     seed_r1end = max(poss)
 
@@ -371,37 +394,37 @@ def fetch_cluster_se(data, samfile, chrom, rstart, rend):
     clust.append(">{}:{}:{};size={};*\n{}"\
         .format(chrom, seed_r1start, seed_r1end, size, seq))
 
-    ## store the hits to the seed -------------------------------
-    for key in rkeys[1:]:
-        skip = False
-        try:
-            read1 = rdict[key]
-        except ValueError:
-            ## enter values that will make this read get skipped
-            read1 = rdict[key][0]
-            skip = True
+    ## If there's only one hit in this region then rkeys will only have
+    ## one element and the call to `rkeys[1:]` will raise. Test for this.
+    if len(rkeys) > 1:
+        ## store the hits to the seed -------------------------------
+        for key in rkeys[1:]:
+            skip = False
+            try:
+                read1 = rdict[key]
+            except ValueError:
+                ## enter values that will make this read get skipped
+                read1 = rdict[key][0]
+                skip = True
 
-        ## orient reads and filter out ones that will not align well b/c
-        ## they do not overlap enough with the seed
-        poss = read1.get_reference_positions()
-        minpos = min(poss)
-        maxpos = max(poss)
-        if (abs(minpos - seed_r1start) < data._hackersonly["min_SE_refmap_overlap"]) and \
-           (abs(maxpos - seed_r1end) < data._hackersonly["min_SE_refmap_overlap"]) and \
-           (not skip):
-            ## store the seq
-            if read1.is_reverse:
-                seq = revcomp(read1.seq)
+            ## orient reads only if not skipping
+            if not skip:
+                poss = read1.get_reference_positions(full_length=True)
+                minpos = min(poss)
+                maxpos = max(poss)
+                ## store the seq
+                if read1.is_reverse:
+                    seq = revcomp(read1.seq)
+                else:
+                    seq = read1.seq
+                ## store, could write orient but just + for now.
+                size = sfunc(key)
+                clust.append(">{}:{}:{};size={};+\n{}"\
+                    .format(chrom, minpos, maxpos, size, seq))
             else:
-                seq = read1.seq
-            ## store, could write orient but just + for now.
-            size = sfunc(key)
-            clust.append(">{}:{}:{};size={};+\n{}"\
-                .format(chrom, minpos, maxpos, size, seq))
-        else:
-            ## seq is excluded, though, we could save it and return
-            ## it as a separate cluster that will be aligned separately.
-            pass
+                ## seq is excluded, though, we could save it and return
+                ## it as a separate cluster that will be aligned separately.
+                pass
 
     return clust
 
@@ -454,39 +477,42 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
     clust.append(">{}:{}:{};size={};*\n{}"\
         .format(chrom, seed_r1start, seed_r2end, size, seq))
             
-    ## store the hits to the seed -------------------------------
-    for key in rkeys[1:]:
-        skip = False
-        try:
-            read1, read2 = rdict[key]
-        except ValueError:
-            ## enter values that will make this read get skipped
-            read1 = rdict[key][0]
-            read2 = read1
-            skip = True
+    ## If there's only one hit in this region then rkeys will only have
+    ## one element and the call to `rkeys[1:]` will raise. Test for this.
+    if len(rkeys) > 1:
+        ## store the hits to the seed -------------------------------
+        for key in rkeys[1:]:
+            skip = False
+            try:
+                read1, read2 = rdict[key]
+            except ValueError:
+                ## enter values that will make this read get skipped
+                read1 = rdict[key][0]
+                read2 = read1
+                skip = True
 
-        ## orient reads and filter out ones that will not align well b/c 
-        ## they do not overlap enough with the seed
-        poss = read1.get_reference_positions() + read2.get_reference_positions()
-        minpos = min(poss)
-        maxpos = max(poss)
-        if (abs(minpos - seed_r1start) < 50) and \
-           (abs(maxpos - seed_r2end) < 50) and \
-           (not skip):
-            ## store the seq
-            if read1.is_reverse:
-                seq = read2.seq + "nnnn" + revcomp(read1.seq)
+            ## orient reads and filter out ones that will not align well b/c
+            ## they do not overlap enough with the seed
+            poss = read1.get_reference_positions() + read2.get_reference_positions()
+            minpos = min(poss)
+            maxpos = max(poss)
+            if (abs(minpos - seed_r1start) < 50) and \
+               (abs(maxpos - seed_r2end) < 50) and \
+               (not skip):
+                ## store the seq
+                if read1.is_reverse:
+                    seq = read2.seq + "nnnn" + revcomp(read1.seq)
+                else:
+                    seq = read1.seq + "nnnn" + revcomp(read2.seq)
+
+                ## store, could write orient but just + for now.
+                size = sfunc(key)
+                clust.append(">{}:{}:{};size={};+\n{}"\
+                    .format(chrom, minpos, maxpos, size, seq))
             else:
-                seq = read1.seq + "nnnn" + revcomp(read2.seq)
-
-            ## store, could write orient but just + for now.
-            size = sfunc(key)
-            clust.append(">{}:{}:{};size={};+\n{}"\
-                .format(chrom, minpos, maxpos, size, seq))
-        else:
-            ## seq is excluded, though, we could save it and return 
-            ## it as a separate cluster that will be aligned separately.
-            pass
+                ## seq is excluded, though, we could save it and return
+                ## it as a separate cluster that will be aligned separately.
+                pass
     ## merge the pairs prior to returning them
     ## Remember, we already tested for quality scores, so
     ## merge_after_pysam will generate arbitrarily high scores
@@ -515,6 +541,7 @@ def ref_build_and_muscle_chunk(data, sample):
     nregions = len(regions)
     chunksize = (nregions / 10) + (nregions % 10)
 
+    LOGGER.debug("nregions {} chunksize {}".format(nregions, chunksize))
     ## create an output file to write clusters to
     idx = 0
     tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali")
@@ -539,10 +566,14 @@ def ref_build_and_muscle_chunk(data, sample):
     nclusts = 0
     for region in regions:
         chrom, pos1, pos2 = region.split()
-        if "pair" in data.paramsdict["datatype"]:
-            clust = fetch_cluster_pairs(data, samfile, chrom, int(pos1), int(pos2))
-        else:
-            clust = fetch_cluster_se(data, samfile, chrom, int(pos1), int(pos2))
+        try:
+            if "pair" in data.paramsdict["datatype"]:
+                clust = fetch_cluster_pairs(data, samfile, chrom, int(pos1), int(pos2))
+            else:
+                clust = fetch_cluster_se(data, samfile, chrom, int(pos1), int(pos2))
+        except IndexError as inst:
+            LOGGER.error("Bad region chrom:start-end {}:{}-{}".format(chrom, pos1, pos2))
+            continue
         if clust:
             clusts.append("\n".join(clust))
             nclusts += 1

@@ -78,6 +78,14 @@ class Structure(object):
         self.clumppparams = _ClumppParams()
         self.asyncs = []
 
+        ## check that bpp is installed and in path
+        for binary in ['structure']:
+            if not subprocess.call("type " + binary, 
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE) == 0:
+                raise IPyradWarningExit(MISSING_IMPORTS) 
+
         ## make workdir if it does not exist
         if workdir:
             self.workdir = os.path.abspath(os.path.expanduser(workdir))
