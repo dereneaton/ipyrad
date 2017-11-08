@@ -84,9 +84,9 @@ def loci2multinex(name,
         for ofile in ofiles:
             os.remove(ofile)
 
-    ## parse the locifile to a list
+    ## parse the locifile to a generator
     with open(locifile) as infile:
-        loci = infile.read().strip().split("|\n")
+        loci = (i for i in infile.read().strip().split("|\n"))
 
     ## convert subsamples to a set
     if not subsamples:
@@ -159,19 +159,21 @@ def nexmake(mdict, nlocus, dirs, mcmc_burnin, mcmc_ngen, mcmc_sample_freq):
 
 
 ## a dictionary mapping ambiguous characters
-_AMBIGS = {"R": ("G", "A"),
-          "K": ("G", "T"),
-          "S": ("G", "C"),
-          "Y": ("T", "C"),
-          "W": ("T", "A"),
-          "M": ("C", "A"), 
-          "A": ("A", "A"), 
-          "T": ("T", "T"), 
-          "G": ("G", "G"), 
-          "C": ("C", "C"), 
-          "-": ("-", "-"), 
-          "N": ("N", "N")}
-            
+_AMBIGS = {
+    "R": ("G", "A"),
+    "K": ("G", "T"),
+    "S": ("G", "C"),
+    "Y": ("T", "C"),
+    "W": ("T", "A"),
+    "M": ("C", "A"), 
+    "A": ("A", "A"), 
+    "T": ("T", "T"), 
+    "G": ("G", "G"), 
+    "C": ("C", "C"), 
+    "-": ("-", "-"), 
+    "N": ("N", "N"),
+    }
+        
 
 
 def _resolveambig(subseq):
