@@ -643,8 +643,8 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, " {}      | {} | s3 |"\
-        .format(PRINTSTR["derep_concat_split"], elapsed), spacer=data._spacer)
+    printstr = " {}      | {} | s3 |".format(PRINTSTR["derep_concat_split"], elapsed)
+    progressbar(10, 0, printstr, spacer=data._spacer)
 
     ## TODO: for HPC systems this should be done to make sure targets are spread
     ## among different nodes.
@@ -654,7 +654,11 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
         elif nthreads == 1:
             thview = ipyclient.load_balanced_view()
         else:
-            thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
+            if len(ipyclient) > 40:
+                thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
+            else:
+                thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
+
 
     ## get list of jobs/dependencies as a DAG for all pre-align funcs.
     dag, joborder = build_dag(data, samples)
@@ -676,7 +680,7 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
 
         ## args vary depending on the function
         if funcstr in ["derep_concat_split", "cluster"]:
-            args = [data, sample, nthreads]
+            args = [data, sample, nthreads, force]
         elif funcstr in ["mapreads"]:
             args = [data, sample, nthreads, force]
         elif funcstr in ["build_clusters"]:
@@ -1070,9 +1074,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
     try:
         errmsg = proc2.communicate()[0]
     except KeyboardInterrupt:
-        proc1.kill()
-        proc2.kill()
-        LOGGER.info("this is where I want it to interrupt")
+        LOGGER.info("interrupted during dereplication")
         raise KeyboardInterrupt()
 
     if proc2.returncode:
@@ -1333,7 +1335,7 @@ def reconcat(data, sample):
 
 
 
-def derep_concat_split(data, sample, nthreads):
+def derep_concat_split(data, sample, nthreads, force):
     """
     Running on remote Engine. Refmaps, then merges, then dereplicates,
     then denovo clusters reads.
@@ -1345,7 +1347,15 @@ def derep_concat_split(data, sample, nthreads):
     ## MERGED ASSEMBIES ONLY:
     ## concatenate edits files within Samples. Returns a new sample.files.edits 
     ## with the concat file. No change if not merged Assembly.
-    sample.files.edits = concat_multiple_edits(data, sample)
+    mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
+    if not force:
+        if not os.path.exists(mergefile):
+            sample.files.edits = concat_multiple_edits(data, sample)
+        else:
+            LOGGER.info("skipped concat_multiple_edits: {} exists"\
+                        .format(mergefile))
+    else:
+        sample.files.edits = concat_multiple_edits(data, sample)
 
     ## PAIRED DATA ONLY:
     ## Denovo: merge or concat fastq pairs [sample.files.pairs]
@@ -1353,9 +1363,9 @@ def derep_concat_split(data, sample, nthreads):
     ## Denovo + Reference: ...
     if 'pair' in data.paramsdict['datatype']:
         ## the output file handle for merged reads
-        mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
+        
 
-        ## modify behavior of merging if reference
+        ## modify behavior of merging vs concating if reference
         if "reference" in data.paramsdict["assembly_method"]:
             nmerged = merge_pairs(data, sample.files.edits, mergefile, 0, 0)
         else:
@@ -1489,6 +1499,7 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 THREADED_FUNCS = ["derep_concat_split", "cluster", "mapreads"]
 
 PRINTSTR = {
+    #"derep_concat_split" : "concat+dereplicate",
     "derep_concat_split" : "dereplicating     ",
     "mapreads" :           "mapping           ",
     "cluster" :            "clustering        ",
