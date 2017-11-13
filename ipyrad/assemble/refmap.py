@@ -70,11 +70,11 @@ def index_reference_sequence(data, force=False):
     index_files.extend([".fai"])
 
     ## If reference sequence already exists then bail out of this func
-    if all([os.path.isfile(refseq_file+i) for i in index_files]):
-        return
-
-    if data._headers:
-        print(INDEX_MSG.format(data._hackersonly["aligner"]))
+    if not force:
+        if all([os.path.isfile(refseq_file+i) for i in index_files]):
+            return
+    #if data._headers:
+    #    print(INDEX_MSG.format(data._hackersonly["aligner"]))
 
     if "smalt" in data._hackersonly["aligner"]:
         ## Create smalt index for mapping
@@ -108,8 +108,8 @@ def index_reference_sequence(data, force=False):
             raise IPyradWarningExit(error2)
 
     ## print finished message
-    if data._headers:
-        print("  Done indexing reference sequence")
+    #if data._headers:
+    #    print("  Done indexing reference sequence")
 
 
 
@@ -467,16 +467,25 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
     ## Simplify. R1 and R2 are always on opposite strands, but the
     ## orientation is variable. We revcomp and order the reads to
     ## preserve genomic order.
+    reads_overlap = False
     if read1.is_reverse:
-        seq =  read2.seq + "nnnn" + revcomp(read1.seq)
+        if read2.aend > read1.get_blocks()[0][0]:
+            reads_overlap = True
+            seq = read2.seq + "nnnn" + revcomp(read1.seq)
+        else:
+            seq = read2.seq + "nnnn" + read1.seq
     else:
-        seq = read1.seq + "nnnn" + revcomp(read2.seq)
+        if read1.aend > read2.get_blocks()[0][0]:
+            reads_overlap = True
+            seq = read1.seq + "nnnn" + revcomp(read2.seq)
+        else:
+            seq = read1.seq + "nnnn" + read2.seq
 
     ## store, could write orient but just + for now.
     size = sfunc(rkeys[0])
     clust.append(">{}:{}:{};size={};*\n{}"\
         .format(chrom, seed_r1start, seed_r2end, size, seq))
-            
+
     ## If there's only one hit in this region then rkeys will only have
     ## one element and the call to `rkeys[1:]` will raise. Test for this.
     if len(rkeys) > 1:
@@ -496,14 +505,29 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
             poss = read1.get_reference_positions() + read2.get_reference_positions()
             minpos = min(poss)
             maxpos = max(poss)
+
+            ## skip if more than one hit location
+            if read1.has_tag("SA") or read2.has_tag("SA"):
+                skip = True
+
+            ## store if read passes 
             if (abs(minpos - seed_r1start) < 50) and \
                (abs(maxpos - seed_r2end) < 50) and \
                (not skip):
                 ## store the seq
                 if read1.is_reverse:
-                    seq = read2.seq + "nnnn" + revcomp(read1.seq)
+                    ## do reads overlap
+                    if read2.aend > read1.get_blocks()[0][0]:
+                        reads_overlap = True
+                        seq = read2.seq + "nnnn" + revcomp(read1.seq)
+                    else:
+                        seq = read2.seq + "nnnn" + read1.seq
                 else:
-                    seq = read1.seq + "nnnn" + revcomp(read2.seq)
+                    if read1.aend > read2.get_blocks()[0][0]:
+                        reads_overlap = True
+                        seq = read1.seq + "nnnn" + revcomp(read2.seq)
+                    else:
+                        seq = read1.seq + "nnnn" + read2.seq
 
                 ## store, could write orient but just + for now.
                 size = sfunc(key)
@@ -513,17 +537,21 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
                 ## seq is excluded, though, we could save it and return
                 ## it as a separate cluster that will be aligned separately.
                 pass
+
     ## merge the pairs prior to returning them
     ## Remember, we already tested for quality scores, so
     ## merge_after_pysam will generate arbitrarily high scores
     ## It would be nice to do something here like test if
     ## the average insert length + 2 stdv is > 2*read len
     ## so you can switch off merging for mostly non-overlapping data
-    if data._hackersonly["refmap_merge_PE"]:
-        clust = merge_after_pysam(data, clust)
-        #clust = merge_pair_pipes(data, clust)
+    if reads_overlap:
+        if data._hackersonly["refmap_merge_PE"]:
+            clust = merge_after_pysam(data, clust)
+            #clust = merge_pair_pipes(data, clust)
 
     return clust
+
+
 
 
 def ref_build_and_muscle_chunk(data, sample):
@@ -567,8 +595,11 @@ def ref_build_and_muscle_chunk(data, sample):
     for region in regions:
         chrom, pos1, pos2 = region.split()
         try:
+            ## fetches pairs quickly but then goes slow to merge them.
             if "pair" in data.paramsdict["datatype"]:
                 clust = fetch_cluster_pairs(data, samfile, chrom, int(pos1), int(pos2))
+
+            ## fetch but no need to merge
             else:
                 clust = fetch_cluster_se(data, samfile, chrom, int(pos1), int(pos2))
         except IndexError as inst:
@@ -600,6 +631,9 @@ def ref_build_and_muscle_chunk(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo+reference":
         chunkfiles = glob.glob(os.path.join(data.tmpdir, sample.name+"_chunk_*.ali"))
         LOGGER.info("created chunks %s", chunkfiles)
+
+    ## cleanup
+    samfile.close()
 
 
 

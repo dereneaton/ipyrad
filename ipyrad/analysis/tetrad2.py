@@ -450,7 +450,7 @@ class Tetrad(object):
                                compression='gzip')
             except RuntimeError:
                 raise IPyradWarningExit(
-                    "database file exists already exists for this analysis, "
+                    "database file already exists for this analysis, "
                   + "you must run with the force flag to overwrite")
             
         ## submit store job to write into self.database.input
@@ -871,7 +871,7 @@ class Tetrad(object):
 
             ## fill the input array with quartets to sample --------------------
             start = time.time()
-            if not self.checkpoint.boots:
+            if (not self.checkpoint.boots) and (not self.trees.tree):
                 self._store_N_samples(start, ipyclient, quiet=quiet)
 
             ## calculate invariants for the full seqarray ----------------------
