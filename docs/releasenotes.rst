@@ -5,6 +5,27 @@
 Release Notes
 =============
 
+0.7.18
+------
+**November 13, 2017**
+
+- allow user to set bpp binary path if different from default 'bpp'
+- skip concat edits of merged reads if merge file exists unless force flag is set
+- added a progress bar tracker for reference indexing
+- speed improvement to refmapping, only tests merge of read pairs if their mapped positions overlap
+- update to docs
+- update to docs
+- update API userguide
+- added twiist tool
+- update bpp notebook
+- tetrad bug fix for OSX users for setting thread limit
+- added check for structure path in structure.py
+- allow setting binary path and check for binary added to bpp.py
+- Update requirements.txt
+- Added to the faq how to fix the GLIBC error.
+- Fix logging of superints shape.
+- Test for samples in the populations file not in the assembly.
+
 0.7.17
 ------
 **October 28, 2017**
