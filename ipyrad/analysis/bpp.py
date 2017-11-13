@@ -280,6 +280,12 @@ class Bpp(object):
             Overwrite existing files with the same name. Default=False, skip
             over existing files.
         """
+
+        ## clear out pre-existing files for this object
+        self.files.mcmcfiles = []
+        self.files.outfiles = []
+        self.asyncs = []
+
         ## initiate random seed
         np.random.seed(self.params.seed)
 
@@ -287,7 +293,6 @@ class Bpp(object):
         lbview = ipyclient.load_balanced_view()
 
         ## send jobs
-        asyncs = []
         for job in xrange(nreps):
 
             ## make repname and make ctl filename
@@ -297,8 +302,8 @@ class Bpp(object):
 
             ## skip if ctlfile exists
             if (not force) and (os.path.exists(ctlhandle)):
-                print("Named ctl file exists. Use force=True to overwrite\nFilename:{}"\
-                      .format(ctlhandle))
+                print("Named ctl file already exists. Use force=True to" \
+                    +" overwrite\nFilename:{}".format(ctlhandle))
             else:
                 ## change seed and ctl for each rep, this writes into the ctl
                 ## file the correct name for the other files which share the 
@@ -310,13 +315,12 @@ class Bpp(object):
                 ctlfile = self._write_ctlfile()
 
                 ## submit to engines
-                async = lbview.apply(_call_bpp, (self._kwargs["binary"], ctlfile))
-                asyncs.append(async)
+                async = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile))
                 self.asyncs.append(async)
 
-        if not quiet:
+        if self.asyncs and (not quiet):
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
-                             .format(nreps, self._name, self._nloci))
+                             .format(nreps, self.name, self._nloci))
 
 
 
@@ -466,13 +470,6 @@ class Bpp(object):
         path = os.path.realpath(os.path.join(self.workdir, self._name))
         mcmcfile = "{}.mcmc.txt".format(path)
         outfile = "{}.out.txt".format(path)
-        # if isinstance(rep, int):
-        #     mcmcfile = "{}-r{}.mcmc.txt".format(path, rep)
-        #     outfile = "{}-r{}.out.txt".format(path, rep)
-        # else:
-        #     mcmcfile = "{}.mcmc.txt".format(path, rep)
-        #     outfile = "{}.out.txt".format(path, rep)
-
         if mcmcfile not in self.files.mcmcfiles:
             self.files.mcmcfiles.append(mcmcfile)
         if outfile not in self.files.outfiles:
