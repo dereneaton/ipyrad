@@ -439,6 +439,7 @@ def merge_pairs_after_refmapping(data, two_files, merged_out):
     return nmerged
 
 
+
 def merge_after_pysam(data, clust):
     """
     This is for pysam post-flight merging. The input is a cluster
@@ -514,6 +515,7 @@ def merge_after_pysam(data, clust):
                 os.remove(i)
 
     return clust
+
 
 
 def merge_pairs(data, two_files, merged_out, revcomp, merge):
@@ -715,6 +717,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                     os.remove(rmfile)
 
     return nmerged
+
 
 ## Doesn't work right now.
 def merge_pair_pipes(data, sample, clust):
