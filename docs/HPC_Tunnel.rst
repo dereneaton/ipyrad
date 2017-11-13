@@ -13,7 +13,7 @@ This section of the documentation is about how to start and run jupyter
 notebooks, which you can then use to run your ipyrad analyses using
 the ipyrad API. For instructions on how to use the ipyrad API 
 (after you have a notebook started) go here: 
-(:ref:`ipyrad API <API_user-guide>`). 
+(`ipyrad API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/API_user-guide.ipynb>`__). 
 An example of a complete notebook showing assembly and analysis of 
 a RAD data set with the ipyrad API can be found here:
 (`Pedicularis API <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-empirical-API-1-pedicularis.ipynb>`__).
