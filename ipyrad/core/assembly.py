@@ -1024,7 +1024,24 @@ class Assembly(object):
             else:
                 ## index the reference sequence
                 ## Allow force to reindex the reference sequence
-                index_reference_sequence(self, force)
+                ## send to run on the cluster. 
+                lbview = ipyclient.load_balanced_view()
+                async = lbview.apply(index_reference_sequence, *(self, force))
+
+                ## print a progress bar for the indexing
+                start = time.time()
+                while 1:
+                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                    printstr = " {}    | {} | s3 |".format("indexing reference", elapsed)
+                    finished = int(async.ready())
+                    progressbar(1, finished, printstr, spacer=self._spacer)
+                    if finished:
+                        print("")
+                        break
+                    time.sleep(0.9)
+                ## error check
+                if not async.successful():
+                    raise IPyradWarningExit(async.result())
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
