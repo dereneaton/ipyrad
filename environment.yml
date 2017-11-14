@@ -7,7 +7,6 @@ dependencies:
 - cython
 - ipython>=5.0
 - ipyparallel>=6.0.2
-- jupyter
 - numpy>1.9
 - scipy>0.10
 - pandas>=0.19
@@ -17,3 +16,5 @@ dependencies:
 - numba>=0.31
 - llvmlite>=0.16
 - dask
+
+#- jupyter

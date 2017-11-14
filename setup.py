@@ -31,7 +31,7 @@ setup(
     version=CUR_VERSION,
     url="https://github.com/dereneaton/ipyrad",
     author="Deren Eaton",
-    author_email="deren.eaton@yale.edu",
+    author_email="de2356@columbia.edu",
     description="Interactive assembly and analysis of RADseq data sets",
     long_description=open('README.rst').read(),
     packages=find_packages(),

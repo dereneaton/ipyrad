@@ -10,5 +10,8 @@
 
 ipython
 ipyparallel
-ipykernel
-jupyter
+nbconvert 
+#ipykernel
+#notebook
+#jupyter>=1.0.0
+

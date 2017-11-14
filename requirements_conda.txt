@@ -1,13 +1,14 @@
+
 cython
 h5py
+
 ipython>=5.3
 ipyparallel>=5.1
 ipykernel>=4.5
-jupyter_client>=5.0
-jupyter
 notebook>=4.3
-mpi4py
 nbconvert>=5.1.1
+
+mpi4py
 numpy>=1.9
 numba>=0.31
 llvmlite>=0.16
@@ -19,3 +20,6 @@ networkx
 dask
 pysam>=0.10.0
 setuptools
+
+#jupyter_client>=5.0
+#jupyter>=1.0.0
