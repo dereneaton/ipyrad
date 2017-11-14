@@ -13,6 +13,7 @@ networkx
 dask
 pysam>=0.10.0
 setuptools
+jupyter
 
 #nbconvert
 #ipykernel

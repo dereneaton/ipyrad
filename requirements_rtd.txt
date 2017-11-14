@@ -8,9 +8,12 @@
 #   ReadTheDocs environment cannot build C extensions.
 #
 
+## what do we actually need to build the docs?
+
 ipython
 ipyparallel
 nbconvert 
+
 #ipykernel
 #notebook
 #jupyter>=1.0.0
