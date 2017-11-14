@@ -4,25 +4,27 @@
 ## which is called by the conda recipe?
 
 cython
-h5py
+
 ipython>=5.3
 ipyparallel>=5.1
-jupyter
-#ipykernel>=4.5
-#notebook>=4.3
-#nbconvert>=5.1.1
 mpi4py
+
+h5py
 numpy>=1.9
 numba>=0.31
 llvmlite>=0.16
 pandas>=0.16
-pip>=8.1
 scipy>0.10
 sphinx
 networkx
 dask
 pysam>=0.10.0
+
+pip>=9.1
 setuptools
 
+#ipykernel>=4.5
+#notebook>=4.3
+#nbconvert>=5.1.1
 #jupyter_client>=5.0
 #jupyter>=1.0.0

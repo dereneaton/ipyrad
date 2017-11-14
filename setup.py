@@ -34,7 +34,7 @@ setup(
     author_email="de2356@columbia.edu",
     description="Interactive assembly and analysis of RADseq data sets",
     long_description=open('README.rst').read(),
-    packages=find_packages(),
+    packages=find_packages(),    
     install_requires=requires(),
     #dependencies=dependency_links(),
     entry_points={

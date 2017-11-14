@@ -16,4 +16,5 @@ dependencies:
 - numba>=0.31
 - llvmlite>=0.16
 - dask
-- jupyter
+#- jupyter
+
