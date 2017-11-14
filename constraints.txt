@@ -4,3 +4,4 @@ pandas>=0.18
 numba>=0.31
 llvmlite>=0.16
 dask
+jupyter>=1.0.0
