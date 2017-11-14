@@ -1,13 +1,15 @@
 
+## these are requirements for the conda recipe?
+## how is that separate from the requirements.txt used by setup.py
+## which is called by the conda recipe?
+
 cython
 h5py
-
 ipython>=5.3
 ipyparallel>=5.1
 ipykernel>=4.5
 notebook>=4.3
 nbconvert>=5.1.1
-
 mpi4py
 numpy>=1.9
 numba>=0.31

@@ -12,10 +12,10 @@ def requires():
         return infile.read().splitlines()
 
 
-def dependency_links():
-    """ return: the package specifications """
-    with open('constraints.txt') as infile:
-        return infile.read().splitlines()
+#def dependency_links():
+#    """ return: the package specifications """
+#    with open('constraints.txt') as infile:
+#        return infile.read().splitlines()
 
 
 ## Auto-update ipyrad version from git repo tag
@@ -36,7 +36,7 @@ setup(
     long_description=open('README.rst').read(),
     packages=find_packages(),
     install_requires=requires(),
-    dependencies=dependency_links(),
+    #dependencies=dependency_links(),
     entry_points={
             'console_scripts': [
                 'ipyrad = ipyrad.__main__:main',

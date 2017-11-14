@@ -4,7 +4,6 @@ sphinx
 cython
 ipython
 ipyparallel>=6.0.2
-nbconvert
 scipy>0.10
 numpy>=1.9
 numba>=0.31
@@ -15,6 +14,7 @@ dask
 pysam>=0.10.0
 setuptools
 
+#nbconvert
 #ipykernel
 #notebook>=5.0
 #jupyter>=1.0.0
