@@ -12,46 +12,41 @@ build:
 requirements:
   build:
     - python {{PY_VER}}*,>=2.7
-    - setuptools
-    - cython
-    - h5py
-    - ipyparallel >=6.0.2
-    - ipython >=5.0.0
-    - jupyter_client
+    - setuptools >=28.0.0
     - jupyter
-    - notebook >=5.0
-    - mpi4py
-    - nbconvert
-    - numba >=0.33
-    - numpy >=1.7
-    - pandas >=0.16
+    - ipython >=5.0.0
+    - ipyparallel >=6.0.2
+    - cython
     - scipy >=0.16
+    - h5py
+    - numba >=0.33
     - sphinx
+    - pandas >=0.16
+    - mpi4py
+    - numpy >=1.7
     - networkx
-    - cutadapt >=1.12
     - dask
+    - cutadapt >=1.12
     - pysam >=0.10.0     
 
   run:
+    - python {{PY_VER}}*,>=2.7
+    - setuptools >=28.0.0
+    - jupyter
     - ipython >=5.0.0
     - ipyparallel >=6.0.2
     - cython
     - scipy >=0.16
     - h5py
-    - nbconvert
     - numba >=0.33
-    - jupyter_client
-    - jupyter
-    - notebook >=5.0
     - sphinx
-    - pandas
+    - pandas >=0.16
     - mpi4py
     - numpy >=1.7
     - networkx
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0
-    - setuptools >=28.0.0
 
   commands:
     - ipyrad -h
