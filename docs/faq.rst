@@ -221,3 +221,29 @@ git clone https://github.com/dereneaton/ipyrad.git
 conda build ipyrad/conda.recipe/bpp/
 conda install --use-local bpp
 ```
+
+How do I interpret the `distribution of SNPs (var and pis) per locus` in the *_stats.txt output file
+----------------------------------------------------------------------------------------------------
+Here is an example of the first few lines of this block in the stats file:
+
+.. code-block:: 
+
+    bash    var  sum_var    pis  sum_pis
+    0    661        0  10090        0
+    1   1660     1660   5070     5070
+    2   2493     6646   1732     8534
+    3   2801    15049    483     9983
+    4   2683    25781    147    10571
+    5   2347    37516     59    10866
+    6   1740    47956     17    10968
+    7   1245    56671      7    11017
+
+**pis** is exactly what you think, it's the count of loci with *n* parsimony informative sites. So row 0 is loci with no pis, row 1 is loci with 1 pis, and so on.
+
+**sum_pis** keeps a running total of the counts for all pis across all loci up to that point, which is why the sum looks weird, but i assure you its fine. For the row that records 3 pis per site, you see the # pis = 483 and 483 * 3 + 8534 = 9983.
+
+**var** is a little trickier and here's where the docs are a little goofy. This keeps track of the number of loci with n variable sites including autapomorphies and pis within each locus. So row 0 is all totally monomorphic loci. row 1 is all loci with *either* one pis or one autapomorphy. Row 2 is all loci with *either* two pis, or two autapomorphies, *OR* one of each, and so on.
+
+**sum_var** is calculated identical to **sum_pis**, so it does look weird but it's right.
+
+The reason the counts in, for example, row 1 do not appear to agree for var and pis is because the value of row 1 for pis *includes all* loci with only one pis irrespective of the number of autapomorphies, whereas the value for var records all loci with *only one* of either of these. 
