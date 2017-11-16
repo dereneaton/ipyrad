@@ -4,7 +4,7 @@ package:
 
 source:
   fn: structure_kernel_source.tar.gz
-  url: http://pritchardlab.stanford.edu/structure_software/release_versions/v2.3.4/structure_kernel_source.tar.gz
+  url: http://web.stanford.edu/group/pritchardlab/structure_software/release_versions/v2.3.4/structure_kernel_source.tar.gz
   md5: 4e0591678cdbfe79347d272b5dceeda1
 
 build:

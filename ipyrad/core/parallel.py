@@ -153,9 +153,9 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
         sys.stdout = save_stdout
         sys.stderr = save_stderr
         if "ipyrad-cli-" in cluster_id:
-            raise IPyradWarningExit(NO_IPCLUSTER_API)
-        else:
             raise IPyradWarningExit(NO_IPCLUSTER_CLI)
+        else:
+            raise IPyradWarningExit(NO_IPCLUSTER_API)
 
     except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
         ## raised by ipp if no connection file is found for 'nwait' seconds
@@ -181,7 +181,10 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
 
 NO_IPCLUSTER_CLI = """\
     No ipcluster instance found. This may be a problem with your installation
-    setup. I would recommend that you contact the ipyrad developers. 
+    setup, or it could be that the cluster instance isn't firing up fast enough.
+    This most often happens on cluster nodes. One solution is to launch
+    ipcluster by hand and then pass the `--ipcluster` flag to ipyrad. See
+    the docs for more info: http://ipyrad.rtfd.io/HPC_script.html
     """
 NO_IPCLUSTER_API = """
     No ipcluster instance found. See documentation for the proper way to set 
