@@ -197,6 +197,8 @@ def cutadaptit_single(data, sample):
                     fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
                   + data._hackersonly["p3_adapter"])
             else:
+                LOGGER.warning("No barcode information present, and is therefore not "+\
+                               "being used for adapter trimming of SE gbs data.")
                 ## else no search for barcodes on 3'
                 adapter = \
                     fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
