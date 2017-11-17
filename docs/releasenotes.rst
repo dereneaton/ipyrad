@@ -5,6 +5,23 @@
 Release Notes
 =============
 
+0.7.19
+------
+**November 16, 2017**
+
+- bugfix; error was raised in no barcodes during step2 filtering for gbs data. Now just a warning is printed
+- bugfix; error was raised in no barcodes during step2 filtering for gbs data. Now just a warning is printed
+- Fixed structure conda meta.yaml
+- Fix ipcluster warning message.
+- Adding to the faq explaining stats better
+- new working meta.yaml
+- trying alternatives with setup files for jupyter conda bug fix
+- trying alternatives with setup files for jupyter conda bug fix
+- trying alternatives with setup files for jupyter conda bug fix
+- trying alternatives with setup files for jupyter conda bug fix
+- trying alternatives with setup files for jupyter conda bug fix
+- updating setup.py stuff to try to fix jupyter missing in conda install
+
 0.7.18
 ------
 **November 13, 2017**
