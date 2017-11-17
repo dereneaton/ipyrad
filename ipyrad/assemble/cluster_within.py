@@ -643,7 +643,9 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     lbview = ipyclient.load_balanced_view()
     start = time.time()
     elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    printstr = " {}      | {} | s3 |".format(PRINTSTR["derep_concat_split"], elapsed)
+    firstfunc = "derep_concat_split"
+    printstr = " {}    | {} | s3 |".format(PRINTSTR[firstfunc], elapsed)
+    #printstr = " {}      | {} | s3 |".format(PRINTSTR[], elapsed)
     progressbar(10, 0, printstr, spacer=data._spacer)
 
     ## TODO: for HPC systems this should be done to make sure targets are spread
@@ -1142,7 +1144,7 @@ def concat_multiple_edits(data, sample):
 
 
 
-def cluster(data, sample, nthreads):
+def cluster(data, sample, nthreads, force):
     """
     Calls vsearch for clustering. cov varies by data type, values were chosen
     based on experience, but could be edited by users
