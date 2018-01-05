@@ -9,6 +9,7 @@ import copy
 import itertools
 import subprocess
 import numpy as np
+import pandas as pd
 
 from collections import Counter
 from ipyrad.assemble.util import DUCT, IPyradWarningExit
@@ -44,18 +45,30 @@ class Bpp(object):
 
     Parameters:
     -----------
-    data:
-        A .loci or .alleles.loci file produced by ipyrad.
-    imap:
+    name: str
+        A name for this analysis object.
+
+    data: str
+        The path to a .loci or .alleles.loci file produced by ipyrad.
+
+    imap: dict
         A Python dictionary with 'species' names as keys, and lists of sample
         names for the values. Any sample that is not included in the imap
         dictionary will be filtered out of the data when converting the .loci
         file into the bpp formatted sequence file. Each species in the imap
         dictionary must also be present in the input 'guidetree'.
-    guidetree:
+
+    guidetree: str
         A newick string species tree hypothesis [e.g., (((a,b),(c,d)),e);]
         All taxa in the imap dictionary must also be present in the guidetree.
         Tree can also be a filename of a newick string.
+
+    load_existing_results: bool
+        If True then any existing results files saved in the working
+        directory and with the entered name will be loaded and attached 
+        to this object. This is useful if returning to a notebook later and 
+        you want to summarize results. 
+
 
     Attributes:
     -----------
@@ -134,6 +147,7 @@ class Bpp(object):
         workdir="analysis-bpp", 
         guidetree=None, 
         imap=None, 
+        load_existing_results=False,
         *args, 
         **kwargs):
 
@@ -245,7 +259,34 @@ class Bpp(object):
         self.files.data = data
         self.files.mcmcfiles = []
         self.files.outfiles = []
+        self.files.treefiles = []
         
+        ## load existing results files for this named bpp object if they exist
+        if load_existing_results:
+            self._load_existing_results(name, workdir=self.workdir)
+
+
+
+    def _load_existing_results(self, name, workdir):
+        """
+        Load existing results files for an object with this workdir and name. 
+        This does NOT reload the parameter settings for the object...
+        """
+        ## get mcmcs
+        path = os.path.realpath(os.path.join(self.workdir, self.name))
+        mcmcs = glob.glob(path+"_r*.mcmc.txt")
+        outs = glob.glob(path+"_r*.out.txt")
+        trees = glob.glob(path+"_r*.tre")
+
+        for mcmcfile in mcmcs:
+            if mcmcfile not in self.files.mcmcfiles:
+                self.files.mcmcfiles.append(mcmcfile)
+        for outfile in outs:
+            if outfile not in self.files.outfiles:
+                self.files.outfiles.append(outfile)
+        for tree in trees:
+            if tree not in self.files.treefiles:
+                self.files.treefiles.append(tree)        
 
 
     def run(self,
@@ -281,9 +322,13 @@ class Bpp(object):
             over existing files.
         """
 
+        ## is this running algorithm 00?
+        is_alg00 = (not self.params.infer_sptree) and (not self.params.infer_delimit)
+
         ## clear out pre-existing files for this object
         self.files.mcmcfiles = []
         self.files.outfiles = []
+        self.files.treefiles = []
         self.asyncs = []
 
         ## initiate random seed
@@ -310,13 +355,18 @@ class Bpp(object):
                 ## same rep number in their names.
                 #self.params._seed = np.random.randint(0, 1e9, 1)[0]
                 self._write_mapfile()
-                if randomize_order:
-                    self._write_seqfile(randomize_order=randomize_order)
+                #if randomize_order:
+                self._write_seqfile(randomize_order=randomize_order)
                 ctlfile = self._write_ctlfile()
-
+                
                 ## submit to engines
-                async = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile))
+                async = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, alg00))
                 self.asyncs.append(async)
+
+                ## save tree file if alg 00
+                if alg00:
+                    self.files.treefiles.append(
+                        ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre")
 
         if self.asyncs and (not quiet):
             sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
@@ -530,7 +580,7 @@ class Bpp(object):
 
 
 
-    def copy(self, name):
+    def copy(self, name, load_existing_results=False):
         """ 
         Returns a copy of the bpp object with the same parameter settings
         but with the files.mcmcfiles and files.outfiles attributes cleared, 
@@ -558,6 +608,7 @@ class Bpp(object):
             guidetree=newdict["tree"].write(),
             imap={i:j for i, j in newdict["imap"].items()},
             copied=True,
+            load_existing_results=load_existing_results,
             )
 
         ## update special dict attributes but not files
@@ -571,14 +622,59 @@ class Bpp(object):
 
 
 
-def _call_bpp(binary, ctlfile):
-    ## call the command
+    def summarize_results(self, individual_results=False):
+        """ 
+        Prints a summarized table of results from replicate runs, or,
+        if individual_result=True, then returns a list of separate
+        dataframes for each replicate run. 
+        """
+
+        ## return results depending on algorithm
+
+        ## algorithm 00
+        if (not self.params.infer_delimit) & (not self.params.infer_sptree):
+            if individual_results:
+                ## return a list of parsed CSV results
+                return [_parse_00(i) for i in self.files.outfiles]
+            else:
+                ## concatenate each CSV and then get stats w/ describe
+                return pd.concat(
+                    [pd.read_csv(i, sep='\t', index_col=0) \
+                    for i in self.files.mcmcfiles]).describe().T
+
+        ## algorithm 01
+        if self.params.infer_delimit & (not self.params.infer_sptree):
+            return _parse_01(self.files.outfiles, individual=individual_results)
+
+        ## others
+        else:
+            return "summary function not yet ready for this type of result"
+
+
+
+def _call_bpp(binary, ctlfile, is_alg00):
+
+    ## call the command and block until job finishes
     proc = subprocess.Popen(
         ["bpp", ctlfile], 
         stderr=subprocess.STDOUT, 
         stdout=subprocess.PIPE
         )
     comm = proc.communicate()
+
+    ## Look for the ~/Figtree.tre file that bpp creates.
+    ## This has to be done here to make sure it is instantly run
+    ## when the job finishes so other reps won't write over it.
+    ## Kludge due to bpp writing forcing the file to $HOME.
+    if is_alg00:
+        default_figtree_path = os.path.join(os.path.expanduser("~"), "FigTree.tre")
+        new_figtree_path = ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre"
+        try:
+            if os.path.exists(default_figtree_path):
+                os.rename(default_figtree_path, new_figtree_path)
+        except Exception:
+            pass
+
     return comm
 
 
@@ -610,29 +706,82 @@ class Result_00(object):
 
 
 
-def _get_bpp_results(ofiles):
-    
-    ## final all outfiles associated with this job name
-    ofiles = glob.glob()
 
+def _parse_00(ofile):
+    """
+    return 00 outfile as a pandas DataFrame
+    """
+    with open(ofile) as infile:
+        ## read in the results summary from the end of the outfile
+        arr = np.array(
+            [" "] + infile.read().split("Summary of MCMC results\n\n\n")[1:][0]\
+            .strip().split())
+
+        ## reshape array 
+        rows = 12
+        cols = (arr.shape[0] + 1) / rows
+        arr = arr.reshape(rows, cols)
+        
+        ## make into labeled data frame
+        df = pd.DataFrame(
+            data=arr[1:, 1:], 
+            columns=arr[0, 1:], 
+            index=arr[1:, 0],
+            ).T
+        return df
+   
+
+
+
+
+def _parse_01(ofiles, individual=False):
+    """ 
+    a subfunction for summarizing results
+    """
+
+    ## parse results from outfiles
     cols = []
+    dats = []
     for ofile in ofiles:
+
+        ## parse file
         with open(ofile) as infile:
             dat  = infile.read()
-        lastbits = dat.split("bpp.mcmc.txt\n\n")[1:]
+        lastbits = dat.split(".mcmc.txt\n\n")[1:]
         results = lastbits[0].split("\n\n")[0].split()
-        dat = np.array(results[3:]).reshape(8, 4)
+
+        ## get shape from ...
+        shape = (((len(results) - 3) / 4), 4)
+        dat = np.array(results[3:]).reshape(shape)
         cols.append(dat[:, 3].astype(float))
-    cols = np.array(cols)
-    cols = cols.sum(axis=0) / 10.
-    dat[:, 3] = cols.astype(str)
-    dd = pd.DataFrame(dat[:, 1:])
-    dd.columns = ["delim", "prior", "posterior"]
-    nspecies = 1 + np.array([list(i) for i in dat[:, 1]], dtype=int).sum(axis=1)
-    dd["nspecies"] = nspecies
-    return dd
+        
+    if not individual:
+        ## get mean results across reps
+        cols = np.array(cols)
+        cols = cols.sum(axis=0) / len(ofiles) #10.
+        dat[:, 3] = cols.astype(str)
+
+        ## format as a DF
+        df = pd.DataFrame(dat[:, 1:])
+        df.columns = ["delim", "prior", "posterior"]
+        nspecies = 1 + np.array([list(i) for i in dat[:, 1]], dtype=int).sum(axis=1)
+        df["nspecies"] = nspecies
+        return df
     
-    
+    else:
+        ## get mean results across reps
+        #return cols
+        res = []
+        for i in xrange(len(cols)):
+            x = dat
+            x[:, 3] = cols[i].astype(str)
+            x = pd.DataFrame(x[:, 1:])
+            x.columns = ['delim', 'prior', 'posterior']
+            nspecies = 1 + np.array([list(i) for i in dat[:, 1]], dtype=int).sum(axis=1)
+            x["nspecies"] = nspecies
+            res.append(x)
+        return res
+
 
 
 ## GLOBALS
