@@ -11,7 +11,7 @@
 from __future__ import print_function, division
 
 ## ipyrad tools
-import toytree
+
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
 from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
 from ipyrad.analysis.bpp import Params
@@ -33,6 +33,16 @@ try:
     import msprime as ms
 except ImportError:
     pass
+
+try:
+    import toytree
+except ImportError:
+    print("""
+        toytree not installed, some functions are not available
+        such as .generate_tests_from_tree() and .plot().
+        Install toytree with 'conda install toytree -c eaton-lab'.
+        """)
+
 
 ## set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
@@ -255,11 +265,20 @@ def batch(
         pass #sims()
 
     ## iterate over tests (repeats mindicts if fewer than taxdicts)
-    for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
+    itests = iter(taxdicts)
+    imdict = itertools.cycle([mindicts])
+
+    #for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
+    for i in xrange(len(ipyclient)):
+
+        ## next entries
+        test = next(itests)
+        mindict = next(imdict)
+
         ## if it's sim data then convert to an array
         if sims:
-            arr = _msp_to_arr(handle, test)
-            args = (arr, test, mindict, nboots)
+            loci = _msp_to_arr(handle, test)
+            args = (loci, test, mindict, nboots)
             print("not yet implemented")
             #asyncs[idx] = lbview.apply_async(dstat, *args)
         else:
@@ -268,6 +287,7 @@ def batch(
         idx += 1
 
     ## block until finished, print progress if requested.
+    finished = 0
     try:
         while 1:
             keys = [i for (i, j) in asyncs.items() if j.ready()]
@@ -279,26 +299,44 @@ def batch(
                 ## enter results for successful jobs
                 else:
                     _res, _bot = asyncs[job].result()
+                    
                     ## store D4 results
                     if _res.shape[0] == 1:
                         resarr[job] = _res.T.as_matrix()[:, 0]
                         bootsarr[job] = _bot
-                    ## store D5 results                        
+                    
+                    ## or store D5 results                        
                     else:   
                         paneldict[job] = _res
 
-
-
+                    ## remove old job
                     del asyncs[job]
+                    finished += 1
 
-            ## count finished
-            fin = tot - len(asyncs) 
+                    ## submit next job if there is one.
+                    try:
+                        test = next(itests)
+                        mindict = next(imdict)
+                        if sims:
+                            loci = _msp_to_arr(handle, test)
+                            args = (loci, test, mindict, nboots)
+                            print("not yet implemented")
+                            #asyncs[idx] = lbview.apply_async(dstat, *args)
+                        else:
+                            args = [loci, test, mindict, nboots]
+                            asyncs[idx] = lbview.apply(dstat, *args)
+                        idx += 1
+                    except StopIteration:
+                        pass
+
+            ## count finished and break if all are done.
+            #fin = idx - len(asyncs)
             elap = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(tot, fin, 
-                " calculating D-stats  | {} | ".format(elap), spacer="")
+            printstr = " calculating D-stats  | {} | "
+            progressbar(tot, finished, printstr.format(elap), spacer="")
             time.sleep(0.1)
             if not asyncs:
-                print("")#\n")
+                print("")
                 break
 
     except KeyboardInterrupt as inst:
@@ -328,6 +366,10 @@ def batch(
 
 def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     """ private function to perform a single D-stat test"""
+
+    #if isinstance(inarr, str):
+    #    with open(inarr, 'r') as infile:
+    #        inarr = infile.read().strip().split("|\n")
 
     # ## get data as an array from loci file
     # ## if loci-list then parse arr from loci
@@ -550,64 +592,6 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=False):
 
 
 
-# def tree2tests(newick, constraint_dict=None, constraint_exact=True):
-#     """
-#     Returns dict of all possible four-taxon splits in a tree. Assumes
-#     the user has entered a rooted tree. Skips polytomies.
-#     """
-#     ## make tree
-#     tree = toytree.ete3mini.Tree(newick)
-#     testset = set()
-    
-#     ## constraints
-#     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
-#     if constraint_dict:
-#         cdict.update(constraint_dict)
-
-#     ## traverse root to tips. Treat the left as outgroup, then the right.
-#     tests = []
-#     ## topnode must have children
-#     for topnode in tree.traverse("levelorder"):
-#         for oparent in topnode.children:
-#             for onode in oparent.traverse("levelorder"):
-#                 if test_constraint(onode, cdict, "p4", constraint_exact):
-#                     #print(topnode.name, onode.name)
-                    
-#                     ## p123 parent is sister to oparent
-#                     p123parent = oparent.get_sisters()[0]
-#                     for p123node in p123parent.traverse("levelorder"):
-#                         for p3parent in p123node.children:
-#                             for p3node in p3parent.traverse("levelorder"):
-#                                 if test_constraint(p3node, cdict, "p3", constraint_exact):
-#                                     #print(topnode.name, onode.name, p3node.name)
-                                    
-#                                     ## p12 parent is sister to p3 parent
-#                                     p12parent = p3parent.get_sisters()[0]
-#                                     for p12node in p12parent.traverse("levelorder"):
-#                                         if p12node.children:
-#                                             p2parent = p12node.children[1]#for p2parent in p12parent.children[1]:
-#                                             p1parent = p12node.children[0]
-#                                             for p2node in p2parent.traverse("levelorder"):
-#                                                 if test_constraint(p2node, cdict, "p2", constraint_exact):
-#                                                     for p1node in p1parent.traverse("levelorder"):
-#                                                         if test_constraint(p1node, cdict, "p1", constraint_exact):
-#                                                             test = {}
-#                                                             test['p4'] = onode.get_leaf_names()
-#                                                             test['p3'] = p3node.get_leaf_names()
-#                                                             test['p2'] = p2node.get_leaf_names()
-#                                                             test['p1'] = p1node.get_leaf_names()
-#                                                             x = list(itertools.chain(*[sorted(test["p4"]) + \
-#                                                                                        sorted(test["p3"]) + \
-#                                                                                        sorted(test["p2"]) + \
-#                                                                                        sorted(test["p1"])]))
-#                                                             x = "_".join(x)
-#                                                             if x not in testset:
-#                                                                 tests.append(test)
-#                                                                 testset.add(x)
-#         return tests
-
-
-
 def test_constraint(node, cdict, tip, exact):
     names = set(node.get_leaf_names())
     const = set(cdict[tip])
@@ -786,6 +770,7 @@ class Sim(object):
         self.sims = sims
         self.nreps = nreps
         self.debug = debug
+
 
 
 def _simulate(self, nreps, admix=None, Ns=500000, gen=20):
