@@ -18,6 +18,7 @@ import os
 # pylint: disable=W0212
 # pylint: disable=C0301
 
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -295,6 +296,7 @@ def getassembly(args, parsedict):
     return data
 
 
+
 def _check_version():
     """ Test if there's a newer version and nag the user to upgrade."""
     import urllib2
@@ -323,6 +325,7 @@ def _check_version():
         pass
 
 
+
 def parse_command_line():
     """ Parse CLI args."""
 
@@ -348,6 +351,9 @@ def parse_command_line():
 
   * Subsample taxa during branching
     ipyrad -p params-data.txt -b newdata taxaKeepList.txt
+
+  * Download sequence data from SRA into directory 'rawdata/' 
+    ipyrad --download SRP021469 rawdata/ 
 
   * Documentation: http://ipyrad.readthedocs.io
     """)
@@ -410,6 +416,10 @@ def parse_command_line():
         type=str, nargs="?", const="default",
         help="connect to ipcluster profile (default: 'default')")
 
+    parser.add_argument("--download", metavar="download", dest="download",
+        type=str, nargs="*", default=None, #const="default",
+        help="download fastq files by accession (e.g., SRP or SRR)")
+
     ## if no args then return help message
     if len(sys.argv) == 1:
         parser.print_help()
@@ -425,6 +435,18 @@ def parse_command_line():
         sys.exit(1)
 
     return args
+
+
+
+def sratools_download(SRP, workdir='SRA_fastqs', force=False):
+    import ipyrad.analysis as ipa
+    sra = ipa.sratools(accession=SRP, workdir=workdir)
+    df = sra.fetch_runinfo((1,4,6,29,30))
+    print("")
+    df.rename(columns={"spots_with_mates": "mates"}, inplace=True)
+    print(df)
+    sra.run(name_fields=(30, 1), name_separator="_", force=force)
+    print("")
 
 
 
@@ -513,6 +535,15 @@ def main():
         merge_assemblies(args)
         sys.exit(1)
 
+    ## if download data do it and then exit
+    if args.download:
+        if len(args.download) == 1:
+            downloaddir = "rawdata"
+        else:
+            downloaddir = args.download[1]
+        sratools_download(args.download[0], workdir=downloaddir, force=args.force)
+        sys.exit(1)
+
     ## create new Assembly or load existing Assembly, quit if args.results
     elif args.params:
         parsedict = parse_params(args)
@@ -573,6 +604,7 @@ def main():
                      
         if args.results:
             showstats(parsedict)
+
 
 
 _MPI_CORES_ERROR = """

@@ -24,8 +24,9 @@ from ipyrad.assemble.util import IPyradWarningExit, progressbar
 
 ## raise warning if missing imports
 MISSING_IMPORTS = """
-You are missing required packages to use ipa.sratools. 
-First run the following two conda install commands:
+To use the ipa.sratools module there are just a few additional
+tools you need to install. First run the following two conda
+install commands and then try again:
 
   conda install -c bioconda sra-tools
   conda install -c bioconda entrez-direct
@@ -160,6 +161,11 @@ class SRA(object):
             sradir = os.path.join(self.workdir, "sra")
             if os.path.exists(sradir) and (not os.listdir(sradir)):
                 shutil.rmtree(sradir)
+            else:
+                print("Warning: One or more files failed to download/convert \n" \
+                     +"properly, perhaps it was interrupted. Try re-downloading\n" \
+                     +"these files:\n{}\n"
+                     .format(os.listdir(sradir)))
 
             ## cleanup ipcluster shutdown
             if ipyclient:
@@ -243,6 +249,7 @@ class SRA(object):
 
                 ## single job progress bar
                 if not ipyclient:
+                    sys.stdout.flush()
                     print("\rDownloading file {} of {}: {}".\
                         format(idx+1, df.Accession.shape[0], fpath), end="")                
 
@@ -300,7 +307,7 @@ class SRA(object):
         return fields
 
 
-    def fetch_runinfo(self, fields=None):
+    def fetch_runinfo(self, fields=None, quiet=False):
         """
         Call esearch to grep SRR info for a project (SRP). Use the command
         sra.fetch_fields to see available fields to be fetched. This function
@@ -314,7 +321,8 @@ class SRA(object):
             (1,4,6,29,30) returns a neat dataframe with Run IDs, 
             Number of reads (SE and PE), ScientificName, and SampleName. 
         """
-        print("\rFetching project data...", end="")
+        if not quiet:
+            print("\rFetching project data...", end="")
 
         ## if no entry then fetch (nearly) all fields.
         if fields == None:  

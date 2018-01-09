@@ -149,13 +149,18 @@ class Structure(object):
         nreps, 
         ipyclient=None,
         seed=12345, 
+        force=False,
         quiet=False, 
         ):
 
         """ 
         submits a job to run on the cluster and returns an asynchronous result
         object. K is the number of populations, randomseed if not set will be 
-        randomly drawn, ipyclient if not entered will raise an error. 
+        randomly drawn, ipyclient if not entered will raise an error. If nreps
+        is set then multiple jobs will be started from new seeds, each labeled
+        by its replicate number. If force=True then replicates will be overwritten, 
+        otherwise, new replicates will be created starting with the last file N 
+        found in the workdir. 
 
         Parameters:
         -----------
@@ -174,6 +179,10 @@ class Structure(object):
         seed: (int):
             Random number seed used for subsampling unlinked SNPs if a mapfile
             is linked to the Structure Object. 
+
+        force: (bool):
+            If force is true then old replicates are removed and new reps start
+            from rep-0. Otherwise, new reps start at end of existing rep numbers.
 
         quiet: (bool)
             Whether to print number of jobs submitted to stderr
@@ -228,11 +237,17 @@ class Structure(object):
         ## remove old jobs with this same name
         handle = OPJ(self.workdir, self.name+"-K-{}-*".format(kpop))
         oldjobs = glob.glob(handle)
-        for job in oldjobs:
-            os.remove(job)
+        if force:
+            for job in oldjobs:
+                os.remove(job)
+            repstart = 0
+            repend = nreps
+        else:
+            repstart = max([int(i.split("-")[-1][:-2]) for i in oldjobs])
+            repend = repstart + nreps
 
         ## check that there is a ipcluster instance running
-        for rep in xrange(nreps):
+        for rep in xrange(repstart, repend):
 
             ## sample random seed for this rep
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
@@ -255,7 +270,8 @@ class Structure(object):
                 self.asyncs.append(async)
 
             else:
-                sys.stderr.write("submitted 1 structure job [{}-K-{}]\n"\
+                if not quiet:
+                    sys.stderr.write("submitted 1 structure job [{}-K-{}]\n"\
                                  .format(self.name, kpop))
                 comm = _call_structure(*args)
                 return comm
@@ -328,9 +344,16 @@ class Structure(object):
 
 
 
-    def get_clumpp_table(self, kpop):
-        table = _get_clumpp_table(self, kpop)
+    def get_clumpp_table(self, kpop, max_var_multiple=2., quiet=False):
+        table = _get_clumpp_table(self, kpop, max_var_multiple, quiet)
         return table
+
+
+    def get_evanno_table(self, kpop, max_var_multiple=2., quiet=False):
+        table = _get_evanno_table(self, kpop, max_var_multiple, quiet)
+        return table
+
+
 
 
 
@@ -488,11 +511,11 @@ class _ClumppParams(Params):
         #self.kpop = 3
         #self.c = 3
         #self.r = 10
-        self.m = 2
+        self.m = 3
         self.w = 1
         self.s = 2
         self.greedy_option = 2
-        self.repeats = 1000
+        self.repeats = 50000
         self.permutationsfile = 0
         self.print_permuted_data = 0
         self.permuted_datafile = 0
@@ -510,11 +533,11 @@ class _ClumppParams(Params):
 
 
 
-def _get_clumpp_table(self, kpop):
+def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     """ private function to clumpp results"""
 
     ## concat results for k=x
-    reps = _concat_reps(self, kpop)
+    reps, excluded = _concat_reps(self, kpop, max_var_multiple, quiet)
     if reps:
         ninds = reps[0].inds
         nreps = len(reps)
@@ -560,12 +583,13 @@ def _get_clumpp_table(self, kpop):
     ofile = os.path.join(self.workdir, "{}-K-{}.outfile".format(self.name, kpop))
     if os.path.exists(ofile):
         csvtable = pd.read_csv(ofile, delim_whitespace=True, header=None)
-        table = csvtable.ix[:, 5:]
+        table = csvtable.loc[:, 5:]
     
         ## apply names to cols and rows
         table.columns = range(table.shape[1])
         table.index = self.labels
-        sys.stderr.write("mean scores across {} replicates.\n".format(nreps))
+        sys.stderr.write("[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
+            .format(kpop, nreps, nreps+excluded, max_var_multiple))
         return table
 
     else:
@@ -575,40 +599,108 @@ def _get_clumpp_table(self, kpop):
 
 
 
-def _concat_reps(self, kpop):
-    "combine replicates into single indfile, returns nreps, ninds"
+def _concat_reps(self, kpop, max_var_multiple, quiet):
+    """
+    Combine structure replicates into a single indfile, 
+    returns nreps, ninds. Excludes reps with too high of 
+    variance (set with max_variance_multiplier) to exclude
+    runs that did not converge. 
+    """
    
     ## make an output handle
     outf = os.path.join(self.workdir, 
         "{}-K-{}.indfile".format(self.name, kpop))
     
     ## combine replicates and write to indfile
+    excluded = 0
     reps = []
     with open(outf, 'w') as outfile:
         repfiles = glob.glob(
             os.path.join(self.workdir, 
                 self.name+"-K-{}-rep-*_f".format(kpop)))
+
+        ## get result as a Rep object
         for rep in repfiles:
             result = Rep(rep, kpop=kpop)
             reps.append(result)
-            outfile.write(result.stable)
-    return reps
+
+        ## exclude results with variance 2X above (median) ?(try min, mode?)
+        newreps = []
+        #across_reps_var_x = np.median([i.var_lnlik for i in reps])        
+        across_reps_var_x = np.min([i.var_lnlik for i in reps])
+        for rep in reps:
+            if (rep.var_lnlik / across_reps_var_x) < max_var_multiple:
+                newreps.append(rep)
+                outfile.write(rep.stable)
+            else:
+                excluded += 1
+
+    return newreps, excluded
 
 
 
-# class Clumpp(object):
-#     """ results from a clumpp of structure results """
-#     def __init__(self):
-#         self.nreps = 0
-#         self.table = None
-#         self.meanLK = 0
-#         self.LppK = 0
-#         self.evanno
+def _get_evanno_table(self, kpops, max_var_multiple, quiet):
+    """
+    Calculates Evanno method K value scores for a series
+    of permuted clumpp results. 
+    """
 
+    ## iterate across k-vals
+    kpops = sorted(kpops)
+    replnliks = []
 
-#         self.LnPK
-#         self.LnPPK
-#         self.deltaK
+    ## iterate across k-vals
+    kpops = sorted(kpops)
+    replnliks = []
+
+    for kpop in kpops:
+        ## concat results for k=x
+        reps, excluded = _concat_reps(self, kpop, max_var_multiple, quiet)
+        ## report if some results were excluded
+        if excluded:
+            sys.stderr.write(
+                "[K{}] {} reps excluded (not converged) see 'max_var_multiple'.\n"\
+                .format(kpop, excluded))
+
+        if reps:
+            ninds = reps[0].inds
+            nreps = len(reps)
+        else:
+            ninds = nreps = 0
+        if not reps:
+            print "no result files found"
+
+        ## all we really need is the lnlik
+        replnliks.append([i.est_lnlik for i in reps])
+
+    ## compare lnlik and var of results
+    tab = pd.DataFrame(
+        index=kpops,
+        data={
+            "Nreps": [len(i) for i in replnliks],
+            "lnPK": [0] * len(kpops),
+            "lnPPK": [0] * len(kpops),
+            "deltaK": [0] * len(kpops),
+            "estLnProbMean": [np.mean(i) for i in replnliks],
+            "estLnProbStdev": [np.std(i, ddof=1) for i in replnliks],
+        }
+        )
+
+    ## calculate Evanno's
+    for kpop in kpops[1:]:
+        tab.loc[kpop, "lnPK"] = tab.loc[kpop, "estLnProbMean"] - tab.loc[kpop-1, "estLnProbMean"]
+
+    for kpop in kpops[1:-1]:
+        tab.loc[kpop, "lnPPK"] = abs(tab.loc[kpop+1, "lnPK"] - tab.loc[kpop, "lnPK"])
+        tab.loc[kpop, "deltaK"] = (abs(
+                                    tab.loc[kpop+1, "estLnProbMean"] - \
+                                    2.0 * tab.loc[kpop, "estLnProbMean"] + \
+                                    tab.loc[kpop-1, "estLnProbMean"]) / \
+                                   tab.loc[kpop, "estLnProbStdev"])
+        
+    ## return table
+    return tab
+
 
 
 
@@ -622,13 +714,14 @@ class Rep(object):
         self.alpha = 0
         self.inds = 0
         self.kpop = kpop
-        
 
         ## get table string        
         psearch = re.compile(r"\)   :  ")
         dsearch = re.compile(r"\)    \d :  ")
         self.stable = self.parse(psearch, dsearch)
 
+        ## record if it is high variance
+        self.variance_multiple = abs(self.var_lnlik / self.mean_lnlik)
 
     def parse(self, psearch, dsearch):
         """ parse an _f structure output file """
@@ -680,6 +773,8 @@ class Rep(object):
 
             stable += "\n"
         return stable
+
+
 
 
 

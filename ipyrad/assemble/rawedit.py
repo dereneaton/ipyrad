@@ -184,15 +184,25 @@ def cutadaptit_single(data, sample):
     else:
         ## if GBS then the barcode can also be on the other side. 
         if data.paramsdict["datatype"] == "gbs":
+
             ## make full adapter (-revcompcut-revcompbarcode-adapter)
-            adapter = \
-                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
-              + fullcomp(data.barcodes[sample.name])[::-1] \
-              + data._hackersonly["p3_adapter"]
-            ## add incomplete adapter to extras (-recompcut-adapter)
-            data._hackersonly["p3_adapters_extra"].append(
-                fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
-              + data._hackersonly["p3_adapter"])
+            ## and add adapter without revcompbarcode
+            if data.barcodes:
+                adapter = \
+                    fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+                  + fullcomp(data.barcodes[sample.name])[::-1] \
+                  + data._hackersonly["p3_adapter"]
+                ## add incomplete adapter to extras (-recompcut-adapter)
+                data._hackersonly["p3_adapters_extra"].append(
+                    fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+                  + data._hackersonly["p3_adapter"])
+            else:
+                LOGGER.warning("No barcode information present, and is therefore not "+\
+                               "being used for adapter trimming of SE gbs data.")
+                ## else no search for barcodes on 3'
+                adapter = \
+                    fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
+                  + data._hackersonly["p3_adapter"]
         else:
             adapter = \
                 fullcomp(data.paramsdict["restriction_overhang"][1])[::-1] \
@@ -487,9 +497,11 @@ def run2(data, samples, force, ipyclient):
 
     ## concat is not parallelized (since it's disk limited, generally)
     subsamples = concat_reads(data, subsamples, ipyclient)
+
     ## cutadapt is parallelized by ncores/2 because cutadapt spawns threads
     lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
     run_cutadapt(data, subsamples, lbview)
+
     ## cleanup is ...
     assembly_cleanup(data)
 

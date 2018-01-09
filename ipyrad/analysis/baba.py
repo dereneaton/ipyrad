@@ -11,7 +11,7 @@
 from __future__ import print_function, division
 
 ## ipyrad tools
-import toytree
+
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
 from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
 from ipyrad.analysis.bpp import Params
@@ -33,6 +33,16 @@ try:
     import msprime as ms
 except ImportError:
     pass
+
+try:
+    import toytree
+except ImportError:
+    print("""
+        toytree not installed, some functions are not available
+        such as .generate_tests_from_tree() and .plot().
+        Install toytree with 'conda install toytree -c eaton-lab'.
+        """)
+
 
 ## set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
@@ -101,6 +111,28 @@ class Baba(object):
         ## results storage
         self.results_table = None
         self.results_boots = None
+        
+
+
+    @property
+    def taxon_table(self):
+        """
+        Returns the .tests list of taxa as a pandas dataframe. 
+        By auto-generating this table from tests it means that 
+        the table itself cannot be modified unless it is returned 
+        and saved. 
+        """
+        if self.tests:
+            keys = sorted(self.tests[0].keys())
+            if isinstance(self.tests, list):
+                ld = [[(key, i[key]) for key in keys] for i in self.tests]
+                dd = [dict(i) for i in ld]
+                df = pd.DataFrame(dd)
+                return df
+            else:
+                return pd.DataFrame(pd.Series(self.tests)).T
+        else:
+            return None
 
 
 
@@ -120,7 +152,10 @@ class Baba(object):
             An ipyparallel client object to distribute jobs to a cluster. 
         """
         self.results_table, self.results_boots = batch(self, ipyclient)
-        self.results_table.nloci = np.nan_to_num(self.results_table.nloci)\
+
+        ## skip this for 5-part test results
+        if not isinstance(self.results_table, list):
+            self.results_table.nloci = np.nan_to_num(self.results_table.nloci)\
                                                  .astype(int)
 
 
@@ -150,7 +185,7 @@ class Baba(object):
         use_edge_lengths=False, 
         collapse_outgroup=False, 
         pct_tree_x=0.5, 
-        pct_tree_y=0.7,
+        pct_tree_y=0.2,
         *args, 
         **kwargs):
 
@@ -247,7 +282,7 @@ def batch(
     idx = 0
 
     ## prepare data before sending to engines
-    ## if it's a str (locifile) then parse it
+    ## if it's a str (locifile) then parse it here just once.
     if isinstance(handle, str):
         with open(handle, 'r') as infile:
             loci = infile.read().strip().split("|\n")
@@ -255,11 +290,23 @@ def batch(
         pass #sims()
 
     ## iterate over tests (repeats mindicts if fewer than taxdicts)
-    for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
+    itests = iter(taxdicts)
+    imdict = itertools.cycle([mindicts])
+
+    #for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
+    for i in xrange(len(ipyclient)):
+
+        ## next entries unless fewer than len ipyclient, skip
+        try:
+            test = next(itests)
+            mindict = next(imdict)
+        except StopIteration:
+            continue
+
         ## if it's sim data then convert to an array
         if sims:
-            arr = _msp_to_arr(handle, test)
-            args = (arr, test, mindict, nboots)
+            loci = _msp_to_arr(handle, test)
+            args = (loci, test, mindict, nboots)
             print("not yet implemented")
             #asyncs[idx] = lbview.apply_async(dstat, *args)
         else:
@@ -268,6 +315,7 @@ def batch(
         idx += 1
 
     ## block until finished, print progress if requested.
+    finished = 0
     try:
         while 1:
             keys = [i for (i, j) in asyncs.items() if j.ready()]
@@ -279,26 +327,44 @@ def batch(
                 ## enter results for successful jobs
                 else:
                     _res, _bot = asyncs[job].result()
+                    
                     ## store D4 results
                     if _res.shape[0] == 1:
                         resarr[job] = _res.T.as_matrix()[:, 0]
                         bootsarr[job] = _bot
-                    ## store D5 results                        
+                    
+                    ## or store D5 results                        
                     else:   
-                        paneldict[job] = _res
+                        paneldict[job] = _res.T
 
-
-
+                    ## remove old job
                     del asyncs[job]
+                    finished += 1
 
-            ## count finished
-            fin = tot - len(asyncs) 
+                    ## submit next job if there is one.
+                    try:
+                        test = next(itests)
+                        mindict = next(imdict)
+                        if sims:
+                            loci = _msp_to_arr(handle, test)
+                            args = (loci, test, mindict, nboots)
+                            print("not yet implemented")
+                            #asyncs[idx] = lbview.apply_async(dstat, *args)
+                        else:
+                            args = [loci, test, mindict, nboots]
+                            asyncs[idx] = lbview.apply(dstat, *args)
+                        idx += 1
+                    except StopIteration:
+                        pass
+
+            ## count finished and break if all are done.
+            #fin = idx - len(asyncs)
             elap = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(tot, fin, 
-                " calculating D-stats  | {} | ".format(elap), spacer="")
+            printstr = " calculating D-stats  | {} | "
+            progressbar(tot, finished, printstr.format(elap), spacer="")
             time.sleep(0.1)
             if not asyncs:
-                print("")#\n")
+                print("")
                 break
 
     except KeyboardInterrupt as inst:
@@ -309,25 +375,49 @@ def batch(
             pass
         raise inst
 
-    ## dress up resarr as a Pandas DataFrame
-    if not names:
-        names = range(len(taxdicts))
-    #print("resarr")
-    #print(resarr)
-    resarr = pd.DataFrame(resarr, 
-        index=names,
-        columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
+    ## dress up resarr as a Pandas DataFrame if 4-part test
+    if len(test) == 4:
+        if not names:
+            names = range(len(taxdicts))
+        #print("resarr")
+        #print(resarr)
+        resarr = pd.DataFrame(resarr, 
+            index=names,
+            columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
 
-    ## sort results and bootsarr to match if test names were supplied
-    resarr = resarr.sort_index()
-    order = [list(resarr.index).index(i) for i in names]
-    bootsarr = bootsarr[order]
-    return resarr, bootsarr
+        ## sort results and bootsarr to match if test names were supplied
+        resarr = resarr.sort_index()
+        order = [list(resarr.index).index(i) for i in names]
+        bootsarr = bootsarr[order]
+        return resarr, bootsarr
+    else:
+        ## order results dfs
+        listres = []
+        for key in range(len(paneldict)):
+            listres.append(paneldict[key])
+            
+        ## make into a multi-index dataframe
+        ntests = len(paneldict)
+        multi_index = [
+            np.array([[i] * 3 for i in range(ntests)]).flatten(),
+            np.array(['p3', 'p4', 'shared'] * ntests),
+        ]
+        resarr = pd.DataFrame(
+            data=pd.concat(listres).as_matrix(), 
+            index=multi_index,
+            columns=listres[0].columns,
+            )
+        return resarr, None
+        #return listres, None  #_res.T, _bot
 
 
 
 def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     """ private function to perform a single D-stat test"""
+
+    #if isinstance(inarr, str):
+    #    with open(inarr, 'r') as infile:
+    #        inarr = infile.read().strip().split("|\n")
 
     # ## get data as an array from loci file
     # ## if loci-list then parse arr from loci
@@ -350,7 +440,8 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     #    raise Exception("Must enter either a 'locifile' or 'arr'")
 
     ## run tests
-    if len(taxdict) == 4:
+    #if len(taxdict) == 4:
+    if arr.shape[1] == 4:
 
         ## get results
         res, boots = _get_signif_4(arr, nboots)
@@ -383,6 +474,8 @@ def _loci_to_arr(loci, taxdict, mindict):
     nloci = len(loci)
     keep = np.zeros(nloci, dtype=np.bool_)
     arr = np.zeros((nloci, 4, 300), dtype=np.float64)
+
+    ## six rows b/c one for each p3, and for the fused p3 ancestor
     if len(taxdict) == 5:
         arr = np.zeros((nloci, 6, 300), dtype=np.float64)
 
@@ -547,64 +640,6 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=False):
                                                                         tests.append(test)
                                                                         testset.add(x)
     return tests                                            
-
-
-
-# def tree2tests(newick, constraint_dict=None, constraint_exact=True):
-#     """
-#     Returns dict of all possible four-taxon splits in a tree. Assumes
-#     the user has entered a rooted tree. Skips polytomies.
-#     """
-#     ## make tree
-#     tree = toytree.ete3mini.Tree(newick)
-#     testset = set()
-    
-#     ## constraints
-#     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
-#     if constraint_dict:
-#         cdict.update(constraint_dict)
-
-#     ## traverse root to tips. Treat the left as outgroup, then the right.
-#     tests = []
-#     ## topnode must have children
-#     for topnode in tree.traverse("levelorder"):
-#         for oparent in topnode.children:
-#             for onode in oparent.traverse("levelorder"):
-#                 if test_constraint(onode, cdict, "p4", constraint_exact):
-#                     #print(topnode.name, onode.name)
-                    
-#                     ## p123 parent is sister to oparent
-#                     p123parent = oparent.get_sisters()[0]
-#                     for p123node in p123parent.traverse("levelorder"):
-#                         for p3parent in p123node.children:
-#                             for p3node in p3parent.traverse("levelorder"):
-#                                 if test_constraint(p3node, cdict, "p3", constraint_exact):
-#                                     #print(topnode.name, onode.name, p3node.name)
-                                    
-#                                     ## p12 parent is sister to p3 parent
-#                                     p12parent = p3parent.get_sisters()[0]
-#                                     for p12node in p12parent.traverse("levelorder"):
-#                                         if p12node.children:
-#                                             p2parent = p12node.children[1]#for p2parent in p12parent.children[1]:
-#                                             p1parent = p12node.children[0]
-#                                             for p2node in p2parent.traverse("levelorder"):
-#                                                 if test_constraint(p2node, cdict, "p2", constraint_exact):
-#                                                     for p1node in p1parent.traverse("levelorder"):
-#                                                         if test_constraint(p1node, cdict, "p1", constraint_exact):
-#                                                             test = {}
-#                                                             test['p4'] = onode.get_leaf_names()
-#                                                             test['p3'] = p3node.get_leaf_names()
-#                                                             test['p2'] = p2node.get_leaf_names()
-#                                                             test['p1'] = p1node.get_leaf_names()
-#                                                             x = list(itertools.chain(*[sorted(test["p4"]) + \
-#                                                                                        sorted(test["p3"]) + \
-#                                                                                        sorted(test["p2"]) + \
-#                                                                                        sorted(test["p1"])]))
-#                                                             x = "_".join(x)
-#                                                             if x not in testset:
-#                                                                 tests.append(test)
-#                                                                 testset.add(x)
-#         return tests
 
 
 
@@ -786,6 +821,7 @@ class Sim(object):
         self.sims = sims
         self.nreps = nreps
         self.debug = debug
+
 
 
 def _simulate(self, nreps, admix=None, Ns=500000, gen=20):

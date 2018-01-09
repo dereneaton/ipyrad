@@ -22,7 +22,6 @@ COLORS = {"p1": toyplot.color.Palette()[0],
 
 
 
-
 ## the main function.
 def baba_panel_plot(
     ttree,
@@ -77,8 +76,9 @@ class Panel(object):
         ## get attributes from toytree object
         ttree._decompose_tree(
             orient='down', 
-            use_edge_lengths=False, 
-            fixed_order=ttree._fixed_order)
+            use_edge_lengths=True, #False, 
+            fixed_order=ttree._fixed_order,
+            )
         self.tree = ttree
         self.tests = tests
         self.boots = boots
@@ -126,7 +126,8 @@ class Panel(object):
             "style_test_labels": {"font-size": "12px"},
             "style_results_labels": {"font-size": "12px"},            
             "debug": False,
-            "tree_style": "c",            
+            "tree_style": "p",
+            "tip_labels_align": True,
             "show_tip_labels": True,
         }
         self.check_test_names()
@@ -146,7 +147,8 @@ class Panel(object):
 
     @property
     def xpos(self):
-        return self.tree.verts[:, 0][self.tree.verts[:, 1] == self.tree.verts[:, 1].min()]
+        return range(len(self.tree))
+        #self.tree.verts[:, 0][self.tree.verts[:, 1] == self.tree.verts[:, 1].min()]
     @property
     def xspacer(self):
         return abs(self.xpos[1] - self.xpos[0])
@@ -434,7 +436,10 @@ def add_test_numbers(panel, axes):
     #    labels = test_labels
     #else:
     #    raise IPyradError("  label_tests must be a list or boolean")
-    labels = range(1, len(panel.tests) + 1)
+
+    ## 0-index b/c Python
+    #labels = range(1, len(panel.tests) + 1)
+    labels = range(len(panel.tests))
 
     ## update styling, text-anchor and anchor-shift are a bit hidden from users
     tipstyle = {"text-anchor":"start", "-toyplot-anchor-shift":"0"}
@@ -512,9 +517,11 @@ def _panel_tree(panel, axes):
             )
     ## add tree to the axes
     panel.tree.draw(
+        axes=axes,
         orient='down', 
         tip_labels=False,
-        axes=axes
+        tip_labels_align=panel.kwargs["tip_labels_align"],
+        tree_style=panel.kwargs["tree_style"],
         )
 
 
