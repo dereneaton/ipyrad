@@ -992,7 +992,9 @@ def nworker(data, chunk):
 
         ## these axis calls cannot be numbafied, but I can't 
         ## find a faster way that is JIT compiled, and I've
-        ## really, really, really tried.
+        ## really, really, really tried. Tried again now that
+        ## numba supports axis args for np.sum. Still can't 
+        ## get speed improvements by numbifying this loop.
         nmask = np.any(nall_mask[sidx], axis=0)
         nmask += np.all(seqs == seqs[0], axis=0) 
 
