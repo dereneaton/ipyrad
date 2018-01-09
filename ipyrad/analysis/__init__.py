@@ -14,9 +14,9 @@ __interactive__ = 1
 
 #from .tree import Tree as tree
 #from toytree import tree
+#from .tetrad import Tetrad as tetrad
 from .structure import Structure as structure
 from .treemix import Treemix as treemix
-#from .tetrad import Tetrad as tetrad
 from .tetrad2 import Tetrad as tetrad
 from .raxml import Raxml as raxml
 from .bucky import Bucky as bucky
@@ -24,3 +24,4 @@ from .baba import Baba as baba
 from .bpp import Bpp as bpp
 from .sratools import SRA as sratools
 from .twiist import Twiist as twiist
+
