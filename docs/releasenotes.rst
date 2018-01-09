@@ -5,6 +5,22 @@
 Release Notes
 =============
 
+0.7.20
+------
+**January 09, 2018**
+
+- fixed gphocs output format
+- A note to add a feature for the future.
+- abba baba cookbook updated for new code
+- updated baba plot to work better with updated toytree
+- baba: added functions for parsing results of 5-taxon tests and improved plotting func.
+- added notes
+- added CLI command to do quick downloads from SRA. Useful for tutorials especially
+- update bpp cookbook
+- added functions to calculate Evanno K and to exlude reps based on convergence stats
+- added funcs to bpp tool to load existing results and to parse results across replicates
+- ipp jobs are submitted as other jobs finish so that RAM doesn't fill up with queued arrays
+
 0.7.19
 ------
 **November 16, 2017**
