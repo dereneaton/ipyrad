@@ -132,6 +132,7 @@ def branch_assembly(args, parsedict):
     ## Get the current assembly
     data = getassembly(args, parsedict)
 
+
     ## get arguments to branch command
     bargs = args.branch
 
@@ -142,6 +143,13 @@ def branch_assembly(args, parsedict):
 
     ## look for subsamples
     if len(bargs) > 1:
+        ## Branching and subsampling at step 6 is a bad idea, it messes up
+        ## indexing into the hdf5 cluster file. Warn against this.
+        if any([x.stats.state == 6 for x in data.samples.values()]):
+            pass
+            ## TODODODODODO
+            #print("wat")
+
         ## are we removing or keeping listed samples?
         subsamples = bargs[1:]
 
