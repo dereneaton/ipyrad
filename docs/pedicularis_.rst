@@ -24,20 +24,22 @@ assembly head over there to check out fun ways to analyze the data.
 Download the data set (*Pedicularis*)
 ---------------------------------------
 These data are archived on the NCBI sequence read archive (SRA) under 
-accession id SRP021469. For convenience, the data are also hosted at a 
-public Dropbox link which is a bit easier to access. Run the code below to 
-download and decompress the fastq data files, which will save them into a 
-directory called ``example_empirical_data/``. The compressed file size is 
-approximately 1.1GB.
+accession id SRP021469. We've written a convenient wrapper for the tool
+sra-tools that allows ipyrad to download data from SRA, SRP, ERA, etc., 
+IDs really easily. (For more information on this see 
+`this post <http://eaton-lab.org/posts/sra-downloads/>`__ ). 
+Run the code below to download and decompress the fastq data files, 
+which will save them into a directory called ``example_empirical_data/``, 
+or whatever you wish to name it. The directory will be created if it doesn't
+already exist. The compressed file size is approximately 1.1GB.
 
 .. code:: bash
 
-    ## curl grabs the data from a public dropbox url
-    ## the curl command uses an upper-case o argument, not a zero.
-    >>> curl -LkO https://dl.dropboxusercontent.com/u/2538935/example_empirical_rad.tar.gz
-    
-    ## the tar command decompresses the data directory
-    >>> tar -xvzf example_empirical_rad.tar.gz
+    ## first we need to download two additional tools
+    >>> conda install -c bioconda sra-tools entrez-direct
+
+    ## then, download the fastq data from the SRA database
+    >>> ipyrad --download SRP021469 example_empirical_data/
 
 
 Setup a params file
