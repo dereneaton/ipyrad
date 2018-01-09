@@ -13,6 +13,7 @@ from __future__ import print_function
 import os
 import sys
 import time
+import glob
 import shutil
 import datetime
 import pandas as pd
@@ -24,17 +25,15 @@ from ipyrad.assemble.util import IPyradWarningExit, progressbar
 
 ## raise warning if missing imports
 MISSING_IMPORTS = """
-To use the ipa.sratools module there are just a few additional
-tools you need to install. First run the following two conda
-install commands and then try again:
+To use the ipa.sratools module you must install two additional 
+libraries which can be done with the following conda command. 
 
-  conda install -c bioconda sra-tools
-  conda install -c bioconda entrez-direct
+  conda install -c bioconda sra-tools entrez-direct
 """
 
 ACCESSION_ID = """
 Accession ID must be either a Run or Study accession, i.e., 
-it must have on the following prefixes:
+it must have one the following prefixes:
   Study: SRR, ERR, DRR
   Project: SRP, ERP, DRP
 """
@@ -162,10 +161,17 @@ class SRA(object):
             if os.path.exists(sradir) and (not os.listdir(sradir)):
                 shutil.rmtree(sradir)
             else:
-                print("Warning: One or more files failed to download/convert \n" \
-                     +"properly, perhaps it was interrupted. Try re-downloading\n" \
-                     +"these files:\n{}\n"
-                     .format(os.listdir(sradir)))
+                ## print warning
+                print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
+                ## remove fastq file matching to cached sra file
+                for srr in os.listdir(sradir):
+                    isrr = srr.split(".")[0]
+                    ipath = os.path.join(self.workdir, "*_{}*.gz".format(isrr))
+                    ifile = glob.glob(ipath)[0]
+                    if os.path.exists(ifile):
+                        os.remove(ifile)
+                ## remove cache of sra files
+                shutil.rmtree(sradir)
 
             ## cleanup ipcluster shutdown
             if ipyclient:
@@ -203,7 +209,7 @@ class SRA(object):
         """
 
         ## get Run data with default fields (1,4,6,30)
-        df = self.fetch_runinfo(range(31))
+        df = self.fetch_runinfo(range(31), quiet=True)
         sys.stdout.flush()
 
         ## if not ipyclient then use multiprocessing
@@ -247,12 +253,6 @@ class SRA(object):
                 paired = df.spots_with_mates.values.astype(int).nonzero()[0].any()
                 fpath = os.path.join(self.workdir, outname+".fastq.gz")
 
-                ## single job progress bar
-                if not ipyclient:
-                    sys.stdout.flush()
-                    print("\rDownloading file {} of {}: {}".\
-                        format(idx+1, df.Accession.shape[0], fpath), end="")                
-
                 ## skip if exists and not force
                 skip = False
                 if force:
@@ -262,7 +262,12 @@ class SRA(object):
                     if os.path.exists(fpath):                
                         skip = True
                         sys.stdout.flush()
-                        print(" - skip - already exists in workdir")
+                        print("[skip] file already exists: {}".format(fpath))
+
+                ## single job progress bar
+                tidx = df.Accession.shape[0]
+                #if not ipyclient:
+                    
 
                 ## submit job to run
                 if not skip:
@@ -271,6 +276,7 @@ class SRA(object):
                         async = lb.apply_async(call_fastq_dump_on_SRRs, *args)
                         asyncs.append(async)
                     else:
+                        print("Downloading file {}/{}: {}".format(idx+1, tidx, fpath))
                         call_fastq_dump_on_SRRs(*args)
                         sys.stdout.flush()
 
@@ -448,6 +454,13 @@ def fields_checker(fields):
 
     return fields
 
+
+FAILED_DOWNLOAD = """
+Warning: One or more files failed to finish downloading or converting to fastq.
+To avoid corruption the file was file was removed. Try downloading again to get
+any missing files. The following samples were affected:
+{}
+"""
 
 
 COLNAMES = [
