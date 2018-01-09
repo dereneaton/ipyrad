@@ -111,6 +111,28 @@ class Baba(object):
         ## results storage
         self.results_table = None
         self.results_boots = None
+        
+
+
+    @property
+    def taxon_table(self):
+        """
+        Returns the .tests list of taxa as a pandas dataframe. 
+        By auto-generating this table from tests it means that 
+        the table itself cannot be modified unless it is returned 
+        and saved. 
+        """
+        if self.tests:
+            keys = sorted(self.tests[0].keys())
+            if isinstance(self.tests, list):
+                ld = [[(key, i[key]) for key in keys] for i in self.tests]
+                dd = [dict(i) for i in ld]
+                df = pd.DataFrame(dd)
+                return df
+            else:
+                return pd.DataFrame(pd.Series(self.tests)).T
+        else:
+            return None
 
 
 
@@ -130,7 +152,10 @@ class Baba(object):
             An ipyparallel client object to distribute jobs to a cluster. 
         """
         self.results_table, self.results_boots = batch(self, ipyclient)
-        self.results_table.nloci = np.nan_to_num(self.results_table.nloci)\
+
+        ## skip this for 5-part test results
+        if not isinstance(self.results_table, list):
+            self.results_table.nloci = np.nan_to_num(self.results_table.nloci)\
                                                  .astype(int)
 
 
@@ -160,7 +185,7 @@ class Baba(object):
         use_edge_lengths=False, 
         collapse_outgroup=False, 
         pct_tree_x=0.5, 
-        pct_tree_y=0.7,
+        pct_tree_y=0.2,
         *args, 
         **kwargs):
 
@@ -257,7 +282,7 @@ def batch(
     idx = 0
 
     ## prepare data before sending to engines
-    ## if it's a str (locifile) then parse it
+    ## if it's a str (locifile) then parse it here just once.
     if isinstance(handle, str):
         with open(handle, 'r') as infile:
             loci = infile.read().strip().split("|\n")
@@ -271,9 +296,12 @@ def batch(
     #for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
     for i in xrange(len(ipyclient)):
 
-        ## next entries
-        test = next(itests)
-        mindict = next(imdict)
+        ## next entries unless fewer than len ipyclient, skip
+        try:
+            test = next(itests)
+            mindict = next(imdict)
+        except StopIteration:
+            continue
 
         ## if it's sim data then convert to an array
         if sims:
@@ -307,7 +335,7 @@ def batch(
                     
                     ## or store D5 results                        
                     else:   
-                        paneldict[job] = _res
+                        paneldict[job] = _res.T
 
                     ## remove old job
                     del asyncs[job]
@@ -347,20 +375,40 @@ def batch(
             pass
         raise inst
 
-    ## dress up resarr as a Pandas DataFrame
-    if not names:
-        names = range(len(taxdicts))
-    #print("resarr")
-    #print(resarr)
-    resarr = pd.DataFrame(resarr, 
-        index=names,
-        columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
+    ## dress up resarr as a Pandas DataFrame if 4-part test
+    if len(test) == 4:
+        if not names:
+            names = range(len(taxdicts))
+        #print("resarr")
+        #print(resarr)
+        resarr = pd.DataFrame(resarr, 
+            index=names,
+            columns=["dstat", "bootmean", "bootstd", "Z", "ABBA", "BABA", "nloci"])
 
-    ## sort results and bootsarr to match if test names were supplied
-    resarr = resarr.sort_index()
-    order = [list(resarr.index).index(i) for i in names]
-    bootsarr = bootsarr[order]
-    return resarr, bootsarr
+        ## sort results and bootsarr to match if test names were supplied
+        resarr = resarr.sort_index()
+        order = [list(resarr.index).index(i) for i in names]
+        bootsarr = bootsarr[order]
+        return resarr, bootsarr
+    else:
+        ## order results dfs
+        listres = []
+        for key in range(len(paneldict)):
+            listres.append(paneldict[key])
+            
+        ## make into a multi-index dataframe
+        ntests = len(paneldict)
+        multi_index = [
+            np.array([[i] * 3 for i in range(ntests)]).flatten(),
+            np.array(['p3', 'p4', 'shared'] * ntests),
+        ]
+        resarr = pd.DataFrame(
+            data=pd.concat(listres).as_matrix(), 
+            index=multi_index,
+            columns=listres[0].columns,
+            )
+        return resarr, None
+        #return listres, None  #_res.T, _bot
 
 
 
@@ -392,7 +440,8 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     #    raise Exception("Must enter either a 'locifile' or 'arr'")
 
     ## run tests
-    if len(taxdict) == 4:
+    #if len(taxdict) == 4:
+    if arr.shape[1] == 4:
 
         ## get results
         res, boots = _get_signif_4(arr, nboots)
@@ -425,6 +474,8 @@ def _loci_to_arr(loci, taxdict, mindict):
     nloci = len(loci)
     keep = np.zeros(nloci, dtype=np.bool_)
     arr = np.zeros((nloci, 4, 300), dtype=np.float64)
+
+    ## six rows b/c one for each p3, and for the fused p3 ancestor
     if len(taxdict) == 5:
         arr = np.zeros((nloci, 6, 300), dtype=np.float64)
 
