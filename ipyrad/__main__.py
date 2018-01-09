@@ -344,8 +344,8 @@ def parse_command_line():
   * Subsample taxa during branching
     ipyrad -p params-data.txt -b newdata taxaKeepList.txt
 
-  * Download sequence data from SRA into directory 'rawdata/' 
-    ipyrad --download SRP021469 rawdata/ 
+  * Download sequence data from SRA into directory 'sra-fastqs/' 
+    ipyrad --download SRP021469 sra-fastqs/ 
 
   * Documentation: http://ipyrad.readthedocs.io
     """)
@@ -433,10 +433,16 @@ def parse_command_line():
 def sratools_download(SRP, workdir='SRA_fastqs', force=False):
     import ipyrad.analysis as ipa
     sra = ipa.sratools(accession=SRP, workdir=workdir)
+
+    ## get run info and print spacer after
     df = sra.fetch_runinfo((1,4,6,29,30))
     print("")
+
+    ## rename spots for prettier printing and send to screen
     df.rename(columns={"spots_with_mates": "mates"}, inplace=True)
     print(df)
+
+    ## run download with default name_fields and separator
     sra.run(name_fields=(30, 1), name_separator="_", force=force)
     print("")
 
@@ -527,10 +533,10 @@ def main():
         merge_assemblies(args)
         sys.exit(1)
 
-    ## if download data do it and then exit
+    ## if download data do it and then exit. Runs single core in CLI. 
     if args.download:
         if len(args.download) == 1:
-            downloaddir = "rawdata"
+            downloaddir = "sra-fastqs"
         else:
             downloaddir = args.download[1]
         sratools_download(args.download[0], workdir=downloaddir, force=args.force)
