@@ -2042,7 +2042,7 @@ def write_gphocs(data, sidx):
         outfile.write('locus{} {} {}\n'.format(str(i), len(sequences), sequence_length))
 
         # Iterate through each sequence read at this locus and write it to the file.
-        for name,sequence in zip(names,sequences):
+        for name,sequence in zip(names, editsequences):
             # Clean up the sequence data to make gphocs happy. Only accepts UPPER
             # case chars for bases, and only accepts 'N' for missing data.
             outfile.write(name+" "*(longname-len(name))+sequence + "\n")
