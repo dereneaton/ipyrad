@@ -94,6 +94,7 @@ with your new branched assembly without affecting it's pre-branched
 parent assembly. 
 
 Examples using the ipyrad CLI
+
 .. code-block:: bash
 
     ## branch and only keep 3 samples from assembly data1
@@ -104,6 +105,7 @@ Examples using the ipyrad CLI
 
 
 Examples using the ipyrad API
+
 .. code-block:: bash
 
     ## branch and only keep 3 samples from assembly data1
