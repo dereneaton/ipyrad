@@ -58,8 +58,8 @@ right you will see a tab where you can select <new> and then
     jupyter-notebook
 
 
-Starting a jupyter-notebook **remotely**
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Starting a jupyter-notebook **remotely** (HPC)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Because jupyter works by sending and receiving information 
 (i.e., it's a server) it is easy to run a jupyter notebook through 
 your browser even if the notebook server is running on a remote computer 

@@ -3,11 +3,11 @@
 .. _analysis:
 
 
-Analysis tools
-==============
+The ipyrad analysis toolkit
+===========================
 
 ipyrad_ includes a suite of analysis tools that are designed to make it 
-easy to run inference programs (e.g., STRUCTURE, TREEMIX, BPP) on the data
+easy to run inference programs (e.g., STRUCTURE, BUCKy, BPP) on the data
 in an efficient way by sampling distributions of loci or SNPs from your RAD
 data, grouping individuals into populations, filtering for missing data, 
 and parallelizing computation. 
@@ -16,17 +16,18 @@ In this section of the documentation we have a number of example analyses
 in the form of Jupyter notebooks, which is a useful tool for doing 
 reproducible science. In fact, ipyrad has been designed since its inception 
 for the goal of working seamlessly within jupyter. Check out the tutorials 
-below on using ipyrad in Jupyter using its Python API. Then check out the
-analysis tools notebooks. 
+below on using Jupyter notebooks, and using ipyrad in notebooks. 
+Then check out the analysis tools notebooks. 
 
 
-Using Jupyter notebooks 
-^^^^^^^^^^^^^^^^^^^^^^^^^
-This is an optional tool to use with ipyrad, but one that we strongly recommend. 
-
+Jupyter notebooks 
+^^^^^^^^^^^^^^^^^^
+This is an optional tool to use with ipyrad, but one that we strongly 
+recommend learning. See the video and link below to learn about notebooks and
+how to run them locally or on an HPC cluster. 
 
 + `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__ (Video)
-+ `Running jupyter on a HPC cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__  
++ `Running jupyter on a HPC cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__ 
 .. + `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
 .. + `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
 
@@ -43,8 +44,8 @@ These notebooks show example usage of the ipyrad API.
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 These notebook show how to do parallelized downstream analyses in Jupyter-notebooks, and to generate advanced input files for many programs using the ipyrad analysis tools. 
 
-+ `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `TETRAD quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>`__
++ `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `BPP species tree and delimitation <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bpp-species-delimitation.ipynb>`__
 + `TREEMIX admixture graph inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-treemix-pedicularis.ipynb>`__
 + `BUCKY concordance tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
