@@ -28,9 +28,7 @@ how to run them locally or on an HPC cluster.
 
 + `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__ (Video)
 + `Running jupyter on a HPC cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__ 
-.. + `Intro to ipyparallel (the parallel client used by ipyrad) <http://ipyrad.readthedocs.io/ipyparallel.html>`__
-.. + `Using ipyrad with jupyter and git <http://ipyrad.readthedocs.io/Git_Sync.html>`__>`__
-
++ `More on parallelization with ipyparallel <<http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/ipyparallel-tutorial.ipynb>`__ 
 
 *ipyrad* API full example notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -47,11 +45,12 @@ These notebook show how to do parallelized downstream analyses in Jupyter-notebo
 + `TETRAD quartet species tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-quartet-species-tree.ipynb>`__
 + `RAxML concatenation tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-raxml-pedicularis.ipynb>`__
 + `BPP species tree and delimitation <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bpp-species-delimitation.ipynb>`__
-+ `TREEMIX admixture graph inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-treemix-pedicularis.ipynb>`__
 + `BUCKY concordance tree inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-bucky.ipynb>`__
 + `STRUCTURE population structure <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-structure-pedicularis.ipynb>`__
 + `STRUCTURE with pop assignments <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/example-structure-popdata.ipynb>`__
 + `ABBA BABA admixture <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-abba-baba.ipynb>`__
++ `TREEMIX admixture graph inference <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/cookbook-treemix-pedicularis.ipynb>`__
+
 
 
 *command line programs*
@@ -59,7 +58,7 @@ These notebook show how to do parallelized downstream analyses in Jupyter-notebo
 These pages discuss further information about some command-line analysis tools 
 that are frequently used with RAD-seq data.  
 
-+ `RAxML phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
+.. + `RAxML phylogenetic inference CLI <http://ipyrad.readthedocs.io/raxml.html>`__
 + `TETRAD command line <http://ipyrad.readthedocs.io/tetrad.html>`__   
 
 
