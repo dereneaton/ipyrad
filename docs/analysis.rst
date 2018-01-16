@@ -28,7 +28,7 @@ how to run them locally or on an HPC cluster.
 
 + `Intro to Jupyter Notebooks <https://www.youtube.com/watch?v=HW29067qVWk&t=47s>`__ (Video)
 + `Running jupyter on a HPC cluster <http://ipyrad.readthedocs.io/HPC_Tunnel.html>`__ 
-+ `More on parallelization with ipyparallel <<http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/ipyparallel-tutorial.ipynb>`__ 
++ `More on parallelization with ipyparallel <http://nbviewer.jupyter.org/github/dereneaton/ipyrad/blob/master/tests/ipyparallel-tutorial.ipynb>`__ 
 
 *ipyrad* API full example notebooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
