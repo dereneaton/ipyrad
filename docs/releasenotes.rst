@@ -5,6 +5,23 @@
 Release Notes
 =============
 
+0.7.21
+------
+**January 23, 2018**
+
+- Fix step 2 with imported fastq ungzipped.
+- docs update
+- update ipa structure notebook
+- update ipyparallel tutorial
+- update ipa structure notebook
+- docs updates
+- update docs
+- update docs
+- improved cleanup on sra tools
+- updated bucky cookbook
+- updated --help for sra download
+- updated docs for sra download
+
 0.7.20
 ------
 **January 09, 2018**
