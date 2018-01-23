@@ -656,8 +656,12 @@ def concat_multiple_inputs(data, sample):
         ## are gzipped, cat still works). Grab index 0 of tuples for R1s.
         cmd1 = ["cat"] + [i[0] for i in sample.files.fastqs]
 
+        isgzip = ".gz"
+        if not sample.files.fastqs[0][0].endswith(".gz"):
+            isgzip = ""
+
         ## write to new concat handle
-        conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz")
+        conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq{}".format(isgzip))
         with open(conc1, 'w') as cout1:
             proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
@@ -668,7 +672,7 @@ def concat_multiple_inputs(data, sample):
         conc2 = 0
         if "pair" in data.paramsdict["datatype"]:
             cmd2 = ["cat"] + [i[1] for i in sample.files.fastqs]
-            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz")
+            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq{}".format(isgzip))
             with open(conc2, 'w') as cout2:
                 proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
