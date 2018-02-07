@@ -2,7 +2,7 @@
 
 
 ## dunders
-__version__ = "-h"
+__version__ = "0.7.21"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
