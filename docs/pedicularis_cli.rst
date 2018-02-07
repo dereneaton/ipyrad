@@ -28,18 +28,14 @@ approximately 1.1GB.
 
 .. code:: bash
 
-    ## curl grabs the data from a public dropbox url
-    ## the curl command uses an upper-case o argument, not a zero.
-    >>> curl -LskO https://dl.dropboxusercontent.com/u/2538935/example_empirical_rad.tar.gz
-    
-    ## the tar command decompresses the data directory
-    >>> tar -xvzf example_empirical_rad.tar.gz
+    ## download fastq data from the SRA database
+    >>> ipyrad --download SRP021469 example_empirical_data/
 
 
 Setup a base params file
 ~~~~~~~~~~~~~~~~~~~~~~~~
 We start by using the ``-n`` argument to create a new named Assembly. 
-I use the name ``base`` to indicate that this is the base assembly from 
+I'll use the name ``base`` to indicate that this is the base assembly from 
 which we will later create several branches.
 
 .. code:: bash

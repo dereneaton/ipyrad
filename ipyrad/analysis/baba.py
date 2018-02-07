@@ -160,7 +160,7 @@ class Baba(object):
 
     def generate_tests_from_tree(self, 
         constraint_dict=None, 
-        constraint_exact=True, 
+        constraint_exact=False, 
         verbose=True):
         """ 
         Returns a list of all possible 4-taxon tests on a tree (newick file). 
@@ -169,7 +169,25 @@ class Baba(object):
 
         Parameters:
         -----------
-        ... 
+        constraint_dict: dict
+            The constraint dict will limit the tests generated to only include
+            the taxa listed in the dict. 
+
+        constraint_exact: bool or list
+            If constraint_exact is True then only samples meeting the exact 
+            entries in the constraint_dict will be returned, as opposed to all
+            subsets of those entries. If a list then different values can be 
+            applied to [p1, p2, p3, p4]. For example, if the constraint_dict is
+            {"p1": sample1, "p2": sample2, "p3": sample3, "p4": [sample4, sample5]},
+            then with constraint_exact==False you get:
+            
+            sample1, sample2, sample3, sample4
+            sample1, sample2, sample3, sample5
+            sample1, sample2, sample3, [sample4, sample5]
+
+            and with constraint_exact==True you get only:
+
+            sample1, sample2, sample3, [sample4, sample5]
         """
         if not self.newick:
             raise AttributeError("no newick tree information in {self}.newick")
@@ -181,14 +199,47 @@ class Baba(object):
 
     def plot(self, 
         show_test_labels=True, 
-        use_edge_lengths=False, 
+        use_edge_lengths=True,         
         collapse_outgroup=False, 
         pct_tree_x=0.5, 
         pct_tree_y=0.2,
+        subset_tests=None,
+        #toytree_kwargs=None,
         *args, 
         **kwargs):
 
-        """ draw a multi-panel figure with tree, tests, and results """
+        """ 
+        Draw a multi-panel figure with tree, tests, and results 
+        
+        Parameters:
+        -----------
+        height: int
+        ...
+
+        width: int
+        ...
+
+        show_test_labels: bool
+        ...
+
+        use_edge_lengths: bool
+        ...
+
+        collapse_outgroups: bool
+        ...
+
+        pct_tree_x: float
+        ...
+
+        pct_tree_y: float
+        ...
+
+        subset_tests: list
+        ...
+
+        ...
+
+        """
 
         ## check for attributes
         if not self.newick:
@@ -207,11 +258,20 @@ class Baba(object):
             use_edge_lengths=use_edge_lengths,
             )
 
+        ## subset test to show fewer
+        if subset_tests != None:
+            #tests = self.tests[subset_tests]
+            tests = [self.tests[i] for i in subset_tests]
+            boots = self.results_boots[subset_tests]
+        else:
+            tests = self.tests
+            boots = self.results_boots
+
         ## make the plot
         canvas, axes, panel = baba_panel_plot(
             ttree=ttree,
-            tests=self.tests,
-            boots=self.results_boots,
+            tests=tests, 
+            boots=boots, 
             show_test_labels=show_test_labels, 
             use_edge_lengths=use_edge_lengths, 
             collapse_outgroup=collapse_outgroup, 
@@ -584,7 +644,8 @@ def _loci_to_arr(loci, taxdict, mindict):
 
 
 
-def tree2tests(newick, constraint_dict=None, constraint_exact=False):
+## This should be re-written as a dynamic func
+def tree2tests(newick, constraint_dict, constraint_exact):
     """
     Returns dict of all possible four-taxon splits in a tree. Assumes
     the user has entered a rooted tree. Skips polytomies.
@@ -592,6 +653,13 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=False):
     ## make tree
     tree = toytree.tree(newick)
     testset = set()
+
+    ## expand constraint_exact if list
+    if isinstance(constraint_exact, bool):
+        constraint_exact = [constraint_exact] * 4
+    elif isinstance(constraint_exact, list):
+        if len(constraint_exact) != len(constraint_dict):
+            raise Exception("constraint_exact must be bool or [bool, bool, bool, bool]")
     
     ## constraints
     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
@@ -605,7 +673,7 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=False):
     for topnode in tree.tree.traverse("levelorder"):
         for oparent in topnode.children:
             for onode in oparent.traverse("levelorder"):
-                if test_constraint(onode, cdict, "p4", constraint_exact):
+                if test_constraint(onode, cdict, "p4", constraint_exact[3]):
                     #print(topnode.name, onode.name)
                     
                     ## p123 parent is sister to oparent
@@ -613,7 +681,7 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=False):
                     for p123node in p123parent.traverse("levelorder"):
                         for p3parent in p123node.children:
                             for p3node in p3parent.traverse("levelorder"):
-                                if test_constraint(p3node, cdict, "p3", constraint_exact):
+                                if test_constraint(p3node, cdict, "p3", constraint_exact[2]):
                                     #print(topnode.name, onode.name, p3node.name)
                                     
                                     ## p12 parent is sister to p3parent
@@ -621,23 +689,23 @@ def tree2tests(newick, constraint_dict=None, constraint_exact=False):
                                     for p12node in p12parent.traverse("levelorder"):
                                         for p2parent in p12node.children:
                                             for p2node in p2parent.traverse("levelorder"):
-                                                if test_constraint(p2node, cdict, "p2", constraint_exact):
+                                                if test_constraint(p2node, cdict, "p2", constraint_exact[1]):
 
                                                     ## p12 parent is sister to p3parent
                                                     p1parent = p2parent.get_sisters()[0]
                                                     for p1node in p1parent.traverse("levelorder"):
-                                                        for p1parent in p1node.children:
-                                                            for p1node in p1parent.traverse("levelorder"):
-                                                                if test_constraint(p1node, cdict, "p1", constraint_exact):
-                                                                    x = (onode.name, p3node.name, p2node.name, p1node.name)
-                                                                    test = {}
-                                                                    test['p4'] = onode.get_leaf_names()
-                                                                    test['p3'] = p3node.get_leaf_names()
-                                                                    test['p2'] = p2node.get_leaf_names()
-                                                                    test['p1'] = p1node.get_leaf_names()
-                                                                    if x not in testset:
-                                                                        tests.append(test)
-                                                                        testset.add(x)
+                                                        #for p1parent in p1node.children:
+                                                        #    for p1node in p1parent.traverse("levelorder"):
+                                                        if test_constraint(p1node, cdict, "p1", constraint_exact[0]):
+                                                            x = (onode.name, p3node.name, p2node.name, p1node.name)
+                                                            test = {}
+                                                            test['p4'] = onode.get_leaf_names()
+                                                            test['p3'] = p3node.get_leaf_names()
+                                                            test['p2'] = p2node.get_leaf_names()
+                                                            test['p1'] = p1node.get_leaf_names()
+                                                            if x not in testset:
+                                                                tests.append(test)
+                                                                testset.add(x)
     return tests                                            
 
 

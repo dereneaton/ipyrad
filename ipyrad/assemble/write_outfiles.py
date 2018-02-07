@@ -2442,7 +2442,7 @@ def reftrick(iseq, consdict):
 
     for col in xrange(iseq.shape[1]):
         ## expand colums with ambigs and remove N-
-        fcounts = np.zeros(90, dtype=np.int64)
+        fcounts = np.zeros(111, dtype=np.int64)
         counts = np.bincount(iseq[:, col])#, minlength=90)
         fcounts[:counts.shape[0]] = counts
         ## set N and - to zero, wish numba supported minlen arg

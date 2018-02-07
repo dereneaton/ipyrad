@@ -237,7 +237,7 @@ class Structure(object):
         ## remove old jobs with this same name
         handle = OPJ(self.workdir, self.name+"-K-{}-*".format(kpop))
         oldjobs = glob.glob(handle)
-        if force:
+        if force or (not oldjobs):
             for job in oldjobs:
                 os.remove(job)
             repstart = 0
@@ -284,7 +284,12 @@ class Structure(object):
 
 
     def write_structure_files(self, kpop, rep=1):
-        """ prepares input files for running structure"""
+        """ 
+        Prepares input files for running structure. Users typically do not need
+        to call this function since it is called internally by .run(). But it
+        is optionally available here in case users wish to generate files and 
+        run structure separately.
+        """
 
         ## check params
         self.mainparams.numreps = int(self.mainparams.numreps)
@@ -344,13 +349,91 @@ class Structure(object):
 
 
 
-    def get_clumpp_table(self, kpop, max_var_multiple=2., quiet=False):
-        table = _get_clumpp_table(self, kpop, max_var_multiple, quiet)
-        return table
+    def get_clumpp_table(self, kvalues, max_var_multiple=0, quiet=False):
+        """
+        Returns a dictionary of results tables for making structure barplots.
+        This calls the same functions used in get_evanno_table() to call 
+        CLUMPP to permute replicates.
+
+        Parameters:
+        -----------
+        kvalues : list or int
+            A kvalue or list of kvalues to run CLUMPP on and return a 
+            results table. 
+
+        max_var_multiple: int
+            A multiplier value to use as a filter for convergence of runs. 
+            Default=0=no filtering. As an example, if 10 replicates 
+            were run then the variance of the run with the minimum variance is
+            used as a benchmark. If other runs have a variance that is N times 
+            greater then that run will be excluded. Remember, if replicate runs 
+            sampled different distributions of SNPs then it is not unexpected that 
+            they will have very different variances. However, you may still want 
+            to exclude runs with very high variance since they likely have 
+            not converged. 
+
+        Returns:
+        --------
+        table : dict or pd.DataFrame
+            A dictionary of dataframes with admixture proportions.
+        """
+        ## do not allow bad vals
+        if max_var_multiple:
+            if max_var_multiple < 1:
+                raise ValueError('max_var_multiple must be >1')
+
+        if isinstance(kvalues, int):
+            return _get_clumpp_table(self, kvalues, max_var_multiple, quiet)
+        else:
+            tabledict = {}
+            for kpop in kvalues:
+                table = _get_clumpp_table(self, kpop, max_var_multiple, quiet)
+                tabledict[kpop] = table
+            return tabledict
 
 
-    def get_evanno_table(self, kpop, max_var_multiple=2., quiet=False):
-        table = _get_evanno_table(self, kpop, max_var_multiple, quiet)
+
+    def get_evanno_table(self, kvalues, max_var_multiple=0, quiet=False):
+        """
+        Calculates the Evanno table from results files for tests with 
+        K-values in the input list kvalues. The values lnPK, lnPPK,
+        and deltaK are calculated. The max_var_multiplier arg can be used
+        to exclude results files based on variance of the likelihood as a 
+        proxy for convergence. 
+
+        Parameters:
+        -----------
+        kvalues : list
+            The list of K-values for which structure was run for this object.
+            e.g., kvalues = [3, 4, 5]
+
+        max_var_multiple: int
+            A multiplier value to use as a filter for convergence of runs. 
+            Default=0=no filtering. As an example, if 10 replicates 
+            were run then the variance of the run with the minimum variance is
+            used as a benchmark. If other runs have a variance that is N times 
+            greater then that run will be excluded. Remember, if replicate runs 
+            sampled different distributions of SNPs then it is not unexpected that 
+            they will have very different variances. However, you may still want 
+            to exclude runs with very high variance since they likely have 
+            not converged. 
+
+        quiet: bool
+            Suppresses printed messages about convergence.
+
+        Returns:
+        --------
+        table : pandas.DataFrame
+            A data frame with LPK, LNPPK, and delta K. The latter is typically
+            used to find the best fitting value of K. But be wary of over
+            interpreting a single best K value. 
+        """
+        ## do not allow bad vals
+        if max_var_multiple:
+            if max_var_multiple < 1:
+                raise ValueError('max_variance_multiplier must be >1')
+
+        table = _get_evanno_table(self, kvalues, max_var_multiple, quiet)
         return table
 
 
@@ -588,8 +671,10 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
         ## apply names to cols and rows
         table.columns = range(table.shape[1])
         table.index = self.labels
-        sys.stderr.write("[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
-            .format(kpop, nreps, nreps+excluded, max_var_multiple))
+        if not quiet:
+            sys.stderr.write(
+                "[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
+                .format(kpop, nreps, nreps+excluded, max_var_multiple))
         return table
 
     else:
@@ -599,7 +684,7 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
 
 
 
-def _concat_reps(self, kpop, max_var_multiple, quiet):
+def _concat_reps(self, kpop, max_var_multiple, quiet, **kwargs):
     """
     Combine structure replicates into a single indfile, 
     returns nreps, ninds. Excludes reps with too high of 
@@ -624,16 +709,34 @@ def _concat_reps(self, kpop, max_var_multiple, quiet):
             result = Rep(rep, kpop=kpop)
             reps.append(result)
 
-        ## exclude results with variance 2X above (median) ?(try min, mode?)
+        ## exclude results with variance NX above (min) 
         newreps = []
-        #across_reps_var_x = np.median([i.var_lnlik for i in reps])        
-        across_reps_var_x = np.min([i.var_lnlik for i in reps])
+        if len(reps) > 1:
+            min_var_across_reps = np.min([i.var_lnlik for i in reps])
+        else:
+            min_var_across_reps = reps[0].var_lnlik
+
+        ## iterate over reps
         for rep in reps:
-            if (rep.var_lnlik / across_reps_var_x) < max_var_multiple:
+
+            ## store result w/o filtering
+            if not max_var_multiple:
                 newreps.append(rep)
                 outfile.write(rep.stable)
+
+            ## use max-var-multiple as a filter for convergence                
             else:
-                excluded += 1
+                #print(
+                #    rep.var_lnlik, 
+                #    min_var_across_reps, 
+                #    rep.var_lnlik / min_var_across_reps, 
+                #    max_var_multiple)
+                ## e.g., repvar is 1.05X minvar. We keep it if maxvar <= 1.05
+                if (rep.var_lnlik / min_var_across_reps) <= max_var_multiple:
+                    newreps.append(rep)
+                    outfile.write(rep.stable)
+                else:
+                    excluded += 1
 
     return newreps, excluded
 
@@ -649,16 +752,14 @@ def _get_evanno_table(self, kpops, max_var_multiple, quiet):
     kpops = sorted(kpops)
     replnliks = []
 
-    ## iterate across k-vals
-    kpops = sorted(kpops)
-    replnliks = []
-
     for kpop in kpops:
         ## concat results for k=x
         reps, excluded = _concat_reps(self, kpop, max_var_multiple, quiet)
+
         ## report if some results were excluded
         if excluded:
-            sys.stderr.write(
+            if not quiet:
+                sys.stderr.write(
                 "[K{}] {} reps excluded (not converged) see 'max_var_multiple'.\n"\
                 .format(kpop, excluded))
 
@@ -674,6 +775,13 @@ def _get_evanno_table(self, kpops, max_var_multiple, quiet):
         replnliks.append([i.est_lnlik for i in reps])
 
     ## compare lnlik and var of results
+    if len(replnliks) > 1:
+        lnmean = [np.mean(i) for i in replnliks]
+        lnstds = [np.std(i, ddof=1) for i in replnliks]
+    else:
+        lnmean = replnliks
+        lnstds = np.nan
+
     tab = pd.DataFrame(
         index=kpops,
         data={
@@ -681,17 +789,19 @@ def _get_evanno_table(self, kpops, max_var_multiple, quiet):
             "lnPK": [0] * len(kpops),
             "lnPPK": [0] * len(kpops),
             "deltaK": [0] * len(kpops),
-            "estLnProbMean": [np.mean(i) for i in replnliks],
-            "estLnProbStdev": [np.std(i, ddof=1) for i in replnliks],
+            "estLnProbMean": lnmean, 
+            "estLnProbStdev": lnstds,
         }
         )
 
     ## calculate Evanno's
     for kpop in kpops[1:]:
-        tab.loc[kpop, "lnPK"] = tab.loc[kpop, "estLnProbMean"] - tab.loc[kpop-1, "estLnProbMean"]
+        tab.loc[kpop, "lnPK"] = tab.loc[kpop, "estLnProbMean"] \
+                              - tab.loc[kpop-1, "estLnProbMean"]
 
     for kpop in kpops[1:-1]:
-        tab.loc[kpop, "lnPPK"] = abs(tab.loc[kpop+1, "lnPK"] - tab.loc[kpop, "lnPK"])
+        tab.loc[kpop, "lnPPK"] = abs(tab.loc[kpop+1, "lnPK"] \
+                                   - tab.loc[kpop, "lnPK"])
         tab.loc[kpop, "deltaK"] = (abs(
                                     tab.loc[kpop+1, "estLnProbMean"] - \
                                     2.0 * tab.loc[kpop, "estLnProbMean"] + \
