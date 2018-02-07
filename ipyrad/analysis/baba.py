@@ -11,7 +11,6 @@
 from __future__ import print_function, division
 
 ## ipyrad tools
-
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
 from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
 from ipyrad.analysis.bpp import Params
