@@ -731,7 +731,8 @@ def _concat_reps(self, kpop, max_var_multiple, quiet, **kwargs):
                 #    min_var_across_reps, 
                 #    rep.var_lnlik / min_var_across_reps, 
                 #    max_var_multiple)
-                if (rep.var_lnlik / min_var_across_reps) < max_var_multiple:
+                ## e.g., repvar is 1.05X minvar. We keep it if maxvar <= 1.05
+                if (rep.var_lnlik / min_var_across_reps) <= max_var_multiple:
                     newreps.append(rep)
                     outfile.write(rep.stable)
                 else:
