@@ -100,18 +100,18 @@ Examples using the ipyrad CLI
     ## branch and only keep 3 samples from assembly data1
     >>> ipyrad -n data1 -b data2 1A0 1B0 1C0
 
-    ## branch and only exclude 3 samples from assembly data1
+    ## and/or, branch and only exclude 3 samples from assembly data1
     >>> ipyrad -n data1 -b data3 - 1A0 1B0 1C0
 
 
-Examples using the ipyrad API
+Examples using the ipyrad Python API 
 
 .. code-block:: bash
 
     ## branch and only keep 3 samples from assembly data1
     >>> data1.branch("data2", subsamples=["1A0", "1B0", "1C0"])
 
-    ## branch and only exclude 3 samples from assembly data1
+    ## and/or, branch and only exclude 3 samples from assembly data1
     >>> keep_list = [i for i in data1.samples.keys() if i not in ["1A0", "1B0", "1C0"]]
     >>> data1.branch("data3", subsamples=keep_list)
 
