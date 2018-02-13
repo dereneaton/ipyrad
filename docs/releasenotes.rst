@@ -5,6 +5,22 @@
 Release Notes
 =============
 
+0.7.22
+------
+**February 13, 2018**
+
+- bug fix to bpp.py
+- updated tetrad cookbook
+- ipa: structure has max_var_multiple option, and documentation now includes it.
+- update baba cookbook
+- API user guide update
+- bug fix: allow for 'n' character in reftrick
+- ipa: can reload structure results, better API design for summarizing results, better documentation
+- allow subsetting in baba plot, and bug fix for generate_tests dynamic func
+- undo dumb commit
+- added --download to the docs example
+-  "Updating ipyrad/__init__.py to version - -h
+
 -h
 --
 **January 31, 2018**
