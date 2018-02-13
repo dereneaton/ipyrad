@@ -360,11 +360,11 @@ class Bpp(object):
                 ctlfile = self._write_ctlfile()
                 
                 ## submit to engines
-                async = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, alg00))
+                async = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, is_alg00))
                 self.asyncs.append(async)
 
                 ## save tree file if alg 00
-                if alg00:
+                if is_alg00:
                     self.files.treefiles.append(
                         ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre")
 
