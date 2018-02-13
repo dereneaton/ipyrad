@@ -800,8 +800,8 @@ def _get_evanno_table(self, kpops, max_var_multiple, quiet):
                               - tab.loc[kpop-1, "estLnProbMean"]
 
     for kpop in kpops[1:-1]:
-        tab.loc[kpop, "lnPPK"] = abs(tab.loc[kpop+1, "lnPK"] \
-                                   - tab.loc[kpop, "lnPK"])
+        tab.loc[kpop, "lnPPK"] = abs(tab.loc[kpop+1, "lnPK"] 
+                                     - tab.loc[kpop, "lnPK"])
         tab.loc[kpop, "deltaK"] = (abs(
                                     tab.loc[kpop+1, "estLnProbMean"] - \
                                     2.0 * tab.loc[kpop, "estLnProbMean"] + \
