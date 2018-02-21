@@ -5,10 +5,6 @@
 Release Notes
 =============
 
--h
---
-**January 31, 2018**
-
 0.7.21
 ------
 **January 23, 2018**
@@ -19,8 +15,6 @@ Release Notes
 - update ipyparallel tutorial
 - update ipa structure notebook
 - docs updates
-- update docs
-- update docs
 - improved cleanup on sra tools
 - updated bucky cookbook
 - updated --help for sra download
@@ -47,15 +41,10 @@ Release Notes
 **November 16, 2017**
 
 - bugfix; error was raised in no barcodes during step2 filtering for gbs data. Now just a warning is printed
-- bugfix; error was raised in no barcodes during step2 filtering for gbs data. Now just a warning is printed
 - Fixed structure conda meta.yaml
 - Fix ipcluster warning message.
 - Adding to the faq explaining stats better
 - new working meta.yaml
-- trying alternatives with setup files for jupyter conda bug fix
-- trying alternatives with setup files for jupyter conda bug fix
-- trying alternatives with setup files for jupyter conda bug fix
-- trying alternatives with setup files for jupyter conda bug fix
 - trying alternatives with setup files for jupyter conda bug fix
 - updating setup.py stuff to try to fix jupyter missing in conda install
 
@@ -67,7 +56,6 @@ Release Notes
 - skip concat edits of merged reads if merge file exists unless force flag is set
 - added a progress bar tracker for reference indexing
 - speed improvement to refmapping, only tests merge of read pairs if their mapped positions overlap
-- update to docs
 - update to docs
 - update API userguide
 - added twiist tool
