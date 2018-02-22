@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.7.23
+------
+**February 21, 2018**
+
+- mergefix
+- merge fix
+- some releasenotes fixes
+
 =======
 0.7.23
 ------
