@@ -6,6 +6,13 @@ Release Notes
 =============
 
 =======
+0.7.23
+------
+**February 21, 2018**
+
+- Fix filter_min_trim_len not honoring the setting in the params file.
+
+
 0.7.22
 ------
 **February 13, 2018**

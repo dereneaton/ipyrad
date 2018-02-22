@@ -1850,7 +1850,7 @@ def _paramschecker(self, param, newvalue):
         self.paramsdict['filter_adapters'] = int(newvalue)
 
     elif param == 'filter_min_trim_len':
-        newvalue = int(newvalue)
+        self.paramsdict["filter_min_trim_len"] = int(newvalue)
 
     elif param == 'max_alleles_consens':
         self.paramsdict['max_alleles_consens'] = int(newvalue)
