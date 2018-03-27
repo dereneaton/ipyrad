@@ -247,3 +247,9 @@ Here is an example of the first few lines of this block in the stats file:
 **sum_var** is calculated identical to **sum_pis**, so it does look weird but it's right.
 
 The reason the counts in, for example, row 1 do not appear to agree for var and pis is because the value of row 1 for pis *includes all* loci with only one pis irrespective of the number of autapomorphies, whereas the value for var records all loci with *only one* of either of these. 
+
+How to fix the `IOError(Unable to create file IOError(Unable to create file...` error
+-------------------------------------------------------------------------------------
+The HDF5_USE_FILE_LOCKING error is caused by the fact that your cluster filesystem is NFS (or some other network based filesystem). You can disable hdf5 file locking by setting an environment variable `export  HDF5_USE_FILE_LOCKING=FALSE`. See here for more info:
+
+http://hdf-forum.184993.n3.nabble.com/HDF5-files-on-NFS-td4029577.html
