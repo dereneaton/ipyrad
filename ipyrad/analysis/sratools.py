@@ -162,7 +162,8 @@ class SRA(object):
                 shutil.rmtree(sradir)
             else:
                 ## print warning
-                print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
+                if os.path.exists(sradir) and os.listdir(sradir):
+                    print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
                 ## remove fastq file matching to cached sra file
                 for srr in os.listdir(sradir):
                     isrr = srr.split(".")[0]
@@ -171,7 +172,8 @@ class SRA(object):
                     if os.path.exists(ifile):
                         os.remove(ifile)
                 ## remove cache of sra files
-                shutil.rmtree(sradir)
+                if os.path.exists(sradir):
+                    shutil.rmtree(sradir)
 
             ## cleanup ipcluster shutdown
             if ipyclient:
@@ -268,7 +270,6 @@ class SRA(object):
                 tidx = df.Accession.shape[0]
                 #if not ipyclient:
                     
-
                 ## submit job to run
                 if not skip:
                     args = (self, srr, outname, paired)
