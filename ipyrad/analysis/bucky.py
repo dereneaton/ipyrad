@@ -5,23 +5,23 @@
 from __future__ import print_function
 
 import os
-import sys
+# import sys
 import glob
 import time
 import datetime
-import itertools
+# import itertools
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import subprocess as sps
 from collections import Counter
 from ipyrad.assemble.util import IPyradWarningExit, Params, progressbar
 
 
 ## does not require toytree for analysis, only plotting
-try:
-    import toytree
-except ImportError:
-    pass
+# try:
+#     import toytree
+# except ImportError:
+#     pass
 
 
 class Bucky(object):
