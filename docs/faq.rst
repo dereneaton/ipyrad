@@ -253,3 +253,22 @@ How to fix the `IOError(Unable to create file IOError(Unable to create file...` 
 The HDF5_USE_FILE_LOCKING error is caused by the fact that your cluster filesystem is NFS (or some other network based filesystem). You can disable hdf5 file locking by setting an environment variable `export  HDF5_USE_FILE_LOCKING=FALSE`. See here for more info:
 
 http://hdf-forum.184993.n3.nabble.com/HDF5-files-on-NFS-td4029577.html
+
+Why am I getting the 'empty varcounts' error during step 7?
+-----------------------------------------------------------
+Occasionally during step 7 you will see this error:
+
+.. code-block::
+    Exception: empty varcounts array. This could be because no samples                                                                                                    
+    passed filtering, or it could be because you have overzealous filtering.                                                                                              
+    Check the values for `trim_loci` and make sure you are not trimming the                                                                                               
+    edge too far.
+
+This can actually be caused by a couple of different problems that all result in the same behavior, namely that you are filtering out *all* loci.
+
+**trim_loci** It's true that if you set this parameter too aggressively all loci will be trimmed completely and thus there will be no data to output.
+
+**min_samples_locs** Another way you can eliminate all data is by setting this parameter too high. Try dropping it way down, to like 3, then rerunning to get a better idea of what an appropriate value would be based on sample depths.
+
+**pop_assign_file** A third way you can get this error is related to the previous one. The last line of the pop_assign_file is used for specifying min_sample per population for writing a locus. If you mis-specify the values for the pops in this line then it's possible to filter out all your data and thus obtain the above error.
+
