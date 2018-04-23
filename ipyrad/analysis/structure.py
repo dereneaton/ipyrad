@@ -20,6 +20,13 @@ from ipyrad.assemble.util import Params, IPyradWarningExit
 
 OPJ = os.path.join
 
+MISSING_IMPORTS = """
+To use the ipa.structure module you must install two additional 
+libraries which can be done with the following conda command. 
+
+  conda install -c ipyrad structure clumpp
+  conda install -c eaton-lab toytree
+"""
 
 ## These are almost all default values.
 class Structure(object):
