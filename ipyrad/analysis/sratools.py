@@ -162,8 +162,13 @@ class SRA(object):
                 shutil.rmtree(sradir)
             else:
                 ## print warning
-                if os.path.exists(sradir) and os.listdir(sradir):
-                    print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
+                try:
+                    if os.path.exists(sradir) and os.listdir(sradir):
+                        print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
+                    except OSError as inst:
+                        ## If sra dir doesn't even exist something is broken.
+                        raise IPyradWarningExit("Download failed. Exiting.")
+
                 ## remove fastq file matching to cached sra file
                 for srr in os.listdir(sradir):
                     isrr = srr.split(".")[0]
