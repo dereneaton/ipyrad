@@ -50,12 +50,12 @@ pd.set_option('precision', 3)
 class Baba(object):
     "new baba class object"
     def __init__(self, 
-        data=None, 
-        tests=None, 
-        newick=None, 
-        nboots=1000, 
+        data=None,
+        tests=None,
+        newick=None,
+        nboots=1000,
         mincov=1):
-        """ 
+        """
         ipyrad.analysis Baba Class object.
 
         Parameters
@@ -199,13 +199,14 @@ class Baba(object):
 
     def plot(self, 
         show_test_labels=True, 
-        use_edge_lengths=True,         
+        use_edge_lengths=False,         
         collapse_outgroup=False, 
         pct_tree_x=0.5, 
         pct_tree_y=0.2,
         subset_tests=None,
+        prune_tree_to_tests=False,
         #toytree_kwargs=None,
-        *args, 
+        *args,
         **kwargs):
 
         """ 
@@ -253,13 +254,13 @@ class Baba(object):
 
         ## re-decompose the tree
         ttree = toytree.tree(
-            self.newick, 
-            orient='down', 
+            self.newick,
+            orient='down',
             use_edge_lengths=use_edge_lengths,
             )
 
         ## subset test to show fewer
-        if subset_tests != None:
+        if subset_tests is not None:
             #tests = self.tests[subset_tests]
             tests = [self.tests[i] for i in subset_tests]
             boots = self.results_boots[subset_tests]
@@ -267,17 +268,24 @@ class Baba(object):
             tests = self.tests
             boots = self.results_boots
 
+        ## if prune tree
+        if prune_tree_to_tests:
+            alltesttaxa = set(itertools.chain(*self.taxon_table.values[0]))
+            ttree = ttree.drop_tips([i for i in ttree.get_tip_labels()
+                                     if i not in alltesttaxa])
+            ttree.tree.ladderize()
+
         ## make the plot
         canvas, axes, panel = baba_panel_plot(
             ttree=ttree,
-            tests=tests, 
-            boots=boots, 
-            show_test_labels=show_test_labels, 
-            use_edge_lengths=use_edge_lengths, 
-            collapse_outgroup=collapse_outgroup, 
+            tests=tests,
+            boots=boots,
+            show_test_labels=show_test_labels,
+            use_edge_lengths=use_edge_lengths,
+            collapse_outgroup=collapse_outgroup,
             pct_tree_x=pct_tree_x,
             pct_tree_y=pct_tree_y,
-            *args, 
+            *args,
             **kwargs)
         return canvas, axes, panel
 
@@ -349,8 +357,12 @@ def batch(
         pass #sims()
 
     ## iterate over tests (repeats mindicts if fewer than taxdicts)
-    itests = iter(taxdicts)
-    imdict = itertools.cycle([mindicts])
+    if not taxdicts:
+        print("no tests found")
+        return
+    else:
+        itests = iter(taxdicts)
+        imdict = itertools.cycle([mindicts])
 
     #for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
     for i in xrange(len(ipyclient)):
@@ -659,7 +671,8 @@ def tree2tests(newick, constraint_dict, constraint_exact):
         constraint_exact = [constraint_exact] * 4
     elif isinstance(constraint_exact, list):
         if len(constraint_exact) != len(constraint_dict):
-            raise Exception("constraint_exact must be bool or [bool, bool, bool, bool]")
+            raise Exception(
+                "constraint_exact must be bool or list of bools of length N")
     
     ## constraints
     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
@@ -758,7 +771,7 @@ def _reffreq2(ancestral, iseq, consdict):
     
     ## fill in both copies
     for seq in xrange(iseq.shape[0]):
-        for col in xrange(iseq.shape[1]):  
+        for col in xrange(iseq.shape[1]):
 
             ## get this base and check if it is hetero
             base = iseq[seq][col]
@@ -788,7 +801,7 @@ def _reffreq2(ancestral, iseq, consdict):
 
 @numba.jit(nopython=True)
 def _prop_dstat(arr):
-    
+
     ## numerator
     abba = ((1.-arr[:, 0]) * (arr[:, 1]) * (arr[:, 2]) * (1.-arr[:, 3]))  
     baba = ((arr[:, 0]) * (1.-arr[:, 1]) * (arr[:, 2]) * (1.-arr[:, 3]))
@@ -801,7 +814,7 @@ def _prop_dstat(arr):
         dst = top.sum() / float(sbot)
     else:
         dst = 0
-    
+
     return abba.sum(), baba.sum(), dst
 
 
