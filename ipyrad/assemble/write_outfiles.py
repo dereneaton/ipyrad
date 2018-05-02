@@ -317,14 +317,17 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
 
 
-def select_samples(dbsamples, samples):
+def select_samples(dbsamples, samples, pidx=None):
     """
     Get the row index of samples that are included. If samples are in the
     'excluded' they were already filtered out of 'samples' during _get_samples.
     """
     ## get index from dbsamples
     samples = [i.name for i in samples]
-    sidx = [list(dbsamples).index(i) for i in samples]
+    if pidx:
+        sidx = [list(dbsamples[pidx]).index(i) for i in samples]
+    else:
+        sidx = [list(dbsamples).index(i) for i in samples]
     sidx.sort()
     return sidx
 
@@ -333,7 +336,8 @@ def select_samples(dbsamples, samples):
 def filter_all_clusters(data, samples, ipyclient):
     """
     Open the clust_database HDF5 array with seqs, catg, and filter data. 
-    Fill the remaining filters.
+    Fill the remaining filters. If this assembly was branched to exclude taxa
+    since step 6 then we skip that taxa from the database.
     """
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
@@ -354,16 +358,19 @@ def filter_all_clusters(data, samples, ipyclient):
 
     ## get the indices of the samples that we are going to include
     sidx = select_samples(dbsamples, samples)
+
     ## do the same for the populations samples
     if data.populations:
         data._populations = {}
         for pop in data.populations:
             try:
                 _samps = [data.samples[i] for i in data.populations[pop][1]]
-                data._populations[pop] = (data.populations[pop][0],
-                                          select_samples(dbsamples, _samps))
+                data._populations[pop] = (
+                    data.populations[pop][0],
+                    select_samples(dbsamples, _samps, sidx))
             except:
-                print("    Sample in populations file not present in assembly - {}".format(data.populations[pop][1]))
+                print("Sample in populations file not present in assembly - {}"
+                      .format(data.populations[pop][1]))
                 raise
                                                 
     LOGGER.info("samples %s \n, dbsamples %s \n, sidx %s \n",
@@ -825,24 +832,26 @@ def init_arrays(data):
     nloci = co5["seqs"].shape[0]
 
     ## make array for snp string, 2 cols, - and *
-    snps = io5.create_dataset("snps", (nloci, maxlen, 2),
-                              dtype=np.bool,
-                              chunks=(chunks, maxlen, 2),
-                              compression='gzip')
+    snps = io5.create_dataset("snps", 
+        (nloci, maxlen, 2),
+        dtype=np.bool,
+        chunks=(chunks, maxlen, 2),
+        compression='gzip')
     snps.attrs["chunksize"] = chunks
     snps.attrs["names"] = ["-", "*"]
 
     ## array for filters that will be applied in step7
     filters = io5.create_dataset("filters", (nloci, 6), dtype=np.bool)
-    filters.attrs["filters"] = ["duplicates", "max_indels",
-                                "max_snps", "max_shared_hets",
-                                "min_samps", "max_alleles"]
+    filters.attrs["filters"] = [
+        "duplicates", "max_indels", "max_snps", 
+        "max_shared_hets", "min_samps", "max_alleles"]
 
     ## array for edgetrimming
-    edges = io5.create_dataset("edges", (nloci, 5),
-                               dtype=np.uint16,
-                               chunks=(chunks, 5),
-                               compression="gzip")
+    edges = io5.create_dataset("edges", 
+        (nloci, 5),
+        dtype=np.uint16,
+        chunks=(chunks, 5),
+        compression="gzip")
     edges.attrs["chunksize"] = chunks
     edges.attrs["names"] = ["R1_L", "R1_R", "R2_L", "R2_R", "sep"]
 
@@ -879,6 +888,8 @@ def filter_stacks(data, sidx, hslice):
 
     ## we need to use upper to skip lowercase allele storage
     ## this slows down the rate of loading in data by a ton.
+    # if we slice superints on sidx here, then we need to redefine the taxon
+    # indices in _populations to match teh reduced size array.
     superints = np.char.upper(io5["seqs"][hslice[0]:hslice[1], sidx,]).view(np.int8)
     LOGGER.info("superints shape {}".format(superints.shape))
 
@@ -902,8 +913,8 @@ def filter_stacks(data, sidx, hslice):
     LOGGER.info('passed minhet %s', hslice[0])
 
     ## ploidy filter
-    pldfilter = io5["nalleles"][hslice[0]:hslice[1]].max(axis=1) > \
-                                         data.paramsdict["max_alleles_consens"]
+    pldfilter = io5["nalleles"][hslice[0]:hslice[1]].max(axis=1) > (
+        data.paramsdict["max_alleles_consens"])
 
     ## indel filter, needs a fresh superints b/c get_edges does (-)->(N)
     indfilter = filter_indels(data, superints, edgearr)
