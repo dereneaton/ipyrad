@@ -5,6 +5,18 @@
 Release Notes
 =============
 
+0.7.24
+------
+**May 03, 2018**
+
+- Better handling of utf-8 in sample names by default.
+- Add docs in the faq about the empty varcounts array
+- Catch an exception in sratools raised by non-existant sra directory.
+- Add HDF5 file locking fix to the faq.
+- Add docs to peddrad notebook.
+- Adding PE-ddRAD analysis notebook.
+- Add the right imports error message to the structure analysis tool.
+
 0.7.23
 ------
 **February 21, 2018**
