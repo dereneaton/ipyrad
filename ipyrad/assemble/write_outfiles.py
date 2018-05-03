@@ -30,6 +30,7 @@ import gzip
 import h5py
 import re
 import os
+import io
 from collections import Counter, OrderedDict
 from ipyrad import __version__
 from util import *
@@ -128,7 +129,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     ## locus_filtering, sample_coverages, and snp_distributions
     data.stats_files.s7 = os.path.join(data.dirs.outfiles,
                                        data.name+"_stats.txt")
-    outstats = open(data.stats_files.s7, 'w')
+    outstats = io.open(data.stats_files.s7, 'w', encoding="utf-8")
 
     ########################################################################
     ## get stats for locus_filtering, use chunking.
@@ -230,8 +231,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
     retained["total_filtered_loci"] = passed
 
 
-    print("\n\n## The number of loci caught by each filter."+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_filters\n",
+    print(u"\n\n## The number of loci caught by each filter."+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_filters\n",
           file=outstats)
     data.stats_dfs.s7_filters = pd.DataFrame([filtdat, applied, retained]).T
     data.stats_dfs.s7_filters.to_string(buf=outstats)
@@ -248,8 +249,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #covdict = {name: val for name, val in zip(samples, samplecounts[sidx])}
     covdict = pd.Series(samplecounts, name="sample_coverage", index=anames)
     covdict = covdict[covdict != 0]
-    print("\n\n\n## The number of loci recovered for each Sample."+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_samples\n",
+    print(u"\n\n\n## The number of loci recovered for each Sample."+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_samples\n",
           file=outstats)
     data.stats_dfs.s7_samples = pd.DataFrame(covdict)
     data.stats_dfs.s7_samples.to_string(buf=outstats)
@@ -262,8 +263,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
     start = data.paramsdict["min_samples_locus"]-1
     locsums = pd.Series({i: np.sum(locdat.values[start:i]) for i in lrange},
                         name="sum_coverage", index=lrange)
-    print("\n\n\n## The number of loci for which N taxa have data."+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_loci\n",
+    print(u"\n\n\n## The number of loci for which N taxa have data."+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_loci\n",
           file=outstats)
     data.stats_dfs.s7_loci = pd.concat([locdat, locsums], axis=1)
     data.stats_dfs.s7_loci.to_string(buf=outstats)
@@ -293,10 +294,10 @@ def make_stats(data, samples, samplecounts, locuscounts):
         sumd[i] = np.sum([i*pisdat.values[i] for i in range(i+1)])
     pissums = pd.Series(sumd, name="sum_pis", index=range(smax))
 
-    print("\n\n\n## The distribution of SNPs (var and pis) per locus."+\
-          "\n## var = Number of loci with n variable sites (pis + autapomorphies)"+\
-          "\n## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)"+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
+    print(u"\n\n\n## The distribution of SNPs (var and pis) per locus."+\
+          u"\n## var = Number of loci with n variable sites (pis + autapomorphies)"+\
+          u"\n## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)"+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
           file=outstats)
     data.stats_dfs.s7_snps = pd.concat([vardat, varsums, pisdat, pissums],
                                         axis=1)
@@ -308,7 +309,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     fullstat['state'] = 7
     fullstat["loci_in_assembly"] = data.stats_dfs.s7_samples
 
-    print("\n\n\n## Final Sample stats summary\n", file=outstats)
+    print(u"\n\n\n## Final Sample stats summary\n", file=outstats)
     fullstat.to_string(buf=outstats)
 
     ## close it

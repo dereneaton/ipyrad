@@ -16,6 +16,7 @@ from __future__ import print_function
 # pylint: disable=R0912
 
 import os
+import io
 import gzip
 import glob
 import itertools
@@ -1089,7 +1090,7 @@ def data_cleanup(data):
     """ cleanup / statswriting function for Assembly obj """
     data.stats_dfs.s3 = data._build_stat("s3")
     data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
-    with open(data.stats_files.s3, 'w') as outfile:
+    with io.open(data.stats_files.s3, 'w') as outfile:
         data.stats_dfs.s3.to_string(
             buf=outfile,
             formatters={

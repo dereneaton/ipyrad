@@ -18,6 +18,7 @@ import time
 import h5py
 import gzip
 import glob
+import io
 import os
 from ipyrad.assemble.jointestimate import recal_hidepth
 from util import TRANSFULL, progressbar, IPyradError, IPyradWarningExit, clustdealer, PRIORITY, MINOR
@@ -942,7 +943,7 @@ def process_chunks(data, samples, lasyncs, lbview):
 
     ## write stats file
     data.stats_files.s5 = os.path.join(data.dirs.consens, 's5_consens_stats.txt')
-    with open(data.stats_files.s5, 'w') as out:
+    with io.open(data.stats_files.s5, 'w') as out:
         #out.write(data.stats_dfs.s5.to_string())
         data.stats_dfs.s5.to_string(
             buf=out,

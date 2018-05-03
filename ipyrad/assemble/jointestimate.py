@@ -12,6 +12,7 @@ import itertools
 import datetime
 import time
 import gzip
+import io
 import os
 
 from ipyrad.assemble.cluster_within import get_quick_depths
@@ -457,7 +458,7 @@ def assembly_cleanup(data):
     ## Update written file
     data.stats_files.s4 = os.path.join(data.dirs.clusts, 
                                        "s4_joint_estimate.txt")
-    with open(data.stats_files.s4, 'w') as outfile:
+    with io.open(data.stats_files.s4, 'w') as outfile:
         data.stats_dfs.s4.to_string(outfile)
 
     fails = data.stats[data.stats["state"] == 3].index.values
