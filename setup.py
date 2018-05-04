@@ -32,7 +32,7 @@ setup(
     # dependencies=dependency_links(),
     entry_points={
         'console_scripts': [
-            'ipyrad = ipyrad.__main__:main',
+            'ipyrad = ipyrad.__main__:CLI',
             'tetrad = ipyrad.analysis.__tetrad_cli__:main',
         ],
     },
