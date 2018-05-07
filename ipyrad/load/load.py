@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 """ loads an archived Assembly object. """
 
@@ -7,23 +7,27 @@ from __future__ import print_function
 import os
 import time
 import json
+import itertools
 import pandas as pd
-import ipyrad as ip
 from copy import deepcopy
-from ipyrad.assemble.util import *
 from collections import OrderedDict
+from ..core.assembly import Assembly, Sample
+from ..assemble.util import IPyradWarningExit, ObjDict
 
-# pylint: disable=W0212
-# pylint: disable=W0142
+import logging
+LOGGER = logging.getLogger(__name__)
+
 
 
 def test_assembly(data):
-    """ Check to see if the assembly you're trying to load is concordant
-        with the current assembly version. Basically it creates a new tmp
-        assembly and tests whether the paramsdicts are the same. It also
-        tests the _hackersonly dict."""
+    """ 
+    Check to see if the assembly you're trying to load is concordant
+    with the current assembly version. Basically it creates a new tmp
+    assembly and tests whether the paramsdicts are the same. It also
+    tests the _hackersonly dict.
+    """
 
-    new_assembly = ip.Assembly(data.name, quiet=True)
+    new_assembly = Assembly(data.name, quiet=True)
     new_params = set(new_assembly.paramsdict.keys())
 
     my_params = set(data.paramsdict.keys())
@@ -57,7 +61,7 @@ def update_assembly(data):
     print("##############################################################")
     print("Updating assembly to current version")
     ## New assembly object to update pdate from.
-    new_assembly = ip.Assembly("update", quiet=True)
+    new_assembly = Assembly("update", quiet=True)
 
     ## Hackersonly dict gets automatically overwritten
     ## Always use the current version for params in this dict.
@@ -98,19 +102,6 @@ def update_assembly(data):
 
 
 
-def save_json2(data):
-    """ save to json."""
-
-    ## convert everything to dicts
-    ## skip _ipcluster cuz it's made new.
-    datadict = OrderedDict([
-        ("outfiles", data.__dict__["outfiles"]),
-        ("stats_files", dict(data.__dict__["stats_files"])),
-        ("stats_dfs", data.__dict__["stats_dfs"])
-        ])
-
-
-
 def save_json(data):
     """ Save assembly and samples as json """
 
@@ -125,7 +116,7 @@ def save_json(data):
         ("name", data.__dict__["name"]), 
         ("dirs", data.__dict__["dirs"]),
         ("paramsdict", data.__dict__["paramsdict"]),
-        ("samples", data.__dict__["samples"].keys()),
+        ("samples", list(data.__dict__["samples"].keys())),
         ("populations", data.__dict__["populations"]),
         ("database", data.__dict__["database"]),
         ("clust_database", data.__dict__["clust_database"]),        
@@ -137,7 +128,7 @@ def save_json(data):
 
     ## sample dict
     sampledict = OrderedDict([])
-    for key, sample in data.samples.iteritems():
+    for key, sample in data.samples.items():
         sampledict[key] = sample._to_fulldict()
 
     ## json format it using cumstom Encoder class
@@ -150,7 +141,7 @@ def save_json(data):
         )
 
     ## save to file
-    assemblypath = os.path.join(data.dirs.project, data.name+".json")
+    assemblypath = os.path.join(data.dirs.project, data.name + ".json")
     if not os.path.exists(data.dirs.project):
         os.mkdir(data.dirs.project)
     
@@ -174,11 +165,11 @@ def load_json(path, quiet=False, cli=False):
     """
 
     ## load the JSON string and try with name+.json
-    checkfor = [path+".json", path]
+    checkfor = [path + ".json", path]
     for inpath in checkfor:
         inpath = inpath.replace("~", os.path.expanduser("~"))
         try:
-            with open(inpath, 'r') as infile:
+            with open(inpath, 'rb') as infile:
                 ## uses _tup_and_byte to ensure ascii and tuples are correct
                 fullj = json.loads(infile.read(), object_hook=_tup_and_byte)
         except IOError:
@@ -188,8 +179,8 @@ def load_json(path, quiet=False, cli=False):
     try:
         oldname = fullj["assembly"].pop("name")
         olddir = fullj["assembly"]["dirs"]["project"]
-        oldpath = os.path.join(olddir, os.path.splitext(oldname)[0]+".json")
-        null = ip.Assembly(oldname, quiet=True, cli=cli)
+        oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
+        null = Assembly(oldname, quiet=True, cli=cli)
 
     except (UnboundLocalError, AttributeError) as inst:
         raise IPyradWarningExit("""
@@ -213,7 +204,7 @@ def load_json(path, quiet=False, cli=False):
     ## be subsequently updated by the params from the params file, which may
     ## correct any errors/incompatibilities in the old params file
     oldparams = fullj["assembly"].pop("paramsdict")
-    for param, val in oldparams.iteritems():
+    for param, val in oldparams.items():
         ## a fix for backward compatibility with deprecated options
         if param not in ["assembly_name", "excludes", "outgroups"]:
             try:
@@ -230,7 +221,7 @@ def load_json(path, quiet=False, cli=False):
     ## set_params so we're shooting from the hip to reset the values
     try:
         oldhackersonly = fullj["assembly"].pop("_hackersonly")
-        for param, val in oldhackersonly.iteritems():
+        for param, val in oldhackersonly.items():
             if val == None:
                 null._hackersonly[param] = None
             else:
@@ -243,8 +234,8 @@ def load_json(path, quiet=False, cli=False):
 
     ## Check remaining attributes of Assembly and Raise warning if attributes
     ## do not match up between old and new objects
-    newkeys = null.__dict__.keys()
-    oldkeys = fullj["assembly"].keys()
+    newkeys = list(null.__dict__.keys())
+    oldkeys = list(fullj["assembly"].keys())
 
     ## find shared keys and deprecated keys
     sharedkeys = set(oldkeys).intersection(set(newkeys))
@@ -266,16 +257,16 @@ def load_json(path, quiet=False, cli=False):
     for key in sharedkeys:
         null.__setattr__(key, fullj["assembly"][key])
 
-    ## load in svd results if they exist
-    try:
-        if fullj["assembly"]["svd"]:
-            null.__setattr__("svd", fullj["assembly"]["svd"])
-            null.svd = ObjDict(null.svd)
-    except Exception:
-        LOGGER.debug("skipping: no svd results present in old assembly")
+    # ## load in svd results if they exist
+    # try:
+    #     if fullj["assembly"]["svd"]:
+    #         null.__setattr__("svd", fullj["assembly"]["svd"])
+    #         null.svd = ObjDict(null.svd)
+    # except Exception:
+    #     LOGGER.debug("skipping: no svd results present in old assembly")
 
     ## Now, load in the Sample objects json dicts
-    sample_names = fullj["samples"].keys()
+    sample_names = list(fullj["samples"].keys())
     if not sample_names:
         raise IPyradWarningExit("""
     No samples found in saved assembly. If you are just starting a new
@@ -286,20 +277,21 @@ def load_json(path, quiet=False, cli=False):
     contact the developers.
     """.format(inpath))
         
-    sample_keys = fullj["samples"][sample_names[0]].keys()
-    stats_keys = fullj["samples"][sample_names[0]]["stats"].keys()
-    stats_dfs_keys = fullj["samples"][sample_names[0]]["stats_dfs"].keys()
-    ind_statkeys = \
-        [fullj["samples"][sample_names[0]]["stats_dfs"][i].keys() \
-        for i in stats_dfs_keys]
+    sample_keys = list(fullj["samples"][sample_names[0]].keys())
+    stats_keys = list(fullj["samples"][sample_names[0]]["stats"].keys())
+    stats_dfs_keys = list(fullj["samples"][sample_names[0]]["stats_dfs"].keys())
+    ind_statkeys = (
+        [fullj["samples"][sample_names[0]]["stats_dfs"][i].keys() 
+        for i in stats_dfs_keys])
     ind_statkeys = list(itertools.chain(*ind_statkeys))
 
     ## check against a null sample
-    nsamp = ip.Sample()
-    newkeys = nsamp.__dict__.keys()
-    newstats = nsamp.__dict__["stats"].keys()
-    newstatdfs = nsamp.__dict__["stats_dfs"].keys()
-    newindstats = [nsamp.__dict__["stats_dfs"][i].keys() for i in newstatdfs]
+    nsamp = Sample()
+    newkeys = list(nsamp.__dict__.keys())
+    newstats = list(nsamp.__dict__["stats"].keys())
+    newstatdfs = list(nsamp.__dict__["stats_dfs"].keys())
+    newindstats = [
+        nsamp.__dict__["stats_dfs"][i].keys() for i in newstatdfs]
     newindstats = list(itertools.chain(*[i.values for i in newindstats]))
 
     ## different in attributes?
@@ -323,7 +315,7 @@ def load_json(path, quiet=False, cli=False):
     ## save stats and statsfiles to Samples
     for sample in null.samples:
         ## create a null Sample
-        null.samples[sample] = ip.Sample()
+        null.samples[sample] = Sample()
 
         ## save stats
         sdat = fullj["samples"][sample]['stats']
@@ -338,7 +330,7 @@ def load_json(path, quiet=False, cli=False):
         for statskey in stats_dfs_keys:
             null.samples[sample].stats_dfs[statskey] = \
                 pd.Series(fullj["samples"][sample]["stats_dfs"][statskey])\
-                .reindex(nsamp.__dict__["stats_dfs"][statskey].keys())
+                .reindex(list(nsamp.__dict__["stats_dfs"][statskey].keys()))
 
         ## save Sample files
         for filehandle in fullj["samples"][sample]["files"].keys():
@@ -392,7 +384,7 @@ class Encoder(json.JSONEncoder):
                 return [hint_tuples(e) for e in item]
             if isinstance(item, dict):
                 return {
-                    key: hint_tuples(val) for key, val in item.iteritems()
+                    key: hint_tuples(val) for key, val in item.items()
                     }
             else:
                 return item
@@ -402,10 +394,12 @@ class Encoder(json.JSONEncoder):
 
 
 def _tup_and_byte(obj):
-    """ wat """
-    # if this is a unicode string, return its string representation
-    if isinstance(obj, unicode):
-        return obj.encode('utf-8')
+    """ this is used in loading """
+
+    # convert all strings to bytes
+    if isinstance(obj, (bytes)):
+        return obj.decode()  # encode('utf-8')
+        #return obj.encode('utf-8')
 
     # if this is a list of values, return list of byteified values
     if isinstance(obj, list):
@@ -418,9 +412,9 @@ def _tup_and_byte(obj):
             return tuple(_tup_and_byte(item) for item in obj["items"])
         else:
             return {
-                _tup_and_byte(key): _tup_and_byte(val) for \
-                key, val in obj.iteritems()
-        }
+                _tup_and_byte(key): _tup_and_byte(val) for
+                key, val in obj.items()
+                }
 
     # if it's anything else, return it in its original form
     return obj
