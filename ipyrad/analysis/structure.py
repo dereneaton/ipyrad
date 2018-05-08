@@ -9,7 +9,7 @@ import re
 import subprocess
 import numpy as np
 import pandas as pd
-from ipyrad.analysis.tetrad import get_spans
+from ipyrad.analysis.tetrad2 import get_spans
 from ipyrad.assemble.util import Params, IPyradWarningExit
 
 # pylint: disable=W0142

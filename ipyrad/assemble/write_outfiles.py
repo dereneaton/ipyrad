@@ -320,14 +320,16 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
 
 
-def select_samples(dbsamples, samples):
+def select_samples(dbsamples, samples, pidx=None):
     """
     Get the row index of samples that are included. If samples are in the
     'excluded' they were already filtered out of 'samples' during _get_samples.
     """
-    ## get index from dbsamples
     samples = [i.name.encode() for i in samples]
-    sidx = [list(dbsamples).index(i) for i in samples]
+    if pidx:
+        sidx = [list(dbsamples[pidx]).index(i) for i in samples]
+    else:
+        sidx = [list(dbsamples).index(i) for i in samples]
     sidx.sort()
     return sidx
 
@@ -336,7 +338,8 @@ def select_samples(dbsamples, samples):
 def filter_all_clusters(data, samples, ipyclient):
     """
     Open the clust_database HDF5 array with seqs, catg, and filter data. 
-    Fill the remaining filters.
+    Fill the remaining filters. If this assembly was branched to exclude taxa
+    since step 6 then we skip that taxa from the database.
     """
     ## create loadbalanced ipyclient
     lbview = ipyclient.load_balanced_view()
@@ -357,14 +360,16 @@ def filter_all_clusters(data, samples, ipyclient):
 
     ## get the indices of the samples that we are going to include
     sidx = select_samples(dbsamples, samples)
+
     ## do the same for the populations samples
     if data.populations:
         data._populations = {}
         for pop in data.populations:
             try:
                 _samps = [data.samples[i] for i in data.populations[pop][1]]
-                data._populations[pop] = (data.populations[pop][0],
-                                          select_samples(dbsamples, _samps))
+                data._populations[pop] = (
+                    data.populations[pop][0],
+                    select_samples(dbsamples, _samps, sidx))
             except:
                 print("Sample in populations file not present in assembly - {}"
                       .format(data.populations[pop][1]))
