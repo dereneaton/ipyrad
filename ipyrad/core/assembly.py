@@ -1,17 +1,6 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
 """ ipyrad Assembly class object. """
-
-# pylint: disable=E1101
-# pylint: disable=E1103
-# pylint: disable=W0142
-# pylint: disable=W0212
-# pylint: disable=C0301
-# pylint: disable=R0915
-# pylint: disable=R0914
-# pylint: disable=R0913
-# pylint: disable=R0912
-# pylint: disable=R0902
 
 from __future__ import print_function
 import os
@@ -20,29 +9,22 @@ import sys
 import gzip
 import copy
 import h5py
+import time
 import string
+import datetime
 import itertools
 import numpy as np
 import pandas as pd
 import ipyrad as ip
-import time
-import datetime
+import subprocess as sps
 import ipyparallel as ipp
 
 from collections import OrderedDict
-from ipyrad.assemble.util import *
+from ipyrad.assemble.util import IPyradParamsError, IPyradWarningExit
+from ipyrad.assemble.util import IPyradError, ObjDict
 from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.sample import Sample
-from ipyrad import assemble
-
-import logging
-LOGGER = logging.getLogger(__name__)
-
-## turn off traceback for the CLI
-#if not ip.__interactive__:
-#    sys.tracebacklimit = 0
-
 
 
 class Assembly(object):
@@ -77,9 +59,9 @@ class Assembly(object):
 
     Functions
     ---------
-    step[x]()
+    run(step, force, ipyclient)
         runs step x of assembly
-    toparamsfile(filehandle)
+    write_params(filehandle, force)
         writes params dictionary to params.txt file format
 
 
@@ -87,11 +69,10 @@ class Assembly(object):
     -------
     object
          A new assembly object is returned.
-
     """
-
-
     def __init__(self, name, quiet=False, **kwargs):
+
+        ip.logger.debug("new assembly: {}".format(name))
 
         ## record whether we're in the CLI or API
         if kwargs.get("cli"):
@@ -118,13 +99,13 @@ class Assembly(object):
 
         ## stores default ipcluster launch info
         self._ipcluster = {
-            "cluster_id" : "",
-            "profile" : "default",
-            "engines" : "Local",
-            "quiet" : 0,
-            "timeout" : 120,
-            "cores" : 0, #detect_cpus(),
-            "threads" : 2,
+            "cluster_id": "",
+            "profile": "default",
+            "engines": "Local",
+            "quiet": 0,
+            "timeout": 120,
+            "cores": 0,  # detect_cpus(),
+            "threads": 2,
             "pids": {},
             }
         for key, val in kwargs.items():
@@ -162,73 +143,73 @@ class Assembly(object):
 
         ## the default params dict
         self.paramsdict = OrderedDict([
-                       ("assembly_name", name),
-                       ("project_dir", "./"),#os.path.realpath(os.path.curdir)),
-                       ("raw_fastq_path", ""),
-                       ("barcodes_path", ""),
-                       ("sorted_fastq_path", ""),
-                       ("assembly_method", "denovo"),
-                       ("reference_sequence", ""),
-                       ("datatype", 'rad'),
-                       ("restriction_overhang", ("TGCAG", "")),
-                       ("max_low_qual_bases", 5),
-                       ("phred_Qscore_offset", 33),
-                       ("mindepth_statistical", 6),
-                       ("mindepth_majrule", 6),
-                       ("maxdepth", 10000),
-                       ("clust_threshold", 0.85),
-                       ("max_barcode_mismatch", 0),
-                       ("filter_adapters", 0),
-                       ("filter_min_trim_len", 35),
-                       ("max_alleles_consens", 2),
-                       ("max_Ns_consens", (5, 5)),
-                       ("max_Hs_consens", (8, 8)),
-                       ("min_samples_locus", 4),
-                       ("max_SNPs_locus", (20, 20)),
-                       ("max_Indels_locus", (8, 8)),
-                       ("max_shared_Hs_locus", 0.50),
-                       ("trim_reads", (0, 0, 0, 0)),
-                       ("trim_loci", (0, 0, 0, 0)),
-                       ("output_formats", ['p', 's', 'v']),
-                       ("pop_assign_file", ""),
+            ("assembly_name", name),
+            ("project_dir", "./"),  # os.path.realpath(os.path.curdir)),
+            ("raw_fastq_path", ""),
+            ("barcodes_path", ""),
+            ("sorted_fastq_path", ""),
+            ("assembly_method", "denovo"),
+            ("reference_sequence", ""),
+            ("datatype", 'rad'),
+            ("restriction_overhang", ("TGCAG", "")),
+            ("max_low_qual_bases", 5),
+            ("phred_Qscore_offset", 33),
+            ("mindepth_statistical", 6),
+            ("mindepth_majrule", 6),
+            ("maxdepth", 10000),
+            ("clust_threshold", 0.85),
+            ("max_barcode_mismatch", 0),
+            ("filter_adapters", 0),
+            ("filter_min_trim_len", 35),
+            ("max_alleles_consens", 2),
+            ("max_Ns_consens", (5, 5)),
+            ("max_Hs_consens", (8, 8)),
+            ("min_samples_locus", 4),
+            ("max_SNPs_locus", (20, 20)),
+            ("max_Indels_locus", (8, 8)),
+            ("max_shared_Hs_locus", 0.50),
+            ("trim_reads", (0, 0, 0, 0)),
+            ("trim_loci", (0, 0, 0, 0)),
+            ("output_formats", ['p', 's', 'v']),
+            ("pop_assign_file", ""),
         ])
 
         ## Store data directories for this Assembly. Init with default project
-        self.dirs = ObjDict({"project":
-                              os.path.realpath(self.paramsdict["project_dir"]),
-                             "fastqs": "",
-                             "edits": "",
-                             "clusts": "",
-                             "consens": "",
-                             "across": "",
-                             "outfiles": ""})
+        self.dirs = ObjDict({
+            "project": os.path.realpath(self.paramsdict["project_dir"]),
+            "fastqs": "",
+            "edits": "",
+            "clusts": "",
+            "consens": "",
+            "across": "",
+            "outfiles": "",
+        })
 
         ## Default hackers only parameters dictionary
         ## None of the safeguards of the paramsdict, no nice accessor
         ## functions, so you have to be sure of what you're doing if
         ## you change these values.
         self._hackersonly = OrderedDict([
-                        ("random_seed", 42),
-                        ("max_fragment_length", 50),
-                        ("max_inner_mate_distance", 60),
-                        ("p5_adapter", "AGATCGGAAGAGC"),
-                        ("p3_adapter", "AGATCGGAAGAGC"),
-                        ("p3_adapters_extra", []),
-                        ("p5_adapters_extra", []),
-                        ("preview_step1", 4000000),
-                        ("preview_step2", 100000),
-                        ("output_loci_name_buffer", 5),
-                        ("query_cov", None),
-                        ("smalt_index_wordlen", 8),
-                        ("aligner", "bwa"),
-                        ("min_SE_refmap_overlap", 10),
-                        ("refmap_merge_PE", True),
-                        ("bwa_args", "")
+            ("random_seed", 42),
+            ("max_fragment_length", 50),
+            ("max_inner_mate_distance", 60),
+            ("p5_adapter", "AGATCGGAAGAGC"),
+            ("p3_adapter", "AGATCGGAAGAGC"),
+            ("p3_adapters_extra", []),
+            ("p5_adapters_extra", []),
+            ("preview_step1", 4000000),
+            ("preview_step2", 100000),
+            ("output_loci_name_buffer", 5),
+            ("query_cov", None),
+            ("smalt_index_wordlen", 8),
+            ("aligner", "bwa"),
+            ("min_SE_refmap_overlap", 10),
+            ("refmap_merge_PE", True),
+            ("bwa_args", "")
         ])
 
     def __str__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
-
 
     ## CLI- auto-launch uses a specific cluster-id
     @property
@@ -239,11 +220,10 @@ class Assembly(object):
         else:
             return ""
 
-
     @property
     def stats(self):
         """ Returns a data frame with Sample data and state. """
-        nameordered = self.samples.keys()
+        nameordered = list(self.samples.keys())
         nameordered.sort()
 
         ## Set pandas to display all samples instead of truncating
@@ -260,7 +240,7 @@ class Assembly(object):
     @property
     def files(self):
         """ Returns a data frame with Sample files. Not very readable... """
-        nameordered = self.samples.keys()
+        nameordered = list(self.samples.keys())
         nameordered.sort()
         ## replace curdir with . for shorter printing
         #fullcurdir = os.path.realpath(os.path.curdir)
@@ -268,28 +248,68 @@ class Assembly(object):
                       index=nameordered).dropna(axis=1, how='all')
 
 
+    def _progressbar(self, njobs, finished, start, msg):
+        # measure progress
+        if njobs:
+            progress = 100 * (finished / float(njobs))
+        else:
+            progress = 100
+            
+        # build the bar
+        hashes = '#' * int(progress / 5.)
+        nohash = ' ' * int(20 - len(hashes))
+
+        # timestamp
+        elapsed = datetime.timedelta(seconds=int(time.time() - start))
+
+        # print to stderr
+        if self._cli:
+            print("\r{}[{}] {:>3}% {} | {:<12} ".format(
+                self._spacer, 
+                hashes + nohash, 
+                int(progress), 
+                elapsed, 
+                msg[0],
+                ), end="")
+        else:              
+            print("\r{}[{}] {:>3}% {} | {:<12} | {} |".format(*[
+                self._spacer, 
+                hashes + nohash, 
+                int(progress),
+                elapsed, 
+                msg[0], 
+                msg[1],
+                ]), end="")
+        sys.stdout.flush()
+
+
     def _build_stat(self, idx):
         """ Returns a data frame with Sample stats for each step """
-        nameordered = self.samples.keys()
+        nameordered = list(self.samples.keys())
         nameordered.sort()
-        newdat = pd.DataFrame([self.samples[i].stats_dfs[idx] \
-                               for i in nameordered], index=nameordered)\
-                               .dropna(axis=1, how='all')
+        newdat = pd.DataFrame(
+            (self.samples[i].stats_dfs[idx] for i in nameordered),         
+            index=nameordered).dropna(axis=1, how='all')
         return newdat
 
-
-    ## Test assembly name is valid and raise if it contains any special characters
+    # Test assembly name is valid and raise if contains any special characters
     def _check_name(self, name):
-        invalid_chars = string.punctuation.replace("_", "")\
-                                          .replace("-", "")+ " "
+        invalid_chars = (
+            string.punctuation.replace("_", "").replace("-", "") + " ")
         if any(char in invalid_chars for char in name):
             raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
 
 
-    def _link_fastqs(self, path=None, force=False, append=False, splitnames="_",
-        fields=None, ipyclient=None):
+    def _link_fastqs(
+        self, 
+        path=None, 
+        force=False, 
+        append=False, 
+        splitnames="_",
+        fields=None, 
+        ipyclient=None):
         """
-        Create Sample objects from demultiplexed fastq files in sorted_fastq_path,
+        Create Sample objects from demux'd fastq files in sorted_fastq_path,
         or append additional fastq files to existing Samples. This provides
         more flexible file input through the API than available in step1 of the
         command line interface. If passed ipyclient it will run in parallel.
@@ -318,8 +338,8 @@ class Assembly(object):
 
         fields : list
             A list of indices for the fields to be included in names after
-            filnames are split on the splitnames character. Useful for appending
-            sequence names which must match existing names. If the largest index
+            fnames are split on the splitnames character. Useful for appending
+            seq names which must match existing names. If the largest index
             is greater than the number of split strings in the name the index
             if ignored. e.g., [2,3,4] ## excludes 0, 1 and >4
 
@@ -338,13 +358,14 @@ class Assembly(object):
             raise IPyradError("Cannot use force and append at the same time.")
 
         if self.samples and not (force or append):
-            raise IPyradError("Files already linked to `{}`.".format(self.name)\
-                +" Use force=True to replace all files, or append=True to add"
-                +" additional files to existing Samples.")
+            raise IPyradError(
+                "Files already linked to '{}'.".format(self.name) 
+              + " Use force=True to replace all files, or append=True to add"
+              + " additional files to existing Samples.")
 
         ## make sure there is a workdir and workdir/fastqdir
-        self.dirs.fastqs = os.path.join(self.paramsdict["project_dir"],
-                                        self.name+"_fastqs")
+        self.dirs.fastqs = os.path.join(
+            self.paramsdict["project_dir"], self.name + "_fastqs")
         if not os.path.exists(self.paramsdict["project_dir"]):
             os.mkdir(self.paramsdict["project_dir"])
 
@@ -357,15 +378,15 @@ class Assembly(object):
         ## Assert files are not .bz2 format
         if any([i for i in fastqs if i.endswith(".bz2")]):
             raise IPyradError(NO_SUPPORT_FOR_BZ2.format(path))
-        fastqs = [i for i in fastqs if i.endswith(".gz") \
-                                    or i.endswith(".fastq") \
-                                    or i.endswith(".fq")]
+        fastqs = [i for i in fastqs if i.endswith(".gz")
+                  or i.endswith(".fastq")
+                  or i.endswith(".fq")]
         fastqs.sort()
-        LOGGER.debug("Linking these fastq files:\n{}".format(fastqs))
+        ip.logger.debug("Linking these fastq files:\n{}".format(fastqs))
 
         ## raise error if no files are found
         if not fastqs:
-            raise IPyradError(NO_FILES_FOUND_PAIRS\
+            raise IPyradError(NO_FILES_FOUND_PAIRS
                         .format(self.paramsdict["sorted_fastq_path"]))
 
         ## link pairs into tuples
@@ -436,11 +457,11 @@ class Assembly(object):
                 sname = os.path.basename(fastqtuple[0].rsplit("_1.fastq.gz", 1)[0])
             elif idx == 2:
                 sname = os.path.basename(fastqtuple[0].rsplit("_R1.fastq.gz", 1)[0])
-            LOGGER.debug("New Sample name {}".format(sname))
+            ip.logger.debug("New Sample name {}".format(sname))
 
             if sname not in self.samples:
                 ## create new Sample
-                LOGGER.debug("Creating new sample - ".format(sname))
+                ip.logger.debug("Creating new sample - ".format(sname))
                 self.samples[sname] = Sample(sname)
                 self.samples[sname].stats.state = 1
                 self.samples[sname].barcode = None
@@ -456,7 +477,7 @@ class Assembly(object):
 
                 elif force:
                     ## overwrite/create new Sample
-                    LOGGER.debug("Overwriting sample - ".format(sname))
+                    ip.logger.debug("Overwriting sample - ".format(sname))
                     self.samples[sname] = Sample(sname)
                     self.samples[sname].stats.state = 1
                     self.samples[sname].barcode = None
@@ -480,7 +501,7 @@ class Assembly(object):
                     self.samples[sname].stats_dfs.s1["reads_raw"] = nreads/4
                     self.samples[sname].state = 1
 
-                    LOGGER.debug("Got reads for sample - {} {}".format(sname,\
+                    ip.logger.debug("Got reads for sample - {} {}".format(sname,\
                                     self.samples[sname].stats.reads_raw))
                     #created += createdinc
                     linked += linkedinc
@@ -491,10 +512,10 @@ class Assembly(object):
                 if any([linkedinc, createdinc, appendinc]):
                     gzipped = bool(fastqtuple[0].endswith(".gz"))
                     for sidx, tup in enumerate(self.samples[sname].files.fastqs):
-                        key = sname+"_{}".format(sidx)
+                        key = sname + "_{}".format(sidx)
                         linkjobs[key] = lbview.apply(_bufcountlines,
                                                     *(tup[0], gzipped))
-                    LOGGER.debug("sent count job for {}".format(sname))
+                    ip.logger.debug("sent count job for {}".format(sname))
                     #created += createdinc
                     linked += linkedinc
                     appended += appendinc
@@ -502,27 +523,26 @@ class Assembly(object):
         ## wait for link jobs to finish if parallel
         if ipyclient:
             start = time.time()
-            printstr = ' loading reads         | {} | s1 |'
+            printstr = ("loading reads", "s1")
             while 1:
                 fin = [i.ready() for i in linkjobs.values()]
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(len(fin), sum(fin),
-                    printstr.format(elapsed), spacer=self._spacer)
+                self._progressbar(len(fin), sum(fin), start, printstr)
                 time.sleep(0.1)
                 if len(fin) == sum(fin):
-                    print("")
                     break
 
             ## collect link job results
-            sampdict = {i:0 for i in self.samples}
+            print("")
+            sampdict = {i: 0 for i in self.samples}
             for result in linkjobs:
                 sname = result.rsplit("_", 1)[0]
                 nreads = linkjobs[result].result()
                 sampdict[sname] += nreads
 
             for sname in sampdict:
-                self.samples[sname].stats.reads_raw = sampdict[sname]/4
-                self.samples[sname].stats_dfs.s1["reads_raw"] = sampdict[sname]/4
+                self.samples[sname].stats.reads_raw = sampdict[sname] / 4
+                self.samples[sname].stats_dfs.s1["reads_raw"] = (
+                    sampdict[sname] / 4)
                 self.samples[sname].state = 1
 
         ## print if data were linked
@@ -530,28 +550,27 @@ class Assembly(object):
         if linked:
             ## double for paired data
             if 'pair' in self.paramsdict["datatype"]:
-                linked = linked*2
+                linked = linked * 2
             if self._headers:
-                print("{}{} fastq files loaded to {} Samples.".\
-                      format(self._spacer, linked, len(self.samples)))
+                print("{}{} fastq files loaded to {} Samples."
+                      .format(self._spacer, linked, len(self.samples)))
             ## save the location where these files are located
             self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
 
         if appended:
             if self._headers:
-                print("{}{} fastq files appended to {} existing Samples.".\
-                      format(self._spacer, appended, len(self.samples)))
+                print("{}{} fastq files appended to {} existing Samples."
+                      .format(self._spacer, appended, len(self.samples)))
 
         ## save step-1 stats. We don't want to write this to the fastq dir, b/c
         ## it is not necessarily inside our project dir. Instead, we'll write 
         ## this file into our project dir in the case of linked_fastqs.
         self.stats_dfs.s1 = self._build_stat("s1")
-        self.stats_files.s1 = os.path.join(self.paramsdict["project_dir"],
-                                           self.name+
-                                           '_s1_demultiplex_stats.txt')
+        self.stats_files.s1 = os.path.join(
+            self.paramsdict["project_dir"],
+            self.name + '_s1_demultiplex_stats.txt')
         with open(self.stats_files.s1, 'w') as outfile:
             self.stats_dfs.s1.fillna(value=0).astype(np.int).to_string(outfile)
-
 
 
     def _link_barcodes(self):
@@ -589,7 +608,7 @@ class Assembly(object):
 
             ## make sure chars are all proper
             if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
-                LOGGER.warn(BAD_BARCODE)
+                ip.logger.warn(BAD_BARCODE)
                 raise IPyradError(BAD_BARCODE)
 
             ## 3rad/seqcap use multiplexed barcodes
@@ -600,7 +619,7 @@ class Assembly(object):
                     self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
                 except KeyError as inst:
                     msg = "    3rad assumes multiplexed barcodes. Doublecheck your barcodes file."
-                    LOGGER.error(msg)
+                    ip.logger.error(msg)
                     raise IPyradError(msg)
             else:
                 ## set attribute on Assembly object
@@ -613,7 +632,7 @@ class Assembly(object):
 
         except ValueError as inst:
             msg = "    Barcodes file format error."
-            LOGGER.warn(msg)
+            ip.logger.warn(msg)
             raise IPyradError(inst)
 
 
@@ -671,30 +690,34 @@ class Assembly(object):
                 raise IPyradError("Population assignment file not found: {}"\
                                   .format(self.paramsdict["pop_assign_file"]))
 
-
             try:
                 ## parse populations file
-                popdat = pd.read_csv(popfile, header=None,
-                                              delim_whitespace=1,
-                                              names=["inds", "pops"], 
-                                              comment="#")
-                popdict = {key: group.inds.values.tolist() for key, group in \
-                                                        popdat.groupby("pops")}
+                popdat = pd.read_csv(
+                    popfile, header=None,
+                    delim_whitespace=1,
+                    names=["inds", "pops"], 
+                    comment="#")
+
+                popdict = {
+                    key: group.inds.values.tolist() for key, group in
+                    popdat.groupby("pops")}
 
                 ## parse minsamples per population if present (line with #)
-                mindat = [i.lstrip("#").lstrip().rstrip() for i in \
-                          open(popfile, 'r').readlines() if i.startswith("#")]
+                mindat = [
+                    i.lstrip("#").lstrip().rstrip() for i in 
+                    open(popfile, 'r').readlines() if i.startswith("#")]
+
                 if mindat:
                     popmins = {}
                     for i in range(len(mindat)):
                         minlist = mindat[i].replace(",", "").split()
-                        popmins.update({i.split(':')[0]:int(i.split(':')[1]) \
+                        popmins.update({i.split(':')[0]: int(i.split(':')[1])
                                         for i in minlist})
                 else:
                     raise IPyradError(NO_MIN_SAMPLES_PER_POP)
 
             except (ValueError, IOError):
-                LOGGER.warn("Populations file may be malformed.")
+                ip.logger.warn("Populations file may be malformed.")
                 raise IPyradError("  Populations file malformed - {}"\
                                   .format(popfile))
 
@@ -708,16 +731,16 @@ class Assembly(object):
         badsamples = [i for i in itertools.chain(*popdict.values()) \
                       if i not in self.samples.keys()]
         if any(badsamples):
-            LOGGER.warn("Some names from population input do not match Sample "\
+            ip.logger.warn("Some names from population input do not match Sample "\
                         + "names: ".format(", ".join(badsamples)))
-            LOGGER.warn("If this is a new assembly this is normal.")
+            ip.logger.warn("If this is a new assembly this is normal.")
 
         ## check popmins
         ## cannot have higher min for a pop than there are samples in the pop
         popmax = {i: len(popdict[i]) for i in popdict}
         if not all([popmax[i] >= popmins[i] for i in popdict]):
-            raise IPyradWarningExit(\
-                " minsample per pop value cannot be greater than the "+
+            raise IPyradWarningExit(
+                " minsample per pop value cannot be greater than the " +
                 " number of samples in the pop. Modify the populations file.")
 
         ## return dict
@@ -731,9 +754,9 @@ class Assembly(object):
         if not param:
             for index, (key, value) in enumerate(self.paramsdict.items()):
                 if isinstance(value, str):
-                    value = value.replace(fullcurdir+"/", "./")
-                sys.stdout.write("{}{:<4}{:<28}{:<45}\n"\
-                    .format(self._spacer, index, key, value))
+                    value = value.replace(fullcurdir + "/", "./")
+                sys.stdout.write("{}{:<4}{:<28}{:<45}\n"
+                    .format(self._spacer, index, key, str(value)))
         else:
             try:
                 if int(param):
@@ -787,29 +810,26 @@ class Assembly(object):
         ## this includes current params and some legacy params for conversion
         legacy_params = ["edit_cutsites", "trim_overhang"]
         current_params = self.paramsdict.keys()
-        allowed_params = current_params + legacy_params
+        allowed_params = list(current_params) + legacy_params
 
         ## require parameter recognition
-        #if not ((param in range(50)) or \
-        #        (param in [str(i) for i in range(50)]) or \
-        #        (param in allowed_params)):
-        if not param in allowed_params:
-            raise IPyradParamsError("Parameter key not recognized: {}"\
-                                    .format(param))
+        if param not in allowed_params:
+            raise IPyradParamsError(
+                "Parameter key not recognized: {}".format(param))
 
         ## make string
         param = str(param)
         ## get index if param is keyword arg (this index is now zero based!)
         if len(param) < 3:
-            param = self.paramsdict.keys()[int(param)]
+            param = list(self.paramsdict.keys())[int(param)]
 
         ## run assertions on new param
         try:
             self = _paramschecker(self, param, newvalue)
 
         except Exception as inst:
-            raise IPyradWarningExit(BAD_PARAMETER\
-                                    .format(param, inst, newvalue))
+            raise IPyradWarningExit(
+                BAD_PARAMETER.format(param, inst, newvalue))
 
 
 
@@ -821,43 +841,40 @@ class Assembly(object):
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:
-            outfile = "params-"+self.name+".txt"
+            outfile = "params-" + self.name + ".txt"
 
         ## Test if params file already exists?
         ## If not forcing, test for file and bail out if it exists
         if not force:
             if os.path.isfile(outfile):
-                raise IPyradWarningExit(PARAMS_EXISTS.format(outfile))
+                raise IPyradError(PARAMS_EXISTS.format(outfile))
 
         with open(outfile, 'w') as paramsfile:
             ## Write the header. Format to 80 columns
             header = "------- ipyrad params file (v.{})".format(ip.__version__)
-            header += ("-"*(80-len(header)))
+            header += ("-" * (80 - len(header)))
             paramsfile.write(header)
 
             ## Whip through the current paramsdict and write out the current
             ## param value, the ordered dict index number. Also,
             ## get the short description from paramsinfo. Make it look pretty,
             ## pad nicely if at all possible.
-            for key, val in self.paramsdict.iteritems():
+            for key, val in self.paramsdict.items():  
                 ## If multiple elements, write them out comma separated
                 if isinstance(val, list) or isinstance(val, tuple):
                     paramvalue = ", ".join([str(i) for i in val])
                 else:
                     paramvalue = str(val)
 
-                ## skip deprecated params
-                if key in ["edit_cutsites", "trim_overhang"]:
-                    continue
-
-                padding = (" "*(30-len(paramvalue)))
-                paramkey = self.paramsdict.keys().index(key)
+                padding = (" " * (30 - len(paramvalue)))
+                paramkey = list(self.paramsdict.keys()).index(key)
                 paramindex = " ## [{}] ".format(paramkey)
-                LOGGER.debug(key, val, paramindex)
+                ip.logger.debug("\t".join([str(i) for i in
+                    (key, val, paramindex)]))
                 name = "[{}]: ".format(paramname(paramkey))
                 description = paraminfo(paramkey, short=True)
-                paramsfile.write("\n" + paramvalue + padding + \
-                                        paramindex + name + description)
+                paramsfile.write(
+                    "\n" + paramvalue + padding + paramindex + name + description)
 
 
 
@@ -871,8 +888,8 @@ class Assembly(object):
 
         ## is there a better way to ask if it already exists?
         if (newname == self.name or os.path.exists(
-                                    os.path.join(self.paramsdict["project_dir"],
-                                    newname+".assembly"))):
+                os.path.join(self.paramsdict["project_dir"],
+                newname + ".assembly"))):
             print("{}Assembly object named {} already exists"\
                   .format(self._spacer, newname))
 
@@ -912,8 +929,9 @@ class Assembly(object):
                         print("Sample name not found: {}".format(sname))
 
                 ## reload sample dict w/o non subsamples
-                newobj.samples = {name:sample for name, sample in \
-                           newobj.samples.items() if name in subsamples}
+                newobj.samples = {
+                    name: sample for name, sample in newobj.samples.items() 
+                    if name in subsamples}
 
             ## create copies of each subsampled Sample obj
             else:
@@ -954,10 +972,10 @@ class Assembly(object):
         ## print headers
         if self._headers:
             if sfiles:
-                print("\n{}Step 1: Loading sorted fastq data to Samples"\
+                print("\n{}Step 1: Loading sorted fastq data to Samples"
                       .format(self._spacer))
             else:
-                print("\n{}Step 1: Demultiplexing fastq data to Samples"\
+                print("\n{}Step 1: Demultiplexing fastq data to Samples"
                     .format(self._spacer))
 
         ## if Samples already exist then no demultiplexing
@@ -970,7 +988,7 @@ class Assembly(object):
                     self._link_fastqs(ipyclient=ipyclient, force=force)
                 else:
                     #assemble.demultiplex.run(self, preview, ipyclient, force)                    
-                    assemble.demultiplex.run2(self, ipyclient, force)
+                    ip.assemble.demultiplex.run2(self, ipyclient, force)
 
         ## Creating new Samples
         else:
@@ -981,7 +999,7 @@ class Assembly(object):
             ## otherwise do the demultiplexing
             else:
                 #assemble.demultiplex.run(self, preview, ipyclient, force)
-                assemble.demultiplex.run2(self, ipyclient, force)
+                ip.assemble.demultiplex.run2(self, ipyclient, force)
 
 
 
@@ -1006,7 +1024,7 @@ class Assembly(object):
                 return
 
         ## Run samples through rawedit
-        assemble.rawedit.run2(self, samples, force, ipyclient)
+        ip.assemble.rawedit.run2(self, samples, force, ipyclient)
 
 
 
@@ -1026,22 +1044,24 @@ class Assembly(object):
                 ## Allow force to reindex the reference sequence
                 ## send to run on the cluster. 
                 lbview = ipyclient.load_balanced_view()
-                async = lbview.apply(index_reference_sequence, *(self, force))
+                rasync = lbview.apply(index_reference_sequence, *(self, force))
 
                 ## print a progress bar for the indexing
                 start = time.time()
                 while 1:
-                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                    printstr = " {}    | {} | s3 |".format("indexing reference", elapsed)
-                    finished = int(async.ready())
-                    progressbar(1, finished, printstr, spacer=self._spacer)
+                    #elapsed = datetime.timedelta(seconds=int(time.time() - start))
+                    #printstr = " {}    | {} | s3 |".format("indexing reference")
+                    printstr = ("indexing reference", "3")
+                    finished = int(rasync.ready())
+                    self._progressbar(1, finished, start, printstr)
+                    #progressbar(1, finished, printstr, spacer=self._spacer)
                     if finished:
                         print("")
                         break
                     time.sleep(0.9)
                 ## error check
-                if not async.successful():
-                    raise IPyradWarningExit(async.result())
+                if not rasync.successful():
+                    raise IPyradWarningExit(rasync.result())
 
         ## Get sample objects from list of strings
         samples = _get_samples(self, samples)
@@ -1057,7 +1077,7 @@ class Assembly(object):
                 return
 
         ## run the step function
-        assemble.cluster_within.run(self, samples, noreverse, maxindels,
+        ip.assemble.cluster_within.run(self, samples, noreverse, maxindels,
                                     force, preview, ipyclient)
 
 
@@ -1082,7 +1102,7 @@ class Assembly(object):
                 return
 
         ## send to function
-        assemble.jointestimate.run(self, samples, force, ipyclient)
+        ip.assemble.jointestimate.run(self, samples, force, ipyclient)
 
 
 
@@ -1105,7 +1125,7 @@ class Assembly(object):
                 print(CONSENS_EXIST.format(len(samples)))
                 return
         ## pass samples to rawedit
-        assemble.consens_se.run(self, samples, force, ipyclient)
+        ip.assemble.consens_se.run(self, samples, force, ipyclient)
 
 
 
@@ -1143,7 +1163,7 @@ class Assembly(object):
 
         ## run if this point is reached. We no longer check for existing
         ## h5 file, since checking Sample states should suffice.
-        assemble.cluster_across.run(
+        ip.assemble.cluster_across.run(
             self, 
             csamples, 
             noreverse,
@@ -1161,26 +1181,21 @@ class Assembly(object):
         samples = _get_samples(self, samples)
 
         if self._headers:
-            print("\n  Step 7: Filter and write output files for {} Samples".\
+            print("\n  Step 7: Filter and write output files for {} Samples".
                   format(len(samples)))
 
         ## Check if all/none of the samples are in the self.database
         try:
             with h5py.File(self.clust_database, 'r') as io5:
-                dbset = set(io5["seqs"].attrs['samples'])
+                dbset = set([i.decode() for i in io5["seqs"].attrs['samples']])
                 iset = set([i.name for i in samples])
-
-                ## TODO: Handle the case where dbdiff is not empty?
-                ## This might arise if someone tries to branch and remove
-                ## samples at step 7.
-                dbdiff = dbset.difference(iset)
                 idiff = iset.difference(dbset)
                 if idiff:
-                    print(NOT_CLUSTERED_YET\
+                    print(NOT_CLUSTERED_YET
                     .format(self.database, ", ".join(list(idiff))))
 
                     ## The the old way that failed unless all samples were
-                    ## clustered successfully in step 6. Adding some flexibility
+                    ## clustered successfully in step 6. Adding flexibility
                     ## to allow writing output even if some samples failed.
                     ## raise IPyradWarningExit(msg)
 
@@ -1192,12 +1207,12 @@ class Assembly(object):
             raise IPyradError(FIRST_RUN_6.format(self.clust_database))
 
         if not force:
-            outdir = os.path.join(self.dirs.project, self.name+"_outfiles")
+            outdir = os.path.join(self.dirs.project, self.name + "_outfiles")
             if os.path.exists(outdir):
                 raise IPyradWarningExit(OUTPUT_EXISTS.format(outdir))
 
         ## Run step7
-        assemble.write_outfiles.run(self, samples, force, ipyclient)
+        ip.assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
 
@@ -1211,7 +1226,7 @@ class Assembly(object):
         ## filter by state
         for sample in samples:
             if sample.stats.state < mystep - 1:
-                LOGGER.debug("Sample {} not in proper state."\
+                ip.logger.debug("Sample {} not in proper state."\
                              .format(sample.name))
             else:
                 subsample.append(sample)
@@ -1220,7 +1235,8 @@ class Assembly(object):
 
 
     def _compatible_params_check(self):
-        """ check for mindepths after all params are set, b/c doing it while each
+        """
+        check for mindepths after all params are set, b/c doing it while each
         is being set becomes complicated """
 
         ## do not allow statistical < majrule
@@ -1231,14 +1247,20 @@ class Assembly(object):
     Warning: mindepth_statistical cannot not be < mindepth_majrule.
     Forcing mindepth_majrule = mindepth_statistical = {}
     """.format(val1)
-            LOGGER.warning(msg)
+            ip.logger.warning(msg)
             print(msg)
             self.paramsdict["mindepth_majrule"] = val1
 
 
 
-    def run(self, steps=0, force=False, preview=False, ipyclient=None, 
-        show_cluster=0, **kwargs):
+    def run(
+        self, 
+        steps=0, 
+        force=False, 
+        preview=False, 
+        ipyclient=None, 
+        show_cluster=0, 
+        **kwargs):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -1254,9 +1276,9 @@ class Assembly(object):
         ## to ensure proper cleanup of the ipyclient.
         inst = None
         try:
-            ## use an existing ipcluster instance
+            ## find a running ipcluster instance using self.ipcluster dict
             if not ipyclient:
-                args = self._ipcluster.items() + [("spacer", self._spacer)]
+                args = list(self._ipcluster.items()) + [("spacer", self._spacer)]
                 ipyclient = ip.core.parallel.get_client(**dict(args))
 
             ## print a message about the cluster status
@@ -1285,7 +1307,6 @@ class Assembly(object):
                 if not engine.outstanding:
                     pid = engine.apply(os.getpid).get()
                     self._ipcluster["pids"][eid] = pid
-            #ipyclient[:].apply(os.getpid).get_dict()
 
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
@@ -1330,16 +1351,16 @@ class Assembly(object):
         ## handle exceptions so they will be raised after we clean up below
         except KeyboardInterrupt as inst:
             print("\n  Keyboard Interrupt by user")
-            LOGGER.info("assembly interrupted by user.")
+            ip.logger.info("assembly interrupted by user.")
 
         except IPyradWarningExit as inst:
-            LOGGER.error("IPyradWarningExit: %s", inst)
+            ip.logger.error("IPyradWarningExit: %s", inst)
             print("\n  Encountered an error (see details in ./ipyrad_log.txt)"+\
                   "\n  Error summary is below -------------------------------"+\
                   "\n{}".format(inst))
 
         except Exception as inst:
-            LOGGER.error(inst)
+            ip.logger.error(inst)
             print("\n  Encountered an unexpected error (see ./ipyrad_log.txt)"+\
                   "\n  Error message is below -------------------------------"+\
                   "\n{}".format(inst))
@@ -1347,8 +1368,11 @@ class Assembly(object):
         ## close client when done or interrupted
         finally:
             try:
-                ## save the Assembly
-                self.save()
+                # save the Assembly... should we save here or not. I added save
+                # to substeps in six so we don't need it here. By removing it
+                # here there is less chance someone will bonk their json file
+                # by executing a bad run() command.
+                #self.save()  
 
                 ## can't close client if it was never open
                 if ipyclient:
@@ -1360,7 +1384,7 @@ class Assembly(object):
                         for engine_id, pid in self._ipcluster["pids"].items():
                             if ipyclient.queue_status()[engine_id]["tasks"]:
                                 os.kill(pid, 2)
-                                LOGGER.info('interrupted engine {} w/ SIGINT to {}'\
+                                ip.logger.info('interrupted engine {} w/ SIGINT to {}'\
                                         .format(engine_id, pid))
                         time.sleep(1)
                     except ipp.NoEnginesRegistered:
@@ -1370,10 +1394,10 @@ class Assembly(object):
                     ## because you can have a CLI object but use the --ipcluster
                     ## flag, in which case we don't want to kill ipcluster.
                     if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
-                        LOGGER.info("  shutting down engines")
+                        ip.logger.info("  shutting down engines")
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
-                        LOGGER.info("  finished shutdown")
+                        ip.logger.info("  finished shutdown")
                     else:
                         if not ipyclient.outstanding:
                             ipyclient.purge_everything()
@@ -1386,8 +1410,7 @@ class Assembly(object):
             ## if exception is close and save, print and ignore
             except Exception as inst2:
                 print("warning: error during shutdown:\n{}".format(inst2))
-                LOGGER.error("shutdown warning: %s", inst2)
-
+                ip.logger.error("shutdown warning: %s", inst2)
 
 
 
@@ -1395,10 +1418,12 @@ def _get_samples(self, samples):
     """
     Internal function. Prelude for each step() to read in perhaps
     non empty list of samples to process. Input is a list of sample names,
-    output is a list of sample objects."""
+    output is a list of sample objects.
+    """
+    
     ## if samples not entered use all samples
     if not samples:
-        samples = self.samples.keys()
+        samples = list(self.samples.keys())
 
     ## Be nice and allow user to pass in only one sample as a string,
     ## rather than a one element list. When you make the string into a list
@@ -1410,21 +1435,21 @@ def _get_samples(self, samples):
     ## if sample keys, replace with sample obj
     assert isinstance(samples, list), \
         "to subselect samples enter as a list, e.g., [A, B]."
-    newsamples = [self.samples.get(key) for key in samples \
-                  if self.samples.get(key)]
+    newsamples = [
+        self.samples.get(key) for key in samples if self.samples.get(key)]
     strnewsamples = [i.name for i in newsamples]
 
     ## are there any samples that did not make it into the dict?
     badsamples = set(samples).difference(set(strnewsamples))
     if badsamples:
         outstring = ", ".join(badsamples)
-        raise IPyradError(\
-        "Unrecognized Sample name(s) not linked to {}: {}"\
-        .format(self.name, outstring))
+        raise IPyradError(
+            "Unrecognized Sample name(s) not linked to {}: {}"
+            .format(self.name, outstring))
 
     ## require Samples
     assert newsamples, \
-           "No Samples passed in and none in assembly {}".format(self.name)
+        "No Samples passed in and none in assembly {}".format(self.name)
 
     return newsamples
 
@@ -1592,10 +1617,10 @@ def _bufcountlines(filename, gzipped):
         fin = open(filename)
     nlines = 0
     buf_size = 1024 * 1024
-    read_f = fin.read # loop optimization
+    read_f = fin.read  # loop optimization
     buf = read_f(buf_size)
     while buf:
-        nlines += buf.count('\n')
+        nlines += buf.count(b'\n')
         buf = read_f(buf_size)
     fin.close()
     return nlines
@@ -1615,7 +1640,7 @@ def _zbufcountlines(filename, gzipped):
     res = proc2.communicate()[0]
     if proc2.returncode:
         raise IPyradWarningExit("error zbufcountlines {}:".format(res))
-    LOGGER.info(res)
+    ip.logger.info(res)
     nlines = int(res.split()[0])
     return nlines
 
@@ -1641,12 +1666,12 @@ def _tuplecheck(newvalue, dtype=str):
 
         ## If dtype fails to cast any element of newvalue
         except ValueError:
-            LOGGER.info("Assembly.tuplecheck() failed to cast to {} - {}"\
+            ip.logger.info("Assembly.tuplecheck() failed to cast to {} - {}"\
                         .format(dtype, newvalue))
             raise
 
         except Exception as inst:
-            LOGGER.info(inst)
+            ip.logger.info(inst)
             raise SystemExit(\
             "\nError: Param`{}` is not formatted correctly.\n({})\n"\
                  .format(newvalue, inst))
@@ -1736,15 +1761,6 @@ def _paramschecker(self, param, newvalue):
 
 
     elif param == 'assembly_method':
-        ## TEMPORARY BLOCK ON DENOVO+REFERENCE METHOD
-#        if newvalue == "denovo+reference":
-#            raise IPyradWarningExit("""
-#    Error: The 'denovo+reference' method is temporarily blocked while we 
-#    refactor it to greatly improve the speed. You can either revert to an
-#    older version (pre v.0.7.0) or wait for the next update to resume using
-#    this method. 
-#    """)
-
         methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
         assert newvalue in methods, BAD_ASSEMBLY_METHOD.format(newvalue)
         self.paramsdict['assembly_method'] = newvalue
@@ -1754,7 +1770,7 @@ def _paramschecker(self, param, newvalue):
         if newvalue:
             fullrawpath = _expander(newvalue)
             if not os.path.isfile(fullrawpath):
-                LOGGER.info("reference sequence file not found.")
+                ip.logger.info("reference sequence file not found.")
                 raise IPyradWarningExit(REF_NOT_FOUND.format(fullrawpath))
             self.paramsdict['reference_sequence'] = fullrawpath
         ## if no value was entered the set to "". Will be checked again
@@ -1781,7 +1797,7 @@ def _paramschecker(self, param, newvalue):
             ## alternatives I could think of.
             if "3rad" in self.paramsdict['datatype'] and not \
             self.paramsdict['sorted_fastq_path'].strip():
-                if not "Merged:" in self.paramsdict['barcodes_path']:
+                if "Merged:" not in self.paramsdict['barcodes_path']:
                     self._link_barcodes()
 
     elif param == 'restriction_overhang':
@@ -1797,9 +1813,6 @@ def _paramschecker(self, param, newvalue):
                 newvalue += newvalue
             else:
                 newvalue += ("",)
-        #=======
-        #    newvalue = (newvalue[0], "")
-        #>>>>>>> d40a5d5086a0d0aace04dd08338ec4ba5341d1f2
 
         ## Handle 3rad datatype with only 3 cutters
         if len(newvalue) == 3:
@@ -1951,9 +1964,8 @@ def _paramschecker(self, param, newvalue):
 
     elif param == 'output_formats':
         ## let's get whatever the user entered as a tuple of letters
-        allowed = assemble.write_outfiles.OUTPUT_FORMATS.keys()
+        allowed = list(ip.assemble.write_outfiles.OUTPUT_FORMATS.keys())
 
-        #<<<<<<< HEAD
         ## Handle the case where output formats is an empty string
         if isinstance(newvalue, str):
             ## strip commas and spaces from string so we have only letters
@@ -1963,19 +1975,11 @@ def _paramschecker(self, param, newvalue):
                 newvalue = ["*"]
         if isinstance(newvalue, tuple):
             newvalue = list(newvalue)
-        #=======
-        #if isinstance(newvalue, tuple):
-        #    newvalue = list(newvalue)
-        #if isinstance(newvalue, str):
-        #    newvalue = [i.strip() for i in newvalue.split(",")]
-        #    ## Handle the case where output formats is empty
-        #    if not any(newvalue):
-        #        newvalue = "*"
-        #>>>>>>> 488144d1d97240b8b6f6caf9cfb6c023bb6ebb36
+
         if isinstance(newvalue, list):
             ## if more than letters, raise an warning
             if any([len(i) > 1 for i in newvalue]):
-                LOGGER.warning("""
+                ip.logger.warning("""
     'output_formats' params entry is malformed. Setting to * to avoid errors.""")
                 newvalue = allowed
             newvalue = tuple(newvalue)
@@ -1993,7 +1997,7 @@ def _paramschecker(self, param, newvalue):
         ## if a path is entered, raise exception if not found
         if newvalue:
             if not os.path.isfile(fullpoppath):
-                LOGGER.warn("Population assignment file not found.")
+                ip.logger.warn("Population assignment file not found.")
                 raise IPyradWarningExit("""
     Warning: Population assignment file not found. This must be an
     absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to
@@ -2009,8 +2013,6 @@ def _paramschecker(self, param, newvalue):
             self.populations = {}
 
     return self
-
-
 
 
 ### ERROR MESSAGES ###################################
