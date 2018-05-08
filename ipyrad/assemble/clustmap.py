@@ -601,8 +601,10 @@ def merge_pairs(data, sample, revcomp, vsearch_merge):
     merged pairs, and for those that do not merge it concatenates the pairs
     together with a 'nnnn' separator. 
     """
+
+    # returns the file that should be derep'd
     if 'pair' not in data.paramsdict['datatype']:
-        return sample.concatfiles
+        return sample.concatfiles[0][0]
 
     if "reference" in data.paramsdict["assembly_method"]:
         return sample.concatfiles
@@ -870,7 +872,8 @@ def build_clusters(data, sample, maxindels):
                     ## sort fseqs by derep after pulling out the seed
                     fseqs = [fseqs[0]] + sorted(fseqs[1:], 
                         key=lambda x: 
-                        int(x.split(";size=")[1].split(";")[0]), reverse=True)                    
+                            int(x.split(";size=")[-1].split("\n")[0][:-1]), 
+                        reverse=True)                    
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
@@ -884,7 +887,7 @@ def build_clusters(data, sample, maxindels):
                         seqlist = []
 
                 ## store the new seed on top of fseq list
-                fseqs.append(">{};*\n{}".format(seed, alldereps[seed]))
+                fseqs.append(">{}*\n{}".format(seed, alldereps[seed]))
                 lastseed = seed
 
             ## add match to the seed
@@ -895,7 +898,7 @@ def build_clusters(data, sample, maxindels):
                 seq = alldereps[hit]
             ## only save if not too many indels
             if int(ind) <= maxindels:
-                fseqs.append(">{};{}\n{}".format(hit, ori, seq))
+                fseqs.append(">{}{}\n{}".format(hit, ori, seq))
             else:
                 ip.logger.info("filtered by maxindels: %s %s", ind, seq)
 
@@ -1007,7 +1010,7 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     highindels = 0
 
     ## iterate over clusters sending each to muscle, splits and aligns pairs
-    aligned = _persistent_popen_align3(clusts, 200, is_gbs)
+    aligned = persistent_popen_align3(clusts, 200, is_gbs)
 
     ## store good alignments to be written to file
     refined = []
@@ -1051,17 +1054,13 @@ def reconcat(data, sample):
     with gzip.open(sample.files.clusters, 'wb') as out:
         for fname in chunks:
             with open(fname) as infile:
-                dat = infile.read()
-                ## avoids mess if last chunk was empty
-                if dat.endswith("\n"):
-                    out.write(str.encode(dat + "//\n//\n"))
-                else:
-                    out.write(str.encode(dat + "\n//\n//\n"))
+                dat = infile.read().strip()
+                out.write(str.encode(dat + "\n//\n//\n"))                   
             os.remove(fname)
 
 
 ### step 3.2 subfuncs
-def _persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
+def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     """ keeps a persistent bash shell open and feeds it muscle alignments """
 
     ## create a separate shell for running muscle in, this is much faster
@@ -1141,14 +1140,15 @@ def _persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
                     keys, key=_get_derep_num, reverse=True)                
 
                 # combine in order
+                alignpe = []                
                 for key in order:
-                    align1.append("\n".join([
+                    alignpe.append("\n".join([
                         key, 
                         dalign1[key].replace("\n", "") + "nnnn" + \
                         dalign2[key].replace("\n", "")]))
 
                 ## append aligned cluster string
-                aligned.append("\n".join(align1).strip())
+                aligned.append("\n".join(alignpe).strip())
 
             # Malformed clust. Dictionary creation with only 1 element 
             except ValueError as inst:
@@ -1178,7 +1178,8 @@ def _persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
                 lines = "".join(align1)[1:].split("\n>")
 
                 ## find seed of the cluster and put it on top.
-                seed = [i for i in lines if i.split(";")[-1][0] == "*"][0]
+                #seed = [i for i in lines if i.split(";")[-1][0] == "*"][0]
+                seed = [i for i in lines if i.split('\n')[0][-1] == "*"][0]
                 lines.pop(lines.index(seed))
                 lines = [seed] + sorted(
                     lines, key=_get_derep_num, reverse=True)
@@ -1207,7 +1208,7 @@ def _persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     return aligned   
 
 
-def _get_quick_depths(data, sample):
+def get_quick_depths(data, sample):
     """ iterate over clustS files to get data """
 
     ## use existing sample cluster path if it exists, since this
@@ -1251,7 +1252,7 @@ def _get_quick_depths(data, sample):
             tdepth = 0
 
         else:
-            tdepth += int(name.split(";")[-2][5:])
+            tdepth += int(name.strip().split("=")[-1][:-1])
             tlen = len(seq)
 
     ## return
@@ -1263,7 +1264,7 @@ def _sample_cleanup(data, sample):
     """ stats, cleanup, and link to samples """
 
     # get maxlen and depths array from clusters
-    maxlens, depths = _get_quick_depths(data, sample)
+    maxlens, depths = get_quick_depths(data, sample)
 
     try:
         depths.max()
@@ -1377,7 +1378,7 @@ def _aligned_indel_filter(clust, max_internal_indels):
 
 def _get_derep_num(read):
     "return the number of replicates in a derep read"
-    return int(read.split("=")[-1].split(";")[0])
+    return int(read.split("=")[-1].split("\n")[0][:-1])
 
 
 def _gbs_trim(align1):
