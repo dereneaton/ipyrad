@@ -369,6 +369,7 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
                 longbar=(longbar[2], longbar[1]), 
                 read1=read2)
             barcode = barcode1 + "+" + barcode2
+        barcode = barcode.decode()
    
         ## find if it matches 
         sname_match = matchdict.get(barcode)
@@ -410,9 +411,9 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
                 read2[3] = read2[3][len(barcode2):]
     
             ## append to dsort
-            dsort1[sname_match].append("".join(read1))
+            dsort1[sname_match].append(b"".join(read1))
             if 'pair' in data.paramsdict["datatype"]:
-                dsort2[sname_match].append("".join(read2))
+                dsort2[sname_match].append(b"".join(read2))
 
         else:
             misses["_"] += 1
@@ -425,7 +426,7 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
         ## write parallel, but regular systems might crash
         if not filestat[0] % waitchunk:
             ## write the remaining reads to file"
-            writetofile(data, dsort1, 1, epid)
+            writetofile(data, dsort1, 1, epid)            
             if 'pair' in data.paramsdict["datatype"]:
                 writetofile(data, dsort2, 2, epid)
             ## clear out dsorts
@@ -456,24 +457,6 @@ def barmatch(data, tups, cutters, longbar, matchdict, fnum):
 
 
 
-def writetofastq(data, dsort, read):
-    """ 
-    Writes sorted data 'dsort dict' to a tmp files
-    """
-    if read == 1:
-        rrr = "R1"
-    else:
-        rrr = "R2"
-
-    for sname in dsort:
-        ## skip writing if empty. Write to tmpname
-        handle = os.path.join(data.dirs.fastqs, 
-                "{}_{}_.fastq".format(sname, rrr))
-        with open(handle, 'a') as out:
-            out.write("".join(dsort[sname]))
-
-
-
 def writetofile(data, dsort, read, pid):
     """ 
     Writes sorted data 'dsort dict' to a tmp files
@@ -488,7 +471,7 @@ def writetofile(data, dsort, read, pid):
         handle = os.path.join(
             data.dirs.fastqs, "tmp_{}_{}_{}.fastq".format(sname, rrr, pid))
         with open(handle, 'a') as out:
-            out.write("".join(dsort[sname]))
+            out.write(b"".join(dsort[sname]).decode())
 
 
 
@@ -610,7 +593,7 @@ def prechecks2(data, force):
 
     ## gather raw sequence filenames (people want this to be flexible ...)
     if 'pair' in data.paramsdict["datatype"]:
-        raws = combinefiles(data.paramsdict["raw_fastq_path"])
+        raws = list(combinefiles(data.paramsdict["raw_fastq_path"]))
     else:
         raws = list(zip(
             glob.glob(data.paramsdict["raw_fastq_path"]), 
@@ -714,7 +697,7 @@ def estimate_optim(data, testfile, ipyclient):
         
     ## We'll take the average of the size of a file based on the
     ## first 10000 reads to approximate number of reads in the main file
-    outfile.write("".join(islice(infile, 40000)))
+    outfile.write(b"".join(islice(infile, 40000)))
     outfile.close()
     infile.close()
 
@@ -767,7 +750,6 @@ def run2(data, ipyclient, force):
             data.paramsdict["project_dir"], "tmp-chunks-" + data.name)
         if os.path.exists(tmpdir):
             shutil.rmtree(tmpdir)
-
         if kbd:
             raise KeyboardInterrupt("s1")
         else:
