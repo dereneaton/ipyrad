@@ -1,45 +1,44 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 """ call consensus base calls on single-end data """
 
+# py2/3 compatible
 from __future__ import print_function
-# pylint: disable=E1101
-# pylint: disable=W0212
-# pylint: disable=W0142
-# pylint: disable=C0301
+try:
+    from itertools import izip, chain
+except ImportError:
+    from itertools import chain
+    izip = zip
 
 import scipy.stats
 import scipy.misc
-import itertools
-import datetime
+import ipyrad as ip
 import pandas as pd
 import numpy as np
 import time
-import h5py
 import gzip
 import glob
 import os
 from ipyrad.assemble.jointestimate import recal_hidepth
-from util import TRANSFULL, progressbar, IPyradError, IPyradWarningExit, clustdealer, PRIORITY, MINOR
-
+from .util import IPyradError, IPyradWarningExit, clustdealer, PRIORITY
 from collections import Counter
 
-import logging
-LOGGER = logging.getLogger(__name__)
-
+import warnings
+with warnings.catch_warnings(): 
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import h5py
 
 
 def get_binom(base1, base2, estE, estH):
     """
     return probability of base call
-    """
-        
+    """      
     prior_homo = (1. - estH) / 2.
     prior_hete = estH
     
     ## calculate probs
     bsum = base1 + base2
-    hetprob = scipy.misc.comb(bsum, base1)/(2. **(bsum))
+    hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
     homoa = scipy.stats.binom.pmf(base2, bsum, estE)
     homob = scipy.stats.binom.pmf(base1, bsum, estE)
     
@@ -50,7 +49,7 @@ def get_binom(base1, base2, estE, estH):
     
     ## final 
     probabilities = [homoa, homob, hetprob]
-    bestprob = max(probabilities)/float(sum(probabilities))
+    bestprob = max(probabilities) / float(sum(probabilities))
 
     ## return
     if hetprob > homoa:
@@ -65,17 +64,22 @@ def removerepeats(consens, arrayed):
     Checks for interior Ns in consensus seqs and removes those that are at
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3
     is chosen so that mindepth=6 requires 2 base calls that are not in [N,-].
+
+    Python3 notes: 
+    consens and arrayed are both in bytes in entry. Consens is converted to 
+    unicode for operations, and both are returned as bytes.
     """
 
     ## default trim no edges
-    consens = "".join(consens).replace("-", "N")
+    consens[consens == b"-"] = b"N"
+    consens = b"".join(consens)
 
     ## split for pairs
     try:
-        cons1, cons2 = consens.split("nnnn")
-        split = consens.index("nnnn")
+        cons1, cons2 = consens.split(b"nnnn")
+        split = consens.index(b"nnnn")
         arr1 = arrayed[:, :split]
-        arr2 = arrayed[:, split+4:]
+        arr2 = arrayed[:, split + 4:]
     except ValueError:
         cons1 = consens
         cons2 = ""
@@ -84,14 +88,14 @@ def removerepeats(consens, arrayed):
     ## trim from left and right of cons1
     edges = [None, None]
     lcons = len(cons1)
-    cons1 = cons1.lstrip("N")
+    cons1 = cons1.lstrip(b"N")
     edges[0] = lcons - len(cons1)
 
     ## trim from right if nonzero
     lcons = len(cons1)
-    cons1 = cons1.rstrip("N")
+    cons1 = cons1.rstrip(b"N")
     if lcons - len(cons1):
-        edges[1] = -1*(lcons - len(cons1))
+        edges[1] = -1 * (lcons - len(cons1))
 
     ## trim same from arrayed
     arr1 = arr1[:, edges[0]:edges[1]]
@@ -101,37 +105,37 @@ def removerepeats(consens, arrayed):
         ## trim from left and right of cons1
         edges = [None, None]
         lcons = len(cons2)
-        cons2 = cons2.lstrip("N")
+        cons2 = cons2.lstrip(b"N")
         edges[0] = lcons - len(cons2)
 
         ## trim from right if nonzero
         lcons = len(cons2)
-        cons2 = cons2.rstrip("N")
+        cons2 = cons2.rstrip(b"N")
         if lcons - len(cons2):
-            edges[1] = -1*(lcons - len(cons2))
+            edges[1] = -1 * (lcons - len(cons2))
 
         ## trim same from arrayed
         arr2 = arr2[:, edges[0]:edges[1]]
 
         ## reconstitute pairs
-        consens = cons1 + "nnnn" + cons2
-        consens = np.array(list(consens))
-        sep = np.array(arr1.shape[0]*[list("nnnn")])
+        consens = cons1 + b"nnnn" + cons2
+        consens = np.array(list(consens), dtype=np.bytes_)
+        sep = np.array(arr1.shape[0] * [list(b"nnnn")])
         arrayed = np.hstack([arr1, sep, arr2])
 
     ## if single-end...
     else:
-        consens = np.array(list(cons1))
+        consens = np.array(list(cons1), dtype=np.bytes_)
         arrayed = arr1
 
     ## get column counts of Ns and -s
-    ndepths = np.sum(arrayed == 'N', axis=0)
-    idepths = np.sum(arrayed == '-', axis=0)
+    ndepths = np.sum(arrayed == b'N', axis=0)
+    idepths = np.sum(arrayed == b'-', axis=0)
 
     ## get proportion of bases that are N- at each site
     nons = ((ndepths + idepths) / float(arrayed.shape[0])) >= 0.75
     ## boolean of whether base was called N
-    isn = consens == "N"
+    isn = consens == b"N"
     ## make ridx
     ridx = nons * isn
 
@@ -159,12 +163,12 @@ def newconsensus(data, sample, tmpchunk, optim):
 
     ## prepare data for reading
     clusters = open(tmpchunk, 'rb')
-    pairdealer = itertools.izip(*[iter(clusters)]*2)    
+    pairdealer = izip(*[iter(clusters)] * 2)    
     maxlen = data._hackersonly["max_fragment_length"]
 
     ## write to tmp cons to file to be combined later
     consenshandle = os.path.join(
-        data.dirs.consens, sample.name+"_tmpcons."+str(tmpnum))
+        data.dirs.consens, sample.name + "_tmpcons." + str(tmpnum))
     tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
     with h5py.File(tmp5, 'w') as io5:
         io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
@@ -179,20 +183,20 @@ def newconsensus(data, sample, tmpchunk, optim):
     ## if reference-mapped then parse the fai to get index number of chroms
     if isref:
         fai = pd.read_csv(data.paramsdict["reference_sequence"] + ".fai", 
-                names=['scaffold', 'size', 'sumsize', 'a', 'b'],
-                sep="\t")
-        faidict = {j:i for i,j in enumerate(fai.scaffold)}
+            names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+            sep="\t")
+        faidict = {j: i for i, j in enumerate(fai.scaffold)}
 
     ## store data for stats counters
-    counters = {"name" : tmpnum,
+    counters = {"name": tmpnum,
                 "heteros": 0,
-                "nsites" : 0,
-                "nconsens" : 0}
+                "nsites": 0,
+                "nconsens": 0}
 
     ## store data for what got filtered
-    filters = {"depth" : 0,
-               "maxh" : 0,
-               "maxn" : 0}
+    filters = {"depth": 0,
+               "maxh": 0,
+               "maxn": 0}
 
     ## store data for writing
     storeseq = {}
@@ -215,7 +219,7 @@ def newconsensus(data, sample, tmpchunk, optim):
 
         if chunk:
             ## get names and seqs
-            piece = chunk[0].strip().split("\n")
+            piece = chunk[0].decode().strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
 
@@ -237,8 +241,10 @@ def newconsensus(data, sample, tmpchunk, optim):
                     ref_position = (int(chromint), int(pos0), int(pos1))
                     
                 except Exception as inst:
-                    LOGGER.debug("Reference sequence chrom/pos failed for {}".format(names[0]))
-                    LOGGER.debug(inst)
+                    ip.logger.debug(
+                        "Reference sequence chrom/pos failed for {}"
+                        .format(names[0]))
+                    ip.logger.debug(inst)
                     
             ## apply read depth filter
             if nfilter1(data, reps):
@@ -246,11 +252,12 @@ def newconsensus(data, sample, tmpchunk, optim):
                 ## get stacks of base counts
                 sseqs = [list(seq) for seq in seqs]
                 arrayed = np.concatenate(
-                    [[seq]*rep for seq, rep in zip(sseqs, reps)])
+                    [[seq] * rep for seq, rep in zip(sseqs, reps)]
+                    ).astype(np.bytes_)
                 arrayed = arrayed[:, :maxlen]
                 
-                ## get consens call for each site, applies paralog-x-site filter
-                #consens = np.apply_along_axis(basecall, 0, arrayed, data)
+                # get consens call for each site, applies paralog-x-site filter
+                # consens = np.apply_along_axis(basecall, 0, arrayed, data)
                 consens = basecaller(
                     arrayed, 
                     data.paramsdict["mindepth_majrule"], 
@@ -266,13 +273,13 @@ def newconsensus(data, sample, tmpchunk, optim):
                     try:
                         consens, arrayed = removerepeats(consens, arrayed)
 
-                    except ValueError as _:
-                        LOGGER.info("Caught a bad chunk w/ all Ns. Skip it.")
+                    except ValueError:
+                        ip.logger.info("Caught bad chunk w/ all Ns. Skip it.")
                         continue
 
                 ## get hetero sites
-                hidx = [i for (i, j) in enumerate(consens) \
-                            if j in list("RKSYWM")]
+                hidx = [i for (i, j) in enumerate(consens) 
+                        if j in list("RKSYWM")]
                 nheteros = len(hidx)
                 
                 ## filter for max number of hetero sites
@@ -287,26 +294,26 @@ def newconsensus(data, sample, tmpchunk, optim):
                         nallel[current] = nhaps
 
                         ## store a reduced array with only CATG
-                        catg = np.array(\
-                            [np.sum(arrayed == i, axis=0)  \
+                        catg = np.array(
+                            [np.sum(arrayed == i, axis=0)
                             for i in list("CATG")],
                             dtype='uint32').T
                         catarr[current, :catg.shape[0], :] = catg
                         refarr[current] = ref_position
 
                         ## store the seqdata for tmpchunk
-                        storeseq[counters["name"]] = "".join(list(consens))
+                        storeseq[counters["name"]] = b"".join(list(consens))
                         counters["name"] += 1
                         counters["nconsens"] += 1
                         counters["heteros"] += nheteros
                     else:
-                        #LOGGER.debug("@haplo")
+                        #ip.logger.debug("@haplo")
                         filters['maxn'] += 1
                 else:
-                    #LOGGER.debug("@hetero")
+                    #ip.logger.debug("@hetero")
                     filters['maxh'] += 1
             else:
-                #LOGGER.debug("@depth")
+                #ip.logger.debug("@depth")
                 filters['depth'] += 1
                 
     ## close infile io
@@ -314,9 +321,10 @@ def newconsensus(data, sample, tmpchunk, optim):
 
     ## write final consens string chunk
     if storeseq:
-        with open(consenshandle, 'wb') as outfile:
-            outfile.write("\n".join([">"+sample.name+"_"+str(key)+"\n"+\
-                                   str(storeseq[key]) for key in storeseq]))
+        with open(consenshandle, 'wt') as outfile:
+            outfile.write(
+                "\n".join([">" + sample.name + "_" + str(key) + \
+                "\n" + storeseq[key].decode() for key in storeseq]))
 
     ## write to h5 array, this can be a bit slow on big data sets and is not 
     ## currently convered by progressbar movement.
@@ -329,7 +337,7 @@ def newconsensus(data, sample, tmpchunk, optim):
     del refarr
 
     ## return stats
-    counters['nsites'] = sum([len(i) for i in storeseq.itervalues()])
+    counters['nsites'] = sum([len(i) for i in storeseq.values()])
     return counters, filters
 
 
@@ -345,7 +353,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
     arr = arrayed.view(np.uint8)
     
     ## iterate over columns
-    for col in xrange(arr.shape[1]):
+    for col in range(arr.shape[1]):
         ## the site of focus
         carr = arr[:, col]
         
@@ -375,8 +383,8 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
             numq = counts[qbase]
             counts[qbase] = 0
 
-            rbase = np.argmax(counts)
-            numr = counts[rbase]
+            #rbase = np.argmax(counts)
+            #numr = counts[rbase]          # not used
             
             ## based on biallelic depth
             bidepth = nump + numq 
@@ -395,7 +403,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                 ## make statistical base call  
                 if bidepth >= mindepth_statistical:
                     ishet, prob = get_binom(base1, base2, estE, estH)
-                    #LOGGER.info("ishet, prob, b1, b2: %s %s %s %s", ishet, prob, base1, base2)
+                    #ip.logger.info("ishet, prob, b1, b2: %s %s %s %s", ishet, prob, base1, base2)
                     if prob < 0.95:
                         cons[col] = 78
                     else:
@@ -405,7 +413,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                             cons[col] = pbase
                 
                 ## make majrule base call
-                else: #if bidepth >= mindepth_majrule:
+                else:  # if bidepth >= mindepth_majrule:
                     if nump == numq:
                         cons[col] = TRANS[(pbase, qbase)]
                     else:
@@ -505,8 +513,8 @@ def nfilter4(consens, hidx, arrayed):
             consens = storealleles(consens, hidx, alleles)
         except (IndexError, KeyError):
             ## the H sites do not form good alleles
-            LOGGER.info("failed at phasing loc, skipping")
-            LOGGER.info("""
+            ip.logger.info("failed at phasing loc, skipping")
+            ip.logger.info("""
     consens %s
     hidx %s
     alleles %s
@@ -546,19 +554,19 @@ def cleanup(data, sample, statsdicts):
     """
     cleaning up. optim is the size (nloci) of tmp arrays
     """
-    LOGGER.info("in cleanup for: %s", sample.name)
+    ip.logger.info("in cleanup for: %s", sample.name)
     isref = 'reference' in data.paramsdict["assembly_method"]
 
     ## collect consens chunk files
     combs1 = glob.glob(os.path.join(
-                        data.dirs.consens,
-                        sample.name+"_tmpcons.*"))
+        data.dirs.consens,
+        sample.name + "_tmpcons.*"))
     combs1.sort(key=lambda x: int(x.split(".")[-1]))
 
     ## collect tmpcat files
     tmpcats = glob.glob(os.path.join(
-                        data.dirs.consens,
-                        sample.name+"_tmpcats.*"))
+        data.dirs.consens,
+        sample.name + "_tmpcats.*"))
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
     ## get shape info from the first cat, (optim, maxlen, 4)
@@ -566,23 +574,28 @@ def cleanup(data, sample, statsdicts):
         optim, maxlen, _ = io5['cats'].shape
 
     ## save as a chunked compressed hdf5 array
-    handle1 = os.path.join(data.dirs.consens, sample.name+".catg")
+    handle1 = os.path.join(data.dirs.consens, sample.name + ".catg")
     with h5py.File(handle1, 'w') as ioh5:
         nloci = len(tmpcats) * optim
-        dcat = ioh5.create_dataset("catg", (nloci, maxlen, 4),
-                                   dtype=np.uint32,
-                                   chunks=(optim, maxlen, 4),
-                                   compression="gzip")
-        dall = ioh5.create_dataset("nalleles", (nloci, ),
-                                   dtype=np.uint8,
-                                   chunks=(optim, ),
-                                   compression="gzip")
+        dcat = ioh5.create_dataset(
+            "catg", 
+            (nloci, maxlen, 4),
+            dtype=np.uint32,
+            chunks=(optim, maxlen, 4),
+            compression="gzip")
+        dall = ioh5.create_dataset(
+            "nalleles", (nloci, ),
+            dtype=np.uint8,
+            chunks=(optim, ),
+            compression="gzip")
         ## only create chrom for reference-aligned data
         if isref:
-            dchrom = ioh5.create_dataset("chroms", (nloci, 3), 
-                                         dtype=np.int64, 
-                                         chunks=(optim, 3), 
-                                         compression="gzip")
+            dchrom = ioh5.create_dataset(
+                "chroms",
+                (nloci, 3), 
+                dtype=np.int64, 
+                chunks=(optim, 3), 
+                compression="gzip")
 
         ## Combine all those tmp cats into the big cat
         start = 0
@@ -601,12 +614,16 @@ def cleanup(data, sample, statsdicts):
     sample.files.database = handle1
 
     ## record results
-    xcounters = {"nconsens": 0,
-                 "heteros": 0,
-                 "nsites": 0}
-    xfilters = {"depth": 0,
-               "maxh": 0,
-               "maxn": 0}
+    xcounters = {
+        "nconsens": 0,
+        "heteros": 0,
+        "nsites": 0,
+        }
+    xfilters = {
+        "depth": 0,
+        "maxh": 0,
+        "maxn": 0,
+        }
 
     ## merge finished consens stats
     for counters, filters in statsdicts:
@@ -617,11 +634,11 @@ def cleanup(data, sample, statsdicts):
             xfilters[key] += filters[key]
 
     ## merge consens read files
-    handle1 = os.path.join(data.dirs.consens, sample.name+".consens.gz")
-    with gzip.open(handle1, 'wb') as out:
+    handle1 = os.path.join(data.dirs.consens, sample.name + ".consens.gz")
+    with gzip.open(handle1, 'wt') as out:
         for fname in combs1:
             with open(fname) as infile:
-                out.write(infile.read()+"\n")
+                out.write(infile.read() + "\n")
             os.remove(fname)
     sample.files.consens = [handle1]
 
@@ -655,14 +672,15 @@ def cleanup(data, sample, statsdicts):
 def chunk_clusters(data, sample):
     """ split job into bits and pass to the client """
 
-    ## counter for split job submission
+    # counter for split job submission
     num = 0
 
-    ## set optim size for chunks in N clusters. The first few chunks take longer
-    ## because they contain larger clusters, so we create 4X as many chunks as
-    ## processors so that they are split more evenly.
-    optim = int((sample.stats.clusters_total // data.cpus) + \
-                (sample.stats.clusters_total % data.cpus))
+    # set optim size for chunks in N clusters. The first few chunks take longer
+    # because they contain larger clusters, so we create 4X as many chunks as
+    # processors so that they are split more evenly.
+    optim = int(
+        (sample.stats.clusters_total // data.cpus) + \
+        (sample.stats.clusters_total % data.cpus))
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
@@ -671,19 +689,21 @@ def chunk_clusters(data, sample):
     ## open to clusters
     with gzip.open(sample.files.clusters, 'rb') as clusters:
         ## create iterator to sample 2 lines at a time
-        pairdealer = itertools.izip(*[iter(clusters)]*2)
+        pairdealer = izip(*[iter(clusters)] * 2)
 
         ## Use iterator to sample til end of cluster
         done = 0
         while not done:
             ## grab optim clusters and write to file.
             done, chunk = clustdealer(pairdealer, optim)
-            chunkhandle = os.path.join(data.dirs.clusts,
-                                    "tmp_"+str(sample.name)+"."+str(num*optim))
+            chunk = [i.decode() for i in chunk]
+            chunkhandle = os.path.join(
+                data.dirs.clusts,
+                "tmp_" + str(sample.name) + "." + str(num * optim))
             if chunk:
                 chunkslist.append((optim, chunkhandle))
-                with open(chunkhandle, 'wb') as outchunk:
-                    outchunk.write("//\n//\n".join(chunk)+"//\n//\n")
+                with open(chunkhandle, 'wt') as outchunk:
+                    outchunk.write("//\n//\n".join(chunk) + "//\n//\n")                      
                 num += 1
 
     return chunkslist
@@ -704,11 +724,11 @@ def get_subsamples(data, samples, force):
     """.format(sample.name))
             elif not sample.stats.clusters_hidepth:
                 print("""\
-    Skipping Sample {}; No clusters found."""\
+    Skipping Sample {}; No clusters found."""
     .format(sample.name, int(sample.stats.clusters_hidepth)))
             elif sample.stats.state < 4:
                 print("""\
-    Skipping Sample {}; not yet finished step4 """\
+    Skipping Sample {}; not yet finished step4 """
     .format(sample.name))
             else:
                 subsamples.append(sample)
@@ -716,11 +736,11 @@ def get_subsamples(data, samples, force):
         else:
             if not sample.stats.clusters_hidepth:
                 print("""\
-    Skipping Sample {}; No clusters found in {}."""\
+    Skipping Sample {}; No clusters found in {}."""
     .format(sample.name, sample.files.clusters))
             elif sample.stats.state < 4:
                 print("""\
-    Skipping Sample {}; not yet finished step4"""\
+    Skipping Sample {}; not yet finished step4"""
     .format(sample.name))
             else:
                 subsamples.append(sample)
@@ -732,7 +752,7 @@ def get_subsamples(data, samples, force):
 
     ## if sample is already done skip
     if "hetero_est" not in data.stats:
-        print("  No estimates of heterozygosity and error rate. Using default "\
+        print("  No estimates of heterozygosity and error rate. Using default "
               "values")
         for sample in subsamples:
             sample.stats.hetero_est = 0.001
@@ -752,14 +772,14 @@ def get_subsamples(data, samples, force):
 def run(data, samples, force, ipyclient):
     """ checks if the sample should be run and passes the args """
     ## prepare dirs
-    data.dirs.consens = os.path.join(data.dirs.project, data.name+"_consens")
+    data.dirs.consens = os.path.join(data.dirs.project, data.name + "_consens")
     if not os.path.exists(data.dirs.consens):
         os.mkdir(data.dirs.consens)
 
     ## zap any tmp files that might be leftover
     tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
     tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-    for tmpfile in tmpcons+tmpcats:
+    for tmpfile in tmpcons + tmpcats:
         os.remove(tmpfile)
 
     ## filter through samples for those ready
@@ -809,7 +829,7 @@ def calculate_depths(data, samples, lbview):
 
     ## send jobs to be processed on engines
     start = time.time()
-    printstr = " calculating depths    | {} | s5 |"
+    printstr = ("calculating depths  ", "s5")
     recaljobs = {}
     maxlens = []
     for sample in samples:
@@ -818,18 +838,18 @@ def calculate_depths(data, samples, lbview):
     ## block until finished
     while 1:
         ready = [i.ready() for i in recaljobs.values()]
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), printstr.format(elapsed), spacer=data._spacer)
+        data._progressbar(len(ready), sum(ready), start, printstr)
         time.sleep(0.1)
         if len(ready) == sum(ready):
-            print("")
             break
 
     ## check for failures and collect results
+    print("")
     modsamples = []
     for sample in samples:
         if not recaljobs[sample.name].successful():
-            LOGGER.error("  sample %s failed: %s", sample.name, recaljobs[sample.name].exception())
+            ip.logger.error("  sample %s failed: %s", 
+                sample.name, recaljobs[sample.name].exception())
         else:
             modsample, _, maxlen, _, _ = recaljobs[sample.name].result()
             modsamples.append(modsample)
@@ -848,9 +868,8 @@ def make_chunks(data, samples, lbview):
     """
     ## first progress bar
     start = time.time()
-    printstr = " chunking clusters     | {} | s5 |"
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer)
+    printstr = ("chunking clusters   ", "s5")
+    data._progressbar(10, 0, start, printstr)
 
     ## send off samples to be chunked
     lasyncs = {}
@@ -860,17 +879,16 @@ def make_chunks(data, samples, lbview):
     ## block until finished
     while 1:
         ready = [i.ready() for i in lasyncs.values()]
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), printstr.format(elapsed), spacer=data._spacer)
+        data._progressbar(len(ready), sum(ready), start, printstr)
         time.sleep(0.1)
         if len(ready) == sum(ready):
-            print("")
             break
 
     ## check for failures
+    print("")
     for sample in samples:
         if not lasyncs[sample.name].successful():
-            LOGGER.error("  sample %s failed: %s", sample.name, 
+            ip.logger.error("  sample %s failed: %s", sample.name, 
                         lasyncs[sample.name].exception())
 
     return lasyncs
@@ -884,25 +902,22 @@ def process_chunks(data, samples, lasyncs, lbview):
 
     ## send chunks to be processed
     start = time.time()
-    asyncs = {sample.name:[] for sample in samples}
-    printstr = " consens calling       | {} | s5 |"
+    asyncs = {sample.name: [] for sample in samples}
+    printstr = ("consens calling     ", "s5")
 
     ## get chunklist from results
     for sample in samples:
         clist = lasyncs[sample.name].result()
         for optim, chunkhandle in clist:
             args = (data, sample, chunkhandle, optim)
-            #asyncs[sample.name].append(lbview.apply_async(consensus, *args))
             asyncs[sample.name].append(lbview.apply_async(newconsensus, *args))
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            progressbar(10, 0, printstr.format(elapsed), spacer=data._spacer)
+            data._progressbar(10, 0, start, printstr)
 
     ## track progress
-    allsyncs = list(itertools.chain(*[asyncs[i.name] for i in samples]))
+    allsyncs = list(chain(*[asyncs[i.name] for i in samples]))
     while 1:
         ready = [i.ready() for i in allsyncs]
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(len(ready), sum(ready), printstr.format(elapsed), spacer=data._spacer)
+        data._progressbar(len(ready), sum(ready), start, printstr)
         time.sleep(0.1)
         if len(ready) == sum(ready):
             break
@@ -915,22 +930,21 @@ def process_chunks(data, samples, lasyncs, lbview):
         casyncs[sample.name] = lbview.apply(cleanup, *(data, sample, statsdicts))
     while 1:
         ready = [i.ready() for i in casyncs.values()]
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        progressbar(10, 10, printstr.format(elapsed), spacer=data._spacer)
+        data._progressbar(10, 10, start, printstr)
         time.sleep(0.1)
         if len(ready) == sum(ready):
-            print("")
             break
 
     ## check for failures:
+    print("")
     for key in asyncs:
         asynclist = asyncs[key]
-        for async in asynclist:
-            if not async.successful():
-                LOGGER.error("  async error: %s \n%s", key, async.exception())
+        for rasync in asynclist:
+            if not rasync.successful():
+                ip.logger.error("  async error: %s \n%s", key, rasync.exception())
     for key in casyncs:
         if not casyncs[key].successful():
-            LOGGER.error("  casync error: %s \n%s", key, casyncs[key].exception())
+            ip.logger.error("  casync error: %s \n%s", key, casyncs[key].exception())
 
     ## get samples back
     subsamples = [i.result() for i in casyncs.values()]
@@ -947,15 +961,12 @@ def process_chunks(data, samples, lasyncs, lbview):
         data.stats_dfs.s5.to_string(
             buf=out,
             formatters={
-                'clusters_total':'{:.0f}'.format,
-                'filtered_by_depth':'{:.0f}'.format,
-                'filtered_by_maxH':'{:.0f}'.format,
-                'filtered_by_maxN':'{:.0f}'.format,
-                'reads_consens':'{:.0f}'.format,
-                'nsites':'{:.0f}'.format,
-                'nhetero':'{:.0f}'.format,
-                'heterozygosity':'{:.5f}'.format
+                'clusters_total': '{:.0f}'.format,
+                'filtered_by_depth': '{:.0f}'.format,
+                'filtered_by_maxH': '{:.0f}'.format,
+                'filtered_by_maxN': '{:.0f}'.format,
+                'reads_consens': '{:.0f}'.format,
+                'nsites': '{:.0f}'.format,
+                'nhetero': '{:.0f}'.format,
+                'heterozygosity': '{:.5f}'.format
             })
-
-
-
