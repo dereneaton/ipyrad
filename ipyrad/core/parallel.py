@@ -1,26 +1,42 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 """ functions to auto-launch an ipcluster instance """
 
 ## imports for running ipcluster
 from __future__ import print_function
+from io import StringIO
 
 import ipyparallel as ipp
 import subprocess
-import cStringIO
+import socket
 import shlex
 import time
 import sys
 import os
-
-from ipyrad import __interactive__
 from ipyrad.assemble.util import IPyradWarningExit
+import ipyrad as ip
 
-# pylint: disable=W0212
-# pylint: disable=W0142
+#import logging
+#LOGGER = logging.getLogger(__name__)
 
-import logging
-LOGGER = logging.getLogger(__name__)
+
+def cluster_info(ipyclient, spacer=""):
+    """ reports host and engine info for an ipyclient """    
+    ## get engine data, skips busy engines.    
+    hosts = []
+    for eid in ipyclient.ids:
+        engine = ipyclient[eid]
+        if not engine.outstanding:
+            hosts.append(engine.apply(socket.gethostname))
+
+    ## report it
+    hosts = [i.get() for i in hosts]
+    result = []
+    for hostname in set(hosts):
+        result.append("{}host compute node: [{} cores] on {}"
+                      .format(spacer, hosts.count(hostname), hostname))
+    print("\n".join(result))
+
 
 
 ## start ipcluster
@@ -49,13 +65,13 @@ def start_ipcluster(data):
                    
     ## wrap ipcluster start
     try: 
-        LOGGER.info(shlex.split(standard))
+        ip.logger.info(shlex.split(standard))
         subprocess.check_call(shlex.split(standard), 
             stderr=subprocess.STDOUT,
             stdout=subprocess.PIPE)
 
     except subprocess.CalledProcessError as inst:
-        LOGGER.debug("  ipcontroller already running.")
+        ip.logger.debug("  ipcontroller already running.")
         raise
 
     except Exception as inst:
@@ -71,13 +87,21 @@ def register_ipcluster(data):
     so that ipcluster will be killed on exit.
     """
     ## check if this pid already has a running cluster
-    data._ipcluster["cluster_id"] = "ipyrad-cli-"+str(os.getpid())
+    data._ipcluster["cluster_id"] = "ipyrad-cli-" + str(os.getpid())
     start_ipcluster(data)
     return data
 
 
 
-def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kwargs):
+def get_client(
+    cluster_id, 
+    profile, 
+    engines, 
+    timeout, 
+    cores, 
+    quiet, 
+    spacer, 
+    **kwargs):
     """ 
     Creates a client to view ipcluster engines for a given profile and 
     returns it with at least one engine spun up and ready to go. If no 
@@ -90,8 +114,8 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
     ## save stds for later, we're gonna hide them to prevent external printing 
     save_stdout = sys.stdout 
     save_stderr = sys.stderr
-    sys.stdout = cStringIO.StringIO()
-    sys.stderr = cStringIO.StringIO()
+    sys.stdout = StringIO()
+    sys.stderr = StringIO()
 
     ## get cluster_info print string
     connection_string = "{}establishing parallel connection:".format(spacer)
@@ -104,7 +128,7 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
         else:
             clusterargs = [cluster_id, profile, timeout]
             argnames = ["cluster_id", "profile", "timeout"]
-            args = {key:value for key, value in zip(argnames, clusterargs)}
+            args = {key: value for key, value in zip(argnames, clusterargs)}
 
         ## get connection within timeout window of wait time and hide messages
         ipyclient = ipp.Client(**args)
@@ -193,4 +217,3 @@ NO_IPCLUSTER_API = """
     Also, if you changed the 'profile' or 'cluster_id' setting from their 
     default values you must enter these into the Assembly._ipcluster dictionary.
     """
-
