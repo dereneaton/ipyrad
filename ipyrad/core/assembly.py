@@ -568,7 +568,7 @@ class Assembly(object):
             barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
 
             ## read in the file
-            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
+            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1, dtype=str)
             bdf = bdf.dropna()
 
             ## make sure bars are upper case
