@@ -26,11 +26,12 @@ import select
 import socket
 import logging
 import numpy as np
+import pandas as pd
 import dask.array as da
 import subprocess as sps
 
 import ipyrad
-from .util import IPyradWarningExit, clustdealer, fullcomp
+from .util import IPyradWarningExit, IPyradError, clustdealer, fullcomp
 
 import warnings
 with warnings.catch_warnings(): 
@@ -41,7 +42,633 @@ LOGGER = logging.getLogger(__name__)
 
 
 
-## a replacement for muscle_align_across that uses persistent popen
+class Step6:
+    def __init__(self, data, samples, ipyclient, randomseed=0, force=False):
+        self.data = data
+        self.samples = samples
+        self.ipyclient = ipyclient
+        self.randomseed = randomseed
+        self.setup_dirs(force)
+
+        # groups/threading information
+        self.cgroups = {}
+        self.assign_groups()
+        self.hostd = {}
+        self.tune_hierarchical_threading()
+
+
+    def setup_dirs(self, force=False):
+        # get dir names
+        self.data.dirs.across = os.path.realpath(
+            os.path.join(
+                self.data.paramsdict["project_dir"], 
+                "{}_across".format(self.data.name)))
+        self.data.tmpdir = os.path.join(
+            self.data.dirs.across, 
+            "{}-tmpalign".format(self.data.name))
+        self.data.clust_database = os.path.join(
+            self.data.dirs.across, 
+            "{}.clust.hdf5".format(self.data.name))
+
+        # clear out
+        if force:
+            odir = self.data.dirs.across
+            if os.path.exists(odir):
+                shutil.rmtree(odir)
+
+        # make dirs
+        if not os.path.exists(self.data.dirs.across):
+            os.mkdir(self.data.dirs.across)
+        if not os.path.exists(self.data.tmpdir):
+            os.mkdir(self.data.tmpdir)
+
+
+    def assign_groups(self):
+        # use population info to split samples into groups; or assign random
+        if self.data.populations:
+            self.cgroups = {}
+            idx = 0
+            for key, val in self.data.populations.items():
+                self.cgroups[idx] = val[1]
+                idx += 1
+
+        # by default let's split taxa into groups of 20-50 samples at a time
+        else:
+            # calculate the number of cluster1 jobs to perform:
+            if len(self.samples) <= 100:
+                groupsize = 20
+            elif len(self.samples) <= 500:
+                groupsize = 50
+            else:
+                groupsize = 100
+
+            alls = self.samples
+            self.cgroups = {}
+            idx = 0
+            for samps in range(0, len(alls), groupsize):
+                self.cgroups[idx] = alls[samps: samps + groupsize]
+                idx += 1
+
+
+    def tune_hierarchical_threading(self):
+        "tune threads for across-sample clustering"
+
+        # get engine data, skips busy engines.    
+        hosts = {}
+        for eid in self.ipyclient.ids:
+            engine = self.ipyclient[eid]
+            if not engine.outstanding:
+                hosts[eid] = engine.apply(socket.gethostname)
+
+        # get targets on each hostname for spreading jobs out.
+        self.ipyclient.wait()
+        hosts = [(eid, i.get()) for (eid, i) in hosts.items()]
+        hostnames = set([i[1] for i in hosts])
+        self.hostd = {x: [i[0] for i in hosts if i[1] in x] for x in hostnames}
+
+        # calculate the theading of cluster1 jobs:
+        self.data.ncpus = len(self.ipyclient.ids)
+        njobs = len(self.cgroups)
+        nnodes = len(self.hostd)
+
+        # how to load-balance cluster2 jobs
+        # b/c vsearch rarely runs efficient beyond 10 threads we'll limit the
+        # upper count to 10 unless there are very few samples.
+        ## e.g., 24 cpus; do 2 12-threaded jobs
+        ## e.g., 2 nodes; 40 cpus; do 2 20-threaded jobs or 4 10-threaded jobs
+        ## e.g., 4 nodes; 80 cpus; do 8 10-threaded jobs
+
+        # set nthreads based on _ipcluster dict (default is 2)        
+        #if "threads" in self.data._ipcluster.keys():
+        #    self.nthreads = int(self.data._ipcluster["threads"])
+
+        # create standard load-balancers
+        self.lbview = self.ipyclient.load_balanced_view()
+        self.thview = self.ipyclient.load_balanced_view()
+
+        # if nthreads then scale thview to use threads
+
+
+    def run(self):
+
+        # DENOVO
+        if self.data.paramsdict["assembly_method"] == "denovo":
+
+            # prepare clustering inputs for hierarchical clustering
+            self.remote_build_concats_tier1()
+
+            # send initial clustering jobs (track finished jobs)
+            self.remote_cluster1()
+
+            # prepare second tier inputs
+            self.remote_build_concats_tier2()
+
+            # send cluster2 job (track actual progress)
+            self.remote_cluster2()
+
+            # build clusters
+            self.remote_build_denovo_clusters()
+
+            # align denovo clusters
+            self.remote_align_clusters()
+
+            # enter database values
+            self.build_database()
+
+        elif self.data.paramsdict["assembly_method"] == "reference":
+
+            # prepare bamfiles
+            self.remote_concat_bams()
+
+            # build clusters from bedtools merge
+            self.remote_build_ref_clusters()
+
+            # enter database values
+            self.build_database()
+
+
+    def remote_run(self, printstr, function, args, threaded=False):
+        # submit job
+        start = time.time()
+        rasyncs = {}
+        for sample in self.samples:
+            fargs = [self.data, sample] + list(args)
+            if threaded:
+                rasyncs[sample.name] = self.thview.apply(function, *fargs)
+            else:
+                rasyncs[sample.name] = self.lbview.apply(function, *fargs)
+
+        # track job
+        while 1:
+            ready = [rasyncs[i].ready() for i in rasyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        # check for errors
+        print("")
+        for job in rasyncs:
+            if not rasyncs[job].successful():
+                raise IPyradError(rasyncs[job].exception())
+
+
+    def remote_build_concats_tier1(self):
+        "prepares concatenated consens input files for each clust1 group"
+
+        start = time.time()
+        printstr = ("concatenating inputs", "s6")
+        rasyncs = {}
+        for jobid, group in self.cgroups.items():
+            samples = [i for i in self.samples if i.name in group]
+            args = (self.data, jobid, samples, self.randomseed)
+            rasyncs[jobid] = self.lbview.apply(build_concat_files, *args)
+        
+        while 1:
+            ready = [rasyncs[i].ready() for i in rasyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.5)
+            if len(ready) == sum(ready):
+                break
+
+        # check for errors
+        print("")
+        for job in rasyncs:
+            if not rasyncs[job].successful():
+                raise IPyradError(rasyncs[job].exception())
+
+
+    def remote_cluster1(self):
+        "send threaded jobs to remote engines"
+        start = time.time()
+        printstr = ("clustering across 1 ", "s6")
+        rasyncs = {}
+        for jobid in self.cgroups.keys():
+            args = (self.data, jobid, 4)  # self.nthreads)
+            rasyncs[jobid] = self.thview.apply(cluster, *args)
+        
+        while 1:
+            ready = [rasyncs[i].ready() for i in rasyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.5)
+            if len(ready) == sum(ready):
+                break
+
+        # check for errors
+        print("")
+        for job in rasyncs:
+            if not rasyncs[job].successful():
+                raise IPyradError(rasyncs[job].exception())
+
+
+    def remote_build_concats_tier2(self):
+        start = time.time()
+        printstr = ("concatenating inputs", "s6")
+        args = (self.data, list(self.cgroups.keys()), self.randomseed)
+        rasync = self.lbview.apply(build_concat_two, *args)
+        
+        while 1:
+            ready = rasync.ready()
+            self.data._progressbar(int(ready), 1, start, printstr)
+            time.sleep(0.5)
+            if ready:
+                break
+
+        # check for errors
+        print("")
+        if not rasync.successful():
+            raise IPyradError(rasync.exception())        
+
+
+    def remote_cluster2(self):
+        start = time.time()
+        printstr = ("clustering 2", "s6")
+        args = (self.data, 'x', 0)
+        rasync = self.thview.apply(cluster, *args)
+        
+        while 1:
+            time.sleep(0.2)
+            self.data._progressbar(1, int(rasync.ready()), start, printstr)
+            if rasync.ready():
+                break
+
+        # check for errors
+        print("")
+        if not rasync.successful():
+            raise IPyradError(rasync.exception())          
+
+
+    def remote_build_denovo_clusters(self):
+       
+        # filehandles
+        uhandle = os.path.join(
+            self.data.dirs.across, 
+            "{}-x.utemp".format(self.data.name))
+        usort = os.path.join(
+            self.data.dirs.across, 
+            "{}-x.utemp.sort".format(self.data.name))
+
+        # sort utemp files, count seeds, ...
+        start = time.time()
+        printstr = ("building clusters   ", "s6")
+        async1 = self.lbview.apply(sort_seeds, *(uhandle, usort))
+        while 1:
+            ready = [async1.ready()]
+            self.data._progressbar(3, sum(ready), start, printstr)
+            time.sleep(0.1)
+            if all(ready):
+                break
+
+        async2 = self.lbview.apply(count_seeds, usort)
+        while 1:
+            ready = [async1.ready(), async2.ready()]
+            self.data._progressbar(3, sum(ready), start, printstr)
+            time.sleep(0.1)
+            if all(ready):
+                break
+        nseeds = async2.result()
+
+        # send the clust bit building job to work and track progress
+        async3 = self.lbview.apply(
+            build_denovo_clusters, 
+            *(self.data, usort, nseeds, list(self.cgroups.keys())))
+        while 1:
+            ready = [async1.ready(), async2.ready(), async3.ready()]
+            self.data._progressbar(3, sum(ready), start, printstr)
+            time.sleep(0.1)
+            if all(ready):
+                break
+        print("")
+
+        # check for errors
+        for job in [async1, async2, async3]:
+            if not job.successful():
+                raise IPyradWarningExit(job.result())
+
+
+    def remote_align_denovo_clusters(self):
+    
+        # get files
+        globpath = os.path.join(self.data.tmpdir, self.data.name + ".chunk_*")
+        clustbits = glob.glob(globpath)
+
+        # submit jobs to engines
+        start = time.time()
+        printstr = ("aligning clusters   ", "s6")
+        jobs = {}
+        for idx in range(len(clustbits)):
+            args = [self.data, self.samples, clustbits[idx]]
+            jobs[idx] = self.lbview.apply(persistent_popen_align3, *args)
+        allwait = len(jobs)
+
+        # print progress while bits are aligning
+        while 1:
+            finished = [i.ready() for i in jobs.values()]
+            fwait = sum(finished)
+            self.data._progressbar(allwait, fwait, start, printstr)
+            time.sleep(0.1)
+            if all(finished):
+                break
+
+        # check for errors in muscle_align_across
+        keys = list(jobs.keys())
+        for idx in keys:
+            if not jobs[idx].successful():
+                raise IPyradWarningExit(
+                    "error in step 6 {}".format(jobs[idx].exception()))
+            del jobs[idx]
+        print("")
+
+
+def build_concat_two(data, jobids, randomseed):
+    seeds = [
+        os.path.join(
+            data.dirs.across, 
+            "{}-{}.htemp".format(data.name, jobid)) for jobid in jobids
+        ]
+    allseeds = os.path.join(
+        data.dirs.across, 
+        "{}-x-catshuf.fa".format(data.name))
+    cmd1 = ['cat'] + seeds
+    cmd2 = [ipyrad.bins.vsearch, '--sortbylength', '-', '--output', allseeds]
+    proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
+    proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
+    proc2.communicate()
+    proc1.stdout.close()
+
+
+def build_concat_files(data, jobid, samples, randomseed):
+    """
+    [This is run on an ipengine]
+    Make a concatenated consens file with sampled alleles (no RSWYMK/rswymk).
+    Orders reads by length and shuffles randomly within length classes
+    """
+    conshandles = [
+        sample.files.consens[0] for sample in samples if 
+        sample.stats.reads_consens]
+    conshandles.sort()
+    assert conshandles, "no consensus files found"
+
+    ## concatenate all of the gzipped consens files
+    cmd = ['cat'] + conshandles
+    groupcons = os.path.join(
+        data.dirs.across, 
+        "{}-{}-catcons.gz".format(data.name, jobid))
+    LOGGER.debug(" ".join(cmd))
+    with open(groupcons, 'w') as output:
+        call = sps.Popen(cmd, stdout=output, close_fds=True)
+        call.communicate()
+
+    ## a string of sed substitutions for temporarily replacing hetero sites
+    ## skips lines with '>', so it doesn't affect taxon names
+    subs = ["/>/!s/W/A/g", "/>/!s/w/A/g", "/>/!s/R/A/g", "/>/!s/r/A/g",
+            "/>/!s/M/A/g", "/>/!s/m/A/g", "/>/!s/K/T/g", "/>/!s/k/T/g",
+            "/>/!s/S/C/g", "/>/!s/s/C/g", "/>/!s/Y/C/g", "/>/!s/y/C/g"]
+    subs = ";".join(subs)
+
+    ## impute pseudo-haplo information to avoid mismatch at hetero sites
+    ## the read data with hetero sites is put back into clustered data later.
+    ## pipe passed data from gunzip to sed.
+    cmd1 = ["gunzip", "-c", groupcons]
+    cmd2 = ["sed", subs]
+    LOGGER.debug(" ".join(cmd1))
+    LOGGER.debug(" ".join(cmd2))
+
+    proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
+    allhaps = groupcons.replace("-catcons.gz", "-cathaps.fa")
+    with open(allhaps, 'w') as output:
+        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=output, close_fds=True)
+        proc2.communicate()
+    proc1.stdout.close()
+
+    ## now sort the file using vsearch
+    allsort = groupcons.replace("-catcons.gz", "-catsort.fa")
+    cmd1 = [ipyrad.bins.vsearch,
+            "--sortbylength", allhaps,
+            "--fasta_width", "0",
+            "--output", allsort]
+    LOGGER.debug(" ".join(cmd1))
+    proc1 = sps.Popen(cmd1, close_fds=True)
+    proc1.communicate()
+
+    ## shuffle sequences within size classes. Tested seed (8/31/2016)
+    ## shuffling works repeatably with seed.
+    random.seed(randomseed)
+
+    ## open an iterator to lengthsorted file and grab two lines at at time
+    allshuf = groupcons.replace("-catcons.gz", "-catshuf.fa")
+    outdat = open(allshuf, 'wt')
+    indat = open(allsort, 'r')
+    idat = izip(iter(indat), iter(indat))
+    done = 0
+
+    chunk = [next(idat)]
+    while not done:
+        ## grab 2-lines until they become shorter (unless there's only one)
+        oldlen = len(chunk[-1][-1])
+        while 1:
+            try:
+                dat = next(idat)
+            except StopIteration:
+                done = 1
+                break
+            if len(dat[-1]) == oldlen:
+                chunk.append(dat)
+            else:
+                ## send the last chunk off to be processed
+                random.shuffle(chunk)
+                outdat.write("".join(chain(*chunk)))
+                ## start new chunk
+                chunk = [dat]
+                break
+
+    ## do the last chunk
+    random.shuffle(chunk)
+    outdat.write("".join(chain(*chunk)))
+
+    indat.close()
+    outdat.close()
+
+
+def cluster(data, jobid, nthreads):
+
+    # get files for this jobid
+    catshuf = os.path.join(
+        data.dirs.across, 
+        "{}-{}-catshuf.fa".format(data.name, jobid))
+    uhaplos = os.path.join(
+        data.dirs.across, 
+        "{}-{}.utemp".format(data.name, jobid))
+    hhaplos = os.path.join(
+        data.dirs.across, 
+        "{}-{}.htemp".format(data.name, jobid))
+
+    ## parameters that vary by datatype
+    ## (too low of cov values yield too many poor alignments)
+    strand = "plus"
+    cov = 0.75         # 0.90
+    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
+        strand = "both"
+        cov = 0.60
+    elif data.paramsdict["datatype"] == "pairgbs":
+        strand = "both"
+        cov = 0.75     # 0.90
+
+    cmd = [ipyrad.bins.vsearch,
+           "-cluster_smallmem", catshuf,
+           "-strand", strand,
+           "-query_cov", str(cov),
+           "-minsl", str(0.5),
+           "-id", str(data.paramsdict["clust_threshold"]),
+           "-userout", uhaplos,
+           "-notmatched", hhaplos,
+           "-userfields", "query+target+qstrand",
+           "-maxaccepts", "1",
+           "-maxrejects", "0",
+           "-fasta_width", "0",
+           "-threads", str(nthreads),  # "0",
+           "-fulldp",
+           "-usersort",
+           ]
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    out = proc.communicate()
+    if proc.returncode:
+        raise IPyradError(out)
+
+
+def count_seeds(usort):
+    """
+    uses bash commands to quickly count N seeds from utemp file
+    """
+    with open(usort, 'r') as insort:
+        cmd1 = ["cut", "-f", "2"]
+        cmd2 = ["uniq"]
+        cmd3 = ["wc"]
+        proc1 = sps.Popen(cmd1, stdin=insort, stdout=sps.PIPE, close_fds=True)
+        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
+        proc3 = sps.Popen(cmd3, stdin=proc2.stdout, stdout=sps.PIPE, close_fds=True)
+        res = proc3.communicate()
+        nseeds = int(res[0].split()[0])
+        proc1.stdout.close()
+        proc2.stdout.close()
+        proc3.stdout.close()
+    return nseeds
+
+
+def sort_seeds(uhandle, usort):
+    """ sort seeds from cluster results"""
+    cmd = ["sort", "-k", "2", uhandle, "-o", usort]
+    proc = sps.Popen(cmd, close_fds=True)
+    proc.communicate()
+
+
+def build_denovo_clusters(data, usort, nseeds, jobids):
+
+    # load all concat fasta files into a dictionary (memory concerns here...)
+    allcons = {}
+    conshandles = [
+        os.path.join(
+            data.dirs.across, "{}-{}-catcons.gz".format(data.name, jobid))
+        for jobid in jobids]
+    for conshandle in conshandles:
+        subcons = {}
+        with gzip.open(conshandle, 'rt') as iocons:
+            cons = izip(*[iter(iocons)] * 2)
+            for namestr, seq in cons:
+                nnn, sss = [i.strip() for i in (namestr, seq)]
+                subcons[nnn[1:]] = sss
+        allcons.update(subcons)
+        del subcons
+
+    # load all utemp files into a dictionary
+    subdict = {}
+    usortfiles = [
+        os.path.join(data.dirs.across, "{}-{}.utemp".format(data.name, jobid))
+        for jobid in jobids
+    ]
+    for ufile in usortfiles:
+        with open(ufile, 'r') as inhits:
+            for line in inhits:
+                hit, seed, ori = line.strip().split()
+                if seed not in subdict:
+                    subdict[seed] = [(hit, ori)]
+                else:
+                    subdict[seed].append((hit, ori))
+
+    # set optim to approximately 4 chunks per core. Smaller allows for a bit
+    # cleaner looking progress bar. 40 cores will make 160 files.
+    optim = ((nseeds // (data.ncpus * 4)) + (nseeds % (data.ncpus * 4)))
+
+    # iterate through usort grabbing seeds and matches
+    with open(usort, 'rt') as insort:
+        # iterator, seed null, and seqlist null
+        isort = iter(insort)
+        loci = 0
+        lastseed = 0
+        fseqs = []
+        seqlist = []
+        seqsize = 0
+
+        while 1:
+            # grab the next line
+            try:
+                hit, seed, ori = next(isort).strip().split()
+            except StopIteration:
+                break
+        
+            # if same seed append match
+            if seed != lastseed:
+                # store the last fseq, count it, and clear it
+                if fseqs:
+                    seqlist.append("\n".join(fseqs))
+                    seqsize += 1
+                    fseqs = []
+                # occasionally write to file
+                if seqsize >= optim:
+                    if seqlist:
+                        loci += seqsize
+                        pathname = os.path.join(
+                            data.tmpdir, 
+                            "{}.chunk_{}".format(data.name, loci))
+                        with open(pathname, 'wt') as clustout:
+                            clustout.write(
+                                "\n//\n//\n".join(seqlist) + "\n//\n//\n")
+                        # reset counter and list
+                        seqlist = []
+                        seqsize = 0
+
+                # store the new seed on top of fseqs
+                fseqs.append(">{}\n{}".format(seed, allcons[seed]))
+                lastseed = seed
+
+            # expand matches with subdict
+            hits = [(allcons[hit], ori)]
+            uhits = subdict.get(hit)
+            if uhits:
+                for hit in uhits:
+                    hits.append((allcons[hit[0]], hit[1]))
+
+            # revcomp if orientation is reversed
+            for seq, ori in hits:
+                if ori == "-":
+                    seq = fullcomp(seq)[::-1]
+                fseqs.append(">{}\n{}".format(hit[0], seq))
+
+    ## write whatever is left over to the clusts file
+    if fseqs:
+        seqlist.append("\n".join(fseqs))
+        seqsize += 1
+        loci += seqsize
+    if seqlist:
+        pathname = os.path.join(data.tmpdir, 
+            data.name + ".chunk_{}".format(loci))
+        with open(pathname, 'wt') as clustsout:
+            clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
+
+    ## final progress and cleanup
+    del allcons
+
+
 def persistent_popen_align3(data, samples, chunk):
     """  notes """
 
@@ -136,8 +763,8 @@ def persistent_popen_align3(data, samples, chunk):
                 la2 = align2[1:].split("\n>")
                 dalign1 = dict([i.split("\n", 1) for i in la1])
                 dalign2 = dict([i.split("\n", 1) for i in la2])
-                keys = sorted(dalign1.keys(), key=DEREP)
-                keys2 = sorted(dalign2.keys(), key=DEREP)
+                keys = sorted(dalign1.keys(), key=get_derep_num)
+                keys2 = sorted(dalign2.keys(), key=get_derep_num)
 
                 ## Make sure R1 and R2 actually exist for each sample. If not
                 ## bail out of this cluster.
@@ -214,7 +841,7 @@ def persistent_popen_align3(data, samples, chunk):
                 ## ensure name order match
                 lines = "".join(align1)[1:].split("\n>")
                 dalign1 = dict([i.split("\n", 1) for i in lines])
-                keys = sorted(dalign1.keys(), key=DEREP)
+                keys = sorted(dalign1.keys(), key=get_derep_num)
 
                 ## put into dict for writing to file
                 for kidx, key in enumerate(keys):
@@ -292,7 +919,8 @@ def persistent_popen_align3(data, samples, chunk):
 
 
 
-DEREP = lambda x: int(x.split(";")[-1][1:])
+def get_derep_num(x):
+    return int(x.split(";")[-1][1:])
 
 
 def multi_muscle_align(data, samples, ipyclient):
@@ -539,104 +1167,104 @@ def call_cluster(data, noreverse, ipyclient):
 
 
 
-def cluster(data, noreverse, nthreads):
-    """
-    Calls vsearch for clustering across samples.
-    """
+# def cluster(data, noreverse, nthreads):
+#     """
+#     Calls vsearch for clustering across samples.
+#     """
 
-    ## input and output file handles
-    cathaplos = os.path.join(data.dirs.across, data.name + "_catshuf.tmp")
-    uhaplos = os.path.join(data.dirs.across, data.name + ".utemp")
-    hhaplos = os.path.join(data.dirs.across, data.name + ".htemp")
-    logfile = os.path.join(data.dirs.across, "s6_cluster_stats.txt")
+#     ## input and output file handles
+#     cathaplos = os.path.join(data.dirs.across, data.name + "_catshuf.tmp")
+#     uhaplos = os.path.join(data.dirs.across, data.name + ".utemp")
+#     hhaplos = os.path.join(data.dirs.across, data.name + ".htemp")
+#     logfile = os.path.join(data.dirs.across, "s6_cluster_stats.txt")
 
-    ## parameters that vary by datatype
-    ## (too low of cov values yield too many poor alignments)
-    strand = "plus"
-    cov = 0.75    # 0.90
-    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
-        strand = "both"
-        cov = 0.60
-    elif data.paramsdict["datatype"] == "pairgbs":
-        strand = "both"
-        cov = 0.75   # 0.90
+#     ## parameters that vary by datatype
+#     ## (too low of cov values yield too many poor alignments)
+#     strand = "plus"
+#     cov = 0.75    # 0.90
+#     if data.paramsdict["datatype"] in ["gbs", "2brad"]:
+#         strand = "both"
+#         cov = 0.60
+#     elif data.paramsdict["datatype"] == "pairgbs":
+#         strand = "both"
+#         cov = 0.75   # 0.90
 
-    ## nthreads is calculated in 'call_cluster()'
-    cmd = [ipyrad.bins.vsearch,
-           "-cluster_smallmem", cathaplos,
-           "-strand", strand,
-           "-query_cov", str(cov),
-           "-minsl", str(0.5),
-           "-id", str(data.paramsdict["clust_threshold"]),
-           "-userout", uhaplos,
-           "-notmatched", hhaplos,
-           "-userfields", "query+target+qstrand",
-           "-maxaccepts", "1",
-           "-maxrejects", "0",
-           "-fasta_width", "0",
-           "-threads", str(nthreads),  # "0",
-           "-fulldp",
-           "-usersort",
-           "-log", logfile]
+#     ## nthreads is calculated in 'call_cluster()'
+#     cmd = [ipyrad.bins.vsearch,
+#            "-cluster_smallmem", cathaplos,
+#            "-strand", strand,
+#            "-query_cov", str(cov),
+#            "-minsl", str(0.5),
+#            "-id", str(data.paramsdict["clust_threshold"]),
+#            "-userout", uhaplos,
+#            "-notmatched", hhaplos,
+#            "-userfields", "query+target+qstrand",
+#            "-maxaccepts", "1",
+#            "-maxrejects", "0",
+#            "-fasta_width", "0",
+#            "-threads", str(nthreads),  # "0",
+#            "-fulldp",
+#            "-usersort",
+#            "-log", logfile]
 
-    ## override reverse clustering option
-    if noreverse:
-        strand = "plus"  # -leftjust "
+#     ## override reverse clustering option
+#     if noreverse:
+#         strand = "plus"  # -leftjust "
 
-    try:
-        ## this seems to start vsearch on a different pid than the engine
-        ## and so it's hard to kill... 
-        LOGGER.info(cmd)
-        (dog, owner) = pty.openpty()
-        proc = sps.Popen(cmd, stdout=owner, stderr=owner, close_fds=True)
+#     try:
+#         ## this seems to start vsearch on a different pid than the engine
+#         ## and so it's hard to kill... 
+#         LOGGER.info(cmd)
+#         (dog, owner) = pty.openpty()
+#         proc = sps.Popen(cmd, stdout=owner, stderr=owner, close_fds=True)
                                      
-        prog = 0
-        newprog = 0
-        while 1:
-            isdat = select.select([dog], [], [], 0)
-            if isdat[0]:
-                dat = os.read(dog, 80192).decode()
-            else:
-                dat = ""
-            if "Clustering" in dat:
-                try:
-                    newprog = int(dat.split()[-1][:-1])
-                ## may raise value error when it gets to the end
-                except ValueError:
-                    pass
+#         prog = 0
+#         newprog = 0
+#         while 1:
+#             isdat = select.select([dog], [], [], 0)
+#             if isdat[0]:
+#                 dat = os.read(dog, 80192).decode()
+#             else:
+#                 dat = ""
+#             if "Clustering" in dat:
+#                 try:
+#                     newprog = int(dat.split()[-1][:-1])
+#                 ## may raise value error when it gets to the end
+#                 except ValueError:
+#                     pass
 
-            ## break if done
-            ## catches end chunk of printing if clustering went really fast
-            elif "Clusters:" in dat:
-                LOGGER.info("ended vsearch tracking loop")
-                break
-            else:
-                time.sleep(0.1)
-            ## print progress
-            if newprog != prog:
-                print(newprog)
-                prog = newprog
+#             ## break if done
+#             ## catches end chunk of printing if clustering went really fast
+#             elif "Clusters:" in dat:
+#                 LOGGER.info("ended vsearch tracking loop")
+#                 break
+#             else:
+#                 time.sleep(0.1)
+#             ## print progress
+#             if newprog != prog:
+#                 print(newprog)
+#                 prog = newprog
 
-        ## another catcher to let vsearch cleanup after clustering is done
-        proc.wait()
-        print(100)
+#         ## another catcher to let vsearch cleanup after clustering is done
+#         proc.wait()
+#         print(100)
 
 
-    except KeyboardInterrupt:
-        LOGGER.info("interrupted vsearch here: %s", proc.pid)
-        os.kill(proc.pid, 2)
-        raise KeyboardInterrupt()
-    except sps.CalledProcessError as inst:
-        raise IPyradWarningExit("""
-        Error in vsearch: \n{}\n{}""".format(inst, sps.STDOUT))
-    except OSError as inst:
-        raise IPyradWarningExit("""
-        Failed to allocate pty: \n{}""".format(inst))
+#     except KeyboardInterrupt:
+#         LOGGER.info("interrupted vsearch here: %s", proc.pid)
+#         os.kill(proc.pid, 2)
+#         raise KeyboardInterrupt()
+#     except sps.CalledProcessError as inst:
+#         raise IPyradWarningExit("""
+#         Error in vsearch: \n{}\n{}""".format(inst, sps.STDOUT))
+#     except OSError as inst:
+#         raise IPyradWarningExit("""
+#         Failed to allocate pty: \n{}""".format(inst))
 
-    finally:
-        data.stats_files.s6 = logfile
-        ## cleanup processes
-        #del proc, dog, owner
+#     finally:
+#         data.stats_files.s6 = logfile
+#         ## cleanup processes
+#         #del proc, dog, owner
 
 
 
@@ -819,7 +1447,6 @@ def get_seeds_and_hits(uhandle, bseeds, snames):
     with h5py.File(bseeds, 'w') as io5:
         io5.create_dataset("seedsarr", data=seedsarr, dtype=np.int64)
         io5.create_dataset("uarr", data=uarr, dtype=np.int64)
-
 
 
 
@@ -1346,103 +1973,6 @@ def fill_superseqs(data, samples):
     ## close handle
     #os.remove(infile)
 
-
-
-def count_seeds(usort):
-    """
-    uses bash commands to quickly count N seeds from utemp file
-    """
-    with open(usort, 'r') as insort:
-        cmd1 = ["cut", "-f", "2"]
-        cmd2 = ["uniq"]
-        cmd3 = ["wc"]
-        proc1 = sps.Popen(cmd1, stdin=insort, stdout=sps.PIPE, close_fds=True)
-        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
-        proc3 = sps.Popen(cmd3, stdin=proc2.stdout, stdout=sps.PIPE, close_fds=True)
-        res = proc3.communicate()
-        nseeds = int(res[0].split()[0])
-        proc1.stdout.close()
-        proc2.stdout.close()
-        proc3.stdout.close()
-    return nseeds
-
-
-
-def sort_seeds(uhandle, usort):
-    """ sort seeds from cluster results"""
-    cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    proc = sps.Popen(cmd, close_fds=True)
-    proc.communicate()
-
-
-
-def build_clustbits(data, ipyclient, force):
-    """
-    Reconstitutes clusters from .utemp and htemp files and writes them
-    to chunked files for aligning in muscle.
-    """
-
-    ## If you run this step then we clear all tmp .fa and .indel.h5 files
-    if os.path.exists(data.tmpdir):
-        shutil.rmtree(data.tmpdir)
-        os.mkdir(data.tmpdir)
-
-    ## parallel client
-    lbview = ipyclient.load_balanced_view()
-    start = time.time()
-    printstr = ("building clusters   ", "s6")
-    data._progressbar(3, 0, start, printstr)
-
-    uhandle = os.path.join(data.dirs.across, data.name + ".utemp")
-    usort = os.path.join(data.dirs.across, data.name + ".utemp.sort")
-
-    async1 = ""
-    ## skip usorting if not force and already exists
-    if not os.path.exists(usort) or force:
-
-        ## send sort job to engines. Sorted seeds allows us to work through
-        ## the utemp file one locus at a time instead of reading all into mem.
-        LOGGER.info("building reads file -- loading utemp file into mem")
-        async1 = lbview.apply(sort_seeds, *(uhandle, usort))
-        while 1:
-            data._progressbar(3, 0, start, printstr)
-            if async1.ready():
-                break
-            else:
-                time.sleep(0.1)
-
-    ## send count seeds job to engines.
-    async2 = lbview.apply(count_seeds, usort)
-    while 1:
-        data._progressbar(3, 1, start, printstr)
-        if async2.ready():
-            break
-        else:
-            time.sleep(0.1)
-
-    ## wait for both to finish while printing progress timer
-    nseeds = async2.result()
-
-    ## send the clust bit building job to work and track progress
-    async3 = lbview.apply(sub_build_clustbits, *(data, usort, nseeds))
-    while 1:
-        data._progressbar(3, 2, start, printstr)
-        if async3.ready():
-            break
-        else:
-            time.sleep(0.1)
-    data._progressbar(3, 3, start, printstr)
-    print("")
-
-    ## check for errors
-    for job in [async1, async2, async3]:
-        try:
-            if not job.successful():
-                raise IPyradWarningExit(job.result())
-        except AttributeError:
-            ## If we skip usorting then async1 == "" so the call to
-            ## successful() raises, but we can ignore it.
-            pass
 
 
 
