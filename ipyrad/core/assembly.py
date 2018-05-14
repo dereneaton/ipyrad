@@ -523,7 +523,7 @@ class Assembly(object):
         ## wait for link jobs to finish if parallel
         if ipyclient:
             start = time.time()
-            printstr = ("loading reads", "s1")
+            printstr = ("loading reads       ", "s1")
             while 1:
                 fin = [i.ready() for i in linkjobs.values()]
                 self._progressbar(len(fin), sum(fin), start, printstr)
@@ -626,8 +626,8 @@ class Assembly(object):
                 self.barcodes = dict(zip(bdf[0], bdf[1]))
 
         except (IOError, IndexError):
-            raise IPyradWarningExit(\
-                "    Barcodes file not found. You entered: {}"\
+            raise IPyradError(
+                "    Barcodes file not found. You entered: {}"
                 .format(self.paramsdict["barcodes_path"]))
 
         except ValueError as inst:
@@ -662,10 +662,6 @@ class Assembly(object):
 
         Parameters
         ----------
-        TODO: NB: Using API and passing in popdict and popmins is currently 
-        unimplemented, or at least looks like it doesn't work. Leaving
-        these docs cuz Deren might have ideas about it being useful.
-
         popdict : dict
             When using the API it may be easier to simply create a dictionary
             to pass in as an argument instead of reading from an input file.
@@ -723,16 +719,20 @@ class Assembly(object):
 
         else:
             ## pop dict is provided by user
-            pass
+            if not popmins:
+                popmins = {i: 1 for i in popdict}
 
         ## check popdict. Filter for bad samples
         ## Warn user but don't bail out, could be setting the pops file
         ## on a new assembly w/o any linked samples.
-        badsamples = [i for i in itertools.chain(*popdict.values()) \
-                      if i not in self.samples.keys()]
+        badsamples = [
+            i for i in itertools.chain(*popdict.values())
+            if i not in self.samples.keys()]
+
         if any(badsamples):
-            ip.logger.warn("Some names from population input do not match Sample "\
-                        + "names: ".format(", ".join(badsamples)))
+            ip.logger.warn(
+                "Some names from population input do not match Sample "\
+              + "names: ".format(", ".join(badsamples)))
             ip.logger.warn("If this is a new assembly this is normal.")
 
         ## check popmins
@@ -1037,7 +1037,7 @@ class Assembly(object):
         ## Require reference seq for reference-based methods
         if self.paramsdict['assembly_method'] != "denovo":
             if not self.paramsdict['reference_sequence']:
-                raise IPyradError(REQUIRE_REFERENCE_PATH\
+                raise IPyradError(REQUIRE_REFERENCE_PATH
                             .format(self.paramsdict["assembly_method"]))
             else:
                 ## index the reference sequence
@@ -1049,12 +1049,9 @@ class Assembly(object):
                 ## print a progress bar for the indexing
                 start = time.time()
                 while 1:
-                    #elapsed = datetime.timedelta(seconds=int(time.time() - start))
-                    #printstr = " {}    | {} | s3 |".format("indexing reference")
                     printstr = ("indexing reference", "3")
                     finished = int(rasync.ready())
                     self._progressbar(1, finished, start, printstr)
-                    #progressbar(1, finished, printstr, spacer=self._spacer)
                     if finished:
                         print("")
                         break
