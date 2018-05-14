@@ -1,34 +1,30 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
-""" Various sequence manipulation util functions used by different
+""" 
+Various sequence manipulation util functions used by different
 parts of the pipeline
 """
 
-# pylint: disable=E1101
-# pylint: disable=W0212
-# pylint: disable=W0142
-
 from __future__ import print_function
+try:
+    from itertools import izip, takewhile
+except ImportError:
+    from itertools import takewhile
+    izip = zip
+
 import os
 import sys
+import time
 import socket
 import tempfile
-import itertools
+import datetime
 import ipyrad
 import gzip
 from collections import defaultdict
-
-try:
-    import subprocess32 as sps
-except ImportError:
-    import subprocess as sps
+import subprocess as sps
 
 import logging
 LOGGER = logging.getLogger(__name__)
-
-## a subset of functions to import when importing as *
-#__all__ = ["IPyradError", "IPyradParamsError", "IPyradWarningExit",
-#           "ObjDict", "comp"]
 
 
 ### custom Exception classes
@@ -48,7 +44,7 @@ class IPyradWarningExit(SystemExit):
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
-        if ipyrad.__interactive__:
+        if not ipyrad.__interactive__:
             raise IPyradError(*args, **kwargs)
         else:
             SystemExit.__init__(self, *args, **kwargs)
@@ -66,7 +62,7 @@ class Params(object):
         return len(self.__dict__)
 
     def __iter__(self):
-        for attr, value in self.__dict__.iteritems():
+        for attr, value in self.__dict__.items():
             yield attr, value
 
     def __getitem__(self, key):
@@ -120,72 +116,79 @@ class ObjDict(dict):
         return result
 
 
-### A decorator for use in step5 base calling
-def memoize(func):
-    """ Memoization decorator for a function taking one or more arguments. """
-    class Memodict(dict):
-        """ just a dict"""
-        def __getitem__(self, *key):
-            return dict.__getitem__(self, key)
+# ### A decorator for use in step5 base calling
+# def memoize(func):
+#     """ Memoization decorator for a function taking one or more arguments. """
+#     class Memodict(dict):
+#         """ just a dict"""
+#         def __getitem__(self, *key):
+#             return dict.__getitem__(self, key)
 
-        def __missing__(self, key):
-            """ this makes it faster """
-            ret = self[key] = func(*key)
-            return ret
+#         def __missing__(self, key):
+#             """ this makes it faster """
+#             ret = self[key] = func(*key)
+#             return ret
 
-    return Memodict().__getitem__
-
-
+#     return Memodict().__getitem__
 
 
-CDICT = {i:j for i, j in zip("CATG", "0123")}
+
+
+CDICT = {i: j for i, j in zip("CATG", "0123")}
 
 
 ## used for geno output
-VIEW = {"R":("G", "A"),
-        "K":("G", "T"),
-        "S":("G", "C"),
-        "Y":("T", "C"),
-        "W":("T", "A"),
-        "M":("C", "A"),
-        "A":("X", "X"),
-        "T":("X", "X"),
-        "G":("X", "X"),
-        "C":("X", "X"),
-        "N":("X", "X"),
-        "-":("X", "X"),
-        }
+VIEW = {
+    "R": ("G", "A"),
+    "K": ("G", "T"),
+    "S": ("G", "C"),
+    "Y": ("T", "C"),
+    "W": ("T", "A"),
+    "M": ("C", "A"),
+    "A": ("X", "X"),
+    "T": ("X", "X"),
+    "G": ("X", "X"),
+    "C": ("X", "X"),
+    "N": ("X", "X"),
+    "-": ("X", "X"),
+    }
 
 ## used in hetero() func of consens_se.py
-TRANS = {('G', 'A'):"R",
-         ('G', 'T'):"K",
-         ('G', 'C'):"S",
-         ('T', 'C'):"Y",
-         ('T', 'A'):"W",
-         ('C', 'A'):"M"}
+TRANS = {
+    ('G', 'A'): "R",
+    ('G', 'T'): "K",
+    ('G', 'C'): "S",
+    ('T', 'C'): "Y",
+    ('T', 'A'): "W",
+    ('C', 'A'): "M",
+    }
 
+# used in write_outfiles.write_geno
 TRANSFULL = {
-         ('G', 'A'):"R",
-         ('G', 'T'):"K",
-         ('G', 'C'):"S",
-         ('T', 'C'):"Y",
-         ('T', 'A'):"W",
-         ('C', 'A'):"M",
-         ('A', 'C'):"M",
-         ('A', 'T'):"W",
-         ('C', 'T'):"Y",
-         ('C', 'G'):"S",
-         ('T', 'G'):"K",
-         ('A', 'G'):"R"}
+    (b'G', b'A'): "R",
+    (b'G', b'T'): "K",
+    (b'G', b'C'): "S",
+    (b'T', b'C'): "Y",
+    (b'T', b'A'): "W",
+    (b'C', b'A'): "M",
+    (b'A', b'C'): "M",
+    (b'A', b'T'): "W",
+    (b'C', b'T'): "Y",
+    (b'C', b'G'): "S",
+    (b'T', b'G'): "K",
+    (b'A', b'G'): "R",
+    }
 
 
 ## used for resolving ambiguities
-AMBIGS = {"R":("G", "A"),
-          "K":("G", "T"),
-          "S":("G", "C"),
-          "Y":("T", "C"),
-          "W":("T", "A"),
-          "M":("C", "A")}
+AMBIGS = {
+    "R": ("G", "A"),
+    "K": ("G", "T"),
+    "S": ("G", "C"),
+    "Y": ("T", "C"),
+    "W": ("T", "A"),
+    "M": ("C", "A"),
+    }
 
 
 
@@ -245,6 +248,18 @@ def comp(seq):
               .replace("Z", "n")
 
 
+def bcomp(seq):
+    """ returns a seq with complement. Preserves little n's for splitters."""
+    ## makes base to its small complement then makes upper
+    return seq.replace(b"A", b't')\
+              .replace(b'T', b'a')\
+              .replace(b'C', b'g')\
+              .replace(b'G', b'c')\
+              .replace(b'n', b'Z')\
+              .upper()\
+              .replace(b"Z", b"n")
+
+
 
 def fullcomp(seq):
     """ returns complement of sequence including ambiguity characters,
@@ -291,14 +306,14 @@ def fastq_touchup_for_vsearch_merge(read, outfile, reverse=False):
             fr1 = gzip.open(read, 'rb')
         else:
             fr1 = open(read, 'rb')
-        quarts = itertools.izip(*[iter(fr1)]*4)
+        quarts = izip(*[iter(fr1)] * 4)
 
         ## a list to store until writing
         writing = []
 
         while 1:
             try:
-                lines = quarts.next()
+                lines = next(quarts)
             except StopIteration:
                 break
             if reverse:
@@ -307,15 +322,15 @@ def fastq_touchup_for_vsearch_merge(read, outfile, reverse=False):
                 seq = lines[1].strip()
             writing.append("".join([
                 lines[0],
-                seq+"\n",
+                seq + "\n",
                 lines[2],
-                "B"*len(seq)
+                "B" * len(seq)
             ]))
 
             ## write to disk
             counts += 1
             if not counts % 1000:
-                out.write("\n".join(writing)+"\n")
+                out.write("\n".join(writing) + "\n")
                 writing = []
         if writing:
             out.write("\n".join(writing))
@@ -390,10 +405,10 @@ def merge_pairs_after_refmapping(data, two_files, merged_out):
     with open(merged_out, 'ab') as combout:
         ## read in paired end read files 4 lines at a time
         fr1 = open(nonmerged1, 'rb')
-        quart1 = itertools.izip(*[iter(fr1)]*4)
+        quart1 = izip(*[iter(fr1)]*4)
         fr2 = open(nonmerged2, 'rb')
-        quart2 = itertools.izip(*[iter(fr2)]*4)
-        quarts = itertools.izip(quart1, quart2)
+        quart2 = izip(*[iter(fr2)]*4)
+        quarts = izip(quart1, quart2)
 
         ## a list to store until writing
         writing = []
@@ -402,7 +417,7 @@ def merge_pairs_after_refmapping(data, two_files, merged_out):
         ## iterate until done
         while 1:
             try:
-                read1s, read2s = quarts.next()
+                read1s, read2s = next(quarts)
             except StopIteration:
                 break
 
@@ -449,12 +464,16 @@ def merge_after_pysam(data, clust):
     it bounces all the files for each locus off the disk. I/O _hog_.
     """
     try:
-        r1file = tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                            dir=data.dirs.edits,
-                                            suffix="_R1_.fastq")
-        r2file = tempfile.NamedTemporaryFile(mode='wb', delete=False,
-                                            dir=data.dirs.edits,
-                                            suffix="_R2_.fastq")
+        r1file = tempfile.NamedTemporaryFile(
+            mode='wb', 
+            delete=False,
+            dir=data.dirs.edits,
+            suffix="_R1_.fastq")
+        r2file = tempfile.NamedTemporaryFile(
+            mode='wb', 
+            delete=False,
+            dir=data.dirs.edits,
+            suffix="_R2_.fastq")
 
         r1dat = []
         r2dat = []
@@ -472,19 +491,20 @@ def merge_after_pysam(data, clust):
         r2file.close()
 
         ## Read in the merged data and format to return as a clust
-        merged_file = tempfile.NamedTemporaryFile(mode='wb',
-                                            dir=data.dirs.edits,
-                                            suffix="_merged.fastq").name
+        merged_file = tempfile.NamedTemporaryFile(
+            mode='wb',
+            dir=data.dirs.edits,
+            suffix="_merged.fastq").name
 
         clust = []
         merge_pairs(data, [(r1file.name, r2file.name)], merged_file, 0, 1)
 
         with open(merged_file) as infile:
-            quarts = itertools.izip(*[iter(infile)]*4)
+            quarts = izip(*[iter(infile)]*4)
 
             while 1:
                 try:
-                    sname, seq, _, _ = quarts.next()
+                    sname, seq, _, _ = next(quarts)
                     ## Vsearch expects R2 oriented how it would be in a raw data file
                     ## i.e. revcomp, and that's also how it returns it
                     ## but we want to maintain the genomic orientation so R1 and
@@ -651,13 +671,13 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
                 fr1 = gzip.open(nonmerged1, 'rb')
             else:
                 fr1 = open(nonmerged1, 'rb')
-            quart1 = itertools.izip(*[iter(fr1)]*4)
+            quart1 = izip(*[iter(fr1)]*4)
             if nonmerged2.endswith(".gz"):
                 fr2 = gzip.open(nonmerged2, 'rb')
             else:
                 fr2 = open(nonmerged2, 'rb')
-            quart2 = itertools.izip(*[iter(fr2)]*4)
-            quarts = itertools.izip(quart1, quart2)
+            quart2 = izip(*[iter(fr2)]*4)
+            quarts = izip(quart1, quart2)
 
             ## a list to store until writing
             writing = []
@@ -666,7 +686,7 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
             ## iterate until done
             while 1:
                 try:
-                    read1s, read2s = quarts.next()
+                    read1s, read2s = next(quarts)
                 except StopIteration:
                     break
                 if revcomp:
@@ -719,80 +739,80 @@ def merge_pairs(data, two_files, merged_out, revcomp, merge):
     return nmerged
 
 
-## Doesn't work right now.
-def merge_pair_pipes(data, sample, clust):
-    r1_inpipe_name = os.path.join(data.tmpdir, 'r1_in')
-    r2_inpipe_name = os.path.join(data.tmpdir, 'r2_in')
-    unmapped1 = tempfile.NamedTemporaryFile()
-    unmapped2 = tempfile.NamedTemporaryFile()
-    merged = tempfile.NamedTemporaryFile()
-    pipelist = [r1_inpipe_name, r2_inpipe_name]
-    try:
-        r1reads, r2reads = map(lambda x: x.split("nnnn"), clust)
-    except:
-        LOGGER.debug("bad clust")
-        raise
+# ## Doesn't work right now.
+# def merge_pair_pipes(data, sample, clust):
+#     r1_inpipe_name = os.path.join(data.tmpdir, 'r1_in')
+#     r2_inpipe_name = os.path.join(data.tmpdir, 'r2_in')
+#     unmapped1 = tempfile.NamedTemporaryFile()
+#     unmapped2 = tempfile.NamedTemporaryFile()
+#     merged = tempfile.NamedTemporaryFile()
+#     pipelist = [r1_inpipe_name, r2_inpipe_name]
+#     try:
+#         r1reads, r2reads = map(lambda x: x.split("nnnn"), clust)
+#     except:
+#         LOGGER.debug("bad clust")
+#         raise
 
-    def childR1( ):
-        LOGGER.debug("Entering c1 {} {}".format(data, sample))
-        pipeout = os.open(r1_inpipe_name, os.O_WRONLY)
-        for line in r1reads:
-            os.write(pipeout, line)
-        os.close(pipeout)
+#     def childR1( ):
+#         LOGGER.debug("Entering c1 {} {}".format(data, sample))
+#         pipeout = os.open(r1_inpipe_name, os.O_WRONLY)
+#         for line in r1reads:
+#             os.write(pipeout, line)
+#         os.close(pipeout)
 
-    def childR2( ):
-        LOGGER.debug("Entering c2 {} {}".format(data, sample))
-        pipeout = os.open(r2_inpipe_name, os.O_WRONLY)
-        for line in r2reads:
-            os.write(pipeout, line)
-        os.close(pipeout)
+#     def childR2( ):
+#         LOGGER.debug("Entering c2 {} {}".format(data, sample))
+#         pipeout = os.open(r2_inpipe_name, os.O_WRONLY)
+#         for line in r2reads:
+#             os.write(pipeout, line)
+#         os.close(pipeout)
 
-    def vsearch( ):
-        LOGGER.debug("entering vsearch")
-        cmd = ["/Users/iovercast/miniconda2/bin/vsearch",
-               "--fastq_mergepairs", r1_inpipe_name,
-               "--reverse", r2_inpipe_name,
-               "--fastqout", merged.name,
-               "--fastqout_notmerged_fwd", unmapped1,
-               "--fastqout_notmerged_rev", unmapped2,
-               "--fasta_width", "0",
-               "--fastq_minmergelen", "32",
-               "--fastq_maxns", "6",
-               "--fastq_minovlen", "10",
-               "--fastq_maxdiffs", "4",
-               "--label_suffix", "_m1",
-               "--fastq_qmax", "1000",
-               "--threads", "2",
-               "--fastq_allowmergestagger"]
-        proc = subprocess.Popen(cmd)
-        ret = proc.communicate()
+#     def vsearch( ):
+#         LOGGER.debug("entering vsearch")
+#         cmd = ["/Users/iovercast/miniconda2/bin/vsearch",
+#                "--fastq_mergepairs", r1_inpipe_name,
+#                "--reverse", r2_inpipe_name,
+#                "--fastqout", merged.name,
+#                "--fastqout_notmerged_fwd", unmapped1,
+#                "--fastqout_notmerged_rev", unmapped2,
+#                "--fasta_width", "0",
+#                "--fastq_minmergelen", "32",
+#                "--fastq_maxns", "6",
+#                "--fastq_minovlen", "10",
+#                "--fastq_maxdiffs", "4",
+#                "--label_suffix", "_m1",
+#                "--fastq_qmax", "1000",
+#                "--threads", "2",
+#                "--fastq_allowmergestagger"]
+#         proc = subprocess.Popen(cmd)
+#         ret = proc.communicate()
 
-    joblist = [childR1, childR2]
-    for pipe in pipelist:
-        if os.path.exists(pipe):
-            os.unlink(pipe)
-        if not os.path.exists(pipe):
-            os.mkfifo(pipe)
+#     joblist = [childR1, childR2]
+#     for pipe in pipelist:
+#         if os.path.exists(pipe):
+#             os.unlink(pipe)
+#         if not os.path.exists(pipe):
+#             os.mkfifo(pipe)
 
-    children = []
-    isparent = True
-    for job in joblist:
-        child = os.fork()
-        if child:
-            children.append(child)
-        else:
-            isparent = False
-            job()
-            os._exit(0)
+#     children = []
+#     isparent = True
+#     for job in joblist:
+#         child = os.fork()
+#         if child:
+#             children.append(child)
+#         else:
+#             isparent = False
+#             job()
+#             os._exit(0)
 
-    if isparent:
-        for child in children:
-            os.wait3(child)
+#     if isparent:
+#         for child in children:
+#             os.wait3(child)
 
-    with open(merged, 'r'):
-        clusts = merged.read()
-        LOGGER.error("lenmerged = {}".format(len(clusts)))
-        return clusts
+#     with open(merged, 'r'):
+#         clusts = merged.read()
+#         LOGGER.error("lenmerged = {}".format(len(clusts)))
+#         return clusts
 
 
 def revcomp(sequence):
@@ -803,13 +823,6 @@ def revcomp(sequence):
                              .replace("C", "g")\
                              .replace("G", "c").upper()
     return sequence
-
-
-
-def unhetero(amb):
-    " returns bases from ambiguity code"
-    amb = amb.upper()
-    return AMBIGS.get(amb)
 
 
 
@@ -834,30 +847,22 @@ MINOR = {"M": "A",
          "K": "G"}
 
 
-DUCT = {"R":["G", "A"],
-        "K":["G", "T"],
-        "S":["G", "C"],
-        "Y":["T", "C"],
-        "W":["T", "A"],
-        "M":["C", "A"],
-        "A":["A", "A"],
-        "T":["T", "T"],
-        "G":["G", "G"],
-        "C":["C", "C"],
-        "N":["N", "N"],
-        "-":["-", "-"]
-        }
+# convert byte to list of alleles as ASCII strings
+BTS = {
+    b"R": ["G", "A"],
+    b"K": ["G", "T"],
+    b"S": ["G", "C"],
+    b"Y": ["T", "C"],
+    b"W": ["T", "A"],
+    b"M": ["C", "A"],
+    b"A": ["A", "A"],
+    b"T": ["T", "T"],
+    b"G": ["G", "G"],
+    b"C": ["C", "C"],
+    b"N": ["N", "N"],
+    b"-": ["-", "-"]
+    }
 
-
-def unstruct(amb):
-    """ This is copied from pyrad.alignable, and is referenced in
-    several of the loci2*.py conversion modules. It duplicates some
-    of the effort of unhetero(), but i guess it's fine for now. Probably
-    could merge these two functions if you wanted to.
-    """
-    amb = amb.upper()
-    ## returns bases from ambiguity code"
-    return DUCT.get(amb)
 
 
 
@@ -869,8 +874,8 @@ def clustdealer(pairdealer, optim):
     while ccnt < optim:
         ## try refreshing taker, else quit
         try:
-            taker = itertools.takewhile(lambda x: x[0] != "//\n", pairdealer)
-            oneclust = ["".join(taker.next())]
+            taker = takewhile(lambda x: x[0] != b"//\n", pairdealer)
+            oneclust = [b"".join(next(taker))]
         except StopIteration:
             #LOGGER.debug('last chunk %s', chunk)
             return 1, chunk
@@ -878,31 +883,37 @@ def clustdealer(pairdealer, optim):
         ## load one cluster
         while 1:
             try:
-                oneclust.append("".join(taker.next()))
+                oneclust.append(b"".join(next(taker)))
             except StopIteration:
                 break
-        chunk.append("".join(oneclust))
+        chunk.append(b"".join(oneclust))
         ccnt += 1
     return 0, chunk
 
 
 
 
-def progressbar(njobs, finished, msg="", spacer="  "):
-    """ prints a progress bar """
-    if njobs:
-        progress = 100*(finished / float(njobs))
-    else:
-        progress = 100
-        
-    hashes = '#'*int(progress/5.)
-    nohash = ' '*int(20-len(hashes))
-    if not ipyrad.__interactive__:
-        msg = msg.rsplit("|", 2)[0]
+# def progressbar(njobs, finished, start, msg="", spacer="  "):
 
-    args = [spacer, hashes+nohash, int(progress), msg]
-    print("\r{}[{}] {:>3}% {} ".format(*args), end="")
-    sys.stdout.flush()
+#     # measure progress
+#     if njobs:
+#         progress = 100 * (finished / float(njobs))
+#     else:
+#         progress = 100
+        
+#     # build the bar
+#     hashes = '#' * int(progress / 5.)
+#     nohash = ' ' * int(20 - len(hashes))
+#     if ipyrad._cli:
+#         msg = msg.rsplit("|", 2)[0]
+
+#     # timestamp
+#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
+
+#     # print to stderr
+#     args = [spacer, hashes + nohash, int(progress), elapsed, msg]
+#     print("\r{}[{}] {:>3}% {} ".format(*args), end="")
+#     sys.stdout.flush()
 
 
 
@@ -941,13 +952,13 @@ def get_threaded_view(ipyclient, split=True):
         if len(gids) >= 16:
             maxt = 4
         ## split ids into groups of maxt
-        threaded = [gids[i:i+maxt] for i in xrange(0, len(gids), maxt)]
+        threaded = [gids[i:i + maxt] for i in range(0, len(gids), maxt)]
         lth = len(threaded)
         ## if anything was split (lth>1) update hostdict with new proc
         if lth > 1:
             hostdict.pop(key)
             for hostid in range(lth):
-                hostdict[str(key)+"_"+str(hostid)] = threaded[hostid]
+                hostdict[str(key) + "_" + str(hostid)] = threaded[hostid]
 
     ## make sure split numbering is correct
     #threaded = hostdict.values()
@@ -966,16 +977,16 @@ def detect_cpus():
     """
     # Linux, Unix and MacOS:
     if hasattr(os, "sysconf"):
-        if os.sysconf_names.has_key("SC_NPROCESSORS_ONLN"):
+        if os.sysconf_names.get("SC_NPROCESSORS_ONLN"):
             # Linux & Unix:
             ncpus = os.sysconf("SC_NPROCESSORS_ONLN")
             if isinstance(ncpus, int) and ncpus > 0:
                 return ncpus
-        else: # OSX:
+        else:  # OSX:
             return int(os.popen2("sysctl -n hw.ncpu")[1].read())
     # Windows:
-    if os.environ.has_key("NUMBER_OF_PROCESSORS"):
+    if os.environ.get("NUMBER_OF_PROCESSORS"):
         ncpus = int(os.environ["NUMBER_OF_PROCESSORS"])
         if ncpus > 0:
             return ncpus
-    return 1 # Default
+    return 1  # Default
