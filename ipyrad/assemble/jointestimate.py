@@ -19,7 +19,8 @@ import time
 import gzip
 import os
 
-from .cluster_within import get_quick_depths
+#from .cluster_within import get_quick_depths
+from .clustmap import get_quick_depths
 from collections import Counter
 from .util import IPyradWarningExit, IPyradError, clustdealer
 
@@ -174,7 +175,7 @@ def recal_hidepth(data, sample):
 
         ip.logger.info("%s %s %s", maxlens.shape, maxlens.mean(), maxlens.std())
         maxlens = maxlens[hidepths]
-        maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+        maxlen = int(maxlens.mean() + (2. * maxlens.std()))
 
         ## saved stat values are for majrule min
         sample.stats["clusters_hidepth"] = keepmj.shape[0]
@@ -222,7 +223,8 @@ def stackarray(data, sample):
             names = piece[0::2]
             seqs = piece[1::2]
             ## pull replicate read info from seqs
-            reps = [int(sname.split(";")[-2][5:]) for sname in names]
+            #reps = [int(sname.split(";")[-2][5:]) for sname in names]
+            reps = [int(sname.split("=")[-1][:-2]) for sname in names]
             
             ## double reps if the read was fully merged... (TODO: Test this!)
             #merged = ["_m1;s" in sname for sname in names]
