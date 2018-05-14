@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 """
 de-replicates edit files and clusters de-replciated reads
@@ -6,39 +6,431 @@ by sequence similarity using vsearch
 """
 
 from __future__ import print_function
-# pylint: disable=E1101
-# pylint: disable=F0401
-# pylint: disable=W0142
-# pylint: disable=W0212
-# pylint: disable=C0301
-# pylint: disable=R0915
-# pylint: disable=R0914
-# pylint: disable=R0912
+try:
+    from itertools import izip, islice, chain
+except ImportError:
+    from itertools import islice, chain
+    izip = zip
 
 import os
 import gzip
 import glob
-import itertools
-
-import numpy as np
-import ipyrad
 import time
-import datetime
+import shutil
+import tempfile
 import warnings
+import numpy as np
+import ipyrad as ip
 import networkx as nx
+import subprocess as sps
 import ipyparallel as ipp
 
-from refmap import *
-from util import *
+from .refmap import refmap_init, refmap_stats
+from .refmap import mapreads, ref_muscle_chunker, ref_build_and_muscle_chunk
+from .util import IPyradError, IPyradWarningExit
+from .util import comp, merge_pairs
 
-## Python3 subprocess is faster for muscle-align
-try:
-    import subprocess32 as sps
-except ImportError:
-    import subprocess as sps
 
-import logging
-LOGGER = logging.getLogger(__name__)
+
+class Step3:
+    def __init__(self, data, samples, noreverse, maxindels, force, ipyclient):
+
+        # store attributes
+        self.data = data
+        self.noreverse = noreverse
+        self.maxindels = maxindels
+        self.force = force
+        self.ipyclient = ipyclient
+        self.gbs = bool("gbs" in self.data.paramsdict["datatype"])
+        self.samples = self.check_samples(samples)
+
+        # init funcs
+        self.setup_dirs()
+        self.refmap_init()
+        self.tune_threads()
+        self.tune_load_balancer()
+        self.prepare_edits_files()
+
+        # jobs to be run on the cluster
+        if self.data.paramsdict["method"] == "denovo":
+            self.remote_run_dereps()
+            self.remote_run_cluster_map_build()
+            self.remote_run_align_cleanup()
+
+        elif self.data.paramsdict["method"] == "denovo+reference":
+            self.remote_run_dereps()
+            self.remote_run_cluster_map_build()
+            self.remote_run_align_cleanup()
+
+        elif self.data.paramsdict["method"] == "denovo-reference":
+            self.remote_run_dereps()
+            self.remote_run_cluster_map_build()
+            self.remote_run_align_cleanup()
+
+        elif self.data.paramsdict["method"] == "reference":
+            self.remote_run_dereps()
+            self.remote_run_cluster_map_build()
+            self.remote_run_align_cleanup()
+
+
+    def check_samples(self, samples):
+        ## list of samples to submit to queue
+        subsamples = []
+
+        ## if sample is already done skip
+        for sample in samples:
+            if sample.stats.state < 2:
+                print("Sample not ready for clustering. First run step2 on: {}"
+                      .format(sample.name))
+                continue
+
+            if not self.force:
+                if sample.stats.state >= 3:
+                    print("Skipping {}; aleady clustered. Use force to re-cluster"
+                          .format(sample.name))
+                else:
+                    if sample.stats.reads_passed_filter:
+                        subsamples.append(sample)
+            else:
+                ## force to overwrite
+                if sample.stats.reads_passed_filter:
+                    subsamples.append(sample)
+
+        ## run subsamples
+        if not subsamples:
+            raise IPyradError(
+                "No Samples ready to be clustered. First run step 2.")
+        return subsamples
+
+
+    def setup_dirs(self):
+        # make output folder for clusters
+        pdir = os.path.realpath(self.data.paramsdict["project_dir"])
+        self.data.dirs.clusts = os.path.join(
+            pdir, "{}_clust_{}"
+            .format(self.data.name, self.data.paramsdict["clust_threshold"]))
+        if not os.path.exists(self.data.dirs.clusts):
+            os.mkdir(self.data.dirs.clusts)
+
+        # make a tmpdir for align files
+        self.data.tmpdir = os.path.abspath(os.path.expanduser(
+            os.path.join(pdir, self.data.name + '-tmpalign')))
+        if not os.path.exists(self.data.tmpdir):
+            os.mkdir(self.data.tmpdir)
+
+        # If ref mapping, init samples and make the refmapping output directory.
+        if not self.data.paramsdict["assembly_method"] == "denovo":
+            # make output directory for read mapping process
+            self.data.dirs.refmapping = os.path.join(
+                pdir, "{}_refmapping".format(self.data.name))
+            if not os.path.exists(self.data.dirs.refmapping):
+                os.mkdir(self.data.dirs.refmapping)
+
+
+    def refmap_init(self):
+        # if refmapping make filehandles that will be persistent
+        if not self.data.paramsdict["assembly_method"] == "denovo":
+            for sample in self.samples:
+                refmap_init(self.data, sample, self.force)
+
+            # set thread-count to 2 for paired-data
+            self.nthreads = 2
+        
+        # set thread-count to 1 for single-end data          
+        else:
+            self.nthreads = 1    
+
+
+    def tune_threads(self):
+        # overwrite nthreads if value in _ipcluster dict
+        if "threads" in self.data._ipcluster.keys():
+            self.nthreads = int(self.data._ipcluster["threads"])
+            # if more CPUs than there are samples then increase threads
+            _ncpus = len(self.ipyclient)
+            if _ncpus > 2 * len(self.data.samples):
+                self.nthreads *= 2
+
+
+    def tune_load_balancer(self):
+        # TODO: for HPC this should make sure targets are spread on diff nodes.
+        eids = self.ipyclient.ids
+        if self.nthreads:
+            if self.nthreads < len(self.ipyclient.ids):
+                thview = self.ipyclient.load_balanced_view(
+                    targets=eids[::self.nthreads])
+            elif self.nthreads == 1:
+                thview = self.ipyclient.load_balanced_view()
+            else:
+                if len(self.ipyclient) > 40:
+                    thview = self.ipyclient.load_balanced_view(
+                        targets=eids[::4])
+                else:
+                    thview = self.ipyclient.load_balanced_view(
+                        targets=eids[::2])
+        self.lbview = thview
+
+
+    def prepare_edits_files(self):
+        for sample in self.samples:
+            mergefile = os.path.join(
+                self.data.dirs.edits, sample.name + "_merged_.fastq")
+
+            if not self.force:
+                if not os.path.exists(mergefile):
+                    sample.files.edits = concat_multiple_edits(
+                        self.data, sample)
+                else:
+                    ip.logger.info("skipped concat_multiple_edits: {} exists"
+                                .format(mergefile))
+            else:
+                sample.files.edits = concat_multiple_edits(self.data, sample)
+
+
+    def remote_run_dereps(self):
+
+        # skip this step if xyz files already exist and not force...
+        #for sample in self.samples:
+        #    pass
+
+        # submit job ...
+        start = time.time()
+        printstr = ("dereplicating", "s3")
+        rasyncs = {}
+        for sample in self.samples:
+            rasyncs[sample.name] = self.lbview.apply(
+                self.derep_sort_map, *(self, sample))
+
+        while 1:
+            ready = [rasyncs[i].ready() for i in rasyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+        print("")
+
+
+    def derep_sort_map(self, sample):
+        """
+        Read carefully, this functions acts very differently depending on 
+        datatype. Refmaps, then merges, then dereplicates, then denovo 
+        clusters reads.
+        """
+        
+        # report location for debugging
+        ip.logger.info("INSIDE derep %s", sample.name)
+
+        # CONCAT FILES FOR MERGED ASSEMBIES ONLY:
+        # concatenate edits files within Samples. Returns a new 
+        # sample.files.edits with the concat file. No change if not 
+        # merged Assembly.
+        mergefile = os.path.join(
+            self.data.dirs.edits, sample.name + "_merged_.fastq")
+
+        if not self.force:
+            if not os.path.exists(mergefile):
+                sample.files.edits = concat_multiple_edits(self.data, sample)
+            else:
+                ip.logger.info("skipped concat_multiple_edits: {} exists"
+                            .format(mergefile))
+        else:
+            sample.files.edits = concat_multiple_edits(self.data, sample)
+
+        ## PAIRED DATA ONLY:
+        ## Denovo: merge or concat fastq pairs [sample.files.pairs]
+        ## Reference: only concat fastq pairs  []
+        ## Denovo + Reference: ...
+        if 'pair' in self.data.paramsdict['datatype']:
+            ## the output file handle for merged reads
+
+            ## modify behavior of merging vs concating if reference
+            if "reference" in self.data.paramsdict["assembly_method"]:
+                nmerged = merge_pairs(
+                    self.data, sample.files.edits, mergefile, 0, 0)
+            else:
+                nmerged = merge_pairs(
+                    self.data, sample.files.edits, mergefile, 1, 1)
+
+            ## store results
+            sample.files.edits = [(mergefile, )]
+            sample.stats.reads_merged = nmerged
+
+        ## 3rad uses random adapters to identify pcr duplicates. We will
+        ## remove pcr dupes here. Basically append the random adapter to
+        ## each sequence, do a regular old vsearch derep, then trim
+        ## off the adapter, and push it down the pipeline. This will
+        ## remove all identical seqs with identical random i5 adapters.
+        if "3rad" in self.data.paramsdict["datatype"]:
+            declone_3rad(self.data, sample)
+            new_derep_and_sort(self.data,
+                os.path.join(self.data.dirs.edits, sample.name + "_declone.fastq"),
+                #os.path.join(self.data.dirs.edits, sample.name + "_derep.fastq"),
+                os.path.join(self.data.tmpdir, sample.name + "_derep.fastq"),
+                self.nthreads)
+        else:
+            ## convert fastq to fasta, then derep and sort reads by their size.
+            ## we pass in only one file b/c paired should be merged by now.
+            new_derep_and_sort(self.data,
+                sample.files.edits[0][0],
+                #os.path.join(self.data.dirs.edits, sample.name + "_derep.fastq"),
+                os.path.join(self.data.tmpdir, sample.name + "_derep.fastq"),
+                self.nthreads)
+
+
+
+
+def new_derep_and_sort(data, infile, outfile, nthreads):
+    """
+    Dereplicates reads and sorts so reads that were highly replicated are at
+    the top, and singletons at bottom, writes output to derep file. Paired
+    reads are dereplicated as one concatenated read and later split again.
+    Updated this function to take infile and outfile to support the double
+    dereplication that we need for 3rad (5/29/15 iao).
+    """
+
+    ## datatypes options
+    strand = "plus"
+    if "gbs" in data.paramsdict["datatype"]\
+        or "2brad" in data.paramsdict["datatype"]:
+        strand = "both"
+
+    ## pipe in a gzipped file
+    if infile.endswith(".gz"):
+        catcmd = ["gunzip", "-c", infile]
+    else:
+        catcmd = ["cat", infile]
+
+    ## do dereplication with vsearch
+    cmd = [
+        ip.bins.vsearch,
+        "--derep_fulllength", "-",
+        "--strand", strand,
+        "--output", outfile,
+        "--threads", str(nthreads),
+        "--fasta_width", str(0),
+        "--fastq_qmax", "1000",
+        "--sizeout", 
+        "--relabel_md5",
+        ]
+    ip.logger.info("derep cmd %s", cmd)
+
+    ## build PIPEd job
+    proc1 = sps.Popen(catcmd, 
+        stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+    proc2 = sps.Popen(cmd, 
+        stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+
+    # run and return error message on failure
+    errmsg = proc2.communicate()[0]
+    if proc2.returncode:
+        ip.logger.error("error inside derep_and_sort %s", errmsg)
+        raise IPyradWarningExit(errmsg)
+
+
+
+
+
+
+def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
+    """
+    Create a DAG of prealign jobs to be run in order for each sample. Track
+    Progress, report errors. Each assembly method has a slightly different
+    DAG setup, calling different functions.
+    """
+
+    # start progress bar
+    start = time.time()
+    printstr = (PRINTSTR["derep_concat_split"], "s3")
+    data._progressbar(10, 0, start, printstr)
+
+    ## get list of jobs/dependencies as a DAG for all pre-align funcs.
+    dag, joborder = build_dag(data, samples)
+
+    ## dicts for storing submitted jobs and results
+    results = {}
+
+    ## submit jobs to the engines in single or threaded views. The topological
+    ## sort makes sure jobs are input with all dependencies found.
+    for node in nx.topological_sort(dag):
+        ## get list of async results leading to this job
+        deps = [results.get(n) for n in dag.predecessors(node)]
+        deps = ipp.Dependency(dependencies=deps, failure=True)
+
+        ## get func, sample, and args for this func (including [data, sample])
+        funcstr, chunk, sname = node.split("-", 2)
+        func = FUNCDICT[funcstr]
+        sample = data.samples[sname]
+
+        ## args vary depending on the function
+        if funcstr in ["derep_concat_split", "cluster"]:
+            args = [data, sample, nthreads, force]
+        elif funcstr in ["mapreads"]:
+            args = [data, sample, nthreads, force]
+        elif funcstr in ["build_clusters"]:
+            args = [data, sample, maxindels]
+        elif funcstr in ["muscle_align"]:
+            handle = os.path.join(data.tmpdir, 
+                        "{}_chunk_{}.ali".format(sample.name, chunk))
+            args = [handle, maxindels, is_gbs]
+        else:
+            args = [data, sample]
+
+        # submit and store AsyncResult object. Some jobs are threaded.
+        if nthreads and (funcstr in THREADED_FUNCS):
+            #ip.logger.info('submitting %s to %s-threaded view', funcstr, nthreads)
+            with thview.temp_flags(after=deps, block=False):
+                results[node] = thview.apply(func, *args)
+        else:
+            #ip.logger.info('submitting %s to single-threaded view', funcstr)
+            with lbview.temp_flags(after=deps, block=False):
+                results[node] = lbview.apply(func, *args)
+
+    ## track jobs as they finish, abort if someone fails. This blocks here
+    ## until all jobs are done. Keep track of which samples have failed so
+    ## we only print the first error message.
+    sfailed = set()
+    for funcstr in joborder + ["muscle_align", "reconcat"]:
+        errfunc, sfails, msgs = trackjobs(data, funcstr, results)
+        ip.logger.info("{}-{}-{}".format(errfunc, sfails, msgs))
+        if errfunc:
+            for sidx in range(len(sfails)):
+                sname = sfails[sidx]
+                errmsg = msgs[sidx]
+                if sname not in sfailed:
+                    print("sample [{}] failed. See error in ./ipyrad_log.txt"
+                          .format(sname))
+                    ip.logger.error("sample [%s] failed in step [%s]; error: %s",
+                                 sname, errfunc, errmsg)
+                    sfailed.add(sname)
+
+    ## Cleanup of successful samples, skip over failed samples
+    badaligns = {}
+    for sample in samples:
+        ## The muscle_align step returns the number of excluded bad alignments
+        for rasync in results:
+            func, chunk, sname = rasync.split("-", 2)
+            if (func == "muscle_align") and (sname == sample.name):
+                if results[rasync].successful():
+                    badaligns[sample] = int(results[rasync].get())
+
+    ## for the samples that were successful:
+    for sample in badaligns:
+        ## store the result
+        sample.stats_dfs.s3.filtered_bad_align = badaligns[sample]
+        ## store all results
+        try:
+            sample_cleanup(data, sample)
+        except Exception as inst:
+            msg = "Sample {} failed this step. See ipyrad_log.txt.\
+                  ".format(sample.name)
+            print(msg)
+            ip.logger.error("%s - %s", sample.name, inst)
+
+    ## store the results to data
+    data_cleanup(data)
+
+    ## uncomment to plot the dag
+    #_plot_dag(dag, results, snames)
+
 
 
 
@@ -54,12 +446,12 @@ def get_quick_depths(data, sample):
     else:
         ## set cluster file handles
         sample.files.clusters = os.path.join(
-            data.dirs.clusts, sample.name+".clustS.gz")
+            data.dirs.clusts, sample.name + ".clustS.gz")
 
     ## get new clustered loci
     fclust = data.samples[sample.name].files.clusters
-    clusters = gzip.open(fclust, 'r')
-    pairdealer = itertools.izip(*[iter(clusters)]*2)
+    clusters = gzip.open(fclust, 'rt')
+    pairdealer = izip(*[iter(clusters)] * 2)
 
     ## storage
     depths = []
@@ -73,7 +465,7 @@ def get_quick_depths(data, sample):
     while 1:
         ## grab next
         try:
-            name, seq = pairdealer.next()
+            name, seq = next(pairdealer)
         except StopIteration:
             break
 
@@ -111,17 +503,18 @@ def sample_cleanup(data, sample):
     ## Test if depths is non-empty, but just full of zeros.
     if depths.max():
         ## store which min was used to calculate hidepth here
-        sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
+        sample.stats_dfs.s3["hidepth_min"] = (
+            data.paramsdict["mindepth_majrule"])
 
-        ## If our longest sequence is longer than the current max_fragment_length
-        ## then update max_fragment_length. For assurance we require that
-        ## max len is 4 greater than maxlen, to allow for pair separators.
+        # If our longest sequence is longer than the current max_fragment_len
+        # then update max_fragment_length. For assurance we require that
+        # max len is 4 greater than maxlen, to allow for pair separators.
         hidepths = depths >= data.paramsdict["mindepth_majrule"]
         maxlens = maxlens[hidepths]
 
         ## Handle the case where there are no hidepth clusters
         if maxlens.any():
-            maxlen = int(maxlens.mean() + (2.*maxlens.std()))
+            maxlen = int(maxlens.mean() + (2. * maxlens.std()))
         else:
             maxlen = 0
         if maxlen > data._hackersonly["max_fragment_length"]:
@@ -138,7 +531,7 @@ def sample_cleanup(data, sample):
 
         ## store depths histogram as a dict. Limit to first 25 bins
         bars, bins = np.histogram(depths, bins=range(1, 26))
-        sample.depths = {int(i):v for i, v in zip(bins, bars) if v}
+        sample.depths = {int(i): int(v) for i, v in zip(bins, bars) if v}
 
         ## sample stat assignments
         ## Trap numpy warnings ("mean of empty slice") printed by samples
@@ -148,7 +541,8 @@ def sample_cleanup(data, sample):
             sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
             sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
             try:
-                sample.stats_dfs.s3["clusters_hidepth"] = int(sample.stats["clusters_hidepth"])
+                sample.stats_dfs.s3["clusters_hidepth"] = (
+                    int(sample.stats["clusters_hidepth"]))
             except ValueError:
                 ## Handle clusters_hidepth == NaN
                 sample.stats_dfs.s3["clusters_hidepth"] = 0
@@ -169,17 +563,17 @@ def sample_cleanup(data, sample):
     if not data.paramsdict["assembly_method"] == "denovo":
         refmap_stats(data, sample)
 
-    log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
-
-    if not log_level == "DEBUG":
+    # if loglevel==DEBUG
+    log_level = ip.logger.getEffectiveLevel()
+    if not log_level == 10:
         ## Clean up loose files only if not in DEBUG
         ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
-        derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
-        mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
-        uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
-        usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
-        hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
-        clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
+        derepfile = os.path.join(data.dirs.edits, sample.name + "_derep.fastq")
+        mergefile = os.path.join(data.dirs.edits, sample.name + "_merged_.fastq")
+        uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
+        usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
+        hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
+        clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
 
         for f in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
             try:
@@ -195,10 +589,13 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 
     ## create a separate shell for running muscle in, this is much faster
     ## than spawning a separate subprocess for each muscle call
-    proc = sps.Popen(["bash"], 
-                     stdin=sps.PIPE, 
-                     stdout=sps.PIPE, 
-                     universal_newlines=True)
+    proc = sps.Popen(
+        ["bash"], 
+        stdin=sps.PIPE, 
+        stdout=sps.PIPE, 
+        bufsize=0,
+        #universal_newlines=True,
+        )
 
     ## iterate over clusters in this file until finished
     aligned = []
@@ -206,6 +603,7 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 
         ## new alignment string for read1s and read2s
         align1 = ""
+        align1 = []
         align2 = ""
 
         ## don't bother aligning if only one seq
@@ -213,48 +611,48 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
             aligned.append(clust.replace(">", "").strip())
         else:
 
-            ## do we need to split the alignment? (is there a PE insert?)
+            # do we need to split the alignment? (is there a PE insert?)
             try:
-                ## make into list (only read maxseqs lines, 2X cuz names)
-                lclust = clust.split()[:maxseqs*2]
+                # make into list (only read maxseqs lines, 2X cuz names)
+                lclust = clust.split()[:maxseqs * 2]
 
-                ## try to split cluster list at nnnn separator for each read
-                lclust1 = list(itertools.chain(*zip(\
-                     lclust[::2], [i.split("nnnn")[0] for i in lclust[1::2]])))
-                lclust2 = list(itertools.chain(*zip(\
-                     lclust[::2], [i.split("nnnn")[1] for i in lclust[1::2]])))
+                # try to split cluster list at nnnn separator for each read
+                lclust1 = list(chain(*zip(
+                    lclust[::2], [i.split("nnnn")[0] for i in lclust[1::2]])))
+                lclust2 = list(chain(*zip(
+                    lclust[::2], [i.split("nnnn")[1] for i in lclust[1::2]])))
 
-                ## put back into strings
+                # put back into strings
                 clust1 = "\n".join(lclust1)
                 clust2 = "\n".join(lclust2)
 
-                ## Align the first reads.
-                ## The muscle command with alignment as stdin and // as splitter
-                cmd1 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                        .format(clust1, ipyrad.bins.muscle, "//")
+                # Align the first reads.
+                # The muscle command with alignment as stdin and // as split
+                cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+                        .format(clust1, ip.bins.muscle, "//"))
 
-                ## send cmd1 to the bash shell
+                # send cmd1 to the bash shell
                 print(cmd1, file=proc.stdin)
 
-                ## read the stdout by line until splitter is reached
-                ## meaning that the alignment is finished.
+                # read the stdout by line until splitter is reached
+                # meaning that the alignment is finished.
                 for line in iter(proc.stdout.readline, '//\n'):
                     align1 += line
 
-                ## Align the second reads.
-                ## The muscle command with alignment as stdin and // as splitter
-                cmd2 = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                        .format(clust2, ipyrad.bins.muscle, "//")
+                # Align the second reads.
+                # The muscle command with alignment as stdin and // as split
+                cmd2 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+                        .format(clust2, ip.bins.muscle, "//"))
 
-                ## send cmd2 to the bash shell
+                # send cmd2 to the bash shell
                 print(cmd2, file=proc.stdin)
 
-                ## read the stdout by line until splitter is reached
-                ## meaning that the alignment is finished.
+                # read the stdout by line until splitter is reached
+                # meaning that the alignment is finished.
                 for line in iter(proc.stdout.readline, '//\n'):
                     align2 += line
 
-                ## join up aligned read1 and read2 and ensure names order matches
+                # join up aligned read1 and read2 and ensure names order match
                 la1 = align1[1:].split("\n>")
                 la2 = align2[1:].split("\n>")
                 dalign1 = dict([i.split("\n", 1) for i in la1])
@@ -263,10 +661,11 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
                 try:
                     keys = sorted(dalign1.keys(), key=DEREP, reverse=True)
                 except ValueError as inst:
-                    ## Lines is empty. This means the call to muscle alignment failed.
-                    ## Not sure how to handle this, but it happens only very rarely.
-                    LOGGER.error("Muscle alignment failed: Bad clust - {}\nBad lines - {}"\
-                                .format(clust, lines))
+                    # Lines is empty means the call to muscle alignment failed.
+                    # Not sure how to handle this, but it happens very rarely.
+                    ip.logger.error(
+                        "Muscle alignment failed: Bad clust: {}\nBad lines: {}"
+                        .format(clust, dalign1))
                     continue
 
                 ## put seed at top of alignment
@@ -275,59 +674,68 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
                 keys = [seed] + keys
                 for key in keys:
                     align1.append("\n".join([key, 
-                                    dalign1[key].replace("\n", "")+"nnnn"+\
-                                    dalign2[key].replace("\n", "")]))
+                        dalign1[key].replace("\n", "") + "nnnn" + \
+                        dalign2[key].replace("\n", "")]))
 
                 ## append aligned cluster string
                 aligned.append("\n".join(align1).strip())
 
-            ## Malformed clust. Dictionary creation with only 1 element will raise.
+            # Malformed clust. Dictionary creation with only 1 element 
             except ValueError as inst:
-                LOGGER.debug("Bad PE cluster - {}\nla1 - {}\nla2 - {}".format(\
-                                clust, la1, la2))
+                ip.logger.debug("Bad PE cluster - {}\nla1 - {}\nla2 - {}"
+                             .format(clust, la1, la2))
 
             ## Either reads are SE, or at least some pairs are merged.
             except IndexError:
                     
-                ## limit the number of input seqs
-                lclust = "\n".join(clust.split()[:maxseqs*2])
+                # limit the number of input seqs
+                # use lclust already built before checking pairs
+                lclust = "\n".join(clust.split()[:maxseqs * 2])
 
-                ## the muscle command with alignment as stdin and // as splitter
-                cmd = "echo -e '{}' | {} -quiet -in - ; echo {}"\
-                            .format(lclust, ipyrad.bins.muscle, "//")
+                # the muscle command with alignment as stdin and // as splitter
+                #cmd = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+                #       .format(lclust, ip.bins.muscle, "//"))
+                cmd = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+                       .format(lclust, ip.bins.muscle, "//\n"))
 
                 ## send cmd to the bash shell (TODO: PIPE could overflow here!)
-                print(cmd, file=proc.stdin)
+                #print(cmd, file=proc.stdin)
+                proc.stdin.write(cmd.encode())
 
                 ## read the stdout by line until // is reached. This BLOCKS.
-                for line in iter(proc.stdout.readline, '//\n'):
-                    align1 += line
+                for line in iter(proc.stdout.readline, b'//\n'):
+                    align1.append(line.decode())
 
                 ## remove '>' from names, and '\n' from inside long seqs                
-                lines = align1[1:].split("\n>")
+                #lines = align1[1:].split("\n>")
+                lines = "".join(align1)[1:].split("\n>")
 
                 try:
                     ## find seed of the cluster and put it on top.
-                    seed = [i for i in lines if i.split(";")[-1][0]=="*"][0]
+                    seed = [i for i in lines if i.split(";")[-1][0] == "*"][0]
                     lines.pop(lines.index(seed))
                     lines = [seed] + sorted(lines, key=DEREP, reverse=True)
+
                 except ValueError as inst:
-                    ## Lines is empty. This means the call to muscle alignment failed.
-                    ## Not sure how to handle this, but it happens only very rarely.
-                    LOGGER.error("Muscle alignment failed: Bad clust - {}\nBad lines - {}"\
-                                .format(clust, lines))
+                    # Lines is empty means the call to muscle alignment failed.
+                    # Not sure how to handle this, but it happens very rarely.
+                    ip.logger.error(
+                        "Muscle alignment failed: Bad clust: {}\nBad lines: {}"
+                        .format(clust, lines))
                     continue
 
                 ## format remove extra newlines from muscle
                 aa = [i.split("\n", 1) for i in lines]
-                align1 = [i[0]+'\n'+"".join([j.replace("\n", "") for j in i[1:]]) for i in aa]
+                align1 = [i[0] + '\n' + "".join([j.replace("\n", "") 
+                          for j in i[1:]]) for i in aa]
                 
-                ## trim edges in sloppy gbs/ezrad data. Maybe relevant to other types too...
+                # trim edges in sloppy gbs/ezrad data. 
+                # Maybe relevant to other types too...
                 if is_gbs:
                     align1 = gbs_trim(align1)
 
                 ## append to aligned
-                aligned.append("\n".join(align1).strip())
+                aligned.append("\n".join(align1))
                
     # cleanup
     proc.stdout.close()
@@ -367,13 +775,13 @@ def gbs_trim(align1):
     Revcomp-match  ------------------------mmmmmmmmmmmmmmmmmmmmmmmmmm
     """
     leftmost = rightmost = None
-    dd = {k:v for k,v in [j.rsplit("\n", 1) for j in align1]}
+    dd = {k: v for k, v in [j.rsplit("\n", 1) for j in align1]}
     seed = [i for i in dd.keys() if i.rsplit(";")[-1][0] == "*"][0]
     leftmost = [i != "-" for i in dd[seed]].index(True)
     revs = [i for i in dd.keys() if i.rsplit(";")[-1][0] == "-"]
     if revs:
-        subright = max([[i!="-" for i in seq[::-1]].index(True) \
-            for seq in [dd[i] for i in revs]])
+        subright = max([[i != "-" for i in seq[::-1]].index(True) 
+                        for seq in [dd[i] for i in revs]])
     else:
         subright = 0
     rightmost = len(dd[seed]) - subright
@@ -381,9 +789,10 @@ def gbs_trim(align1):
     ## if locus got clobbered then print place-holder NNN
     names, seqs = zip(*[i.rsplit("\n", 1) for i in align1])
     if rightmost > leftmost:
-        newalign1 = [n+"\n"+i[leftmost:rightmost] for i,n in zip(seqs, names)]
+        newalign1 = [n + "\n" + i[leftmost:rightmost] 
+                     for i, n in zip(seqs, names)]
     else:
-        newalign1 = [n+"\nNNN" for i,n in zip(seqs, names)]
+        newalign1 = [n + "\nNNN" for i, n in zip(seqs, names)]
     return newalign1
 
 
@@ -398,14 +807,15 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     ## data are already chunked, read in the whole thing. bail if no data.
     try:
         with open(handle, 'rb') as infile:
-            clusts = infile.read().split("//\n//\n")
+            clusts = infile.read().decode().split("//\n//\n")
             ## remove any empty spots
             clusts = [i for i in clusts if i]
             ## Skip entirely empty chunks
             if not clusts:
-                raise IPyradError
+                raise IPyradError("no clusters")
+
     except (IOError, IPyradError):
-        LOGGER.debug("skipping empty chunk - {}".format(handle))
+        ip.logger.debug("skipping empty chunk - {}".format(handle))
         return 0
 
     ## count discarded clusters for printing to stats later
@@ -415,7 +825,7 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     try:
         aligned = persistent_popen_align3(clusts, 200, is_gbs)
     except Exception as inst:
-        LOGGER.debug("Error in handle - {} - {}".format(handle, inst))
+        ip.logger.debug("Error in handle - {} - {}".format(handle, inst))
         #raise IPyradWarningExit("error hrere {}".format(inst))
         aligned = []        
 
@@ -433,19 +843,18 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
 
         ## finally, add to outstack if alignment is good
         if not filtered:
-            refined.append(clust)#"\n".join(stack))
+            refined.append(clust)
         else:
             highindels += 1
 
     ## write to file after
     if refined:
-        outhandle = handle.rsplit(".", 1)[0]+".aligned"
+        outhandle = handle.rsplit(".", 1)[0] + ".aligned"
         with open(outhandle, 'wb') as outfile:
-            outfile.write("\n//\n//\n".join(refined)+"\n")
+            outfile.write(str.encode("\n//\n//\n".join(refined) + "\n"))
 
     ## remove the old tmp file
-    log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
-    if not log_level == "DEBUG":
+    if not ip.logger.getEffectiveLevel() == 10:
         os.remove(handle)
     return highindels
 
@@ -487,17 +896,21 @@ def build_clusters(data, sample, maxindels):
 
     ## If reference assembly then here we're clustering the unmapped reads
     if "reference" in data.paramsdict["assembly_method"]:
-        derepfile = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+        derepfile = os.path.join(
+            data.dirs.edits, sample.name + "-refmap_derep.fastq")
     else:
-        derepfile = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+        derepfile = os.path.join(
+            data.dirs.edits, sample.name + "_derep.fastq")
+
     ## i/o vsearch files
-    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
-    usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
-    hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+    uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
+    usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
+    hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
 
     ## create an output file to write clusters to
-    sample.files.clusters = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-    clustsout = gzip.open(sample.files.clusters, 'wb')
+    sample.files.clusters = os.path.join(
+        data.dirs.clusts, sample.name + ".clust.gz")
+    clustsout = gzip.open(sample.files.clusters, 'wt')
 
     ## Sort the uhandle file so we can read through matches efficiently
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
@@ -507,17 +920,17 @@ def build_clusters(data, sample, maxindels):
     ## load ALL derep reads into a dictionary (this can be a few GB of RAM)
     ## and is larger if names are larger. We are grabbing two lines at a time.
     alldereps = {}
-    with open(derepfile, 'rb') as ioderep:
-        dereps = itertools.izip(*[iter(ioderep)]*2)
+    with open(derepfile, 'rt') as ioderep:
+        dereps = izip(*[iter(ioderep)] * 2)
         for namestr, seq in dereps:
-            nnn, sss = [i.strip() for i in namestr, seq]
+            nnn, sss = [i.strip() for i in (namestr, seq)]  
             alldereps[nnn[1:]] = sss
 
     ## store observed seeds (this could count up to >million in bad data sets)
     seedsseen = set()
 
     ## Iterate through the usort file grabbing matches to build clusters
-    with open(usort, 'rb') as insort:
+    with open(usort, 'rt') as insort:
         ## iterator, seed null, seqlist null
         isort = iter(insort)
         lastseed = 0
@@ -527,7 +940,7 @@ def build_clusters(data, sample, maxindels):
         while 1:
             ## grab the next line
             try:
-                hit, seed, _, ind, ori, _ = isort.next().strip().split()
+                hit, seed, _, ind, ori, _ = next(isort).strip().split()
             except StopIteration:
                 break
 
@@ -537,16 +950,18 @@ def build_clusters(data, sample, maxindels):
                 ## store the last cluster (fseq), count it, and clear fseq
                 if fseqs:
                     ## sort fseqs by derep after pulling out the seed
-                    fseqs = [fseqs[0]] + sorted(fseqs[1:], key=lambda x: \
+                    fseqs = [fseqs[0]] + sorted(fseqs[1:], 
+                        key=lambda x: 
                         int(x.split(";size=")[1].split(";")[0]), reverse=True)                    
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
 
-                ## occasionally write/dump stored clusters to file and clear mem
+                # occasionally write/dump stored clusters to file and clear mem
                 if not seqsize % 10000:
                     if seqlist:
-                        clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+                        clustsout.write(
+                            "\n//\n//\n".join(seqlist) + "\n//\n//\n")
                         ## reset list and counter
                         seqlist = []
 
@@ -564,29 +979,29 @@ def build_clusters(data, sample, maxindels):
             if int(ind) <= maxindels:
                 fseqs.append(">{}{}\n{}".format(hit, ori, seq))
             else:
-                LOGGER.info("filtered by maxindels: %s %s", ind, seq)
+                ip.logger.info("filtered by maxindels: %s %s", ind, seq)
 
     ## write whatever is left over to the clusts file
     if fseqs:
         seqlist.append("\n".join(fseqs))
     if seqlist:
-        clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+        clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
 
     ## now write the seeds that had no hits. Make dict from htemp
-    with open(hhandle, 'rb') as iotemp:
-        nohits = itertools.izip(*[iter(iotemp)]*2)
+    with open(hhandle, 'rt') as iotemp:
+        nohits = izip(*[iter(iotemp)] * 2)
         seqlist = []
         seqsize = 0
         while 1:
             try:
-                nnn, _ = [i.strip() for i in nohits.next()]
+                nnn, _ = [i.strip() for i in next(nohits)]
             except StopIteration:
                 break
 
             ## occasionally write to file
             if not seqsize % 10000:
                 if seqlist:
-                    clustsout.write("\n//\n//\n".join(seqlist)+"\n//\n//\n")
+                    clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
                     ## reset list and counter
                     seqlist = []
 
@@ -597,7 +1012,7 @@ def build_clusters(data, sample, maxindels):
 
     ## write whatever is left over to the clusts file
     if seqlist:
-        clustsout.write("\n//\n//\n".join(seqlist))#+"\n//\n//\n")
+        clustsout.write("\n//\n//\n".join(seqlist))
 
     ## close the file handle
     clustsout.close()
@@ -609,8 +1024,9 @@ def setup_dirs(data):
     """ sets up directories for step3 data """
     ## make output folder for clusters
     pdir = os.path.realpath(data.paramsdict["project_dir"])
-    data.dirs.clusts = os.path.join(pdir, "{}_clust_{}"\
-                       .format(data.name, data.paramsdict["clust_threshold"]))
+    data.dirs.clusts = os.path.join(
+        pdir, "{}_clust_{}"
+        .format(data.name, data.paramsdict["clust_threshold"]))
     if not os.path.exists(data.dirs.clusts):
         os.mkdir(data.dirs.clusts)
 
@@ -623,7 +1039,8 @@ def setup_dirs(data):
     ## If ref mapping, init samples and make the refmapping output directory.
     if not data.paramsdict["assembly_method"] == "denovo":
         ## make output directory for read mapping process
-        data.dirs.refmapping = os.path.join(pdir, "{}_refmapping".format(data.name))
+        data.dirs.refmapping = os.path.join(
+            pdir, "{}_refmapping".format(data.name))
         if not os.path.exists(data.dirs.refmapping):
             os.mkdir(data.dirs.refmapping)
 
@@ -641,26 +1058,24 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
 
     ## Two view objects, threaded and unthreaded
     lbview = ipyclient.load_balanced_view()
-    start = time.time()
-    elapsed = datetime.timedelta(seconds=int(time.time()-start))
-    firstfunc = "derep_concat_split"
-    printstr = " {}    | {} | s3 |".format(PRINTSTR[firstfunc], elapsed)
-    #printstr = " {}      | {} | s3 |".format(PRINTSTR[], elapsed)
-    progressbar(10, 0, printstr, spacer=data._spacer)
 
-    ## TODO: for HPC systems this should be done to make sure targets are spread
-    ## among different nodes.
+    # TODO: for HPC this should make sure targets are spread on diff nodes.
+    eids = ipyclient.ids
     if nthreads:
         if nthreads < len(ipyclient.ids):
-            thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::nthreads])
+            thview = ipyclient.load_balanced_view(targets=eids[::nthreads])
         elif nthreads == 1:
             thview = ipyclient.load_balanced_view()
         else:
             if len(ipyclient) > 40:
-                thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
+                thview = ipyclient.load_balanced_view(targets=eids[::4])
             else:
-                thview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
+                thview = ipyclient.load_balanced_view(targets=eids[::2])
 
+    # start progress bar
+    start = time.time()
+    printstr = (PRINTSTR["derep_concat_split"], "s3")
+    data._progressbar(10, 0, start, printstr)
 
     ## get list of jobs/dependencies as a DAG for all pre-align funcs.
     dag, joborder = build_dag(data, samples)
@@ -696,11 +1111,11 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
 
         # submit and store AsyncResult object. Some jobs are threaded.
         if nthreads and (funcstr in THREADED_FUNCS):
-            #LOGGER.info('submitting %s to %s-threaded view', funcstr, nthreads)
+            #ip.logger.info('submitting %s to %s-threaded view', funcstr, nthreads)
             with thview.temp_flags(after=deps, block=False):
                 results[node] = thview.apply(func, *args)
         else:
-            #LOGGER.info('submitting %s to single-threaded view', funcstr)
+            #ip.logger.info('submitting %s to single-threaded view', funcstr)
             with lbview.temp_flags(after=deps, block=False):
                 results[node] = lbview.apply(func, *args)
 
@@ -709,28 +1124,28 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
     ## we only print the first error message.
     sfailed = set()
     for funcstr in joborder + ["muscle_align", "reconcat"]:
-        errfunc, sfails, msgs = trackjobs(funcstr, results, spacer=data._spacer)
-        LOGGER.info("{}-{}-{}".format(errfunc, sfails, msgs))
+        errfunc, sfails, msgs = trackjobs(data, funcstr, results)
+        ip.logger.info("{}-{}-{}".format(errfunc, sfails, msgs))
         if errfunc:
-            for sidx in xrange(len(sfails)):
+            for sidx in range(len(sfails)):
                 sname = sfails[sidx]
                 errmsg = msgs[sidx]
                 if sname not in sfailed:
-                    print("  sample [{}] failed. See error in ./ipyrad_log.txt"\
+                    print("sample [{}] failed. See error in ./ipyrad_log.txt"
                           .format(sname))
-                    LOGGER.error("sample [%s] failed in step [%s]; error: %s",
-                                  sname, errfunc, errmsg)
+                    ip.logger.error("sample [%s] failed in step [%s]; error: %s",
+                                 sname, errfunc, errmsg)
                     sfailed.add(sname)
 
     ## Cleanup of successful samples, skip over failed samples
     badaligns = {}
     for sample in samples:
         ## The muscle_align step returns the number of excluded bad alignments
-        for async in results:
-            func, chunk, sname = async.split("-", 2)
+        for rasync in results:
+            func, chunk, sname = rasync.split("-", 2)
             if (func == "muscle_align") and (sname == sample.name):
-                if results[async].successful():
-                    badaligns[sample] = int(results[async].get())
+                if results[rasync].successful():
+                    badaligns[sample] = int(results[rasync].get())
 
     ## for the samples that were successful:
     for sample in badaligns:
@@ -740,10 +1155,10 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
         try:
             sample_cleanup(data, sample)
         except Exception as inst:
-            msg = "  Sample {} failed this step. See ipyrad_log.txt.\
+            msg = "Sample {} failed this step. See ipyrad_log.txt.\
                   ".format(sample.name)
             print(msg)
-            LOGGER.error("%s - %s", sample.name, inst)
+            ip.logger.error("%s - %s", sample.name, inst)
 
     ## store the results to data
     data_cleanup(data)
@@ -772,13 +1187,13 @@ def build_dag(data, samples):
             dag.add_node("{}-{}-{}".format(func, 0, sname))
 
         ## append align func jobs, each will have max 10
-        for chunk in xrange(10):
+        for chunk in range(10):
             dag.add_node("{}-{}-{}".format("muscle_align", chunk, sname))
 
         ## append final reconcat jobs
         dag.add_node("{}-{}-{}".format("reconcat", 0, sname))
 
-    ## ORDER OF JOBS: add edges/dependency between jobs: (first-this, then-that)
+    # ORDER OF JOBS: add edges/dependency between jobs: (first-this, then-that)
     for sname in snames:
         for sname2 in snames:
             ## enforce that clust/map cannot start until derep is done for ALL
@@ -787,8 +1202,8 @@ def build_dag(data, samples):
                          "{}-{}-{}".format(joborder[1], 0, sname))
 
         ## add remaining pre-align jobs 
-        for idx in xrange(2, len(joborder)):
-            dag.add_edge("{}-{}-{}".format(joborder[idx-1], 0, sname),
+        for idx in range(2, len(joborder)):
+            dag.add_edge("{}-{}-{}".format(joborder[idx - 1], 0, sname),
                          "{}-{}-{}".format(joborder[idx], 0, sname))
 
         ## Add 10 align jobs, none of which can start until all chunker jobs
@@ -853,11 +1268,11 @@ def _plot_dag(dag, results, snames):
         plt.savefig("./dag_starttimes.png", bbox_inches='tight', dpi=200)
 
     except Exception as inst:
-        LOGGER.warning(inst)
+        ip.logger.warning(inst)
 
 
 
-def trackjobs(func, results, spacer):
+def trackjobs(data, func, results):
     """
     Blocks and prints progress for just the func being requested from a list
     of submitted engine jobs. Returns whether any of the jobs failed.
@@ -867,7 +1282,7 @@ def trackjobs(func, results, spacer):
     """
 
     ## TODO: try to insert a better way to break on KBD here.
-    LOGGER.info("inside trackjobs of %s", func)
+    ip.logger.info("inside trackjobs of %s", func)
 
     ## get just the jobs from results that are relevant to this func
     asyncs = [(i, results[i]) for i in results if i.split("-", 2)[0] == func]
@@ -877,14 +1292,13 @@ def trackjobs(func, results, spacer):
     while 1:
         ## how many of this func have finished so far
         ready = [i[1].ready() for i in asyncs]
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
-        printstr = " {}    | {} | s3 |".format(PRINTSTR[func], elapsed)
-        progressbar(len(ready), sum(ready), printstr, spacer=spacer)
+        printstr = (PRINTSTR[func], "s3")
+        data._progressbar(len(ready), sum(ready), start, printstr)
         time.sleep(0.1)
         if len(ready) == sum(ready):
-            print("")
             break
 
+    print("")
     sfails = []
     errmsgs = []
     for job in asyncs:
@@ -893,19 +1307,6 @@ def trackjobs(func, results, spacer):
             errmsgs.append(job[1].result())
 
     return func, sfails, errmsgs
-
-    ## did any samples fail?
-    #success = [i[1].successful() for i in asyncs]
-
-    ## return functionstring and error message on failure
-    #if not all(success):
-    #    ## get error messages
-    #    errmsgs = [i[1].exception() for i in asyncs if not i[1].successful()]
-    #    ## get samlpes that failed
-    #    sfails = [i[0].split("-", 2)[-1] for i in asyncs if not i[1].successful()]
-    #    return func, sfails, errmsgs
-    #else:
-    #    return 0, [], []
 
 
 
@@ -918,7 +1319,7 @@ def declone_3rad(data, sample):
     remove all identical seqs with identical random i5 adapters.
     """
 
-    LOGGER.info("Entering declone_3rad - {}".format(sample.name))
+    ip.logger.info("Entering declone_3rad - {}".format(sample.name))
 
     ## Append i5 adapter to the head of each read. Merged file is input, and
     ## still has fq qual score so also have to append several qscores for the
@@ -932,7 +1333,7 @@ def declone_3rad(data, sample):
 
     try:
         with open(sample.files.edits[0][0]) as infile:
-            quarts = itertools.izip(*[iter(infile)]*4)
+            quarts = izip(*[iter(infile)]*4)
 
             ## a list to store until writing
             writing = []
@@ -940,7 +1341,7 @@ def declone_3rad(data, sample):
 
             while 1:
                 try:
-                    read = quarts.next()
+                    read = next(quarts)
                 except StopIteration:
                     break
 
@@ -953,11 +1354,11 @@ def declone_3rad(data, sample):
                 if 'N' in i5:
                     continue
                 writing.append("\n".join([
-                                read[0].strip(),
-                                i5 + read[1].strip(),
-                                read[2].strip(),
-                                "E"*8 + read[3].strip()]
-                            ))
+                    read[0].strip(),
+                    i5 + read[1].strip(),
+                    read[2].strip(),
+                    "E" * 8 + read[3].strip()]
+                ))
 
                 ## Write the data in chunks
                 counts += 1
@@ -985,9 +1386,10 @@ def declone_3rad(data, sample):
         ## first vsearch derep discards the qscore so we iterate
         ## by pairs
         with open(tmp_outfile.name) as infile:
-            with open(os.path.join(data.dirs.edits, sample.name+"_declone.fastq"),\
-                                'wb') as outfile:
-                duo = itertools.izip(*[iter(infile)]*2)
+            with open(os.path.join(
+                data.dirs.edits, 
+                sample.name + "_declone.fastq"), 'wb') as outfile:
+                duo = izip(*[iter(infile)] * 2)
 
                 ## a list to store until writing
                 writing = []
@@ -995,31 +1397,32 @@ def declone_3rad(data, sample):
 
                 while 1:
                     try:
-                        read = duo.next()
+                        read = next(duo)
                     except StopIteration:
                         break
 
                     ## Peel off the adapters. There's probably a faster
                     ## way of doing this.
                     writing.append("\n".join([
-                                    read[0].strip(),
-                                    read[1].strip()[8:]]
-                                ))
+                        read[0].strip(),
+                        read[1].strip()[8:]]
+                    ))
 
                     ## Write the data in chunks
                     counts2 += 1
                     if not counts2 % 1000:
-                        outfile.write("\n".join(writing)+"\n")
+                        outfile.write("\n".join(writing) + "\n")
                         writing = []
                 if writing:
                     outfile.write("\n".join(writing))
                     outfile.close()
 
-        LOGGER.info("Removed pcr duplicates from {} - {}".format(sample.name, counts-counts2))
+        ip.logger.info("Removed pcr duplicates from {} - {}"
+                    .format(sample.name, counts - counts2))
 
     except Exception as inst:
-        raise IPyradError("    Caught error while decloning "\
-                                + "3rad data - {}".format(inst))
+        raise IPyradError(
+            "    Caught error while decloning 3rad data - {}".format(inst))
 
     finally:
         ## failed samples will cause tmp file removal to raise.
@@ -1057,30 +1460,33 @@ def derep_and_sort(data, infile, outfile, nthreads):
         catcmd = ["cat", infile]
 
     ## do dereplication with vsearch
-    cmd = [ipyrad.bins.vsearch,
-            "--derep_fulllength", "-",
-            "--strand", strand,
-            "--output", outfile,
-            "--threads", str(nthreads),
-            "--fasta_width", str(0),
-            "--fastq_qmax", "1000",
-            "--sizeout", 
-            "--relabel_md5",
-            ]
-    LOGGER.info("derep cmd %s", cmd)
+    cmd = [
+        ip.bins.vsearch,
+        "--derep_fulllength", "-",
+        "--strand", strand,
+        "--output", outfile,
+        "--threads", str(nthreads),
+        "--fasta_width", str(0),
+        "--fastq_qmax", "1000",
+        "--sizeout", 
+        "--relabel_md5",
+        ]
+    ip.logger.info("derep cmd %s", cmd)
 
     ## run vsearch
-    proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
-    proc2 = sps.Popen(cmd, stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+    proc1 = sps.Popen(catcmd, 
+        stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+    proc2 = sps.Popen(cmd, 
+        stdin=proc1.stdout, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
 
     try:
         errmsg = proc2.communicate()[0]
     except KeyboardInterrupt:
-        LOGGER.info("interrupted during dereplication")
+        ip.logger.info("interrupted during dereplication")
         raise KeyboardInterrupt()
 
     if proc2.returncode:
-        LOGGER.error("error inside derep_and_sort %s", errmsg)
+        ip.logger.error("error inside derep_and_sort %s", errmsg)
         raise IPyradWarningExit(errmsg)
 
 
@@ -1093,16 +1499,16 @@ def data_cleanup(data):
         data.stats_dfs.s3.to_string(
             buf=outfile,
             formatters={
-                'merged_pairs':'{:.0f}'.format,
-                'clusters_total':'{:.0f}'.format,
-                'clusters_hidepth':'{:.0f}'.format,
-                'filtered_bad_align':'{:.0f}'.format,
-                'avg_depth_stat':'{:.2f}'.format,
-                'avg_depth_mj':'{:.2f}'.format,
-                'avg_depth_total':'{:.2f}'.format,
-                'sd_depth_stat':'{:.2f}'.format,
-                'sd_depth_mj':'{:.2f}'.format,
-                'sd_depth_total':'{:.2f}'.format
+                'merged_pairs': '{:.0f}'.format,
+                'clusters_total': '{:.0f}'.format,
+                'clusters_hidepth': '{:.0f}'.format,
+                'filtered_bad_align': '{:.0f}'.format,
+                'avg_depth_stat': '{:.2f}'.format,
+                'avg_depth_mj': '{:.2f}'.format,
+                'avg_depth_total': '{:.2f}'.format,
+                'sd_depth_stat': '{:.2f}'.format,
+                'sd_depth_mj': '{:.2f}'.format,
+                'sd_depth_total': '{:.2f}'.format
             })
 
 
@@ -1120,9 +1526,11 @@ def concat_multiple_edits(data, sample):
         cmd1 = ["cat"] + [i[0] for i in sample.files.edits]
 
         ## write to new concat handle
-        conc1 = os.path.join(data.dirs.edits, sample.name+"_R1_concatedit.fq.gz")
+        conc1 = os.path.join(
+            data.dirs.edits, sample.name + "_R1_concatedit.fq.gz")
         with open(conc1, 'w') as cout1:
-            proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
+            proc1 = sps.Popen(cmd1, 
+                stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
             raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
@@ -1131,9 +1539,11 @@ def concat_multiple_edits(data, sample):
         conc2 = 0
         if os.path.exists(str(sample.files.edits[0][1])):
             cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
-            conc2 = os.path.join(data.dirs.edits, sample.name+"_R2_concatedit.fq.gz")
+            conc2 = os.path.join(
+                data.dirs.edits, sample.name + "_R2_concatedit.fq.gz")
             with gzip.open(conc2, 'w') as cout2:
-                proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
+                proc2 = sps.Popen(cmd2, 
+                    stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
             if proc2.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
@@ -1152,30 +1562,32 @@ def cluster(data, sample, nthreads, force):
 
     ## get the dereplicated reads
     if "reference" in data.paramsdict["assembly_method"]:
-        derephandle = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
-        ## In the event all reads for all samples map successfully then clustering
-        ## the unmapped reads makes no sense, so just bail out.
+        derephandle = os.path.join(
+            data.dirs.edits, sample.name + "-refmap_derep.fastq")
+        # In the event all reads for all samples map successfully then 
+        # clustering the unmapped reads makes no sense, so just bail out.
         if not os.stat(derephandle).st_size:
             ## In this case you do have to create empty, dummy vsearch output
             ## files so building_clusters will not fail.
-            uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
-            usort = os.path.join(data.dirs.clusts, sample.name+".utemp.sort")
-            hhandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+            uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
+            usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
+            hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
             for f in [uhandle, usort, hhandle]:
                 open(f, 'a').close()
             return
     else:
-        derephandle = os.path.join(data.dirs.edits, sample.name+"_derep.fastq")
+        derephandle = os.path.join(data.dirs.edits, sample.name + "_derep.fastq")
 
     ## create handles for the outfiles
-    uhandle = os.path.join(data.dirs.clusts, sample.name+".utemp")
-    temphandle = os.path.join(data.dirs.clusts, sample.name+".htemp")
+    uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
+    temphandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
 
     ## If derep file doesn't exist then bail out
     if not os.path.isfile(derephandle):
-        LOGGER.warn("Bad derephandle - {}".format(derephandle))
-        raise IPyradError("Input file for clustering doesn't exist - {}"\
-                        .format(derephandle))
+        ip.logger.warn("Bad derephandle - {}".format(derephandle))
+        raise IPyradError(
+            "Input file for clustering doesn't exist - {}".format(derephandle))
+                       
 
     ## testing one sample fail
     #if sample.name == "1C_0":
@@ -1208,7 +1620,7 @@ def cluster(data, sample, nthreads, force):
         assert float(cov) <= 1, "query_cov must be <= 1.0"
 
     ## get call string
-    cmd = [ipyrad.bins.vsearch,
+    cmd = [ip.bins.vsearch,
            "-cluster_smallmem", derephandle,
            "-strand", strand,
            "-query_cov", str(cov),
@@ -1233,7 +1645,7 @@ def cluster(data, sample, nthreads, force):
     #    cmd += ["-leftjust"]
 
     ## run vsearch
-    LOGGER.debug("%s", cmd)
+    ip.logger.debug("%s", cmd)
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
 
     ## This is long running so we wrap it to make sure we can kill it
@@ -1245,7 +1657,7 @@ def cluster(data, sample, nthreads, force):
 
     ## check for errors
     if proc.returncode:
-        LOGGER.error("error %s: %s", cmd, res)
+        ip.logger.error("error %s: %s", cmd, res)
         raise IPyradWarningExit("cmd {}: {}".format(cmd, res))
 
 
@@ -1260,21 +1672,21 @@ def muscle_chunker(data, sample):
     reference then this step is just a placeholder and nothing happens. 
     """
     ## log our location for debugging
-    LOGGER.info("inside muscle_chunker")
+    ip.logger.info("inside muscle_chunker")
 
     ## only chunk up denovo data, refdata has its own chunking method which 
     ## makes equal size chunks, instead of uneven chunks like in denovo
     if data.paramsdict["assembly_method"] != "reference":
         ## get the number of clusters
-        clustfile = os.path.join(data.dirs.clusts, sample.name+".clust.gz")
-        with iter(gzip.open(clustfile, 'rb')) as clustio:
+        clustfile = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
+        with iter(gzip.open(clustfile, 'rt')) as clustio:
             nloci = sum(1 for i in clustio if "//" in i) // 2
             #tclust = clustio.read().count("//")//2
-            optim = (nloci//20) + (nloci%20)
-            LOGGER.info("optim for align chunks: %s", optim)
+            optim = (nloci // 20) + (nloci % 20)
+            ip.logger.info("optim for align chunks: %s", optim)
 
         ## write optim clusters to each tmp file
-        clustio = gzip.open(clustfile, 'rb')
+        clustio = gzip.open(clustfile, 'rt')
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
         
         ## splitting loci so first file is smaller and last file is bigger
@@ -1282,19 +1694,20 @@ def muscle_chunker(data, sample):
         for idx in range(10):
             ## how big is this chunk?
             this = optim + (idx * inc)
-            left = nloci-this
+            left = nloci - this
             if idx == 9:
                 ## grab everything left
-                grabchunk = list(itertools.islice(inclusts, int(1e9)))
+                grabchunk = list(islice(inclusts, int(1e9)))
             else:
                 ## grab next chunks-worth of data
-                grabchunk = list(itertools.islice(inclusts, this))
+                grabchunk = list(islice(inclusts, this))
                 nloci = left
 
             ## write the chunk to file
-            tmpfile = os.path.join(data.tmpdir, sample.name+"_chunk_{}.ali".format(idx))
+            tmpfile = os.path.join(
+                data.tmpdir, sample.name + "_chunk_{}.ali".format(idx))
             with open(tmpfile, 'wb') as out:
-                out.write("//\n//\n".join(grabchunk))
+                out.write(str.encode("//\n//\n".join(grabchunk)))
 
         ## write the chunk to file
         #grabchunk = list(itertools.islice(inclusts, left))
@@ -1312,14 +1725,16 @@ def reconcat(data, sample):
     try:
         ## get chunks
         chunks = glob.glob(os.path.join(data.tmpdir,
-                 sample.name+"_chunk_[0-9].aligned"))
+                 sample.name + "_chunk_[0-9].aligned"))
 
         ## sort by chunk number, cuts off last 8 =(aligned)
         chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
-        LOGGER.info("chunk %s", chunks)
+        ip.logger.info("chunk %s", chunks)
+
         ## concatenate finished reads
-        sample.files.clusters = os.path.join(data.dirs.clusts,
-                                             sample.name+".clustS.gz")
+        sample.files.clusters = os.path.join(
+            data.dirs.clusts, sample.name + ".clustS.gz")
+
         ## reconcats aligned clusters
         with gzip.open(sample.files.clusters, 'wb') as out:
             for fname in chunks:
@@ -1327,12 +1742,12 @@ def reconcat(data, sample):
                     dat = infile.read()
                     ## avoids mess if last chunk was empty
                     if dat.endswith("\n"):
-                        out.write(dat+"//\n//\n")
+                        out.write(str.encode(dat + "//\n//\n"))
                     else:
-                        out.write(dat+"\n//\n//\n")
+                        out.write(str.encode(dat + "\n//\n//\n"))
                 os.remove(fname)
     except Exception as inst:
-        LOGGER.error("Error in reconcat {}".format(inst))
+        ip.logger.error("Error in reconcat {}".format(inst))
         raise
 
 
@@ -1344,17 +1759,17 @@ def derep_concat_split(data, sample, nthreads, force):
     """
 
     ## report location for debugging
-    LOGGER.info("INSIDE derep %s", sample.name)
+    ip.logger.info("INSIDE derep %s", sample.name)
 
     ## MERGED ASSEMBIES ONLY:
     ## concatenate edits files within Samples. Returns a new sample.files.edits 
     ## with the concat file. No change if not merged Assembly.
-    mergefile = os.path.join(data.dirs.edits, sample.name+"_merged_.fastq")
+    mergefile = os.path.join(data.dirs.edits, sample.name + "_merged_.fastq")
     if not force:
         if not os.path.exists(mergefile):
             sample.files.edits = concat_multiple_edits(data, sample)
         else:
-            LOGGER.info("skipped concat_multiple_edits: {} exists"\
+            ip.logger.info("skipped concat_multiple_edits: {} exists"
                         .format(mergefile))
     else:
         sample.files.edits = concat_multiple_edits(data, sample)
@@ -1399,15 +1814,15 @@ def derep_concat_split(data, sample, nthreads, force):
 
 
 def cleanup_and_die(async_results):
-    LOGGER.debug("Entering cleanup_and_die")
+    ip.logger.debug("Entering cleanup_and_die")
 
-    LOGGER.debug(async_results)
+    ip.logger.debug(async_results)
     res = []
-    ## Sort through msg_ids and check metadata stats to figure out what went wrong
+    # Sort through msg_ids and check metadata to figure out what went wrong
     for i in async_results:
-        if not i == None:
+        if i is not None:
             res.extend(i)
-            LOGGER.warn("Got error - {}".format(i))
+            ip.logger.warn("Got error - {}".format(i))
     return res
 
 
@@ -1422,16 +1837,14 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
     for sample in samples:
         ## If sample not in state 2 don't try to cluster it.
         if sample.stats.state < 2:
-            print("""\
-    Sample not ready for clustering. First run step2 on sample: {}""".\
-    format(sample.name))
+            print("Sample not ready for clustering. First run step 2 on : {}"
+                  .format(sample.name))
             continue
 
         if not force:
             if sample.stats.state >= 3:
-                print("""\
-    Skipping {}; aleady clustered. Use force to re-cluster""".\
-    format(sample.name))
+                print("Skipping {}; aleady clustered. Use force to re-cluster"
+                      .format(sample.name))
             else:
                 if sample.stats.reads_passed_filter:
                     subsamples.append(sample)
@@ -1442,7 +1855,7 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 
     ## run subsamples
     if not subsamples:
-        print("  No Samples ready to be clustered. First run step2().")
+        print("No Samples ready to be clustered. First run step 2.")
 
     else:
         ## arguments to apply_jobs, inst catches exceptions
@@ -1467,33 +1880,33 @@ def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
 
                 ## if more CPUs than there are samples then increase threads
                 _ncpus = len(ipyclient)
-                if _ncpus > 2*len(data.samples):
+                if _ncpus > 2 * len(data.samples):
                     nthreads *= 2
 
             ## submit jobs to be run on cluster
-            args = [data, subsamples, ipyclient, nthreads, maxindels, force]
-            new_apply_jobs(*args)
-
+            new_apply_jobs(
+                data, subsamples, ipyclient, nthreads, maxindels, force)
 
         finally:
             ## this can fail if jobs were not stopped properly and are still
             ## writing to tmpdir. don't cleanup if debug is on.
             try:
-                log_level = logging.getLevelName(LOGGER.getEffectiveLevel())
-                if not log_level == "DEBUG":
+                log_level = ip.logger.getEffectiveLevel()
+                if not log_level == 10:
 
                     if os.path.exists(data.tmpdir):
                         shutil.rmtree(data.tmpdir)
+
                     ## get all refmap_derep.fastqs
-                    rdereps = glob.glob(os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
+                    rdereps = glob.glob(
+                        os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
+
                     ## Remove the unmapped fastq files
                     for rmfile in rdereps:
                         os.remove(rmfile)
 
             except Exception as _:
-                LOGGER.warning("failed to cleanup files/dirs")
-
-
+                ip.logger.warning("failed to cleanup files/dirs")
 
 
 ### GLOBALS
@@ -1502,48 +1915,47 @@ THREADED_FUNCS = ["derep_concat_split", "cluster", "mapreads"]
 
 PRINTSTR = {
     #"derep_concat_split" : "concat+dereplicate",
-    "derep_concat_split" : "dereplicating     ",
-    "mapreads" :           "mapping           ",
-    "cluster" :            "clustering        ",
-    "build_clusters" :     "building clusters ",
-    "ref_muscle_chunker" : "finalize mapping  ",
-    "muscle_chunker" :     "chunking          ",
-    "muscle_align" :       "aligning          ",
-    "reconcat" :           "concatenating     ",
-    "ref_build_and_muscle_chunk" : 
-                           "fetch mapped reads",
+    "derep_concat_split": "dereplicating       ",
+    "mapreads":           "mapping             ",
+    "cluster":            "clustering          ",
+    "build_clusters":     "building clusters   ",
+    "ref_muscle_chunker": "finalize mapping    ",
+    "muscle_chunker":     "chunking            ",
+    "muscle_align":       "aligning            ",
+    "reconcat":           "concatenating       ",
+    "ref_build_and_muscle_chunk": "fetch mapped reads  ",
     }
 
 
 FUNCDICT = {
-    "derep_concat_split" : derep_concat_split,
-    "mapreads" :           mapreads,
-    "cluster" :            cluster,
-    "build_clusters" :     build_clusters,
-    "ref_muscle_chunker" : ref_muscle_chunker,
-    "ref_build_and_muscle_chunk" : ref_build_and_muscle_chunk,    
-    "muscle_chunker" :     muscle_chunker,
-    "muscle_align" :       align_and_parse, #muscle_align,
-    "reconcat" :           reconcat
+    "derep_concat_split": derep_concat_split,
+    "mapreads":           mapreads,
+    "cluster":            cluster,
+    "build_clusters":     build_clusters,
+    "ref_muscle_chunker": ref_muscle_chunker,
+    "ref_build_and_muscle_chunk": ref_build_and_muscle_chunk,    
+    "muscle_chunker":     muscle_chunker,
+    "muscle_align":       align_and_parse, 
+    "reconcat":           reconcat
     }
 
 
 ## Pre-align funcs for the four assembly methods
 JOBORDER = {
-    "denovo" : [
+    "denovo": [
         "derep_concat_split",
         "cluster",
         "build_clusters",
         "muscle_chunker"
         ], 
-    "reference" : [
+    "reference": [
         "derep_concat_split",
         "mapreads",
         "ref_build_and_muscle_chunk",
-        "muscle_chunker",  ## <- doesn't do anything but hold back aligning jobs
+        "muscle_chunker",  # <- doesn't do anything but hold back aligning jobs
         #"ref_muscle_chunker",
         ], 
-    "denovo+reference" : [
+    "denovo+reference": [
         "derep_concat_split",
         "mapreads",
         "cluster",
@@ -1551,7 +1963,7 @@ JOBORDER = {
         "ref_build_and_muscle_chunk",
         "muscle_chunker"
         ], 
-    "denovo-reference" : [
+    "denovo-reference": [
         "derep_concat_split",
         "mapreads",
         "cluster",
@@ -1574,11 +1986,10 @@ if __name__ == "__main__":
 
     ## reload autosaved data. In case you quit and came back
     JSONPATH = "/home/deren/Documents/ipyrad/tests/cli/cli.json"
-    DATA = ipyrad.load_json(JSONPATH)
+    DATA = ip.load_json(JSONPATH)
     DATA.run('3', force=True)
 
     ## reload autosaved data. In case you quit and came back
     JSONPATH = "/home/deren/Documents/ipyrad/tests/pairtest/pairtest.json"
-    DATA = ipyrad.load_json(JSONPATH)
+    DATA = ip.load_json(JSONPATH)
     DATA.run('3', force=True)
-
