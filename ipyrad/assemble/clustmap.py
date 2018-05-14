@@ -44,7 +44,6 @@ class Step3:
         # init funcs
         self.setup_dirs()
         self.tune_threads()
-        self.tune_load_balancer()
 
 
     def run(self):
@@ -118,19 +117,102 @@ class Step3:
                     printstr=("building clusters   ", "s3"),
                     args=(),
                     )
-            else:
+
+            # DENOVO MINUS
+            elif self.data.paramsdict["assembly_method"] == "denovo-reference":
                 raise NotImplemented(
                     "datatype + assembly_method combo not yet supported")
 
-            # elif self.data.paramsdict["assembly_method"] == "denovo+reference":
-            #     self.remote_run_dereps()
-            #     self.remote_run_cluster_map_build()
-            #     self.remote_run_align_cleanup()
+                # the same as 'reference' above except after mapping the reads
+                # we then take the unmapped reads, rejoin them end-to-end, 
+                # and cluster them. 
+                self.remote_run(
+                    function=concat_multiple_edits,
+                    printstr=("concatenating       ", "s3"), 
+                    args=(),
+                    )
+                self.remote_run(
+                    function=merge_end_to_end,
+                    printstr=("join unmerged pairs ", "s3"), 
+                    args=(False, False,),
+                    )
+                #if "3rad" not in data.paramsdict["datatype"]:
+                #    self.remote_run(
+                #        function=dereplicate,
+                #        printstr=("declone 3RAD        ", "s3"), 
+                #        args=(self.nthreads, self.force),
+                #        )
+                self.remote_run(
+                    function=dereplicate,
+                    printstr=("dereplicating       ", "s3"), 
+                    args=(self.nthreads,),
+                    threaded=True,
+                    )
+                self.remote_run(
+                    function=split_endtoend_reads,
+                    printstr=("splitting dereps    ", "s3"), 
+                    args=(),
+                    )
+                self.remote_run(
+                    function=mapping_reads, 
+                    printstr=("mapping reads       ", "s3"),
+                    args=(self.nthreads,),
+                    threaded=True,
+                    )
+                self.remote_run(
+                    function=merge_end_to_end,
+                    printstr=("join unmerged pairs ", "s3"), 
+                    args=(False, False,),
+                    )                
+                # tell cluster to use the unmapped merged end-to-ends
+                self.remote_run_cluster_build()
+                self.remote_run_align_cleanup()
 
-            # elif self.data.paramsdict["assembly_method"] == "denovo-reference":
-            #     self.remote_run_dereps()
-            #     self.remote_run_cluster_map_build()
-            #     self.remote_run_align_cleanup()
+            else:
+                raise NotImplemented(
+                    "datatype + assembly_method combo not yet supported")
+                self.remote_run(
+                    function=concat_multiple_edits,
+                    printstr=("concatenating       ", "s3"), 
+                    args=(),
+                    )
+                self.remote_run(
+                    function=merge_end_to_end,
+                    printstr=("join unmerged pairs ", "s3"), 
+                    args=(False, False,),
+                    )
+                #if "3rad" not in data.paramsdict["datatype"]:
+                #    self.remote_run(
+                #        function=dereplicate,
+                #        printstr=("declone 3RAD        ", "s3"), 
+                #        args=(self.nthreads, self.force),
+                #        )
+                self.remote_run(
+                    function=dereplicate,
+                    printstr=("dereplicating       ", "s3"), 
+                    args=(self.nthreads,),
+                    threaded=True,
+                    )
+                self.remote_run(
+                    function=split_endtoend_reads,
+                    printstr=("splitting dereps    ", "s3"), 
+                    args=(),
+                    )
+                self.remote_run(
+                    function=mapping_reads, 
+                    printstr=("mapping reads       ", "s3"),
+                    args=(self.nthreads,),
+                    threaded=True,
+                    )
+                self.remote_run(
+                    function=merge_end_to_end,
+                    printstr=("join unmerged pairs ", "s3"), 
+                    args=(False, False,),
+                    )                
+                # tell cluster to use the unmapped merged end-to-ends
+                self.remote_run_cluster_build()
+                self.remote_run_align_cleanup()                
+
 
         ## single-end methods ------------------------------------
         else:
@@ -150,6 +232,7 @@ class Step3:
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
 
+            # REFERENCE
             elif self.data.paramsdict["assembly_method"] == "reference":
                 self.remote_run(
                     function=concat_multiple_edits,
@@ -239,30 +322,22 @@ class Step3:
 
 
     def tune_threads(self):
-        # overwrite nthreads if value in _ipcluster dict
+        # set nthreads based on _ipcluster dict (default is 2)
         if "threads" in self.data._ipcluster.keys():
             self.nthreads = int(self.data._ipcluster["threads"])
-            
-            # if more nCPUs is 2X nsamples then increase threads
-            _ncpus = len(self.ipyclient)
-            if _ncpus > 2 * len(self.data.samples):
-                self.nthreads *= 2
 
-
-    def tune_load_balancer(self):
-        # TODO: for HPC this should make sure targets are spread on diff nodes.
-        eids = self.ipyclient.ids
-
+        # create standard load-balancers
         self.lbview = self.ipyclient.load_balanced_view()
         self.thview = self.ipyclient.load_balanced_view()
 
-        # if user set threading then use that
+        # if nthreads then scale thview to use threads
+        eids = self.ipyclient.ids
         if self.nthreads:
-            if self.nthreads < len(self.ipyclient.ids):
+            if self.nthreads <= len(self.ipyclient.ids):
                 self.thview = self.ipyclient.load_balanced_view(
                     targets=eids[::self.nthreads])
 
-        # else try futher auto-tuning
+        # else try auto-tuning to 2 or 4 threaded
         else:
             if len(self.ipyclient) > 40:
                 self.thview = self.ipyclient.load_balanced_view(
@@ -817,7 +892,7 @@ def merge_end_to_end(data, sample, revcomp, append):
                 ]))
 
         counts += 1
-        if not counts % 100:
+        if not counts % 500:
             combout.write(b"".join(writing).decode())
             writing = []
 
@@ -1707,8 +1782,9 @@ def bedtools_merge(data, sample):
         -d <int>        :   For PE set max distance between reads
     """
     LOGGER.info("Entering bedtools_merge: %s", sample.name)
-    mappedreads = os.path.join(data.dirs.refmapping, 
-                               sample.name + "-mapped-sorted.bam")
+    mappedreads = os.path.join(
+        data.dirs.refmapping, 
+        "{}-mapped-sorted.bam".format(sample.name))
 
     ## command to call `bedtools bamtobed`, and pipe output to stdout
     ## Usage:   bedtools bamtobed [OPTIONS] -i <bam> 
@@ -1760,7 +1836,7 @@ def build_clusters_from_cigars(data, sample):
     regions = ((i, int(j), int(k)) for (i, j, k) in regions)
 
     # access reads from bam file using pysam
-    samfile = AlignmentFile(
+    bamfile = AlignmentFile(
         os.path.join(data.dirs.refmapping, 
         "{}-mapped-sorted.bam".format(sample.name)),
         'rb')
@@ -1772,8 +1848,9 @@ def build_clusters_from_cigars(data, sample):
     idx = 0
     clusters = []
     for reg in regions:
-        ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
-        reads = samfile.fetch(*reg)
+        # uncomment and compare against ref sequence when testing
+        #ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
+        reads = bamfile.fetch(*reg)
 
         # store reads in a dict
         rdict = {}
@@ -1799,9 +1876,10 @@ def build_clusters_from_cigars(data, sample):
                 r1, r2 = rdict[key]
                 if r1 and r2:
 
-                    aref = np.array(list(ref[1]))
-                    arr1 = np.zeros(aref.size, dtype="U1")
-                    arr2 = np.zeros(aref.size, dtype="U1")
+                    #lref = len(ref[1])
+                    lref = reg[2] - reg[1]
+                    arr1 = np.zeros(lref, dtype="U1")
+                    arr2 = np.zeros(lref, dtype="U1")
                     arr1.fill("-")
                     arr2.fill("-")
 
@@ -1839,8 +1917,9 @@ def build_clusters_from_cigars(data, sample):
             for key in keys:
                 r1 = rdict[key]
 
-                aref = np.array(list(ref[1]))
-                arr1 = np.zeros(aref.size, dtype="U1")
+                #aref = np.array(list(ref[1]))
+                lref = reg[2] - reg[1]
+                arr1 = np.zeros(lref, dtype="U1")
                 arr1.fill("-")
 
                 # how far ahead of the start does this read begin
@@ -1857,16 +1936,18 @@ def build_clusters_from_cigars(data, sample):
                 clust.append("{}\n{}".format(rname, aseq))
 
         # store this cluster
-        clusters.append("\n".join(clust))
-        idx += 1
+        if clust:
+            clusters.append("\n".join(clust))
+            idx += 1
 
         # if 1000 clusters stored then write to disk
-        if not idx % 1000:
-            out.write("\n//\n//\n".join(clusters))
+        if not idx % 500:
+            out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
             clusters = []
  
     # write final remaining clusters to disk
-    out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+    if clusters:
+        out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
     out.close()
 
 
