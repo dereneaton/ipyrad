@@ -279,8 +279,6 @@ def cutadaptit_pairs(data, sample):
     sname = sample.name
 
     ## applied to read pairs
-    #trim_r1 = str(data.paramsdict["edit_cutsites"][0])
-    #trim_r2 = str(data.paramsdict["edit_cutsites"][1])
     finput_r1 = sample.files.concat[0][0]
     finput_r2 = sample.files.concat[0][1]
 
@@ -311,7 +309,7 @@ def cutadaptit_pairs(data, sample):
         ## after receiving the warning. We assume no technical replicates here.
         try:
             data._link_barcodes()
-        except Exception as inst:
+        except IPyradWarningExit as inst:
             ip.logger.warning("  error adding barcodes info: %s", inst)
 
     ## barcodes are present meaning they were parsed to the samples in step 1.
