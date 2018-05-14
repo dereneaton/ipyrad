@@ -23,10 +23,27 @@ from ipyrad.assemble.jointestimate import recal_hidepth
 from .util import IPyradError, IPyradWarningExit, clustdealer, PRIORITY
 from collections import Counter
 
+# why won't hdf5 just fix this...
 import warnings
 with warnings.catch_warnings(): 
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
+
+
+TRANS = {
+    (71, 65): 82,
+    (71, 84): 75,
+    (71, 67): 83,
+    (84, 67): 89,
+    (84, 65): 87,
+    (67, 65): 77,
+    (65, 67): 77,
+    (65, 84): 87,
+    (67, 84): 89,
+    (67, 71): 83,
+    (84, 71): 75,
+    (65, 71): 82,
+    }
 
 
 def get_binom(base1, base2, estE, estH):
@@ -422,23 +439,6 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
             
 
 
-TRANS = {
-         (71, 65): 82,
-         (71, 84): 75,
-         (71, 67): 83,
-         (84, 67): 89,
-         (84, 65): 87,
-         (67, 65): 77,
-         (65, 67): 77,
-         (65, 84): 87,
-         (67, 84): 89,
-         (67, 71): 83,
-         (84, 71): 75,
-         (65, 71): 82,
-         }
-
-
-
 def nfilter1(data, reps):
     """ applies read depths filter """
     if sum(reps) >= data.paramsdict["mindepth_majrule"] and \
@@ -761,7 +761,7 @@ def get_subsamples(data, samples, force):
     if data._headers:
         print(u"""\
   Mean error  [{:.5f} sd={:.5f}]
-  Mean hetero [{:.5f} sd={:.5f}]"""\
+  Mean hetero [{:.5f} sd={:.5f}]"""
   .format(data.stats.error_est.mean(), data.stats.error_est.std(),
           data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
 
