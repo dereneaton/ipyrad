@@ -12,7 +12,7 @@ import pandas as pd
 from copy import deepcopy
 from collections import OrderedDict
 from ..core.assembly import Assembly, Sample
-from ..assemble.util import IPyradWarningExit, ObjDict
+from ..assemble.util import IPyradWarningExit, ObjDict, IPyradError
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -183,7 +183,7 @@ def load_json(path, quiet=False, cli=False):
         null = Assembly(oldname, quiet=True, cli=cli)
 
     except (UnboundLocalError, AttributeError) as inst:
-        raise IPyradWarningExit("""
+        raise IPyradError("""
     Could not find saved Assembly file (.json) in expected location.
     Checks in: [project_dir]/[assembly_name].json
     Checked: {}
