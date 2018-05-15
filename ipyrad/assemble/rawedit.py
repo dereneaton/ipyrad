@@ -13,7 +13,7 @@ import time
 import numpy as np
 import ipyrad as ip
 import subprocess as sps
-from .util import IPyradWarningExit, fullcomp
+from .util import IPyradWarningExit, IPyradError, fullcomp
 
 
 def assembly_cleanup(data):
@@ -309,7 +309,7 @@ def cutadaptit_pairs(data, sample):
         ## after receiving the warning. We assume no technical replicates here.
         try:
             data._link_barcodes()
-        except IPyradWarningExit as inst:
+        except IPyradError as inst:
             ip.logger.warning("  error adding barcodes info: %s", inst)
 
     ## barcodes are present meaning they were parsed to the samples in step 1.
