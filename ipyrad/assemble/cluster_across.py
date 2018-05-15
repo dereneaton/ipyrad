@@ -610,7 +610,6 @@ def build_denovo_clusters(data, usort, nseeds, jobids):
         seqsize = 0
 
         while 1:
-            # grab the next line
             try:
                 hit, seed, ori = next(isort).strip().split()
             except StopIteration:
@@ -623,6 +622,7 @@ def build_denovo_clusters(data, usort, nseeds, jobids):
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
+
                 # occasionally write to file
                 if seqsize >= optim:
                     if seqlist:
@@ -641,18 +641,28 @@ def build_denovo_clusters(data, usort, nseeds, jobids):
                 fseqs.append(">{}\n{}".format(seed, allcons[seed]))
                 lastseed = seed
 
+                # expand subhits to seed
+                uhits = subdict.get(seed)
+                if uhits:
+                    for ahit, ori in uhits:
+                        if ori == "-":
+                            seq = fullcomp(allcons[ahit])[::-1]
+                        else:
+                            seq = allcons[ahit]
+                        fseqs.append(">{}\n{}".format(ahit, seq))
+
             # expand matches with subdict
-            hits = [(allcons[hit], ori)]
+            hitseqs = [(hit, allcons[hit], ori)]
             uhits = subdict.get(hit)
             if uhits:
                 for hit in uhits:
-                    hits.append((allcons[hit[0]], hit[1]))
+                    hitseqs.append((hit[0], allcons[hit[0]], hit[1]))
 
             # revcomp if orientation is reversed
-            for seq, ori in hits:
+            for sname, seq, ori in hitseqs:
                 if ori == "-":
                     seq = fullcomp(seq)[::-1]
-                fseqs.append(">{}\n{}".format(hit[0], seq))
+                fseqs.append(">{}\n{}".format(sname, seq))
 
     ## write whatever is left over to the clusts file
     if fseqs:
@@ -667,6 +677,247 @@ def build_denovo_clusters(data, usort, nseeds, jobids):
 
     ## final progress and cleanup
     del allcons
+
+
+def align_to_array(data, samples, chunk):
+
+    # data are already chunked, read in the whole thing
+    with open(chunk, 'rt') as infile:
+        clusts = infile.read().split("//\n//\n")[:-1]    
+
+    # snames to ensure sorted order
+    samples.sort(key=lambda x: x.name)
+    snames = [sample.name for sample in samples]
+
+    # make a tmparr to store metadata (this can get huge, consider using h5)
+    maxvar = 25
+    maxlen = data._hackersonly["max_fragment_length"] + 20
+    maxinds = data.paramsdict["max_Indels_locus"]
+    ifilter = np.zeros(len(clusts), dtype=np.bool_)
+    dfilter = np.zeros(len(clusts), dtype=np.bool_)
+    varpos = np.zeros((len(clusts), maxvar), dtype='u1')
+    indels = np.zeros((len(clusts), len(samples), sum(maxinds)), dtype='u1')
+    edges = np.zeros((len(clusts), len(samples), 4), dtype='u1')
+    consens = np.zeros((len(clusts), maxlen), dtype="S1")
+
+    # create a persistent shell for running muscle in. 
+    proc = sps.Popen(["bash"], stdin=sps.PIPE, stdout=sps.PIPE, bufsize=0)
+
+    # iterate over clusters until finished
+    allstack = []
+    for ldx in range(len(clusts)):
+        istack = []
+        lines = clusts[ldx].strip().split("\n")
+        names = lines[::2]
+        seqs = lines[1::2]
+        seqs = [i[:90] for i in seqs]    
+        align1 = []
+        
+        # find duplicates and skip aligning but keep it for downstream.
+        unames = set([i.rsplit("_", 1)[0] for i in names])
+        if len(unames) < len(names):
+            dfilter[ldx] = True
+            istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
+
+        else:
+            # append counter to names because muscle doesn't retain order
+            nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+
+            # make back into strings
+            cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])                
+
+            # store allele (lowercase) info
+            amask, abool = store_alleles(seqs)
+
+            # send align1 to the bash shell (TODO: check for pipe-overflow)
+            cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+                    .format(cl1, ipyrad.bins.muscle, "//\n"))
+            proc.stdin.write(cmd1.encode())
+
+            # read the stdout by line until splitter is reached
+            for line in iter(proc.stdout.readline, b'//\n'):
+                align1.append(line.decode())
+
+            # reorder b/c muscle doesn't keep order
+            lines = "".join(align1)[1:].split("\n>")
+            dalign1 = dict([i.split("\n", 1) for i in lines])
+            keys = sorted(
+                dalign1.keys(), 
+                key=lambda x: int(x.rsplit("*")[-1])
+            )
+            seqarr = np.zeros(
+                (len(nnames), len(dalign1[keys[0]].replace("\n", ""))),
+                dtype='S1',
+                )
+            for kidx, key in enumerate(keys):
+                concatseq = dalign1[key].replace("\n", "")
+                seqarr[kidx] = list(concatseq)
+                    
+                # fill in edges for each seq
+                edg = (
+                    len(concatseq) - len(concatseq.lstrip('-')),
+                    len(concatseq.rstrip('-')),
+                    len(concatseq.rstrip('-')),
+                    len(concatseq.rstrip('-')),
+                    )
+                sidx = snames.index(key.rsplit('_', 1)[0])
+                edges[ldx, sidx] = edg
+
+            # get ref/variant counts in an array
+            varmat = refbuild(seqarr.view('u1'), PSEUDO_REF)
+            constmp = varmat[:, 0].view('S1')
+            consens[ldx, :constmp.size] = constmp
+            varstmp = np.nonzero(varmat[:, 1])[0]
+            varpos[ldx, :varstmp.size] = varstmp 
+
+            # impute allele information back into the read b/c muscle
+            wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
+
+            # sort in sname (alphanumeric) order for indels storage
+            for idx in wkeys:
+                # seqarr and amask are in input order here
+                args = (seqarr, idx, amask)
+                seqarr[idx], indidx = retrieve_indels_and_alleles(*args)
+                sidx = snames.index(names[idx].rsplit("_", 1)[0][1:])
+                if indidx.size:
+                    indels[sidx, :max(indidx.size, sum(maxinds))] = indidx
+                wname = names[idx]
+
+                # store (only for visually checking alignments)
+                istack.append(
+                    "{}\n{}".format(wname, b"".join(seqarr[idx]).decode()))
+
+            # indel filter
+            if indels.sum(axis=1).max() >= sum(maxinds):
+                ifilter[ldx] = True
+
+        # store the stack (only for visually checking alignments)
+        if istack:
+            allstack.append("\n".join(istack))
+
+    # cleanup
+    proc.stdout.close()
+    if proc.stderr:
+        proc.stderr.close()
+    proc.stdin.close()
+    proc.wait()
+
+    # write to file after (only for visually checking alignments)
+    odx = chunk.rsplit("_")[-1]
+    alignfile = os.path.join(data.tmpdir, "align_{}.fa".format(odx))
+    with open(alignfile, 'wt') as outfile:
+        outfile.write("\n//\n//\n".join(allstack) + "\n")
+        os.remove(chunk)
+
+    # save indels array to tmp dir
+    ifile = os.path.join(data.tmpdir, "indels_{}.tmp.npy".format(odx))
+    np.save(ifile, ifilter)
+    dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
+    np.save(dfile, dfilter)
+
+
+
+def store_alleles(seqs):
+    shape = (len(seqs), max([len(i) for i in seqs]))
+    arrseqs = np.zeros(shape, dtype=np.bytes_)
+    for row in range(arrseqs.shape[0]):
+        seqsrow = seqs[row]
+        arrseqs[row, :len(seqsrow)] = list(seqsrow)
+    amask = np.char.islower(arrseqs)
+    if np.any(amask):
+        return amask, True
+    else:
+        return amask, False
+
+
+def retrieve_indels_and_alleles(seqarr, idx, amask):
+    concatarr = seqarr[idx]
+    newmask = np.zeros(len(concatarr), dtype=np.bool_)                        
+
+    # check for indels and impute to amask
+    indidx = np.where(concatarr == b"-")[0]
+    if np.sum(amask):
+        print("woooooooooooooot")
+        if indidx.size:
+
+            # impute for position of variants
+            allrows = np.arange(amask.shape[1])
+            mask = np.ones(allrows.shape[0], dtype=np.bool_)
+            for idx in indidx:
+                if idx < mask.shape[0]:
+                    mask[idx] = False
+            not_idx = allrows[mask == 1]
+
+            # fill in new data into all other spots
+            newmask[not_idx] = amask[idx, :not_idx.shape[0]]
+
+        else:
+            newmask = amask[idx]
+                
+        # lower the alleles
+        concatarr[newmask] = np.char.lower(concatarr[newmask])
+
+    return concatarr, indidx
+
+
+
+@numba.jit(nopython=True)
+def refbuild(iseq, consdict):
+    """ Returns the most common base at each site in order. """
+
+    altrefs = np.zeros((iseq.shape[1], 4), dtype=np.uint8)
+
+    for col in range(iseq.shape[1]):
+        ## expand colums with ambigs and remove N-
+        fcounts = np.zeros(111, dtype=np.int64)
+        counts = np.bincount(iseq[:, col])
+        fcounts[:counts.shape[0]] = counts
+        ## set N and - to zero, wish numba supported minlen arg
+        fcounts[78] = 0
+        fcounts[45] = 0
+        ## add ambig counts to true bases
+        for aidx in range(consdict.shape[0]):
+            nbases = fcounts[consdict[aidx, 0]]
+            for _ in range(nbases):
+                fcounts[consdict[aidx, 1]] += 1
+                fcounts[consdict[aidx, 2]] += 1
+            fcounts[consdict[aidx, 0]] = 0
+
+        ## now get counts from the modified counts arr
+        who = np.argmax(fcounts)
+        altrefs[col, 0] = who
+        fcounts[who] = 0
+
+        ## if an alt allele fill over the "." placeholder
+        who = np.argmax(fcounts)
+        if who:
+            altrefs[col, 1] = who
+            fcounts[who] = 0
+
+            ## if 3rd or 4th alleles observed then add to arr
+            who = np.argmax(fcounts)
+            altrefs[col, 2] = who
+            fcounts[who] = 0
+
+            ## if 3rd or 4th alleles observed then add to arr
+            who = np.argmax(fcounts)
+            altrefs[col, 3] = who
+
+    return altrefs
+
+
+PSEUDO_REF = np.array([
+    [82, 71, 65],
+    [75, 71, 84],
+    [83, 71, 67],
+    [89, 84, 67],
+    [87, 84, 65],
+    [77, 67, 65],
+    [78, 78, 78],
+    [45, 45, 45],
+    ], dtype=np.uint8)
+
+
 
 
 def persistent_popen_align3(data, samples, chunk):
@@ -686,17 +937,10 @@ def persistent_popen_align3(data, samples, chunk):
     duples = np.zeros(len(clusts), dtype=np.bool_)
 
     ## create a persistent shell for running muscle in. 
-    proc = sps.Popen(
-        ["bash"], 
-        stdin=sps.PIPE, 
-        stdout=sps.PIPE,
-        bufsize=0, 
-        #universal_newlines=True,
-        )
+    proc = sps.Popen(["bash"], stdin=sps.PIPE, stdout=sps.PIPE, bufsize=0)
 
     ## iterate over clusters until finished
     allstack = []
-    #istack = []    
     for ldx in range(len(clusts)):
         ## new alignment string for read1s and read2s
         aligned = []
@@ -706,19 +950,14 @@ def persistent_popen_align3(data, samples, chunk):
         seqs = lines[1::2]        
         align1 = []
         align2 = ""
-
-        ## we don't allow seeds with no hits to make it here, currently
-        #if len(names) == 1:
-        #    aligned.append(clusts[ldx].replace(">", "").strip())
-
-        ## find duplicates and skip aligning but keep it for downstream.
-        if len(names) != len(set([x.rsplit("_", 1)[0] for x in names])):
-            duples[ldx] = 1
+        
+        # find duplicates and skip aligning but keep it for downstream.
+        if len(names) == len(set([i.rsplit("_", 1)[0] for i in names])):
+            duples[ldx] = True
             istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
-            #aligned.append(clusts[ldx].replace(">", "").strip())
 
         else:
-            ## append counter to names because muscle doesn't retain order
+            # append counter to names because muscle doesn't retain order
             names = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
 
             try:
@@ -841,14 +1080,19 @@ def persistent_popen_align3(data, samples, chunk):
                 ## ensure name order match
                 lines = "".join(align1)[1:].split("\n>")
                 dalign1 = dict([i.split("\n", 1) for i in lines])
-                keys = sorted(dalign1.keys(), key=get_derep_num)
+                keys = sorted(
+                    dalign1.keys(), 
+                    key=lambda x: int(x.rsplit("*")[-1])
+                    )
 
                 ## put into dict for writing to file
                 for kidx, key in enumerate(keys):
                     concatseq = dalign1[key].replace("\n", "")
+                    
                     ## impute alleles
                     if save_alleles:
                         newmask = np.zeros(len(concatseq), dtype=np.bool_)                        
+                    
                         ## check for indels and impute to amask
                         indidx = np.where(np.array(list(concatseq)) == "-")[0]
                         if indidx.size:
@@ -858,8 +1102,10 @@ def persistent_popen_align3(data, samples, chunk):
                                 if idx < mask.shape[0]:
                                     mask[idx] = False
                             not_idx = allrows[mask == 1]
+                    
                             ## fill in new data into all other spots
                             newmask[not_idx] = amask[kidx, :not_idx.shape[0]]
+
                         else:
                             newmask = amask[kidx]
                         
@@ -870,8 +1116,6 @@ def persistent_popen_align3(data, samples, chunk):
 
                     ## fill list with aligned data
                     aligned.append("{}\n{}".format(key, concatseq))
-                ## put aligned locus in list
-                #aligned.append("\n".join(inner_aligned))
 
             ## enforce maxlen on aligned seqs
             aseqs = np.vstack([list(i.split("\n")[1]) for i in aligned])
@@ -917,10 +1161,6 @@ def persistent_popen_align3(data, samples, chunk):
     dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
     np.save(dfile, duples)
 
-
-
-def get_derep_num(x):
-    return int(x.split(";")[-1][1:])
 
 
 def multi_muscle_align(data, samples, ipyclient):
@@ -1562,135 +1802,6 @@ def new_multicat(data, samples, ipyclient):
         if cleanups[job].ready():
             if not cleanups[job].successful():
                 raise IPyradWarningExit((job, cleanups[job].result()))
-
-
-
-def multicat(data, samples, ipyclient):
-    """
-    Runs singlecat and cleanup jobs for each sample.
-    For each sample this fills its own hdf5 array with catg data & indels.
-    This is messy, could use simplifiying.
-    """
-
-    ## progress ticker
-    start = time.time()
-    printstr = ("indexing clusters", "s6")
-    data._progressbar(20, 0, start, printstr)
-
-    ## parallel client
-    lbview = ipyclient.load_balanced_view()
-
-    ## First submit a sleeper job as temp_flag for cleanups
-    last_sample = 0
-    cleanups = {}
-    cleanups[last_sample] = lbview.apply(time.sleep, 0.0)
-
-    ## get samples and names, sorted
-    snames = [i.name for i in samples]
-    snames.sort()
-
-    ## Build an array for quickly indexing consens reads from catg files.
-    ## save as a npy int binary file.
-    uhandle = os.path.join(data.dirs.across, data.name + ".utemp.sort")
-    bseeds = os.path.join(data.dirs.across, data.name + ".tmparrs.h5")
-
-    ## send as first async1 job
-    async1 = lbview.apply(get_seeds_and_hits, *(uhandle, bseeds, snames))
-    async2 = lbview.apply(fill_dups_arr, data)
-
-    ## progress bar for seed/hit sorting
-    while not (async1.ready() and async2.ready()):
-        data._progressbar(20, 0, start, printstr)
-        time.sleep(0.1)
-    if not async1.successful():
-        raise IPyradWarningExit("error in get_seeds: %s", async1.exception())
-    if not async2.successful():
-        raise IPyradWarningExit("error in fill_dups: %s", async2.exception())
-
-    ## make a limited njobs view based on mem limits 
-    ## is using smallview necessary? (yes, it is for bad libraries)
-    smallview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
-
-    ## make sure there are no old tmp.h5 files 
-    smpios = [os.path.join(data.dirs.across, sample.name + '.tmp.h5') 
-              for sample in samples]
-    for smpio in smpios:
-        if os.path.exists(smpio):
-            os.remove(smpio)
-
-    ## send 'singlecat()' jobs to engines
-    jobs = {}
-    for sample in samples:
-        sidx = snames.index(sample.name)
-        jobs[sample.name] = smallview.apply(singlecat, *(data, sample, bseeds, sidx))
-
-    ## check for finished and submit disk-writing job when finished
-    alljobs = len(jobs)
-    while 1:
-        ## check for finished jobs
-        curkeys = list(jobs.keys())
-        for key in curkeys:
-            rasync = jobs[key]
-            if rasync.ready():
-                if rasync.successful():
-                    ## submit cleanup for finished job
-                    args = (data, data.samples[key], snames.index(key))
-                    with lbview.temp_flags(after=cleanups[last_sample]):
-                        cleanups[key] = lbview.apply(write_to_fullarr, *args)
-                    last_sample = key
-                    del jobs[key]
-                else:
-                    err = jobs[key].exception()
-                    errmsg = "singlecat error: {} {}".format(key, err)
-                    raise IPyradWarningExit(errmsg)
-
-        ## print progress or break
-        data._progressbar(alljobs, alljobs - len(jobs), start, printstr)
-        time.sleep(0.1)
-        if not jobs:
-            break
-
-    ## add the dask_chroms func for reference data
-    if 'reference' in data.paramsdict["assembly_method"]:
-        with lbview.temp_flags(after=cleanups.values()):
-            cleanups['ref'] = lbview.apply(dask_chroms, *(data, samples))
-
-    ## wait for "write_to_fullarr" jobs to finish
-    print("")
-    start = time.time()
-    printstr = ("building database", "s6")
-    while 1:
-        finished = [i for i in cleanups.values() if i.ready()]
-        data._progressbar(len(cleanups), len(finished), start, printstr)
-        time.sleep(0.1)
-        ## break if one failed, or if finished
-        if not all([i.successful() for i in finished]):
-            break
-        if len(cleanups) == len(finished):
-            break
-
-    ## check for errors
-    for job in cleanups:
-        if cleanups[job].ready():
-            if not cleanups[job].successful():
-                err = (" error in write_to_fullarr ({}) {}"
-                       .format(job, cleanups[job].result()))
-                LOGGER.error(err)
-                raise IPyradWarningExit(err)
-
-    ## remove large indels array file and singlecat tmparr file
-    ifile = os.path.join(data.dirs.across, data.name + ".tmp.indels.hdf5")
-    if os.path.exists(ifile):
-        os.remove(ifile)
-    if os.path.exists(bseeds):
-        os.remove(bseeds)
-    for sh5 in [os.path.join(data.dirs.across, i.name + ".tmp.h5") for i in samples]:
-        os.remove(sh5)
-
-    ## print final progress
-    data._progressbar(10, 10, start, printstr)
-    print("")
-
 
 
 ## This is where indels are imputed
