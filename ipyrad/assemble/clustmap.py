@@ -294,6 +294,12 @@ class Step3:
         if not subsamples:
             raise IPyradError(
                 "No Samples ready to be clustered. First run step 2.")
+
+        # sort samples so the largest come first
+        subsamples = sorted(
+            subsamples,
+            key=lambda x: x.stats.reads_passed_filter, 
+            reverse=True)
         return subsamples
 
 
@@ -339,7 +345,7 @@ class Step3:
 
         # else try auto-tuning to 2 or 4 threaded
         else:
-            if len(self.ipyclient) > 40:
+            if len(self.ipyclient) >= 40:
                 self.thview = self.ipyclient.load_balanced_view(
                     targets=eids[::4])
             else:
@@ -371,6 +377,30 @@ class Step3:
         # remove temporary alignment chunk and derep files
         if os.path.exists(self.data.tmpdir):
             shutil.rmtree(self.data.tmpdir)
+
+
+    def remote_index_refs(self):
+        # submit job
+        start = time.time()
+        printstr = ("indexing reference", "s3")
+        rasync1 = self.lbview.apply(
+            index_ref_with_bwa, *(self.data, self.force))
+        rasync2 = self.lbview.apply(
+            index_ref_with_sam, *(self.data, self.force))
+
+        # track job
+        while 1:
+            ready = [rasync1.ready(), rasync2.ready()]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        # check for errors
+        print("")
+        for job in rasyncs:
+            if not rasyncs[job].successful():
+                raise IPyradError(rasyncs[job].exception())
 
 
     def remote_run_cluster_build(self):
@@ -1407,58 +1437,6 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     return aligned   
 
 
-def get_quick_depths(data, sample):
-    """ iterate over clustS files to get data """
-
-    ## use existing sample cluster path if it exists, since this
-    ## func can be used in step 4 and that can occur after merging
-    ## assemblies after step3, and if we then referenced by data.dirs.clusts
-    ## the path would be broken.
-    if sample.files.clusters:
-        pass
-    else:
-        ## set cluster file handles
-        sample.files.clusters = os.path.join(
-            data.dirs.clusts, sample.name + ".clustS.gz")
-
-    ## get new clustered loci
-    fclust = data.samples[sample.name].files.clusters
-    clusters = gzip.open(fclust, 'rt')
-    pairdealer = izip(*[iter(clusters)] * 2)
-
-    ## storage
-    depths = []
-    maxlen = []
-
-    ## start with cluster 0
-    tdepth = 0
-    tlen = 0
-
-    ## iterate until empty
-    while 1:
-        ## grab next
-        try:
-            name, seq = next(pairdealer)
-        except StopIteration:
-            break
-
-        ## if not the end of a cluster
-        #print name.strip(), seq.strip()
-        if name.strip() == seq.strip():
-            depths.append(tdepth)
-            maxlen.append(tlen)
-            tlen = 0
-            tdepth = 0
-
-        else:
-            tdepth += int(name.strip().split("=")[-1][:-2])
-            tlen = len(seq)
-
-    ## return
-    clusters.close()
-    return np.array(maxlen), np.array(depths)
-
-
 def aligned_indel_filter(clust, max_internal_indels):
     """ checks for too many internal indels in muscle aligned clusters """
 
@@ -1533,6 +1511,63 @@ def gbs_trim(align1):
     else:
         newalign1 = [n + "\nNNN" for i, n in zip(seqs, names)]
     return newalign1
+
+
+def index_ref_with_bwa(data, force=False):
+    """ 
+    Index the reference sequence, unless it already exists. 
+    """
+    # get ref file from params
+    refseq_file = data.paramsdict['reference_sequence']
+    index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
+    if not os.path.exists(refseq_file):
+        raise IPyradError(REQUIRE_REFERENCE_PATH
+                .format(self.paramsdict["assembly_method"]))
+
+    # If reference sequence already exists then bail out of this func
+    if not force:
+        if all([os.path.isfile(refseq_file + i) for i in index_files]):
+            return
+
+    # bwa index <reference_file>
+    cmd = [ipyrad.bins.bwa, "index", refseq_file]
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    error = proc.communicate()[0]
+    
+    # error handling
+    if error:
+        if "please use bgzip" in error:
+            raise IPyradWarningExit(NO_ZIP_BINS.format(refseq_file))
+        else:
+            raise IPyradWarningExit(error)
+
+
+def index_ref_with_sam(data, force=False):
+    """
+    Index ref for building scaffolds w/ index numbers in steps 5-6.
+    """
+    # get ref file from params
+    refseq_file = data.paramsdict['reference_sequence']
+    if not os.path.exists(refseq_file):
+        raise IPyradError(REQUIRE_REFERENCE_PATH
+                .format(self.paramsdict["assembly_method"]))
+
+    # If reference index exists then bail out unless force
+    if not force:
+        if os.path.exists(refseq_file + ".fai"):
+            return
+
+    # simple samtools index for grabbing ref seqs
+    cmd = [ipyrad.bins.samtools, "faidx", refseq_file]
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    error = proc.communicate()[0]
+
+    # error handling
+    if error:
+        if "please use bgzip" in error:
+            raise IPyradWarningExit(NO_ZIP_BINS.format(refseq_file))
+        else:
+            raise IPyradWarningExit(error)
 
 
 def mapping_reads(data, sample, nthreads):
@@ -1941,9 +1976,10 @@ def build_clusters_from_cigars(data, sample):
             idx += 1
 
         # if 1000 clusters stored then write to disk
-        if not idx % 500:
-            out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
-            clusters = []
+        if not idx % 1000:
+            if clusters:
+                out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+                clusters = []
  
     # write final remaining clusters to disk
     if clusters:
@@ -2071,6 +2107,58 @@ def cigared(sequence, cigartups):
             pass
         start += add
     return seq    
+
+
+def get_quick_depths(data, sample):
+    """ iterate over clustS files to get data """
+
+    ## use existing sample cluster path if it exists, since this
+    ## func can be used in step 4 and that can occur after merging
+    ## assemblies after step3, and if we then referenced by data.dirs.clusts
+    ## the path would be broken.
+    if sample.files.clusters:
+        pass
+    else:
+        ## set cluster file handles
+        sample.files.clusters = os.path.join(
+            data.dirs.clusts, sample.name + ".clustS.gz")
+
+    ## get new clustered loci
+    fclust = data.samples[sample.name].files.clusters
+    clusters = gzip.open(fclust, 'rt')
+    pairdealer = izip(*[iter(clusters)] * 2)
+
+    ## storage
+    depths = []
+    maxlen = []
+
+    ## start with cluster 0
+    tdepth = 0
+    tlen = 0
+
+    ## iterate until empty
+    while 1:
+        ## grab next
+        try:
+            name, seq = next(pairdealer)
+        except StopIteration:
+            break
+
+        ## if not the end of a cluster
+        #print name.strip(), seq.strip()
+        if name.strip() == seq.strip():
+            depths.append(tdepth)
+            maxlen.append(tlen)
+            tlen = 0
+            tdepth = 0
+
+        else:
+            tdepth += int(name.strip().split("=")[-1][:-2])
+            tlen = len(seq)
+
+    ## return
+    clusters.close()
+    return np.array(maxlen), np.array(depths)
 
 
 def sample_cleanup(data, sample):
