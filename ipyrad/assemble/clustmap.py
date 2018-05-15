@@ -2224,43 +2224,47 @@ def sample_cleanup(data, sample):
             sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
             sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
 
+    # get mapped reads from the depths of mapped built clusters and calculate
+    # unmapped reads as all remaining reads that were not mapped. 
+
+
     ## Get some stats from the bam files
     ## This is moderately hackish. samtools flagstat returns
     ## the number of reads in the bam file as the first element
     ## of the first line, this call makes this assumption.
-    if not data.paramsdict["assembly_method"] == "denovo":
-        ## shorter names
-        mapf = os.path.join(
-            data.dirs.refmapping, sample.name + "-mapped-sorted.bam")
-        umapf = os.path.join(
-            data.dirs.refmapping, sample.name + "-unmapped.bam")
+    # if not data.paramsdict["assembly_method"] == "denovo":
+    #     ## shorter names
+    #     mapf = os.path.join(
+    #         data.dirs.refmapping, sample.name + "-mapped-sorted.bam")
+    #     umapf = os.path.join(
+    #         data.dirs.refmapping, sample.name + "-unmapped.bam")
 
-        ## get from unmapped
-        cmd1 = [ip.bins.samtools, "flagstat", umapf]
-        proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-        result1 = proc1.communicate()[0]
+    #     ## get from unmapped
+    #     cmd1 = [ip.bins.samtools, "flagstat", umapf]
+    #     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    #     result1 = proc1.communicate()[0]
 
-        ## get from mapped
-        cmd2 = [ip.bins.samtools, "flagstat", mapf]
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
-        result2 = proc2.communicate()[0]
+    #     ## get from mapped
+    #     cmd2 = [ip.bins.samtools, "flagstat", mapf]
+    #     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+    #     result2 = proc2.communicate()[0]
 
-        ## store results
-        ## If PE, samtools reports the _actual_ number of reads mapped, both 
-        ## R1 and R2, so here if PE divide the results by 2 to stay consistent
-        ## with how we've been reporting R1 and R2 as one "read pair"
-        if "pair" in data.paramsdict["datatype"]:
-            sample.stats["refseq_unmapped_reads"] = int(result1.split()[0]) / 2
-            sample.stats["refseq_mapped_reads"] = int(result2.split()[0]) / 2
-        else:
-            sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
-            sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
+    #     ## store results
+    #     ## If PE, samtools reports the _actual_ number of reads mapped, both 
+    #     ## R1 and R2, so here if PE divide the results by 2 to stay consistent
+    #     ## with how we've been reporting R1 and R2 as one "read pair"
+    #     if "pair" in data.paramsdict["datatype"]:
+    #         sample.stats["refseq_unmapped_reads"] = int(result1.split()[0]) / 2
+    #         sample.stats["refseq_mapped_reads"] = int(result2.split()[0]) / 2
+    #     else:
+    #         sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
+    #         sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
 
-        unmapped = os.path.join(data.dirs.refmapping, sample.name + "-unmapped.bam")
-        samplesam = os.path.join(data.dirs.refmapping, sample.name + ".sam")
-        for rfile in [unmapped, samplesam]:
-            if os.path.exists(rfile):
-                os.remove(rfile)
+    #     unmapped = os.path.join(data.dirs.refmapping, sample.name + "-unmapped.bam")
+    #     samplesam = os.path.join(data.dirs.refmapping, sample.name + ".sam")
+    #     for rfile in [unmapped, samplesam]:
+    #         if os.path.exists(rfile):
+    #             os.remove(rfile)
 
     # if loglevel==DEBUG
     log_level = ip.logger.getEffectiveLevel()
