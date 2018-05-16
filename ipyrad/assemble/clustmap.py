@@ -629,7 +629,7 @@ def dereplicate(data, sample, nthreads):
         "--fastq_qmax", "1000",
         "--sizeout", 
         "--relabel_md5",
-        ]
+    ]
     ip.logger.info("derep cmd %s", cmd)
 
     ## build PIPEd job
@@ -771,10 +771,10 @@ def concat_multiple_edits(data, sample):
 
     # define output files
     concat1 = os.path.join(
-        data.dirs.edits, 
+        data.dirs.edits,
         "{}_R1_concatedit.fq.gz".format(sample.name))
     concat2 = os.path.join(
-        data.dirs.edits, 
+        data.dirs.edits,
         "{}_R2_concatedit.fq.gz".format(sample.name))
 
     if len(sample.files.edits) > 1:
@@ -783,8 +783,8 @@ def concat_multiple_edits(data, sample):
 
         # write to new concat handle
         with open(concat1, 'w') as cout1:
-            proc1 = sps.Popen(cmd1, 
-                stderr=sps.STDOUT, stdout=cout1, close_fds=True)
+            proc1 = sps.Popen(
+                cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
             if proc1.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
@@ -793,8 +793,8 @@ def concat_multiple_edits(data, sample):
         if os.path.exists(str(sample.files.edits[0][1])):
             cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
             with gzip.open(concat2, 'w') as cout2:
-                proc2 = sps.Popen(cmd2, 
-                    stderr=sps.STDOUT, stdout=cout2, close_fds=True)
+                proc2 = sps.Popen(
+                    cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
                 if proc2.returncode:
                     raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
@@ -821,16 +821,16 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         infile2 = concat2
     else:
         infile2 = sample.files.edits[0][1]
-        
+
     # define output files
     mergedfile = os.path.join(
-        data.tmpdir, 
+        data.tmpdir,
         "{}_merged.fastq".format(sample.name))
     nonmerged1 = os.path.join(
-        data.tmpdir, 
+        data.tmpdir,
         "{}_nonmerged_R1_.fastq".format(sample.name))
     nonmerged2 = os.path.join(
-        data.tmpdir, 
+        data.tmpdir,
         "{}_nonmerged_R2_.fastq".format(sample.name))
 
     ## get the maxn and minlen values
@@ -857,15 +857,14 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--fastq_qmax", "1000",
         "--threads", "2",
         "--fastq_allowmergestagger",
-        ]
+    ]
 
     LOGGER.debug("merge cmd: %s", " ".join(cmd))
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    res = proc.communicate()[0]
+    res = proc.communicate()[0].decode()
     LOGGER.info(res.decode())
     if proc.returncode:
-        LOGGER.error("Error: %s %s", cmd, res)
-        raise IPyradWarningExit("Error merge pairs:\n %s\n%s", cmd, res)
+        raise IPyradWarningExit("Error merge pairs:\n {}\n{}".format(cmd, res))
 
 
 def merge_end_to_end(data, sample, revcomp, append):
