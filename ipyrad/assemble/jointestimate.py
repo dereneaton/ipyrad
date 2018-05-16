@@ -18,10 +18,8 @@ import numba
 import time
 import gzip
 import os
-
-#from .cluster_within import get_quick_depths
-from .clustmap import get_quick_depths
 from collections import Counter
+from .clustmap import get_quick_depths
 from .util import IPyradWarningExit, IPyradError, clustdealer
 
 

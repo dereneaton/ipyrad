@@ -17,15 +17,16 @@ import gzip
 import glob
 import time
 import shutil
+import logging
 import tempfile
 import warnings
-import numpy as np
-import ipyrad as ip
 import subprocess as sps
+
+import numpy as np
 from pysam import AlignmentFile
+import ipyrad as ip
 from .util import IPyradError, IPyradWarningExit, bcomp, comp
 
-import logging
 LOGGER = logging.getLogger(__name__)
 
 
@@ -57,38 +58,39 @@ class Step3:
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=merge_pairs_with_vsearch, 
                     printstr=("join merged pairs   ", "s3"), 
                     args=(True,),
-                    )
+                )
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"), 
                     args=(True, True,),
-                    )
+                )
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"), 
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
 
             # REFERENCE ----
             elif self.data.paramsdict["assembly_method"] == "reference":
+                self.remote_index_refs()
                 self.remote_run(
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"), 
                     args=(False, False,),
-                    )
+                )
                 #if "3rad" not in data.paramsdict["datatype"]:
                 #    self.remote_run(
                 #        function=dereplicate,
@@ -100,27 +102,27 @@ class Step3:
                     printstr=("dereplicating       ", "s3"), 
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
                     function=split_endtoend_reads,
-                    printstr=("splitting dereps    ", "s3"), 
+                    printstr=("splitting dereps    ", "s3"),
                     args=(),
-                    )
+                )
                 self.remote_run(
-                    function=mapping_reads, 
+                    function=mapping_reads,
                     printstr=("mapping reads       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
-                    function=build_clusters_from_cigars, 
+                    function=build_clusters_from_cigars,
                     printstr=("building clusters   ", "s3"),
                     args=(),
-                    )
+                )
 
             # DENOVO MINUS
             elif self.data.paramsdict["assembly_method"] == "denovo-reference":
-                raise NotImplemented(
+                raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
 
                 # the same as 'reference' above except after mapping the reads
@@ -128,14 +130,14 @@ class Step3:
                 # and cluster them. 
                 self.remote_run(
                     function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
+                    printstr=("concatenating       ", "s3"),
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
+                    printstr=("join unmerged pairs ", "s3"),
                     args=(False, False,),
-                    )
+                )
                 #if "3rad" not in data.paramsdict["datatype"]:
                 #    self.remote_run(
                 #        function=dereplicate,
@@ -147,40 +149,40 @@ class Step3:
                     printstr=("dereplicating       ", "s3"), 
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
                     function=split_endtoend_reads,
                     printstr=("splitting dereps    ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=mapping_reads, 
                     printstr=("mapping reads       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"), 
                     args=(False, False,),
-                    )                
+                )                
                 # tell cluster to use the unmapped merged end-to-ends
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
 
             else:
-                raise NotImplemented(
+                raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
                 self.remote_run(
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"), 
                     args=(False, False,),
-                    )
+                )
                 #if "3rad" not in data.paramsdict["datatype"]:
                 #    self.remote_run(
                 #        function=dereplicate,
@@ -192,23 +194,23 @@ class Step3:
                     printstr=("dereplicating       ", "s3"), 
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
                     function=split_endtoend_reads,
                     printstr=("splitting dereps    ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=mapping_reads, 
                     printstr=("mapping reads       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"), 
                     args=(False, False,),
-                    )                
+                )                
                 # tell cluster to use the unmapped merged end-to-ends
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()                
@@ -222,13 +224,13 @@ class Step3:
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"), 
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
 
@@ -238,36 +240,36 @@ class Step3:
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"), 
                     args=(),
-                    )
+                )
                 self.remote_run(
                     function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
+                    printstr=("dereplicating       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
-                    function=mapping_reads, 
+                    function=mapping_reads,
                     printstr=("mapping reads       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
-                    )
+                )
                 self.remote_run(
-                    function=build_clusters_from_cigars, 
+                    function=build_clusters_from_cigars,
                     printstr=("building clusters   ", "s3"),
                     args=(),
-                    )
+                )
 
             else:
-                raise NotImplemented(
+                raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
-       
-        for sample in self.samples:
-            sample_cleanup(self.data, sample)
-        self.cleanup()  
+
+        self.remote_run_sample_cleanup()
+        self.data.stats_dfs.s3 = self.data._build_stat("s3")
         self.data.save()
 
-    ## init functions ------------------------------------
+    # init functions ------------------------------------
     def check_samples(self, samples):
+        "make sure samples are in the proper state"
         ## list of samples to submit to queue
         subsamples = []
 
@@ -293,11 +295,18 @@ class Step3:
         ## run subsamples
         if not subsamples:
             raise IPyradError(
-                "No Samples ready to be clustered. First run step 2.")
+                "No Samples ready to be clustered.")
+
+        # sort samples so the largest come first
+        subsamples = sorted(
+            subsamples,
+            key=lambda x: x.stats.reads_passed_filter,
+            reverse=True)
         return subsamples
 
 
     def setup_dirs(self):
+        "setup directories for the tmp files and cluster/ref outputs"
         # make output folder for clusters
         pdir = os.path.realpath(self.data.paramsdict["project_dir"])
         self.data.dirs.clusts = os.path.join(
@@ -322,6 +331,7 @@ class Step3:
 
 
     def tune_threads(self):
+        "setup threading to efficiently run clust/ref across HPC"
         # set nthreads based on _ipcluster dict (default is 2)
         if "threads" in self.data._ipcluster.keys():
             self.nthreads = int(self.data._ipcluster["threads"])
@@ -339,7 +349,7 @@ class Step3:
 
         # else try auto-tuning to 2 or 4 threaded
         else:
-            if len(self.ipyclient) > 40:
+            if len(self.ipyclient) >= 40:
                 self.thview = self.ipyclient.load_balanced_view(
                     targets=eids[::4])
             else:
@@ -373,6 +383,30 @@ class Step3:
             shutil.rmtree(self.data.tmpdir)
 
 
+    def remote_index_refs(self):
+        # submit job
+        start = time.time()
+        printstr = ("indexing reference  ", "s3")
+        rasync1 = self.lbview.apply(
+            index_ref_with_bwa, self.data)
+        rasync2 = self.lbview.apply(
+            index_ref_with_sam, self.data)
+
+        # track job
+        while 1:
+            ready = [rasync1.ready(), rasync2.ready()]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        # check for errors
+        print("")
+        for job in [rasync1, rasync2]:
+            if not job.successful():
+                raise IPyradError(job.exception())
+
+
     def remote_run_cluster_build(self):
         # submit clustering/mapping job
         start = time.time()
@@ -381,7 +415,7 @@ class Step3:
             casyncs[sample.name] = self.thview.apply(
                 cluster,
                 *(self.data, sample, self.nthreads, self.force)
-                )
+            )
 
         # submit cluster building job
         basyncs = {}
@@ -390,7 +424,7 @@ class Step3:
                 basyncs[sample.name] = self.lbview.apply(
                     build_clusters,
                     *(self.data, sample, self.maxindels)
-                    )
+                )
 
         # submit cluster chunking job
         hasyncs = {}
@@ -399,7 +433,7 @@ class Step3:
                 hasyncs[sample.name] = self.lbview.apply(
                     muscle_chunker,
                     *(self.data, sample)
-                    )
+                )
 
         # track job progress
         printstr = ("clustering/mapping  ", "s3")
@@ -429,7 +463,7 @@ class Step3:
                 raise IPyradError(basyncs[job].exception())
 
         # track job progress
-        start = time.time()        
+        start = time.time()
         printstr = ("chunking clusters   ", "s3")
         while 1:
             ready = [hasyncs[i].ready() for i in hasyncs]
@@ -451,12 +485,13 @@ class Step3:
         for sample in self.samples:
             aasyncs[sample.name] = []
             for idx in range(10):
-                handle = os.path.join(self.data.tmpdir, 
+                handle = os.path.join(
+                    self.data.tmpdir,
                     "{}_chunk_{}.ali".format(sample.name, idx))
                 rasync = self.lbview.apply(
                     align_and_parse,
                     *(handle, self.maxindels, self.gbs)
-                    )
+                )
                 aasyncs[sample.name].append(rasync)
         # a list with all aasyncs concatenated
         allasyncs = list(chain(*[aasyncs[i] for i in aasyncs]))
@@ -468,7 +503,7 @@ class Step3:
                 basyncs[sample.name] = self.lbview.apply(
                     reconcat,
                     *(self.data, sample)
-                    )
+                )
 
         # track job 1 progress
         printstr = ("aligning clusters   ", "s3")
@@ -497,16 +532,37 @@ class Step3:
             if not basyncs[job].successful():
                 raise IPyradError(basyncs[job].exception())
 
-        # store stats results and cleanup
-        self.data.stats_dfs.s3 = self.data._build_stat("s3")
+
+
+    def remote_run_sample_cleanup(self):
+        # submit job
+        printstr = ("calc cluster stats  ", "s3")
+        start = time.time()
+        rasyncs = {}
+        njobs = len(self.samples)
         for sample in self.samples:
+            args = [self.data, sample]
+            rasyncs[sample.name] = self.lbview.apply(get_quick_depths, *args)
 
-            # get bad align stats
-            bad_aligns = sum([int(i.get()) for i in aasyncs[sample.name]])
-            self.data.stats_dfs.s3.filtered_bad_align = bad_aligns
+        # enter result stats as the jobs finish
+        finished = 0
+        while 1:
+            # get maxlen and depths array from clusters
+            for sample in self.samples:
+                if sample.name in rasyncs:
+                    if rasyncs[sample.name].ready():
+                        maxlens, depths = rasyncs[sample.name].get()
+                        store_sample_stats(self.data, sample, maxlens, depths)
+                        finished += 1
+                        if not rasyncs[sample.name].successful():
+                            raise IPyradError(rasyncs[sample.name].exception())
+                        del rasyncs[sample.name]
 
-            # purge temp files
-            sample_cleanup(self.data, sample)
+            self.data._progressbar(njobs, finished, start, printstr)
+            time.sleep(0.1)
+            if finished == njobs:
+                break
+        print("")
 
 
     def remote_run(self, printstr, function, args, threaded=False):
@@ -533,6 +589,8 @@ class Step3:
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].exception())
+
+
 
 
 def dereplicate(data, sample, nthreads):
@@ -571,7 +629,7 @@ def dereplicate(data, sample, nthreads):
         "--fastq_qmax", "1000",
         "--sizeout", 
         "--relabel_md5",
-        ]
+    ]
     ip.logger.info("derep cmd %s", cmd)
 
     ## build PIPEd job
@@ -713,10 +771,10 @@ def concat_multiple_edits(data, sample):
 
     # define output files
     concat1 = os.path.join(
-        data.dirs.edits, 
+        data.dirs.edits,
         "{}_R1_concatedit.fq.gz".format(sample.name))
     concat2 = os.path.join(
-        data.dirs.edits, 
+        data.dirs.edits,
         "{}_R2_concatedit.fq.gz".format(sample.name))
 
     if len(sample.files.edits) > 1:
@@ -725,8 +783,8 @@ def concat_multiple_edits(data, sample):
 
         # write to new concat handle
         with open(concat1, 'w') as cout1:
-            proc1 = sps.Popen(cmd1, 
-                stderr=sps.STDOUT, stdout=cout1, close_fds=True)
+            proc1 = sps.Popen(
+                cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
             if proc1.returncode:
                 raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
@@ -735,8 +793,8 @@ def concat_multiple_edits(data, sample):
         if os.path.exists(str(sample.files.edits[0][1])):
             cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
             with gzip.open(concat2, 'w') as cout2:
-                proc2 = sps.Popen(cmd2, 
-                    stderr=sps.STDOUT, stdout=cout2, close_fds=True)
+                proc2 = sps.Popen(
+                    cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
                 if proc2.returncode:
                     raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
@@ -763,16 +821,16 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         infile2 = concat2
     else:
         infile2 = sample.files.edits[0][1]
-        
+
     # define output files
     mergedfile = os.path.join(
-        data.tmpdir, 
+        data.tmpdir,
         "{}_merged.fastq".format(sample.name))
     nonmerged1 = os.path.join(
-        data.tmpdir, 
+        data.tmpdir,
         "{}_nonmerged_R1_.fastq".format(sample.name))
     nonmerged2 = os.path.join(
-        data.tmpdir, 
+        data.tmpdir,
         "{}_nonmerged_R2_.fastq".format(sample.name))
 
     ## get the maxn and minlen values
@@ -799,15 +857,14 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--fastq_qmax", "1000",
         "--threads", "2",
         "--fastq_allowmergestagger",
-        ]
+    ]
 
     LOGGER.debug("merge cmd: %s", " ".join(cmd))
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    res = proc.communicate()[0]
+    res = proc.communicate()[0].decode()
     LOGGER.info(res.decode())
     if proc.returncode:
-        LOGGER.error("Error: %s %s", cmd, res)
-        raise IPyradWarningExit("Error merge pairs:\n %s\n%s", cmd, res)
+        raise IPyradWarningExit("Error merge pairs:\n {}\n{}".format(cmd, res))
 
 
 def merge_end_to_end(data, sample, revcomp, append):
@@ -1385,17 +1442,17 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 
                 ## format remove extra newlines from muscle
                 aa = [i.split("\n", 1) for i in lines]
-                align1 = [i[0] + '\n' + "".join([j.replace("\n", "") 
+                align1 = [i[0] + '\n' + "".join([j.replace("\n", "")
                           for j in i[1:]]) for i in aa]
-                
-                # trim edges in sloppy gbs/ezrad data. 
+
+                # trim edges in sloppy gbs/ezrad data.
                 # Maybe relevant to other types too...
                 if is_gbs:
                     align1 = gbs_trim(align1)
 
                 ## append to aligned
                 aligned.append("\n".join(align1))
-               
+
     # cleanup
     proc.stdout.close()
     if proc.stderr:
@@ -1404,59 +1461,7 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     proc.wait()
 
     ## return the aligned clusters
-    return aligned   
-
-
-def get_quick_depths(data, sample):
-    """ iterate over clustS files to get data """
-
-    ## use existing sample cluster path if it exists, since this
-    ## func can be used in step 4 and that can occur after merging
-    ## assemblies after step3, and if we then referenced by data.dirs.clusts
-    ## the path would be broken.
-    if sample.files.clusters:
-        pass
-    else:
-        ## set cluster file handles
-        sample.files.clusters = os.path.join(
-            data.dirs.clusts, sample.name + ".clustS.gz")
-
-    ## get new clustered loci
-    fclust = data.samples[sample.name].files.clusters
-    clusters = gzip.open(fclust, 'rt')
-    pairdealer = izip(*[iter(clusters)] * 2)
-
-    ## storage
-    depths = []
-    maxlen = []
-
-    ## start with cluster 0
-    tdepth = 0
-    tlen = 0
-
-    ## iterate until empty
-    while 1:
-        ## grab next
-        try:
-            name, seq = next(pairdealer)
-        except StopIteration:
-            break
-
-        ## if not the end of a cluster
-        #print name.strip(), seq.strip()
-        if name.strip() == seq.strip():
-            depths.append(tdepth)
-            maxlen.append(tlen)
-            tlen = 0
-            tdepth = 0
-
-        else:
-            tdepth += int(name.strip().split("=")[-1][:-2])
-            tlen = len(seq)
-
-    ## return
-    clusters.close()
-    return np.array(maxlen), np.array(depths)
+    return aligned
 
 
 def aligned_indel_filter(clust, max_internal_indels):
@@ -1535,17 +1540,68 @@ def gbs_trim(align1):
     return newalign1
 
 
+def index_ref_with_bwa(data):
+    "Index the reference sequence, unless it already exists"
+    # get ref file from params
+    refseq_file = data.paramsdict['reference_sequence']
+    index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
+    if not os.path.exists(refseq_file):
+        raise IPyradError(
+            REQUIRE_REFERENCE_PATH.format(data.paramsdict["assembly_method"]))
+
+    # If reference sequence already exists then bail out of this func
+    if all([os.path.isfile(refseq_file + i) for i in index_files]):
+        return
+
+    # bwa index <reference_file>
+    cmd = [ip.bins.bwa, "index", refseq_file]
+    proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=None)
+    error = proc.communicate()[1].decode()
+
+    # error handling for one type of error on stderr
+    if error:
+        if "please use bgzip" in error:
+            raise IPyradError(NO_ZIP_BINS.format(refseq_file))
+        else:
+            raise IPyradError(error)
+
+
+def index_ref_with_sam(data):
+    "Index ref for building scaffolds w/ index numbers in steps 5-6"
+    # get ref file from params
+    refseq_file = data.paramsdict['reference_sequence']
+    if not os.path.exists(refseq_file):
+        raise IPyradError(
+            REQUIRE_REFERENCE_PATH.format(data.paramsdict["assembly_method"]))
+
+    # If reference index exists then bail out unless force
+    if os.path.exists(refseq_file + ".fai"):
+        return
+
+    # simple samtools index for grabbing ref seqs
+    cmd = [ip.bins.samtools, "faidx", refseq_file]
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    error = proc.communicate()[0].decode()
+
+    # error handling
+    if error:
+        if "please use bgzip" in error:
+            raise IPyradError(NO_ZIP_BINS.format(refseq_file))
+        else:
+            raise IPyradError(error)
+
+
 def mapping_reads(data, sample, nthreads):
-    """ 
+    """
     Map reads to reference sequence. This reads in the fasta files
-    (samples.files.edits), and maps each read to the reference. Unmapped reads 
-    are dropped right back in the de novo pipeline.  
+    (samples.files.edits), and maps each read to the reference. Unmapped reads
+    are dropped right back in the de novo pipeline.
     Mapped reads end up in a sam file.
     """
 
     # outfiles
     samout = os.path.join(
-        data.dirs.refmapping, 
+        data.dirs.refmapping,
         "{}.sam".format(sample.name))
 
     bamout = os.path.join(
@@ -1568,26 +1624,26 @@ def mapping_reads(data, sample, nthreads):
         inread1 = os.path.join(
             data.tmpdir, "{}_R1-tmp.fastq".format(sample.name))
         inread2 = os.path.join(
-            data.tmpdir, "{}_R2-tmp.fastq".format(sample.name))        
+            data.tmpdir, "{}_R2-tmp.fastq".format(sample.name))
         infiles = []
         for infile in [inread1, inread2]:
             if os.path.exists(infile):
                 infiles.append(infile)
 
-    # (cmd1) bwa mem [OPTIONS] <index_name> <file_name_A> [<file_name_B>] 
+    # (cmd1) bwa mem [OPTIONS] <index_name> <file_name_A> [<file_name_B>]
     #  -t #         : Number of threads
     #  -M           : Mark split alignments as secondary.
 
-    # (cmd2) samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...] 
+    # (cmd2) samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...]
     #  -b = write to .bam
     #  -q = Only keep reads with mapq score >= 30 (seems to be pretty standard)
-    #  -F = Select all reads that DON'T have these flags. 
+    #  -F = Select all reads that DON'T have these flags.
     #        0x4 (segment unmapped)
     #        0x100 (Secondary alignment)
     #        0x800 (supplementary alignment)
     #        0x71
-    #        0xb1  
-    #  -U = Write out all reads that don't pass the -F filter 
+    #        0xb1 
+    #  -U = Write out all reads that don't pass the -F filter
     #       (all unmapped reads go to this file).
 
     # (cmd3) samtools sort [options...] [in.bam]
@@ -1603,8 +1659,8 @@ def mapping_reads(data, sample, nthreads):
         ip.bins.bwa, "mem",
         "-t", str(max(1, nthreads)),
         "-M",
-        data.paramsdict['reference_sequence'], 
-        ] 
+        data.paramsdict['reference_sequence'],
+    ]
     cmd1 += infiles
 
     # Insert optional flags for bwa
@@ -1617,22 +1673,22 @@ def mapping_reads(data, sample, nthreads):
         proc1 = sps.Popen(cmd1, stderr=None, stdout=outfile)
         error1 = proc1.communicate()[0]
         if proc1.returncode:
-            raise IPyradError(error1)
+            raise IPyradError("bwa error: {}".format(error1))
 
     # sends unmapped reads to a files and will PIPE mapped reads to cmd3
     cmd2 = [
-        ip.bins.samtools, "view", 
-        "-b", 
+        ip.bins.samtools, "view",
+        "-b",
         "-F", "0x904",
         "-U", ubamout,
         samout,
-        ]
+    ]
 
     # this is gonna catch mapped bam output from cmd2 and write to file
     cmd3 = [
-        ip.bins.samtools, "sort", 
+        ip.bins.samtools, "sort",
         "-T", os.path.join(data.dirs.refmapping, sample.name + ".sam.tmp"),
-        "-O", "bam", 
+        "-O", "bam",
         "-o", bamout]
 
     # Later we're gonna use samtools to grab out regions using 'view'
@@ -1643,11 +1699,11 @@ def mapping_reads(data, sample, nthreads):
         ip.bins.samtools, "bam2fq",
         "-v 45",
         ubamout,
-        ]
+    ]
 
     # Insert additional arguments for paired data to the commands.
-    # We assume Illumina paired end reads for the orientation 
-    # of mate pairs (orientation: ---> <----). 
+    # We assume Illumina paired end reads for the orientation
+    # of mate pairs (orientation: ---> <----).
     if 'pair' in data.paramsdict["datatype"]:
         # add samtools filter for only keep if both pairs hit
         # 0x1 - Read is paired
@@ -1673,22 +1729,22 @@ def mapping_reads(data, sample, nthreads):
 
     # cmd3 pulls mapped BAM from pipe and writes to sname.mapped-sorted.bam
     LOGGER.debug(" ".join(cmd3))
-    proc3 = sps.Popen(cmd3, 
-        stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+    proc3 = sps.Popen(
+        cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[0]
     if proc3.returncode:
         raise IPyradWarningExit(error3)
     proc2.stdout.close()
 
-    # cmd4 indexes the bam file 
+    # cmd4 indexes the bam file
     LOGGER.debug(" ".join(cmd4))
     proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
     error4 = proc4.communicate()[0]
     if proc4.returncode:
         raise IPyradWarningExit(error4)
-    
+
     # Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
-    # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which 
+    # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which
     # will then need to be merged.
     LOGGER.debug(" ".join(cmd5))
     proc5 = sps.Popen(cmd5, stderr=sps.STDOUT, stdout=sps.PIPE)
@@ -1711,7 +1767,7 @@ def check_insert_size(data, sample):
         "stats", 
         os.path.join(
             data.dirs.refmapping, "{}-mapped-sorted.bam".format(sample.name)),
-        ]
+    ]
     cmd2 = ["grep", "SN"]
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
@@ -1773,7 +1829,7 @@ def check_insert_size(data, sample):
 
 
 def bedtools_merge(data, sample):
-    """ 
+    """
     Get all contiguous genomic regions with one or more overlapping
     reads. This is the shell command we'll eventually run
 
@@ -1783,20 +1839,20 @@ def bedtools_merge(data, sample):
     """
     LOGGER.info("Entering bedtools_merge: %s", sample.name)
     mappedreads = os.path.join(
-        data.dirs.refmapping, 
+        data.dirs.refmapping,
         "{}-mapped-sorted.bam".format(sample.name))
 
-    ## command to call `bedtools bamtobed`, and pipe output to stdout
-    ## Usage:   bedtools bamtobed [OPTIONS] -i <bam> 
-    ## Usage:   bedtools merge [OPTIONS] -i <bam> 
+    # command to call `bedtools bamtobed`, and pipe output to stdout
+    # Usage:   bedtools bamtobed [OPTIONS] -i <bam>
+    # Usage:   bedtools merge [OPTIONS] -i <bam>
     cmd1 = [ip.bins.bedtools, "bamtobed", "-i", mappedreads]
     cmd2 = [ip.bins.bedtools, "merge", "-i", "-"]
 
-    ## If PE the -d flag to tell bedtools how far apart to allow mate pairs.
-    ## If SE the -d flag is negative, specifying that SE reads need to
-    ## overlap by at least a specific number of bp. This prevents the
-    ## stairstep syndrome when a + and - read are both extending from
-    ## the same cutsite. Passing a negative number to `merge -d` gets this done.
+    # If PE the -d flag to tell bedtools how far apart to allow mate pairs.
+    # If SE the -d flag is negative, specifying that SE reads need to
+    # overlap by at least a specific number of bp. This prevents the
+    # stairstep syndrome when a + and - read are both extending from
+    # the same cutsite. Passing a negative number to `merge -d` gets this done.
     if 'pair' in data.paramsdict["datatype"]:
         check_insert_size(data, sample)
         #cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
@@ -1813,32 +1869,33 @@ def bedtools_merge(data, sample):
     result = proc2.communicate()[0].decode()
     proc1.stdout.close()
 
-    ## check for errors and do cleanup
+    # check for errors and do cleanup
     if proc2.returncode:
         raise IPyradWarningExit("error in %s: %s", cmd2, result)
 
-    ## Write the bedfile out, because it's useful sometimes.
+    # Write the bedfile out, because it's useful sometimes.
     if os.path.exists(ip.__debugflag__):
         with open(os.path.join(data.dirs.refmapping, sample.name + ".bed"), 'w') as outfile:
             outfile.write(result)
 
-    ## Report the number of regions we're returning
+    # Report the number of regions we're returning
     nregions = len(result.strip().split("\n"))
     LOGGER.info("bedtools_merge: Got # regions: %s", nregions)
     return result
 
 
 def build_clusters_from_cigars(data, sample):
-    
+    "directly building clusters relative to reference"
     # get all regions with reads. Generator to yield (str, int, int)
-    fullregions = bedtools_merge(data, sample).strip().split("\n")    
+    fullregions = bedtools_merge(data, sample).strip().split("\n")
     regions = (i.split("\t") for i in fullregions)
     regions = ((i, int(j), int(k)) for (i, j, k) in regions)
 
     # access reads from bam file using pysam
     bamfile = AlignmentFile(
-        os.path.join(data.dirs.refmapping, 
-        "{}-mapped-sorted.bam".format(sample.name)),
+        os.path.join(
+            data.dirs.refmapping,
+            "{}-mapped-sorted.bam".format(sample.name)),
         'rb')
 
     # iterate over all regions
@@ -1849,7 +1906,7 @@ def build_clusters_from_cigars(data, sample):
     clusters = []
     for reg in regions:
         # uncomment and compare against ref sequence when testing
-        #ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
+        # ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
         reads = bamfile.fetch(*reg)
 
         # store reads in a dict
@@ -1857,8 +1914,8 @@ def build_clusters_from_cigars(data, sample):
 
         # paired-end data cluster building
         if "pair" in data.paramsdict["datatype"]:
-            
-            # match paired reads together in a dictionary            
+
+            # match paired reads together in a dictionary
             for read in reads:
                 if read.qname not in rdict:
                     rdict[read.qname] = [read, None]
@@ -1941,9 +1998,10 @@ def build_clusters_from_cigars(data, sample):
             idx += 1
 
         # if 1000 clusters stored then write to disk
-        if not idx % 500:
-            out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
-            clusters = []
+        if not idx % 1000:
+            if clusters:
+                out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+                clusters = []
  
     # write final remaining clusters to disk
     if clusters:
@@ -1953,8 +2011,8 @@ def build_clusters_from_cigars(data, sample):
 
 def split_endtoend_reads(data, sample):
     """
-    Takes R1nnnnR2 derep reads from paired data and splits it back into 
-    separate R1 and R2 parts for read mapping. 
+    Takes R1nnnnR2 derep reads from paired data and splits it back into
+    separate R1 and R2 parts for read mapping.
     """
     inp = os.path.join(data.tmpdir, "{}_derep.fastq".format(sample.name))
     out1 = os.path.join(data.tmpdir, "{}_R1-tmp.fastq".format(sample.name))
@@ -1963,7 +2021,7 @@ def split_endtoend_reads(data, sample):
     splitderep1 = open(out1, 'w')
     splitderep2 = open(out2, 'w')
 
-    with open(inp, 'r') as infile: 
+    with open(inp, 'r') as infile:
         # Read in the infile two lines at a time: (seqname, sequence)
         duo = izip(*[iter(infile)] * 2)
 
@@ -1982,7 +2040,7 @@ def split_endtoend_reads(data, sample):
             part1, part2 = itera[1].split("nnnn")
             idx += 1
 
-            ## R1 needs a newline, but R2 inherits it from the original file            
+            ## R1 needs a newline, but R2 inherits it from the original file
             ## store parts in lists until ready to write
             split1s.append("{}{}\n".format(itera[0], part1))
             split2s.append("{}{}".format(itera[0], part2))
@@ -1992,7 +2050,7 @@ def split_endtoend_reads(data, sample):
                 splitderep1.write("".join(split1s))
                 splitderep2.write("".join(split2s))
                 split1s = []
-                split2s = [] 
+                split2s = []
 
     ## write final chunk if there is any
     if any(split1s):
@@ -2007,11 +2065,11 @@ def split_endtoend_reads(data, sample):
 def get_ref_region(reference, contig, rstart, rend):
     "returns the reference sequence over a given region"
     cmd = [
-        ip.bins.samtools, 'faidx', 
+        ip.bins.samtools, 'faidx',
         reference,
         "{}:{}-{}".format(contig, rstart + 1, rend),
-        ]
-    stdout, err = sps.Popen(cmd, stdout=sps.PIPE).communicate()
+    ]
+    stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
     name, seq = stdout.decode().split("\n", 1)
     listseq = [name, seq.replace("\n", "")]
     return listseq
@@ -2021,34 +2079,34 @@ def join_arrays(arr1, arr2):
     "join read1 and read2 arrays and resolve overlaps"
     arr3 = np.zeros(arr1.size, dtype="U1")
     for i in range(arr1.size):
-        
+
         if arr1[i] == arr2[i]:
             arr3[i] = arr1[i]
-        
+
         elif arr1[i] == "N":
             if arr2[i] == "-":
                 arr3[i] = "N"
             else:
                 arr3[i] = arr2[i]
-                
+
         elif arr2[i] == "N":
             if arr1[i] == "-":
                 arr3[i] = "N"
             else:
                 arr3[i] = arr1[i]
-        
+
         elif arr1[i] == "-":
             if arr2[i] == "N":
                 arr3[i] = "N"
             else:
                 arr3[i] = arr2[i]
-        
+
         elif arr2[i] == "-":
             if arr1[i] == "N":
                 arr3[i] = "N"
             else:
                 arr3[i] = arr1[i]
-                
+
         else:
             arr3[i] = "N"
     return arr3
@@ -2060,32 +2118,82 @@ def cigared(sequence, cigartups):
     seq = ""
     for tup in cigartups:
         flag, add = tup
-        if flag is 0:
+        if flag == 0:
             seq += sequence[start:start + add]
-        if flag is 1:
+        if flag == 1:
             pass
-        if flag is 2:
+        if flag == 2:
             seq += "-" * add
             start -= add
-        if flag is 4:
+        if flag == 4:
             pass
         start += add
-    return seq    
+    return seq
 
 
-def sample_cleanup(data, sample):
-    """ stats, cleanup, and link to samples """
+def get_quick_depths(data, sample):
+    """ iterate over clustS files to get data """
 
-    ## get maxlen and depths array from clusters
-    maxlens, depths = get_quick_depths(data, sample)
+    ## use existing sample cluster path if it exists, since this
+    ## func can be used in step 4 and that can occur after merging
+    ## assemblies after step3, and if we then referenced by data.dirs.clusts
+    ## the path would be broken.
+    if sample.files.clusters:
+        pass
+    else:
+        ## set cluster file handles
+        sample.files.clusters = os.path.join(
+            data.dirs.clusts,
+            "{}.clustS.gz".format(sample.name))
 
-    ## Test if depths is non-empty, but just full of zeros.
+    try:
+        # get new clustered loci
+        with gzip.open(sample.files.clusters, 'rt') as infile:
+            pairdealer = izip(*[iter(infile)] * 2)
+
+            ## storage
+            depths = []
+            maxlen = []
+
+            ## start with cluster 0
+            tdepth = 0
+            tlen = 0
+
+            ## iterate until empty
+            while 1:
+                ## grab next
+                try:
+                    name, seq = next(pairdealer)
+                except StopIteration:
+                    break
+
+                # if not the end of a cluster
+                if name.strip() == seq.strip():
+                    depths.append(tdepth)
+                    maxlen.append(tlen)
+                    tlen = 0
+                    tdepth = 0
+
+                else:
+                    tdepth += int(name.strip().split("=")[-1][:-2])
+                    tlen = len(seq)
+    except TypeError:
+        raise IPyradError(sample.files.clusters)
+
+    # return
+    return np.array(maxlen), np.array(depths)
+
+
+def store_sample_stats(data, sample, maxlens, depths):
+    "stats, cleanup, and link to samples"
+
+    # Test if depths is non-empty, but just full of zeros.
     if not depths.max():
         print("    no clusters found for {}".format(sample.name))
-        return 
+        return
 
     else:
-        ## store which min was used to calculate hidepth here
+        # store which min was used to calculate hidepth here
         sample.stats_dfs.s3["hidepth_min"] = (
             data.paramsdict["mindepth_majrule"])
 
@@ -2095,7 +2203,7 @@ def sample_cleanup(data, sample):
         hidepths = depths >= data.paramsdict["mindepth_majrule"]
         maxlens = maxlens[hidepths]
 
-        ## Handle the case where there are no hidepth clusters
+        # Handle the case where there are no hidepth clusters
         if maxlens.any():
             maxlen = int(maxlens.mean() + (2. * maxlens.std()))
         else:
@@ -2103,22 +2211,21 @@ def sample_cleanup(data, sample):
         if maxlen > data._hackersonly["max_fragment_length"]:
             data._hackersonly["max_fragment_length"] = maxlen + 4
 
-        ## make sense of stats
+        # make sense of stats
         keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]
         keepstat = depths[depths >= data.paramsdict["mindepth_statistical"]]
 
-        ## sample summary stat assignments
+        # sample summary stat assignments
         sample.stats["state"] = 3
         sample.stats["clusters_total"] = depths.shape[0]
         sample.stats["clusters_hidepth"] = keepmj.shape[0]
 
-        ## store depths histogram as a dict. Limit to first 25 bins
+        # store depths histogram as a dict. Limit to first 25 bins
         bars, bins = np.histogram(depths, bins=range(1, 26))
         sample.depths = {int(i): int(v) for i, v in zip(bins, bars) if v}
 
-        ## sample stat assignments
-        ## Trap numpy warnings ("mean of empty slice") printed by samples
-        ## with few reads.
+        # sample stat assignments
+        # Trap numpy warnings ("mean of empty slice") for samps w/ few reads
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
@@ -2127,7 +2234,7 @@ def sample_cleanup(data, sample):
                 sample.stats_dfs.s3["clusters_hidepth"] = (
                     int(sample.stats["clusters_hidepth"]))
             except ValueError:
-                ## Handle clusters_hidepth == NaN
+                # Handle clusters_hidepth == NaN
                 sample.stats_dfs.s3["clusters_hidepth"] = 0
             sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
             sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
@@ -2136,47 +2243,25 @@ def sample_cleanup(data, sample):
             sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
             sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
 
-    ## Get some stats from the bam files
-    ## This is moderately hackish. samtools flagstat returns
-    ## the number of reads in the bam file as the first element
-    ## of the first line, this call makes this assumption.
-    if not data.paramsdict["assembly_method"] == "denovo":
-        ## shorter names
-        mapf = os.path.join(
-            data.dirs.refmapping, sample.name + "-mapped-sorted.bam")
-        umapf = os.path.join(
-            data.dirs.refmapping, sample.name + "-unmapped.bam")
+    # store results
+    # If PE, samtools reports the _actual_ number of reads mapped, both
+    # R1 and R2, so here if PE divide the results by 2 to stay consistent
+    # with how we've been reporting R1 and R2 as one "read pair"
+    if "pair" in data.paramsdict["datatype"]:
+        sample.stats["refseq_mapped_reads"] = sum(depths)
+        sample.stats["refseq_unmapped_reads"] = (
+            sample.stats.reads_passed_filter - sample.stats["refseq_mapped_reads"])
 
-        ## get from unmapped
-        cmd1 = [ip.bins.samtools, "flagstat", umapf]
-        proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-        result1 = proc1.communicate()[0]
-
-        ## get from mapped
-        cmd2 = [ip.bins.samtools, "flagstat", mapf]
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
-        result2 = proc2.communicate()[0]
-
-        ## store results
-        ## If PE, samtools reports the _actual_ number of reads mapped, both 
-        ## R1 and R2, so here if PE divide the results by 2 to stay consistent
-        ## with how we've been reporting R1 and R2 as one "read pair"
-        if "pair" in data.paramsdict["datatype"]:
-            sample.stats["refseq_unmapped_reads"] = int(result1.split()[0]) / 2
-            sample.stats["refseq_mapped_reads"] = int(result2.split()[0]) / 2
-        else:
-            sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
-            sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
-
-        unmapped = os.path.join(data.dirs.refmapping, sample.name + "-unmapped.bam")
-        samplesam = os.path.join(data.dirs.refmapping, sample.name + ".sam")
-        for rfile in [unmapped, samplesam]:
-            if os.path.exists(rfile):
-                os.remove(rfile)
+    # cleanup
+    unmapped = os.path.join(data.dirs.refmapping, sample.name + "-unmapped.bam")
+    samplesam = os.path.join(data.dirs.refmapping, sample.name + ".sam")
+    for rfile in [unmapped, samplesam]:
+        if os.path.exists(rfile):
+            os.remove(rfile)
 
     # if loglevel==DEBUG
     log_level = ip.logger.getEffectiveLevel()
-    if not log_level == 10:
+    if log_level != 10:
         ## Clean up loose files only if not in DEBUG
         ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
         derepfile = os.path.join(data.dirs.edits, sample.name + "_derep.fastq")
@@ -2189,3 +2274,19 @@ def sample_cleanup(data, sample):
         for rfile in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
             if os.path.exists(rfile):
                 os.remove(rfile)
+
+
+# globals
+NO_ZIP_BINS = """
+  Reference sequence must be uncompressed fasta or bgzip compressed,
+  your file is probably gzip compressed. The simplest fix is to gunzip
+  your reference sequence by running this command:
+
+      gunzip {}
+
+  Then edit your params file to remove the `.gz` from the end of the
+  path to your reference sequence file and rerun step 3 with the `-f` flag.
+  """
+REQUIRE_REFERENCE_PATH = """\
+  Assembly method {} requires that you enter a 'reference_sequence_path'.
+  """
