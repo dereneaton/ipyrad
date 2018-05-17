@@ -27,7 +27,6 @@ import copy
 import time
 import glob
 import gzip
-import h5py
 import re
 import os
 import io
@@ -42,6 +41,12 @@ except ImportError:
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import h5py
+
 
 
 ## List of all possible output formats. This is global because it's
@@ -318,14 +323,17 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
 
 
-def select_samples(dbsamples, samples):
+def select_samples(dbsamples, samples, pidx=None):
     """
     Get the row index of samples that are included. If samples are in the
     'excluded' they were already filtered out of 'samples' during _get_samples.
     """
     ## get index from dbsamples
     samples = [i.name for i in samples]
-    sidx = [list(dbsamples).index(i) for i in samples]
+    if pidx:
+        sidx = [list(dbsamples[pidx]).index(i) for i in samples]
+    else:
+        sidx = [list(dbsamples).index(i) for i in samples]
     sidx.sort()
     return sidx
 
@@ -361,8 +369,9 @@ def filter_all_clusters(data, samples, ipyclient):
         for pop in data.populations:
             try:
                 _samps = [data.samples[i] for i in data.populations[pop][1]]
-                data._populations[pop] = (data.populations[pop][0],
-                                          select_samples(dbsamples, _samps))
+                data._populations[pop] = (
+                    data.populations[pop][0],
+                    select_samples(dbsamples, _samps, sidx))
             except:
                 print("    Sample in populations file not present in assembly - {}".format(data.populations[pop][1]))
                 raise
