@@ -5,6 +5,16 @@
 Release Notes
 =============
 
+0.7.25
+------
+**May 17, 2018**
+
+- nb showing fix for 6-7 branching
+- nb showing fix for 6-7 branching
+- fixed branching between 6-7 when using populations information
+- suppress h5py warning
+- Allow sample names to be numbers as well.
+
 0.7.24
 ------
 **May 03, 2018**
