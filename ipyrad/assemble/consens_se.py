@@ -15,7 +15,6 @@ import datetime
 import pandas as pd
 import numpy as np
 import time
-import h5py
 import gzip
 import glob
 import io
@@ -28,6 +27,10 @@ from collections import Counter
 import logging
 LOGGER = logging.getLogger(__name__)
 
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import h5py
 
 
 def get_binom(base1, base2, estE, estH):
