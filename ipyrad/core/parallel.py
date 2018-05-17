@@ -13,7 +13,6 @@ import time
 import sys
 import os
 
-from ipyrad import __interactive__
 from ipyrad.assemble.util import IPyradWarningExit
 
 # pylint: disable=W0212
