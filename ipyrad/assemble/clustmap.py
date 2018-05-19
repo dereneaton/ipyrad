@@ -321,9 +321,8 @@ class Step3:
         if not os.path.exists(self.data.tmpdir):
             os.mkdir(self.data.tmpdir)
 
-        # If ref mapping, init samples and make the refmapping output directory.
+        # If ref mapping, init samples and make refmapping output directory
         if not self.data.paramsdict["assembly_method"] == "denovo":
-            # make output directory for read mapping process
             self.data.dirs.refmapping = os.path.join(
                 pdir, "{}_refmapping".format(self.data.name))
             if not os.path.exists(self.data.dirs.refmapping):
@@ -2253,11 +2252,16 @@ def store_sample_stats(data, sample, maxlens, depths):
             sample.stats.reads_passed_filter - sample.stats["refseq_mapped_reads"])
 
     # cleanup
-    unmapped = os.path.join(data.dirs.refmapping, sample.name + "-unmapped.bam")
-    samplesam = os.path.join(data.dirs.refmapping, sample.name + ".sam")
-    for rfile in [unmapped, samplesam]:
-        if os.path.exists(rfile):
-            os.remove(rfile)
+    if not data.paramsdict["assembly_method"] == "denovo":    
+        unmapped = os.path.join(
+            data.dirs.refmapping, 
+            sample.name + "-unmapped.bam")
+        samplesam = os.path.join(
+            data.dirs.refmapping, 
+            sample.name + ".sam")
+        for rfile in [unmapped, samplesam]:
+            if os.path.exists(rfile):
+                os.remove(rfile)
 
     # if loglevel==DEBUG
     log_level = ip.logger.getEffectiveLevel()

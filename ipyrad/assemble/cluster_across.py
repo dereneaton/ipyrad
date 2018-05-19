@@ -40,7 +40,16 @@ with warnings.catch_warnings():
 
 LOGGER = logging.getLogger(__name__)
 
+TODO = """
 
+1. provide method to split/ contigs in step3.
+2. fix progress bar for cluster2 in step3.
+3. finish databasing here.
+4. fix progress bar for cluster here.
+5. write concat bams code here.
+6. 
+
+"""
 
 class Step6:
     def __init__(self, data, samples, ipyclient, randomseed=0, force=False):
@@ -132,21 +141,36 @@ class Step6:
         nnodes = len(self.hostd)
 
         # how to load-balance cluster2 jobs
-        # b/c vsearch rarely runs efficient beyond 10 threads we'll limit the
-        # upper count to 10 unless there are very few samples.
+        # maxthreads = 8 cuz vsearch isn't v efficient above that.
         ## e.g., 24 cpus; do 2 12-threaded jobs
         ## e.g., 2 nodes; 40 cpus; do 2 20-threaded jobs or 4 10-threaded jobs
         ## e.g., 4 nodes; 80 cpus; do 8 10-threaded jobs
+        if nnodes == 1:
+            thr = np.floor(self.data.ncpus / njobs).astype(int)
+            eids = max(1, thr)
+            eids = max(eids, len(list(self.hostd.values())[0]))
+
+        else:
+            eids = []
+            for node in self.hostd:
+                sids = self.hostd[node]
+                nids = len(sids)
+                thr = np.floor(nids / (njobs / nnodes)).astype(int)
+                thr = max(1, thr)
+                thr = min(thr, nids)
+                eids.extend(self.hostd[node][::thr])
 
         # set nthreads based on _ipcluster dict (default is 2)        
         #if "threads" in self.data._ipcluster.keys():
         #    self.nthreads = int(self.data._ipcluster["threads"])
+        self.nthreads = 2
+        if self.data.ncpus > 4:
+            self.nthreads = 4
+        eids = self.ipyclient.ids[::self.nthreads]
 
-        # create standard load-balancers
+        # create load-balancers
         self.lbview = self.ipyclient.load_balanced_view()
-        self.thview = self.ipyclient.load_balanced_view()
-
-        # if nthreads then scale thview to use threads
+        self.thview = self.ipyclient.load_balanced_view(targets=eids)
 
 
     def run(self):
@@ -244,7 +268,7 @@ class Step6:
         printstr = ("clustering across 1 ", "s6")
         rasyncs = {}
         for jobid in self.cgroups.keys():
-            args = (self.data, jobid, 4)  # self.nthreads)
+            args = (self.data, jobid, self.nthreads)
             rasyncs[jobid] = self.thview.apply(cluster, *args)
         
         while 1:
@@ -282,7 +306,7 @@ class Step6:
 
     def remote_cluster2(self):
         start = time.time()
-        printstr = ("clustering 2", "s6")
+        printstr = ("clustering across 2 ", "s6")
         args = (self.data, 'x', 0)
         rasync = self.thview.apply(cluster, *args)
         
@@ -358,7 +382,8 @@ class Step6:
         jobs = {}
         for idx in range(len(clustbits)):
             args = [self.data, self.samples, clustbits[idx]]
-            jobs[idx] = self.lbview.apply(persistent_popen_align3, *args)
+            #jobs[idx] = self.lbview.apply(persistent_popen_align3, *args)
+            jobs[idx] = self.lbview.apply(align_to_array, *args)
         allwait = len(jobs)
 
         # print progress while bits are aligning
@@ -378,6 +403,19 @@ class Step6:
                     "error in step 6 {}".format(jobs[idx].exception()))
             del jobs[idx]
         print("")
+
+
+    def remote_concat_bams(self):
+        pass
+
+
+    def remote_build_concat_bams(self):
+        pass
+
+
+def build_concat_bams(data):
+    "create .sam files from consens data and make a concatenated bam file"
+    pass
 
 
 def build_concat_two(data, jobids, randomseed):
@@ -780,7 +818,8 @@ def align_to_array(data, samples, chunk):
                 seqarr[idx], indidx = retrieve_indels_and_alleles(*args)
                 sidx = snames.index(names[idx].rsplit("_", 1)[0][1:])
                 if indidx.size:
-                    indels[sidx, :max(indidx.size, sum(maxinds))] = indidx
+                    indsize = min(indidx.size, sum(maxinds))
+                    indels[ldx, sidx, :indsize] = indidx[:indsize]
                 wname = names[idx]
 
                 # store (only for visually checking alignments)
@@ -804,17 +843,18 @@ def align_to_array(data, samples, chunk):
 
     # write to file after (only for visually checking alignments)
     odx = chunk.rsplit("_")[-1]
-    alignfile = os.path.join(data.tmpdir, "align_{}.fa".format(odx))
+    alignfile = os.path.join(data.tmpdir, "aligned_{}.fa".format(odx))
     with open(alignfile, 'wt') as outfile:
         outfile.write("\n//\n//\n".join(allstack) + "\n")
-        os.remove(chunk)
+    #os.remove(chunk)
 
     # save indels array to tmp dir
-    ifile = os.path.join(data.tmpdir, "indels_{}.tmp.npy".format(odx))
-    np.save(ifile, ifilter)
-    dfile = os.path.join(data.tmpdir, "duples_{}.tmp.npy".format(odx))
-    np.save(dfile, dfilter)
-
+    np.save(
+        os.path.join(data.tmpdir, "ifilter_{}.tmp.npy".format(odx)),
+        ifilter)
+    np.save(
+        os.path.join(data.tmpdir, "dfilter_{}.tmp.npy".format(odx)),
+        dfilter)
 
 
 def store_alleles(seqs):
@@ -837,7 +877,6 @@ def retrieve_indels_and_alleles(seqarr, idx, amask):
     # check for indels and impute to amask
     indidx = np.where(concatarr == b"-")[0]
     if np.sum(amask):
-        print("woooooooooooooot")
         if indidx.size:
 
             # impute for position of variants
@@ -860,6 +899,84 @@ def retrieve_indels_and_alleles(seqarr, idx, amask):
     return concatarr, indidx
 
 
+def init_database(data, samples, nloci):
+    """
+    generate empty h5 database to be filled and setup chunk sizes
+    """   
+    # sort to ensure samples will be in alphabetical order, tho they should be.
+    samples.sort(key=lambda x: x.name)
+
+    # get maxlen dim
+    maxlen = data._hackersonly["max_fragment_length"] + 20
+    maxvar = data.paramsdict[""]
+
+    # open file handle
+    with h5py.File(data.clust_database, 'w') as io5:
+
+        # chunk to approximately 2 chunks per core
+        chunks = ((nloci // (data.cpus * 2)) + (nloci % (data.cpus * 2)))
+        chunklen = chunks * len(samples) * maxlen * 4
+        while chunklen > int(500e6):
+            chunks = (chunks // 2) + (chunks % 2)
+            chunklen = chunks * len(samples) * maxlen * 4
+        data.chunks = chunks
+
+        # INIT FULL CATG ARRAY
+        io5.attrs["samples"] = [i.name.encode() for i in samples]
+        io5.create_dataset(
+            name="catg", 
+            shape=(nloci, len(samples), maxvar, 4),
+            dtype=np.uint32,
+            chunks=(chunks, 1, maxvar, 4),
+            compression="gzip")
+        io5.create_dataset(
+            name="cons", 
+            shape=(nloci, len(samples), maxlen),
+            dtype="S1",
+            chunks=(chunks, len(samples), maxlen),
+            compression='gzip')
+        io5.create_dataset(
+            name="edge", 
+            shape=(nloci, len(samples), 4),
+            dtype="u1",
+            chunks=(chunks, len(samples), 4),
+            compression='gzip')
+        io5.create_dataset(
+            name="chro", 
+            shape=(nloci, 3), 
+            dtype=np.int64, 
+            chunks=(chunks, 3),
+            compression="gzip")
+
+        # filters
+        io5.create_dataset("dfilter", (nloci, ), dtype=np.bool_)
+        io5.create_dataset("ifilter", (nloci, ), dtype=np.bool_)
+        io5.create_dataset("afilter", (nloci, ), dtype=np.bool_)
+
+
+def fill_database(data, samples, nloci):
+    """
+    fill h5 database with npy tmp files from align steps.
+    """
+    # init datasets in the h5 array in appropriate size and chunking
+    init_database(data, samples, nloci)
+
+    # collect all arrays
+    glob.glob("")
+
+    # enter consens and filters into h5 datasets
+    # ...
+
+    # construct subarrays to collect depths of variants with indels imputed.
+    # ...
+
+    # enter variants into the variant h5 dataset
+    # ...
+
+
+
+
+##########################################
 
 @numba.jit(nopython=True)
 def refbuild(iseq, consdict):
@@ -916,6 +1033,20 @@ PSEUDO_REF = np.array([
     [78, 78, 78],
     [45, 45, 45],
     ], dtype=np.uint8)
+ 
+#############################################
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
