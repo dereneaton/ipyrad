@@ -25,16 +25,17 @@ import random
 import select
 import socket
 import logging
+import warnings
+import subprocess as sps
+
 import numpy as np
 import pandas as pd
 import dask.array as da
-import subprocess as sps
-
 import ipyrad
 from .util import IPyradWarningExit, IPyradError, clustdealer, fullcomp
 
-import warnings
-with warnings.catch_warnings(): 
+
+with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
 
@@ -48,7 +49,6 @@ TODO = """
 4. fix progress bar for cluster here.
 5. write concat bams code here.
 6. 
-
 """
 
 class Step6:
@@ -67,16 +67,16 @@ class Step6:
 
 
     def setup_dirs(self, force=False):
-        # get dir names
+        "set up across and tmpalign dirs and init h5 database file"
         self.data.dirs.across = os.path.realpath(
             os.path.join(
-                self.data.paramsdict["project_dir"], 
+                self.data.paramsdict["project_dir"],
                 "{}_across".format(self.data.name)))
         self.data.tmpdir = os.path.join(
-            self.data.dirs.across, 
+            self.data.dirs.across,
             "{}-tmpalign".format(self.data.name))
         self.data.clust_database = os.path.join(
-            self.data.dirs.across, 
+            self.data.dirs.across,
             "{}.clust.hdf5".format(self.data.name))
 
         # clear out
@@ -93,13 +93,12 @@ class Step6:
 
 
     def assign_groups(self):
+        "assign samples to groups if not user provided for hierarchical clust"
         # use population info to split samples into groups; or assign random
         if self.data.populations:
             self.cgroups = {}
-            idx = 0
-            for key, val in self.data.populations.items():
+            for idx, val in enumerate(self.data.populations.values()):
                 self.cgroups[idx] = val[1]
-                idx += 1
 
         # by default let's split taxa into groups of 20-50 samples at a time
         else:
@@ -122,7 +121,7 @@ class Step6:
     def tune_hierarchical_threading(self):
         "tune threads for across-sample clustering"
 
-        # get engine data, skips busy engines.    
+        # get engine data, skips busy engines.
         hosts = {}
         for eid in self.ipyclient.ids:
             engine = self.ipyclient[eid]
@@ -267,7 +266,7 @@ class Step6:
         start = time.time()
         printstr = ("clustering across 1 ", "s6")
         rasyncs = {}
-        for jobid in self.cgroups.keys():
+        for jobid in self.cgroups:
             args = (self.data, jobid, self.nthreads)
             rasyncs[jobid] = self.thview.apply(cluster, *args)
         
@@ -380,9 +379,8 @@ class Step6:
         start = time.time()
         printstr = ("aligning clusters   ", "s6")
         jobs = {}
-        for idx in range(len(clustbits)):
+        for idx, _ in enumerate(clustbits):
             args = [self.data, self.samples, clustbits[idx]]
-            #jobs[idx] = self.lbview.apply(persistent_popen_align3, *args)
             jobs[idx] = self.lbview.apply(align_to_array, *args)
         allwait = len(jobs)
 

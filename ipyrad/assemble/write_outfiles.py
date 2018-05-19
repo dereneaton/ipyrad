@@ -337,7 +337,7 @@ def select_samples(dbsamples, samples, pidx=None):
 
 def filter_all_clusters(data, samples, ipyclient):
     """
-    Open the clust_database HDF5 array with seqs, catg, and filter data. 
+    Open the clust_database HDF5 array with seqs, catg, and filter data.
     Fill the remaining filters. If this assembly was branched to exclude taxa
     since step 6 then we skip that taxa from the database.
     """
@@ -374,7 +374,7 @@ def filter_all_clusters(data, samples, ipyclient):
                 print("Sample in populations file not present in assembly - {}"
                       .format(data.populations[pop][1]))
                 raise
-                                                
+                                       
     LOGGER.info("samples %s \n, dbsamples %s \n, sidx %s \n",
                 samples, dbsamples, sidx)
 

@@ -43,36 +43,35 @@ TRANS = {
     (67, 71): 83,
     (84, 71): 75,
     (65, 71): 82,
-    }
+}
 
 
 def get_binom(base1, base2, estE, estH):
     """
     return probability of base call
-    """      
+    """
     prior_homo = (1. - estH) / 2.
     prior_hete = estH
-    
+
     ## calculate probs
     bsum = base1 + base2
     hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
     homoa = scipy.stats.binom.pmf(base2, bsum, estE)
     homob = scipy.stats.binom.pmf(base1, bsum, estE)
-    
+
     ## calculate probs
     hetprob *= prior_hete
     homoa *= prior_homo
     homob *= prior_homo
-    
-    ## final 
+
+    ## final
     probabilities = [homoa, homob, hetprob]
     bestprob = max(probabilities) / float(sum(probabilities))
 
     ## return
     if hetprob > homoa:
         return True, bestprob
-    else:
-        return False, bestprob
+    return False, bestprob
 
 
 
@@ -82,8 +81,8 @@ def removerepeats(consens, arrayed):
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3
     is chosen so that mindepth=6 requires 2 base calls that are not in [N,-].
 
-    Python3 notes: 
-    consens and arrayed are both in bytes in entry. Consens is converted to 
+    Python3 notes:
+    consens and arrayed are both in bytes in entry. Consens is converted to
     unicode for operations, and both are returned as bytes.
     """
 
@@ -136,13 +135,13 @@ def removerepeats(consens, arrayed):
 
         ## reconstitute pairs
         consens = cons1 + b"nnnn" + cons2
-        consens = np.array(list(consens), dtype=np.bytes_)
+        consens = np.array(list(consens), dtype=bytes)
         sep = np.array(arr1.shape[0] * [list(b"nnnn")])
         arrayed = np.hstack([arr1, sep, arr2])
 
     ## if single-end...
     else:
-        consens = np.array(list(cons1), dtype=np.bytes_)
+        consens = np.array(list(cons1), dtype=bytes)
         arrayed = arr1
 
     ## get column counts of Ns and -s
@@ -165,8 +164,8 @@ def removerepeats(consens, arrayed):
 
 
 def newconsensus(data, sample, tmpchunk, optim):
-    """ 
-    new faster replacement to consensus 
+    """
+    new faster replacement to consensus
     """
     ## do reference map funcs?
     isref = "reference" in data.paramsdict["assembly_method"]
@@ -180,7 +179,7 @@ def newconsensus(data, sample, tmpchunk, optim):
 
     ## prepare data for reading
     clusters = open(tmpchunk, 'rb')
-    pairdealer = izip(*[iter(clusters)] * 2)    
+    pairdealer = izip(*[iter(clusters)] * 2)
     maxlen = data._hackersonly["max_fragment_length"]
 
     ## write to tmp cons to file to be combined later
@@ -199,7 +198,8 @@ def newconsensus(data, sample, tmpchunk, optim):
 
     ## if reference-mapped then parse the fai to get index number of chroms
     if isref:
-        fai = pd.read_csv(data.paramsdict["reference_sequence"] + ".fai", 
+        fai = pd.read_csv(
+            data.paramsdict["reference_sequence"] + ".fai",
             names=['scaffold', 'size', 'sumsize', 'a', 'b'],
             sep="\t")
         faidict = {j: i for i, j in enumerate(fai.scaffold)}
@@ -232,7 +232,7 @@ def newconsensus(data, sample, tmpchunk, optim):
         try:
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
-            raise IPyradError("clustfile formatting error in %s", chunk)
+            raise IPyradError("clustfile formatting error in {}".format(chunk))
 
         if chunk:
             ## get names and seqs
@@ -252,11 +252,11 @@ def newconsensus(data, sample, tmpchunk, optim):
                     ## parse position from name string
                     name, _, _ = names[0].rsplit(";", 2)
                     chrom, pos0, pos1 = name.rsplit(":", 2)
-                    
-                    ## pull idx from .fai reference dict 
+
+                    ## pull idx from .fai reference dict
                     chromint = faidict[chrom] + 1
                     ref_position = (int(chromint), int(pos0), int(pos1))
-                    
+
                 except Exception as inst:
                     ip.logger.debug(
                         "Reference sequence chrom/pos failed for {}"
@@ -270,7 +270,7 @@ def newconsensus(data, sample, tmpchunk, optim):
                 sseqs = [list(seq) for seq in seqs]
                 arrayed = np.concatenate(
                     [[seq] * rep for seq, rep in zip(sseqs, reps)]
-                    ).astype(np.bytes_)
+                ).astype(bytes)
                 arrayed = arrayed[:, :maxlen]
                 
                 # get consens call for each site, applies paralog-x-site filter
@@ -281,7 +281,7 @@ def newconsensus(data, sample, tmpchunk, optim):
                     data.paramsdict["mindepth_statistical"],
                     data._esth, 
                     data._este,
-                    )
+                )
 
                 ## apply a filter to remove low coverage sites/Ns that
                 ## are likely sequence repeat errors. This is only applied to
@@ -295,10 +295,10 @@ def newconsensus(data, sample, tmpchunk, optim):
                         continue
 
                 ## get hetero sites
-                hidx = [i for (i, j) in enumerate(consens) 
+                hidx = [i for (i, j) in enumerate(consens)
                         if j in list("RKSYWM")]
                 nheteros = len(hidx)
-                
+
                 ## filter for max number of hetero sites
                 if nfilter2(nheteros, maxhet):
                     ## filter for maxN, & minlen
@@ -313,7 +313,7 @@ def newconsensus(data, sample, tmpchunk, optim):
                         ## store a reduced array with only CATG
                         catg = np.array(
                             [np.sum(arrayed == i, axis=0)
-                            for i in list("CATG")],
+                                for i in list("CATG")],
                             dtype='uint32').T
                         catarr[current, :catg.shape[0], :] = catg
                         refarr[current] = ref_position
@@ -332,7 +332,7 @@ def newconsensus(data, sample, tmpchunk, optim):
             else:
                 #ip.logger.debug("@depth")
                 filters['depth'] += 1
-                
+
     ## close infile io
     clusters.close()
 
@@ -343,7 +343,7 @@ def newconsensus(data, sample, tmpchunk, optim):
                 "\n".join([">" + sample.name + "_" + str(key) + \
                 "\n" + storeseq[key].decode() for key in storeseq]))
 
-    ## write to h5 array, this can be a bit slow on big data sets and is not 
+    ## write to h5 array, this can be a bit slow on big data sets and is not
     ## currently convered by progressbar movement.
     with h5py.File(tmp5, 'a') as io5:
         io5["cats"][:] = catarr
@@ -368,30 +368,30 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
     cons = np.zeros(arrayed.shape[1], dtype=np.uint8)
     cons.fill(78)
     arr = arrayed.view(np.uint8)
-    
+
     ## iterate over columns
     for col in range(arr.shape[1]):
         ## the site of focus
         carr = arr[:, col]
-        
+
         ## make mask of N and - sites
         mask = carr == 45
-        mask += carr == 78        
+        mask += carr == 78
         marr = carr[~mask]
-        
+
         ## skip if only empties (e.g., N-)
         if not marr.shape[0]:
             cons[col] = 78
-        
+
         ## skip if not variable
         elif np.all(marr == marr[0]):
             cons[col] = marr[0]
-        
+
         ## estimate variable site call
         else:
             ## get allele freqs (first-most, second, third = p, q, r)
             counts = np.bincount(marr)
-            
+
             pbase = np.argmax(counts)
             nump = counts[pbase]
             counts[pbase] = 0
@@ -402,12 +402,12 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
 
             #rbase = np.argmax(counts)
             #numr = counts[rbase]          # not used
-            
+
             ## based on biallelic depth
-            bidepth = nump + numq 
+            bidepth = nump + numq
             if bidepth < mindepth_majrule:
                 cons[col] = 78
-            
+
             else:
                 ## if depth is too high, reduce to sampled int
                 if bidepth > 500:
@@ -417,7 +417,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                     base1 = nump
                     base2 = numq
 
-                ## make statistical base call  
+                ## make statistical base call
                 if bidepth >= mindepth_statistical:
                     ishet, prob = get_binom(base1, base2, estE, estH)
                     #ip.logger.info("ishet, prob, b1, b2: %s %s %s %s", ishet, prob, base1, base2)
@@ -428,7 +428,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                             cons[col] = TRANS[(pbase, qbase)]
                         else:
                             cons[col] = pbase
-                
+
                 ## make majrule base call
                 else:  # if bidepth >= mindepth_majrule:
                     if nump == numq:
@@ -436,7 +436,7 @@ def basecaller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
                     else:
                         cons[col] = pbase
     return cons.view("S1")
-            
+
 
 
 def nfilter1(data, reps):
@@ -444,8 +444,7 @@ def nfilter1(data, reps):
     if sum(reps) >= data.paramsdict["mindepth_majrule"] and \
         sum(reps) <= data.paramsdict["maxdepth"]:
         return 1
-    else:
-        return 0
+    return 0
 
 
 
@@ -453,8 +452,7 @@ def nfilter2(nheteros, maxhet):
     """ applies max heteros in a seq filter """
     if nheteros <= maxhet:
         return 1
-    else:
-        return 0
+    return 0
 
 
 
@@ -464,10 +462,8 @@ def nfilter3(consens, maxn):
     if consens.size >= 32:
         if consens[consens == "N"].size <= maxn:
             return 1
-        else:
-            return 0
-    else:
         return 0
+    return 0
 
 
 
@@ -578,7 +574,7 @@ def cleanup(data, sample, statsdicts):
     with h5py.File(handle1, 'w') as ioh5:
         nloci = len(tmpcats) * optim
         dcat = ioh5.create_dataset(
-            "catg", 
+            "catg",
             (nloci, maxlen, 4),
             dtype=np.uint32,
             chunks=(optim, maxlen, 4),
@@ -592,9 +588,9 @@ def cleanup(data, sample, statsdicts):
         if isref:
             dchrom = ioh5.create_dataset(
                 "chroms",
-                (nloci, 3), 
-                dtype=np.int64, 
-                chunks=(optim, 3), 
+                (nloci, 3),
+                dtype=np.int64,
+                chunks=(optim, 3),
                 compression="gzip")
 
         ## Combine all those tmp cats into the big cat
@@ -618,12 +614,12 @@ def cleanup(data, sample, statsdicts):
         "nconsens": 0,
         "heteros": 0,
         "nsites": 0,
-        }
+    }
     xfilters = {
         "depth": 0,
         "maxh": 0,
         "maxn": 0,
-        }
+    }
 
     ## merge finished consens stats
     for counters, filters in statsdicts:
