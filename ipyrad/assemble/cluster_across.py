@@ -40,7 +40,16 @@ with warnings.catch_warnings():
 
 LOGGER = logging.getLogger(__name__)
 
+TODO = """
 
+1. provide method to split/ contigs in step3.
+2. fix progress bar for cluster2 in step3.
+3. finish databasing here.
+4. fix progress bar for cluster here.
+5. write concat bams code here.
+6. 
+
+"""
 
 class Step6:
     def __init__(self, data, samples, ipyclient, randomseed=0, force=False):
@@ -373,7 +382,8 @@ class Step6:
         jobs = {}
         for idx in range(len(clustbits)):
             args = [self.data, self.samples, clustbits[idx]]
-            jobs[idx] = self.lbview.apply(persistent_popen_align3, *args)
+            #jobs[idx] = self.lbview.apply(persistent_popen_align3, *args)
+            jobs[idx] = self.lbview.apply(align_to_array, *args)
         allwait = len(jobs)
 
         # print progress while bits are aligning
@@ -393,6 +403,19 @@ class Step6:
                     "error in step 6 {}".format(jobs[idx].exception()))
             del jobs[idx]
         print("")
+
+
+    def remote_concat_bams(self):
+        pass
+
+
+    def remote_build_concat_bams(self):
+        pass
+
+
+def build_concat_bams(data):
+    "create .sam files from consens data and make a concatenated bam file"
+    pass
 
 
 def build_concat_two(data, jobids, randomseed):
@@ -854,7 +877,6 @@ def retrieve_indels_and_alleles(seqarr, idx, amask):
     # check for indels and impute to amask
     indidx = np.where(concatarr == b"-")[0]
     if np.sum(amask):
-        print("woooooooooooooot")
         if indidx.size:
 
             # impute for position of variants
@@ -1013,6 +1035,20 @@ PSEUDO_REF = np.array([
     ], dtype=np.uint8)
  
 #############################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def persistent_popen_align3(data, samples, chunk):
