@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-""" 
+"""
 cluster across samples using vsearch with options for
 hierarchical clustering.
 """
@@ -8,7 +8,7 @@ hierarchical clustering.
 # py2/3 compatible
 from __future__ import print_function
 try:
-    from builtins import range    
+    from builtins import range
     from itertools import izip, chain
 except ImportError:
     from itertools import chain
