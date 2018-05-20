@@ -31,6 +31,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Step3:
+    """
+    Class for organizing step functions across datatypes and read formats
+    """
     def __init__(self, data, samples, noreverse, maxindels, force, ipyclient):
 
         # store attributes
@@ -48,6 +51,7 @@ class Step3:
 
 
     def run(self):
+        "Run the assembly functions for this step"
 
         ## paired-end data methods ------------------------------
         if "pair" in self.data.paramsdict["datatype"]:
@@ -56,22 +60,22 @@ class Step3:
             if self.data.paramsdict["assembly_method"] == "denovo":
                 self.remote_run(
                     function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
+                    printstr=("concatenating       ", "s3"),
                     args=(),
                 )
                 self.remote_run(
-                    function=merge_pairs_with_vsearch, 
-                    printstr=("join merged pairs   ", "s3"), 
+                    function=merge_pairs_with_vsearch,
+                    printstr=("join merged pairs   ", "s3"),
                     args=(True,),
                 )
                 self.remote_run(
                     function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
+                    printstr=("join unmerged pairs ", "s3"),
                     args=(True, True,),
                 )
                 self.remote_run(
                     function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
+                    printstr=("dereplicating       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
                 )
@@ -83,23 +87,23 @@ class Step3:
                 self.remote_index_refs()
                 self.remote_run(
                     function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
+                    printstr=("concatenating       ", "s3"),
                     args=(),
                 )
                 self.remote_run(
                     function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
+                    printstr=("join unmerged pairs ", "s3"),
                     args=(False, False,),
                 )
                 #if "3rad" not in data.paramsdict["datatype"]:
                 #    self.remote_run(
                 #        function=dereplicate,
-                #        printstr=("declone 3RAD        ", "s3"), 
+                #        printstr=("declone 3RAD        ", "s3"),
                 #        args=(self.nthreads, self.force),
                 #        )
                 self.remote_run(
                     function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
+                    printstr=("dereplicating       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
                 )
@@ -126,8 +130,8 @@ class Step3:
                     "datatype + assembly_method combo not yet supported")
 
                 # the same as 'reference' above except after mapping the reads
-                # we then take the unmapped reads, rejoin them end-to-end, 
-                # and cluster them. 
+                # we then take the unmapped reads, rejoin them end-to-end,
+                # and cluster them.
                 self.remote_run(
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"),
@@ -222,12 +226,12 @@ class Step3:
             if self.data.paramsdict["assembly_method"] == "denovo":
                 self.remote_run(
                     function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
+                    printstr=("concatenating       ", "s3"),
                     args=(),
                 )
                 self.remote_run(
                     function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
+                    printstr=("dereplicating       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
                 )
@@ -238,7 +242,7 @@ class Step3:
             elif self.data.paramsdict["assembly_method"] == "reference":
                 self.remote_run(
                     function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
+                    printstr=("concatenating       ", "s3"),
                     args=(),
                 )
                 self.remote_run(
@@ -264,7 +268,7 @@ class Step3:
                     "datatype + assembly_method combo not yet supported")
 
         self.remote_run_sample_cleanup()
-        self.data.stats_dfs.s3 = self.data._build_stat("s3")
+        self.cleanup()
         self.data.save()
 
     # init functions ------------------------------------
@@ -328,6 +332,12 @@ class Step3:
             if not os.path.exists(self.data.dirs.refmapping):
                 os.mkdir(self.data.dirs.refmapping)
 
+        # set a filepath for stored cluster results
+        for sname in self.data.samples:
+            self.data.samples[sname].files.clusters = os.path.join(
+                self.data.dirs.clusts,
+                "{}.clustS.gz".format(sname))
+
 
     def tune_threads(self):
         "setup threading to efficiently run clust/ref across HPC"
@@ -383,7 +393,7 @@ class Step3:
 
 
     def remote_index_refs(self):
-        # submit job
+        "index the reference seq for bwa and samtools"
         start = time.time()
         printstr = ("indexing reference  ", "s3")
         rasync1 = self.lbview.apply(
@@ -1081,10 +1091,6 @@ def build_clusters(data, sample, maxindels):
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-
-    ## create an output file to write clusters to
-    sample.files.clusters = os.path.join(
-        data.dirs.clusts, sample.name + ".clust.gz")
     clustsout = gzip.open(sample.files.clusters, 'wt')
 
     ## Sort the uhandle file so we can read through matches efficiently
@@ -1310,7 +1316,7 @@ def reconcat(data, sample):
         for fname in chunks:
             with open(fname) as infile:
                 dat = infile.read().strip()
-                out.write(str.encode(dat + "\n//\n//\n"))                   
+                out.write(str.encode(dat + "\n//\n//\n"))
             os.remove(fname)
 
 
@@ -1321,11 +1327,11 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     ## create a separate shell for running muscle in, this is much faster
     ## than spawning a separate subprocess for each muscle call
     proc = sps.Popen(
-        ["bash"], 
-        stdin=sps.PIPE, 
-        stdout=sps.PIPE, 
+        ["bash"],
+        stdin=sps.PIPE,
+        stdout=sps.PIPE,
         bufsize=0,
-        )
+    )
 
     ## iterate over clusters in this file until finished
     aligned = []
