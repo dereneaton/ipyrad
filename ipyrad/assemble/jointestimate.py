@@ -10,25 +10,160 @@ except ImportError:
     from itertools import combinations
     izip = zip
 
-import scipy.optimize
-import scipy.stats
-import ipyrad as ip
-import numpy as np
-import numba
+import os
 import time
 import gzip
-import os
 from collections import Counter
+
+import scipy.optimize
+import scipy.stats
+import numpy as np
+import numba
+import ipyrad as ip
+
 from .clustmap import get_quick_depths
-from .util import IPyradWarningExit, IPyradError, clustdealer
+from .util import IPyradError, clustdealer
+
+
+class Step4:
+    "organized functions for step 4 of assembly"
+    def __init__(self, data, force, ipyclient):
+
+        self.data = data
+        self.force = force
+        self.ipyclient = ipyclient
+        self.haploid = bool(data.paramsdict["max_alleles_consens"] == 1)
+        if self.haploid:
+            print("Running haploid inference (infer E with H fixed to 0)")
+        self.samples = self.get_subsamples()
+
+
+    def get_subsamples(self):
+        "Apply state, ncluster, and force filters to select samples"
+
+        # filter samples by state
+        state2 = self.data.stats.index[self.data.stats.state < 3]
+        state3 = self.data.stats.index[self.data.stats.state == 3]
+        state4 = self.data.stats.index[self.data.stats.state > 3]
+
+        # tell user which samples are not ready for step4
+        if state2.any():
+            print("skipping samples not in state==3:\n{}"
+                  .format(state2.tolist()))
+
+        if self.force:
+            # run all samples above state 2
+            subs = self.data.stats.index[self.data.stats.state > 2]
+            subsamples = [self.data.samples[i] for i in subs]
+
+        else:
+            # tell user which samples have already cmopleted step 4
+            if state4.any():
+                print("skipping samples already finished step 5:\n{}"
+                      .format(state4.tolist()))
+
+            # run all samples in state 4
+            subsamples = [self.data.samples[i] for i in state3]
+
+        # check that kept samples have clusters
+        checked_samples = []
+        for sample in subsamples:
+            if sample.stats.clusters_hidepth:
+                checked_samples.append(sample)
+            else:
+                print("skipping {}; no clusters found.")
+        if not any(checked_samples):
+            raise IPyradError("no samples ready for step 4")
+
+        # sort samples so the largest is first
+        checked_samples.sort(
+            key=lambda x: x.stats.clusters_hidepth,
+            reverse=True,
+        )
+        return checked_samples
+
+
+    def run(self):
+        "call the remote functions"
+        self.remote_run_optim()
+        self.cleanup()
+
+
+    def remote_run_optim(self):
+        "call the optim function to run in parallel"
+        # headers
+        start = time.time()
+        printstr = ("inferring [H, E]    ", "s4")
+
+        # send all jobs to a load balanced client
+        lbview = self.ipyclient.load_balanced_view()
+
+        # stores async results using sample names
+        jobs = {}
+        for sample in self.samples:
+            jobs[sample.name] = lbview.apply(optim, *(self.data, sample))
+
+        # progress bar
+        while 1:
+            fin = [i.ready() for i in jobs.values()]
+            self.data._progressbar(len(fin), sum(fin), start, printstr)
+            time.sleep(0.1)
+            if len(fin) == sum(fin):
+                break
+
+        # cleanup
+        print("")
+        for job in jobs:
+            if jobs[job].successful():
+                # collect results
+                hest, eest, success = jobs[job].result()
+                # store results to sample objects
+                sample_cleanup(self.data.samples[job], hest, eest, success)
+            else:
+                raise IPyradError(jobs[job].result())
+
+
+    def cleanup(self):
+        " assembly cleanup "
+
+        # store results
+        self.data.stats_dfs.s4 = self.data._build_stat("s4")
+
+        # make path for stats file
+        self.data.stats_files.s4 = os.path.join(
+            self.data.dirs.clusts,
+            "s4_joint_estimate.txt")
+
+        # write to stats file
+        with open(self.data.stats_files.s4, 'w') as outfile:
+            self.data.stats_dfs.s4.to_string(outfile)
+
+        # check for failures
+        if any(self.data.stats.state == 3):
+            msg = ("""
+            These samples failed joint estimation and will be excluded from
+            downstream analysis (probably very few highdepth reads):
+            {}""".format(
+                self.data.stats[self.data.stats.state == 3].index.tolist()))
+            print(msg)
+
+        # clean out old stats files
+        if self.force:
+            self.data.stats_files.s5 = ""
+            self.data.stats_files.s6 = ""
+            self.data.stats_files.s7 = ""
+
+
+
+############################################################################
 
 
 def likelihood1(errors, bfreqs, ustacks):
     """
     Probability homozygous. """
     ## make sure base_frequencies are in the right order
-    #print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
-    #totals = np.array([ustacks.sum(axis=1)]*4).T
+    # print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
+    # totals = np.array([ustacks.sum(axis=1)]*4).T
     totals = np.array([ustacks.sum(axis=1)] * 4).T
     prob = scipy.stats.binom.pmf(totals - ustacks, totals, errors)
     lik1 = np.sum(bfreqs * prob, axis=1)
@@ -38,14 +173,8 @@ def likelihood1(errors, bfreqs, ustacks):
 
 @numba.jit(nopython=True)
 def nblik2_build(ustacks):
-    """
-    JIT'd function builds large array that can be used to calc binom pmf
-    """
-
-    ## store
-    #ret = np.empty(ustacks.shape[0])
-
-    ## fill for pmf later 
+    "JIT'd function builds array that can be used to calc binom pmf"
+    # fill for pmf later
     tots = np.empty((ustacks.shape[0], 1))
     twos = np.empty((ustacks.shape[0], 6))
     thrs = np.empty((ustacks.shape[0], 6, 2))
@@ -71,10 +200,7 @@ def nblik2_build(ustacks):
 
 
 def lik2_calc(err, one, tots, twos, thrs, four):
-    """ 
-    vectorized calc of binom pmf on large arrays 
-    """
-
+    "vectorized calc of binom pmf on large arrays"
     ## calculate twos
     _twos = scipy.stats.binom.pmf(twos, tots, 0.5)
 
@@ -89,9 +215,9 @@ def lik2_calc(err, one, tots, twos, thrs, four):
 
 
 def nlikelihood2(errors, bfreqs, ustacks):
-    """ calls nblik2_build and lik2_calc for a given err """
+    "calls nblik2_build and lik2_calc for a given err"
     one = [2. * bfreqs[i] * bfreqs[j] for i, j in combinations(range(4), 2)]
-    four = 1. - np.sum(bfreqs**2) 
+    four = 1. - np.sum(bfreqs**2)
     tots, twos, thrs = nblik2_build(ustacks)
     res2 = lik2_calc(errors, one, tots, twos, thrs, four)
     return res2
@@ -99,7 +225,7 @@ def nlikelihood2(errors, bfreqs, ustacks):
 
 
 def nget_diploid_lik(pstart, bfreqs, ustacks, counts):
-    """ Log likelihood score given values [H,E] """
+    "Log likelihood score given values [H,E]"
     hetero, errors = pstart
     if (hetero <= 0.) or (errors <= 0.):
         score = np.exp(100)
@@ -115,16 +241,14 @@ def nget_diploid_lik(pstart, bfreqs, ustacks, counts):
 
 
 def get_haploid_lik(errors, bfreqs, ustacks, counts):
-    """ Log likelihood score given values [E]. """
+    "Log likelihood score given values [E]"
     hetero = 0.
     ## score terribly if below 0
     if errors <= 0.:
         score = np.exp(100)
     else:
         ## get likelihood for all sites
-        lik1 = ((1. - hetero) * likelihood1(errors, bfreqs, ustacks)) 
-        #lik2 = (hetero)*nlikelihood2(errors, bfreqs, ustacks)
-        #liks = lik1+lik2
+        lik1 = ((1. - hetero) * likelihood1(errors, bfreqs, ustacks))
         liks = lik1
         logliks = np.log(liks[liks > 0]) * counts[liks > 0]
         score = -logliks.sum()
@@ -134,121 +258,106 @@ def get_haploid_lik(errors, bfreqs, ustacks, counts):
 
 def recal_hidepth(data, sample):
     """
-    if mindepth setting were changed then 'clusters_hidepth' needs to be 
+    if mindepth setting were changed then 'clusters_hidepth' needs to be
     recalculated. Check and recalculate if necessary.
     """
-    ## the minnest depth
+    # the minnest depth
     majrdepth = data.paramsdict["mindepth_majrule"]
-    statdepth = data.paramsdict["mindepth_statistical"]    
+    statdepth = data.paramsdict["mindepth_statistical"]
 
-    ## if nothing changes return existing maxlen value
+    # if nothing changes return existing maxlen value
     maxlen = data._hackersonly["max_fragment_length"]
 
-    ## if coming from older version of ipyrad this attr is new
-    if not hasattr(sample.stats_dfs.s3, "hidepth_min"):
-        sample.stats_dfs.s3["hidepth_min"] = data.paramsdict["mindepth_majrule"]
+    # get arrays of data
+    maxlens, depths = get_quick_depths(data, sample)
 
-    ## if old value not the same as current value then recalc
-    if 1:  # not sample.stats_dfs.s3["hidepth_min"] == majrdepth:
-        ip.logger.info(" mindepth setting changed: recalculating clusters_hidepth and maxlen")
-        ## get arrays of data
-        maxlens, depths = get_quick_depths(data, sample)
+    # calculate how many are hidepth
+    hidepths = depths >= majrdepth
+    stathidepths = depths >= statdepth
+    keepmj = depths[hidepths]
+    keepst = depths[stathidepths]
 
-        ## calculate how many are hidepth
-        hidepths = depths >= majrdepth
-        stathidepths = depths >= statdepth
+    try:
+        # set assembly maxlen for sample
+        statlens = maxlens[stathidepths]
+        statlen = int(statlens.mean() + (2. * statlens.std()))
 
-        keepmj = depths[hidepths]
-        keepst = depths[stathidepths]
+    except:
+        # If no clusters have depth sufficient for statistical basecalling
+        # then stathidepths will be empty and all hell breaks loose, so
+        # we'll raise here and than catch the exception in optim()
+        raise IPyradError(
+            "No clusts with depth sufficient for statistical basecalling.")
 
-        try:
-            ## set assembly maxlen for sample
-            statlens = maxlens[stathidepths]
-            statlen = int(statlens.mean() + (2. * statlens.std()))
-        except:
-            ## If no clusters have depth sufficient for statistical basecalling
-            ## then stathidepths will be empty and all hell breaks loose, so
-            ## we'll raise here and than catch the exception in optim()
-            raise IPyradError("No clusts with depth sufficient for statistical basecalling.")
+    # LOGGER.info("%s %s %s", maxlens.shape, maxlens.mean(), maxlens.std())
+    maxlens = maxlens[hidepths]
+    maxlen = int(maxlens.mean() + (2. * maxlens.std()))
+    return keepmj.shape[0], maxlen, keepst.shape[0], statlen
 
-        ip.logger.info("%s %s %s", maxlens.shape, maxlens.mean(), maxlens.std())
-        maxlens = maxlens[hidepths]
-        maxlen = int(maxlens.mean() + (2. * maxlens.std()))
-
-        ## saved stat values are for majrule min
-        sample.stats["clusters_hidepth"] = keepmj.shape[0]
-        sample.stats_dfs.s3["clusters_hidepth"] = keepmj.shape[0]        
-
-    return sample, keepmj.shape[0], maxlen, keepst.shape[0], statlen
 
 
 def stackarray(data, sample):
-    """ 
-    Stacks clusters into arrays
-    """
+    "Stacks clusters into arrays"
+    # only use clusters with depth > mindepth_statistical for param estimates
+    hidepth, maxlen, shidepth, smaxlen = recal_hidepth(data, sample)
 
-    ## only use clusters with depth > mindepth_statistical for param estimates
-    sample, _, _, nhidepth, maxlen = recal_hidepth(data, sample)
+    # (not saved) stat values are for majrule min
+    sample.stats["clusters_hidepth"] = hidepth
+    sample.stats_dfs.s3["clusters_hidepth"] = hidepth
 
-    ## get clusters file    
+    # get clusters file
     clusters = gzip.open(sample.files.clusters, 'rb')
     pairdealer = izip(*[iter(clusters)] * 2)
 
-    ## we subsample, else use first 10000 loci.
-    dims = (nhidepth, maxlen, 4)
+    # we subsample, else ... (could e.g., use first 10000 loci).
+    dims = (hidepth, maxlen, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
-    ## don't use sequence edges / restriction overhangs
+    # don't use sequence edges / restriction overhangs
     cutlens = [None, None]
     try:
         cutlens[0] = len(data.paramsdict["restriction_overhang"][0])
         cutlens[1] = maxlen - len(data.paramsdict["restriction_overhang"][1])
     except TypeError:
         pass
-    #ip.logger.info("cutlens: %s", cutlens)
 
-    ## fill stacked
+    # fill stacked
     nclust = 0
     done = 0
     while not done:
         try:
             done, chunk = clustdealer(pairdealer, 1)
         except IndexError:
-            raise IPyradError("  clustfile formatting error in %s", chunk)
+            raise IPyradError(
+                "  clustfile formatting error in {}".format(chunk))
 
         if chunk:
             piece = chunk[0].decode().strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
-            ## pull replicate read info from seqs
-            #reps = [int(sname.split(";")[-2][5:]) for sname in names]
+            # pull replicate read info from seqs
             reps = [int(sname.split("=")[-1][:-2]) for sname in names]
-            
-            ## double reps if the read was fully merged... (TODO: Test this!)
-            #merged = ["_m1;s" in sname for sname in names]
-            #if any(merged):
-            #    reps = [i*2 if j else i for i, j in zip(reps, merged)]
 
             ## get all reps
             sseqs = [list(seq) for seq in seqs]
             arrayed = np.concatenate([
                 [seq] * rep for seq, rep in zip(sseqs, reps)
-                ])
-            
+            ])
+
             ## enforce minimum depth for estimates
             if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
-                ## remove edge columns and select only the first 500 
-                ## derep reads, just like in step 5
+                # remove edge columns and select only the first 500
+                # derep reads, just like in step 5
                 arrayed = arrayed[:500, cutlens[0]:cutlens[1]]
-                ## remove cols that are pair separator
+                # remove cols that are pair separator
                 arrayed = arrayed[:, ~np.any(arrayed == "n", axis=0)]
-                ## remove cols that are all Ns after converting -s to Ns
+                # remove cols that are all Ns after converting -s to Ns
                 arrayed[arrayed == "-"] = "N"
                 arrayed = arrayed[:, ~np.all(arrayed == "N", axis=0)]
-                ## store in stacked dict
+                # store in stacked dict
 
                 catg = np.array(
-                    [np.sum(arrayed == i, axis=0) for i in list("CATG")], 
+                    [np.sum(arrayed == i, axis=0) for i in list("CATG")],
                     dtype=np.uint64).T
 
                 stacked[nclust, :catg.shape[0], :] = catg
@@ -279,26 +388,18 @@ def optim(data, sample):
 
         ## get base frequencies
         bfreqs = stacked.sum(axis=0) / float(stacked.sum())
-        #bfreqs = bfreqs**2
-        #ip.logger.debug(bfreqs)
         if np.isnan(bfreqs).any():
-            raise IPyradWarningExit(" Bad stack in getfreqs; {} {}"
-                   .format(sample.name, bfreqs))
+            raise IPyradError(
+                "Bad stack in getfreqs; {} {}"
+                .format(sample.name, bfreqs))
 
         ## put into array, count array items as Byte strings
         tstack = Counter([j.tostring() for j in stacked])
 
         ## get keys back as arrays and store vals as separate arrays
-        ustacks = np.array([np.frombuffer(i, dtype=np.uint64)
-                            for i in tstack.keys()])
-
-        ## make bi-allelic only
-        #tris = np.where(np.sum(ustacks > 0, axis=1) > 2)
-        #for tri in tris:
-        #    minv = np.min(ustacks[tri][ustacks[tri] > 0])
-        #    delv = np.where(ustacks[tri] == minv)[0][0]
-        #    ustacks[tri, delv] = 0
-
+        ustacks = np.array(
+            [np.frombuffer(i, dtype=np.uint64) for i in tstack.keys()]
+        )
         counts = np.array(list(tstack.values()))
         ## cleanup
         del tstack
@@ -331,173 +432,30 @@ def optim(data, sample):
         ## have depth sufficient for statistical basecalling. In this case
         ## we just set the default hetero and errors values to 0.01/0.001
         ## which is the default.
-        ip.logger.debug("Found sample with no clusters hidepth - {}".format(sample.name))
+        ip.logger.debug(
+            "Found sample with no clusters hidepth - {}".format(sample.name))
         pass
 
     return hetero, errors, success
 
 
 
-def run(data, samples, force, ipyclient):
-    """ calls the main functions """
-
-    # if haploid data
-    if data.paramsdict["max_alleles_consens"] == 1:
-        print("{}Applying haploid-based test (infer E with H fixed to 0)"\
-              .format(data._spacer))
-
-    subsamples = []
-
-    ## if sample is already done skip
-    for sample in samples:
-        if not force:
-            if sample.stats.state >= 4:
-                print("    skipping {}; ".format(sample.name)+\
-                      "already estimated. Use force=True to overwrite.")
-            elif sample.stats.state < 3:
-                print("    skipping {}; ".format(sample.name)+\
-                      "not clustered yet. Run step3() first.")
-            else:
-                subsamples.append(sample)
-        else:
-            if sample.stats.state < 3:
-                print("    "+sample.name+" not clustered. Run step3() first.")
-            elif sample.stats.clusters_hidepth < 2:
-                print("    skipping {}. Too few high depth reads ({}). "\
-                      .format(sample.name, sample.stats.clusters_hidepth))
-            else:
-                subsamples.append(sample)
-
-    if subsamples:
-        ## submit jobs to parallel client
-        submit(data, subsamples, ipyclient)
-
-
-
-def submit(data, subsamples, ipyclient):
-    """ 
-    Sends jobs to engines and cleans up failures. Print progress. 
-    """
-
-    ## first sort by cluster size
-    subsamples.sort(key=lambda x: x.stats.clusters_hidepth, reverse=True)
-                            
-    ## send all jobs to a load balanced client
-    lbview = ipyclient.load_balanced_view()
-    jobs = {}
-
-    ## stores async results using sample names    
-    for sample in subsamples:
-        jobs[sample.name] = lbview.apply(optim, *(data, sample))
-
-    ## wrap in a try statement so that stats are saved for finished samples.
-    ## each job is submitted to cleanup as it finishes
-    start = time.time() 
-    printstr = ("inferring [H, E]    ", "s4")
-    try:
-        kbd = 0
-        ## wait for jobs to finish
-        while 1:
-            fin = [i.ready() for i in jobs.values()]
-            data._progressbar(len(fin), sum(fin), start, printstr)
-            time.sleep(0.1)
-            if len(fin) == sum(fin):
-                break
-
-        ## cleanup
-        print("")
-        for job in jobs:
-            if jobs[job].successful():
-                hest, eest, success = jobs[job].result()
-                sample_cleanup(data.samples[job], hest, eest, success)
-            else:
-                ip.logger.error(
-                    "  Sample %s failed with error %s", 
-                    job, jobs[job].exception())
-                raise IPyradWarningExit(jobs[job].result())
-
-    except KeyboardInterrupt as kbd:
-        pass
-
-    finally:
-        assembly_cleanup(data)
-        if kbd:
-            raise KeyboardInterrupt
-
-
-
 def sample_cleanup(sample, hest, eest, success):
-    """ 
-    Stores results to the Assembly object, writes to stats file, 
-    and cleans up temp files 
-    """
-    ## sample summary assignments
+    "Store results to the Sample objects"
+    # sample summary assignments
     sample.stats.state = 4
     sample.stats.hetero_est = float(hest)
     sample.stats.error_est = float(eest)
 
-    ## sample full assigments
+    # sample full assigments
     sample.stats_dfs.s4.hetero_est = float(hest)
     sample.stats_dfs.s4.error_est = float(eest)
 
-    ## In rare cases no hidepth clusters for statistical basecalling
-    ## so we warn the user, but carry on with default values
+    # In rare cases no hidepth clusters for statistical basecalling
+    # so we warn the user, but carry on with default values
     if not success:
-        msg = """    Info: Sample {} - No clusters have sufficient depth for statistical
-          basecalling. Setting default heterozygosity/error to 0.01/0.001.""".format(sample.name)
+        msg = ("""
+        Info: Sample {} - No clusters have sufficient depth for statistical
+        basecalling. Setting default heterozygosity/error to 0.01/0.001.
+        """.format(sample.name))
         print(msg)
-
-
-
-def assembly_cleanup(data):
-    """ cleanup assembly stats """
-    ## Assembly assignment
-    data.stats_dfs.s4 = data._build_stat("s4")  # dtype=np.float32)
-
-    ## Update written file
-    data.stats_files.s4 = os.path.join(data.dirs.clusts, 
-                                       "s4_joint_estimate.txt")
-    with open(data.stats_files.s4, 'w') as outfile:
-        data.stats_dfs.s4.to_string(outfile)
-
-    fails = data.stats[data.stats["state"] == 3].index.values
-    if fails:
-        msg = """
-        These samples failed joint estimation and will be excluded from
-        downstream analysis (probably very few highdepth reads):
-        {}""".format(fails)
-        print(msg)
-
-
-
-if __name__ == "__main__":
-
-    import ipyrad as ip
-
-    ## get path to test dir/ 
-    ROOT = os.path.realpath(
-       os.path.dirname(
-           os.path.dirname(
-               os.path.dirname(__file__)
-               )
-           )
-       )
-
-    ## run test on RAD data1
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_pairgbs", "test_pairgbs"))
-    TEST.step4(force=True)
-    print(TEST.stats)
-
-    TEST = ip.load.load_assembly(os.path.join(\
-                         ROOT, "tests", "test_rad", "data1"))
-    TEST.step4(force=True)
-    print(TEST.stats)
-
-    ## run test on messy data set
-    #TEST = ip.load_assembly(os.path.join(ROOT, "tests", "radmess", "data1"))
-
-    ## check if results are correct
-
-    ## cleanup
-
