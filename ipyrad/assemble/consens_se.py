@@ -10,24 +10,541 @@ except ImportError:
     from itertools import chain
     izip = zip
 
-import scipy.stats
-import scipy.misc
-import ipyrad as ip
-import pandas as pd
-import numpy as np
+import os
 import time
 import gzip
 import glob
-import os
-from ipyrad.assemble.jointestimate import recal_hidepth
-from .util import IPyradError, IPyradWarningExit, clustdealer, PRIORITY
+import warnings
 from collections import Counter
 
-# why won't hdf5 just fix this...
-import warnings
-with warnings.catch_warnings(): 
+import numpy as np
+import pandas as pd
+import scipy.stats
+import scipy.misc
+
+import ipyrad as ip
+from .jointestimate import recal_hidepth
+from .util import IPyradError, clustdealer, PRIORITY
+
+with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
+
+
+class Step5:
+    """
+    Organized Step 5 functions for all datatype and methods
+    """
+    def __init__(self, data, force, ipyclient):
+
+        self.data = data
+        self.samples = self.get_subsamples()
+        self.force = force
+        self.ref = bool("reference" in data.paramsdict["assembly_method"])
+        self.ipyclient = ipyclient
+        self.lbview = ipyclient.load_balanced_view()
+        self.setup_dirs()
+
+
+    def setup_dirs(self):
+        "setup directories, remove old tmp files"
+
+        # final results dir
+        self.data.dirs.consens = os.path.join(
+            self.data.dirs.project, 
+            "{}_consens".format(self.data.name))
+        if not os.path.exists(self.data.dirs.consens):
+            os.mkdir(self.data.dirs.consens)
+
+        # tmpfile dir (zap it if it exists)
+        self.data.tmpdir = os.path.join(
+            self.data.dirs.project, 
+            "{}-tmpdir".format(self.data.name))
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
+        if not os.path.exists(self.data.dirs.consens):
+            os.mkdir(self.data.dirs.consens)
+
+        # set up parallel client: allow user to throttle cpus
+        self.lbview = self.ipyclient.load_balanced_view()
+        if data._ipcluster["cores"]:
+            self.ncpus = data._ipcluster["cores"]
+        else:
+            self.ncpus = len(self.ipyclient.ids)
+
+
+    def get_subsamples(self):
+        "Apply state, ncluster, and force filters to select samples"
+
+        # filter samples by state
+        state3 = self.data.stats.index[self.data.stats.state < 4]
+        state4 = self.data.stats.index[self.data.stats.state == 4]
+        state5 = self.data.stats.index[self.data.stats.state > 4]
+
+        # tell user which samples are not ready for step5
+        if state3.any():
+            print("skipping samples not in state==4:\n{}"
+                  .format(state3.tolist()))
+
+        if self.force:
+            # run all samples above state 3
+            subs = self.data.stats.index[self.data.stats.state > 3]
+            subsamples = [self.data.samples[i] for i in subs]
+
+        else:
+            # tell user which samples have already completed step 5
+            if state5.any():
+                print("skipping samples already finished step 5:\n{}"
+                      .format(state5.tolist()))
+
+            # run all samples in state 4
+            subsamples = [self.data.samples[i] for i in state4]
+
+        # check that kept samples have clusters
+        checked_samples = []
+        for sample in subsamples:
+            if sample.stats.clusters_hidepth:
+                checked_samples.append(sample)
+            else:
+                print("skipping {}; no clusters found.")
+        if not any(checked_samples):
+            raise IPyradError("no samples ready for step 5")
+
+        # sort samples so the largest is first
+        checked_samples.sort(
+            key=lambda x: x.stats.clusters_hidepth,
+            reverse=True,
+        )
+
+        # if sample is already done skip
+        if "hetero_est" not in self.data.stats:
+            for sample in checked_samples:
+                sample.stats.hetero_est = 0.001
+                sample.stats.error_est = 0.0001
+
+        if self.data._headers:
+            print(u"  Mean error  [{:.5f} sd={:.5f}]".format(
+                self.data.stats.error_est.mean(),
+                self.data.stats.error_est.std(),
+            ))
+            print(u"  Mean hetero [{:.5f} sd={:.5f}]".format(
+                self.data.stats.hetero_est.mean(),
+                self.data.stats.hetero_est.std(),
+            ))
+        return checked_samples
+
+
+    def run(self):
+        "run the main functions on the parallel client"
+        try:
+            self.remote_calculate_depths()
+            self.remote_make_chunks()
+            self.remote_process_chunks()
+        finally:
+            self.cleanup_tempfiles()
+
+
+    def remote_calculate_depths(self):
+        "checks whether mindepth has changed and calc nclusters and maxlen"
+        # send jobs to be processed on engines
+        start = time.time()
+        printstr = ("calculating depths  ", "s5")
+        jobs = {}
+        maxlens = []
+        for sample in self.samples:
+            jobs[sample.name] = self.lbview.apply(
+                recal_hidepth,
+                *(self.data, sample))
+
+        # block until finished
+        while 1:
+            ready = [i.ready() for i in jobs.values()]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        # check for failures and collect results
+        print("")
+        for sample in self.samples:
+            if not jobs[sample.name].successful():
+                raise IPyradError(jobs[sample.name].exception())
+            else:
+                hidepth, maxlen, _, _ = recal_hidepth(self.data, sample)
+                # (not saved) stat values are for majrule min
+                sample.stats["clusters_hidepth"] = hidepth
+                sample.stats_dfs.s3["clusters_hidepth"] = hidepth
+                maxlens.append(maxlen)
+        
+        # update hackersdict with max fragement length
+        self.data._hackersonly["max_fragment_length"] = max(maxlens)
+
+
+    def remote_make_chunks(self):
+        "split clusters into chunks for parallel processing"
+
+        # first progress bar
+        start = time.time()
+        printstr = ("chunking clusters   ", "s5")
+
+        # send off samples to be chunked
+        jobs = {}
+        for sample in self.samples:
+            jobs[sample.name] = self.lbview.apply(
+                make_chunks,
+                *(self.data, sample, len(self.ipyclient)))
+
+        ## block until finished
+        while 1:
+            ready = [i.ready() for i in jobs.values()]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        ## check for failures
+        print("")
+        for sample in self.samples:
+            if not jobs[sample.name].successful():
+                raise IPyradError(jobs[sample.name].exception())
+
+
+    def remote_process_chunks(self):
+        "process the cluster chunks into arrays and consens or bam files"
+
+        # send chunks to be processed
+        start = time.time()
+        jobs = {sample.name: [] for sample in self.samples}
+        printstr = ("consens calling     ", "s5")
+
+        # submit jobs
+        for sample in self.samples:
+            # get chunklist for this sample
+            chunks = glob.glob(os.path.join(
+                self.data.tmpdir,
+                "{}.chunk-*".format(sample.name)))
+            chunks.sort(key=lambda x: int(x.split('.')[-1]))
+
+            # submit jobs
+            for chunk in chunks:
+                asyncr = self.lbview.apply(
+                    consensus_calls,
+                    *(self.data, sample, chunk))
+                jobs[sample.name].append(asyncr)
+
+        # track progress
+        allsyncs = list(chain(*[jobs[i.name] for i in self.samples]))
+        while 1:
+            ready = [i.ready() for i in allsyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        # get clean samples
+        casyncs = {}
+        for sample in self.samples:
+            rlist = jobs[sample.name]
+            statsdicts = [i.result() for i in rlist]
+            job = self.lbview.apply(cleanup, *(data, sample, statsdicts))
+            casyncs[sample.name] = job
+
+        while 1:
+            ready = [i.ready() for i in casyncs.values()]
+            self.data._progressbar(10, 10, start, printstr)
+            time.sleep(0.1)
+            if len(ready) == sum(ready):
+                break
+
+        ## check for failures:
+        print("")
+        for key in asyncs:
+            asynclist = asyncs[key]
+            for rasync in asynclist:
+                if not rasync.successful():
+                    ip.logger.error("  async error: %s \n%s", key, rasync.exception())
+        for key in casyncs:
+            if not casyncs[key].successful():
+                ip.logger.error("  casync error: %s \n%s", key, casyncs[key].exception())
+
+        ## get samples back
+        subsamples = [i.result() for i in casyncs.values()]
+        for sample in subsamples:
+            data.samples[sample.name] = sample
+
+
+    def data_cleanup(self):
+        ## build Assembly stats
+        data.stats_dfs.s5 = data._build_stat("s5")
+
+        ## write stats file
+        data.stats_files.s5 = os.path.join(
+            self.data.dirs.consens, 
+            's5_consens_stats.txt')
+
+        with open(data.stats_files.s5, 'w') as out:
+            #out.write(data.stats_dfs.s5.to_string())
+            data.stats_dfs.s5.to_string(
+                buf=out,
+                formatters={
+                    'clusters_total': '{:.0f}'.format,
+                    'filtered_by_depth': '{:.0f}'.format,
+                    'filtered_by_maxH': '{:.0f}'.format,
+                    'filtered_by_maxN': '{:.0f}'.format,
+                    'reads_consens': '{:.0f}'.format,
+                    'nsites': '{:.0f}'.format,
+                    'nhetero': '{:.0f}'.format,
+                    'heterozygosity': '{:.5f}'.format
+                })
+
+
+    def cleanup_tempfiles(self):
+        "remote temp file chunks"
+        tmpcons = glob.glob(os.path.join(
+            self.data.dirs.clusts, "tmp_*.[0-9]*"))
+        tmpcons += glob.glob(os.path.join(
+            self.data.dirs.consens, "*_tmpcons.*"))
+        tmpcons += glob.glob(os.path.join(
+            self.data.dirs.consens, "*_tmpcats.*"))
+        for tmpchunk in tmpcons:
+            os.remove(tmpchunk)
+
+
+
+def make_chunks(data, sample, ncpus):
+    "split job into bits and pass to the client"
+
+    # counter for split job submission
+    num = 0
+
+    # set optim size for chunks in N clusters. The first few chunks take longer
+    # because they contain larger clusters, so we create 4X as many chunks as
+    # processors so that they are split more evenly.
+    optim = int(
+        (sample.stats.clusters_total // ncpus) + \
+        (sample.stats.clusters_total % ncpus))
+
+    # open to clusters
+    with gzip.open(sample.files.clusters, 'rb') as clusters:
+        # create iterator to sample 2 lines at a time
+        pairdealer = izip(*[iter(clusters)] * 2)
+
+        # Use iterator to sample til end of cluster
+        done = 0
+        while not done:
+            # grab optim clusters and write to file.
+            done, chunk = clustdealer(pairdealer, optim)
+            chunk = [i.decode() for i in chunk]
+
+            # make file handle
+            chunkhandle = os.path.join(
+                data.tmpdir,
+                "{}.chunk-{}.{}".format(sample.name, optim, num * optim))
+
+            # write to file
+            if chunk:
+                with open(chunkhandle, 'wt') as outchunk:
+                    outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
+                num += 1
+
+
+
+def consensus_calls(data, sample, tmpchunk, isref):
+    "make consensus base and allele calls"
+
+    # temporarily store the mean estimates to Assembly
+    este = data.stats.error_est.mean()
+    esth = data.stats.hetero_est.mean()
+
+    # get index number from tmp file name
+    tmpnum = int(tmpchunk.split(".")[-1])
+    optim = int(tmpchunk.split(".")[-2])
+
+    # prepare data for reading and use global maxfraglen
+    clusters = open(tmpchunk, 'rb')
+    pairdealer = izip(*[iter(clusters)] * 2)
+    maxlen = data._hackersonly["max_fragment_length"]
+
+    # write to tmp cons to file to be combined later
+    consenshandle = os.path.join(
+        data.dirs.consens,
+        "{}_tmpcons.{}".format(sample.name, tmpnum))
+    tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
+    with h5py.File(tmp5, 'w') as io5:
+        io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
+        io5.create_dataset("alls", (optim, ), dtype=np.uint8)
+        io5.create_dataset("chroms", (optim, 3), dtype=np.int64)
+
+        ## local copies to use to fill the arrays
+        catarr = io5["cats"][:]
+        nallel = io5["alls"][:]
+        refarr = io5["chroms"][:]
+
+    ## if reference-mapped then parse the fai to get index number of chroms
+    if isref:
+        fai = pd.read_csv(
+            data.paramsdict["reference_sequence"] + ".fai",
+            names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+            sep="\t")
+        faidict = {j: i for i, j in enumerate(fai.scaffold)}
+
+    ## store data for stats counters
+    counters = {"name": tmpnum,
+                "heteros": 0,
+                "nsites": 0,
+                "nconsens": 0}
+
+    ## store data for what got filtered
+    filters = {"depth": 0,
+               "maxh": 0,
+               "maxn": 0}
+
+    ## store data for writing
+    storeseq = {}
+
+    ## set max limits
+    if 'pair' in data.paramsdict["datatype"]:
+        maxhet = sum(data.paramsdict["max_Hs_consens"])
+        maxn = sum(data.paramsdict["max_Ns_consens"])
+    else:
+        maxhet = data.paramsdict["max_Hs_consens"][0]
+        maxn = data.paramsdict["max_Ns_consens"][0]
+
+    ## load the refmap dictionary if refmapping
+    done = 0
+    while not done:
+        try:
+            done, chunk = clustdealer(pairdealer, 1)
+        except IndexError:
+            raise IPyradError("clustfile formatting error in {}".format(chunk))
+
+        if chunk:
+            ## get names and seqs
+            piece = chunk[0].decode().strip().split("\n")
+            names = piece[0::2]
+            seqs = piece[1::2]
+
+            ## pull replicate read info from seqs
+            reps = [int(sname.split(";")[-2][5:]) for sname in names]
+
+            ## IF this is a reference mapped read store the chrom and pos info
+            ## -1 defaults to indicating an anonymous locus, since we are using
+            ## the faidict as 0 indexed. If chrompos fails it defaults to -1
+            ref_position = (-1, 0, 0)
+            if isref:
+                try:
+                    ## parse position from name string
+                    name, _, _ = names[0].rsplit(";", 2)
+                    chrom, pos0, pos1 = name.rsplit(":", 2)
+
+                    ## pull idx from .fai reference dict
+                    chromint = faidict[chrom] + 1
+                    ref_position = (int(chromint), int(pos0), int(pos1))
+
+                except Exception as inst:
+                    ip.logger.debug(
+                        "Reference sequence chrom/pos failed for {}"
+                        .format(names[0]))
+                    ip.logger.debug(inst)
+                    
+            ## apply read depth filter
+            if nfilter1(data, reps):
+
+                ## get stacks of base counts
+                sseqs = [list(seq) for seq in seqs]
+                arrayed = np.concatenate(
+                    [[seq] * rep for seq, rep in zip(sseqs, reps)]
+                ).astype(bytes)
+                arrayed = arrayed[:, :maxlen]
+                
+                # get consens call for each site, applies paralog-x-site filter
+                # consens = np.apply_along_axis(basecall, 0, arrayed, data)
+                consens = basecaller(
+                    arrayed, 
+                    data.paramsdict["mindepth_majrule"], 
+                    data.paramsdict["mindepth_statistical"],
+                    data._esth, 
+                    data._este,
+                )
+
+                ## apply a filter to remove low coverage sites/Ns that
+                ## are likely sequence repeat errors. This is only applied to
+                ## clusters that already passed the read-depth filter (1)
+                if "N" in consens:
+                    try:
+                        consens, arrayed = removerepeats(consens, arrayed)
+
+                    except ValueError:
+                        ip.logger.info("Caught bad chunk w/ all Ns. Skip it.")
+                        continue
+
+                ## get hetero sites
+                hidx = [i for (i, j) in enumerate(consens)
+                        if j in list("RKSYWM")]
+                nheteros = len(hidx)
+
+                ## filter for max number of hetero sites
+                if nfilter2(nheteros, maxhet):
+                    ## filter for maxN, & minlen
+                    if nfilter3(consens, maxn):
+                        ## counter right now
+                        current = counters["nconsens"]
+                        ## get N alleles and get lower case in consens
+                        consens, nhaps = nfilter4(consens, hidx, arrayed)
+                        ## store the number of alleles observed
+                        nallel[current] = nhaps
+
+                        ## store a reduced array with only CATG
+                        catg = np.array(
+                            [np.sum(arrayed == i, axis=0)
+                                for i in list("CATG")],
+                            dtype='uint32').T
+                        catarr[current, :catg.shape[0], :] = catg
+                        refarr[current] = ref_position
+
+                        ## store the seqdata for tmpchunk
+                        storeseq[counters["name"]] = b"".join(list(consens))
+                        counters["name"] += 1
+                        counters["nconsens"] += 1
+                        counters["heteros"] += nheteros
+                    else:
+                        #ip.logger.debug("@haplo")
+                        filters['maxn'] += 1
+                else:
+                    #ip.logger.debug("@hetero")
+                    filters['maxh'] += 1
+            else:
+                #ip.logger.debug("@depth")
+                filters['depth'] += 1
+
+    ## close infile io
+    clusters.close()
+
+    ## write final consens string chunk
+    if storeseq:
+        with open(consenshandle, 'wt') as outfile:
+            outfile.write(
+                "\n".join([">" + sample.name + "_" + str(key) + \
+                "\n" + storeseq[key].decode() for key in storeseq]))
+
+    ## write to h5 array, this can be a bit slow on big data sets and is not
+    ## currently convered by progressbar movement.
+    with h5py.File(tmp5, 'a') as io5:
+        io5["cats"][:] = catarr
+        io5["alls"][:] = nallel
+        io5["chroms"][:] = refarr
+    del catarr
+    del nallel
+    del refarr
+
+    ## return stats
+    counters['nsites'] = sum([len(i) for i in storeseq.values()])
+    return counters, filters
+
+
+
+
+
 
 
 TRANS = {
@@ -168,7 +685,7 @@ def newconsensus(data, sample, tmpchunk, optim):
     new faster replacement to consensus
     """
     ## do reference map funcs?
-    isref = "reference" in data.paramsdict["assembly_method"]
+    isref = bool("reference" in data.paramsdict["assembly_method"])
 
     ## temporarily store the mean estimates to Assembly
     data._este = data.stats.error_est.mean()
@@ -665,7 +1182,7 @@ def cleanup(data, sample, statsdicts):
 
 
 
-def chunk_clusters(data, sample):
+def chunk_clusters(data, sample, ncpus):
     """ split job into bits and pass to the client """
 
     # counter for split job submission
@@ -675,8 +1192,8 @@ def chunk_clusters(data, sample):
     # because they contain larger clusters, so we create 4X as many chunks as
     # processors so that they are split more evenly.
     optim = int(
-        (sample.stats.clusters_total // data.cpus) + \
-        (sample.stats.clusters_total % data.cpus))
+        (sample.stats.clusters_total // ncpus) + \
+        (sample.stats.clusters_total % ncpus))
 
     ## break up the file into smaller tmp files for each engine
     ## chunking by cluster is a bit trickier than chunking by N lines
@@ -699,195 +1216,11 @@ def chunk_clusters(data, sample):
             if chunk:
                 chunkslist.append((optim, chunkhandle))
                 with open(chunkhandle, 'wt') as outchunk:
-                    outchunk.write("//\n//\n".join(chunk) + "//\n//\n")                      
+                    outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
                 num += 1
 
     return chunkslist
 
-
-
-def get_subsamples(data, samples, force):
-    """
-    Apply state, ncluster, and force filters to select samples to be run.
-    """
-
-    subsamples = []
-    for sample in samples:
-        if not force:
-            if sample.stats.state >= 5:
-                print("""\
-    Skipping Sample {}; Already has consens reads. Use force arg to overwrite.\
-    """.format(sample.name))
-            elif not sample.stats.clusters_hidepth:
-                print("""\
-    Skipping Sample {}; No clusters found."""
-    .format(sample.name, int(sample.stats.clusters_hidepth)))
-            elif sample.stats.state < 4:
-                print("""\
-    Skipping Sample {}; not yet finished step4 """
-    .format(sample.name))
-            else:
-                subsamples.append(sample)
-
-        else:
-            if not sample.stats.clusters_hidepth:
-                print("""\
-    Skipping Sample {}; No clusters found in {}."""
-    .format(sample.name, sample.files.clusters))
-            elif sample.stats.state < 4:
-                print("""\
-    Skipping Sample {}; not yet finished step4"""
-    .format(sample.name))
-            else:
-                subsamples.append(sample)
-
-    if len(subsamples) == 0:
-        raise IPyradWarningExit("""
-    No samples to cluster, exiting.
-    """)
-
-    ## if sample is already done skip
-    if "hetero_est" not in data.stats:
-        print("  No estimates of heterozygosity and error rate. Using default "
-              "values")
-        for sample in subsamples:
-            sample.stats.hetero_est = 0.001
-            sample.stats.error_est = 0.0001
-
-    if data._headers:
-        print(u"""\
-  Mean error  [{:.5f} sd={:.5f}]
-  Mean hetero [{:.5f} sd={:.5f}]"""
-  .format(data.stats.error_est.mean(), data.stats.error_est.std(),
-          data.stats.hetero_est.mean(), data.stats.hetero_est.std()))
-
-    return subsamples
-
-
-
-def run(data, samples, force, ipyclient):
-    """ checks if the sample should be run and passes the args """
-    ## prepare dirs
-    data.dirs.consens = os.path.join(data.dirs.project, data.name + "_consens")
-    if not os.path.exists(data.dirs.consens):
-        os.mkdir(data.dirs.consens)
-
-    ## zap any tmp files that might be leftover
-    tmpcons = glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-    tmpcats = glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-    for tmpfile in tmpcons + tmpcats:
-        os.remove(tmpfile)
-
-    ## filter through samples for those ready
-    samples = get_subsamples(data, samples, force)
-
-    ## set up parallel client: how many cores?
-    lbview = ipyclient.load_balanced_view()
-    data.cpus = data._ipcluster["cores"]
-    if not data.cpus:
-        data.cpus = len(ipyclient.ids)
-
-    ## wrap everything to ensure destruction of temp files
-    inst = ""
-    try:
-        ## calculate depths, if they changed.
-        samples = calculate_depths(data, samples, lbview)
-
-        ## chunk clusters into bits for parallel processing
-        lasyncs = make_chunks(data, samples, lbview)
-
-        ## process chunks and cleanup
-        process_chunks(data, samples, lasyncs, lbview)
-
-    except KeyboardInterrupt as inst:
-        raise inst
-
-    finally:
-        ## if process failed at any point delete tmp files
-        tmpcons = glob.glob(os.path.join(data.dirs.clusts, "tmp_*.[0-9]*"))
-        tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcons.*"))
-        tmpcons += glob.glob(os.path.join(data.dirs.consens, "*_tmpcats.*"))
-        for tmpchunk in tmpcons:
-            os.remove(tmpchunk)
-
-        ## Finished step 5. Set step 6 checkpoint to 0 to force
-        ## re-running from scratch.
-        data._checkpoint = 0
-
-
-
-def calculate_depths(data, samples, lbview):
-    """
-    check whether mindepth has changed, and thus whether clusters_hidepth
-    needs to be recalculated, and get new maxlen for new highdepth clusts.
-    if mindepth not changed then nothing changes.
-    """
-
-    ## send jobs to be processed on engines
-    start = time.time()
-    printstr = ("calculating depths  ", "s5")
-    recaljobs = {}
-    maxlens = []
-    for sample in samples:
-        recaljobs[sample.name] = lbview.apply(recal_hidepth, *(data, sample))
-
-    ## block until finished
-    while 1:
-        ready = [i.ready() for i in recaljobs.values()]
-        data._progressbar(len(ready), sum(ready), start, printstr)
-        time.sleep(0.1)
-        if len(ready) == sum(ready):
-            break
-
-    ## check for failures and collect results
-    print("")
-    modsamples = []
-    for sample in samples:
-        if not recaljobs[sample.name].successful():
-            ip.logger.error("  sample %s failed: %s", 
-                sample.name, recaljobs[sample.name].exception())
-        else:
-            modsample, _, maxlen, _, _ = recaljobs[sample.name].result()
-            modsamples.append(modsample)
-            maxlens.append(maxlen)
-
-    ## reset global maxlen if something changed
-    data._hackersonly["max_fragment_length"] = int(max(maxlens)) + 4
-
-    return samples
-
-
-
-def make_chunks(data, samples, lbview):
-    """
-    calls chunk_clusters and tracks progress.
-    """
-    ## first progress bar
-    start = time.time()
-    printstr = ("chunking clusters   ", "s5")
-    data._progressbar(10, 0, start, printstr)
-
-    ## send off samples to be chunked
-    lasyncs = {}
-    for sample in samples:
-        lasyncs[sample.name] = lbview.apply(chunk_clusters, *(data, sample))
-
-    ## block until finished
-    while 1:
-        ready = [i.ready() for i in lasyncs.values()]
-        data._progressbar(len(ready), sum(ready), start, printstr)
-        time.sleep(0.1)
-        if len(ready) == sum(ready):
-            break
-
-    ## check for failures
-    print("")
-    for sample in samples:
-        if not lasyncs[sample.name].successful():
-            ip.logger.error("  sample %s failed: %s", sample.name, 
-                        lasyncs[sample.name].exception())
-
-    return lasyncs
 
 
 
