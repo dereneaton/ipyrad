@@ -215,19 +215,19 @@ class Step5:
 
         # send chunks to be processed
         start = time.time()
-        jobs = {}
+        jobs = {sample.name: [] for sample in self.samples}
         printstr = ("consens calling     ", "s5")
 
         # submit jobs
         for sample in self.samples:
             chunks = glob.glob(os.path.join(
                 self.data.tmpdir,
-                "{}.chunk-*".format(sample.name)))
+                "{}.chunk.*".format(sample.name)))
             chunks.sort(key=lambda x: int(x.split('.')[-1]))
 
             # submit jobs
             for chunk in chunks:
-                jobs.append(
+                jobs[sample.name].append(
                     self.lbview.apply(
                         consensus_calls,
                         *(self.data, sample, chunk, self.ref)))
@@ -271,6 +271,7 @@ class Step5:
             asyncs3[sample.name] = job
 
         # track progress of stats storage
+        #casyncs = 
         while 1:
             ready = [i.ready() for i in casyncs.values()]
             self.data._progressbar(10, 10, start, printstr)
