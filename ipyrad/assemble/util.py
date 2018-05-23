@@ -831,20 +831,24 @@ def revcomp(sequence):
 ## except it returns just one base, w/ the order/priority being (C>A>T>G)
 ## This dict is used to impute lower case into consens to retain allele
 ## order for phase in diploids
-PRIORITY = {"M": "C",
-            "Y": "C",
-            "S": "C",
-            "W": "A",
-            "R": "A",
-            "K": "T"}
+PRIORITY = {
+    b"M": b"C",
+    b"Y": b"C",
+    b"S": b"C",
+    b"W": b"A",
+    b"R": b"A",
+    b"K": b"T",
+}
 
 ## The inverse of priority
-MINOR = {"M": "A",
-         "Y": "T",
-         "S": "G",
-         "W": "T",
-         "R": "G",
-         "K": "G"}
+MINOR = {
+    b"M": b"A",
+    b"Y": b"T",
+    b"S": b"G",
+    b"W": b"T",
+    b"R": b"G",
+    b"K": b"G",
+}
 
 
 # convert byte to list of alleles as ASCII strings
