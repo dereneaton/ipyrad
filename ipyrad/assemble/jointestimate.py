@@ -87,6 +87,7 @@ class Step4:
         "call the remote functions"
         self.remote_run_optim()
         self.cleanup()
+        self.data.save()
 
 
     def remote_run_optim(self):
