@@ -272,3 +272,6 @@ This can actually be caused by a couple of different problems that all result in
 
 **pop_assign_file** A third way you can get this error is related to the previous one. The last line of the pop_assign_file is used for specifying min_sample per population for writing a locus. If you mis-specify the values for the pops in this line then it's possible to filter out all your data and thus obtain the above error.
 
+Why am i getting the 'ERROR   R1 and R2 files are not the same length.' during step 1?
+--------------------------------------------------------------------------------------
+This is almost certainly a disk space issue. Please be sure you have _plenty_ of disk space on whatever drive you're doing your assembly on. Running out of disk can cause weird problems that seem to defy logic, and that are a headache to debug (like this one). Check your disk space: `df -h`
