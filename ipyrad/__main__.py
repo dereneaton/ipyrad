@@ -10,14 +10,11 @@ import ipyparallel as ipp
 import ipyrad as ip
 import argparse
 import logging
-#import atexit
 import time
 import sys
 import os
 
-
 LOGGER = logging.getLogger(__name__)
-
 
 
 class CLI:
@@ -49,7 +46,7 @@ class CLI:
         self._set_logger()
 
         # run flags that are not step/run commands: -n, -m, --download
-        # these all end with a sys.exit
+        # if run, these all end with a sys.exit
         self._flagnew()
         self._flagparams()
         self._flagdownload()
