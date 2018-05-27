@@ -52,11 +52,12 @@ TODO = """
 """
 
 class Step6:
-    def __init__(self, data, samples, ipyclient, randomseed=0, force=False):
+    def __init__(self, data, randomseed, force, ipyclient):
         self.data = data
-        self.samples = samples
-        self.ipyclient = ipyclient
         self.randomseed = randomseed
+        self.force = force
+        self.ipyclient = ipyclient
+        self.samples = self.get_subsamples()
         self.setup_dirs(force)
 
         # groups/threading information
@@ -68,10 +69,9 @@ class Step6:
 
     def setup_dirs(self, force=False):
         "set up across and tmpalign dirs and init h5 database file"
-        self.data.dirs.across = os.path.realpath(
-            os.path.join(
-                self.data.paramsdict["project_dir"],
-                "{}_across".format(self.data.name)))
+        self.data.dirs.across = os.path.realpath(os.path.join(
+            self.data.paramsdict["project_dir"],
+            "{}_across".format(self.data.name)))
         self.data.tmpdir = os.path.join(
             self.data.dirs.across,
             "{}-tmpalign".format(self.data.name))
@@ -90,6 +90,52 @@ class Step6:
             os.mkdir(self.data.dirs.across)
         if not os.path.exists(self.data.tmpdir):
             os.mkdir(self.data.tmpdir)
+
+
+    def get_subsamples(self):
+        "Apply state, ncluster, and force filters to select samples"
+
+        # filter samples by state
+        state4 = self.data.stats.index[self.data.stats.state < 5]
+        state5 = self.data.stats.index[self.data.stats.state == 5]
+        state6 = self.data.stats.index[self.data.stats.state > 5]
+
+        # tell user which samples are not ready for step5
+        if state4.any():
+            print("skipping samples not in state==5:\n{}"
+                  .format(state4.tolist()))
+
+        if self.force:
+            # run all samples above state 4
+            subs = self.data.stats.index[self.data.stats.state > 4]
+            subsamples = [self.data.samples[i] for i in subs]
+
+        else:
+            # tell user which samples have already completed step 6
+            if state6.any():
+                raise IPyradError(
+                    "some samples are already in state==6. If you wish to \n" \
+                  + "create a new database for across sample comparisons \n" \
+                  + "use the force=True (-f) argument.")
+            # run all samples in state 5
+            subsamples = [self.data.samples[i] for i in state5]
+
+        # check that kept samples have clusters
+        checked_samples = []
+        for sample in subsamples:
+            if sample.stats.reads_consens:
+                checked_samples.append(sample)
+            else:
+                print("skipping {}; no consensus reads found.")
+        if not any(checked_samples):
+            raise IPyradError("no samples ready for step 6")
+
+        # sort samples so the largest is first
+        checked_samples.sort(
+            key=lambda x: x.stats.reads_consens,
+            reverse=True,
+        )
+        return checked_samples        
 
 
     def assign_groups(self):
@@ -322,7 +368,7 @@ class Step6:
 
 
     def remote_build_denovo_clusters(self):
-       
+        "build denovo clusters from vsearch clustered seeds"
         # filehandles
         uhandle = os.path.join(
             self.data.dirs.across, 
@@ -370,7 +416,7 @@ class Step6:
 
 
     def remote_align_denovo_clusters(self):
-    
+        "align denovo clusters built from vsearch clustering"
         # get files
         globpath = os.path.join(self.data.tmpdir, self.data.name + ".chunk_*")
         clustbits = glob.glob(globpath)
