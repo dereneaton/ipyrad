@@ -13,11 +13,8 @@ except ImportError:
     izip = zip
 
 import os
-import sys
-import time
 import socket
 import tempfile
-import datetime
 import ipyrad
 import gzip
 from collections import defaultdict
@@ -114,23 +111,6 @@ class ObjDict(dict):
             for key in sorted(self):
                 result += key + " : " + str(self[key]) + "\n"
         return result
-
-
-# ### A decorator for use in step5 base calling
-# def memoize(func):
-#     """ Memoization decorator for a function taking one or more arguments. """
-#     class Memodict(dict):
-#         """ just a dict"""
-#         def __getitem__(self, *key):
-#             return dict.__getitem__(self, key)
-
-#         def __missing__(self, key):
-#             """ this makes it faster """
-#             ret = self[key] = func(*key)
-#             return ret
-
-#     return Memodict().__getitem__
-
 
 
 
@@ -825,8 +805,6 @@ def revcomp(sequence):
     return sequence
 
 
-
-
 ## Alleles priority dict. The key:vals are the same as the AMBIGS dict
 ## except it returns just one base, w/ the order/priority being (C>A>T>G)
 ## This dict is used to impute lower case into consens to retain allele
@@ -896,32 +874,6 @@ def clustdealer(pairdealer, optim):
 
 
 
-
-# def progressbar(njobs, finished, start, msg="", spacer="  "):
-
-#     # measure progress
-#     if njobs:
-#         progress = 100 * (finished / float(njobs))
-#     else:
-#         progress = 100
-        
-#     # build the bar
-#     hashes = '#' * int(progress / 5.)
-#     nohash = ' ' * int(20 - len(hashes))
-#     if ipyrad._cli:
-#         msg = msg.rsplit("|", 2)[0]
-
-#     # timestamp
-#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-
-#     # print to stderr
-#     args = [spacer, hashes + nohash, int(progress), elapsed, msg]
-#     print("\r{}[{}] {:>3}% {} ".format(*args), end="")
-#     sys.stdout.flush()
-
-
-
-
 def get_threaded_view(ipyclient, split=True):
     """ gets optimum threaded view of ids given the host setup """
     ## engine ids
@@ -940,7 +892,7 @@ def get_threaded_view(ipyclient, split=True):
         hostdict[host].append(eid)
 
     ## Now split threads on the same host into separate proc if there are many
-    hostdictkeys = hostdict.keys()
+    hostdictkeys = list(hostdict.keys())
     for key in hostdictkeys:
         gids = hostdict[key]
         maxt = len(gids)
