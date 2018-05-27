@@ -28,7 +28,8 @@ from ipyrad.core.sample import Sample
 
 
 class Assembly(object):
-    """ An ipyrad Assembly class object.
+    """ 
+    An ipyrad Assembly class object.
 
     The core object in ipyrad used to store and retrieve results, to
     call assembly functions, and to link to Sample objects.
@@ -1288,27 +1289,32 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '3' in steps:
-                self._step3func(samples=None, noreverse=0, force=force,
-                    maxindels=8, ipyclient=ipyclient)
+                kwargs = dict(
+                    data=self, 
+                    force=force, 
+                    ipyclient=ipyclient, 
+                    maxindels=8)
+                step = ip.assemble.jointestimate.Step3(**kwargs)
+                step.run()
                 self.save()
                 ipyclient.purge_everything()
 
             if '4' in steps:
-                ip.assemble.jointestimate.Step4.run()
-                #self._step4func(samples=None, force=force, ipyclient=ipyclient)
-                self.save()
+                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
+                step = ip.assemble.jointestimate.Step4(**kwargs)
+                step.run()
                 ipyclient.purge_everything()
 
             if '5' in steps:
-                ip.assemble.consens_se.Step5.run()
-                #self._step5func(samples=None, force=force, ipyclient=ipyclient)
-                self.save()
+                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
+                step = ip.assemble.consens_se.Step5(**kwargs)
+                step.run()
                 ipyclient.purge_everything()
 
             if '6' in steps:
-                self._step6func(samples=None, noreverse=0, randomseed=12345,
-                                force=force, ipyclient=ipyclient, **kwargs)
-                self.save()
+                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
+                step = ip.assemble.cluster_across.Step6(**kwargs)                    
+                step.run()
                 ipyclient.purge_everything()
 
             if '7' in steps:
@@ -1334,7 +1340,7 @@ class Assembly(object):
                   "\n  Error message is below -------------------------------"+\
                   "\n{}".format(inst))
 
-        ## close client when done or interrupted
+        # close client when done or interrupted
         finally:
             try:
                 # save the Assembly... should we save here or not. I added save
@@ -1343,10 +1349,10 @@ class Assembly(object):
                 # by executing a bad run() command.
                 #self.save()  
 
-                ## can't close client if it was never open
+                # can't close client if it was never open
                 if ipyclient:
 
-                    ## send SIGINT (2) to all engines
+                    # send SIGINT (2) to all engines
                     try:
                         ipyclient.abort()
                         time.sleep(1)
@@ -1359,9 +1365,9 @@ class Assembly(object):
                     except ipp.NoEnginesRegistered:
                         pass
 
-                    ## if CLI, stop jobs and shutdown. Don't use _cli here 
-                    ## because you can have a CLI object but use the --ipcluster
-                    ## flag, in which case we don't want to kill ipcluster.
+                    # if CLI, stop jobs and shutdown. Don't use _cli here 
+                    # because you can have a CLI object but use the --ipcluster
+                    # flag, in which case we don't want to kill ipcluster.
                     if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
                         ip.logger.info("  shutting down engines")
                         ipyclient.shutdown(hub=True, block=False)
@@ -1371,12 +1377,12 @@ class Assembly(object):
                         if not ipyclient.outstanding:
                             ipyclient.purge_everything()
                         else:
-                            ## nanny: kill everything, something bad happened
+                            # nanny: kill everything, something bad happened
                             ipyclient.shutdown(hub=True, block=False)
                             ipyclient.close()
                             print("\nwarning: ipcluster shutdown and must be restarted")
                     
-            ## if exception is close and save, print and ignore
+            # if exception is close and save, print and ignore
             except Exception as inst2:
                 print("warning: error during shutdown:\n{}".format(inst2))
                 ip.logger.error("shutdown warning: %s", inst2)
