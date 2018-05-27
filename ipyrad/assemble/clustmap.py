@@ -645,7 +645,7 @@ def dereplicate(data, sample, nthreads):
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc.communicate()[0]
     if proc.returncode:
-        ip.logger.error("error inside derep_and_sort %s", errmsg)
+        ip.logger.error("error inside dereplicate %s", errmsg)
         raise IPyradWarningExit(errmsg)
 
 
