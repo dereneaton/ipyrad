@@ -33,11 +33,9 @@ with warnings.catch_warnings():
 
 
 class Step5:
-    """
-    Organized Step 5 functions for all datatype and methods
-    """
-    def __init__(self, data, force, ipyclient):
+    "Organized Step 5 functions for all datatype and methods"
 
+    def __init__(self, data, force, ipyclient):
         self.data = data
         self.force = force
         self.samples = self.get_subsamples()
@@ -65,6 +63,17 @@ class Step5:
             shutil.rmtree(self.data.tmpdir)
         if not os.path.exists(self.data.tmpdir):
             os.mkdir(self.data.tmpdir)
+
+        # assign output file handles for s6
+        for sample in self.samples:
+            if not self.ref:
+                sample.files.consens = os.path.join(
+                    self.data.dirs.consens, 
+                    "{}.consens.gz".format(sample.name))
+            else:
+                sample.files.consens = os.path.join(
+                    self.data.dirs.consens, 
+                    "{}.consens.sam".format(sample.name))
 
         # set up parallel client: allow user to throttle cpus
         self.lbview = self.ipyclient.load_balanced_view()
@@ -137,12 +146,16 @@ class Step5:
 
     def run(self):
         "run the main functions on the parallel client"
+        # this isn't setup yet to allow restarting if interrupted mid run
         try:
             self.remote_calculate_depths()
             self.remote_make_chunks()
-            self.remote_process_chunks()
+            statsdicts = self.remote_process_chunks()
+            self.remote_concatenate_chunks()
+            self.data_store(statsdicts)
         finally:
-            self.cleanup_tempfiles()
+            shutil.rmtree(self.data.tmpdir)
+            self.data.save()
 
 
     def remote_calculate_depths(self):
@@ -229,90 +242,90 @@ class Step5:
             for chunk in chunks:
                 jobs[sample.name].append(
                     self.lbview.apply(
-                        consensus_calls,
+                        process_chunks,
                         *(self.data, sample, chunk, self.ref)))
                 
         # track progress - just wait for all to finish before concat'ing
+        allsyncs = list(chain(*[jobs[i] for i in jobs]))
         while 1:
-            ready = [i.ready() for i in jobs.values()]
+            ready = [i.ready() for i in allsyncs]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
 
+        # check for failures
+        for job in allsyncs:
+            if not job.successful():
+                ip.logger.error("error in step 5: %s", job.exception())
+                raise IPyradError("error in consensus_calls():\n{}"
+                                  .format(job.exception()))
+
         # collect all results for a sample and store stats 
-        asyncs1 = {}
+        statsdicts = {}
         for sample in self.samples:
-            rlist = jobs[sample.name]
-            statsdicts = [i.result() for i in rlist]
-            job = self.lbview.apply(
-                store_sample_stats,
-                *(self.data, sample, statsdicts))
-            asyncs1[sample.name] = job
+            statsdicts[sample.name] = [i.result() for i in jobs[sample.name]]
+        return statsdicts
+
+
+    def remote_concatenate_chunks(self):
+        # concatenate and store catgs
+        print("")
+        start = time.time()
+        printstr = ("indexing alleles    ", "s5")
 
         # concat catgs for each sample
-        asyncs2 = {}
+        asyncs1 = {}
         for sample in self.samples:
-            rlist = jobs[sample.name]
-            statsdicts = [i.result() for i in rlist]
-            job = self.lbview.apply(
+            asyncs1[sample.name] = self.lbview.apply(
                 concat_catgs,                
-                *(self.data, sample))
-            asyncs2[sample.name] = job
+                *(self.data, sample, self.ref))           
 
         # collect all results for a sample and store stats 
-        asyncs3 = {}
+        if self.ref:
+            concat_job = concat_reference_consens
+        else:
+            concat_job = concat_denovo_consens
+        asyncs2 = {}
         for sample in self.samples:
-            rlist = jobs[sample.name]
-            statsdicts = [i.result() for i in rlist]
-            job = self.lbview.apply(
-                concat_denovo_consens,
+            asyncs2[sample.name] = self.lbview.apply(
+                concat_job,
                 *(self.data, sample))
-            asyncs3[sample.name] = job
-
+            
         # track progress of stats storage
-        #casyncs = 
+        alljobs = list(asyncs1.values()) + list(asyncs2.values())
         while 1:
-            ready = [i.ready() for i in casyncs.values()]
-            self.data._progressbar(10, 10, start, printstr)
+            ready = [i.ready() for i in alljobs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
 
         # check for failures:
-
-
-        # store the handle to the Sample
-        # sample.files.database = handle1
-
         print("")
-        for key in asyncs:
-            asynclist = asyncs[key]
-            for rasync in asynclist:
-                if not rasync.successful():
-                    ip.logger.error("  async error: %s \n%s", key, rasync.exception())
-        for key in casyncs:
-            if not casyncs[key].successful():
-                ip.logger.error("  casync error: %s \n%s", key, casyncs[key].exception())
-
-        ## get samples back
-        subsamples = [i.result() for i in casyncs.values()]
-        for sample in subsamples:
-            data.samples[sample.name] = sample
+        for job in alljobs:
+            if not job.successful():
+                ip.logger.error("error in step 5: %s", job.exception())
+                raise IPyradError(job.exception())
 
 
-    def data_cleanup(self):
-        ## build Assembly stats
-        data.stats_dfs.s5 = data._build_stat("s5")
+    def data_store(self, statsdicts):
+        "store assembly object stats"
+        
+        # store sample stats
+        for sample in self.samples:
+            store_sample_stats(self.data, sample, statsdicts[sample.name])
 
-        ## write stats file
-        data.stats_files.s5 = os.path.join(
+        # build Assembly stats
+        self.data.stats_dfs.s5 = self.data._build_stat("s5")
+
+        # write stats file
+        self.data.stats_files.s5 = os.path.join(
             self.data.dirs.consens, 
             's5_consens_stats.txt')
 
-        with open(data.stats_files.s5, 'w') as out:
-            #out.write(data.stats_dfs.s5.to_string())
-            data.stats_dfs.s5.to_string(
+        with open(self.data.stats_files.s5, 'w') as out:
+            self.data.stats_dfs.s5.to_string(
                 buf=out,
                 formatters={
                     'clusters_total': '{:.0f}'.format,
@@ -326,55 +339,40 @@ class Step5:
                 })
 
 
-    def cleanup_tempfiles(self):
-        "remote temp file chunks"
-        tmpcons = glob.glob(os.path.join(
-            self.data.dirs.clusts, "tmp_*.[0-9]*"))
-        tmpcons += glob.glob(os.path.join(
-            self.data.dirs.consens, "*_tmpcons.*"))
-        tmpcons += glob.glob(os.path.join(
-            self.data.dirs.consens, "*_tmpcats.*"))
-        for tmpchunk in tmpcons:
-            os.remove(tmpchunk)
-
-
-
-
-
-def new_cleanup(data, sample, statsdicts, isref):
-    "cleaning up. optim is the size (nloci) of tmp arrays"
-    pass
-
 
 def concat_catgs(data, sample, isref):
     "concat catgs into a single sample catg and remove tmp files"
 
     # collect tmpcat files
     tmpcats = glob.glob(os.path.join(
-        data.dirs.consens,
+        data.tmpdir,
         "{}_tmpcats.*".format(sample.name)))
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
+    # get full nrows of the new h5 from the tmpcat filenames
+    nrows = sum([int(i.rsplit(".", 2)[-2]) for i in tmpcats])
+
     # get shape info from the first cat, (optim, maxlen, 4)
+    optim = min(nrows, 5000)
     with h5py.File(tmpcats[0], 'r') as io5:
-        optim, maxlen, _ = io5['cats'].shape
+        _, maxlen, _ = io5['cats'].shape
 
     # file handle for concat'd catg array
-    handle1 = os.path.join(
-        data.dirs.consens, 
+    outcatg = os.path.join(
+        data.dirs.consens,
         "{}.catg".format(sample.name))
 
     # fill in the chunk array
-    with h5py.File(handle1, 'w') as ioh5:
-        nloci = len(tmpcats) * optim
+    with h5py.File(outcatg, 'w') as ioh5:
         dcat = ioh5.create_dataset(
-            "catg",
-            (nloci, maxlen, 4),
+            name="catg",
+            shape=(nrows, maxlen, 4),
             dtype=np.uint32,
             chunks=(optim, maxlen, 4),
             compression="gzip")
         dall = ioh5.create_dataset(
-            "nalleles", (nloci, ),
+            name="nalleles", 
+            shape=(nrows, ),
             dtype=np.uint8,
             chunks=(optim, ),
             compression="gzip")
@@ -382,8 +380,8 @@ def concat_catgs(data, sample, isref):
         # only create chrom for reference-aligned data
         if isref:
             dchrom = ioh5.create_dataset(
-                "chroms",
-                (nloci, 3),
+                name="chroms",
+                shape=(nrows, 3),
                 dtype=np.int64,
                 chunks=(optim, 3),
                 compression="gzip")
@@ -391,38 +389,70 @@ def concat_catgs(data, sample, isref):
         # Combine all those tmp cats into the big cat
         start = 0
         for icat in tmpcats:
+            addon = int(icat.rsplit(".", 2)[-2])
+            end = start + addon
             io5 = h5py.File(icat, 'r')
-            end = start + optim
             dcat[start:end] = io5['cats'][:]
             dall[start:end] = io5['alls'][:]
             if isref:
                 dchrom[start:end] = io5['chroms'][:]
-            start += optim
+            start = end
             io5.close()
             os.remove(icat)
 
 
 def concat_denovo_consens(data, sample):
-    "concatenate consens sequences for denovo assemblies"
+    "concatenate consens bits into fasta file for denovo assemblies"
 
     # collect consens chunk files
     combs1 = glob.glob(os.path.join(
-        data.dirs.consens,
+        data.tmpdir,
         "{}_tmpcons.*".format(sample.name)))
     combs1.sort(key=lambda x: int(x.split(".")[-1]))
 
-    # merge consens read files
-    handle1 = os.path.join(
-        data.dirs.consens, 
-        "{}.consens.gz".format(sample.name))
-
     # write to the file
-    with gzip.open(handle1, 'wt') as out:
+    with gzip.open(sample.files.consens, 'wt') as out:
         for fname in combs1:
             with open(fname) as infile:
                 out.write(infile.read() + "\n")
             os.remove(fname)
-    sample.files.consens = [handle1]
+
+
+def concat_reference_consens(data, sample):
+    "concatenates consens bits into SAM for reference assemblies"
+    
+    with open(sample.files.consens, 'w') as outf:
+
+        # parse fai file for writing headers
+        fai = "{}.fai".format(data.paramsdict["reference_sequence"])
+        fad = pd.read_csv(fai, sep="\t", names=["SN", "LN", "POS", "N1", "N2"])
+        headers = [
+            "@SQ     SN:{} LN:{}".format(i, j)
+            for (i, j) in zip(fad["SN"], fad["LN"])
+        ]
+        outf.write("\n".join(headers) + "\n")
+
+        # write sequences to SAM file
+        combs1 = glob.glob(os.path.join(
+            data.tmpdir,
+            "{}_tmpcons.*".format(sample.name)))
+        combs1.sort(key=lambda x: int(x.split(".")[-1]))
+
+        # write to file with sample names imputed to line up with catg array
+        counter = 0
+        for fname in combs1:
+            with open(fname) as infile:
+                # impute catg ordered seqnames 
+                data = infile.readlines()
+                fdata = []
+                for line in data:
+                    name, chrom, rest = line.rsplit(":", 2)
+                    fdata.append(
+                        "{}_{}:{}:{}".format(name, counter, chrom, rest)
+                        )
+                    counter += 1
+                outf.write("".join(fdata) + "\n")
+            os.remove(fname)
 
 
 def store_sample_stats(data, sample, statsdicts):
@@ -474,7 +504,6 @@ def store_sample_stats(data, sample, statsdicts):
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
-
 def make_chunks(data, sample, ncpus):
     "split job into bits and pass to the client"
 
@@ -512,8 +541,7 @@ def make_chunks(data, sample, ncpus):
                 num += 1
 
 
-
-def consensus_calls(data, sample, chunk, isref):
+def process_chunks(data, sample, chunk, isref):
     "make consensus base and allele calls"
 
     # temporarily store the mean estimates to Assembly
@@ -529,20 +557,10 @@ def consensus_calls(data, sample, chunk, isref):
     pairdealer = izip(*[iter(clusters)] * 2)
     maxlen = data._hackersonly["max_fragment_length"]
 
-    # write to tmp cons to file to be combined later
-    consenshandle = os.path.join(
-        data.dirs.consens,
-        "{}_tmpcons.{}".format(sample.name, tmpnum))
-    tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
-    with h5py.File(tmp5, 'w') as io5:
-        io5.create_dataset("cats", (optim, maxlen, 4), dtype=np.uint32)
-        io5.create_dataset("alls", (optim, ), dtype=np.uint8)
-        io5.create_dataset("chroms", (optim, 3), dtype=np.int64)
-
-        ## local copies to use to fill the arrays
-        catarr = io5["cats"][:]
-        nallel = io5["alls"][:]
-        refarr = io5["chroms"][:]
+    # local copies to use to fill the arrays
+    catarr = np.zeros((optim, maxlen, 4), dtype=np.uint32)
+    nallel = np.zeros((optim, ), dtype=np.uint8)
+    refarr = np.zeros((optim, 3), dtype=np.int64)
 
     # if reference-mapped then parse the fai to get index number of chroms
     if isref:
@@ -552,7 +570,7 @@ def consensus_calls(data, sample, chunk, isref):
             sep="\t")
         faidict = {j: i for i, j in enumerate(fai.scaffold)}
 
-    # store data for stats counters
+    # store data for stats counters.
     counters = {
         "name": tmpnum,
         "heteros": 0,
@@ -578,7 +596,7 @@ def consensus_calls(data, sample, chunk, isref):
         maxhet = data.paramsdict["max_Hs_consens"][0]
         maxn = data.paramsdict["max_Ns_consens"][0]
 
-    ## load the refmap dictionary if refmapping
+    # load the refmap dictionary if refmapping
     done = 0
     while not done:
         done, chunk = clustdealer(pairdealer, 1)
@@ -594,6 +612,7 @@ def consensus_calls(data, sample, chunk, isref):
             # IF this is a reference mapped read store the chrom and pos info
             # -1 defaults to indicating an anonymous locus, since we are using
             # the faidict as 0 indexed. If chrompos fails it defaults to -1
+            # this is used for the 'denovo + reference' method.
             ref_position = (-1, 0, 0)
             if isref:
                 # parse position from name string
@@ -627,13 +646,17 @@ def consensus_calls(data, sample, chunk, isref):
                 # apply a filter to remove low coverage sites/Ns that
                 # are likely sequence repeat errors. This is only applied to
                 # clusters that already passed the read-depth filter (1)
+                # and is not applied to ref aligned data which is expected to
+                # have internal spacers that we leave in place here. 
                 if b"N" in consens:
-                    try:
-                        consens, arrayed = removerepeats(consens, arrayed)
+                    if not isref:
+                        try:
+                            consens, arrayed = removerepeats(consens, arrayed)
 
-                    except ValueError:
-                        ip.logger.info("Caught bad chunk w/ all Ns. Skip it.")
-                        continue
+                        except ValueError:
+                            ip.logger.info(
+                                "Caught bad chunk w/ all Ns. Skip it.")
+                            continue
 
                 # get hetero sites
                 hidx = [
@@ -645,14 +668,13 @@ def consensus_calls(data, sample, chunk, isref):
                 if nfilter2(nheteros, maxhet):
                     # filter for maxN, & minlen
                     if nfilter3(consens, maxn):
-                        ## counter right now
+                        # counter right now
                         current = counters["nconsens"]
-                        ## get N alleles and get lower case in consens
+                        # get N alleles and get lower case in consens
                         consens, nhaps = nfilter4(consens, hidx, arrayed)
-                        ## store the number of alleles observed
+                        # store the number of alleles observed
                         nallel[current] = nhaps
-
-                        ## store a reduced array with only CATG
+                        # store a reduced array with only CATG
                         catg = np.array(
                             [np.sum(arrayed == i, axis=0)
                                 for i in [b'C', b'A', b'T', b'G']],
@@ -660,8 +682,9 @@ def consensus_calls(data, sample, chunk, isref):
                         catarr[current, :catg.shape[0], :] = catg
                         refarr[current] = ref_position
 
-                        ## store the seqdata for tmpchunk
-                        storeseq[counters["name"]] = b"".join(list(consens))
+                        # store the seqdata for tmpchunk
+                        # storeseq[counters["name"]] = b"".join(list(consens))
+                        storeseq[current] = b"".join(list(consens))
                         counters["name"] += 1
                         counters["nconsens"] += 1
                         counters["heteros"] += nheteros
@@ -669,38 +692,71 @@ def consensus_calls(data, sample, chunk, isref):
                         filters['maxn'] += 1
                 else:
                     filters['maxh'] += 1
-
             else:
                 filters['depth'] += 1
 
     # close infile io
     clusters.close()
 
+    # find last empty size
+    end = np.where(np.all(refarr == 0, axis=1))[0]
+    if np.any(end):
+        end = end.min()
+    else:
+        end = refarr.shape[0]
+
     # write final consens string chunk
+    consenshandle = os.path.join(
+        data.tmpdir,
+        "{}_tmpcons.{}.{}".format(sample.name, end, tmpnum))
+
+    # write chunk
     if storeseq:
         with open(consenshandle, 'wt') as outfile:
-            outfile.write(
-                "\n".join([">" + sample.name + "_" + str(key) + \
-                "\n" + storeseq[key].decode() for key in storeseq]))
+            if not isref:
+                outfile.write(
+                    "\n".join([">" + sample.name + "_" + str(key) + \
+                    "\n" + storeseq[key].decode() for key in storeseq]))
+            else:
+                outfile.write(
+                    "\n".join(
+                        ["{}:{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                        .format(
+                            sample.name,
+                            refarr[i][0],
+                            refarr[i][1],
+                            refarr[i][2],
+                            0,
+                            refarr[i][0],
+                            refarr[i][1],
+                            0,
+                            "*",
+                            "*",
+                            0,
+                            refarr[i][2] - refarr[i][1],
+                            storeseq[i].decode(),
+                            "*",
+                        ) for i in storeseq.keys()]
+                        ))
 
-    # write to h5 array, this can be a bit slow on big data sets and is 
-    # not currently convered by progressbar movement.
-    with h5py.File(tmp5, 'a') as io5:
-        io5["cats"][:] = catarr
-        io5["alls"][:] = nallel
-        io5["chroms"][:] = refarr
+    # store reduced size arrays with indexes matching to keep indexes
+    tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
+    with h5py.File(tmp5, 'w') as io5:
+        io5.create_dataset(name="cats", data=catarr[:end])
+        io5.create_dataset(name="alls", data=nallel[:end])
+        io5.create_dataset(name="chroms", data=refarr[:end])
     del catarr
     del nallel
     del refarr
 
     # return stats
     counters['nsites'] = sum([len(i) for i in storeseq.values()])
+    del storeseq
     return counters, filters
 
 
 def apply_filters_and_fill_arrs():
     pass
-
 
 
 def base_caller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
@@ -1292,241 +1348,3 @@ def storealleles(consens, hidx, alleles):
 
     ## return consens
     return consens
-
-
-
-def cleanup(data, sample, statsdicts):
-    """
-    cleaning up. optim is the size (nloci) of tmp arrays
-    """
-    ip.logger.info("in cleanup for: %s", sample.name)
-    isref = 'reference' in data.paramsdict["assembly_method"]
-
-    ## collect consens chunk files
-    combs1 = glob.glob(os.path.join(
-        data.dirs.consens,
-        sample.name + "_tmpcons.*"))
-    combs1.sort(key=lambda x: int(x.split(".")[-1]))
-
-    ## collect tmpcat files
-    tmpcats = glob.glob(os.path.join(
-        data.dirs.consens,
-        sample.name + "_tmpcats.*"))
-    tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
-
-    ## get shape info from the first cat, (optim, maxlen, 4)
-    with h5py.File(tmpcats[0], 'r') as io5:
-        optim, maxlen, _ = io5['cats'].shape
-
-    ## save as a chunked compressed hdf5 array
-    handle1 = os.path.join(data.dirs.consens, sample.name + ".catg")
-    with h5py.File(handle1, 'w') as ioh5:
-        nloci = len(tmpcats) * optim
-        dcat = ioh5.create_dataset(
-            "catg",
-            (nloci, maxlen, 4),
-            dtype=np.uint32,
-            chunks=(optim, maxlen, 4),
-            compression="gzip")
-        dall = ioh5.create_dataset(
-            "nalleles", (nloci, ),
-            dtype=np.uint8,
-            chunks=(optim, ),
-            compression="gzip")
-        ## only create chrom for reference-aligned data
-        if isref:
-            dchrom = ioh5.create_dataset(
-                "chroms",
-                (nloci, 3),
-                dtype=np.int64,
-                chunks=(optim, 3),
-                compression="gzip")
-
-        ## Combine all those tmp cats into the big cat
-        start = 0
-        for icat in tmpcats:
-            io5 = h5py.File(icat, 'r')
-            end = start + optim
-            dcat[start:end] = io5['cats'][:]
-            dall[start:end] = io5['alls'][:]
-            if isref:
-                dchrom[start:end] = io5['chroms'][:]
-            start += optim
-            io5.close()
-            os.remove(icat)
-
-    ## store the handle to the Sample
-    sample.files.database = handle1
-
-    ## record results
-    xcounters = {
-        "nconsens": 0,
-        "heteros": 0,
-        "nsites": 0,
-    }
-    xfilters = {
-        "depth": 0,
-        "maxh": 0,
-        "maxn": 0,
-    }
-
-    ## merge finished consens stats
-    for counters, filters in statsdicts:
-        ## sum individual counters
-        for key in xcounters:
-            xcounters[key] += counters[key]
-        for key in xfilters:
-            xfilters[key] += filters[key]
-
-    ## merge consens read files
-    handle1 = os.path.join(data.dirs.consens, sample.name + ".consens.gz")
-    with gzip.open(handle1, 'wt') as out:
-        for fname in combs1:
-            with open(fname) as infile:
-                out.write(infile.read() + "\n")
-            os.remove(fname)
-    sample.files.consens = [handle1]
-
-    ## set Sample stats_dfs values
-    if int(xcounters['nsites']):
-        prop = int(xcounters["heteros"]) / float(xcounters['nsites'])
-    else:
-        prop = 0
-
-    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
-    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
-    sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
-    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
-    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
-    sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
-    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
-    sample.stats_dfs.s5.heterozygosity = float(prop)
-
-    ## set the Sample stats summary value
-    sample.stats.reads_consens = int(xcounters["nconsens"])
-
-    ## save state to Sample if successful
-    if sample.stats.reads_consens:
-        sample.stats.state = 5
-    else:
-        print("No clusters passed filtering in Sample: {}".format(sample.name))
-    return sample
-
-
-
-def chunk_clusters(data, sample, ncpus):
-    """ split job into bits and pass to the client """
-
-    # counter for split job submission
-    num = 0
-
-    # set optim size for chunks in N clusters. The first few chunks take longer
-    # because they contain larger clusters, so we create 4X as many chunks as
-    # processors so that they are split more evenly.
-    optim = int(
-        (sample.stats.clusters_total // ncpus) + \
-        (sample.stats.clusters_total % ncpus))
-
-    ## break up the file into smaller tmp files for each engine
-    ## chunking by cluster is a bit trickier than chunking by N lines
-    chunkslist = []
-
-    ## open to clusters
-    with gzip.open(sample.files.clusters, 'rb') as clusters:
-        ## create iterator to sample 2 lines at a time
-        pairdealer = izip(*[iter(clusters)] * 2)
-
-        ## Use iterator to sample til end of cluster
-        done = 0
-        while not done:
-            ## grab optim clusters and write to file.
-            done, chunk = clustdealer(pairdealer, optim)
-            chunk = [i.decode() for i in chunk]
-            chunkhandle = os.path.join(
-                data.dirs.clusts,
-                "tmp_" + str(sample.name) + "." + str(num * optim))
-            if chunk:
-                chunkslist.append((optim, chunkhandle))
-                with open(chunkhandle, 'wt') as outchunk:
-                    outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
-                num += 1
-
-    return chunkslist
-
-
-
-def process_chunks(data, samples, lasyncs, lbview):
-    """
-    submit chunks to consens func and ...
-    """
-
-    ## send chunks to be processed
-    start = time.time()
-    asyncs = {sample.name: [] for sample in samples}
-    printstr = ("consens calling     ", "s5")
-
-    ## get chunklist from results
-    for sample in samples:
-        clist = lasyncs[sample.name].result()
-        for optim, chunkhandle in clist:
-            args = (data, sample, chunkhandle, optim)
-            asyncs[sample.name].append(lbview.apply_async(newconsensus, *args))
-            data._progressbar(10, 0, start, printstr)
-
-    ## track progress
-    allsyncs = list(chain(*[asyncs[i.name] for i in samples]))
-    while 1:
-        ready = [i.ready() for i in allsyncs]
-        data._progressbar(len(ready), sum(ready), start, printstr)
-        time.sleep(0.1)
-        if len(ready) == sum(ready):
-            break
-
-    ## get clean samples
-    casyncs = {}
-    for sample in samples:
-        rlist = asyncs[sample.name]
-        statsdicts = [i.result() for i in rlist]
-        casyncs[sample.name] = lbview.apply(cleanup, *(data, sample, statsdicts))
-    while 1:
-        ready = [i.ready() for i in casyncs.values()]
-        data._progressbar(10, 10, start, printstr)
-        time.sleep(0.1)
-        if len(ready) == sum(ready):
-            break
-
-    ## check for failures:
-    print("")
-    for key in asyncs:
-        asynclist = asyncs[key]
-        for rasync in asynclist:
-            if not rasync.successful():
-                ip.logger.error("  async error: %s \n%s", key, rasync.exception())
-    for key in casyncs:
-        if not casyncs[key].successful():
-            ip.logger.error("  casync error: %s \n%s", key, casyncs[key].exception())
-
-    ## get samples back
-    subsamples = [i.result() for i in casyncs.values()]
-    for sample in subsamples:
-        data.samples[sample.name] = sample
-
-    ## build Assembly stats
-    data.stats_dfs.s5 = data._build_stat("s5")
-
-    ## write stats file
-    data.stats_files.s5 = os.path.join(data.dirs.consens, 's5_consens_stats.txt')
-    with open(data.stats_files.s5, 'w') as out:
-        #out.write(data.stats_dfs.s5.to_string())
-        data.stats_dfs.s5.to_string(
-            buf=out,
-            formatters={
-                'clusters_total': '{:.0f}'.format,
-                'filtered_by_depth': '{:.0f}'.format,
-                'filtered_by_maxH': '{:.0f}'.format,
-                'filtered_by_maxN': '{:.0f}'.format,
-                'reads_consens': '{:.0f}'.format,
-                'nsites': '{:.0f}'.format,
-                'nhetero': '{:.0f}'.format,
-                'heterozygosity': '{:.5f}'.format
-            })
