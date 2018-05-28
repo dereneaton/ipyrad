@@ -47,8 +47,8 @@ TODO = """
 2. fix progress bar for cluster2 in step3.
 3. finish databasing here.
 4. fix progress bar for cluster here.
-5. write concat bams code here.
-6. 
+xxx 5. write concat bams code here.
+6. reftrick to find vars in ref aligns
 """
 
 class Step6:
@@ -246,7 +246,7 @@ class Step6:
 
         elif self.data.paramsdict["assembly_method"] == "reference":
 
-            # prepare bamfiles
+            # prepare bamfiles (merge and sort)
             self.remote_concat_bams()
 
             # build clusters from bedtools merge
@@ -450,16 +450,97 @@ class Step6:
 
 
     def remote_concat_bams(self):
-        pass
+        "merge bam files into a single large bam"
+
+        catbam = os.path.join(
+            self.data.dirs.across, 
+            "cat.bam"
+            )
+
+        # concatenate consens bamfiles for all samples in this assembly
+        cmd1 = [
+            ipyrad.bin.samtools,
+            "merge", 
+            "-f", 
+            catbam,
+        ]
+        for sample in self.samples:
+            cmd1.append(
+                os.path.join(
+                    self.data.dirs.consens, 
+                    "{}.consens.bam".format(sample.name))
+            )
+        proc = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+        err = proc.communicate()[0].decode()
+        if proc.returncode:
+            raise IPyradWarningExit(
+                "error in: {}: {}".format(" ".join(cmd1), err))
+
+        # sort the bam file
+        cmd2 = [
+            ipyrad.bin.samtools,
+            "sort",
+            "-T",
+            catbam + '.tmp',
+            "-o", 
+            os.path.join(
+                self.data.dirs.across, 
+                "cat.sorted.bam"
+                ),
+            catbam,
+        ]
+        proc = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+        err = proc.communicate()[0].decode()
+        if proc.returncode:
+            raise IPyradWarningExit(
+                "error in: {}: {}".format(" ".join(cmd2), err))
+        os.remove(catbam)
+
+        # index the bam file
+        cmd3 = [
+            ipyrad.bins.samtools, 
+            "index", 
+            os.path.join(
+                self.data.dirs.across, 
+                "cat.sorted.bam"
+            ),           
+        ]
+        proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
+        err = proc.communicate()[0].decode()
+        if proc.returncode:
+            raise IPyradWarningExit(
+                "error in: {}: {}".format(" ".join(cmd3), err))
 
 
-    def remote_build_concat_bams(self):
-        pass
+    def remote_build_ref_clusters(self):
+        "use bedtools to pull in clusters and match catgs with alignments"
+        cmd1 = [
+            ipyrad.bins.bedtools,
+            "bamtobed",
+            "-i", 
+            os.path.join(
+                self.data.dirs.across,
+                "cat.sorted.bam"
+                )
+        ]
 
+        cmd2 = [
+            ipyrad.bins.bedtools, 
+            "merge", 
+            "-d", "0",
+            "-i", "-",
+        ]
 
-def build_concat_bams(data):
-    "create .sam files from consens data and make a concatenated bam file"
-    pass
+        proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+        proc2 = sps.Popen(cmd2, 
+            stdin=proc1.stdout,
+            stderr=sps.STDOUT,
+            stdout=sps.PIPE)
+        result = proc2.communicate()[0].decode()
+        if proc2.returncode:
+            raise IPyradWarningExit(
+                "error in {}: {}".format(" ".join(cmd2), result))
+        return [i.split("\t") for i in result.strip().split("\n")]
 
 
 def build_concat_two(data, jobids, randomseed):
@@ -915,6 +996,7 @@ def store_alleles(seqs):
 
 
 def retrieve_indels_and_alleles(seqarr, idx, amask):
+    "..."
     concatarr = seqarr[idx]
     newmask = np.zeros(len(concatarr), dtype=np.bool_)                        
 
@@ -944,9 +1026,7 @@ def retrieve_indels_and_alleles(seqarr, idx, amask):
 
 
 def init_database(data, samples, nloci):
-    """
-    generate empty h5 database to be filled and setup chunk sizes
-    """   
+    "generate empty h5 database to be filled and setup chunk sizes"   
     # sort to ensure samples will be in alphabetical order, tho they should be.
     samples.sort(key=lambda x: x.name)
 
@@ -998,12 +1078,18 @@ def init_database(data, samples, nloci):
         io5.create_dataset("afilter", (nloci, ), dtype=np.bool_)
 
 
-def fill_database(data, samples, nloci):
-    """
-    fill h5 database with npy tmp files from align steps.
-    """
+def fill_ref_database(data, samples, nloci):
+    "fill h5 database with variants from built clusters"
+    pass
+
+
+def fill_denovo_database(data, samples, nloci):
+    "fill h5 database with npy tmp files from align steps."
+
     # init datasets in the h5 array in appropriate size and chunking
     init_database(data, samples, nloci)
+
+    # find variants
 
     # collect all arrays
     glob.glob("")
