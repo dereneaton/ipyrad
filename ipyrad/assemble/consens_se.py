@@ -16,6 +16,7 @@ import gzip
 import glob
 import shutil
 import warnings
+import subprocess as sps
 from collections import Counter
 
 import numpy as np
@@ -73,7 +74,7 @@ class Step5:
             else:
                 sample.files.consens = os.path.join(
                     self.data.dirs.consens, 
-                    "{}.consens.sam".format(sample.name))
+                    "{}.consens.bam".format(sample.name))
 
         # set up parallel client: allow user to throttle cpus
         self.lbview = self.ipyclient.load_balanced_view()
@@ -258,7 +259,7 @@ class Step5:
         for job in allsyncs:
             if not job.successful():
                 ip.logger.error("error in step 5: %s", job.exception())
-                raise IPyradError("error in consensus_calls():\n{}"
+                raise IPyradError("error in process_chunks():\n{}"
                                   .format(job.exception()))
 
         # collect all results for a sample and store stats 
@@ -420,14 +421,16 @@ def concat_denovo_consens(data, sample):
 
 def concat_reference_consens(data, sample):
     "concatenates consens bits into SAM for reference assemblies"
-    
-    with open(sample.files.consens, 'w') as outf:
+
+    samfile = sample.files.consens.replace(".bam", ".sam")    
+    with open(samfile, 'w') as outf:
 
         # parse fai file for writing headers
         fai = "{}.fai".format(data.paramsdict["reference_sequence"])
         fad = pd.read_csv(fai, sep="\t", names=["SN", "LN", "POS", "N1", "N2"])
-        headers = [
-            "@SQ     SN:{} LN:{}".format(i, j)
+        headers = ["@HD\tVN:1.0\tSO:coordinate"]
+        headers += [
+            "@SQ\tSN:{}\tLN:{}".format(i, j)
             for (i, j) in zip(fad["SN"], fad["LN"])
         ]
         outf.write("\n".join(headers) + "\n")
@@ -453,6 +456,13 @@ def concat_reference_consens(data, sample):
                     counter += 1
                 outf.write("".join(fdata) + "\n")
             os.remove(fname)
+
+    # convert to bam
+    cmd = [ip.bins.samtools, "view", "-Sb", samfile]
+    with open(sample.files.consens, 'w') as outbam:
+        proc = sps.Popen(cmd, stdout=outbam)
+        proc.communicate()
+    os.remove(samfile)
 
 
 def store_sample_stats(data, sample, statsdicts):
@@ -569,6 +579,7 @@ def process_chunks(data, sample, chunk, isref):
             names=['scaffold', 'size', 'sumsize', 'a', 'b'],
             sep="\t")
         faidict = {j: i for i, j in enumerate(fai.scaffold)}
+        revdict = {j: i for i, j in faidict.items()}
 
     # store data for stats counters.
     counters = {
@@ -727,10 +738,10 @@ def process_chunks(data, sample, chunk, isref):
                             refarr[i][1],
                             refarr[i][2],
                             0,
-                            refarr[i][0],
+                            revdict[refarr[i][0] - 1],
                             refarr[i][1],
                             0,
-                            "*",
+                            "{}M".format(len(storeseq[i].decode())),
                             "*",
                             0,
                             refarr[i][2] - refarr[i][1],
