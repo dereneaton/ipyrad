@@ -31,6 +31,7 @@ import subprocess as sps
 import numpy as np
 import pandas as pd
 import dask.array as da
+from pysam import AlignmentFile
 import ipyrad
 from .util import IPyradWarningExit, IPyradError, clustdealer, fullcomp
 
@@ -165,7 +166,7 @@ class Step6:
 
 
     def tune_hierarchical_threading(self):
-        "tune threads for across-sample clustering"
+        "tune threads for across-sample clustering used in denovo assemblies"
 
         # get engine data, skips busy engines.
         hosts = {}
@@ -250,6 +251,7 @@ class Step6:
             self.remote_concat_bams()
 
             # build clusters from bedtools merge
+            self.remote_build_ref_regions()
             self.remote_build_ref_clusters()
 
             # enter database values
@@ -450,7 +452,7 @@ class Step6:
 
 
     def remote_concat_bams(self):
-        "merge bam files into a single large bam"
+        "merge bam files into a single large sorted indexed bam"
 
         catbam = os.path.join(
             self.data.dirs.across, 
@@ -459,7 +461,7 @@ class Step6:
 
         # concatenate consens bamfiles for all samples in this assembly
         cmd1 = [
-            ipyrad.bin.samtools,
+            ipyrad.bins.samtools,
             "merge", 
             "-f", 
             catbam,
@@ -478,7 +480,7 @@ class Step6:
 
         # sort the bam file
         cmd2 = [
-            ipyrad.bin.samtools,
+            ipyrad.bins.samtools,
             "sort",
             "-T",
             catbam + '.tmp',
@@ -512,7 +514,7 @@ class Step6:
                 "error in: {}: {}".format(" ".join(cmd3), err))
 
 
-    def remote_build_ref_clusters(self):
+    def remote_build_ref_regions(self):
         "use bedtools to pull in clusters and match catgs with alignments"
         cmd1 = [
             ipyrad.bins.bedtools,
@@ -540,7 +542,73 @@ class Step6:
         if proc2.returncode:
             raise IPyradWarningExit(
                 "error in {}: {}".format(" ".join(cmd2), result))
-        return [i.split("\t") for i in result.strip().split("\n")]
+        regs = [i.split("\t") for i in result.strip().split("\n")]
+        self.regions = ((i, int(j), int(k)) for i, j, k in regs)
+
+
+    def remote_build_ref_clusters(self):
+        "build clusters and find variants/indels to store"
+
+        # access reads from bam file using pysam
+        bamfile = AlignmentFile(
+            os.path.join(
+                self.data.dirs.across,
+                "cat.sorted.bam"),
+            'rb')
+
+        # get sidx for variant array...
+        # maybe we should open the catg arrays for the first 50 samples 
+        # and loop through the build multiple times to fill it... (probs not).
+
+
+        # open h5 array for writing and store temp arrays for writing
+        #io5 = h5py.File(self.data.clust_database, 'w')
+        catg = np.zeros((10))
+        cons = np.zeros((10))
+        edge = np.zeros((10))
+        chro = np.zeros((10))
+        
+        outf = open("test.ali", 'w')
+
+        # get clusters
+        lidx = 0
+        while 1:
+            try:
+                region = next(self.regions)
+                reads = bamfile.fetch(*region)
+            except StopIteration:
+                break
+
+            # build cluster dict for sorting                
+            rdict = {}
+            for read in reads:
+                rdict[read.qname] = read.seq   
+            keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
+
+            # put into array
+            arr = np.zeros((len(rdict), len(read.seq)), dtype=bytes)
+            for idx, key in enumerate(keys):
+                arr[idx] = list(rdict[key])
+
+            # get consens seq and variant site index 
+            avars = refvars(arr.view(np.uint8), PSEUDO_REF)
+            dat = b"".join(avars.view("S1")[:, 0]).decode()
+            print("ref_{}:{}-{}\n{}"
+                .format(*region, dat), file=outf)
+            #cons[lidx:, avars[:, 0].size] = avars[:, 0]
+            #chro[lidx] = region  # convert refname to int
+            #edge[lidx] = '...'
+            #catg[lidx] = 'store variant sites from each samples catg...'
+
+            # or, just build variant string (or don't...)
+            # write all loci with [locids, nsnps, npis, nindels, ?]
+            for key in keys:
+                print("{}\n{}".format(key, rdict[key]), file=outf)
+            print("//\n//", file=outf)
+            
+            # advance locus counter
+            lidx += 1
+
 
 
 def build_concat_two(data, jobids, randomseed):
@@ -1080,7 +1148,15 @@ def init_database(data, samples, nloci):
 
 def fill_ref_database(data, samples, nloci):
     "fill h5 database with variants from built clusters"
-    pass
+
+    # init datasets in the h5 array in appropriate size and chunking
+    init_database(data, samples, nloci)
+
+
+    # fill edges for each sample
+    for sample in self.samples:
+        pass
+
 
 
 def fill_denovo_database(data, samples, nloci):
@@ -1090,6 +1166,7 @@ def fill_denovo_database(data, samples, nloci):
     init_database(data, samples, nloci)
 
     # find variants
+
 
     # collect all arrays
     glob.glob("")
@@ -1107,6 +1184,60 @@ def fill_denovo_database(data, samples, nloci):
 
 
 ##########################################
+
+@numba.jit(nopython=True)
+def refvars(iseq, consdict):
+    "Returns the most common base at each site in order.x"
+
+    # rows: (cons, alt1, alt2, alt3)
+    altrefs = np.zeros((iseq.shape[1], 4), dtype=np.uint8)
+
+    # for each column in the iseq array
+    for col in range(iseq.shape[1]):
+
+        # expand columns with ambiguous chars and remove N-
+        fcounts = np.zeros(111, dtype=np.int64)
+        counts = np.bincount(iseq[:, col])
+        fcounts[:counts.shape[0]] = counts
+
+        # if invariant just call it that, except if - then call it N...?
+        topbase = iseq[0, col]
+        if np.all(iseq[:, col] == topbase):
+            if topbase == 45:
+                topbase = 78
+            altrefs[col, 0] = topbase
+
+        # if variable
+        else:            
+            # add ambig counts to true bases
+            for aidx in range(consdict.shape[0]):
+                nbases = fcounts[consdict[aidx, 0]]
+                for _ in range(nbases):
+                    fcounts[consdict[aidx, 1]] += 1
+                    fcounts[consdict[aidx, 2]] += 1
+                fcounts[consdict[aidx, 0]] = 0
+
+            ## now get counts from the modified counts arr
+            who = np.argmax(fcounts)
+            altrefs[col, 0] = who
+            fcounts[who] = 0
+
+            ## if an alt allele fill over the "." placeholder
+            who = np.argmax(fcounts)
+            if who:
+                altrefs[col, 1] = who
+                fcounts[who] = 0
+
+                ## if 3rd or 4th alleles observed then add to arr
+                who = np.argmax(fcounts)
+                altrefs[col, 2] = who
+                fcounts[who] = 0
+
+                ## if 3rd or 4th alleles observed then add to arr
+                who = np.argmax(fcounts)
+                altrefs[col, 3] = who
+    return altrefs
+
 
 @numba.jit(nopython=True)
 def refbuild(iseq, consdict):
