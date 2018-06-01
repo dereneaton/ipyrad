@@ -1289,12 +1289,8 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '3' in steps:
-                kwargs = dict(
-                    data=self, 
-                    force=force, 
-                    ipyclient=ipyclient, 
-                    maxindels=8)
-                step = ip.assemble.jointestimate.Step3(**kwargs)
+                args = [self, 8, force, ipyclient]
+                step = ip.assemble.clustmap.Step3(*args)
                 step.run()
                 self.save()
                 ipyclient.purge_everything()
