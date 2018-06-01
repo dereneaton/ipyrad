@@ -34,16 +34,16 @@ class Step3:
     """
     Class for organizing step functions across datatypes and read formats
     """
-    def __init__(self, data, samples, noreverse, maxindels, force, ipyclient):
+    def __init__(self, data, maxindels, force, ipyclient):
 
         # store attributes
         self.data = data
-        self.noreverse = noreverse
+        # self.noreverse = noreverse
         self.maxindels = maxindels
         self.force = force
         self.ipyclient = ipyclient
         self.gbs = bool("gbs" in self.data.paramsdict["datatype"])
-        self.samples = self.check_samples(samples)
+        self.samples = self.get_subsamples()
 
         # init funcs
         self.setup_dirs()
@@ -272,41 +272,49 @@ class Step3:
         self.data.save()
 
     # init functions ------------------------------------
-    def check_samples(self, samples):
-        "make sure samples are in the proper state"
-        ## list of samples to submit to queue
-        subsamples = []
+    def get_subsamples(self):
+        "Apply state, ncluster, and force filters to select samples"
 
-        ## if sample is already done skip
-        for sample in samples:
-            if sample.stats.state < 2:
-                print("Sample not ready for clustering. First run step2 on: {}"
-                      .format(sample.name))
-                continue
+        # filter samples by state
+        state1 = self.data.stats.index[self.data.stats.state < 2]
+        state2 = self.data.stats.index[self.data.stats.state == 2]
+        state3 = self.data.stats.index[self.data.stats.state > 2]
 
-            if not self.force:
-                if sample.stats.state >= 3:
-                    print("Skipping {}; aleady clustered. Use force to re-cluster"
-                          .format(sample.name))
-                else:
-                    if sample.stats.reads_passed_filter:
-                        subsamples.append(sample)
+        # tell user which samples are not ready for step 3
+        if state1.any():
+            print("skipping samples not in state==2:\n{}"
+                  .format(state1.tolist()))
+
+        if self.force:
+            # run all samples above state 1
+            subs = self.data.stats.index[self.data.stats.state > 1]
+            subsamples = [self.data.samples[i] for i in subs]
+
+        else:
+            # tell user which samples have already cmopleted step 3
+            if state3.any():
+                print("skipping samples already finished step 3:\n{}"
+                      .format(state3.tolist()))
+
+            # run all samples in state 2
+            subsamples = [self.data.samples[i] for i in state2]
+
+        # check that kept samples have clusters
+        checked_samples = []
+        for sample in subsamples:
+            if sample.stats.reads_passed_filter:
+                checked_samples.append(sample)
             else:
-                ## force to overwrite
-                if sample.stats.reads_passed_filter:
-                    subsamples.append(sample)
+                print("skipping {}; no reads found.")
+        if not any(checked_samples):
+            raise IPyradError("no samples ready for step 3")
 
-        ## run subsamples
-        if not subsamples:
-            raise IPyradError(
-                "No Samples ready to be clustered.")
-
-        # sort samples so the largest come first
-        subsamples = sorted(
-            subsamples,
+        # sort samples so the largest is first
+        checked_samples.sort(
             key=lambda x: x.stats.reads_passed_filter,
-            reverse=True)
-        return subsamples
+            reverse=True,
+        )
+        return checked_samples
 
 
     def setup_dirs(self):
@@ -322,11 +330,13 @@ class Step3:
         # make a tmpdir for align files
         self.data.tmpdir = os.path.abspath(os.path.expanduser(
             os.path.join(pdir, self.data.name + '-tmpalign')))
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
         if not os.path.exists(self.data.tmpdir):
             os.mkdir(self.data.tmpdir)
 
         # If ref mapping, init samples and make refmapping output directory
-        if not self.data.paramsdict["assembly_method"] == "denovo":
+        if self.data.paramsdict["assembly_method"] != "denovo":
             self.data.dirs.refmapping = os.path.join(
                 pdir, "{}_refmapping".format(self.data.name))
             if not os.path.exists(self.data.dirs.refmapping):
@@ -542,7 +552,6 @@ class Step3:
                 raise IPyradError(basyncs[job].exception())
 
 
-
     def remote_run_sample_cleanup(self):
         # submit job
         printstr = ("calc cluster stats  ", "s3")
@@ -610,7 +619,6 @@ def dereplicate(data, sample, nthreads):
     Updated this function to take infile and outfile to support the double
     dereplication that we need for 3rad (5/29/15 iao).
     """
-
     # find input file with following precedence:
     # .trimmed.fastq.gz, .concatedit.fq.gz, ._merged.fastq, ._declone.fastq
     infiles = [
@@ -1858,6 +1866,7 @@ def bedtools_merge(data, sample):
     # overlap by at least a specific number of bp. This prevents the
     # stairstep syndrome when a + and - read are both extending from
     # the same cutsite. Passing a negative number to `merge -d` gets this done.
+    # +++ scrath the above, we now deal with step ladder data
     if 'pair' in data.paramsdict["datatype"]:
         check_insert_size(data, sample)
         #cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
@@ -2183,7 +2192,8 @@ def get_quick_depths(data, sample):
                     tdepth += int(name.strip().split("=")[-1][:-2])
                     tlen = len(seq)
     except TypeError:
-        raise IPyradError(sample.files.clusters)
+        raise IPyradError(
+            "error in get_quick_depths(): {}".format(sample.files.clusters))
 
     # return
     return np.array(maxlen), np.array(depths)
