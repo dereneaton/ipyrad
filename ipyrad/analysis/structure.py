@@ -884,7 +884,7 @@ class Rep(object):
                         " ".join([abc[0], abc[1], abc[2], 
                                   abc[3].split('.')[0]]),
                         " :  ",
-                        " ".join(abc[5:)
+                        " ".join(abc[5:])
                     )
                     self.inds += 1
                     stable += outstr+"\n"
