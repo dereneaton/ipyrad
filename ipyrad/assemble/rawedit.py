@@ -1,4 +1,4 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
 """ 
 Modifies and/or trims reads based on quality scores, presence of adapters, 
@@ -503,20 +503,6 @@ def run2(data, samples, force, ipyclient):
     assembly_cleanup(data)
 
 
-# def _cleanup_and_die(data):
-#     """ Interrupt required ipyclient.shutdown to kill jobs. This is called
-#     after to ensure file cleanup. Not yet implemented."""
-
-#     samples = data.samples.keys()
-#     concats = [os.path.join(data.dirs.edits, sample.name+"_R1_concat.fq.gz") \
-#                for sample in samples]
-#     concats += [os.path.join(data.dirs.edits, sample.name+"_R2_concat.fq.gz") \
-#                for sample in samples]
-#     for conc in concats:
-#         if os.path.exists(conc):
-#             os.remove(conc)
-
-
 
 def concat_reads(data, subsamples, ipyclient):
     """ concatenate if multiple input files for a single samples """
@@ -703,23 +689,3 @@ NO_BARS_GBS_WARNING = """\
     that's OK, but we will apply a slightly more rigorous trimming of 3' edges 
     on R2 that results in more false positives (more bp trimmed off of R2). 
     """
-
-
-# if __name__ == "__main__":
-
-#     import ipyrad as ip
-
-#     ## get path to root (ipyrad) dir/ 
-#     ROOT = os.path.realpath(
-#        os.path.dirname(
-#            os.path.dirname(
-#                os.path.dirname(__file__))))
-
-#     ## run tests
-#     TESTDIRS = ["test_rad", "test_pairgbs"]
-
-#     for tdir in TESTDIRS:
-#         TEST = ip.load.load_assembly(os.path.join(\
-#                          ROOT, "tests", tdir, "data1"))
-#         TEST.step2(force=True)
-#         print(TEST.stats)
