@@ -59,7 +59,7 @@ class Step4:
         else:
             # tell user which samples have already cmopleted step 4
             if state4.any():
-                print("skipping samples already finished step 5:\n{}"
+                print("skipping samples already finished step 4:\n{}"
                       .format(state4.tolist()))
 
             # run all samples in state 4
