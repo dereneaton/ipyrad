@@ -881,7 +881,7 @@ class Rep(object):
                     #pidx = int(abc[3]) - 1
                     #prop[pidx] = "1.000"
                     outstr = "{}{}{}".format(
-                        " ".join([abc[0], abc[1], abc[2], 
+                        " ".join([abc[0], abc[0], abc[2], 
                                   abc[3].split('.')[0]]),
                         " :  ",
                         " ".join(abc[5:])
