@@ -300,3 +300,7 @@ optional:
 
 .. code-block:: bash
     conda clean --all
+
+Why am i getting the 'ERROR   R1 and R2 files are not the same length.' during step 1?
+--------------------------------------------------------------------------------------
+This is almost certainly a disk space issue. Please be sure you have _plenty_ of disk space on whatever drive you're doing your assembly on. Running out of disk can cause weird problems that seem to defy logic, and that are a headache to debug (like this one). Check your disk space: `df -h`
