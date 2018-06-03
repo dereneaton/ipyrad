@@ -834,7 +834,7 @@ class Rep(object):
 
         ## get table string        
         psearch = re.compile(r"\)   :  ")
-        dsearch = re.compile(r"\)    \d :  ")
+        dsearch = re.compile(r"\)\s+\d+ :  ")
         self.stable = self.parse(psearch, dsearch)
 
         ## record if it is high variance
