@@ -272,3 +272,31 @@ This can actually be caused by a couple of different problems that all result in
 
 **pop_assign_file** A third way you can get this error is related to the previous one. The last line of the pop_assign_file is used for specifying min_sample per population for writing a locus. If you mis-specify the values for the pops in this line then it's possible to filter out all your data and thus obtain the above error.
 
+How do I fix this error: "OSError: /lib64/libpthread.so.0: version `GLIBC_2.12' not found"?
+-------------------------------------------------------------------------------------------
+This error crops up if you are running ipyrad on a cluster that has an older version of GLIBC. The way to work around this is to install specific versions of some of the requirements that are compiled for the older version. Thanks to Edgardo M. Ortiz for this solution.
+
+
+First clean up your current environment:
+
+.. code-block:: bash
+
+    module unload python2
+    rm -rf miniconda2 .conda
+
+    bash Miniconda2-latest-Linux-x86_64.sh
+    source ~/.bashrc
+
+then install:
+
+.. code-block:: bash
+
+    conda install llvmlite=0.22
+    conda install pyzmq=16
+    conda install -c ipyrad ipyrad
+    conda install toytree -c eaton-lab
+
+optional:
+
+.. code-block:: bash
+    conda clean --all
