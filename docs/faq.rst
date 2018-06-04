@@ -304,3 +304,8 @@ optional:
 Why am i getting the 'ERROR   R1 and R2 files are not the same length.' during step 1?
 --------------------------------------------------------------------------------------
 This is almost certainly a disk space issue. Please be sure you have _plenty_ of disk space on whatever drive you're doing your assembly on. Running out of disk can cause weird problems that seem to defy logic, and that are a headache to debug (like this one). Check your disk space: `df -h`
+
+Why does the number of pis recovered in the output stats change when I change the value of `max_snp_locus`?
+-----------------------------------------------------------------------------------------------------------
+While it does seem that the # of pis shouldn't change under varying `max_snp_locus` thresholds, it is in fact not true. This is because the setting is for max __SNP__ per locus, not max __PIS__. So for example if you have `max_snp_locus` set to 5, and you have a locus with 5 singleton snps and one doubleton snp (which is parsimony informative), then this locus would be filtered out. However if you set `max_snp_locus` to 10, then this locus would be included and the 'pis' counter would be incremented by 1. In this way you can see that the number of PIS recovered will change because of variation in this parameter setting.
+
