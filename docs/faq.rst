@@ -292,7 +292,6 @@ then install:
 .. code-block:: bash
 
     conda install llvmlite=0.22
-    conda install pyzmq=16
     conda install -c ipyrad ipyrad
     conda install toytree -c eaton-lab
 
