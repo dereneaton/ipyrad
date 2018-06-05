@@ -22,9 +22,9 @@ import ipyparallel as ipp
 from collections import OrderedDict
 from ipyrad.assemble.util import IPyradParamsError, IPyradWarningExit
 from ipyrad.assemble.util import IPyradError, ObjDict
-from ipyrad.assemble.refmap import index_reference_sequence
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.sample import Sample
+# from ipyrad.assemble.refmap import index_reference_sequence
 
 
 class Assembly(object):
@@ -216,8 +216,7 @@ class Assembly(object):
         """ return print spacer for CLI versus API """
         if self._cli:
             return "  "
-        else:
-            return ""
+        return ""
 
     @property
     def stats(self):
@@ -1299,12 +1298,14 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '4' in steps:
-                ip.assemble.jointestimate.Step4(self, force, ipyclient)
+                step = ip.assemble.jointestimate.Step4(self, force, ipyclient)
+                step.run()
                 self.save()
                 ipyclient.purge_everything()
 
             if '5' in steps:
-                ip.assemble.consens_se.Step5(self, force, ipyclient)
+                step = ip.assemble.consens_se.Step5(self, force, ipyclient)
+                step.run()
                 self.save()
                 ipyclient.purge_everything()
 
