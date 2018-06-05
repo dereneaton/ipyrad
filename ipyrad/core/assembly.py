@@ -75,10 +75,9 @@ class Assembly(object):
         ip.logger.debug("new assembly: {}".format(name))
 
         ## record whether we're in the CLI or API
+        self._cli = False
         if kwargs.get("cli"):
             self._cli = True
-        else:
-            self._cli = False
 
         ## Make sure assembly name is not empty
         if not name:
@@ -107,7 +106,7 @@ class Assembly(object):
             "cores": 0,  # detect_cpus(),
             "threads": 2,
             "pids": {},
-            }
+        }
         for key, val in kwargs.items():
             if key in self._ipcluster:
                 self._ipcluster[key] = val
@@ -228,8 +227,10 @@ class Assembly(object):
 
         ## Set pandas to display all samples instead of truncating
         pd.options.display.max_rows = len(self.samples)
-        statdat = pd.DataFrame([self.samples[i].stats for i in nameordered],
-                      index=nameordered).dropna(axis=1, how='all')
+        statdat = pd.DataFrame(
+            data=[self.samples[i].stats for i in nameordered],
+            index=nameordered,
+        ).dropna(axis=1, how='all')
         # ensure non h,e columns print as ints
         for column in statdat:
             if column not in ["hetero_est", "error_est"]:
@@ -243,9 +244,11 @@ class Assembly(object):
         nameordered = list(self.samples.keys())
         nameordered.sort()
         ## replace curdir with . for shorter printing
-        #fullcurdir = os.path.realpath(os.path.curdir)
-        return pd.DataFrame([self.samples[i].files for i in nameordered],
-                      index=nameordered).dropna(axis=1, how='all')
+        sdf = pd.DataFrame(
+            data=[self.samples[i].files for i in nameordered],
+            index=nameordered,
+        ).dropna(axis=1, how='all')
+        return sdf
 
 
     def _progressbar(self, njobs, finished, start, msg):
@@ -254,7 +257,7 @@ class Assembly(object):
             progress = 100 * (finished / float(njobs))
         else:
             progress = 100
-            
+
         # build the bar
         hashes = '#' * int(progress / 5.)
         nohash = ' ' * int(20 - len(hashes))
@@ -265,21 +268,21 @@ class Assembly(object):
         # print to stderr
         if self._cli:
             print("\r{}[{}] {:>3}% {} | {:<12} ".format(
-                self._spacer, 
-                hashes + nohash, 
-                int(progress), 
-                elapsed, 
-                msg[0],
-                ), end="")
-        else:              
-            print("\r{}[{}] {:>3}% {} | {:<12} | {} |".format(*[
-                self._spacer, 
-                hashes + nohash, 
+                self._spacer,
+                hashes + nohash,
                 int(progress),
-                elapsed, 
-                msg[0], 
+                elapsed,
+                msg[0],
+            ), end="")
+        else:
+            print("\r{}[{}] {:>3}% {} | {:<12} | {} |".format(*[
+                self._spacer,
+                hashes + nohash,
+                int(progress),
+                elapsed,
+                msg[0],
                 msg[1],
-                ]), end="")
+            ]), end="")
         sys.stdout.flush()
 
 
@@ -288,8 +291,9 @@ class Assembly(object):
         nameordered = list(self.samples.keys())
         nameordered.sort()
         newdat = pd.DataFrame(
-            (self.samples[i].stats_dfs[idx] for i in nameordered),         
-            index=nameordered).dropna(axis=1, how='all')
+            (self.samples[i].stats_dfs[idx] for i in nameordered),
+            index=nameordered,
+        ).dropna(axis=1, how='all')
         return newdat
 
     # Test assembly name is valid and raise if contains any special characters
@@ -301,12 +305,12 @@ class Assembly(object):
 
 
     def _link_fastqs(
-        self, 
-        path=None, 
-        force=False, 
-        append=False, 
+        self,
+        path=None,
+        force=False,
+        append=False,
         splitnames="_",
-        fields=None, 
+        fields=None,
         ipyclient=None):
         """
         Create Sample objects from demux'd fastq files in sorted_fastq_path,
@@ -636,7 +640,6 @@ class Assembly(object):
             raise IPyradError(inst)
 
 
-
     def _link_populations(self, popdict=None, popmins=None):
         """
         Creates self.populations dictionary to save mappings of individuals to
@@ -747,7 +750,6 @@ class Assembly(object):
         self.populations = {i: (popmins[i], popdict[i]) for i in popdict}
 
 
-
     def get_params(self, param=""):
         """ pretty prints params if called as a function """
         fullcurdir = os.path.realpath(os.path.curdir)
@@ -755,8 +757,10 @@ class Assembly(object):
             for index, (key, value) in enumerate(self.paramsdict.items()):
                 if isinstance(value, str):
                     value = value.replace(fullcurdir + "/", "./")
-                sys.stdout.write("{}{:<4}{:<28}{:<45}\n"
-                    .format(self._spacer, index, key, str(value)))
+                sys.stdout.write(
+                    "{}{:<4}{:<28}{:<45}\n"
+                    .format(self._spacer, index, key, str(value)),
+                )
         else:
             try:
                 if int(param):
@@ -798,7 +802,7 @@ class Assembly(object):
         ## param 'project_dir' takes only a str as input
         [Assembly].set_params('project_dir', 'new_directory')
 
-        ## param 'restriction_overhang' must be a tuple or str, if str it is 
+        ## param 'restriction_overhang' must be a tuple or str, if str it is
         ## converted to a tuple with the second entry empty.
         [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')
 
@@ -888,8 +892,9 @@ class Assembly(object):
 
         ## is there a better way to ask if it already exists?
         if (newname == self.name or os.path.exists(
-                os.path.join(self.paramsdict["project_dir"],
-                newname + ".assembly"))):
+                os.path.join(
+                    self.paramsdict["project_dir"],
+                    newname + ".assembly"))):
             print("{}Assembly object named {} already exists"\
                   .format(self._spacer, newname))
 
@@ -1048,7 +1053,7 @@ class Assembly(object):
 
         # run the step function
         args = (self, samples, noreverse, maxindels, force, ipyclient)
-        step3 = ip.assemble.clustmap.Step3(*args)           
+        step3 = ip.assemble.clustmap.Step3(*args)
         step3.run()
 
 
@@ -1071,7 +1076,6 @@ class Assembly(object):
 
         ## send to function
         ip.assemble.jointestimate.run(self, samples, force, ipyclient)
-
 
 
     def _step5func(self, samples, force, ipyclient):
@@ -1098,14 +1102,14 @@ class Assembly(object):
 
 
     def _step6func(self, 
-        samples, 
-        noreverse, 
-        force, 
-        randomseed, 
-        ipyclient, 
+        samples,
+        noreverse,
+        force,
+        randomseed,
+        ipyclient,
         **kwargs):
-        """ 
-        Hidden function to start Step 6. 
+        """
+        Hidden function to start Step 6.
         """
 
         ## Get sample objects from list of strings
@@ -1295,12 +1299,12 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '4' in steps:
-                self._step4func(samples=None, force=force, ipyclient=ipyclient)
+                ip.assemble.jointestimate.Step4(self, force, ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
             if '5' in steps:
-                self._step5func(samples=None, force=force, ipyclient=ipyclient)
+                ip.assemble.consens_se.Step5(self, force, ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
