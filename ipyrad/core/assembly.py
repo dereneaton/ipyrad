@@ -75,11 +75,10 @@ class Assembly(object):
 
         ip.logger.debug("new assembly: {}".format(name))
 
-        ## record whether we're in the CLI or API
+        # record whether we're in the CLI or API
+        self._cli = False
         if kwargs.get("cli"):
-            self._cli = True
-        else:
-            self._cli = False
+            self._cli = True           
 
         ## Make sure assembly name is not empty
         if not name:
