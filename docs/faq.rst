@@ -287,11 +287,18 @@ First clean up your current environment:
     bash Miniconda2-latest-Linux-x86_64.sh
     source ~/.bashrc
 
-then install:
+then install the old version of llvmlite (and optionally the old versions of pyzmq and ipyparallel if necessary):
 
 .. code-block:: bash
 
     conda install llvmlite=0.22
+
+    conda install pyzmq=16
+    conda install ipyparallel=5.2
+
+and finally reinstall ipyrad:
+
+.. code-block:: bash
     conda install -c ipyrad ipyrad
     conda install toytree -c eaton-lab
 
