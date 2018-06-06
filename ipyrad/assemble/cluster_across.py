@@ -43,7 +43,6 @@ with warnings.catch_warnings():
 LOGGER = logging.getLogger(__name__)
 
 TODO = """
-
 1. provide method to split/ contigs in step3.
 2. fix progress bar for cluster2 in step3.
 3. finish databasing here.
@@ -53,9 +52,9 @@ xxx 5. write concat bams code here.
 """
 
 class Step6:
-    def __init__(self, data, randomseed, force, ipyclient):
+    def __init__(self, data, force, ipyclient):
         self.data = data
-        self.randomseed = randomseed
+        self.randomseed = int(self.data._hackersonly["random_seed"])
         self.force = force
         self.ipyclient = ipyclient
         self.samples = self.get_subsamples()
@@ -556,23 +555,22 @@ class Step6:
                 "cat.sorted.bam"),
             'rb')
 
-        # get sidx for variant array...
-        # maybe we should open the catg arrays for the first 50 samples 
-        # and loop through the build multiple times to fill it... (probs not).
+        # catcons output file for raw clusters and db samples
+        outfile = gzip.open(
+            os.path.join(
+                self.data.dirs.across,
+                "{}.catcons.gz".format(self.data.name)),
+            'wb')
 
-
-        # open h5 array for writing and store temp arrays for writing
-        #io5 = h5py.File(self.data.clust_database, 'w')
-        catg = np.zeros((10))
-        cons = np.zeros((10))
-        edge = np.zeros((10))
-        chro = np.zeros((10))
-        
-        outf = open("test.ali", 'w')
+        # write header line to catcons with sample names
+        outfile.write(
+            b" ".join([i.name.encode() for i in self.samples]) + b"\n")
 
         # get clusters
         lidx = 0
+        clusts = []
         while 1:
+
             try:
                 region = next(self.regions)
                 reads = bamfile.fetch(*region)
@@ -591,23 +589,46 @@ class Step6:
                 arr[idx] = list(rdict[key])
 
             # get consens seq and variant site index 
+            clust = []
             avars = refvars(arr.view(np.uint8), PSEUDO_REF)
             dat = b"".join(avars.view("S1")[:, 0]).decode()
-            print("ref_{}:{}-{}\n{}"
-                .format(*region, dat), file=outf)
-            #cons[lidx:, avars[:, 0].size] = avars[:, 0]
-            #chro[lidx] = region  # convert refname to int
-            #edge[lidx] = '...'
-            #catg[lidx] = 'store variant sites from each samples catg...'
+            snpstring = "".join(["*" if i else " " for i in avars[:, 1]])
+            clust.append("ref_{}:{}-{}\n{}".format(*region, dat))
 
             # or, just build variant string (or don't...)
             # write all loci with [locids, nsnps, npis, nindels, ?]
             for key in keys:
-                print("{}\n{}".format(key, rdict[key]), file=outf)
-            print("//\n//", file=outf)
-            
+                clust.append("{}\n{}".format(key, rdict[key]))
+            clust.append("SNPs\n" + snpstring)
+            clusts.append("\n".join(clust))
+
             # advance locus counter
             lidx += 1
+
+            # write chunks to file
+            if not lidx % 1000:
+                outfile.write(
+                    str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
+                clusts = []
+
+        # write remaining
+        if clusts:                
+            outfile.write(
+                str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
+        outfile.close()
+
+
+def get_ref_region(reference, contig, rstart, rend):
+    "returns the reference sequence over a given region"
+    cmd = [
+        ipyrad.bins.samtools, 'faidx',
+        reference,
+        "{}:{}-{}".format(contig, rstart + 1, rend),
+    ]
+    stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
+    name, seq = stdout.decode().split("\n", 1)
+    listseq = [name, seq.replace("\n", "")]
+    return listseq
 
 
 
