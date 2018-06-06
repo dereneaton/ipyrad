@@ -36,7 +36,8 @@ with warnings.catch_warnings():
 # TODO NOTES
 # - left-right N trim for ref data and update interval idxs?
 # - are lower case alleles being stored in ref?
-# - 
+# - delay FTER calc depths
+# - why is 1007M the max cigar string match? and is it a problem?
 
 
 class Step5:
@@ -727,13 +728,17 @@ def process_chunks(data, sample, chunk, isref):
         data.tmpdir,
         "{}_tmpcons.{}.{}".format(sample.name, end, tmpnum))
 
-    # write chunk
+    # write chunk. 
     if storeseq:
         with open(consenshandle, 'wt') as outfile:
+
+            # denovo just write the consens simple
             if not isref:
                 outfile.write(
                     "\n".join([">" + sample.name + "_" + str(key) + \
                     "\n" + storeseq[key].decode() for key in storeseq]))
+
+            # reference needs to store if the read is revcomp to reference
             else:
                 outfile.write(
                     "\n".join(
@@ -747,10 +752,15 @@ def process_chunks(data, sample, chunk, isref):
                             revdict[refarr[i][0] - 1],
                             refarr[i][1],
                             0,
+
+                            ## why doesn't this line up with +2 ?
                             "{}M".format(len(storeseq[i].decode())),
                             "*",
                             0,
+
+                            ## + 2 here
                             refarr[i][2] - refarr[i][1],
+                            
                             storeseq[i].decode(),
                             "*",
                         ) for i in storeseq.keys()]
