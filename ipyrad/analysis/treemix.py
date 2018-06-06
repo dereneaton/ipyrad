@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 
+# py2/3 compat
 from __future__ import print_function
+
+# standar lib
 import os
 import gzip
 import copy
 import subprocess
 import itertools
+
+# third party
 import numpy as np
 import pandas as pd
-from ipyrad.assemble.util import Params
-from ipyrad.analysis.tetrad import get_spans
+from ipyrad.analysis.utils import get_spans, Params
+# from ipyrad.assemble.util import IPyradError
 from ipyrad.assemble.write_outfiles import reftrick, GETCONS
 
 try:
@@ -23,9 +28,6 @@ except ImportError:
 
     """)
     raise
-
-## alias
-OPJ = os.path.join
 
 
 class Treemix(object):

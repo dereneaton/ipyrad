@@ -1,19 +1,24 @@
 #!/usr/bin/env python
 
-"""
-Implementation of a twiist like method for anonymous RAD loci
-"""
+"Implementation of a twiist like method for anonymous RAD loci"
 
+# py2/3 compat
+from __future__ import print_function
+from builtins import range
+
+# standard
+import os
+import glob
+import uuid
+import tempfile
+import itertools
+
+# third party
 import pandas as pd
 import numpy as np
-import itertools
-import tempfile
-import toytree
-import copy
-import uuid
-import glob
-import os
 from .raxml import Raxml as raxml
+#import toytree
+
 
 
 class Twiist():
@@ -166,7 +171,7 @@ class Twiist():
         
         ## iterate over tests
         asyncs = []
-        for test in xrange(self.ntests): 
+        for test in range(self.ntests): 
             
             ## submit jobs to run
             async = lbview.apply(worker, self)
@@ -288,7 +293,5 @@ def count_var(nex):
     arr = np.array([list(i.split()[-1]) for i in nex])
     miss = np.any(arr=="N", axis=0)
     nomiss = arr[:, ~miss]
-    nsnps = np.invert(np.all(nomiss==nomiss[0, :], axis=0)).sum()
+    nsnps = np.invert(np.all(nomiss == nomiss[0, :], axis=0)).sum()
     return nomiss.shape[1], nsnps
-
-

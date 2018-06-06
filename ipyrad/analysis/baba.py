@@ -1,43 +1,40 @@
 #!/usr/bin/env python
 
-""" D-statistic calculations """
+"D-statistic calculations"
 
+# py2/3 compat
 from __future__ import print_function, division
+from builtins import range
 
-## ipyrad tools
-from ipyrad.assemble.write_outfiles import reftrick, GETCONS
-from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
-from ipyrad.analysis.bpp import Params
-from ipyrad.plotting.baba_panel_plot import baba_panel_plot
+import os
+import time
+import copy
+import types
+import itertools
 
 #import scipy.stats as st  ## used for dfoil
 import pandas as pd
 import numpy as np
 import numba
-import itertools
-import datetime
-import types
-import copy
-import time
-import os
 
-## non-standard imports
-#try: 
-#    import msprime as ms
-#except ImportError:
-#    pass
+## ipyrad tools
+from ipyrad.analysis.utils import Params, progressbar
+from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.write_outfiles import reftrick
 
-try:
-    import toytree
-except ImportError:
-    print("""
-        toytree not installed, some functions are not available
-        such as .generate_tests_from_tree() and .plot().
-        Install toytree with 'conda install toytree -c eaton-lab'.
-        """)
+#from ipyrad.plotting.baba_panel_plot import baba_panel_plot
+# # special
+# try:
+#     import toytree
+# except ImportError:
+#     print("""
+#         toytree not installed, some functions are not available
+#         such as .generate_tests_from_tree() and .plot().
+#         Install toytree with 'conda install toytree -c eaton-lab'.
+#         """)
 
 
-## set floating point precision in data frames to 3 for prettier printing
+# set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
 
 

@@ -1,26 +1,28 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
-""" D-statistic calculations """
-# pylint: disable=E1101
-# pylint: disable=F0401
-# pylint: disable=W0142
-# pylint: disable=R0915
-# pylint: disable=R0914
-# pylint: disable=R0912
+"sra tools wrapper to download archived seq data"
 
-
+# py2/3
 from __future__ import print_function
+
+# standard
 import os
 import sys
 import time
 import glob
 import shutil
 import datetime
-import pandas as pd
 import multiprocessing
 import subprocess as sps
+
+# third party
+import pandas as pd
 import ipyparallel as ipp
-from ipyrad.assemble.util import IPyradWarningExit, progressbar
+from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.analysis.utils import Params, progressbar
+
+
+# TODO: register this as an app with ncbi and avoid sratools altogether
 
 
 ## raise warning if missing imports
@@ -41,20 +43,13 @@ it must have one the following prefixes:
 
 class SRA(object):
     """ ipyrad.analysis SRA download object"""
-    def __init__(self, 
+    def __init__(
+        self, 
         accession,
         workdir="sra-fastq-data",
         ):
 
-        ## check imports
-        for binary in ['fastq-dump', 'esearch']:
-            if not sps.call("type " + binary, 
-                        shell=True,
-                        stdout=sps.PIPE,
-                        stderr=sps.PIPE) == 0:
-                raise IPyradWarningExit(MISSING_IMPORTS)
-
-        ## store attributes
+        # store attributes
         self.accession = accession
         self.workdir = os.path.abspath(os.path.expanduser(workdir))
         self.is_sample = False
@@ -81,9 +76,18 @@ class SRA(object):
         else:
             raise IPyradWarningExit(ACCESSION_ID)
 
+        self.check_binaries()
 
 
-    ## a lazy way to combine the parallel and serial run commands
+    def check_binaries(self):
+        # check imports
+        for binary in ['fastq-dump', 'esearch']:
+            proc = sps.Popen(['which', binary])
+            comm = proc.communicate()[0]
+            if not comm:
+                raise IPyradWarningExit(MISSING_IMPORTS)
+
+
     def run(self, 
         force=False, 
         ipyclient=None, 
@@ -165,9 +169,9 @@ class SRA(object):
                 try:
                     if os.path.exists(sradir) and os.listdir(sradir):
                         print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
-                    except OSError as inst:
-                        ## If sra dir doesn't even exist something is broken.
-                        raise IPyradWarningExit("Download failed. Exiting.")
+                except OSError as inst:
+                    ## If sra dir doesn't even exist something is broken.
+                    raise IPyradWarningExit("Download failed. Exiting.")
 
                 ## remove fastq file matching to cached sra file
                 for srr in os.listdir(sradir):
@@ -470,52 +474,51 @@ any missing files. The following samples were affected:
 
 
 COLNAMES = [
- 'Run',
- 'ReleaseDate',
- 'LoadDate',
- 'spots',
- 'bases',
- 'spots_with_mates',
- 'avgLength',
- 'size_MB',
- 'AssemblyName',
- 'download_path',
- 'Experiment',
- 'LibraryName',
- 'LibraryStrategy',
- 'LibrarySelection',
- 'LibrarySource',
- 'LibraryLayout',
- 'InsertSize',
- 'InsertDev',
- 'Platform',
- 'Model',
- 'SRAStudy',
- 'BioProject',
- 'Study_Pubmed_id',
- 'ProjectID',
- 'Sample',
- 'BioSample',
- 'SampleType',
- 'TaxID',
- 'ScientificName',
- 'SampleName',
- 'g1k_pop_code',
- 'source',
- 'g1k_analysis_group',
- 'Subject_ID',
- 'Sex',
- 'Disease',
- 'Tumor',
- 'Affection_Status',
- 'Analyte_Type',
- 'Histological_Type',
- 'Body_Site',
- 'CenterName',
- 'Submission',
- 'dbgap_study_accession',
- 'Consent',
- 'RunHash',
- 'ReadHash',
- ]
-
+    'Run',
+    'ReleaseDate',
+    'LoadDate',
+    'spots',
+    'bases',
+    'spots_with_mates',
+    'avgLength',
+    'size_MB',
+    'AssemblyName',
+    'download_path',
+    'Experiment',
+    'LibraryName',
+    'LibraryStrategy',
+    'LibrarySelection',
+    'LibrarySource',
+    'LibraryLayout',
+    'InsertSize',
+    'InsertDev',
+    'Platform',
+    'Model',
+    'SRAStudy',
+    'BioProject',
+    'Study_Pubmed_id',
+    'ProjectID',
+    'Sample',
+    'BioSample',
+    'SampleType',
+    'TaxID',
+    'ScientificName',
+    'SampleName',
+    'g1k_pop_code',
+    'source',
+    'g1k_analysis_group',
+    'Subject_ID',
+    'Sex',
+    'Disease',
+    'Tumor',
+    'Affection_Status',
+    'Analyte_Type',
+    'Histological_Type',
+    'Body_Site',
+    'CenterName',
+    'Submission',
+    'dbgap_study_accession',
+    'Consent',
+    'RunHash',
+    'ReadHash',
+]

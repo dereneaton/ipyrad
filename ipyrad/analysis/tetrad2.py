@@ -1,4 +1,4 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
 """ 
 SVD-quartet like tree inference. Modelled on the following papers:
@@ -10,51 +10,45 @@ Chifman, J. and L. Kubatko. 2015. Identifiability of the unrooted species
 tree topology under the coalescent model with time-reversible substitution 
 processes, site-specific rate variation, and invariable sites, Journal of 
 Theoretical Biology 374: 35-47
-
 """
 
-# pylint: disable=E1101
-# pylint: disable=E1103
-# pylint: disable=F0401
-# pylint: disable=W0212
-# pylint: disable=W0142
-# pylint: disable=C0103
-# pylint: disable=C0301
-# pylint: disable=R0914
-# pylint: disable=R0915
-
-
+# py2/3 compat
 from __future__ import print_function, division
+from builtins import range
+
+# standard lib
 import os
 import sys
 import json
 import h5py
 import time
 import copy
+import itertools
+import subprocess as sps
+from fractions import Fraction
+from collections import defaultdict
+
+# third party
 import numba
 import ctypes
 import datetime
-import itertools
-import subprocess
 import numpy as np
 import ipyrad as ip
-from fractions import Fraction
-from collections import defaultdict
-from ipyrad.assemble.util import IPyradWarningExit, progressbar, Params
+from ipyrad.analysis.utils import progressbar, Params
+from ipyrad.assemble.util import IPyradError
 
 
-## TOYTREE is required to run TETRAD
-try:
-    ## when you have time go back and set attrubutes on toytrees
-    from toytree import ete3mini as ete3
-except ImportError:
-    raise IPyradWarningExit("""
-    Error: tetrad requires the dependency 'toytree', which we haven't yet
-    included in the ipyrad installation. For now, you can install toytree
-    using conda with the following command: 
+# # TOYTREE is required to run TETRAD
+# try:
+#     from toytree import ete3mini as ete3
+# except ImportError:
+#     raise IPyradError("""
+#     Error: tetrad requires the dependency 'toytree', which we haven't yet
+#     included in the ipyrad installation. For now, you can install toytree
+#     using conda with the following command: 
 
-    conda install toytree -c eaton-lab
-    """)
+#     conda install toytree -c eaton-lab
+#     """)
 
 
 class Tetrad(object):
@@ -102,7 +96,7 @@ class Tetrad(object):
             "quiet": 0, 
             "timeout": 60, 
             "cores": 0, 
-            "threads" : 2,
+            "threads": 2,
             "pids": {},
             }
 
@@ -149,10 +143,10 @@ class Tetrad(object):
 
         ## load tree file paths if they exist, or None if empty
         self.trees = Params()
-        self.trees.tree = os.path.join(self.dirs, self.name+".full.tre")
-        self.trees.cons = os.path.join(self.dirs, self.name+".consensus.tre")
-        self.trees.boots = os.path.join(self.dirs, self.name+".boots")        
-        self.trees.nhx = os.path.join(self.dirs, self.name+".nhx.tre")
+        self.trees.tree = os.path.join(self.dirs, self.name + ".full.tre")
+        self.trees.cons = os.path.join(self.dirs, self.name + ".consensus.tre")
+        self.trees.boots = os.path.join(self.dirs, self.name + ".boots")        
+        self.trees.nhx = os.path.join(self.dirs, self.name + ".nhx.tre")
         for key, val in self.trees.__dict__.items():
             if not os.path.exists(val):
                 self.trees.__dict__[key] = None
@@ -175,7 +169,7 @@ class Tetrad(object):
                 self._init_seqarray(quiet=quiet)
                 self._parse_names()
         else:
-            raise IPyradWarningExit("must enter a data (sequence file) argument.")
+            raise IPyradError("must enter a data (sequence file) argument.")
 
         ## check quartets ------------------------------------------------------
         ## depending on the quartet sampling method selected the number of 
@@ -192,7 +186,6 @@ class Tetrad(object):
                 self.params.method = "all"
                 print(" Warning: nquartets > total possible quartets "
                 + "({})\n Changing to sampling method='all'".format(total))
-                
 
     ## INIT FUNCTIONS -----------------------------------------------
     def _parse_names(self):
@@ -291,8 +284,8 @@ class Tetrad(object):
 
         ## clear any existing results files
         oldfiles = [self.files.qdump] + \
-                    self.database.__dict__.values() + \
-                    self.trees.__dict__.values()
+            self.database.__dict__.values() + \
+            self.trees.__dict__.values()
         for oldfile in oldfiles:
             if oldfile:
                 if os.path.exists(oldfile):
@@ -320,7 +313,6 @@ class Tetrad(object):
 
         ## retain the same ipcluster info
         self._ipcluster = oldcluster
-
 
     ## BOOTSTRAP SEQARRAY SAMPLING FUNCTIONS ------------------------
     def _sample_bootseq_array(self):
@@ -396,7 +388,6 @@ class Tetrad(object):
             #LOGGER.info("resampled bootsarr \n %s", io5["bootsarr"][:, :10])
             #LOGGER.info("resampled bootsmap \n %s", io5["bootsmap"][:10, :])
 
-
     ## QUARTET TAXON SAMPLING FUNCTIONS -----------------------------
     def _store_N_samples(self, start, ipyclient, quiet=False):
         """ 
@@ -443,44 +434,44 @@ class Tetrad(object):
         ## all, or equal splits (in a separate but similar function). 
         with h5py.File(self.database.input, 'a') as io5:
             try:
-                io5.create_dataset("quartets", 
-                               (self.params.nquartets, 4), 
-                               dtype=np.uint16, 
-                               chunks=(self._chunksize, 4),
-                               compression='gzip')
+                io5.create_dataset(
+                    name="quartets", 
+                    shape=(self.params.nquartets, 4), 
+                    dtype=np.uint16, 
+                    chunks=(self._chunksize, 4),
+                    compression='gzip')
             except RuntimeError:
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "database file already exists for this analysis, "
                   + "you must run with the force flag to overwrite")
             
         ## submit store job to write into self.database.input
         if self.params.method == "all":
-            async = ipyclient[0].apply(store_all, self)
+            rasync = ipyclient[0].apply(store_all, self)
         elif self.params.method == "random":
-            async = ipyclient[0].apply(store_random, self)
+            rasync = ipyclient[0].apply(store_random, self)
         elif self.params.method == "equal":
-            async = ipyclient[0].apply(store_equal, self) 
+            rasync = ipyclient[0].apply(store_equal, self) 
 
         ## progress bar 
         printstr = "generating q-sets | {} | "
         prog = 0        
         while 1:
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
+            elapsed = datetime.timedelta(seconds=int(time.time() - start))
             if not quiet:
-                if async.stdout:
-                    prog = int(async.stdout.strip().split()[-1])
+                if rasync.stdout:
+                    prog = int(rasync.stdout.strip().split()[-1])
                 progressbar(self.params.nquartets, prog,
                             printstr.format(elapsed), spacer="")
-            if not async.ready():
+            if not rasync.ready():
                 time.sleep(0.1)
             else:
                 break
 
-        if not async.successful():
-            raise IPyradWarningExit(async.result())
+        if not rasync.successful():
+            raise IPyradError(rasync.result())
         if not quiet:
             print("")
-
 
     ## QMC QUARTET-JOINING FUNCTIONS ---------------------------------
     def _dump_qmc(self):
@@ -499,7 +490,7 @@ class Tetrad(object):
             with open(self.files.qdump, 'w') as qdump:
 
                 ## pull from db
-                for idx in xrange(0, self.params.nquartets, self._chunksize):
+                for idx in range(0, self.params.nquartets, self._chunksize):
                     qchunk = io5["quartets"][idx:idx+self._chunksize, :]
                     quarts = [tuple(j) for j in qchunk if np.any(j)]
 
@@ -516,10 +507,10 @@ class Tetrad(object):
 
         ## build command
         self._tmp = os.path.join(self.dirs, ".tmptre")
-        cmd = [ip.bins.qmc, "qrtt="+self.files.qdump, "otre="+self._tmp]
+        cmd = [ip.bins.qmc, "qrtt=" + self.files.qdump, "otre=" + self._tmp]
 
         ## run it
-        proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
         res = proc.communicate()
         if proc.returncode:
             raise IPyradWarningExit(res[1])
@@ -536,7 +527,7 @@ class Tetrad(object):
         if boot:
             self.trees.boots = os.path.join(self.dirs, self.name+".boots")
             with open(self.trees.boots, 'a') as outboot:
-                outboot.write(tmptre+"\n")
+                outboot.write(tmptre + "\n")
         else:
             self.trees.tree = os.path.join(self.dirs, self.name+".tree")
             with open(self.trees.tree, 'w') as outtree:
@@ -546,11 +537,8 @@ class Tetrad(object):
         self._save()
 
 
-    ## STATS & TREE WRITING FUNCTIONS --------------------------------
     def _compute_stats(self, start, ipyclient, quiet=False):
-        """
-        Compute sampling stats and consens trees. 
-        """
+        "Compute sampling stats and consens trees"
         
         ## get name indices
         names = self.samples
@@ -565,7 +553,7 @@ class Tetrad(object):
 
             ## calculate consensus supports
             ctre, counts = consensus_tree(bb, names=names)
-            self.trees.cons = os.path.join(self.dirs, self.name+".cons")
+            self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
             with open(self.trees.cons, 'w') as ocons:
                 ocons.write(ctre.write(format=0))
 
@@ -574,7 +562,7 @@ class Tetrad(object):
             ctre.unroot()
 
         ## build stats file and write trees
-        self.trees.nhx = os.path.join(self.dirs, self.name+".nhx")
+        self.trees.nhx = os.path.join(self.dirs, self.name + ".nhx")
         lbview = ipyclient.load_balanced_view()
         qtots = {}
         qsamp = {}
@@ -622,7 +610,6 @@ class Tetrad(object):
             outtre.write(ctre.write(format=0, features=features))
 
 
-    ## SAVE/LOAD JSON FUNCTIONS --------------------------------------
     def _save(self):
         """
         Save a JSON serialized tetrad instance to continue from a checkpoint.
@@ -641,7 +628,7 @@ class Tetrad(object):
             )
 
         ## save to file, make dir if it wasn't made earlier
-        assemblypath = os.path.join(self.dirs, self.name+".tet.json")
+        assemblypath = os.path.join(self.dirs, self.name + ".tet.json")
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
     
@@ -658,9 +645,7 @@ class Tetrad(object):
 
 
     def _load(self, name, workdir, quiet=False):
-        """
-        Load a JSON serialized tetrad instance to continue from a checkpoint.
-        """
+        "Load JSON serialized tetrad instance to continue from a checkpoint."
 
         ## load the JSON string and try with name+.json
         path = os.path.join(workdir, name)
@@ -677,7 +662,7 @@ class Tetrad(object):
                                 object_hook=_byteify), 
                             ignore_dicts=True)
         except IOError:
-            raise IPyradWarningExit("""\
+            raise IPyradError("""\
         Cannot find checkpoint (.tet.json) file at: {}""".format(path))
 
         ## set old attributes into new tetrad object
@@ -700,7 +685,6 @@ class Tetrad(object):
                 self.__setattr__(key, fullj[key])
 
 
-    ## called by run, sends and recieves data with ipyclient
     def _inference(self, start, ipyclient, quiet):
         """
         Sends slices of quartet sets to parallel engines for computing, 
@@ -726,7 +710,7 @@ class Tetrad(object):
                     chunks=(self._chunksize, 16, 16))
 
         ## start progress bar if new or skip if bootstrapping
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))
+        elapsed = datetime.timedelta(seconds=int(time.time() - start))
         if self.checkpoint.boots:
             printstr = "bootstrap trees   | {} | "
         else:
@@ -744,30 +728,31 @@ class Tetrad(object):
         done = 0
         while 1:
             ## gather finished jobs
-            finished = [i for i,j in asyncs.iteritems() if j.ready()]
+            finished = [i for i, j in asyncs.iteritems() if j.ready()]
 
             ## iterate over finished list
             for key in finished:
-                async = asyncs[key]
-                if async.successful():
+                rasync = asyncs[key]
+                if rasync.successful():
                     ## store result
                     done += 1
-                    results = async.result()
+                    results = rasync.result()
                     self._insert_to_array(key, results)
                     ## purge from memory
                     del asyncs[key]
                 else:
-                    raise IPyradWarningExit(async.result())
+                    raise IPyradError(rasync.result())
 
-            ## progress bar is different if first vs boot tree
-            elapsed = datetime.timedelta(seconds=int(time.time()-start))
-            if not self.checkpoint.boots:
-                if not quiet:
-                    progressbar(len(jobs), done, printstr.format(elapsed), spacer="")
-            else:
-                if not quiet:
-                    progressbar(self.params.nboots, self.checkpoint.boots,
-                                printstr.format(elapsed), spacer="")
+            # progress bar is different if first vs boot tree
+            if not quiet:
+                if not self.checkpoint.boots:
+                    progressbar(len(jobs), done, start, printstr)
+                else:
+                    progressbar(
+                        self.params.nboots, 
+                        self.checkpoint.boots, 
+                        printstr, 
+                        start)
 
             ## done is counted on finish, so this means we're done
             if len(asyncs) == 0:
@@ -795,11 +780,8 @@ class Tetrad(object):
             print("")
 
 
-    ## called by inference to collect and enter results
     def _insert_to_array(self, chunk, results):
-        """
-        Enters results arrays into the HDF5 database.
-        """
+        "Enters results arrays into the HDF5 database."
 
         ## two result arrs
         chunksize = self._chunksize
@@ -807,20 +789,17 @@ class Tetrad(object):
 
         ## enter into db
         with h5py.File(self.database.output, 'r+') as io5:
-            io5['quartets'][chunk:chunk+chunksize] = qrts
+            io5['quartets'][chunk:chunk + chunksize] = qrts
 
             ## entered as 0-indexed !
             if self.params.save_invariants:
                 if self.checkpoint.boots:
                     key = "invariants/boot{}".format(self.checkpoint.boots)
-                    io5[key][chunk:chunk+chunksize] = invs
+                    io5[key][chunk:chunk + chunksize] = invs
                 else:
-                    io5["invariants/boot0"][chunk:chunk+chunksize] = invs
+                    io5["invariants/boot0"][chunk:chunk + chunksize] = invs
 
 
-    ## THE MAIN RUN COMMANDS ----------------------------------------
-    ## This distributes the parallel jobs and wraps functions for 
-    ## convenient cleanup.
     def run(self, force=False, quiet=False, ipyclient=None):
         """
         Parameters
@@ -910,7 +889,7 @@ class Tetrad(object):
         except KeyboardInterrupt as inst:
             print("\nKeyboard Interrupt by user. Cleaning up...")
 
-        except IPyradWarningExit as inst:
+        except IPyradError as inst:
             print("\nError encountered: {}".format(inst))
 
         except Exception as inst:
@@ -974,7 +953,7 @@ def nworker(data, chunk):
     with h5py.File(data.database.input, 'r') as io5:
         seqview = io5["bootsarr"][:]
         maparr = io5["bootsmap"][:, 0]
-        smps = io5["quartets"][chunk:chunk+data._chunksize]
+        smps = io5["quartets"][chunk:chunk + data._chunksize]
 
         ## create an N-mask array of all seq cols
         nall_mask = seqview[:] == 78
@@ -986,7 +965,7 @@ def nworker(data, chunk):
     ## fill arrays with results as we compute them. This iterates
     ## over all of the quartet sets in this sample chunk. It would
     ## be nice to have this all numbified.
-    for idx in xrange(smps.shape[0]):
+    for idx in range(smps.shape[0]):
         sidx = smps[idx]
         seqs = seqview[sidx]
 
@@ -1065,7 +1044,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
     ## 16x16. This no longer checks for big ints to exclude, so resolve=True
     ## is now the default, TODO. 
     last_loc = -1
-    for idx in xrange(mapcol.shape[0]):
+    for idx in range(mapcol.shape[0]):
         if not nmask[idx]:
             if not mapcol[idx] == last_loc:
                 i = narr[:, idx]
@@ -1093,18 +1072,17 @@ def store_all(self):
     Populate array with all possible quartets. This allows us to 
     sample from the total, and also to continue from a checkpoint
     """
-
     with h5py.File(self.database.input, 'a') as io5:
         fillsets = io5["quartets"]
 
         ## generator for all quartet sets
-        qiter = itertools.combinations(xrange(len(self.samples)), 4)
+        qiter = itertools.combinations(range(len(self.samples)), 4)
         i = 0
         while i < self.params.nquartets:
             ## sample a chunk of the next ordered N set of quartets
             dat = np.array(list(itertools.islice(qiter, self._chunksize)))
-            end = min(self.params.nquartets, dat.shape[0]+i)
-            fillsets[i:end] = dat[:end-i]
+            end = min(self.params.nquartets, dat.shape[0] + i)
+            fillsets[i:end] = dat[:end - i]
             i += self._chunksize
 
             ## send progress update to stdout on engine
@@ -1128,7 +1106,7 @@ def store_random(self):
         fillsets = io5["quartets"]
 
         ## set generators
-        qiter = itertools.combinations(xrange(len(self.samples)), 4)
+        qiter = itertools.combinations(range(len(self.samples)), 4)
         rand = np.arange(0, n_choose_k(len(self.samples), 4))
         np.random.shuffle(rand)
         rslice = rand[:self.params.nquartets]
@@ -1175,7 +1153,7 @@ def store_equal(self):
 
         ## require guidetree
         if not os.path.exists(self.files.tree):
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "To use sampling method 'equal' requires a guidetree")
         tre = ete3.Tree(self.files.tree)
         tre.unroot()
@@ -1207,9 +1185,9 @@ def store_equal(self):
             ## the larger splits.
             total = n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2)
             if total < squarts*2:
-                qiter = (i+j for (i, j) in itertools.product(
-                            itertools.combinations(split[0], 2), 
-                            itertools.combinations(split[1], 2)))
+                qiter = (i + j for (i, j) in itertools.product(
+                    itertools.combinations(split[0], 2), 
+                    itertools.combinations(split[1], 2)))
                 saturable += 1
 
             ## else create random sampler across that split, this is slower
@@ -1217,7 +1195,7 @@ def store_equal(self):
             ## have to check it against the 'sampled' set.
             else:
                 qiter = (random_product(split[0], split[1]) for _ \
-                         in xrange(self.params.nquartets))
+                         in range(self.params.nquartets))
 
             ## store all iterators into a list
             qiters.append((idx, qiter))
@@ -1287,8 +1265,8 @@ def n_choose_k(n, k):
     or randomly sampled. Edges near tips can be exhaustive while highly 
     nested edges can do with less sampling.
     """
-    MUL = lambda x, y: x*y
-    return int(reduce(MUL, (Fraction(n-i, i+1) for i in range(k)), 1))
+    mulfunc = lambda x, y: x * y
+    return int(reduce(mulfunc, (Fraction(n  -i, i+1) for i in range(k)), 1))
 
 
 def random_combination(nsets, n, k):
