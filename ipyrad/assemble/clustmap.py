@@ -31,9 +31,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Step3:
-    """
-    Class for organizing step functions across datatypes and read formats
-    """
+    "Class for organizing step functions across datatypes and read formats"
+
     def __init__(self, data, maxindels, force, ipyclient):
 
         # store attributes
@@ -89,11 +88,13 @@ class Step3:
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"),
                     args=(),
+                    threaded=True,
                 )
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"),
                     args=(False, False,),
+                    threaded=True,
                 )
                 #if "3rad" not in data.paramsdict["datatype"]:
                 #    self.remote_run(
@@ -608,6 +609,8 @@ class Step3:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].exception())
 
+        # clean up to free any RAM
+        self.ipyclient.purge_everything()
 
 
 def dereplicate(data, sample, nthreads):
@@ -838,7 +841,7 @@ def merge_end_to_end(data, sample, revcomp, append):
                 ]))
 
         counts += 1
-        if not counts % 500:
+        if not counts % 5000:
             combout.write(b"".join(writing).decode())
             writing = []
 
@@ -1884,7 +1887,7 @@ def build_clusters_from_cigars(data, sample):
             idx += 1
 
         # if 1000 clusters stored then write to disk
-        if not idx % 1000:
+        if not idx % 10000:
             if clusters:
                 out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
                 clusters = []
