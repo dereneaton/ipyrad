@@ -30,11 +30,9 @@ import subprocess as sps
 
 import numpy as np
 import pandas as pd
-import dask.array as da
 from pysam import AlignmentFile
 import ipyrad
 from .util import IPyradWarningExit, IPyradError, clustdealer, fullcomp
-
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -453,6 +451,9 @@ class Step6:
     def remote_concat_bams(self):
         "merge bam files into a single large sorted indexed bam"
 
+        start = time.time()
+        printstr = ("concatenating bams  ", "s6")
+
         catbam = os.path.join(
             self.data.dirs.across, 
             "cat.bam"
@@ -472,6 +473,13 @@ class Step6:
                     "{}.consens.bam".format(sample.name))
             )
         proc = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+
+        # progress bar
+        while not proc.poll() == 0:
+            self.data._progressbar(3, 0, start, printstr)
+            time.sleep(0.1)
+
+        # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
             raise IPyradWarningExit(
@@ -491,6 +499,13 @@ class Step6:
             catbam,
         ]
         proc = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+
+        # progress bar
+        while not proc.poll() == 0:
+            self.data._progressbar(3, 1, start, printstr)
+            time.sleep(0.1)
+
+        # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
             raise IPyradWarningExit(
@@ -507,42 +522,38 @@ class Step6:
             ),           
         ]
         proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
+
+        # progress bar
+        while not proc.poll() == 0:
+            self.data._progressbar(3, 2, start, printstr)
+            time.sleep(0.1)
+
+        # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
             raise IPyradWarningExit(
                 "error in: {}: {}".format(" ".join(cmd3), err))
+        self.data._progressbar(3, 3, start, printstr)
+        print("")
 
 
     def remote_build_ref_regions(self):
-        "use bedtools to pull in clusters and match catgs with alignments"
-        cmd1 = [
-            ipyrad.bins.bedtools,
-            "bamtobed",
-            "-i", 
-            os.path.join(
-                self.data.dirs.across,
-                "cat.sorted.bam"
-                )
-        ]
-
-        cmd2 = [
-            ipyrad.bins.bedtools, 
-            "merge", 
-            "-d", "0",
-            "-i", "-",
-        ]
-
-        proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc2 = sps.Popen(cmd2, 
-            stdin=proc1.stdout,
-            stderr=sps.STDOUT,
-            stdout=sps.PIPE)
-        result = proc2.communicate()[0].decode()
-        if proc2.returncode:
-            raise IPyradWarningExit(
-                "error in {}: {}".format(" ".join(cmd2), result))
-        regs = [i.split("\t") for i in result.strip().split("\n")]
-        self.regions = ((i, int(j), int(k)) for i, j, k in regs)
+        "call bedtools remotely and track progress"
+        start = time.time()
+        printstr = ("building clusters   ", "s6")
+        rasync = self.ipyclient[0].apply(build_ref_regions, self.data)
+        while 1:
+            done = rasync.ready()
+            self.data._progressbar(1, int(done), start, printstr)
+            time.sleep(0.1)
+            if done:
+                break
+        print("")
+        if rasync.successful():
+            self.regions = rasync.result()
+        else:
+            raise IPyradError(
+                "error in build ref regions: {}".format(rasync.exception()))
 
 
     def remote_build_ref_clusters(self):
@@ -606,7 +617,7 @@ class Step6:
             lidx += 1
 
             # write chunks to file
-            if not lidx % 1000:
+            if not lidx % 5000:
                 outfile.write(
                     str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
                 clusts = []
@@ -616,6 +627,38 @@ class Step6:
             outfile.write(
                 str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
         outfile.close()
+
+
+def build_ref_regions(data):
+    "use bedtools to pull in clusters and match catgs with alignments"
+    cmd1 = [
+        ipyrad.bins.bedtools,
+        "bamtobed",
+        "-i", 
+        os.path.join(
+            data.dirs.across,
+            "cat.sorted.bam"
+            )
+    ]
+
+    cmd2 = [
+        ipyrad.bins.bedtools, 
+        "merge", 
+        "-d", "0",
+        "-i", "-",
+    ]
+
+    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc2 = sps.Popen(cmd2, 
+        stdin=proc1.stdout,
+        stderr=sps.STDOUT,
+        stdout=sps.PIPE)
+    result = proc2.communicate()[0].decode()
+    if proc2.returncode:
+        raise IPyradWarningExit(
+            "error in {}: {}".format(" ".join(cmd2), result))
+    regs = [i.split("\t") for i in result.strip().split("\n")]
+    return [(i, int(j), int(k)) for i, j, k in regs]
 
 
 def get_ref_region(reference, contig, rstart, rend):
@@ -629,7 +672,6 @@ def get_ref_region(reference, contig, rstart, rend):
     name, seq = stdout.decode().split("\n", 1)
     listseq = [name, seq.replace("\n", "")]
     return listseq
-
 
 
 def build_concat_two(data, jobids, randomseed):
@@ -2334,8 +2376,7 @@ def write_to_fullarr(data, sample, sidx):
 def dask_chroms(data, samples):
     """
     A dask relay function to fill chroms for all samples
-    """
-    
+    """   
     ## example concatenating with dask
     h5s = [os.path.join(data.dirs.across, s.name + ".tmp.h5") for s in samples]
     handles = [h5py.File(i) for i in h5s]
