@@ -1328,7 +1328,7 @@ class Assembly(object):
             print("\n  Keyboard Interrupt by user")
             ip.logger.info("assembly interrupted by user.")
 
-        except IPyradWarningExit as inst:
+        except (IPyradWarningExit, IPyradError) as inst:
             ip.logger.error("IPyradWarningExit: %s", inst)
             print("\n  Encountered an error (see details in ./ipyrad_log.txt)"+\
                   "\n  Error summary is below -------------------------------"+\
@@ -1359,8 +1359,9 @@ class Assembly(object):
                         for engine_id, pid in self._ipcluster["pids"].items():
                             if ipyclient.queue_status()[engine_id]["tasks"]:
                                 os.kill(pid, 2)
-                                ip.logger.info('interrupted engine {} w/ SIGINT to {}'\
-                                        .format(engine_id, pid))
+                                ip.logger.info(
+                                    'interrupted engine {} w/ SIGINT to {}'
+                                    .format(engine_id, pid))
                         time.sleep(1)
                     except ipp.NoEnginesRegistered:
                         pass
@@ -1368,7 +1369,7 @@ class Assembly(object):
                     # if CLI, stop jobs and shutdown. Don't use _cli here 
                     # because you can have a CLI object but use the --ipcluster
                     # flag, in which case we don't want to kill ipcluster.
-                    if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
+                    if self._cli:
                         ip.logger.info("  shutting down engines")
                         ipyclient.shutdown(hub=True, block=False)
                         ipyclient.close()
