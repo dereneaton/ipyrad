@@ -16,6 +16,190 @@ import subprocess as sps
 from .util import IPyradWarningExit, IPyradError, fullcomp
 
 
+class Step2(object):
+    def __init__(self, data, force, ipyclient):
+        self.data = data
+        self.force = force
+        self.ipyclient = ipyclient
+        self.lbview = self.ipyclient.load_balanced_view(self.ipyclient.ids[::2])
+        self.samples = self.get_subsamples()
+        self.check_binaries()
+        self.setup_dirs()
+        self.check_adapters()
+
+    def get_subsamples(self):
+        "Apply state, ncluster, and force filters to select samples"
+
+        # filter samples by state
+        state1 = self.data.stats.index[self.data.stats.state == 1]
+        statex = self.data.stats.index[self.data.stats.state > 1]
+
+        # build list to run for samples being forced
+        if self.force:
+            subsamples = list(self.data.samples.keys())
+        else:
+            # tell user which samples have already completed step 2
+            if statex.any():
+                print("skipping samples already finished step 2:\n{}"
+                      .format(statex.tolist()))
+            # run all samples in state 1
+            subsamples = [self.data.samples[i] for i in state1]
+
+        # check that kept samples have clusters
+        checked_samples = []
+        for sample in subsamples:
+            if sample.stats.reads_raw:
+                checked_samples.append(sample)
+            else:
+                print("skipping {}; no reads found.")
+        if not any(checked_samples):
+            raise IPyradError("no samples ready for step 3")
+
+        # sort samples so the largest is first
+        checked_samples.sort(
+            key=lambda x: x.stats.reads_raw,
+            reverse=True,
+        )
+        return checked_samples
+
+    def setup_dirs(self):
+        self.data.dirs.edits = os.path.join(
+            os.path.realpath(
+                self.data.paramsdict["project_dir"]), 
+                "{}_edits".format(self.data.name))
+        if not os.path.exists(self.data.dirs.edits):
+            os.makedirs(self.data.dirs.edits)        
+
+    def check_binaries(self):
+        cmd = ['which', 'cutadapt']
+        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
+        comm = proc.communicate()[0]
+        if not comm:
+            raise IPyradError("program 'cutadapt' not found.")
+
+    def check_adapters(self):
+        """
+        Allow extra adapters if filters=3, and add poly repeats if not 
+        in list of adapters. 
+        """
+        if int(self.data.paramsdict["filter_adapters"]) == 3:
+            if not self.data._hackersonly["p3_adapters_extra"]:
+                for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
+                    self.data._hackersonly["p3_adapters_extra"].append(poly)
+            if not self.data._hackersonly["p5_adapters_extra"]:    
+                for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
+                    self.data._hackersonly["p5_adapters_extra"].append(poly)
+        else:
+            self.data._hackersonly["p5_adapters_extra"] = []
+            self.data._hackersonly["p3_adapters_extra"] = []        
+
+
+    def run(self):
+        self.remote_concat_multiple_raws()
+        self.remote_run_cutadapt()
+        self.assembly_cleanup()
+
+
+    def remote_concat_multiple_raws(self):
+        "concatenate multiple raw files into a single file."
+
+        # if no samples have multiple then just move on
+        if not any([len(i.files.fastqs) > 1 for i in subsamples]):
+            for sample in self.samples:
+                sample.files.concat = sample.files.fastqs
+
+        # otherwise concatenate them
+        else:
+            # run on single engine due to i/o limits
+            start = time.time()
+            printstr = ("concatenating inputs", "s2")
+            finished = 0
+            catjobs = {}
+            for sample in self.samples:
+                if len(sample.files.fastqs) > 1:
+                    catjobs[sample.name] = self.ipyclient[0].apply(
+                        concat_multiple_raws, *(self.data, self.sample))
+                else:
+                    sample.files.concat = sample.files.fastqs
+
+            # wait for all to finish
+            while 1:
+                finished = sum([i.ready() for i in catjobs.values()])
+                data._progressbar(len(catjobs), finished, start, printstr)
+                time.sleep(0.1)
+                if finished == len(catjobs):
+                    break
+
+            # collect results, which are concat file handles.
+            print("")
+            for rasync in catjobs:
+                if catjobs[rasync].successful():
+                    self.data.samples[rasync].files.concat = catjobs[rasync].result()
+                else:
+                    error = catjobs[rasync].result()  # exception()
+                    ip.logger.error("error in step2 concat %s", error)
+                    raise IPyradError(
+                        "error in step2 concat: {}".format(error))
+
+
+    def remote_run_cutadapt(self):
+        # choose cutadapt function based on datatype
+        start = time.time()
+        printstr = ("processing reads    ", "s2")
+        finished = 0
+        rawedits = {}
+
+        # send samples to cutadapt filtering
+        if "pair" in self.data.paramsdict["datatype"]:
+            for sample in self.samples:
+                rawedits[sample.name] = self.lbview.apply(
+                    cutadaptit_pairs, *(data, sample))
+        else:
+            for sample in self.samples:
+                rawedits[sample.name] = self.lbview.apply(
+                    cutadaptit_single, *(data, sample))
+
+        ## wait for all to finish
+        while 1:
+            finished = sum([i.ready() for i in rawedits.values()])
+            data._progressbar(len(rawedits), finished, start, printstr)
+            time.sleep(0.1)
+            if finished == len(rawedits):
+                break
+
+        ## collect results, report failures, and store stats. async = sample.name
+        print("")
+        for rasync in rawedits:
+            if rawedits[rasync].successful():
+                res = rawedits[rasync].result()
+
+                ## if single cleanup is easy
+                if "pair" not in data.paramsdict["datatype"]:
+                    parse_single_results(self.data, self.data.samples[rasync], res)
+                else:
+                    parse_pair_results(self.data, self.data.samples[rasync], res)
+            else:
+                print("  found an error in step2; see ipyrad_log.txt")
+                ip.logger.error(
+                    "error in run_cutadapt(): %s", rawedits[rasync].exception())
+
+
+    def assembly_cleanup(self):
+        # build s2 results data frame
+        self.data.stats_dfs.s2 = self.data._build_stat("s2")
+        self.data.stats_files.s2 = os.path.join(
+            self.data.dirs.edits, 
+            's2_rawedit_stats.txt')
+
+        # write stats for all samples
+        with open(self.data.stats_files.s2, 'w') as outfile:
+            data.stats_dfs.s2.fillna(value=0).astype(np.int).to_string(outfile)
+
+
+
+
+
+
 def assembly_cleanup(data):
     """ cleanup for assembly object """
 
