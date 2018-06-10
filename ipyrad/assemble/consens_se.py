@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-""" call consensus base calls on single-end data """
+"call consensus base calls on single-end data"
 
 # py2/3 compatible
 from __future__ import print_function
@@ -34,10 +34,9 @@ with warnings.catch_warnings():
 
 
 # TODO NOTES
-# - left-right N trim for ref data and update interval idxs?
-# - are lower case alleles being stored in ref?
 # - delay FTER calc depths
 # - why is 1007M the max cigar string match? and is it a problem?
+# - update consens tag for the full seq length of ref clusters
 
 
 class Step5:
@@ -270,6 +269,7 @@ class Step5:
                                   .format(job.exception()))
 
         # collect all results for a sample and store stats 
+        print("")
         statsdicts = {}
         for sample in self.samples:
             statsdicts[sample.name] = [i.result() for i in jobs[sample.name]]
@@ -278,7 +278,6 @@ class Step5:
 
     def remote_concatenate_chunks(self):
         # concatenate and store catgs
-        print("")
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
 
@@ -345,180 +344,6 @@ class Step5:
                     'nhetero': '{:.0f}'.format,
                     'heterozygosity': '{:.5f}'.format
                 })
-
-
-
-def concat_catgs(data, sample, isref):
-    "concat catgs into a single sample catg and remove tmp files"
-
-    # collect tmpcat files
-    tmpcats = glob.glob(os.path.join(
-        data.tmpdir,
-        "{}_tmpcats.*".format(sample.name)))
-    tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
-
-    # get full nrows of the new h5 from the tmpcat filenames
-    nrows = sum([int(i.rsplit(".", 2)[-2]) for i in tmpcats])
-
-    # get shape info from the first cat, (optim, maxlen, 4)
-    optim = min(nrows, 5000)
-    with h5py.File(tmpcats[0], 'r') as io5:
-        _, maxlen, _ = io5['cats'].shape
-
-    # file handle for concat'd catg array
-    outcatg = os.path.join(
-        data.dirs.consens,
-        "{}.catg".format(sample.name))
-
-    # fill in the chunk array
-    with h5py.File(outcatg, 'w') as ioh5:
-        dcat = ioh5.create_dataset(
-            name="catg",
-            shape=(nrows, maxlen, 4),
-            dtype=np.uint32,
-            chunks=(optim, maxlen, 4),
-            compression="gzip")
-        dall = ioh5.create_dataset(
-            name="nalleles", 
-            shape=(nrows, ),
-            dtype=np.uint8,
-            chunks=(optim, ),
-            compression="gzip")
-        
-        # only create chrom for reference-aligned data
-        if isref:
-            dchrom = ioh5.create_dataset(
-                name="chroms",
-                shape=(nrows, 3),
-                dtype=np.int64,
-                chunks=(optim, 3),
-                compression="gzip")
-
-        # Combine all those tmp cats into the big cat
-        start = 0
-        for icat in tmpcats:
-            addon = int(icat.rsplit(".", 2)[-2])
-            end = start + addon
-            io5 = h5py.File(icat, 'r')
-            dcat[start:end] = io5['cats'][:]
-            dall[start:end] = io5['alls'][:]
-            if isref:
-                dchrom[start:end] = io5['chroms'][:]
-            start = end
-            io5.close()
-            os.remove(icat)
-
-
-def concat_denovo_consens(data, sample):
-    "concatenate consens bits into fasta file for denovo assemblies"
-
-    # collect consens chunk files
-    combs1 = glob.glob(os.path.join(
-        data.tmpdir,
-        "{}_tmpcons.*".format(sample.name)))
-    combs1.sort(key=lambda x: int(x.split(".")[-1]))
-
-    # write to the file
-    with gzip.open(sample.files.consens, 'wt') as out:
-        for fname in combs1:
-            with open(fname) as infile:
-                out.write(infile.read() + "\n")
-            os.remove(fname)
-
-
-def concat_reference_consens(data, sample):
-    "concatenates consens bits into SAM for reference assemblies"
-
-    samfile = sample.files.consens.replace(".bam", ".sam")    
-    with open(samfile, 'w') as outf:
-
-        # parse fai file for writing headers
-        fai = "{}.fai".format(data.paramsdict["reference_sequence"])
-        fad = pd.read_csv(fai, sep="\t", names=["SN", "LN", "POS", "N1", "N2"])
-        headers = ["@HD\tVN:1.0\tSO:coordinate"]
-        headers += [
-            "@SQ\tSN:{}\tLN:{}".format(i, j)
-            for (i, j) in zip(fad["SN"], fad["LN"])
-        ]
-        outf.write("\n".join(headers) + "\n")
-
-        # write sequences to SAM file
-        combs1 = glob.glob(os.path.join(
-            data.tmpdir,
-            "{}_tmpcons.*".format(sample.name)))
-        combs1.sort(key=lambda x: int(x.split(".")[-1]))
-
-        # write to file with sample names imputed to line up with catg array
-        counter = 0
-        for fname in combs1:
-            with open(fname) as infile:
-                # impute catg ordered seqnames 
-                data = infile.readlines()
-                fdata = []
-                for line in data:
-                    name, chrom, rest = line.rsplit(":", 2)
-                    fdata.append(
-                        "{}_{}:{}:{}".format(name, counter, chrom, rest)
-                        )
-                    counter += 1
-                outf.write("".join(fdata) + "\n")
-            os.remove(fname)
-
-    # convert to bam
-    cmd = [ip.bins.samtools, "view", "-Sb", samfile]
-    with open(sample.files.consens, 'w') as outbam:
-        proc = sps.Popen(cmd, stdout=outbam)
-        proc.communicate()
-    os.remove(samfile)
-
-
-def store_sample_stats(data, sample, statsdicts):
-    "not parallel, store the sample objects stats"
-
-    # record results
-    xcounters = {
-        "nconsens": 0,
-        "heteros": 0,
-        "nsites": 0,
-    }
-    xfilters = {
-        "depth": 0,
-        "maxh": 0,
-        "maxn": 0,
-    }
-
-    # merge finished consens stats
-    for counters, filters in statsdicts:
-        # sum individual counters
-        for key in xcounters:
-            xcounters[key] += counters[key]
-        for key in xfilters:
-            xfilters[key] += filters[key]
-
-    # set Sample stats_dfs values
-    if int(xcounters['nsites']):
-        prop = int(xcounters["heteros"]) / float(xcounters['nsites'])
-    else:
-        prop = 0
-
-    # store stats attributes to the sample
-    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
-    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
-    sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
-    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
-    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
-    sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
-    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
-    sample.stats_dfs.s5.heterozygosity = float(prop)
-
-    # set the Sample stats summary value
-    sample.stats.reads_consens = int(xcounters["nconsens"])
-
-    # save state to Sample if successful
-    if sample.stats.reads_consens:
-        sample.stats.state = 5
-    else:
-        print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
 def make_chunks(data, sample, ncpus):
@@ -753,8 +578,9 @@ def process_chunks(data, sample, chunk, isref):
                             refarr[i][1],
                             0,
 
-                            ## why doesn't this line up with +2 ?
-                            "{}M".format(len(storeseq[i].decode())),
+                            # why doesn't this line up with +2 ?
+                            # make_indel_cigar(storeseq[i].decode()),
+                            "{}M".format(refarr[i][2] - refarr[i][1]),
                             "*",
                             0,
 
@@ -762,7 +588,11 @@ def process_chunks(data, sample, chunk, isref):
                             refarr[i][2] - refarr[i][1],
                             
                             storeseq[i].decode(),
-                            "*",
+                            "*",                           
+                            "XT:Z:{}".format(
+                                make_indel_cigar(storeseq[i].decode())
+                                ),
+
                         ) for i in storeseq.keys()]
                         ))
 
@@ -780,6 +610,242 @@ def process_chunks(data, sample, chunk, isref):
     counters['nsites'] = sum([len(i) for i in storeseq.values()])
     del storeseq
     return counters, filters
+
+
+def concat_catgs(data, sample, isref):
+    "concat catgs into a single sample catg and remove tmp files"
+
+    # collect tmpcat files
+    tmpcats = glob.glob(os.path.join(
+        data.tmpdir,
+        "{}_tmpcats.*".format(sample.name)))
+    tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
+
+    # get full nrows of the new h5 from the tmpcat filenames
+    nrows = sum([int(i.rsplit(".", 2)[-2]) for i in tmpcats])
+
+    # get shape info from the first cat, (optim, maxlen, 4)
+    optim = min(nrows, 5000)
+    with h5py.File(tmpcats[0], 'r') as io5:
+        _, maxlen, _ = io5['cats'].shape
+
+    # file handle for concat'd catg array
+    outcatg = os.path.join(
+        data.dirs.consens,
+        "{}.catg".format(sample.name))
+
+    # fill in the chunk array
+    with h5py.File(outcatg, 'w') as ioh5:
+        dcat = ioh5.create_dataset(
+            name="catg",
+            shape=(nrows, maxlen, 4),
+            dtype=np.uint32,
+            chunks=(optim, maxlen, 4),
+            compression="gzip")
+        dall = ioh5.create_dataset(
+            name="nalleles", 
+            shape=(nrows, ),
+            dtype=np.uint8,
+            chunks=(optim, ),
+            compression="gzip")
+        
+        # only create chrom for reference-aligned data
+        if isref:
+            dchrom = ioh5.create_dataset(
+                name="chroms",
+                shape=(nrows, 3),
+                dtype=np.int64,
+                chunks=(optim, 3),
+                compression="gzip")
+
+        # Combine all those tmp cats into the big cat
+        start = 0
+        for icat in tmpcats:
+            addon = int(icat.rsplit(".", 2)[-2])
+            end = start + addon
+            io5 = h5py.File(icat, 'r')
+            dcat[start:end] = io5['cats'][:]
+            dall[start:end] = io5['alls'][:]
+            if isref:
+                dchrom[start:end] = io5['chroms'][:]
+            start = end
+            io5.close()
+            os.remove(icat)
+
+
+def concat_denovo_consens(data, sample):
+    "concatenate consens bits into fasta file for denovo assemblies"
+
+    # collect consens chunk files
+    combs1 = glob.glob(os.path.join(
+        data.tmpdir,
+        "{}_tmpcons.*".format(sample.name)))
+    combs1.sort(key=lambda x: int(x.split(".")[-1]))
+
+    # write to the file
+    with gzip.open(sample.files.consens, 'wt') as out:
+        for fname in combs1:
+            with open(fname) as infile:
+                out.write(infile.read() + "\n")
+            os.remove(fname)
+
+
+def concat_reference_consens(data, sample):
+    "concatenates consens bits into SAM for reference assemblies"
+
+    # write sequences to SAM file
+    combs1 = glob.glob(os.path.join(
+        data.tmpdir,
+        "{}_tmpcons.*".format(sample.name)))
+    combs1.sort(key=lambda x: int(x.split(".")[-1]))
+
+    # open sam handle for writing to bam
+    samfile = sample.files.consens.replace(".bam", ".sam")    
+    with open(samfile, 'w') as outf:
+
+        # parse fai file for writing headers
+        fai = "{}.fai".format(data.paramsdict["reference_sequence"])
+        fad = pd.read_csv(fai, sep="\t", names=["SN", "LN", "POS", "N1", "N2"])
+        headers = ["@HD\tVN:1.0\tSO:coordinate"]
+        headers += [
+            "@SQ\tSN:{}\tLN:{}".format(i, j)
+            for (i, j) in zip(fad["SN"], fad["LN"])
+        ]
+        outf.write("\n".join(headers) + "\n")
+
+        # write to file with sample names imputed to line up with catg array
+        counter = 0
+        for fname in combs1:
+            with open(fname) as infile:
+                # impute catg ordered seqnames 
+                data = infile.readlines()
+                fdata = []
+                for line in data:
+                    name, chrom, rest = line.rsplit(":", 2)
+                    fdata.append(
+                        "{}_{}:{}:{}".format(name, counter, chrom, rest)
+                        )
+                    counter += 1
+                outf.write("".join(fdata) + "\n")
+            os.remove(fname)
+
+    # convert to bam
+    cmd = [ip.bins.samtools, "view", "-Sb", samfile]
+    with open(sample.files.consens, 'w') as outbam:
+        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=outbam)
+        comm = proc.communicate()[1]
+    if proc.returncode:
+        raise IPyradError("error in samtools: {}".format(comm))
+    else:
+        os.remove(samfile)
+
+
+def store_sample_stats(data, sample, statsdicts):
+    "not parallel, store the sample objects stats"
+
+    # record results
+    xcounters = {
+        "nconsens": 0,
+        "heteros": 0,
+        "nsites": 0,
+    }
+    xfilters = {
+        "depth": 0,
+        "maxh": 0,
+        "maxn": 0,
+    }
+
+    # merge finished consens stats
+    for counters, filters in statsdicts:
+        # sum individual counters
+        for key in xcounters:
+            xcounters[key] += counters[key]
+        for key in xfilters:
+            xfilters[key] += filters[key]
+
+    # set Sample stats_dfs values
+    if int(xcounters['nsites']):
+        prop = int(xcounters["heteros"]) / float(xcounters['nsites'])
+    else:
+        prop = 0
+
+    # store stats attributes to the sample
+    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
+    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
+    sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
+    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
+    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
+    sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
+    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
+    sample.stats_dfs.s5.heterozygosity = float(prop)
+
+    # set the Sample stats summary value
+    sample.stats.reads_consens = int(xcounters["nconsens"])
+
+    # save state to Sample if successful
+    if sample.stats.reads_consens:
+        sample.stats.state = 5
+    else:
+        print("No clusters passed filtering in Sample: {}".format(sample.name))
+
+
+def make_allele_cigar(seq, on='.', letter='S'):
+    iii = seq.split(on)
+    cig = ""
+    lastletter = ""
+    isi = 0
+    for i, j in enumerate(iii):    
+        if j == "":
+            isi += 1
+               
+        # store matches
+        else:
+            if isi:
+                # skip if first indel base
+                if cig:
+                    isi += 1
+                cig += "{}{}".format(isi, letter)
+                isi = 0
+                lastletter = letter
+            
+            if lastletter == "M":
+                cig += "{}{}".format(1, letter)
+            cig += "{}M".format(len(j))
+            lastletter = "M"
+    if isi:
+        cig += "{}{}".format(isi, letter)
+    return cig
+
+
+def make_indel_cigar(seq, on='-', letter='I'):
+    iii = seq.split(on)
+    cig = ""
+    lastletter = ""
+    isi = 0
+    for i, j in enumerate(iii):    
+        if j == "":
+            isi += 1
+               
+        # store matches
+        else:
+            if isi:
+                # skip if first indel base
+                if cig:
+                    isi += 1
+                cig += "{}{}".format(isi, letter)
+                isi = 0
+                lastletter = letter
+            
+            if lastletter == "M":
+                cig += "{}{}".format(1, letter)
+                
+            acig = ''.join('.' if i.islower() else i for i in j)
+            mcig = make_allele_cigar(acig)
+            cig += mcig
+            lastletter = "M"
+    if isi:
+        cig += "{}{}".format(isi, letter)
+    return cig
 
 
 def apply_filters_and_fill_arrs():
