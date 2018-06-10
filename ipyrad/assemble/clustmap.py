@@ -692,11 +692,8 @@ def concat_multiple_edits(data, sample):
                     raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
 
 
-### step 3.1 subfuncs
 def merge_pairs_with_vsearch(data, sample, revcomp):
-    """
-    Merge PE reads using vsearch to find overlap.
-    """
+    "Merge PE reads using vsearch to find overlap."
 
     # define input files
     concat1 = os.path.join(
@@ -864,7 +861,6 @@ def count_merged_reads(data, sample):
     return nmerged
 
 
-### step 3.2 funcs
 def cluster(data, sample, nthreads, force):
     """
     Calls vsearch for clustering. cov varies by data type, values were chosen
@@ -1203,12 +1199,11 @@ def reconcat(data, sample):
             os.remove(fname)
 
 
-### step 3.2 subfuncs
 def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
-    """ keeps a persistent bash shell open and feeds it muscle alignments """
+    "keeps a persistent bash shell open and feeds it muscle alignments"
 
-    ## create a separate shell for running muscle in, this is much faster
-    ## than spawning a separate subprocess for each muscle call
+    # create a separate shell for running muscle in, this is much faster
+    # than spawning a separate subprocess for each muscle call
     proc = sps.Popen(
         ["bash"],
         stdin=sps.PIPE,
