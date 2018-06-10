@@ -46,7 +46,7 @@ class Step5:
         self.data = data
         self.force = force
         self.samples = self.get_subsamples()
-        self.ref = bool("reference" in data.paramsdict["assembly_method"])
+        self.isref = bool("reference" in data.paramsdict["assembly_method"])
         self.ipyclient = ipyclient
         self.lbview = ipyclient.load_balanced_view()
         self.setup_dirs()
@@ -73,7 +73,7 @@ class Step5:
 
         # assign output file handles for s6
         for sample in self.samples:
-            if not self.ref:
+            if not self.isref:
                 sample.files.consens = os.path.join(
                     self.data.dirs.consens, 
                     "{}.consens.gz".format(sample.name))
@@ -191,7 +191,8 @@ class Step5:
             if not jobs[sample.name].successful():
                 raise IPyradError(jobs[sample.name].exception())
             else:
-                hidepth, maxlen, _, _ = recal_hidepth(self.data, sample)
+                hidepth, maxlen, _, _ = jobs[sample.name].result()
+                # recal_hidepth(self.data, sample)
                 # (not saved) stat values are for majrule min
                 sample.stats["clusters_hidepth"] = hidepth
                 sample.stats_dfs.s3["clusters_hidepth"] = hidepth
@@ -250,7 +251,7 @@ class Step5:
                 jobs[sample.name].append(
                     self.lbview.apply(
                         process_chunks,
-                        *(self.data, sample, chunk, self.ref)))
+                        *(self.data, sample, chunk, self.isref)))
                 
         # track progress - just wait for all to finish before concat'ing
         allsyncs = list(chain(*[jobs[i] for i in jobs]))
@@ -286,10 +287,10 @@ class Step5:
         for sample in self.samples:
             asyncs1[sample.name] = self.lbview.apply(
                 concat_catgs,                
-                *(self.data, sample, self.ref))           
+                *(self.data, sample, self.isref))
 
         # collect all results for a sample and store stats 
-        if self.ref:
+        if self.isref:
             concat_job = concat_reference_consens
         else:
             concat_job = concat_denovo_consens
@@ -580,7 +581,8 @@ def process_chunks(data, sample, chunk, isref):
 
                             # why doesn't this line up with +2 ?
                             # make_indel_cigar(storeseq[i].decode()),
-                            "{}M".format(refarr[i][2] - refarr[i][1]),
+                            #"{}M".format(refarr[i][2] - refarr[i][1]),
+                            "{}M".format(len(storeseq[i].decode())),
                             "*",
                             0,
 
@@ -588,10 +590,10 @@ def process_chunks(data, sample, chunk, isref):
                             refarr[i][2] - refarr[i][1],
                             
                             storeseq[i].decode(),
-                            "*",                           
-                            "XT:Z:{}".format(
-                                make_indel_cigar(storeseq[i].decode())
-                                ),
+                            "*",
+                            # "XT:Z:{}".format(
+                                # make_indel_cigar(storeseq[i].decode())
+                                # ),
 
                         ) for i in storeseq.keys()]
                         ))
@@ -727,7 +729,6 @@ def concat_reference_consens(data, sample):
                         )
                     counter += 1
                 outf.write("".join(fdata) + "\n")
-            os.remove(fname)
 
     # convert to bam
     cmd = [ip.bins.samtools, "view", "-Sb", samfile]
@@ -738,6 +739,8 @@ def concat_reference_consens(data, sample):
         raise IPyradError("error in samtools: {}".format(comm))
     else:
         os.remove(samfile)
+        for fname in combs1:
+            os.remove(fname)
 
 
 def store_sample_stats(data, sample, statsdicts):
