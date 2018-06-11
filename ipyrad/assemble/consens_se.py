@@ -37,7 +37,7 @@ with warnings.catch_warnings():
 # - delay FTER calc depths
 # - why is 1007M the max cigar string match? and is it a problem?
 # - update consens tag for the full seq length of ref clusters
-
+# - chunksizes are too big on tortas test data when ncpus=4
 
 class Step5:
     "Organized Step 5 functions for all datatype and methods"
