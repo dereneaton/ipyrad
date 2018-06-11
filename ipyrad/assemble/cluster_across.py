@@ -53,7 +53,7 @@ class Step6:
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.randomseed = int(self.data._hackersonly["random_seed"])
-        self.isref = bool(self.paramsdict["assembly_method"] == 'reference')
+        self.isref = bool('ref' in self.data.paramsdict["assembly_method"])
         self.force = force
         self.ipyclient = ipyclient
         self.samples = self.get_subsamples()
