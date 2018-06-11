@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 
-"""
-cluster across samples using vsearch with options for
-hierarchical clustering.
-"""
+"cluster across samples using vsearch or from bam files and bedtools"
 
 # py2/3 compatible
 from __future__ import print_function
