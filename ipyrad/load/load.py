@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-""" loads an archived Assembly object. """
+"loads an archived Assembly object."
 
 from __future__ import print_function
 
@@ -8,6 +8,7 @@ import os
 import time
 import json
 import itertools
+import numpy as np
 import pandas as pd
 from copy import deepcopy
 from collections import OrderedDict
@@ -138,6 +139,7 @@ def save_json(data):
         },
         cls=Encoder,
         sort_keys=False, indent=4, separators=(",", ":"),
+        default=default,
         )
 
     ## save to file
@@ -365,6 +367,15 @@ def load_json(path, quiet=False, cli=False):
 
     return null
 
+
+# https://stackoverflow.com/questions/11942364/
+# typeerror-integer-is-not-json-serializable-when-
+# serializing-json-in-python?utm_medium=organic&utm_
+# source=google_rich_qa&utm_campaign=google_rich_qa
+def default(o):
+    if isinstance(o, np.int64): 
+        return int(o)  
+    raise TypeError
 
 
 class Encoder(json.JSONEncoder):
