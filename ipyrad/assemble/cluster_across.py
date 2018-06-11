@@ -50,6 +50,7 @@ class Step6:
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.randomseed = int(self.data._hackersonly["random_seed"])
+        self.isref = bool('ref' in self.data.paramsdict["assembly_method"])
         self.force = force
         self.ipyclient = ipyclient
         self.samples = self.get_subsamples()
@@ -571,58 +572,85 @@ class Step6:
             'wb')
 
         # write header line to catcons with sample names
+        snames = ["ref"] + sorted([i.name for i in self.samples])
         outfile.write(
-            b" ".join([i.name.encode() for i in self.samples]) + b"\n")
+            b" ".join([i.encode() for i in snames]) + b"\n")
 
         # get clusters
         lidx = 0
         clusts = []
         while 1:
 
+            # fetch concat bamfile hits to this region
             try:
                 region = next(self.regions)
                 reads = bamfile.fetch(*region)
             except StopIteration:
                 break
 
-            # build cluster dict for sorting                
+            # get reference sequence
+            refn, refs = get_ref_region(
+                self.data.paramsdict["reference_sequence"],
+                region[0], region[1] + 1, region[2] + 1
+                )
+
+            # build cluster dict for sorting      
             rdict = {}
             for read in reads:
                 rdict[read.qname] = read.seq   
             keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
-            # put into array
-            arr = np.zeros((len(rdict), len(read.seq)), dtype=bytes)
+            # make an empty array
+            arr = np.zeros((len(snames), len(refs)), dtype=bytes)
+            
+            # fill the array
+            arr[0] = list(refs)
             for idx, key in enumerate(keys):
-                arr[idx] = list(rdict[key])
+                # get start and stop from this seq
+                sname = key.rsplit("_", 1)[0]
+                rstart, rstop = key.rsplit(":", 2)[-1].split("-")
+                sidx = snames.index(sname)
+                
+                # get start and stop relative to reference region
+                start = int(rstart) - int(regions[1]) - 1
+                stop = start + int(rstop) - int(rstart)
+                arr[sidx + 1, start: stop] = list(rdict[key])
+            arr[arr == b""] = b"N"
 
-            # get consens seq and variant site index 
-            clust = []
-            avars = refvars(arr.view(np.uint8), PSEUDO_REF)
-            dat = b"".join(avars.view("S1")[:, 0]).decode()
-            snpstring = "".join(["*" if i else " " for i in avars[:, 1]])
-            clust.append("ref_{}:{}-{}\n{}".format(*region, dat))
+            # # get consens seq and variant site index
+            # clust = []
+            #avars = refvars(arr.view(np.uint8), PSEUDO_REF)
+            if not self.isref:
+                dat = b"".join(avars.view("S1")[:, 0]).decode()
+            #snpstring = "".join(["*" if i else " " for i in avars[:, 1]])
+            # clust.append("ref_{}:{}-{}\n{}".format(*region, dat))
 
-            # or, just build variant string (or don't...)
-            # write all loci with [locids, nsnps, npis, nindels, ?]
-            for key in keys:
-                clust.append("{}\n{}".format(key, rdict[key]))
-            clust.append("SNPs\n" + snpstring)
-            clusts.append("\n".join(clust))
+            # # or, just build variant string (or don't...)
+            # # write all loci with [locids, nsnps, npis, nindels, ?]
+            # for key in keys:
+            #     clust.append("{}\n{}".format(key, rdict[key]))
+            # clust.append("SNPs\n" + snpstring)
+            # clusts.append("\n".join(clust))
+            clusts.append(
+                b"\n".join([b"".join(line) for line in arr])
+                )
 
             # advance locus counter
             lidx += 1
 
             # write chunks to file
             if not lidx % 5000:
-                outfile.write(
-                    str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
+                outfile.write(b"\n\n".join(clusts))
                 clusts = []
+                #     str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
+                # clusts = []
 
         # write remaining
-        if clusts:                
-            outfile.write(
-                str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
+        if clusts:          
+            outfile.write(b"\n\n".join(clusts))
+            clusts = []
+            #outfile.write(
+            # str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
         outfile.close()
 
 
