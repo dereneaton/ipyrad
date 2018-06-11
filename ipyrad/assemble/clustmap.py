@@ -751,7 +751,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
     LOGGER.debug("merge cmd: %s", " ".join(cmd))
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     res = proc.communicate()[0].decode()
-    LOGGER.info(res.decode())
+    LOGGER.info(res)
     if proc.returncode:
         raise IPyradWarningExit("Error merge pairs:\n {}\n{}".format(cmd, res))
 
