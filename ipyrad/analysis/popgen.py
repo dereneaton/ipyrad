@@ -9,7 +9,7 @@ import os
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.utils import Params
-from ipyrad.assembly.util import IPyradError
+from ipyrad.assemble.util import IPyradError
 
 
 class Popgen(object):
@@ -71,8 +71,7 @@ class Popgen(object):
         Wier and Cockerham (1984) estimator based on average number of 
         pairwise differences: 
            (pi_between - pi_within) / pi_between
-        """
-        pass
+        """       
 
 
     def _fis(self):
@@ -100,7 +99,9 @@ class Popgen(object):
                 "data file does not exist. Check path: {}".format(self.data))
 
         # check map file
-        self.mapfile = os.path.realpath(self.mapfile)
+        if self.mapfile:
+            self.mapfile = os.path.realpath(self.mapfile)
 
         # check workdir
         if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
