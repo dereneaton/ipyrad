@@ -378,7 +378,7 @@ class Step3:
 
 
     def cleanup(self):
-        """ cleanup / statswriting function for Assembly obj """
+        "cleanup / statswriting function for Assembly obj"
         self.data.stats_dfs.s3 = self.data._build_stat("s3")
         self.data.stats_files.s3 = os.path.join(
             self.data.dirs.clusts, "s3_cluster_stats.txt")
@@ -747,11 +747,9 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--threads", "2",
         "--fastq_allowmergestagger",
     ]
-
     LOGGER.debug("merge cmd: %s", " ".join(cmd))
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     res = proc.communicate()[0].decode()
-    LOGGER.info(res.decode())
     if proc.returncode:
         raise IPyradWarningExit("Error merge pairs:\n {}\n{}".format(cmd, res))
 
@@ -970,7 +968,11 @@ def build_clusters(data, sample, maxindels):
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-    clustsout = gzip.open(sample.files.clusters, 'wt')
+    clustsout = open(
+        os.path.join(
+            data.dirs.clusts, 
+            "{}.clust.txt".format(sample.name)), 
+        'w')
 
     ## Sort the uhandle file so we can read through matches efficiently
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
@@ -1096,15 +1098,15 @@ def muscle_chunker(data, sample):
     ## makes equal size chunks, instead of uneven chunks like in denovo
     if data.paramsdict["assembly_method"] != "reference":
         ## get the number of clusters
-        clustfile = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
-        with iter(gzip.open(clustfile, 'rt')) as clustio:
+        clustfile = os.path.join(data.dirs.clusts, sample.name + ".clust.txt")
+        with iter(open(clustfile, 'rt')) as clustio:
             nloci = sum(1 for i in clustio if "//" in i) // 2
             #tclust = clustio.read().count("//")//2
             optim = (nloci // 20) + (nloci % 20)
             ip.logger.info("optim for align chunks: %s", optim)
 
         ## write optim clusters to each tmp file
-        clustio = gzip.open(clustfile, 'rt')
+        clustio = open(clustfile, 'rt')
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
         
         ## splitting loci so first file is smaller and last file is bigger
@@ -2016,16 +2018,13 @@ def cigared(sequence, cigartups):
 
 
 def get_quick_depths(data, sample):
-    """ iterate over clustS files to get data """
+    "iterate over clustS files to get data"
 
     ## use existing sample cluster path if it exists, since this
     ## func can be used in step 4 and that can occur after merging
     ## assemblies after step3, and if we then referenced by data.dirs.clusts
     ## the path would be broken.
-    if sample.files.clusters:
-        pass
-    else:
-        ## set cluster file handles
+    if not sample.files.clusters:
         sample.files.clusters = os.path.join(
             data.dirs.clusts,
             "{}.clustS.gz".format(sample.name))
@@ -2094,7 +2093,7 @@ def store_sample_stats(data, sample, maxlens, depths):
         else:
             maxlen = 0
         if maxlen > data._hackersonly["max_fragment_length"]:
-            data._hackersonly["max_fragment_length"] = maxlen + 4
+            data._hackersonly["max_fragment_length"] = int(maxlen + 4)
 
         # make sense of stats
         keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]
@@ -2102,8 +2101,8 @@ def store_sample_stats(data, sample, maxlens, depths):
 
         # sample summary stat assignments
         sample.stats["state"] = 3
-        sample.stats["clusters_total"] = depths.shape[0]
-        sample.stats["clusters_hidepth"] = keepmj.shape[0]
+        sample.stats["clusters_total"] = int(depths.shape[0])
+        sample.stats["clusters_hidepth"] = int(keepmj.shape[0])
 
         # store depths histogram as a dict. Limit to first 25 bins
         bars, bins = np.histogram(depths, bins=range(1, 26))
@@ -2114,19 +2113,19 @@ def store_sample_stats(data, sample, maxlens, depths):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
-            sample.stats_dfs.s3["clusters_total"] = depths.shape[0]
+            sample.stats_dfs.s3["clusters_total"] = int(depths.shape[0])
             try:
                 sample.stats_dfs.s3["clusters_hidepth"] = (
                     int(sample.stats["clusters_hidepth"]))
             except ValueError:
                 # Handle clusters_hidepth == NaN
                 sample.stats_dfs.s3["clusters_hidepth"] = 0
-            sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
-            sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
-            sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
-            sample.stats_dfs.s3["sd_depth_total"] = depths.std()
-            sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
-            sample.stats_dfs.s3["sd_depth_stat"] = keepstat.std()
+            sample.stats_dfs.s3["avg_depth_total"] = float(depths.mean())
+            sample.stats_dfs.s3["avg_depth_mj"] = float(keepmj.mean())
+            sample.stats_dfs.s3["avg_depth_stat"] = float(keepstat.mean())
+            sample.stats_dfs.s3["sd_depth_total"] = float(depths.std())
+            sample.stats_dfs.s3["sd_depth_mj"] = float(keepmj.std())
+            sample.stats_dfs.s3["sd_depth_stat"] = float(keepstat.std())
 
     # store results
     # If PE, samtools reports the _actual_ number of reads mapped, both
@@ -2134,8 +2133,9 @@ def store_sample_stats(data, sample, maxlens, depths):
     # with how we've been reporting R1 and R2 as one "read pair"
     if "pair" in data.paramsdict["datatype"]:
         sample.stats["refseq_mapped_reads"] = sum(depths)
-        sample.stats["refseq_unmapped_reads"] = (
-            sample.stats.reads_passed_filter - sample.stats["refseq_mapped_reads"])
+        sample.stats["refseq_unmapped_reads"] = int(
+            sample.stats.reads_passed_filter - \
+            sample.stats["refseq_mapped_reads"])
 
     # cleanup
     if not data.paramsdict["assembly_method"] == "denovo":    
