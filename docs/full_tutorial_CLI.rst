@@ -332,9 +332,10 @@ handy stats tracked for this assembly.
     ## View the output of step 2
     ls ipyrad-test_edits
 
-.. parsed-literal::                                                                                                                                  
-    1A_0_R1_.fastq       1C_0_R1_.fastq       2E_0_R1_.fastq       2G_0_R1_.fastq       3I_0_R1_.fastq       3K_0_R1_.fastq       s2_rawedit_stats.txt
-    1B_0_R1_.fastq       1D_0_R1_.fastq       2F_0_R1_.fastq       2H_0_R1_.fastq       3J_0_R1_.fastq       3L_0_R1_.fastq
+.. parsed-literal::
+    1A_0.trimmed_R1_.fastq.gz  1D_0.trimmed_R1_.fastq.gz  2G_0.trimmed_R1_.fastq.gz  3J_0.trimmed_R1_.fastq.gz  s2_rawedit_stats.txt
+    1B_0.trimmed_R1_.fastq.gz  2E_0.trimmed_R1_.fastq.gz  2H_0.trimmed_R1_.fastq.gz  3K_0.trimmed_R1_.fastq.gz
+    1C_0.trimmed_R1_.fastq.gz  2F_0.trimmed_R1_.fastq.gz  3I_0.trimmed_R1_.fastq.gz  3L_0.trimmed_R1_.fastq.gz
 
 .. code-block:: bash
 
@@ -362,7 +363,7 @@ handy stats tracked for this assembly.
 You might also take a gander at the filtered reads:
 .. code-block:: bash
 
-    head -n 12 ./ipyrad-test_fastqs/1A_0_R1_.fastq
+    gzip -c ./ipyrad-test_fastqs/1A_0.trimmed_R1_.fastq.gz | head -n 12
 
 
 Step 3: clustering within-samples
