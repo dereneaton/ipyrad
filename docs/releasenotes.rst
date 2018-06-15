@@ -5,6 +5,13 @@
 Release Notes
 =============
 
+0.7.27
+------
+**June 15, 2018**
+
+- Add distance plot, and pca.pcs to hold coordinates per sample
+- remove some crust from pca.pywq
+
 0.7.26
 ------
 **June 14, 2018**
