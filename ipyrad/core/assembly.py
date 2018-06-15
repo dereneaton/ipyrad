@@ -691,12 +691,11 @@ class Assembly(object):
                         popmins.update({i.split(':')[0]:int(i.split(':')[1]) \
                                         for i in minlist})
                 else:
-                    raise IPyradError(NO_MIN_SAMPLES_PER_POP)
+                    raise IPyradError(MIN_SAMPLES_PER_POP_MALFORMED)
 
             except (ValueError, IOError):
                 LOGGER.warn("Populations file may be malformed.")
-                raise IPyradError("  Populations file malformed - {}"\
-                                  .format(popfile))
+                raise IPyradError(MIN_SAMPLES_PER_POP_MALFORMED)
 
         else:
             ## pop dict is provided by user
@@ -711,6 +710,10 @@ class Assembly(object):
             LOGGER.warn("Some names from population input do not match Sample "\
                         + "names: ".format(", ".join(badsamples)))
             LOGGER.warn("If this is a new assembly this is normal.")
+
+        ## If popmins not set, just assume all mins are zero
+        if not popmins:
+            popmins = {i: 0 for i in popdict.keys()}
 
         ## check popmins
         ## cannot have higher min for a pop than there are samples in the pop
@@ -2135,7 +2138,7 @@ BAD_BARCODE = """\
     Barcodes must contain only characters from this list "RKSYWMCATG".
     Doublecheck your barcodes file is properly formatted.
     """
-NO_MIN_SAMPLES_PER_POP = """\n\
+MIN_SAMPLES_PER_POP_MALFORMED = """\n\
     Population assignment file must include a line indicating the minimum
     number of samples per population. This line should come at the end
     of the file and should be preceded by a hash sign (#), e.g.:
