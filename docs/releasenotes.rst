@@ -5,6 +5,22 @@
 Release Notes
 =============
 
+0.7.26
+------
+**June 14, 2018**
+
+- Adding analysis.pca
+- Allow passing in just a dict for specifying populations to _link_populations(), and assume all minsamps = 0
+- Some of step 2 docs were outdated
+- Fix stupid link
+- Adding some docs about MIG-seq.
+- Damn this cluster config mayhem is a mess.
+- Fix faq re pyzmq
+- adding docs about max_snp_locus settings
+- Fix merge conflict
+- Add docs to fix the GLIBC error
+- Docs for r1/r2 not the same length
+
 0.7.25
 ------
 **May 17, 2018**
