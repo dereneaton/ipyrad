@@ -141,12 +141,19 @@ class PCA(object):
         if set(samps) > set(self.samples_vcforder):
             raise IPyradError("  Trying to remove samples not present in the vcf file: {}".format(samps))
 
+        ## Remove the samples from the sample list
         mask = np.isin(self.samples_vcforder, samps)
         self.samples_vcforder = self.samples_vcforder[~mask]
-        self.genotypes = self.genotypes.T[~mask]
-        self.genotypes = self.genotypes.T
-        
 
+        self.genotypes = self.genotypes[:, ~mask]
+        ## Remove biallelic singletons. If you don't do this you get
+        ## a nasty error during svd, like this:
+        ## https://stackoverflow.com/questions/33447808/sklearns-plsregression-valueerror-array-must-not-contain-infs-or-nans
+        ac = self.genotypes.count_alleles()
+        flt = (ac.max_allele() == 1) & (ac[:, :2].min(axis=1) > 1)
+        self.genotypes = self.genotypes.compress(flt, axis=0)
+
+        
     def plot(self, pcs=[1, 2], ax=None, cmap=None, cdict=None):
         """
         Do the PCA and plot it.
@@ -177,6 +184,7 @@ class PCA(object):
 
         ## Actually do the pca
         coords, model = allel.stats.pca(allele_counts, n_components=10, scaler='patterson')
+        self.pcs = coords
 
         ## Just allow folks to pass in the name of the cmap they want to use
         if isinstance(cmap, str):
@@ -187,7 +195,7 @@ class PCA(object):
 
 
         if not cmap and not cdict:
-            print("  Using default cmap: Spectral")
+            print("Using default cmap: Spectral")
             cmap = cm.get_cmap('Spectral')
 
         if cmap:
@@ -215,12 +223,42 @@ class PCA(object):
             fig.tight_layout()
 
 
+    def plot_pairwise_dist(self, labels=None, ax=None, cmap=None, cdict=None, metric="euclidean"):
+        """
+        Plot pairwise distances between all samples
+
+        labels: bool or list
+                by default labels aren't included. If labels == True, then labels are read in
+                from the vcf file. Alternatively, labels can be passed in as a list, should
+                be same length as the number of samples.
+        """
+        allele_counts = self.genotypes.to_n_alt()
+        dist = allel.stats.pairwise_distance(allele_counts, metric=metric)
+        if not ax:
+            fig = plt.figure(figsize=(5, 5))
+            ax = fig.add_subplot(1, 1, 1)
+
+        if isinstance(labels, bool):
+            if labels:
+                labels = list(self.samples_vcforder)
+        elif isinstance(labels, type(None)):
+            pass
+        else:
+            ## If not bool or None (default), then check to make sure the list passed in
+            ## is the right length
+            if not len(labels) == len(self.samples_vcforder):
+                raise IPyradError(LABELS_LENGTH_ERROR.format(len(labels), len(self.samples_vcforder)))
+
+        allel.plot.pairwise_distance(dist, labels=labels, ax=ax, colorbar=False)
+
+
     def copy(self):
         """ returns a copy of the baba analysis object """
         return copy.deepcopy(self)
 
 
-    MISSING_VCF_ERROR = "  Assembly does not contain a vcf file. Rerun step 7 with `v` included in the `output_formats` parameter."
+MISSING_VCF_ERROR = "  Assembly does not contain a vcf file. Rerun step 7 with `v` included in the `output_formats` parameter."
+LABELS_LENGTH_ERROR ="Labels must be same length as number of samples. You have {} labels and {} samples."
 
 
 #######################################################################
