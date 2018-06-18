@@ -1032,75 +1032,6 @@ class Assembly(object):
         ip.assemble.rawedit.run2(self, samples, force, ipyclient)
 
 
-
-    def _step3func(self, samples, noreverse, maxindels, force, ipyclient):
-        # print headers
-        if self._headers:
-            print("\n  Step 3: Clustering/Mapping reads")
-
-        # Get sample objects from list of strings
-        samples = _get_samples(self, samples)
-
-        # Check if all/none in the right state
-        if not self._samples_precheck(samples, 3, force):
-            raise IPyradError(FIRST_RUN_2)
-
-        elif not force:
-            # skip if all are finished
-            if all([i.stats.state >= 3 for i in samples]):
-                print(CLUSTERS_EXIST.format(len(samples)))
-                return
-
-        # run the step function
-        args = (self, samples, noreverse, maxindels, force, ipyclient)
-        step3 = ip.assemble.clustmap.Step3(*args)
-        step3.run()
-
-
-    def _step4func(self, samples, force, ipyclient):
-        if self._headers:
-            print("\n  Step 4: Joint estimation of error rate and heterozygosity")
-
-        ## Get sample objects from list of strings
-        samples = _get_samples(self, samples)
-
-        ## Check if all/none in the right state
-        if not self._samples_precheck(samples, 4, force):
-            raise IPyradError(FIRST_RUN_3)
-
-        elif not force:
-            ## skip if all are finished
-            if all([i.stats.state >= 4 for i in samples]):
-                print(JOINTS_EXIST.format(len(samples)))
-                return
-
-        ## send to function
-        ip.assemble.jointestimate.run(self, samples, force, ipyclient)
-
-
-    def _step5func(self, samples, force, ipyclient):
-        """ hidden wrapped function to start step 5 """
-        ## print header
-        if self._headers:
-            print("\n  Step 5: Consensus base calling ")
-
-        ## Get sample objects from list of strings
-        samples = _get_samples(self, samples)
-
-        ## Check if all/none in the right state
-        if not self._samples_precheck(samples, 5, force):
-            raise IPyradError(FIRST_RUN_4)
-
-        elif not force:
-            ## skip if all are finished
-            if all([i.stats.state >= 5 for i in samples]):
-                print(CONSENS_EXIST.format(len(samples)))
-                return
-        ## pass samples to rawedit
-        ip.assemble.consens_se.run(self, samples, force, ipyclient)
-
-
-
     def _step6func(self, 
         samples,
         noreverse,
@@ -1188,24 +1119,6 @@ class Assembly(object):
 
 
 
-    def _samples_precheck(self, samples, mystep, force):
-        """ Return a list of samples that are actually ready for the next step.
-            Each step runs this prior to calling run, makes it easier to
-            centralize and normalize how each step is checking sample states.
-            mystep is the state produced by the current step.
-        """
-        subsample = []
-        ## filter by state
-        for sample in samples:
-            if sample.stats.state < mystep - 1:
-                ip.logger.debug("Sample {} not in proper state."\
-                             .format(sample.name))
-            else:
-                subsample.append(sample)
-        return subsample
-
-
-
     def _compatible_params_check(self):
         """
         check for mindepths after all params are set, b/c doing it while each
@@ -1248,7 +1161,7 @@ class Assembly(object):
         ## to ensure proper cleanup of the ipyclient.
         inst = None
         try:
-            ## find a running ipcluster instance using self.ipcluster dict
+            # find a running ipcluster instance using self.ipcluster dict
             if not ipyclient:
                 args = list(self._ipcluster.items()) + [("spacer", self._spacer)]
                 ipyclient = ip.core.parallel.get_client(**dict(args))
