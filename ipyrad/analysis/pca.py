@@ -13,12 +13,14 @@ from __future__ import print_function, division
 ## ipyrad tools
 from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
 from ipyrad import Assembly
+from collections import OrderedDict
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import pandas as pd
 import numpy as np
 import itertools
+import copy
 import os
 
 try:
@@ -98,6 +100,18 @@ class PCA(object):
                 ## treat everything the same way.
                 self.pops = {x:(0, y) for x, y in pops.items()}
             else:
+                if not os.path.isfile(pops):
+                    raise IPyradError("popfile does not exist - {}".format(pops))
+
+                ## If the file you pass in doesn't have the stupid ipyrad minsamp
+                mindat = [i.lstrip("#").lstrip().rstrip() for i in \
+                          open(pops, 'r').readlines() if i.startswith("#")]
+                if not mindat:
+                    lines = open(pops, 'r').readlines()
+                    p = set([x.split()[1].strip() for x in lines])
+                    with open(pops, 'a') as outfile:
+                        outfile.write("# " + " ".join(["{}:1".format(x) for x in p]))
+
                 self.assembly.paramsdict["pop_assign_file"] = os.path.realpath(pops)
                 self.assembly._link_populations()
                 self.pops = self.assembly.populations
@@ -141,8 +155,100 @@ class PCA(object):
         self.genotypes = gt.compress(flt, axis=0)
 
 
-    def remove_samples(self, samps):
+    ## Make a deep copy
+    ##
+    def _copy(self):
+        newpca = PCA()
+        newpca.samples_vcforder = self.samples_vcforder.copy()
+        newpca.genotypes = self.genotypes.copy()
+        newpca.data = self.data
+        newpca.ncomponents = self.ncomponents
+        newpca.pops = self.pops.copy()
+        newpca.quiet = self.quiet
+        return newpca
 
+    def get_missing_per_sample(self):
+        return pd.Series(self.genotypes.count_missing(axis=0),\
+                        index=self.samples_vcforder)
+
+
+    def get_nsnp_no_missing(self):
+        return np.count_nonzero(pca.genotypes.count_missing(axis=1) == 0)
+
+
+    ## Count number of snps that would be retained if n missing sites
+    ## are allowed from 0 to maxm. Returns a series of these values.
+    def _count_miss(self, name=None, maxm=10):
+        tot_snp = len(self.genotypes)
+        missdict = OrderedDict({})
+        for n in range(0, maxm):
+            misscounts = self.genotypes.count_missing(axis=1)
+            misses = misscounts > n
+            nmiss = self.genotypes[:][misses]
+            missdict[n] = tot_snp - nmiss.shape[0]
+        return pd.Series(missdict.values(), index=missdict.keys(), name=name)
+
+
+    ## This returns a dataframe that shows the number of snps you'll retain
+    ## after trimming for certain levels of missing data and/or removing
+    ## the samples with the most missingness. It helps figure out which
+    ## samples to drop and what level of missingness to accept.
+    def missingness(self, maxm=10, nsamps=5, keep_dupes=False):
+        trash_pca = self.copy()
+
+        ## How much missingness without removing any samples
+        miss_df = pd.DataFrame(trash_pca._count_miss(name="Full", maxm=maxm))
+
+        miss_samps = trash_pca.get_missing_per_sample()
+        ## Get the first n samples with the most missing data
+        miss_samps = miss_samps.sort_values()[:nsamps]
+        for k, v in miss_samps.iteritems():
+            #print("removing {}".format(k))
+            trash_pca.remove_samples(k)
+            #print(self.genotypes.shape)
+            ret = trash_pca._count_miss(name=k, maxm=maxm)
+            miss_df = pd.concat([miss_df, ret], axis=1)
+
+        if not keep_dupes:
+            miss_df = miss_df.drop_duplicates()
+
+        return miss_df
+
+
+    ## remove all snps with more than max_missing samples with missing data
+    ## This is a destructive operation.
+    def trim_missing(self, max_missing=100):
+        misscounts = self.genotypes.count_missing(axis=1)
+        misses = misscounts > max_missing
+        self.genotypes = self.genotypes[:][~misses]
+
+
+    ## Attempt to fill missing values with the most frequent genotype per
+    ## population. In this case if ./. is the most frequent, then we just
+    ## keep it.
+    ## TODO: Could have other modes of filling missing here, for example
+    ## could make it so ./. doesn't 'count' as a genotype.
+    def fill_missing(self, value='mode'):
+        ## Local function to get the most frequent genotype. If there's
+        ## a tie it will just take the first one
+        def mode(ndarray):
+            modals, counts = np.unique(ndarray, axis=0, return_counts=True)
+            index = np.argmax(counts)
+            return modals[index], counts[index]
+
+        for pop, samps in self.pops.items():
+            mask = np.isin(self.samples_vcforder, samps)
+            for idx, row in enumerate(self.genotypes):
+                if self.genotypes[idx][mask].count_missing():
+                    val = mode(row[mask])
+                    #print(gt[idx].to_str(threshold=12))
+                    midx = self.genotypes[idx][mask].is_missing()
+                    tmp = self.genotypes[idx][mask]
+                    tmp[midx] = val[0]
+                    self.genotypes[idx][mask] = tmp
+
+
+    def remove_samples(self, samps):
         ## Allow to just pass in one sample as a string
         if isinstance(samps, str):
             samps = [samps]
@@ -272,8 +378,10 @@ class PCA(object):
 
 
     def copy(self):
-        """ returns a copy of the baba analysis object """
-        return copy.deepcopy(self)
+        """ returns a copy of the pca analysis object """
+        cp = copy.deepcopy(self)
+        cp.genotypes = allel.GenotypeArray(self.genotypes, copy=True)
+        return cp
 
 
 MISSING_VCF_ERROR = "  Assembly does not contain a vcf file. Rerun step 7 with `v` included in the `output_formats` parameter."
