@@ -455,7 +455,7 @@ class Step6:
 
         catbam = os.path.join(
             self.data.dirs.across, 
-            "cat.bam"
+            "{}.cat.bam".format(self.data.name)
             )
 
         # concatenate consens bamfiles for all samples in this assembly
@@ -493,7 +493,7 @@ class Step6:
             "-o", 
             os.path.join(
                 self.data.dirs.across, 
-                "cat.sorted.bam"
+                "{}.cat.sorted.bam".format(self.data.name)
                 ),
             catbam,
         ]
@@ -517,7 +517,7 @@ class Step6:
             "index", 
             os.path.join(
                 self.data.dirs.across, 
-                "cat.sorted.bam"
+                "{}.cat.sorted.bam".format(self.data.name)
             ),           
         ]
         proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
@@ -555,6 +555,7 @@ class Step6:
                 "error in build ref regions: {}".format(rasync.exception()))
 
 
+    # can parallelize
     def remote_build_ref_clusters(self):
         "build clusters and find variants/indels to store"
         
@@ -562,7 +563,7 @@ class Step6:
         bamfile = AlignmentFile(
             os.path.join(
                 self.data.dirs.across,
-                "cat.sorted.bam"),
+                "{}.cat.sorted.bam".format(self.data.name)),
             'rb')
         outfile = gzip.open(
             os.path.join(
@@ -571,18 +572,27 @@ class Step6:
             'wb')
 
         # write header with sample names
+        snames = sorted([i.name for i in self.samples])
+        nsamples = len(snames)
         outfile.write(
-            b" ".join([i.name.encode() for i in self.samples]) + b"\n")      
+            b" ".join([i.encode() for i in snames]) + b"\n")
 
         # get clusters
-        self.regions = iter(self.regions)
+        iregions = iter(self.regions)
         clusts = []
         while 1:
+            # pull in the cluster
             try:
-                region = next(self.regions)
+                region = next(iregions)
                 reads = bamfile.fetch(*region)
             except StopIteration:
                 break
+
+            # pull in the reference for this region
+            refn, refs = get_ref_region(
+                data.paramsdict["reference_sequence"], 
+                region[0], region[1] + 1, region[2] + 1,
+                )
 
             # build cluster dict for sorting                
             rdict = {}
@@ -590,10 +600,25 @@ class Step6:
                 rdict[read.qname] = read.seq   
             keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
-            # put into array
-            arr = np.zeros((len(rdict), len(read.seq)), dtype=bytes)
+            # make empty array
+            arr = np.zeros((nsamples + 1, len(refs)), dtype=bytes)
+
+            # fill it
+            arr[0] = list(refs)
             for idx, key in enumerate(keys):
-                arr[idx] = list(rdict[key])
+                # get start and stop from name
+                sname = key.rsplit("_", 1)[0]
+                rstart, rstop = key.rsplit(":", 2)[-1].split("-")
+                sidx = snames.index(sname)
+
+                # get start relative to ref
+                start = int(rstart) - int(region[1]) - 1
+                stop = start + int(rstop) - int(rstart)
+                print(sidx + 1, start, stop, arr.shape[1])
+                try:
+                    arr[sidx + 1, int(start): int(stop)] = list(rdict[key])
+                except ValueError:
+                    print(rdict[key])
 
             # get consens seq and variant site index 
             clust = []
@@ -604,12 +629,78 @@ class Step6:
 
             # or, just build variant string (or don't...)
             # write all loci with [locids, nsnps, npis, nindels, ?]
-            for key in keys:
-                clust.append("{}\n{}".format(key, rdict[key]))
-            clust.append("SNPs\n" + snpstring)
-            clusts.append("\n".join(clust))
+            # for key in keys:
+            #     clust.append("{}\n{}".format(key, rdict[key]))
+            # clust.append("SNPs\n" + snpstring)
+            # clusts.append("\n".join(clust))
+
+
         outfile.write(str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
         outfile.close()
+
+
+
+def build_ref_clusters(data): 
+
+    # prepare i/o
+    bamfile = AlignmentFile(
+        os.path.join(
+            self.data.dirs.across,
+            "{}.cat.sorted.bam".format(self.data.name)),
+        'rb')
+    outfile = gzip.open(
+        os.path.join(
+            self.data.dirs.across,
+            "{}.catcons.gz".format(self.data.name)),
+        'wb')
+
+    # write header with sample names
+    snames = sorted([i.name for i in self.samples])
+    nsamples = len(snames)
+    outfile.write(
+        b" ".join([i.encode() for i in snames]) + b"\n")
+
+    # get clusters
+    clusts = []
+    while 1:
+        # pull in the cluster
+        try:
+            region = next(iregions)
+            reads = bamfile.fetch(*region)
+        except StopIteration:
+            break
+
+        # pull in the reference for this region
+        refn, refs = get_ref_region(
+            data.paramsdict["reference_sequence"], 
+            region[0], region[1] + 1, region[2] + 1,
+            )
+
+        # build cluster dict for sorting                
+        rdict = {}
+        for read in reads:
+            rdict[read.qname] = read.seq   
+        keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
+
+        # make empty array
+        arr = np.zeros((len(rdict), len(refs)), dtype=bytes)
+       
+        # fill it
+        arr[0] = list(refs)
+        for idx, key in enumerate(keys):
+            # get start and stop from name
+            sname = key.rsplit("_", 1)[0]
+            rstart, rstop = key.rsplit(":", 2)[-1].split("-")
+            sidx = snames.index(sname)
+
+            # get start relative to ref
+            start = int(rstart) - int(region[1]) - 1
+            stop = start + int(rstop) - int(rstart)
+            print(sidx + 1, start, stop, arr.shape[1])
+            try:
+                arr[sidx + 1, int(start): int(stop)] = list(rdict[key])
+            except ValueError:
+                print(rdict[key])       
 
 
 def build_ref_regions(data):
@@ -620,7 +711,7 @@ def build_ref_regions(data):
         "-i", 
         os.path.join(
             data.dirs.across,
-            "cat.sorted.bam"
+            "{}.cat.sorted.bam".format(data.name)
             )
     ]
 
