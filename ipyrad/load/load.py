@@ -377,6 +377,8 @@ def default(o):
         return int(o)  
     raise TypeError
 
+# another idea for np error problem
+# https://stackoverflow.com/questions/27050108/convert-numpy-type-to-python/27050186#27050186
 
 class Encoder(json.JSONEncoder):
     """ Save JSON string with tuples embedded as described in stackoverflow
