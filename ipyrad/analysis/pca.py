@@ -155,18 +155,6 @@ class PCA(object):
         self.genotypes = gt.compress(flt, axis=0)
 
 
-    ## Make a deep copy
-    ##
-    def _copy(self):
-        newpca = PCA()
-        newpca.samples_vcforder = self.samples_vcforder.copy()
-        newpca.genotypes = self.genotypes.copy()
-        newpca.data = self.data
-        newpca.ncomponents = self.ncomponents
-        newpca.pops = self.pops.copy()
-        newpca.quiet = self.quiet
-        return newpca
-
     def get_missing_per_sample(self):
         return pd.Series(self.genotypes.count_missing(axis=0),\
                         index=self.samples_vcforder)
