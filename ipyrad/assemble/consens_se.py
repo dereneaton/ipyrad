@@ -384,7 +384,308 @@ def make_chunks(data, sample, ncpus):
                 num += 1
 
 
-def process_chunks(data, sample, chunk, isref):
+
+class Processor:
+    def __init__(self, data, sample, chunkfile, isref):
+        self.data = data
+        self.sample = sample
+        self.chunkfile = chunkfile
+        self.isref = isref
+
+        # prepare the processor
+        self.set_params()
+        self.init_counters()
+        self.init_arrays()        
+        self.chroms2ints()
+
+    # run the processor
+    def run(self):
+        self.process_chunk()
+        self.write_chunk()
+
+    def set_params(self):
+        # set max limits
+        self.tmpnum = int(self.chunkfile.split(".")[-1])
+        self.optim = int(self.chunkfile.split(".")[-2])
+        self.este = self.data.stats.error_est.mean()
+        self.esth = self.data.stats.hetero_est.mean()
+        self.maxlen = self.data._hackersonly["max_fragment_length"]
+        if 'pair' in self.data.paramsdict["datatype"]:
+            self.maxhet = sum(self.data.paramsdict["max_Hs_consens"])
+            self.maxn = sum(self.data.paramsdict["max_Ns_consens"])
+        else:
+            self.maxhet = self.data.paramsdict["max_Hs_consens"][0]
+            self.maxn = self.data.paramsdict["max_Ns_consens"][0]
+        # not enforced for ref
+        if self.isref:
+            self.maxn = int(1e6)
+        
+    def init_counters(self):
+        # store data for stats counters.
+        self.counters = {
+            "name": self.tmpnum,
+            "heteros": 0,
+            "nsites": 0,
+            "nconsens": 0,
+        }
+
+        # store data for what got filtered
+        self.filters = {
+            "depth": 0,
+            "maxh": 0,
+            "maxn": 0,
+        }
+
+        # store data for writing
+        self.storeseq = {}
+
+    def init_arrays(self):
+        # local copies to use to fill the arrays
+        self.catarr = np.zeros((self.optim, self.maxlen, 4), dtype=np.uint32)
+        self.nallel = np.zeros((self.optim, ), dtype=np.uint8)
+        self.refarr = np.zeros((self.optim, 3), dtype=np.int64)
+
+    def chroms2ints(self):
+        # if reference-mapped then parse the fai to get index number of chroms
+        if self.isref:
+            fai = pd.read_csv(
+                self.data.paramsdict["reference_sequence"] + ".fai",
+                names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+                sep="\t")
+            self.faidict = {j: i for i, j in enumerate(fai.scaffold)}
+            self.revdict = {j: i for i, j in self.faidict.items()}
+
+    # ---------------------------------------------
+    def process_chunk(self):
+        # stream through the clusters
+        with open(self.chunkfile, 'rb') as inclust:
+            pairdealer = izip(*[iter(inclust)] * 2)
+            done = 0
+            while not done:
+                done, chunk = clustdealer(pairdealer, 1)
+                if chunk:  
+                    self.parse_cluster(chunk)
+                    if self.filter_mindepth():
+                        self.build_consens_and_array()
+                        self.get_heteros()
+                        if self.filter_maxhetero():
+                            if self.filter_maxN_minLen():
+                                self.get_alleles()
+                                self.store_data()
+
+    def parse_cluster(self, chunk):
+        # get names and seqs
+        piece = chunk[0].decode().strip().split("\n")
+        self.names = piece[0::2]
+        self.seqs = piece[1::2]
+
+        # pull replicate read info from seqs
+        self.reps = [int(n.split(";")[-2][5:]) for n in self.names]
+
+        # ref positions
+        self.ref_position = (-1, 0, 0)
+        if self.isref:
+            # parse position from name string
+            rname = self.names[0].rsplit(";", 2)[0]
+            chrom, posish = rname.rsplit(":")
+            pos0, pos1 = posish.split("-")
+            # pull idx from .fai reference dict
+            chromint = self.faidict[chrom] + 1
+            self.ref_position = (int(chromint), int(pos0), int(pos1))
+
+    def filter_mindepth(self):
+        # exit if nreps is less than mindepth setting
+        if not nfilter1(self.data, self.reps):
+            self.filters['depth'] += 1
+            return 0
+        return 1
+
+    def build_consens_and_array(self):
+        # get stacks of base counts
+        sseqs = [list(seq) for seq in self.seqs]
+        arrayed = np.concatenate(
+            [[seq] * rep for (seq, rep) in zip(sseqs, self.reps)]
+        ).astype(bytes)
+        self.arrayed = arrayed[:, :self.maxlen]
+                    
+        # get unphased consens sequence and enforce maxlen limit
+        self.consens = base_caller(
+            arrayed, 
+            self.data.paramsdict["mindepth_majrule"], 
+            self.data.paramsdict["mindepth_statistical"],
+            self.esth, 
+            self.este,
+        )
+        self.consens = self.consens[:self.maxlen]
+
+        # trim Ns from the left and right ends
+        self.consens[self.consens == b"-"] = b"N"
+        trim = np.where(self.consens != b"N")[0]
+        ltrim, rtrim = trim.min(), trim.max()
+        self.consens = self.consens[ltrim:rtrim + 1]
+        self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
+
+        # update position for trimming
+        self.ref_position = (
+            self.ref_position[0], 
+            self.ref_position[1] + ltrim,
+            self.ref_position[1] + ltrim + rtrim + 1,
+            )
+
+    def get_heteros(self):
+        self.hidx = [
+            i for (i, j) in enumerate(self.consens) if 
+            j.decode() in list("RKSYWM")]
+        self.nheteros = len(self.hidx)
+
+    def filter_maxhetero(self):
+        if not nfilter2(self.nheteros, self.maxhet):
+            self.filters['maxh'] += 1
+            return 0
+        return 1
+
+    def filter_maxN_minLen(self):
+        if not nfilter3(self.consens, self.maxn):
+            self.filters['maxn'] += 1
+            return 0
+        return 1
+
+    def get_alleles(self):
+        # if less than two Hs then there is only one allele
+        if len(self.hidx) < 2:
+            self.nalleles = 1
+        else:
+            # array of hetero sites
+            harray = self.arrayed[:, self.hidx]
+            # remove reads with - or N at variable site
+            harray = harray[~np.any(harray == b"-", axis=1)]
+            harray = harray[~np.any(harray == b"N", axis=1)]
+            # get counts of each allele (e.g., AT:2, CG:2)
+            ccx = Counter([tuple(i) for i in harray])
+            # remove low freq alleles if more than 2, since they may reflect
+            # seq errors at hetero sites, making a third allele, or a new
+            # allelic combination that is not real.
+            if len(ccx) > 2:
+                totdepth = harray.shape[0]
+                cutoff = max(1, totdepth // 10)
+                alleles = [i for i in ccx if ccx[i] > cutoff]
+            else:
+                alleles = ccx.keys()
+            self.nalleles = len(alleles)
+
+            if self.nalleles == 2:
+                try:
+                    self.consens = storealleles(self.consens, self.hidx, alleles)
+                except (IndexError, KeyError):
+                    # the H sites do not form good alleles
+                    ip.logger.info("failed at phasing loc, skipping")
+                    ip.logger.info("""
+                        consens %s
+                        hidx %s
+                        alleles %s
+                        """, self.consens, self.hidx, alleles)
+
+    def store_data(self):
+        # current counter
+        cidx = self.counters["nconsens"]
+        self.nallel[cidx] = self.nalleles
+        #self.refarr[cidx] = ref_position
+        # store a reduced array with only CATG
+        catg = np.array(
+            [np.sum(arrayed == i, axis=0)
+                for i in [b'C', b'A', b'T', b'G']],
+            dtype='uint32').T
+        self.catarr[cidx, :catg.shape[0], :] = catg
+
+        # store the seqdata and advance counters
+        self.storeseq[cidx] = b"".join(list(self.consens))
+        self.counters["name"] += 1
+        self.counters["nconsens"] += 1
+        self.counters["heteros"] += self.nheteros
+
+    # ----------------------------------------------
+    def write_chunk(self):
+
+        # find last empty size
+        end = np.where(np.all(self.refarr == 0, axis=1))[0]
+        if np.any(end):
+            end = end.min()
+        else:
+            end = refarr.shape[0]
+
+        # write final consens string chunk
+        consenshandle = os.path.join(
+            self.data.tmpdir,
+            "{}_tmpcons.{}.{}".format(self.sample.name, end, self.tmpnum))
+
+        # write chunk. 
+        if self.storeseq:
+            with open(consenshandle, 'wt') as outfile:
+
+                # denovo just write the consens simple
+                if not self.isref:
+                    outfile.write(
+                        "\n".join(
+                            [">" + self.sample.name + "_" + str(key) + \
+                            "\n" + self.storeseq[key].decode() 
+                            for key in self.storeseq]))
+
+                # reference needs to store if the read is revcomp to reference
+                else:
+                    outfile.write(
+                        "\n".join(
+                            ["{}:{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                            .format(
+                                self.sample.name,
+                                self.refarr[i][0],
+                                self.refarr[i][1],
+                                self.refarr[i][2],
+                                0,
+                                self.revdict[refarr[i][0] - 1],
+                                self.refarr[i][1],
+                                0,
+
+                                # why doesn't this line up with +2 ?
+                                # make_indel_cigar(storeseq[i].decode()),
+                                #"{}M".format(refarr[i][2] - refarr[i][1]),
+                                "{}M".format(len(self.storeseq[i].decode())),
+                                "*",
+                                0,
+
+                                ## + 2 here
+                                self.refarr[i][2] - self.refarr[i][1],
+                                #len(self.storeseq[i].decode()),
+                                self.storeseq[i].decode(),
+                                "*",
+                                # "XT:Z:{}".format(
+                                    # make_indel_cigar(storeseq[i].decode())
+                                    # ),
+
+                            ) for i in self.storeseq.keys()]
+                            ))
+
+        # store reduced size arrays with indexes matching to keep indexes
+        tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
+        with h5py.File(tmp5, 'w') as io5:
+            io5.create_dataset(name="cats", data=self.catarr[:end])
+            io5.create_dataset(name="alls", data=self.nallel[:end])
+            io5.create_dataset(name="chroms", data=self.refarr[:end])
+        del self.catarr
+        del self.nallel
+        del self.refarr
+
+        # return stats
+        self.counters['nsites'] = sum([len(i) for i in self.storeseq.values()])
+        del self.storeseq
+        #return self.counters, self.filters
+
+
+
+
+
+
+
+def process_chunks(data, sample, chunkfile, isref):
     "make consensus base and allele calls"
 
     # temporarily store the mean estimates to Assembly
@@ -392,11 +693,11 @@ def process_chunks(data, sample, chunk, isref):
     esth = data.stats.hetero_est.mean()
 
     # get index number from tmp file name
-    tmpnum = int(chunk.split(".")[-1])
-    optim = int(chunk.split(".")[-2])
+    tmpnum = int(chunkfile.split(".")[-1])
+    optim = int(chunkfile.split(".")[-2])
 
     # prepare data for reading and use global maxfraglen
-    clusters = open(chunk, 'rb')
+    clusters = open(chunkfile, 'rb')
     pairdealer = izip(*[iter(clusters)] * 2)
     maxlen = data._hackersonly["max_fragment_length"]
 
@@ -486,6 +787,15 @@ def process_chunks(data, sample, chunk, isref):
                     esth, 
                     este,
                 )
+
+                # trim Ns from the left and right ends
+                trim = np.where(consens != "N")
+                ltrim, rtrim = trim.min(), trim.max()
+                consens = consens[ltrim:rtrim + 1]
+
+                # update position for trimming
+                pos0 += ltrim
+                pos1 = rtrim + 1
 
                 # apply a filter to remove low coverage sites/Ns that
                 # are likely sequence repeat errors. This is only applied to
@@ -587,8 +897,8 @@ def process_chunks(data, sample, chunk, isref):
                             0,
 
                             ## + 2 here
-                            refarr[i][2] - refarr[i][1],
-                            
+                            #refarr[i][2] - refarr[i][1],
+                            len(storeseq[i].decode()),
                             storeseq[i].decode(),
                             "*",
                             # "XT:Z:{}".format(
@@ -634,7 +944,7 @@ def concat_catgs(data, sample, isref):
     # file handle for concat'd catg array
     outcatg = os.path.join(
         data.dirs.consens,
-        "{}.catg".format(sample.name))
+        "{}.catg.hdf5".format(sample.name))
 
     # fill in the chunk array
     with h5py.File(outcatg, 'w') as ioh5:
@@ -792,6 +1102,7 @@ def store_sample_stats(data, sample, statsdicts):
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
+# not currently used
 def make_allele_cigar(seq, on='.', letter='S'):
     iii = seq.split(on)
     cig = ""
@@ -819,7 +1130,7 @@ def make_allele_cigar(seq, on='.', letter='S'):
         cig += "{}{}".format(isi, letter)
     return cig
 
-
+# not currently used
 def make_indel_cigar(seq, on='-', letter='I'):
     iii = seq.split(on)
     cig = ""
@@ -1129,7 +1440,8 @@ def nfilter4(consens, hidx, arrayed):
     ## how many high depth alleles?
     nalleles = len(alleles)
 
-    ## if 2 alleles then save the phase using lowercase coding
+    ## if 2 alleles then save the phase using lowercase coding. 
+    # todo: store for each allele whether it is phased or not.
     if nalleles == 2:
         try:
             consens = storealleles(consens, hidx, alleles)
