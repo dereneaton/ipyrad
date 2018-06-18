@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.7.28
+------
+**June 18, 2018**
+
+- Add functions for missingness, trim missing, and fill missing.
+- Adding PCA cookbook
+- pcs are now stored as pandas, also, you can specify ncomps
+
 0.7.27
 ------
 **June 15, 2018**
