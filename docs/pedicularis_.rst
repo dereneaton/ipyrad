@@ -45,8 +45,7 @@ already exist. The compressed file size is approximately 1.1GB.
 Setup a params file
 -------------------
 Always start by using the ``-n {name}`` argument to create a new named Assembly. 
-I'll use the name ``base`` to indicate this is the base assembly from which
-we will later create several branches. 
+I'll use the name ``pedicularis`` to indicate taxa being assembled.
 
 .. code:: bash
 
@@ -72,7 +71,7 @@ parameters 1 and 4, respectively.
     ## Use your text editor to enter the following values:
     ## The wildcard (*) tells ipyrad to select all files ending in .gz
     analysis-ipyrad                   ## [1] [project_dir] ...
-    example_empirical_rad/*.gz        ## [4] [sorted_fastq_path] ...  
+    example_empirical_data/*.gz        ## [4] [sorted_fastq_path] ...  
 
 We'll add a few additional options as well to: filter for adapters (param 16); 
 trim the 3' edge of R1 aligned loci by 5bp (param 26; this is optional, but helps 
@@ -99,12 +98,12 @@ pass it the `-r` argument so that it will print a results summary when finished.
 
 .. code:: bash
 
-    >>> ipyrad -p params-base.txt -s 1 -r
+    >>> ipyrad -p params-pedicularis.txt -s 1 -r
 
 
 .. parsed-literal:: 
    -------------------------------------------------------------
-    ipyrad [v.0.5.15]
+    ipyrad [v.0.7.28]
     Interactive assembly and analysis of RAD-seq data
    -------------------------------------------------------------
     New Assembly: pedicularis
@@ -147,12 +146,12 @@ The example here was run on a 20-core workstation and can finish in ~20 minutes.
 .. code:: bash
 
     ## run steps 2-7
-    >>> ipyrad -p params-base.txt -s 234567
+    >>> ipyrad -p params-pedicularis.txt -s 234567 -r
 
 
 .. parsed-literal::
    -------------------------------------------------------------
-    ipyrad [v.0.5.15]
+    ipyrad [v.0.7.28]
     Interactive assembly and analysis of RAD-seq data
    -------------------------------------------------------------
     loading Assembly: pedicularis
@@ -254,7 +253,7 @@ sites are in the assembled data.
 
 .. code:: python
 
-    cat ./pedicularis/base_outfiles/base_stats.txt
+    cat ./analysis-ipyrad/pedicularis_outfiles/pedicularis_stats.txt
 
 .. parsed-literal::
   ## The number of loci caught by each filter.
@@ -309,9 +308,9 @@ sites are in the assembled data.
   13            2922         40185
 
 
-  ## The distribution of SNPs (var and pis) across loci.
-  ## var = all variable sites (pis + autapomorphies)
-  ## pis = parsimony informative site (minor allele in >1 sample)
+  ## The distribution of SNPs (var and pis) per locus.
+  ## var = Number of loci with n variable sites (pis + autapomorphies)
+  ## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)
   ## ipyrad API location: [assembly].stats_dfs.s7_snps
 
        var  sum_var    pis  sum_pis
@@ -341,7 +340,7 @@ sites are in the assembled data.
 
 Take a peek at the .loci output
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-This is the first places I look when an assembly finishes. It provides a 
+This is the first place I look when an assembly finishes. It provides a 
 clean view of the data with variable sites (-) and parsimony informative
 SNPs (*) highlighted. Use the unix commands **less** or **head** to look at this
 file briefly. Each locus is labelled with a number corresponding to the locus 
@@ -353,7 +352,7 @@ or more total loci.
 .. code:: bash
 
   ## head -n 50 prints just the first 50 lines of the file to stdout
-  head -n 50 pedicularis/base_outfiles/base.loci
+  head -n 50 analysis-ipyrad/pedicularis_outfiles/pedicularis.loci
 
 .. code:: bash 
 
@@ -424,7 +423,7 @@ used in phylogenetic analyses, like in the program *raxml*. This super matrix is
 .. code:: bash
 
   ## cut -c 1-80 prints only the first 80 characters of the file
-  cut -c 1-80 pedicularis/base_outfiles/base.phy
+  cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.phy
 
 
 .. parsed-literal::
@@ -454,7 +453,7 @@ randomly selects only a single SNP per locus.
 .. code:: bash
 
     ## cut -c 1-80 prints only the first 80 characters of the file
-    cut -c 1-80 pedicularis/base_outfiles/base.snps.phy
+    cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.snps.phy
 
 
 .. parsed-literal::
@@ -492,13 +491,13 @@ correct low-depth base calls at this stage. Stay tuned.
     ## and we pipe this to 'cut', which shows only the first 80 rows of data
     ## for easier viewing. 
 
-    head -n 50 pedicularis/base_outfiles/base.vcf | cut -c 1-80
+    head -n 50 analysis-ipyrad/pedicularis_outfiles/pedicularis.vcf | cut -c 1-80
 
 
 .. parsed-literal::
   ##fileformat=VCFv4.0
   ##fileDate=2017/02/14
-  ##source=ipyrad_v.0.5.15
+  ##source=ipyrad_v.0.7.28
   ##reference=pseudo-reference (most common base at site)
   ##phasing=unphased
   ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Dat
@@ -569,7 +568,7 @@ correct low-depth base calls at this stage. Stay tuned.
 
 ..     ## run svd4tet on the unlinked snps file (-s) (.u.snps.phy suffix)
 ..     ## and give it the output prefix (-o) 'pedictree'
-..     svd4tet -s pedicularis/base_outfiles/base.u.snps.phy -o pedictree
+..     svd4tet -s analysis-ipyrad/pedicularis_outfiles/pedicularis.u.snps.phy -o pedictree
 
 .. .. parsed-literal::
     
