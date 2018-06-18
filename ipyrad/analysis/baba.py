@@ -125,7 +125,6 @@ class Baba(object):
             return None
 
 
-
     def run(self, 
         ipyclient=None,
         ):
@@ -516,7 +515,7 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     else:
         ## get results
         res, boots = _get_signif_5(arr, nboots)
-         ## make int a DataFrame
+        ## make int a DataFrame
         res = pd.DataFrame(res,
             index=["p3", "p4", "shared"], 
             columns=["Dstat", "bootmean", "bootstd", "Z", "ABxxA", "BAxxA", "nloci"]
