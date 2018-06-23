@@ -104,7 +104,7 @@ class Step2(object):
         "concatenate multiple raw files into a single file."
 
         # if no samples have multiple then just move on
-        if not any([len(i.files.fastqs) > 1 for i in subsamples]):
+        if not any([len(i.files.fastqs) > 1 for i in self.samples]):
             for sample in self.samples:
                 sample.files.concat = sample.files.fastqs
 
@@ -118,14 +118,14 @@ class Step2(object):
             for sample in self.samples:
                 if len(sample.files.fastqs) > 1:
                     catjobs[sample.name] = self.ipyclient[0].apply(
-                        concat_multiple_raws, *(self.data, self.sample))
+                        concat_reads, *(self.data, sample))
                 else:
                     sample.files.concat = sample.files.fastqs
 
             # wait for all to finish
             while 1:
                 finished = sum([i.ready() for i in catjobs.values()])
-                data._progressbar(len(catjobs), finished, start, printstr)
+                self.data._progressbar(len(catjobs), finished, start, printstr)
                 time.sleep(0.1)
                 if finished == len(catjobs):
                     break
