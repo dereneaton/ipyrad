@@ -117,8 +117,8 @@ class Step2(object):
             catjobs = {}
             for sample in self.samples:
                 if len(sample.files.fastqs) > 1:
-                    catjobs[sample.name] = self.ipyclient[0].apply(
-                        concat_reads, *(self.data, sample))
+                    catjobs[sample.name] = self.lbview.apply(
+                        concat_multiple_inputs, *(self.data, sample))
                 else:
                     sample.files.concat = sample.files.fastqs
 
@@ -652,7 +652,7 @@ def cutadaptit_pairs(data, sample):
     return res1
 
 
-
+# deprecated
 def run2(data, samples, force, ipyclient):
     """ 
     Filter for samples that are already finished with this step, allow others
@@ -693,7 +693,7 @@ def run2(data, samples, force, ipyclient):
     assembly_cleanup(data)
 
 
-
+# used in Step2 object
 def concat_reads(data, subsamples, ipyclient):
     """ concatenate if multiple input files for a single samples """
 
