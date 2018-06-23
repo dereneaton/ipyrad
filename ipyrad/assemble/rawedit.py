@@ -36,7 +36,7 @@ class Step2(object):
 
         # build list to run for samples being forced
         if self.force:
-            subsamples = list(self.data.samples.keys())
+            subsamples = list(self.data.samples.values())
         else:
             # tell user which samples have already completed step 2
             if statex.any():
