@@ -153,16 +153,16 @@ class Step2(object):
         if "pair" in self.data.paramsdict["datatype"]:
             for sample in self.samples:
                 rawedits[sample.name] = self.lbview.apply(
-                    cutadaptit_pairs, *(data, sample))
+                    cutadaptit_pairs, *(self.data, sample))
         else:
             for sample in self.samples:
                 rawedits[sample.name] = self.lbview.apply(
-                    cutadaptit_single, *(data, sample))
+                    cutadaptit_single, *(self.data, sample))
 
         ## wait for all to finish
         while 1:
             finished = sum([i.ready() for i in rawedits.values()])
-            data._progressbar(len(rawedits), finished, start, printstr)
+            self.data._progressbar(len(rawedits), finished, start, printstr)
             time.sleep(0.1)
             if finished == len(rawedits):
                 break
@@ -174,10 +174,12 @@ class Step2(object):
                 res = rawedits[rasync].result()
 
                 ## if single cleanup is easy
-                if "pair" not in data.paramsdict["datatype"]:
-                    parse_single_results(self.data, self.data.samples[rasync], res)
+                if "pair" not in self.data.paramsdict["datatype"]:
+                    parse_single_results(
+                        self.data, self.data.samples[rasync], res)
                 else:
-                    parse_pair_results(self.data, self.data.samples[rasync], res)
+                    parse_pair_results(
+                        self.data, self.data.samples[rasync], res)
             else:
                 print("  found an error in step2; see ipyrad_log.txt")
                 ip.logger.error(
@@ -193,7 +195,11 @@ class Step2(object):
 
         # write stats for all samples
         with open(self.data.stats_files.s2, 'w') as outfile:
-            data.stats_dfs.s2.fillna(value=0).astype(np.int).to_string(outfile)
+            (
+                self.data.stats_dfs.s2.fillna(value=0)
+                .astype(np.int)
+                .to_string(outfile)
+            )
 
 
 
