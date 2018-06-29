@@ -387,6 +387,9 @@ class Assembly(object):
             if not r1_try1 + r1_try2 + r1_try3:
                 raise IPyradWarningExit(
                     "Paired filenames are improperly formatted. See Documentation")
+            if not r2_try1 + r2_try2 + r2_try3:
+                raise IPyradWarningExit(
+                    "Paired filenames are improperly formatted. See Documentation")
 
             ## find the one with the right number of R1s
             for idx, tri in enumerate(r1s):
