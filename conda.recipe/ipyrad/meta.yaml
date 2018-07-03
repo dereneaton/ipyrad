@@ -47,6 +47,7 @@ requirements:
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0
+    - scikit-allel
 
   commands:
     - ipyrad -h
