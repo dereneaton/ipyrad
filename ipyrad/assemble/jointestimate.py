@@ -311,6 +311,9 @@ def stackarray(data, sample):
     pairdealer = izip(*[iter(clusters)] * 2)
 
     # we subsample, else ... (could e.g., use first 10000 loci).
+    # limit maxlen b/c some ref clusters can create huge contigs
+    hidepth = min(10000, hidepth)
+    maxlen = min(150, maxlen)
     dims = (hidepth, maxlen, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
@@ -363,6 +366,9 @@ def stackarray(data, sample):
 
                 stacked[nclust, :catg.shape[0], :] = catg
                 nclust += 1
+        # bail out when nclusts have been done
+        if nclust == hidepth:
+            done = True
 
     ## drop the empty rows in case there are fewer loci than the size of array
     newstack = stacked[stacked.sum(axis=2) > 0]
