@@ -624,10 +624,14 @@ def dereplicate(data, sample, nthreads):
     # find input file with following precedence:
     # .trimmed.fastq.gz, .concatedit.fq.gz, ._merged.fastq, ._declone.fastq
     infiles = [
-        os.path.join(data.dirs.edits, "{}.trimmed_R1_.fastq.gz".format(sample.name)),
-        os.path.join(data.dirs.edits, "{}_R1_concatedit.fq.gz".format(sample.name)),
-        os.path.join(data.tmpdir, "{}_merged.fastq".format(sample.name)),
-        os.path.join(data.tmpdir, "{}_declone.fastq".format(sample.name)),
+        os.path.join(data.dirs.edits,
+            "{}.trimmed_R1_.fastq.gz".format(sample.name)),
+        os.path.join(data.dirs.edits, 
+            "{}_R1_concatedit.fq.gz".format(sample.name)),
+        os.path.join(data.tmpdir, 
+            "{}_merged.fastq".format(sample.name)),
+        os.path.join(data.tmpdir, 
+            "{}_declone.fastq".format(sample.name)),
     ]
     infiles = [i for i in infiles if os.path.exists(i)]
     infile = infiles[-1]
