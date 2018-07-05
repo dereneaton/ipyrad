@@ -639,7 +639,7 @@ shows all the reads that align at one particular locus. You'll see the
 sample name of each read followed by the sequence of the read at that locus
 for that sample. If you wish to examine more loci you can increase the number
 of lines you want to view by increasing the value you pass to ``head`` in
-the above command (e.g. ``... | head -n 300 | less``
+the above command (e.g. ``... | head -n 300 | less``).
 
 .. parsed-literal::
     1C_0_691
