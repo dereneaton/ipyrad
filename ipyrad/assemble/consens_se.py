@@ -400,9 +400,6 @@ class Processor:
         self.init_arrays()        
         self.chroms2ints()
 
-        # run the processor
-        self.run()
-
     def run(self):
         self.process_chunk()
         self.write_chunk()
@@ -666,8 +663,8 @@ class Processor:
                                 self.storeseq[i].decode(),
                                 "*",
                                 # "XT:Z:{}".format(
-                                    # make_indel_cigar(storeseq[i].decode())
-                                    # ),
+                                # make_indel_cigar(storeseq[i].decode())
+                                # ),
 
                             ) for i in self.storeseq.keys()]
                             ))
@@ -685,8 +682,12 @@ class Processor:
         del self.nallel
         del self.refarr
 
-        # return stats
-        self.counters['nsites'] = sum([len(i) for i in self.storeseq.values()])
+        # return stats and skip sites that are Ns (78)
+        #self.counters['nsites'] = sum([len(i) for i in self.storeseq.values()])
+        self.counters['nsites'] = sum(
+            sum(1 if j != 78 else 0 for j in i) 
+            for i in self.storeseq.values()
+            )
         del self.storeseq
 
 
