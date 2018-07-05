@@ -630,7 +630,7 @@ the file that contains the reads clustered across samples:
 
 .. code-block:: bash
 
-    gunzip -c ipyrad-test_across/ipyrad-test_catclust.gz | head -n 30
+    gunzip -c ipyrad-test_across/ipyrad-test_catclust.gz | head -n 30 | less
 
 The final output of step 6 is a file in ``ipyrad-test_across`` called 
 ``ipyrad-test_catclust.gz``. This file contains all aligned reads across
