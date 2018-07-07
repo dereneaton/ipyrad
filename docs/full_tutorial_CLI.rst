@@ -112,12 +112,12 @@ to look like this, and then save it:
     ./data/rad_example_R1_.fastq.gz         ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
     ./data/rad_example_barcodes.txt         ## [3] [barcodes_path]: Location of barcodes file
 
-Once we start running the analysis this will create a new directory to hold
-all the output for this assembly. By default this creates a new directory
-named by the assembly_name parameter in the project_dir directory. For this
-tutorial this directory will be called:
+Once we start running the analysis this will create a new directories to hold
+all the output for this assembly. By default the new directories
+are named by the assembly_name parameter and are created in the project_dir directory.
+For this tutorial this directories will be called:
 .. parsed-literal::
-    ./ipyrad-test
+    ./ipyrad-test_*
 
 .. warning:: Once you start an assembly do not attempt to move or rename
 the project directory. ipyrad **relies** on the location of this directory 
@@ -142,14 +142,14 @@ the first three reads in the example file.
 .. code-block:: bash
 
     ## For your personal edification here is what this is doing:
-    ##  gzip -c: Tells gzip to unzip the file and write the contents to the screen
+    ##  gunzip -c: Tells gzip to unzip the file and write the contents to the screen
     ##  head -n 12: Grabs the first 12 lines of the fastq file. Fastq files
     ##      have 4 lines per read, so the value of `-n` should be a multiple of 4
     ##  cut -c 1-90: Trim the length of each line to 90 characters
     ##      we don't really need to see the whole sequence we're just trying
     ##      to get an idea.
 
-    gzip -c ./data/rad_example_R1_.fastq.gz | head -n 12 | cut -c 1-90
+    gunzip -c ./data/rad_example_R1_.fastq.gz | head -n 12 | cut -c 1-90
 
 And here's the output:
 
@@ -630,16 +630,16 @@ the file that contains the reads clustered across samples:
 
 .. code-block:: bash
 
-    gunzip -c ipyrad-test_consens/ipyrad-test_catclust.gz | head -n 30 | less
+    gunzip -c ipyrad-test_across/ipyrad-test_catclust.gz | head -n 30 | less
 
-The final output of step 6 is a file in ``ipyrad-test_consens`` called 
+The final output of step 6 is a file in ``ipyrad-test_across`` called 
 ``ipyrad-test_catclust.gz``. This file contains all aligned reads across
 all samples. Executing the above command you'll see the output below which 
 shows all the reads that align at one particular locus. You'll see the 
 sample name of each read followed by the sequence of the read at that locus
 for that sample. If you wish to examine more loci you can increase the number
 of lines you want to view by increasing the value you pass to ``head`` in
-the above command (e.g. ``... | head -n 300 | less``
+the above command (e.g. ``... | head -n 300 | less``).
 
 .. parsed-literal::
     1C_0_691
