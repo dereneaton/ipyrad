@@ -34,7 +34,7 @@ requirements:
     - setuptools >=28.0.0
     - jupyter
     - ipython >=5.0.0
-    - ipyparallel >=6.0.2
+    - ipyparallel =6.1.1
     - cython
     - scipy >=0.16
     - h5py
@@ -47,7 +47,7 @@ requirements:
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0
-    - scikit-allel
+    - scikit-allel >=1.1.10
 
   commands:
     - ipyrad -h
