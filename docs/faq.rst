@@ -226,7 +226,7 @@ How do I interpret the `distribution of SNPs (var and pis) per locus` in the *_s
 ----------------------------------------------------------------------------------------------------
 Here is an example of the first few lines of this block in the stats file:
 
-.. code-block:: 
+.. parsed-literal:: 
 
     bash    var  sum_var    pis  sum_pis
     0    661        0  10090        0
