@@ -309,7 +309,8 @@ class PCA(object):
 
 
         if not cmap and not cdict:
-            print("Using default cmap: Spectral")
+            if not self.quiet:
+                print("  Using default cmap: Spectral")
             cmap = cm.get_cmap('Spectral')
 
         if cmap:
