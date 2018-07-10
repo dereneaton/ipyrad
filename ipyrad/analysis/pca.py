@@ -256,6 +256,10 @@ class PCA(object):
         flt = (ac.max_allele() == 1) & (ac[:, :2].min(axis=1) > 1)
         self.genotypes = self.genotypes.compress(flt, axis=0)
 
+        if len(self.samples_vcforder) < self.ncomponents:
+            self.ncomponents = len(self.samples_vcforder)
+            print("  INFO: Number of PCs may not exceed the number of samples.\n  Setting number of PCs = {}".format(self.ncomponents))
+
         
     def plot(self, pcs=[1, 2], ax=None, cmap=None, cdict=None, legend=True, title=None, outfile=None):
         """
@@ -287,7 +291,11 @@ class PCA(object):
         allele_counts = self.genotypes.to_n_alt()
 
         ## Actually do the pca
+        if self.ncomponents > len(self.samples_vcforder):
+            self.ncomponents = len(self.samples_vcforder)
+            print("  INFO: # PCs < # samples. Forcing # PCs = {}".format(self.ncomponents))
         coords, model = allel.stats.pca(allele_counts, n_components=self.ncomponents, scaler='patterson')
+
         self.pcs = pd.DataFrame(coords,
                                 index=self.samples_vcforder,
                                 columns=["PC{}".format(x) for x in range(1,self.ncomponents+1)])
@@ -301,7 +309,8 @@ class PCA(object):
 
 
         if not cmap and not cdict:
-            print("Using default cmap: Spectral")
+            if not self.quiet:
+                print("  Using default cmap: Spectral")
             cmap = cm.get_cmap('Spectral')
 
         if cmap:
