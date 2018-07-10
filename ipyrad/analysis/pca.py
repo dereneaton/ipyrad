@@ -257,7 +257,7 @@ class PCA(object):
         self.genotypes = self.genotypes.compress(flt, axis=0)
 
         
-    def plot(self, pcs=[1, 2], ax=None, cmap=None, cdict=None, legend=True):
+    def plot(self, pcs=[1, 2], ax=None, cmap=None, cdict=None, legend=True, title=None, outfile=None):
         """
         Do the PCA and plot it.
 
@@ -332,6 +332,15 @@ class PCA(object):
 
         if fig:
             fig.tight_layout()
+
+        if title:
+            ax.set_title(title)
+
+        if outfile:
+            try:
+                plt.savefig(outfile, format="png", bbox_inches="tight")
+            except:
+                print("  Saving pca.plot() failed to save figure to {}".format(outfile))
 
         return ax
 
