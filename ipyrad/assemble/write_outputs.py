@@ -5,13 +5,10 @@ from builtins import range
 
 import os
 import shutil
-from collections import Counter, OrderedDict
-
 import numpy as np
-import ipyrad
-from .util import IPyradError, splitalleles, BTS, AMBIGS, TRANSFULL
+from .util import IPyradError  # , splitalleles, BTS, AMBIGS, TRANSFULL
 
-# terrible h5 warning
+# suppress this terrible h5 warning
 import warnings
 with warnings.catch_warnings(): 
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -19,27 +16,19 @@ with warnings.catch_warnings():
 
 
 class Step7:
-    def __init__(self, data):
+    def __init__(self, data, ipyclient):
         self.data = data
         self.samples = self.get_subsamples()
         self.setup_dirs()
 
     def run(self):
+        self.init_database()
+        self.remote_fill_filters_and_edges()
         self.remote_build_loci_and_stats()
+        self.remote_fill_depths()
+        self.remote_fill_arrs()
         self.remote_build_vcf()
         self.remote_build_conversions()
-
-    def setup_dirs(self):
-        "Create temp h5 db for storing filters and depth variants"
-        # get stats from step6 h5 and create new h5
-        outdir = os.path.join(
-            self.data.paramsdict["project_dir"],
-            "{}_outfiles".format(self.data.name))
-        if os.path.exists(outdir):
-            shutil.rmtree(outdir)
-        if not os.path.exists(outdir):
-            os.mkdirs(outdir)
-        #self.data.database = h5py.File(self.data.database, 'w')
 
 
     def get_subsamples(self):
@@ -87,6 +76,24 @@ class Step7:
         return checked_samples
 
 
+    def setup_dirs(self):
+        "Create temp h5 db for storing filters and depth variants"
+        # get stats from step6 h5 and create new h5
+        outdir = os.path.join(
+            self.data.paramsdict["project_dir"],
+            "{}_outfiles".format(self.data.name))
+        if os.path.exists(outdir):
+            shutil.rmtree(outdir)
+        if not os.path.exists(outdir):
+            os.mkdirs(outdir)
+        #self.data.database = h5py.File(self.data.database, 'w')
+
+
+    def remote_fill_filters_and_edges(self):
+        # slice out loci 1000 at a time
+        for hslice in range(0, 5000, 1000):
+            fill_filters_and_edges(self.data, hslice)
+
     def remote_build_loci_and_stats(self):
         build_loci_and_stats(self.data)
 
@@ -97,20 +104,24 @@ class Step7:
         pass
 
 
+def fill_filters_and_edges(data, hslice):
+    """
+    filter loci in this chunk and trim edges.
+    """
+    # open database for writing
+    io5 = h5py.File(data.database, 'w')
+    filters = io5["filters"]
+    edges = io5["edges"]
+
+    # load loci into an array (1000, nsamples, maxlen)
+    arr = np.array()
+
+    # 
 
 
-def get_ref_variant_depths(data, samples, locids, site):
-    "get variant site depths from individual catg files for each sample"
 
-    # get catg arrays
-    catgs = [
-        os.path.join(
-            data.dirs.consens,
-            "{}.catg".format(sample.name)
-        ) for sample in samples]
-
-    # open all arrays for getting... would this work in there are say 5K samps?
-
+    # close database file
+    io5.close()
 
 
 def apply_filters(data, hslice):
@@ -216,3 +227,18 @@ def apply_filters(data, hslice):
 
     io5.close()
     co5.close()
+
+
+
+def get_ref_variant_depths(data, samples, locids, site):
+    "get variant site depths from individual catg files for each sample"
+
+    # get catg arrays
+    catgs = [
+        os.path.join(
+            data.dirs.consens,
+            "{}.catg".format(sample.name)
+        ) for sample in samples]
+
+    # open all arrays for getting... would this work in there are say 5K samps?
+
