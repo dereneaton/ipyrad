@@ -4,6 +4,7 @@
 
 # py2/3 compatible
 from __future__ import print_function
+from builtins import range
 try:
     from itertools import izip, chain
 except ImportError:
