@@ -327,3 +327,18 @@ https://groups.google.com/a/continuum.io/forum/#!topic/anaconda/o0pnE9PEqA0
 
 https://github.com/ipython/ipyparallel/issues/213
 
+Why are my ipyrad.analysis.structure runs taking so long/not doing anything?
+----------------------------------------------------------------------------
+See the previous FAQ answer. It's typical for HPC cluster systems to be configured without a GUI backend. Unfortunately ipyparallel and this particular GUI-less environment have a hard time interacting (for complicated reasons). We have derived a workaround that allows the parallelization to function. You should execute the following commands in a terminal on your cluster head node.
+
+VERY IMPORTANT: This environment variable needs to be set in both .bashrc and .profile so that it is picked up when you run ipyparallel in either the head node of the cluster or on compute nodes.
+
+.. code-block:: bash
+    $ echo "# Prevent ipyparallel engines from dying in a headless environment" >> ~/.bashrc
+    $ echo "export QT_QPA_PLATFORM=offscreen" >> ~/.bashrc
+    $ echo "export QT_QPA_PLATFORM=offscreen" >> ~/.profile
+    $ source ~/.bashrc
+    $ source ~/.profile
+    $ env | grep QT
+
+
