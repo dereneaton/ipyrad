@@ -7,15 +7,18 @@ from __future__ import print_function
 import os
 import time
 import json
+import itertools
 import pandas as pd
 import ipyrad as ip
 from copy import deepcopy
-from ipyrad.assemble.util import *
+from ipyrad.assemble.util import IPyradWarningExit, ObjDict
 from collections import OrderedDict
 
 # pylint: disable=W0212
 # pylint: disable=W0142
 
+import logging
+LOGGER = logging.getLogger(__name__)
 
 def test_assembly(data):
     """ Check to see if the assembly you're trying to load is concordant
