@@ -193,7 +193,6 @@ Assembly object name.
 .. code:: python
 
     ## run step 3 to cluster reads within samples using vsearch
-    #data1.step3(['2E_0'], force=True, preview=True)  # ["2H_0", "2G_0"])
     data1.step3(force=True)
     ## print the results
     print data1.stats.head()

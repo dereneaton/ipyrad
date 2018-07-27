@@ -172,15 +172,13 @@ simply branching "base" again with a different list of Samples.
   41954_cyathophylloides      1    2199613 
 
 
-**Subsampling data**:
-A special flag (--preview) can be called during step2 to subsample a specific
-number of reads per Sample. The default is 100K reads, which in this case 
-is about 5-10% of the total. This will make our analysis run very fast downstream. 
+**Running step 2**:
+
 
 .. code:: bash
 
-    ## run step2 in preview mode
-    >>> ipyrad -p params-sub4.txt -s 2 --preview -r
+    ## run step2 
+    >>> ipyrad -p params-sub4.txt -s 2 -r
 
 
 .. parsed-literal::
@@ -193,7 +191,6 @@ is about 5-10% of the total. This will make our analysis run very fast downstrea
    ipyparallel setup: Local connection to 4 Engines
  
    Step2: Filtering reads 
-   Running preview mode: subselecting maximum of 100000 reads per sample    
    [####################] 100%  processing reads      | 0:02:48 
    Saving Assembly.
 
