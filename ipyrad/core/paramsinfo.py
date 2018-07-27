@@ -161,9 +161,8 @@ pinfo = OrderedDict([
     RADseq with sonication requires only one overhange, all other data 
     types should have two. The first is used for detecting barcodes, the 
     second is not required, but is used in filtering, and is needed for 
-    removal from short DNA fragments. Use .preview() methods (see 
-    documentation) to ensure that restriction overhangs are entered 
-    correctly. This parameter affects steps 1,2,4,5, and 7 of assembly. 
+    removal from short DNA fragments. This parameter affects steps 1,2,4,5, 
+    and 7 of assembly. 
     Examples:
     ----------------------------------------------------------------------
     data.set_params(8) = ("TGCAG", "")           ## default rad (PstI)

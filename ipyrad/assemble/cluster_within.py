@@ -53,9 +53,10 @@ def get_quick_depths(data, sample):
     if sample.files.clusters:
         pass
     else:
-        ## set cluster file handles
-        sample.files.clusters = os.path.join(
-            data.dirs.clusts, sample.name+".clustS.gz")
+        pass
+    ## set cluster file handles
+    sample.files.clusters = os.path.join(
+        data.dirs.clusts, sample.name+".clustS.gz")
 
     ## get new clustered loci
     fclust = data.samples[sample.name].files.clusters
@@ -1413,7 +1414,7 @@ def cleanup_and_die(async_results):
 
 
 
-def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
+def run(data, samples, noreverse, maxindels, force, ipyclient):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
@@ -1563,9 +1564,7 @@ JOBORDER = {
 
 
 NO_UHITS_ERROR = """\
-    No clusters (.utemp hits) found for {}. If you are running preview mode and
-    the size of the truncated input file isn't big enough try increasing the
-    size of <your_assembly>._hackersonly[\"preview_truncate_length\"
+    No clusters (.utemp hits) found for {}.
     """
 
 

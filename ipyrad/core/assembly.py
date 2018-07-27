@@ -942,7 +942,7 @@ class Assembly(object):
 
 
 
-    def _step1func(self, force, preview, ipyclient):
+    def _step1func(self, force, ipyclient):
         """ hidden wrapped function to start step 1 """
 
         ## check input data files
@@ -975,7 +975,6 @@ class Assembly(object):
                 if glob.glob(sfiles):
                     self._link_fastqs(ipyclient=ipyclient, force=force)
                 else:
-                    #assemble.demultiplex.run(self, preview, ipyclient, force)                    
                     assemble.demultiplex.run2(self, ipyclient, force)
 
         ## Creating new Samples
@@ -986,7 +985,6 @@ class Assembly(object):
 
             ## otherwise do the demultiplexing
             else:
-                #assemble.demultiplex.run(self, preview, ipyclient, force)
                 assemble.demultiplex.run2(self, ipyclient, force)
 
 
@@ -1016,7 +1014,7 @@ class Assembly(object):
 
 
 
-    def _step3func(self, samples, noreverse, maxindels, force, preview, ipyclient):
+    def _step3func(self, samples, noreverse, maxindels, force, ipyclient):
         """ hidden wrapped function to start step 3 """
         ## print headers
         if self._headers:
@@ -1064,7 +1062,7 @@ class Assembly(object):
 
         ## run the step function
         assemble.cluster_within.run(self, samples, noreverse, maxindels,
-                                    force, preview, ipyclient)
+                                    force, ipyclient)
 
 
 
@@ -1243,7 +1241,7 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0, force=False, preview=False, ipyclient=None, 
+    def run(self, steps=0, force=False, ipyclient=None, 
         show_cluster=0, **kwargs):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
@@ -1296,7 +1294,7 @@ class Assembly(object):
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
             if '1' in steps:
-                self._step1func(force, preview, ipyclient)
+                self._step1func(force, ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
@@ -1307,7 +1305,7 @@ class Assembly(object):
 
             if '3' in steps:
                 self._step3func(samples=None, noreverse=0, force=force,
-                             maxindels=8, preview=preview, ipyclient=ipyclient)
+                             maxindels=8, ipyclient=ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 

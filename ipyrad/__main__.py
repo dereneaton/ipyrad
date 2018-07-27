@@ -358,8 +358,6 @@ def parse_command_line():
   * Documentation: http://ipyrad.readthedocs.io
     """)
 
-    #* Preview mode (subsamples data)
-    #  ipyrad -p params-data.txt -s --preview  
 
     ## add arguments 
     parser.add_argument('-v', '--version', action='version', 
@@ -407,10 +405,6 @@ def parse_command_line():
 
     parser.add_argument("--MPI", action='store_true',
         help="connect to parallel CPUs across multiple nodes")
-
-    parser.add_argument("--preview", action='store_true',
-        help="run ipyrad in preview mode. Subset the input file so it'll run"\
-            + "quickly so you can verify everything is working")
 
     parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
         type=str, nargs="?", const="default",
@@ -604,7 +598,6 @@ def main():
             data.run(
                 steps=steps, 
                 force=args.force, 
-                preview=args.preview, 
                 show_cluster=1, 
                 ipyclient=ipyclient)
                      
