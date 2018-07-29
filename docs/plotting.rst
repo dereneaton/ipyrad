@@ -35,7 +35,7 @@ visualize.
 .. code-block:: python
 
     ## load the assembly that is passed step 3
-    data1 = ip.load.load_assembly("tests/data1")
+    data1 = ip.load_json("tests/data1.json")
 
     ## this example has 12 Samples
     data1.samples
