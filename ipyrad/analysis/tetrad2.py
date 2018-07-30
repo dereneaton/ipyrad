@@ -117,8 +117,8 @@ class Tetrad(object):
 
         ## hdf5 data bases init and delete existing
         self.database = Params()
-        self.database.input = os.path.join(self.dirs, self.name+".input.h5")
-        self.database.output = os.path.join(self.dirs, self.name+".output.h5")        
+        self.database.input = os.path.join(self.dirs, self.name + ".input.h5")
+        self.database.output = os.path.join(self.dirs, self.name + ".output.h5")        
 
         ## input files
         self.files = Params()
@@ -171,9 +171,9 @@ class Tetrad(object):
         else:
             raise IPyradError("must enter a data (sequence file) argument.")
 
-        ## check quartets ------------------------------------------------------
+        ## check quartets ----------------------------------------------------
         ## depending on the quartet sampling method selected the number of 
-        ## quartets that must be sampled will be calculated, or an error raised.
+        ## quartets that must be sampled will be calculated, or error raised.
         total = n_choose_k(len(self.samples), 4)
         if self.params.method == "all":
             self.params.nquartets = total
