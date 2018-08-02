@@ -469,7 +469,7 @@ branching process. Below is an example.
 
     ## access all Sample names in data1
     allsamples = data1.samples.keys()
-    print "Samples in data1:\n", "\n".join(subsamples)
+    print "Samples in data1:\n", "\n".join(allsamples)
 
 
 .. parsed-literal::
