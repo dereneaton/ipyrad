@@ -11,7 +11,7 @@ mpi4py
 
 h5py
 numpy>=1.9
-numba>=0.31
+numba>=0.37
 llvmlite>=0.16
 pandas>=0.16
 scipy>0.10
