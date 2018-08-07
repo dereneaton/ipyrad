@@ -1,12 +1,18 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-from builtins import range
+try:
+    from builtins import range
+    from itertools import izip, chain
+except ImportError:
+    from itertools import chain
+    izip = zip
+
 
 import os
 import shutil
 import numpy as np
-from .util import IPyradError  # , splitalleles, BTS, AMBIGS, TRANSFULL
+from .utils import IPyradError, clustdealer  # , splitalleles, BTS, AMBIGS, TRANSFULL
 
 # suppress this terrible h5 warning
 import warnings
@@ -16,21 +22,24 @@ with warnings.catch_warnings():
 
 
 class Step7:
-    def __init__(self, data, ipyclient):
+    def __init__(self, data, force, ipyclient):
         self.data = data
+        self.force = force
+        self.ipyclient = ipyclient
         self.samples = self.get_subsamples()
         self.setup_dirs()
+        self.init_vars()
+        self.init_database()
 
     def run(self):
-        self.init_database()
-        self.remote_fill_filters_and_edges()
+        self.remote_fill_vars_filters_and_edges()
         self.remote_build_loci_and_stats()
         self.remote_fill_depths()
         self.remote_fill_arrs()
         self.remote_build_vcf()
         self.remote_build_conversions()
 
-
+    ## init functions -----------------------------------
     def get_subsamples(self):
         "get subsamples for this assembly. All must have been in step6"
         # filter samples by state
@@ -66,7 +75,7 @@ class Step7:
             else:
                 print("skipping {}; no consensus reads found.")
         if not any(checked_samples):
-            raise IPyradError("no samples ready for step 6")
+            raise IPyradError("no samples ready for step 7")
 
         # sort samples so the largest is first
         checked_samples.sort(
@@ -78,21 +87,185 @@ class Step7:
 
     def setup_dirs(self):
         "Create temp h5 db for storing filters and depth variants"
-        # get stats from step6 h5 and create new h5
-        outdir = os.path.join(
+
+        # make new output directory
+        self.data.dirs.outfiles = os.path.join(
             self.data.paramsdict["project_dir"],
-            "{}_outfiles".format(self.data.name))
-        if os.path.exists(outdir):
-            shutil.rmtree(outdir)
-        if not os.path.exists(outdir):
-            os.mkdirs(outdir)
-        #self.data.database = h5py.File(self.data.database, 'w')
+            "{}_outfiles".format(self.data.name),
+            )
+        if os.path.exists(self.data.dirs.outfiles):
+            shutil.rmtree(self.data.dirs.outfiles)
+        if not os.path.exists(self.data.dirs.outfiles):
+            os.makedirs(self.data.dirs.outfiles)
+
+        # make tmpdir directory
+        self.data.tmpdir = os.path.join(
+            self.data.paramsdict["project_dir"],
+            "{}_outfiles".format(self.data.name),
+            "tmpdir",
+            )
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
+        if not os.path.exists(self.data.tmpdir):
+            os.makedirs(self.data.tmpdir)
+
+        # make new database file
+        self.data.database = os.path.join(
+            self.data.dirs.outfiles,
+            self.data.name + ".hdf5",
+            )
 
 
+    def init_vars(self):
+        "generate empty h5 database to be filled and setup chunk sizes"   
+
+        # count number of loci
+        self.rawloci = os.path.join(
+            self.data.dirs.across, 
+            self.data.name + "_raw_loci.fa")
+        with open(self.rawloci, 'r') as inloci:
+            self.nraws = sum(1 for i in inloci if i == "//\n") // 2
+
+        # chunk to approximately 2 chunks per core
+        self.ncpus = len(self.ipyclient.ids)
+        self.chunks = ((self.nraws // (self.ncpus * 2)) + \
+                       (self.nraws % (self.ncpus * 2)))
+
+
+    def init_database(self):
+
+        # open new database file handle
+        with h5py.File(self.data.database, 'w') as io5:
+
+            # attributes
+            io5.attrs["samples"] = [i.name.encode() for i in self.samples]
+            io5.attrs["filters"] = [b"duplicates", b"indels", b"alleles"]
+
+            # arrays
+            io5.create_dataset(
+                name="edges", 
+                shape=(self.nraws, 5),
+                dtype=np.uint16,
+                chunks=(self.chunks, 5),
+                compression='gzip')
+            io5.create_dataset(
+                name="chroms", 
+                shape=(self.nraws, 3), 
+                dtype=np.int64, 
+                chunks=(self.chunks, 3),
+                compression="gzip")
+            io5.create_dataset(
+                name="filters", 
+                shape=(self.nraws, 3), 
+                dtype=np.int64, 
+                chunks=(self.chunks, 3),
+                compression="gzip")
+
+            # superseqs array
+            #io5.create_dataset()
+
+
+    def iterator(self):
+        "..."
+        
+        # data has to be entered in blocks
+        clusters = open(self.rawloci, 'r')
+        pairdealer = izip(*[iter(clusters)] * 2)
+
+        # iterate over clusters
+        done = 0
+        iloc = 0
+        cloc = 0
+        chunkseqs = np.zeros(self.chunks, dtype="S1")
+        chunkedge = np.zeros(self.chunks, dtype=np.uint16)
+
+        while 1:
+            try:
+                done, chunk = clustdealer(pairdealer, 1)
+            except IndexError:
+                raise IPyradError("rawloci formatting error in %s", chunk)
+            print(chunk)
+
+
+
+
+            # if chunk is full put into superseqs and reset counter
+            if cloc == self.chunks:
+                superseqs[iloc - cloc:iloc] = chunkseqs
+                splits[iloc - cloc:iloc] = chunkedge
+                ## reset chunkseqs, chunkedge, cloc
+                cloc = 0
+                chunkseqs = np.zeros((chunksize, len(samples), maxlen), dtype="S1")
+                chunkedge = np.zeros((chunksize), dtype=np.uint16)
+
+            ## get seq and split it
+            if chunk:
+                try:
+                    fill = np.zeros((len(samples), maxlen), dtype="S1")
+                    fill.fill("N")
+                    piece = chunk[0].decode().strip().split("\n")
+                    names = piece[0::2]
+                    seqs = np.array([list(i) for i in piece[1::2]])
+                    
+                    ## fill in the separator if it exists
+                    separator = np.where(np.all(seqs == 'n', axis=0))[0]
+                    if np.any(separator):
+                        chunkedge[cloc] = separator.min()
+
+                    # fill in the hits
+                    # seqs will be (5,) IF the seqs are variable lengths, which 
+                    # can happen if it had duplicaes AND there were indels, and 
+                    # so the indels did not get aligned
+                    try:
+                        shlen = seqs.shape[1]
+                    except IndexError as inst:
+                        shlen = min([len(x) for x in seqs])
+
+                    for name, seq in zip(names, seqs):
+                        sidx = snames.index(name.rsplit("_", 1)[0])
+                        #fill[sidx, :shlen] = seq[:maxlen]
+                        fill[sidx, :shlen] = seq[:shlen]
+
+                    ## PUT seqs INTO local ARRAY
+                    chunkseqs[cloc] = fill
+
+                except Exception as inst:
+                    LOGGER.info(inst)
+                    LOGGER.info("\nfill: %s\nshlen %s\nmaxlen %s", fill.shape, shlen, maxlen)
+                    LOGGER.info("dupe chunk \n{}".format("\n".join(chunk)))
+
+                ## increase counters if there was a chunk
+                cloc += 1
+                iloc += 1
+            if done:
+                break
+
+        ## write final leftover chunk
+        superseqs[iloc - cloc:, ] = chunkseqs[:cloc]
+        splits[iloc - cloc:] = chunkedge[:cloc]
+
+        ## close super
+        io5.close()
+        clusters.close()
+
+        ## edges is filled with splits for paired data.
+        LOGGER.info("done filling superseqs")
+
+        ## close handle
+        #os.remove(infile)
+
+
+
+
+
+
+
+    ## run functions -------------------------------------
     def remote_fill_filters_and_edges(self):
         # slice out loci 1000 at a time
         for hslice in range(0, 5000, 1000):
             fill_filters_and_edges(self.data, hslice)
+
 
     def remote_build_loci_and_stats(self):
         build_loci_and_stats(self.data)
@@ -116,7 +289,7 @@ def fill_filters_and_edges(data, hslice):
     # load loci into an array (1000, nsamples, maxlen)
     arr = np.array()
 
-    # 
+    # trim edges based on 
 
 
 
@@ -229,7 +402,6 @@ def apply_filters(data, hslice):
     co5.close()
 
 
-
 def get_ref_variant_depths(data, samples, locids, site):
     "get variant site depths from individual catg files for each sample"
 
@@ -241,4 +413,5 @@ def get_ref_variant_depths(data, samples, locids, site):
         ) for sample in samples]
 
     # open all arrays for getting... would this work in there are say 5K samps?
+
 

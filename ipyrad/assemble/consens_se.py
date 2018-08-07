@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"call consensus base calls on single-end data"
+"call consensus base calls on paired or single-end stacks/contigs"
 
 # py2/3 compatible
 from __future__ import print_function
@@ -27,7 +27,7 @@ import scipy.misc
 
 import ipyrad as ip
 from .jointestimate import recal_hidepth
-from .util import IPyradError, clustdealer, PRIORITY
+from .utils import IPyradError, clustdealer, PRIORITY
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -79,6 +79,14 @@ class Step5:
                 sample.files.consens = os.path.join(
                     self.data.dirs.consens, 
                     "{}.consens.bam".format(sample.name))
+
+        # zap existing consens files for selected samples
+        for sample in self.samples:
+            if os.path.exists(sample.files.consens):
+                os.remove(sample.files.consens)
+            depthfile = sample.files.consens.replace(".consens.gz", ".catg.hdf5")
+            if os.path.exists(depthfile):
+                os.remove(depthfile)
 
         # set up parallel client: allow user to throttle cpus
         self.lbview = self.ipyclient.load_balanced_view()
@@ -276,6 +284,7 @@ class Step5:
 
 
     def remote_concatenate_chunks(self):
+        "concatenate chunks and relabel for joined chunks"
         # concatenate and store catgs
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
@@ -311,7 +320,7 @@ class Step5:
         print("")
         for job in alljobs:
             if not job.successful():
-                ip.logger.error("error in step 5: %s", job.exception())
+                #ip.logger.error("error in step 5: %s", job.exception())
                 raise IPyradError(job.exception())
 
 
@@ -1002,11 +1011,18 @@ def concat_denovo_consens(data, sample):
         "{}_tmpcons.*".format(sample.name)))
     combs1.sort(key=lambda x: int(x.split(".")[-1]))
 
-    # write to the file
+    # stream through file renaming consens reads and write out
     with gzip.open(sample.files.consens, 'wt') as out:
         for fname in combs1:
+            cstack = []
+            starter = int(fname.rsplit(".")[-1])
             with open(fname) as infile:
-                out.write(infile.read() + "\n")
+                for line in infile:
+                    if line.startswith(">"):
+                        name, num = line.rsplit("_", 1)
+                        line = name + "_{}".format(int(num) + starter)
+                    cstack.append(line.strip())
+                out.write("\n".join(cstack) + "\n")
             os.remove(fname)
 
 
