@@ -42,7 +42,7 @@ def baba_panel_plot(
 
     ## create Panel plot object and set height & width
     bootsarr = np.array(boots)
-    panel = Panel(ttree, tests, bootsarr, alpha)
+    panel = Panel(ttree, tests, bootsarr, alpha, use_edge_lengths)
     if not kwargs.get("width"):
         panel.kwargs["width"] = min(1000, 50*len(panel.tree))
     if not kwargs.get("height"):
@@ -69,14 +69,14 @@ def baba_panel_plot(
 
 
 class Panel(object):
-    def __init__(self, ttree, tests, boots, alpha):
+    def __init__(self, ttree, tests, boots, alpha, use_edge_lengths):
         #tree, edges, verts, names, tests, boots, alpha):
 
         ## starting tree position will be changed if adding panel plots
         ## get attributes from toytree object
         ttree._decompose_tree(
             orient='down', 
-            use_edge_lengths=True, #False, 
+            use_edge_lengths=use_edge_lengths, #False, 
             fixed_order=ttree._fixed_order,
             )
         self.tree = ttree
@@ -522,6 +522,7 @@ def _panel_tree(panel, axes):
         tip_labels=False,
         tip_labels_align=panel.kwargs["tip_labels_align"],
         tree_style=panel.kwargs["tree_style"],
+        use_edge_lengths=False, #panel.tree._kwargs["use_edge_lengths"],
         )
 
 
