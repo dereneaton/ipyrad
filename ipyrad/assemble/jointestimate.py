@@ -22,7 +22,7 @@ import numba
 import ipyrad as ip
 
 from .clustmap import get_quick_depths
-from .util import IPyradError, clustdealer
+from .utils import IPyradError, clustdealer
 
 
 class Step4:
