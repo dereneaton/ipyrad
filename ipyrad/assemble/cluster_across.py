@@ -26,10 +26,10 @@ import warnings
 import subprocess as sps
 
 import numpy as np
-import pandas as pd
+#import pandas as pd
 from pysam import AlignmentFile
 import ipyrad
-from .util import IPyradWarningExit, IPyradError, clustdealer, fullcomp
+from .utils import IPyradWarningExit, IPyradError, clustdealer, fullcomp
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -39,10 +39,7 @@ LOGGER = logging.getLogger(__name__)
 
 TODO = """
 1. provide method to split/ contigs in step3.
-2. fix progress bar for cluster2 in step3.
 3. finish databasing here.
-4. fix progress bar for cluster here.
-xxx 5. write concat bams code here.
 6. reftrick to find vars in ref aligns
 7. test remote_build_clusters_ref on tortas data and other real... fig/vibs
 """
@@ -223,23 +220,28 @@ class Step6:
             # prepare clustering inputs for hierarchical clustering
             self.remote_build_concats_tier1()
 
-            # send initial clustering jobs (track finished jobs)
-            self.remote_cluster1()
+            # if multiple clusters:
+            if len(self.cgroups.keys()) == 1:
+                self.remote_cluster_tiers(0)
 
-            # prepare second tier inputs
-            self.remote_build_concats_tier2()
+            else:
+                # send initial clustering jobs (track finished jobs)
+                self.remote_cluster1()
 
-            # send cluster2 job (track actual progress)
-            self.remote_cluster2()
+                # prepare second tier inputs
+                self.remote_build_concats_tier2()
+
+                # send cluster2 job (track actual progress)
+                self.remote_cluster_tiers('x')
 
             # build clusters
             self.remote_build_denovo_clusters()
 
             # align denovo clusters
-            self.remote_align_clusters()
+            self.remote_align_denovo_clusters()
 
             # enter database values
-            self.build_database()
+            #self.build_database()
 
         elif self.data.paramsdict["assembly_method"] == "reference":
 
@@ -248,6 +250,8 @@ class Step6:
 
             # build clusters from bedtools merge
             self.remote_build_ref_regions()
+            
+            # build ...
             self.remote_build_ref_clusters()
 
             # enter database values
@@ -287,7 +291,8 @@ class Step6:
         printstr = ("concatenating inputs", "s6")
         rasyncs = {}
         for jobid, group in self.cgroups.items():
-            samples = [i for i in self.samples if i.name in group]
+            # should we use sample objects or sample names in cgroups?
+            samples = [i for i in self.samples if i in group]
             args = (self.data, jobid, samples, self.randomseed)
             rasyncs[jobid] = self.lbview.apply(build_concat_files, *args)
         
@@ -308,7 +313,7 @@ class Step6:
     def remote_cluster1(self):
         "send threaded jobs to remote engines"
         start = time.time()
-        printstr = ("clustering across 1 ", "s6")
+        printstr = ("clustering tier 1   ", "s6")        
         rasyncs = {}
         for jobid in self.cgroups:
             args = (self.data, jobid, self.nthreads)
@@ -347,38 +352,43 @@ class Step6:
             raise IPyradError(rasync.exception())        
 
 
-    def remote_cluster2(self):
+    def remote_cluster_tiers(self, jobid):
         start = time.time()
-        printstr = ("clustering across 2 ", "s6")
-        args = (self.data, 'x', 0)
+        printstr = ("clustering across   ", "s6")
+        args = (self.data, jobid, 0, True)
         rasync = self.thview.apply(cluster, *args)
         
+        prog = 0
         while 1:
-            time.sleep(0.2)
-            self.data._progressbar(1, int(rasync.ready()), start, printstr)
-            if rasync.ready():
+            time.sleep(0.5)
+            if rasync.stdout:
+                prog = int(rasync.stdout.split()[-1])
+            self.data._progressbar(100, int(prog), start, printstr)
+            if prog == 100:
+                print("")
                 break
 
         # check for errors
-        print("")
         if not rasync.successful():
             raise IPyradError(rasync.exception())          
 
 
     def remote_build_denovo_clusters(self):
         "build denovo clusters from vsearch clustered seeds"
-        # filehandles
+        # filehandles; if not multiple tiers then 'x' is jobid 0
         uhandle = os.path.join(
             self.data.dirs.across, 
             "{}-x.utemp".format(self.data.name))
-        usort = os.path.join(
-            self.data.dirs.across, 
-            "{}-x.utemp.sort".format(self.data.name))
+        buildfunc = build_hierarchical_denovo_clusters
+        if not os.path.exists(uhandle):
+            uhandle = uhandle.replace("-x.utemp", "-0.utemp")
+            buildfunc = build_single_denovo_clusters
+        usort = uhandle + ".sort"
 
-        # sort utemp files, count seeds, ...
+        # sort utemp files, count seeds.
         start = time.time()
         printstr = ("building clusters   ", "s6")
-        async1 = self.lbview.apply(sort_seeds, *(uhandle, usort))
+        async1 = self.lbview.apply(sort_seeds, uhandle)
         while 1:
             ready = [async1.ready()]
             self.data._progressbar(3, sum(ready), start, printstr)
@@ -386,7 +396,7 @@ class Step6:
             if all(ready):
                 break
 
-        async2 = self.lbview.apply(count_seeds, usort)
+        async2 = self.lbview.apply(count_seeds, uhandle)
         while 1:
             ready = [async1.ready(), async2.ready()]
             self.data._progressbar(3, sum(ready), start, printstr)
@@ -397,8 +407,7 @@ class Step6:
 
         # send the clust bit building job to work and track progress
         async3 = self.lbview.apply(
-            build_denovo_clusters, 
-            *(self.data, usort, nseeds, list(self.cgroups.keys())))
+            buildfunc, *(self.data, usort, nseeds, list(self.cgroups.keys())))
         while 1:
             ready = [async1.ready(), async2.ready(), async3.ready()]
             self.data._progressbar(3, sum(ready), start, printstr)
@@ -446,7 +455,7 @@ class Step6:
             del jobs[idx]
         print("")
 
-
+    ## REFERENCE BASED FUNCTIONS
     def remote_concat_bams(self):
         "merge bam files into a single large sorted indexed bam"
 
@@ -554,7 +563,6 @@ class Step6:
             raise IPyradError(
                 "error in build ref regions: {}".format(rasync.exception()))
 
-
     # can parallelize
     def remote_build_ref_clusters(self):
         "build clusters and find variants/indels to store"
@@ -590,7 +598,7 @@ class Step6:
 
             # pull in the reference for this region
             refn, refs = get_ref_region(
-                data.paramsdict["reference_sequence"], 
+                self.data.paramsdict["reference_sequence"], 
                 region[0], region[1] + 1, region[2] + 1,
                 )
 
@@ -772,7 +780,7 @@ def build_concat_files(data, jobid, samples, randomseed):
     Orders reads by length and shuffles randomly within length classes
     """
     conshandles = [
-        sample.files.consens[0] for sample in samples if 
+        sample.files.consens for sample in samples if 
         sample.stats.reads_consens]
     conshandles.sort()
     assert conshandles, "no consensus files found"
@@ -782,7 +790,6 @@ def build_concat_files(data, jobid, samples, randomseed):
     groupcons = os.path.join(
         data.dirs.across, 
         "{}-{}-catcons.gz".format(data.name, jobid))
-    LOGGER.debug(" ".join(cmd))
     with open(groupcons, 'w') as output:
         call = sps.Popen(cmd, stdout=output, close_fds=True)
         call.communicate()
@@ -799,8 +806,6 @@ def build_concat_files(data, jobid, samples, randomseed):
     ## pipe passed data from gunzip to sed.
     cmd1 = ["gunzip", "-c", groupcons]
     cmd2 = ["sed", subs]
-    LOGGER.debug(" ".join(cmd1))
-    LOGGER.debug(" ".join(cmd2))
 
     proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
     allhaps = groupcons.replace("-catcons.gz", "-cathaps.fa")
@@ -815,7 +820,6 @@ def build_concat_files(data, jobid, samples, randomseed):
             "--sortbylength", allhaps,
             "--fasta_width", "0",
             "--output", allsort]
-    LOGGER.debug(" ".join(cmd1))
     proc1 = sps.Popen(cmd1, close_fds=True)
     proc1.communicate()
 
@@ -858,7 +862,7 @@ def build_concat_files(data, jobid, samples, randomseed):
     outdat.close()
 
 
-def cluster(data, jobid, nthreads):
+def cluster(data, jobid, nthreads, print_progress=False):
 
     # get files for this jobid
     catshuf = os.path.join(
@@ -898,17 +902,52 @@ def cluster(data, jobid, nthreads):
            "-fulldp",
            "-usersort",
            ]
-    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    out = proc.communicate()
-    if proc.returncode:
-        raise IPyradError(out)
+
+    if not print_progress:
+        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+        out = proc.communicate()
+        if proc.returncode:
+            raise IPyradError(out)
+
+    else:
+        (worker, boss) = pty.openpty()
+        proc = sps.Popen(cmd, stdout=boss, stderr=boss, close_fds=True)
+        prog = 0
+        newprog = 0
+        while 1:
+            isdat = select.select([worker], [], [], 0)
+            if isdat[0]:
+                dat = os.read(worker, 80192).decode()
+            else:
+                dat = ""
+            if "Clustering" in dat:
+                try:
+                    newprog = int(dat.split()[-1][:-1])
+                # may raise value error when it gets to the end
+                except ValueError:
+                    pass
+    
+            # print progress
+            if newprog != prog:
+                print(int(newprog))
+                prog = newprog
+                time.sleep(0.1)
+        
+            # break if done
+            # catches end chunk of printing if clustering went really fast
+            if "Clusters:" in dat:
+                break
+
+        # another catcher to let vsearch cleanup after clustering is done
+        proc.wait()
+        print(100)
 
 
-def count_seeds(usort):
+def count_seeds(uhandle):
     """
     uses bash commands to quickly count N seeds from utemp file
     """
-    with open(usort, 'r') as insort:
+    with open(uhandle, 'r') as insort:
         cmd1 = ["cut", "-f", "2"]
         cmd2 = ["uniq"]
         cmd3 = ["wc"]
@@ -923,15 +962,110 @@ def count_seeds(usort):
     return nseeds
 
 
-def sort_seeds(uhandle, usort):
+def sort_seeds(uhandle):
     """ sort seeds from cluster results"""
-    cmd = ["sort", "-k", "2", uhandle, "-o", usort]
+    cmd = ["sort", "-k", "2", uhandle, "-o", uhandle + ".sort"]
     proc = sps.Popen(cmd, close_fds=True)
     proc.communicate()
 
 
-def build_denovo_clusters(data, usort, nseeds, jobids):
+def build_single_denovo_clusters(data, usort, nseeds, *args):
+    "use this function when not hierarchical clustering"
+    # load all concat fasta files into a dictionary (memory concerns here...)
+    conshandle = os.path.join(
+        data.dirs.across, 
+        "{}-0-catcons.gz".format(data.name),
+    )
+    allcons = {}
+    with gzip.open(conshandle, 'rt') as iocons:
+        cons = izip(*[iter(iocons)] * 2)
+        for namestr, seq in cons:
+            nnn, sss = [i.strip() for i in (namestr, seq)]
+            allcons[nnn[1:]] = sss
 
+    # load all utemp files into a dictionary
+    usortfile = os.path.join(
+        data.dirs.across,
+        "{}-0.utemp.sort".format(data.name)
+    )
+
+    # set optim to approximately 4 chunks per core. Smaller allows for a bit
+    # cleaner looking progress bar. 40 cores will make 160 files.
+    optim = ((nseeds // (data.ncpus * 4)) + (nseeds % (data.ncpus * 4)))
+
+    # iterate through usort grabbing seeds and matches
+    with open(usortfile, 'rt') as insort:
+        # iterator, seed null, and seqlist null
+        isort = iter(insort)
+        loci = 0
+        lastseed = 0
+        fseqs = []
+        seqlist = []
+        seqsize = 0
+
+        while 1:
+            try:
+                hit, seed, ori = next(isort).strip().split()
+            except StopIteration:
+                break
+        
+            # store hit if still matching to same seed
+            if seed == lastseed:
+                if ori == "-":
+                    seq = fullcomp(allcons[hit])[::-1]
+                else:
+                    seq = allcons[hit]
+                fseqs.append(">{}\n{}".format(hit, seq))
+
+            # store seed and hit (to a new cluster) if new seed.
+            else:  
+                # store the last fseq, count it, and clear it
+                if fseqs:
+                    seqlist.append("\n".join(fseqs))
+                    seqsize += 1
+                    fseqs = []
+
+                # occasionally write to file
+                if seqsize >= optim:
+                    if seqlist:
+                        loci += seqsize
+                        pathname = os.path.join(
+                            data.tmpdir, 
+                            "{}.chunk_{}".format(data.name, loci))
+                        with open(pathname, 'wt') as clustout:
+                            clustout.write(
+                                "\n//\n//\n".join(seqlist) + "\n//\n//\n")
+                        # reset counter and list
+                        seqlist = []
+                        seqsize = 0
+
+                # store the new seed on top of fseqs
+                fseqs.append(">{}\n{}".format(seed, allcons[seed]))
+                lastseed = seed
+
+                # store the first hit to the seed
+                seq = allcons[hit]
+                if ori == "-":
+                    seq = fullcomp(seq)[::-1]
+                fseqs.append(">{}\n{}".format(hit, seq))
+
+    # write whatever is left over to the clusts file
+    if fseqs:
+        seqlist.append("\n".join(fseqs))
+        seqsize += 1
+        loci += seqsize
+    if seqlist:
+        pathname = os.path.join(data.tmpdir, 
+            data.name + ".chunk_{}".format(loci))
+        with open(pathname, 'wt') as clustsout:
+            clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
+
+    ## final progress and cleanup
+    del allcons
+
+
+def build_hierarchical_denovo_clusters(data, usort, nseeds, jobids):
+    "use this function when building clusters from hierarchical clusters"
     # load all concat fasta files into a dictionary (memory concerns here...)
     allcons = {}
     conshandles = [
@@ -1055,18 +1189,18 @@ def align_to_array(data, samples, chunk):
 
     # snames to ensure sorted order
     samples.sort(key=lambda x: x.name)
-    snames = [sample.name for sample in samples]
+    #snames = [sample.name for sample in samples]
 
     # make a tmparr to store metadata (this can get huge, consider using h5)
-    maxvar = 25
-    maxlen = data._hackersonly["max_fragment_length"] + 20
-    maxinds = data.paramsdict["max_Indels_locus"]
-    ifilter = np.zeros(len(clusts), dtype=np.bool_)
-    dfilter = np.zeros(len(clusts), dtype=np.bool_)
-    varpos = np.zeros((len(clusts), maxvar), dtype='u1')
-    indels = np.zeros((len(clusts), len(samples), sum(maxinds)), dtype='u1')
-    edges = np.zeros((len(clusts), len(samples), 4), dtype='u1')
-    consens = np.zeros((len(clusts), maxlen), dtype="S1")
+    #maxvar = 25
+    #maxlen = data._hackersonly["max_fragment_length"] + 20
+    #maxinds = data.paramsdict["max_Indels_locus"]
+    #ifilter = np.zeros(len(clusts), dtype=np.bool_)
+    #dfilter = np.zeros(len(clusts), dtype=np.bool_)
+    #varpos = np.zeros((len(clusts), maxvar), dtype='u1')
+    #indels = np.zeros((len(clusts), len(samples), sum(maxinds)), dtype='u1')
+    #edges = np.zeros((len(clusts), len(samples), 4), dtype='u1')
+    #consens = np.zeros((len(clusts), maxlen), dtype="S1")
 
     # create a persistent shell for running muscle in. 
     proc = sps.Popen(["bash"], stdin=sps.PIPE, stdout=sps.PIPE, bufsize=0)
@@ -1078,13 +1212,12 @@ def align_to_array(data, samples, chunk):
         lines = clusts[ldx].strip().split("\n")
         names = lines[::2]
         seqs = lines[1::2]
-        seqs = [i[:90] for i in seqs]    
         align1 = []
         
         # find duplicates and skip aligning but keep it for downstream.
         unames = set([i.rsplit("_", 1)[0] for i in names])
         if len(unames) < len(names):
-            dfilter[ldx] = True
+            #dfilter[ldx] = True
             istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
 
         else:
@@ -1094,7 +1227,7 @@ def align_to_array(data, samples, chunk):
             # make back into strings
             cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])                
 
-            # store allele (lowercase) info
+            # store allele (lowercase) info, returns mask with lowercases
             amask, abool = store_alleles(seqs)
 
             # send align1 to the bash shell (TODO: check for pipe-overflow)
@@ -1122,43 +1255,46 @@ def align_to_array(data, samples, chunk):
                 seqarr[kidx] = list(concatseq)
                     
                 # fill in edges for each seq
-                edg = (
-                    len(concatseq) - len(concatseq.lstrip('-')),
-                    len(concatseq.rstrip('-')),
-                    len(concatseq.rstrip('-')),
-                    len(concatseq.rstrip('-')),
-                    )
-                sidx = snames.index(key.rsplit('_', 1)[0])
-                edges[ldx, sidx] = edg
+                # edg = (
+                #     len(concatseq) - len(concatseq.lstrip('-')),
+                #     len(concatseq.rstrip('-')),
+                #     len(concatseq.rstrip('-')),
+                #     len(concatseq.rstrip('-')),
+                #     )
+                # sidx = snames.index(key.rsplit('_', 1)[0])
+                # edges[ldx, sidx] = edg
 
             # get ref/variant counts in an array
-            varmat = refbuild(seqarr.view('u1'), PSEUDO_REF)
-            constmp = varmat[:, 0].view('S1')
-            consens[ldx, :constmp.size] = constmp
-            varstmp = np.nonzero(varmat[:, 1])[0]
-            varpos[ldx, :varstmp.size] = varstmp 
+            #varmat = refbuild(seqarr.view('u1'), PSEUDO_REF)
+            #constmp = varmat[:, 0].view('S1')
+            #consens[ldx, :constmp.size] = constmp
+            #varstmp = np.nonzero(varmat[:, 1])[0]
+            #varpos[ldx, :varstmp.size] = varstmp 
 
-            # impute allele information back into the read b/c muscle
+            # get alleles back using fast jit'd function.
+            if np.sum(amask):
+                intarr = seqarr.view(np.uint8)
+                iamask = retrieve_alleles_after_aligning(intarr, amask)
+                seqarr[iamask] = np.char.lower(seqarr[iamask])
+
+            # sort in sname (alphanumeric) order. 
             wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
-
-            # sort in sname (alphanumeric) order for indels storage
-            for idx in wkeys:
+            for widx in wkeys:
                 # seqarr and amask are in input order here
-                args = (seqarr, idx, amask)
-                seqarr[idx], indidx = retrieve_indels_and_alleles(*args)
-                sidx = snames.index(names[idx].rsplit("_", 1)[0][1:])
-                if indidx.size:
-                    indsize = min(indidx.size, sum(maxinds))
-                    indels[ldx, sidx, :indsize] = indidx[:indsize]
-                wname = names[idx]
-
-                # store (only for visually checking alignments)
+                #args = (seqarr, widx, amask)
+                #seqarr[widx], indidx = retrieve_indels_and_alleles(*args)
+                #sidx = snames.index(names[idx].rsplit("_", 1)[0][1:])
+                #if indidx.size:
+                #    indsize = min(indidx.size, sum(maxinds))
+                #    indels[ldx, sidx, :indsize] = indidx[:indsize]
+                # store into temporary stack
+                wname = names[widx]
                 istack.append(
-                    "{}\n{}".format(wname, b"".join(seqarr[idx]).decode()))
+                    "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
 
             # indel filter
-            if indels.sum(axis=1).max() >= sum(maxinds):
-                ifilter[ldx] = True
+            #if indels.sum(axis=1).max() >= sum(maxinds):
+            #    ifilter[ldx] = True
 
         # store the stack (only for visually checking alignments)
         if istack:
@@ -1171,20 +1307,20 @@ def align_to_array(data, samples, chunk):
     proc.stdin.close()
     proc.wait()
 
-    # write to file after (only for visually checking alignments)
+    # write to file when chunk is finished
     odx = chunk.rsplit("_")[-1]
     alignfile = os.path.join(data.tmpdir, "aligned_{}.fa".format(odx))
     with open(alignfile, 'wt') as outfile:
         outfile.write("\n//\n//\n".join(allstack) + "\n")
     #os.remove(chunk)
 
-    # save indels array to tmp dir
-    np.save(
-        os.path.join(data.tmpdir, "ifilter_{}.tmp.npy".format(odx)),
-        ifilter)
-    np.save(
-        os.path.join(data.tmpdir, "dfilter_{}.tmp.npy".format(odx)),
-        dfilter)
+    # # save indels array to tmp dir
+    # np.save(
+    #     os.path.join(data.tmpdir, "ifilter_{}.tmp.npy".format(odx)),
+    #     ifilter)
+    # np.save(
+    #     os.path.join(data.tmpdir, "dfilter_{}.tmp.npy".format(odx)),
+    #     dfilter)
 
 
 def store_alleles(seqs):
@@ -1200,34 +1336,63 @@ def store_alleles(seqs):
         return amask, False
 
 
-def retrieve_indels_and_alleles(seqarr, idx, amask):
-    "..."
-    concatarr = seqarr[idx]
-    newmask = np.zeros(len(concatarr), dtype=np.bool_)                        
-
-    # check for indels and impute to amask
-    indidx = np.where(concatarr == b"-")[0]
-    if np.sum(amask):
-        if indidx.size:
-
-            # impute for position of variants
+def retrieve_alleles_after_aligning(intarr, amask):
+    newmask = np.zeros(intarr.shape, dtype=np.bool_)
+    
+    for ridx in range(intarr.shape[0]):
+        iarr = intarr[ridx]
+        indidx = np.where(iarr == 45)[0]
+        
+        # if no indels then simply use the existing mask
+        if not indidx.size:
+            newmask[ridx] = amask[ridx]
+            
+        # if indels that impute 
+        else:
             allrows = np.arange(amask.shape[1])
             mask = np.ones(allrows.shape[0], dtype=np.bool_)
             for idx in indidx:
                 if idx < mask.shape[0]:
                     mask[idx] = False
             not_idx = allrows[mask == 1]
-
+            
             # fill in new data into all other spots
-            newmask[not_idx] = amask[idx, :not_idx.shape[0]]
+            newmask[ridx, not_idx] = amask[ridx, :not_idx.shape[0]]
+    return newmask
 
-        else:
-            newmask = amask[idx]
+
+# deprecated for 'retrieve_alleles_after_aligning'
+# def retrieve_indels_and_alleles(seqarr, widx, amask):
+#     """
+#     The allele information (lowercase) was stored before alignment, and so 
+#     we need to shift the data if indels were introduced by imputing into amask.
+#     Returns the seqarr with lower case imputed, and an array of indel indices.
+#     """
+#     concatarr = seqarr[widx]
+#     newmask = np.zeros(len(concatarr), dtype=np.bool_)                        
+
+#     # check for indels and impute to amask
+#     indidx = np.where(concatarr == b"-")[0]
+#     if np.sum(amask):
+#         if indidx.size:
+
+#             # impute for position of variants
+#             allrows = np.arange(amask.shape[1])
+#             mask = np.ones(allrows.shape[0], dtype=np.bool_)
+#             for idx in indidx:
+#                 if idx < mask.shape[0]:
+#                     mask[idx] = False
+#             not_idx = allrows[mask == 1]
+
+#             # fill in new data into all other spots
+#             newmask[not_idx] = amask[idx, :not_idx.shape[0]]
+
+#         else:
+#             newmask = amask[widx]
                 
-        # lower the alleles
-        concatarr[newmask] = np.char.lower(concatarr[newmask])
-
-    return concatarr, indidx
+#         # lower the alleles
+#         concatarr[newmask] = np.char.lower(concatarr[newmask])
+#     return concatarr, indidx
 
 
 def init_database(data, samples, nloci):
@@ -1293,7 +1458,6 @@ def fill_ref_database(data, samples, nloci):
     # fill edges for each sample
     for sample in self.samples:
         pass
-
 
 
 def fill_denovo_database(data, samples, nloci):
