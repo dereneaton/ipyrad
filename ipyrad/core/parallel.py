@@ -13,7 +13,7 @@ import shlex
 import time
 import sys
 import os
-from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.assemble.utils import IPyradWarningExit
 import ipyrad as ip
 
 #import logging
