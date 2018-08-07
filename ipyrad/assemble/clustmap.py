@@ -25,7 +25,7 @@ import subprocess as sps
 import numpy as np
 from pysam import AlignmentFile
 import ipyrad as ip
-from .util import IPyradError, IPyradWarningExit, bcomp, comp
+from .utils import IPyradError, IPyradWarningExit, bcomp, comp
 
 LOGGER = logging.getLogger(__name__)
 
