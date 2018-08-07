@@ -27,8 +27,8 @@ import ipyparallel as ipp
 
 from .refmap import refmap_init, refmap_stats
 from .refmap import mapreads, ref_muscle_chunker, ref_build_and_muscle_chunk
-from .util import IPyradError, IPyradWarningExit
-from .util import comp, merge_pairs
+from .utils import IPyradError, IPyradWarningExit
+from .utils import comp, merge_pairs
 
 
 
