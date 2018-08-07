@@ -13,7 +13,7 @@ import time
 import numpy as np
 import ipyrad as ip
 import subprocess as sps
-from .util import IPyradWarningExit, IPyradError, fullcomp
+from .utils import IPyradWarningExit, IPyradError, fullcomp
 
 
 class Step2(object):
@@ -64,9 +64,8 @@ class Step2(object):
 
     def setup_dirs(self):
         self.data.dirs.edits = os.path.join(
-            os.path.realpath(
-                self.data.paramsdict["project_dir"]), 
-                "{}_edits".format(self.data.name))
+            os.path.realpath(self.data.paramsdict["project_dir"]),
+            "{}_edits".format(self.data.name))
         if not os.path.exists(self.data.dirs.edits):
             os.makedirs(self.data.dirs.edits)        
 
@@ -200,8 +199,6 @@ class Step2(object):
                 .astype(np.int)
                 .to_string(outfile)
             )
-
-
 
 
 
