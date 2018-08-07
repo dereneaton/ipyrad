@@ -4,7 +4,7 @@
 import pandas as pd
 import numpy as np
 from collections import OrderedDict
-from ipyrad.assemble.util import ObjDict
+from ipyrad.assemble.utils import ObjDict
 
 class Sample(object):
     """ 

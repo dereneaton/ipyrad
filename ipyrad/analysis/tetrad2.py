@@ -35,7 +35,7 @@ import datetime
 import numpy as np
 import ipyrad as ip
 from ipyrad.analysis.utils import progressbar, Params
-from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.utils import IPyradError
 
 
 # # TOYTREE is required to run TETRAD

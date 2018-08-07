@@ -3,7 +3,7 @@
 import os
 import sys
 import subprocess as sps
-from ..assemble.util import IPyradWarningExit
+from ..assemble.utils import IPyradWarningExit
 
 
 class Bins(object):

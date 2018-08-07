@@ -27,7 +27,7 @@ import re
 import os
 from collections import Counter, OrderedDict
 import ipyrad
-from .util import IPyradWarningExit, splitalleles, BTS, AMBIGS, TRANSFULL
+from .utils import IPyradWarningExit, splitalleles, BTS, AMBIGS, TRANSFULL
 
 import subprocess as sps
 

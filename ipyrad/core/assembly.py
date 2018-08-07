@@ -20,8 +20,8 @@ import subprocess as sps
 import ipyparallel as ipp
 
 from collections import OrderedDict
-from ipyrad.assemble.util import IPyradParamsError, IPyradWarningExit
-from ipyrad.assemble.util import IPyradError, ObjDict
+from ipyrad.assemble.utils import IPyradParamsError, IPyradWarningExit
+from ipyrad.assemble.utils import IPyradError, ObjDict
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.sample import Sample
 # from ipyrad.assemble.refmap import index_reference_sequence
@@ -1048,7 +1048,6 @@ class Assembly(object):
         ip.assemble.write_outfiles.run(self, samples, force, ipyclient)
 
 
-
     def _compatible_params_check(self):
         """
         check for mindepths after all params are set, b/c doing it while each
@@ -1131,7 +1130,8 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
             if '2' in steps:
-                self._step2func(samples=None, force=force, ipyclient=ipyclient)
+                args = [self, force, ipyclient]
+                ip.assemble.rawedit.Step2(*args).run()
                 self.save()
                 ipyclient.purge_everything()
 
@@ -1155,7 +1155,7 @@ class Assembly(object):
 
             if '6' in steps:
                 kwargs = dict(data=self, force=force, ipyclient=ipyclient)
-                ip.assemble.cluster_across.Step6(**kwargs).run()
+                ip.assemble.clustmap_across.Step6(**kwargs).run()
                 self.save()
                 ipyclient.purge_everything()
 

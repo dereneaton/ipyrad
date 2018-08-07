@@ -2,19 +2,21 @@ name: ipyrad
 channels:
 - ipyrad
 dependencies:
-- python=2.7
+- python=3.6
 - pip>=9.0
-- cython
-- ipython>=5.0
+- ipython=6.4.0
+- jupyter=1.0.0
+- notebook=5.0
 - ipyparallel>=6.0.2
+- numba>=0.37
+- llvmlite>=0.24
 - numpy>1.9
 - scipy>0.10
-- pandas>=0.19
+- pandas>=0.23
+- cython
 - h5py
 - mpi4py
 - sphinx>1.2
-- numba>=0.31
-- llvmlite>=0.16
-- dask
+#- dask
 #- jupyter
 

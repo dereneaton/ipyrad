@@ -26,7 +26,7 @@ from collections import Counter
 
 # ipyrad imports
 from ipyrad.core.sample import Sample
-from ipyrad.assemble.util import IPyradWarningExit, ambigcutters
+from ipyrad.assemble.utils import IPyradWarningExit, ambigcutters
 
 
 def combinefiles(filepath):

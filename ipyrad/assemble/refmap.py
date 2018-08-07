@@ -21,7 +21,7 @@ import pysam
 import ipyrad
 import numpy as np
 import subprocess as sps
-from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.assemble.utils import IPyradWarningExit
 #from ipyrad.assemble.rawedit import comp
 
 import logging
