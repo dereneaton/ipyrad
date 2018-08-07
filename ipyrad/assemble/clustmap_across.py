@@ -310,6 +310,7 @@ class Step6:
 
         # check for errors
         print("")
+        rasync.wait()
         if not rasync.successful():
             raise IPyradError(rasync.exception())        
 
