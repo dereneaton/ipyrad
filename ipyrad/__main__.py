@@ -4,7 +4,7 @@
 from __future__ import print_function, division  
 
 from ipyrad.core.parallel import register_ipcluster
-from ipyrad.assemble.util import IPyradError, IPyradWarningExit, detect_cpus
+from ipyrad.assemble.utils import IPyradError, IPyradWarningExit, detect_cpus
 from pkg_resources import get_distribution
 import ipyparallel as ipp
 import ipyrad as ip
