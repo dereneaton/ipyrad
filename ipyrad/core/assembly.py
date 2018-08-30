@@ -26,6 +26,22 @@ from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.sample import Sample
 # from ipyrad.assemble.refmap import index_reference_sequence
 
+# GLOBALS
+OUTPUT_FORMATS = {
+    'l': 'loci',
+    'p': 'phy',
+    's': 'snps',
+    'n': 'nex',
+    'k': 'struct',
+    'a': 'alleles',
+    'g': 'geno',
+    'G': "gphocs",
+    'u': 'usnps',
+    'v': 'vcf',
+    't': 'treemix',
+    'm': 'migrate-n',
+    }  # 'V': 'vcfFull',   ## currently hidden
+    
 
 class Assembly(object):
     """ 
@@ -211,7 +227,6 @@ class Assembly(object):
     def __str__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
 
-    ## CLI- auto-launch uses a specific cluster-id
     @property
     def _spacer(self):
         """ return print spacer for CLI versus API """
@@ -956,7 +971,6 @@ class Assembly(object):
         [project_dir]/[assembly_name].json
         """
         ip.save_json(self)
-
 
 
     def _step1func(self, force, preview, ipyclient):
@@ -1778,8 +1792,6 @@ def _paramschecker(self, param, newvalue):
 
 
     elif param == 'output_formats':
-        ## let's get whatever the user entered as a tuple of letters
-        allowed = list(ip.assemble.write_outfiles.OUTPUT_FORMATS.keys())
 
         ## Handle the case where output formats is an empty string
         if isinstance(newvalue, str):
@@ -1796,11 +1808,11 @@ def _paramschecker(self, param, newvalue):
             if any([len(i) > 1 for i in newvalue]):
                 ip.logger.warning("""
     'output_formats' params entry is malformed. Setting to * to avoid errors.""")
-                newvalue = allowed
+                newvalue = OUTPUT_FORMATS
             newvalue = tuple(newvalue)
             #newvalue = tuple([i for i in newvalue if i in allowed])
         if "*" in newvalue:
-            newvalue = allowed
+            newvalue = OUTPUT_FORMATS
 
         ## set the param
         self.paramsdict['output_formats'] = newvalue
