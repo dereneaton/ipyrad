@@ -165,7 +165,6 @@ def load_json(path, quiet=False, cli=False):
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
-
     ## load the JSON string and try with name+.json
     checkfor = [path + ".json", path]
     for inpath in checkfor:
