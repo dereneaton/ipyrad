@@ -13,6 +13,15 @@ build:
   number: '0'
   skip: 'False'
 
+
+## would this fix some people's problem with missing glibc?
+## haven't tested it yet b/c don't have a system to replicate error.
+#Requirements:
+# Build:
+#   - g++
+# run:
+#   - libgcc  
+
 about:
   home: https://web.stanford.edu/group/rosenberglab/software/
   license: MIT

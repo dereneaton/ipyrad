@@ -947,6 +947,9 @@ def nworker(data, chunk):
     """
 
     ## set the thread limit on the remote engine
+    # TODO: is there a way to make this work for non-MKL (e.g., BLAS)?
+    # or ideally to work more generally for both? Maybe just try/except, 
+    # maybe OPM_NUMTHREADS?
     oldlimit = set_mkl_thread_limit(1)
 
     ## open seqarray view, the modified arr is in bootstarr

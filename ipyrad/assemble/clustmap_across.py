@@ -246,32 +246,6 @@ class Step6:
             sample.stats.state = 6
 
 
-    def remote_run(self, printstr, function, args, threaded=False):
-        # submit job
-        start = time.time()
-        rasyncs = {}
-        for sample in self.samples:
-            fargs = [self.data, sample] + list(args)
-            if threaded:
-                rasyncs[sample.name] = self.thview.apply(function, *fargs)
-            else:
-                rasyncs[sample.name] = self.lbview.apply(function, *fargs)
-
-        # track job
-        while 1:
-            ready = [rasyncs[i].ready() for i in rasyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-
-        # check for errors
-        print("")
-        for job in rasyncs:
-            if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())
-
-
     def remote_build_concats_tier1(self):
         "prepares concatenated consens input files for each clust1 group"
 
@@ -336,6 +310,7 @@ class Step6:
 
         # check for errors
         print("")
+        rasync.wait()
         if not rasync.successful():
             raise IPyradError(rasync.exception())        
 
