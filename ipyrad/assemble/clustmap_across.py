@@ -1209,7 +1209,6 @@ def align_to_array(data, samples, chunk):
         # find duplicates and skip aligning but keep it for downstream.
         unames = set([i.rsplit("_", 1)[0] for i in names])
         if len(unames) < len(names):
-            #dfilter[ldx] = True
             istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
 
         else:
