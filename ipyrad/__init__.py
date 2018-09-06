@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-## bring nested functions to top for API
+## bring nested functions to top for API access
 from .core.assembly import Assembly, merge
 from .core.sample import Sample
 from .load import save_json, load_json
@@ -68,7 +68,7 @@ set_logger_level()
 bins = _Bins()
 
 # Dunders
-__version__ = "0.7.23"
+__version__ = "0.8.0"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
