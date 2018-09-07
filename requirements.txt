@@ -1,5 +1,5 @@
+
 pip
-sphinx
 cython
 ipython
 ipyparallel>=6.0.2
@@ -8,12 +8,17 @@ numpy>=1.9
 numba>=0.37
 pandas>=0.16
 h5py
-networkx
-dask
 pysam>=0.10.0
 setuptools
+mpi4py
+cutadapt
 
-#nbconvert
-#ipykernel
-#notebook>=5.0
-#jupyter>=1.0.0
+sphinx
+nbconvert
+jupyter
+notebook
+
+#########################################################################
+# This file is used to designate the python installation requirements
+# and is used in setup.py
+#########################################################################
