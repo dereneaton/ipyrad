@@ -892,7 +892,7 @@ def cluster(data, sample, nthreads, force):
         #     for f in [uhandle, usort, hhandle]:
         #         open(f, 'a').close()
         #     return
-    assert os.path.exists(derephandle), "bad derep handle: {}".format(derephandle)
+    assert os.path.exists(derephandle), "bad derep handle"
 
     # create handles for the outfiles
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
