@@ -332,6 +332,7 @@ class Step6:
                 break
 
         # check for errors
+        self.ipyclient.wait()
         if not rasync.successful():
             raise IPyradError(rasync.exception())          
 
@@ -923,9 +924,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
 
 
 def count_seeds(uhandle):
-    """
-    uses bash commands to quickly count N seeds from utemp file
-    """
+    "uses bash commands to quickly count N seeds from utemp file"
     with open(uhandle, 'r') as insort:
         cmd1 = ["cut", "-f", "2"]
         cmd2 = ["uniq"]
@@ -942,7 +941,7 @@ def count_seeds(uhandle):
 
 
 def sort_seeds(uhandle):
-    """ sort seeds from cluster results"""
+    "sort seeds from cluster results"
     cmd = ["sort", "-k", "2", uhandle, "-o", uhandle + ".sort"]
     proc = sps.Popen(cmd, close_fds=True)
     proc.communicate()
