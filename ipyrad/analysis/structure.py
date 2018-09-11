@@ -17,7 +17,7 @@ import subprocess as sps
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.utils import get_spans, Params
-from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.utils import IPyradError
 
 
 MISSING_IMPORTS = """
@@ -675,6 +675,10 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
                 "{}-K-{}.indfile".format(self.name, kpop))
     miscfile = os.path.join(self.workdir, 
                 "{}-K-{}.miscfile".format(self.name, kpop))
+
+    # shorten filenames because clumpp can't handle names > 50 chars.
+    for filename in [clumphandle, indfile, outfile]:
+        filename = filename.replace(os.path.expanduser('~'), '~', 1)
     cmd = [
         "CLUMPP", clumphandle, 
         "-i", indfile,
@@ -687,7 +691,7 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
 
     # call clumpp
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    comm = proc.communicate()
+    comm = proc.communicate()   
 
     # cleanup
     for rfile in [indfile, miscfile]:
@@ -708,7 +712,7 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
         if not quiet:
             sys.stderr.write(
                 "[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
-                .format(kpop, nreps, nreps+excluded, max_var_multiple))
+                .format(kpop, nreps, nreps + excluded, max_var_multiple))
         return table
 
     else:
