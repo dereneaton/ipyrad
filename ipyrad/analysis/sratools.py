@@ -18,7 +18,7 @@ import subprocess as sps
 # third party
 import pandas as pd
 import ipyparallel as ipp
-from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.assemble.utils import IPyradWarningExit
 from ipyrad.analysis.utils import Params, progressbar
 
 
