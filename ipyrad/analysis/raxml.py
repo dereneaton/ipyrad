@@ -4,7 +4,7 @@
 
 import os
 import subprocess
-from ipyrad.assemble.util import Params
+from ipyrad.assemble.utils import Params
 
 ## alias
 OPJ = os.path.join
@@ -108,7 +108,7 @@ class Raxml(object):
         self._get_binary()
 
         ## attributes
-        self.async = None
+        self.rasync = None
         self.stdout = None
         self.stderr = None
 
@@ -193,14 +193,14 @@ class Raxml(object):
         else:
             ## find all hosts and submit job to the host with most available engines
             lbview = ipyclient.load_balanced_view()
-            self.async = lbview.apply(_call_raxml, self._command_list)
+            self.rasync = lbview.apply(_call_raxml, self._command_list)
 
         ## initiate random seed
         if not quiet:
             if not ipyclient:
                 ## look for errors
-                if "Overall execution time" not in self.stdout:
-                    print("Error in raxml run\n" + self.stdout)
+                if "Overall execution time" not in self.stdout.decode():
+                    print("Error in raxml run\n" + self.stdout.decode())
                 else:
                     print("job {} finished successfully".format(self.params.n))
             else:
@@ -274,6 +274,7 @@ BINARY_ERROR = """
 
   or, you can set it after object creation with:
     rax.params.binary = "raxmlHPC-PTHREADS"
-"""
 
-  
+  If you install raxml with conda ipyrad should be able to find it:
+  'conda install raxml -c bioconda'
+"""
