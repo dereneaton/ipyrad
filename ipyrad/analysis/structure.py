@@ -716,9 +716,16 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
         return table
 
     else:
+        # TODO: shouldn't we raise an error here?
         sys.stderr.write("No files ready for {}-K-{} in {}\n"\
                          .format(self.name, kpop, self.workdir))
-        return 
+        if len(outfile) > 50:
+            print("""
+    This error may be caused by the length of your output filename. For some 
+    reason Clumpp cannot handle filenames longer than 50 characters...
+    """, file=sys.stderr)
+
+
 
 
 
