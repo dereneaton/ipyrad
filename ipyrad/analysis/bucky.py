@@ -12,7 +12,7 @@ import numpy as np
 import subprocess as sps
 from collections import Counter
 from ipyrad.analysis.utils import progressbar, Params
-from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.utils import IPyradError
 
 
 class Bucky(object):

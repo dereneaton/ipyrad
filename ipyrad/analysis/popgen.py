@@ -10,7 +10,7 @@ import itertools
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.utils import Params
-from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.utils import IPyradError
 
 
 class Popgen(object):

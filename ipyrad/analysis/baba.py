@@ -19,7 +19,7 @@ import numba
 
 ## ipyrad tools
 from ipyrad.analysis.utils import Params, progressbar
-from ipyrad.assemble.util import IPyradError
+from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.write_outfiles import reftrick
 
 #from ipyrad.plotting.baba_panel_plot import baba_panel_plot
