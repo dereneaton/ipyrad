@@ -336,7 +336,7 @@ class Step6:
         if not rasync.successful():
             raise IPyradError(rasync.exception())          
 
-
+    ## DENOVO FUNCS
     def remote_build_denovo_clusters(self):
         "build denovo clusters from vsearch clustered seeds"
         # filehandles; if not multiple tiers then 'x' is jobid 0
@@ -1181,56 +1181,56 @@ def align_to_array(data, samples, chunk):
         align1 = []
         
         # find duplicates and skip aligning but keep it for downstream.
-        unames = set([i.rsplit("_", 1)[0] for i in names])
-        if len(unames) < len(names):
-            istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
+        #unames = set([i.rsplit("_", 1)[0] for i in names])
+        #if len(unames) < len(names):
+        #    istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
+        #else:
+    
+        # append counter to names because muscle doesn't retain order
+        nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
 
-        else:
-            # append counter to names because muscle doesn't retain order
-            nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+        # make back into strings
+        cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])                
 
-            # make back into strings
-            cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])                
+        # store allele (lowercase) info, returns mask with lowercases
+        amask, abool = store_alleles(seqs)
 
-            # store allele (lowercase) info, returns mask with lowercases
-            amask, abool = store_alleles(seqs)
+        # send align1 to the bash shell (TODO: check for pipe-overflow)
+        cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+                .format(cl1, ipyrad.bins.muscle, "//\n"))
+        proc.stdin.write(cmd1.encode())
 
-            # send align1 to the bash shell (TODO: check for pipe-overflow)
-            cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
-                    .format(cl1, ipyrad.bins.muscle, "//\n"))
-            proc.stdin.write(cmd1.encode())
+        # read the stdout by line until splitter is reached
+        for line in iter(proc.stdout.readline, b'//\n'):
+            align1.append(line.decode())
 
-            # read the stdout by line until splitter is reached
-            for line in iter(proc.stdout.readline, b'//\n'):
-                align1.append(line.decode())
-
-            # reorder b/c muscle doesn't keep order
-            lines = "".join(align1)[1:].split("\n>")
-            dalign1 = dict([i.split("\n", 1) for i in lines])
-            keys = sorted(
-                dalign1.keys(), 
-                key=lambda x: int(x.rsplit("*")[-1])
+        # reorder b/c muscle doesn't keep order
+        lines = "".join(align1)[1:].split("\n>")
+        dalign1 = dict([i.split("\n", 1) for i in lines])
+        keys = sorted(
+            dalign1.keys(), 
+            key=lambda x: int(x.rsplit("*")[-1])
+        )
+        seqarr = np.zeros(
+            (len(nnames), len(dalign1[keys[0]].replace("\n", ""))),
+            dtype='S1',
             )
-            seqarr = np.zeros(
-                (len(nnames), len(dalign1[keys[0]].replace("\n", ""))),
-                dtype='S1',
-                )
-            for kidx, key in enumerate(keys):
-                concatseq = dalign1[key].replace("\n", "")
-                seqarr[kidx] = list(concatseq)
+        for kidx, key in enumerate(keys):
+            concatseq = dalign1[key].replace("\n", "")
+            seqarr[kidx] = list(concatseq)
 
-            # get alleles back using fast jit'd function.
-            if np.sum(amask):
-                intarr = seqarr.view(np.uint8)
-                iamask = retrieve_alleles_after_aligning(intarr, amask)
-                seqarr[iamask] = np.char.lower(seqarr[iamask])
+        # get alleles back using fast jit'd function.
+        if np.sum(amask):
+            intarr = seqarr.view(np.uint8)
+            iamask = retrieve_alleles_after_aligning(intarr, amask)
+            seqarr[iamask] = np.char.lower(seqarr[iamask])
 
-            # sort in sname (alphanumeric) order. 
-            wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
-            for widx in wkeys:
-                wname = names[widx]
-                istack.append(
-                    "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
+        # sort in sname (alphanumeric) order. 
+        wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
+        for widx in wkeys:
+            wname = names[widx]
+            istack.append(
+                "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
 
         # store the stack (only for visually checking alignments)
         if istack:
