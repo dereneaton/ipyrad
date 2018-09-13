@@ -10,6 +10,7 @@ except ImportError:
 
 # standard lib imports
 import os
+import sys
 import glob
 import time
 import shutil
@@ -42,7 +43,11 @@ class Step7:
 
         # dict mapping of samples to padded names for loci file aligning.
         self.data.snames = sorted(list(self.data.samples.keys()))
-        self.data.pnames, self.data.snppad = self.get_padded_names()      
+        self.data.pnames, self.data.snppad = self._get_padded_names()      
+
+        # output file formats to produce
+        self.formats = set(['l']).union(
+            set(self.data.paramsdict["output_formats"]))
 
     def run(self):
         # split clusters into bits.
@@ -53,47 +58,21 @@ class Step7:
         self.remote_process_chunks()
 
         # write stats file while counting nsnps and nbases.
-        # runs pretty fast
         self.collect_stats()
 
-        # can be sent to remote.
+        # write loci and alleles outputs (hardly parallelized)
+        self.store_file_handles()
         self.write_loci_and_alleles()
 
-        # iterate over new processed chunks to fill the h5 array.
-        # single-threaded
+        # iterate over new processed chunks to fill the h5 array (1-threaded)
+        #self.fill_arrays()
         self.fill_seq_array()
-
-        # write outputs -- all parallelizable after phy array is built
-        #self.remote_build_conversions()
-
-
-        #self.remote_write_outfiles()
-
-        #self.write_phylip()
-        #self.write_nexus()
-
-        # write outputs -- all parallelizable after snp array is built
-        #self.write_snps()
-        #self.write_structure()
-
-
-        # build loci and alleles files stats 
-        # build arrays and fill in second iteration over chunks.
-        #self.write_loci()
-
-        # and fill the seq and snp arrays.       
-        #self.build_loci()
-        #self.build_alleles()
-
-        # build conversions 
-        #self.remote_fill_seqarrs()
-        #self.remote_build_conversions()
-
+        self.remote_write_outfiles()
         # send jobs to build vcf
         #self.remote_fill_depths()
         #self.remote_build_vcf()
 
-    ## init functions -----------------------------------
+    ## init functions ------
     def get_subsamples(self):
         "get subsamples for this assembly. All must have been in step6"
         # filter samples by state
@@ -182,17 +161,174 @@ class Step7:
         self.chunks = ((self.nraws // (self.ncpus * 2)) + \
                        (self.nraws % (self.ncpus * 2)))
 
+    ## core functions ------
+    def store_file_handles(self):
+        # always produce a .loci file + whatever they ask for.
+        for outf in self.formats:
+
+            # if it requires a pop file and they don't have one then skip
+            # and print a warning:
+            if (outf in ("t", "m")) and (not self.data.populations):
+                print(POPULATION_REQUIRED.format(outf), file=sys.stderr)
+
+                # remove format from the set
+                self.formats.discard(outf)
+                continue
+
+            else:                
+                # store handle to data object
+                for ending in OUT_SUFFIX[outf]:
+                    
+                    # store 
+                    self.data.outfiles[ending[1:]] = os.path.join(
+                        self.data.dirs.outfiles,
+                        self.data.name + ending)           
+
+    def collect_stats(self):
+        "Collect results from Processor and write stats file."
+
+        # organize stats into dataframes 
+        ftable = pd.DataFrame(
+            columns=["total_filters", "applied_order", "retained_loci"],
+            index=[
+                "total_prefiltered_loci",
+                "filtered_by_rm_duplicates",
+                "filtered_by_max_indels",
+                "filtered_by_max_SNPs",
+                "filtered_by_max_shared_het",
+                "filtered_by_min_sample",  # "filtered_by_max_alleles",
+                "total_filtered_loci"],
+        )
+
+        # load pickled dictionaries into a dict
+        pickles = glob.glob(os.path.join(self.data.tmpdir, "*.p"))
+        pdicts = {}
+        for pkl in pickles:
+            with open(pkl, 'rb') as inp:
+                pdicts[pkl.rsplit("-", 1)[-1][:-2]] = pickle.load(inp)
+
+        # join dictionaries into global stats
+        afilts = np.concatenate([i['filters'] for i in pdicts.values()])
+        lcovs = Counter({})
+        scovs = Counter({})
+        cvar = Counter({})
+        cpis = Counter({})
+        nbases = 0
+        for lcov in [i['lcov'] for i in pdicts.values()]:
+            lcovs.update(lcov)
+        for scov in [i['scov'] for i in pdicts.values()]:
+            scovs.update(scov)
+        for var in [i['var'] for i in pdicts.values()]:
+            cvar.update(var)
+        for pis in [i['pis'] for i in pdicts.values()]:
+            cpis.update(pis)
+        for count in [i['nbases'] for i in pdicts.values()]:
+            nbases += count
+
+        # make into nice DataFrames
+        ftable.iloc[0, :] = (0, 0, self.nraws)
+
+        # filter rm dups
+        ftable.iloc[1, 0:2] = afilts[:, 0].sum()
+        ftable.iloc[1, 2] = ftable.iloc[0, 2] - ftable.iloc[1, 1]
+        mask = afilts[:, 0]
+
+        # filter max indels
+        ftable.iloc[2, 0] = afilts[:, 1].sum()
+        ftable.iloc[2, 1] = afilts[~mask, 1].sum()
+        ftable.iloc[2, 2] = ftable.iloc[1, 2] - ftable.iloc[2, 1]
+        mask = afilts[:, 0:2].sum(axis=1).astype(np.bool)
+
+        # filter max snps
+        ftable.iloc[3, 0] = afilts[:, 2].sum()
+        ftable.iloc[3, 1] = afilts[~mask, 2].sum()
+        ftable.iloc[3, 2] = ftable.iloc[2, 2] - ftable.iloc[3, 1]
+        mask = afilts[:, 0:3].sum(axis=1).astype(np.bool)
+
+        # filter max shared H
+        ftable.iloc[4, 0] = afilts[:, 3].sum()
+        ftable.iloc[4, 1] = afilts[~mask, 3].sum()
+        ftable.iloc[4, 2] = ftable.iloc[3, 2] - ftable.iloc[4, 1]
+        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool)
+
+        # filter minsamp
+        ftable.iloc[5, 0] = afilts[:, 4].sum()
+        ftable.iloc[5, 1] = afilts[~mask, 4].sum()
+        ftable.iloc[5, 2] = ftable.iloc[4, 2] - ftable.iloc[5, 1]
+        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool)
+
+        ftable.iloc[6, 0] = ftable.iloc[:, 0].sum()
+        ftable.iloc[6, 1] = ftable.iloc[:, 1].sum()
+        ftable.iloc[6, 2] = ftable.iloc[5, 2]
+
+        # save stats to the data object
+        self.data.stats_dfs.s7_filters = ftable
+        self.data.stats_dfs.s7_samples = pd.DataFrame(
+            pd.Series(scovs, name="sample_coverage"))
+
+        ## get locus cov and sums 
+        lrange = range(1, len(self.samples) + 1)
+        covs = pd.Series(lcovs, name="locus_coverage", index=lrange)
+        start = self.data.paramsdict["min_samples_locus"] - 1
+        sums = pd.Series(
+            {i: np.sum(covs[start:i]) for i in lrange},            
+            name="sum_coverage", 
+            index=lrange)
+        self.data.stats_dfs.s7_loci = pd.concat([covs, sums], axis=1)
+
+        ## get SNP distribution       
+        maxsnps = sum(self.data.paramsdict['max_SNPs_locus'])
+        sumd = {}
+        sump = {}
+        for i in range(maxsnps):
+            sumd[i] = np.sum([i * cvar[i] for i in range(i + 1)])
+            sump[i] = np.sum([i * cpis[i] for i in range(i + 1)])        
+        self.data.stats_dfs.s7_snps = pd.concat([
+            pd.Series(cvar, name="var"),
+            pd.Series(sumd, name="sum_var"),
+            pd.Series(cpis, name="pis"),
+            pd.Series(sump, name="sum_pis"),           
+            ],          
+            axis=1
+        )
+        ## trim SNP distribution to exclude unobserved endpoints
+        varmin = (self.data.stats_dfs.s7_snps['var'] != 0).idxmin()
+        pismin = (self.data.stats_dfs.s7_snps['pis'] != 0).idxmin()
+        amin = max([varmin, pismin])
+        self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.iloc[:amin]
+
+        ## store dimensions for array building 
+        self.nloci = ftable.iloc[6, 2]
+        self.nbases = nbases
+        self.nsnps = self.data.stats_dfs.s7_snps["sum_var"].max()
+        self.ntaxa = len(self.samples)
+
+        # write to file
+        self.data.stats_files.s7 = os.path.join(
+            self.data.dirs.outfiles, "{}_stats.txt".format(self.data.name))
+        with open(self.data.stats_files.s7, 'w') as outstats:
+            print(STATS_HEADER_1, file=outstats)
+            self.data.stats_dfs.s7_filters.to_string(buf=outstats)
+
+            print(STATS_HEADER_2, file=outstats)
+            self.data.stats_dfs.s7_samples.to_string(buf=outstats)
+
+            print(STATS_HEADER_3, file=outstats)
+            self.data.stats_dfs.s7_loci.to_string(buf=outstats)
+
+            print(STATS_HEADER_4, file=outstats)
+            self.data.stats_dfs.s7_snps.to_string(buf=outstats)
+
+            print("\n\n\n## Final Sample stats summary", file=outstats)
+            statcopy = self.data.stats.copy()
+            statcopy.state = 7
+            statcopy['loci_in_assembly'] = self.data.stats_dfs.s7_samples
+            statcopy.to_string(buf=outstats)
+
     def write_loci_and_alleles(self):
 
         # write alleles file
         allel = 'a' in self.data.paramsdict["output_formats"]
-
-        # store output handle
-        self.data.outfiles.loci = os.path.join(
-            self.data.dirs.outfiles, self.data.name + ".loci")
-        if allel:
-            self.data.outfiles.alleles = os.path.join(
-                self.data.dirs.outfiles, self.data.name + ".alleles.loci")
 
         # gather all loci bits
         locibits = glob.glob(os.path.join(self.data.tmpdir, "*.loci"))
@@ -304,10 +440,11 @@ class Step7:
                     else:
                         # convert seqs to an array
                         locidx += 1
-                        loc = np.array([list(i) for i in tmploc.values()]).astype(bytes).view(np.uint8)
+                        loc = (np.array([list(i) for i in tmploc.values()])
+                            .astype(bytes).view(np.uint8))
                         
                         # drop the site that are all N or -
-                        mask = np.all((loc == 0) | (loc == 71), axis=0)
+                        mask = np.all((loc == 45) | (loc == 78), axis=0)
                         loc = loc[:, ~mask]
                         
                         # store end position of locus for map
@@ -323,7 +460,7 @@ class Step7:
                     # dump tmparr when it gets large
                     if end > maxsize:
                         
-                        # trim right overflow from tmparr
+                        # trim right overflow from tmparr (end filled as 0s)
                         trim = np.where(tmparr != 0)[1]
                         if trim.size:
                             trim = trim.max() + 1
@@ -335,7 +472,8 @@ class Step7:
                         
                         # dump tmparr to hdf5
                         io5['phy'][:, gstart:gstart + trim] = tmparr[:, :trim]                       
-                        io5['phymap'][mapstart:locidx] = np.array(maplist, dtype=np.int64)
+                        io5['phymap'][mapstart:locidx] = (
+                            np.array(maplist, dtype=np.int64))
                         mapstart = locidx
                         maplist = []
                         
@@ -344,7 +482,7 @@ class Step7:
                         gstart += trim
                         start = end = 0
                         
-            # write final chunk
+            # trim final chunk tmparr to size
             trim = np.where(tmparr != 0)[1]
             if trim.size:
                 trim = trim.max() + 1
@@ -354,10 +492,26 @@ class Step7:
             # fill missing with 78 (N)
             tmparr[tmparr == 0] = 78
 
-            # dump tmparr to hdf5
+            # dump tmparr and maplist to hdf5
             io5['phy'][:, gstart:gstart + trim] = tmparr[:, :trim]           
             mapend = mapstart + len(maplist)
             io5['phymap'][mapstart:mapend] = np.array(maplist, dtype=np.int64)
+
+            # write stats to the output file
+            with open(self.data.stats_files.s7, 'a') as outstats:
+                print("\n\n\n## Alignment matrix statistics:", file=outstats)
+                trim = io5["phymap"][-1]
+                missmask = io5["phy"][:trim] == 78
+                missmask += io5["phy"][:trim] == 45
+                missing = 100 * (missmask.sum() / io5["phy"][:trim].size)
+                print("sequence matrix size: ({}, {}), {:.2f}% missing sites."
+                    .format(
+                        len(self.data.samples), 
+                        trim, 
+                        missing,
+                    ),
+                    file=outstats,
+                )
 
     def fill_snp_array(self):
        
@@ -524,148 +678,7 @@ class Step7:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].exception())
 
-    def collect_stats(self):
-        "Collect results from Processor and write stats file."
-
-        # organize stats into dataframes 
-        ftable = pd.DataFrame(
-            columns=["total_filters", "applied_order", "retained_loci"],
-            index=[
-                "total_prefiltered_loci",
-                "filtered_by_rm_duplicates",
-                "filtered_by_max_indels",
-                "filtered_by_max_SNPs",
-                "filtered_by_max_shared_het",
-                "filtered_by_min_sample",  # "filtered_by_max_alleles",
-                "total_filtered_loci"],
-        )
-
-        # load pickled dictionaries into a dict
-        pickles = glob.glob(os.path.join(self.data.tmpdir, "*.p"))
-        pdicts = {}
-        for pkl in pickles:
-            with open(pkl, 'rb') as inp:
-                pdicts[pkl.rsplit("-", 1)[-1][:-2]] = pickle.load(inp)
-
-        # join dictionaries into global stats
-        afilts = np.concatenate([i['filters'] for i in pdicts.values()])
-        lcovs = Counter({})
-        scovs = Counter({})
-        cvar = Counter({})
-        cpis = Counter({})
-        nbases = 0
-        for lcov in [i['lcov'] for i in pdicts.values()]:
-            lcovs.update(lcov)
-        for scov in [i['scov'] for i in pdicts.values()]:
-            scovs.update(scov)
-        for var in [i['var'] for i in pdicts.values()]:
-            cvar.update(var)
-        for pis in [i['pis'] for i in pdicts.values()]:
-            cpis.update(pis)
-        for count in [i['nbases'] for i in pdicts.values()]:
-            nbases += count
-
-        # make into nice DataFrames
-        ftable.iloc[0, :] = (0, 0, self.nraws)
-
-        # filter rm dups
-        ftable.iloc[1, 0:2] = afilts[:, 0].sum()
-        ftable.iloc[1, 2] = ftable.iloc[0, 2] - ftable.iloc[1, 1]
-        mask = afilts[:, 0]
-
-        # filter max indels
-        ftable.iloc[2, 0] = afilts[:, 1].sum()
-        ftable.iloc[2, 1] = afilts[~mask, 1].sum()
-        ftable.iloc[2, 2] = ftable.iloc[1, 2] - ftable.iloc[2, 1]
-        mask = afilts[:, 0:2].sum(axis=1).astype(np.bool)
-
-        # filter max snps
-        ftable.iloc[3, 0] = afilts[:, 2].sum()
-        ftable.iloc[3, 1] = afilts[~mask, 2].sum()
-        ftable.iloc[3, 2] = ftable.iloc[2, 2] - ftable.iloc[3, 1]
-        mask = afilts[:, 0:3].sum(axis=1).astype(np.bool)
-
-        # filter max shared H
-        ftable.iloc[4, 0] = afilts[:, 3].sum()
-        ftable.iloc[4, 1] = afilts[~mask, 3].sum()
-        ftable.iloc[4, 2] = ftable.iloc[3, 2] - ftable.iloc[4, 1]
-        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool)
-
-        # filter minsamp
-        ftable.iloc[5, 0] = afilts[:, 4].sum()
-        ftable.iloc[5, 1] = afilts[~mask, 4].sum()
-        ftable.iloc[5, 2] = ftable.iloc[4, 2] - ftable.iloc[5, 1]
-        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool)
-
-        ftable.iloc[6, 0] = ftable.iloc[:, 0].sum()
-        ftable.iloc[6, 1] = ftable.iloc[:, 1].sum()
-        ftable.iloc[6, 2] = ftable.iloc[5, 2]
-
-        # save stats to the data object
-        self.data.stats_dfs.s7_filters = ftable
-        self.data.stats_dfs.s7_samples = pd.DataFrame(
-            pd.Series(scovs, name="sample_coverage"))
-
-        ## get locus cov and sums 
-        lrange = range(1, len(self.samples) + 1)
-        covs = pd.Series(lcovs, name="locus_coverage", index=lrange)
-        start = self.data.paramsdict["min_samples_locus"] - 1
-        sums = pd.Series(
-            {i: np.sum(covs[start:i]) for i in lrange},            
-            name="sum_coverage", 
-            index=lrange)
-        self.data.stats_dfs.s7_loci = pd.concat([sums, covs], axis=1)
-
-        ## get SNP distribution       
-        maxsnps = sum(self.data.paramsdict['max_SNPs_locus'])
-        sumd = {}
-        sump = {}
-        for i in range(maxsnps):
-            sumd[i] = np.sum([i * cvar[i] for i in range(i + 1)])
-            sump[i] = np.sum([i * cpis[i] for i in range(i + 1)])        
-        self.data.stats_dfs.s7_snps = pd.concat([
-            pd.Series(cvar, name="var"),
-            pd.Series(sumd, name="sum_var"),
-            pd.Series(cpis, name="pis"),
-            pd.Series(sump, name="sum_pis"),           
-            ],          
-            axis=1
-        )
-        ## trim SNP distribution to exclude unobserved endpoints
-        varmin = (self.data.stats_dfs.s7_snps['var'] != 0).idxmin()
-        pismin = (self.data.stats_dfs.s7_snps['pis'] != 0).idxmin()
-        amin = max([varmin, pismin])
-        self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.iloc[:amin]
-
-        ## store dimensions for array building 
-        self.nloci = ftable.iloc[6, 2]
-        self.nbases = nbases
-        self.nsnps = self.data.stats_dfs.s7_snps["sum_var"].max()
-        self.ntaxa = len(self.samples)
-
-        # write to file
-        self.data.stats_files.s7 = os.path.join(
-            self.data.dirs.outfiles, "{}_stats.txt".format(self.data.name))
-        with open(self.data.stats_files.s7, 'w') as outstats:
-            print(STATS_HEADER_1, file=outstats)
-            self.data.stats_dfs.s7_filters.to_string(buf=outstats)
-
-            print(STATS_HEADER_2, file=outstats)
-            self.data.stats_dfs.s7_samples.to_string(buf=outstats)
-
-            print(STATS_HEADER_3, file=outstats)
-            self.data.stats_dfs.s7_loci.to_string(buf=outstats)
-
-            print(STATS_HEADER_4, file=outstats)
-            self.data.stats_dfs.s7_snps.to_string(buf=outstats)
-
-            print("\n\n\nFinal Sample stats summary", file=outstats)
-            statcopy = self.data.stats.copy()
-            statcopy.state = 7
-            statcopy['loci_in_assembly'] = self.data.stats_dfs.s7_samples
-            statcopy.to_string(buf=outstats)
-
-    def get_padded_names(self):
+    def _get_padded_names(self):
         # get longest name
         longlen = max(len(i) for i in self.data.snames)
         # Padding distance between name and seq.
@@ -678,20 +691,38 @@ class Step7:
         snppad = "//" + " " * (longlen - 2 + padding)
         return pnames, snppad
 
+    # functions for distributing other functions on the cluster
+    def write_loci_and_stats(self):
+        "Calls _collect_stats and _write_loci_and_alleles on engines"
+        start = time.time()
+        printstr = ("write loci file")
+        rasyncs = {}
+
+        jobs = [self._collect_stats, self._write_loci_and_alleles]
+        for job in jobs:
+            rasyncs[job] = self.lbview.apply(job)
+        
+        # iterate until all chunks are processed
+        while 1:
+            # get and enter results into hdf5 as they come in
+            ready = [rasyncs[i].ready() for i in rasyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.5)
+            if len(ready) == sum(ready):
+                break          
+
+        # write stats
+        print("")
+        for job in rasyncs:
+            if not rasyncs[job].successful():
+                raise IPyradError(rasyncs[job].exception())
+
     def remote_write_outfiles(self):
 
-        oformats = ["phy", "nex"]
-        for oformat in oformats:
-
-            # store handle to data object
-            self.data.outfiles[oformat] = os.path.join(
-                self.data.dirs.outfiles,
-                self.data.name + oformat)
-
+        for outf in self.formats:
             # run conversion on remote engine
-            #args = ()
-            #rasync = self.lbview.apply()
-            convert_output(self.data, oformat)
+            convert_outputs(self.data, outf)
+
 
 
 # ------------------------------------------------------------
@@ -1017,10 +1048,40 @@ class Converter:
     def __init__(self, data):
         self.data = data
         self.output_formats = self.data.paramsdict["output_formats"]
-        self.database = self.data.database
+        self.database = self.data.database       
 
     def run(self, oformat):
-        pass
+
+        # phy array outputs
+        if oformat == "p":
+            self.write_phy()
+
+        # phy array + phymap outputs
+        if oformat == "n":
+            self.write_nex()
+        if oformat == "G":
+            pass
+
+        # phy array + phymap + populations outputs
+        if oformat == "m":
+            pass
+
+        # snps array + snpsmap outputs
+        if oformat == "s":
+            self.write_snps()
+
+        if oformat == "u":
+            pass
+
+        if oformat == "k":
+            pass
+
+        if oformat == "g":
+            pass
+
+        # snps array + snpsmap + populations outputs
+        if oformat == "t":
+            pass
 
 
     def write_phy(self):
@@ -1028,23 +1089,23 @@ class Converter:
         with open(self.data.outfiles.phy, 'w') as out:
             with h5py.File(self.data.database, 'r') as io5:
                 # load seqarray
-                seqarr = io5['phy'][:]
+                seqarr = io5['phy']
                 arrsize = io5['phymap'][-1]
 
                 # write dims
-                out.write("{} {}\n".format(self.ntaxa, arrsize))
+                out.write("{} {}\n".format(len(self.data.samples), arrsize))
 
                 # write to disk
                 for idx in range(io5['phy'].shape[0]):
-                    seq = seqarr[idx, :].view("S1")
+                    seq = seqarr[idx, :arrsize].view("S1")
                     out.write(
                         "{}{}".format(
                             self.data.pnames[self.data.snames[idx]],
                             b"".join(seq).decode().upper() + "\n",
                         )
                     )
-                    
-                    
+
+
     def write_nex(self):
         # write from hdf5 array
         with open(self.data.outfiles.nex, 'w') as out:
@@ -1092,6 +1153,9 @@ class Converter:
                 charsetblock.append("END;")
                 out.write("\n".join(charsetblock))
 
+
+    def write_snps(self):
+        pass
 
     def write_snps_map(self):
         """ write a map file with linkage information for SNPs file"""
@@ -1312,6 +1376,9 @@ The distribution of SNPs (var and pis) per locus.
 ## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)
 ## ipyrad API location: [assembly].stats_dfs.s7_snps
 """
+POPULATION_REQUIRED = """\
+Warning: Skipping output format '{}'. Requires population assignments.
+"""
 NEXHEADER = """#nexus
 begin data;
   dimensions ntax={} nchar={};
@@ -1321,3 +1388,17 @@ begin data;
 NEXCLOSER = """  ;
 end;
 """
+OUT_SUFFIX = {
+    'l': ('.loci',),
+    'p': ('.phy', '.phymap',),
+    's': ('.snps', '.snpsmap',),
+    'n': ('.nex',),
+    'k': ('.k',),
+    'a': ('.alleles',),
+    'g': ('.geno',),
+    'G': ('.gphocs',),
+    'u': ('.usnps',),
+    'v': ('.vcf',),
+    't': ('.treemix',),
+    'm': ('.migrate',),
+    }
