@@ -107,7 +107,7 @@ class Raxml(object):
         ## check binary
         self._get_binary()
 
-        ## attributes
+        ## attributesx
         self.rasync = None
         self.stdout = None
         self.stderr = None
