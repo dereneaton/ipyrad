@@ -1137,7 +1137,8 @@ class Assembly(object):
                 ip.assemble.write_outputs.Step7(**kwargs).run()
                 self.save()
                 ipyclient.purge_everything()
-
+            if not steps:
+                print("No assembly steps selected (e.g., '123')")
 
         ## handle exceptions so they will be raised after we clean up below
         except KeyboardInterrupt as inst:
