@@ -84,9 +84,10 @@ class Step5:
         for sample in self.samples:
             if os.path.exists(sample.files.consens):
                 os.remove(sample.files.consens)
-            depthfile = sample.files.consens.replace(".consens.gz", ".catg.hdf5")
-            if os.path.exists(depthfile):
-                os.remove(depthfile)
+            dfile = sample.files.consens.replace(".consens.gz", ".catg.hdf5")
+            sample.files.database = dfile
+            if os.path.exists(dfile):
+                os.remove(dfile)
 
         # set up parallel client: allow user to throttle cpus
         self.lbview = self.ipyclient.load_balanced_view()
