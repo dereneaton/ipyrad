@@ -341,4 +341,6 @@ VERY IMPORTANT: This environment variable needs to be set in both .bashrc and .p
     $ source ~/.profile
     $ env | grep QT
 
-
+Why is my structure analysis crashing when it looks like it should be working?
+------------------------------------------------------------------------------
+When running structure, specifically in the `get_clumpp_table` call, you might be told that `No files ready for XXX-K-2 in </your/structure/folder>`, when in fact there are files ready. Well it turns out that CLUMPP has a 100 character file name limit, and it'll crash with names longer than this. The ipyrad.analysis.structure functions use absolute paths to specify file names, so it's not hard to see how this 100 character limit could be violated. Try moving your structure analysis to a place higher in the file system hierarchy. Baffling!
