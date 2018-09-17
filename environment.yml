@@ -20,3 +20,9 @@ dependencies:
 #- dask
 #- jupyter
 
+
+#########################################################################
+# This file is used to designate the conda environment dependencies
+# and is used to run installation for testing while building the docs 
+# by readthedocs.
+#########################################################################
