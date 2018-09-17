@@ -427,10 +427,15 @@ class Step6:
             globlist,
             key=lambda x: int(x.rsplit("_", 1)[1].split(".")[0]),
             )
-        outfile = os.path.join(
+
+        # store path to clust database 
+        self.data.clust_database = os.path.join(
             self.data.dirs.across, 
-            self.data.name + "_raw_loci.fa")
-        with open(outfile, 'wt') as out:
+            self.data.name + "_clust_database.fa")
+
+        # write clusters to file with a header that has all samples in db        
+        with open(self.data.clust_database, 'wt') as out:
+            out.write("#{}\n".format(",@".join(self.data.samples)))
             for clustfile in clustbits:
                 with open(clustfile, 'r') as indata:
                     out.write(indata.read() + "//\n//\n")
@@ -907,7 +912,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
                 except ValueError:
                     pass
     
-            # print progress
+            # print progress (do not remove print statement, stdout is parsed)
             if newprog != prog:
                 print(int(newprog))
                 prog = newprog
