@@ -13,12 +13,14 @@ except ImportError:
     izip = zip
 
 import os
+import gzip
 import socket
 import tempfile
-import ipyrad
-import gzip
 from collections import defaultdict
 import subprocess as sps
+
+import numpy as np
+import ipyrad
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -158,6 +160,29 @@ TRANSFULL = {
     (b'T', b'G'): "K",
     (b'A', b'G'): "R",
     }
+
+TRANSINT = {
+    (71, 65): 82,
+    (71, 84): 75,
+    (71, 67): 83,
+    (84, 67): 89,
+    (84, 65): 87,
+    (67, 65): 77,
+    (65, 67): 77,
+    (65, 84): 87,
+    (67, 84): 89,
+    (67, 71): 83,
+    (84, 71): 75,
+    (65, 71): 82,
+    }
+
+
+GENOOPTS = {
+    b"C": (b"S", b"Y", b"M"),
+    b"A": (b"R", b"W", b"M"),
+    b"T": (b"K", b"Y", b"W"), 
+    b"G": (b"R", b"K", b"S"),
+}
 
 
 ## used for resolving ambiguities
@@ -848,7 +873,31 @@ BTS = {
     b"-": ["-", "-"]
     }
 
+GETGENO = np.array([
+    list(b"RGA"),
+    list(b"KGT"),
+    list(b"SGC"),
+    list(b"YTC"),
+    list(b"WTA"),
+    list(b"MCA"),
+    list(b"AAA"),
+    list(b"TTT"),
+    list(b"CCC"),
+    list(b"GGG"),
+], dtype=np.uint8)
 
+# used in baba.py / write_outfiles..py
+## with N and - masked to 9
+GETCONS = np.array([
+    [82, 71, 65],
+    [75, 71, 84],
+    [83, 71, 67],
+    [89, 84, 67],
+    [87, 84, 65],
+    [77, 67, 65],
+    [78, 9, 9],
+    [45, 9, 9],
+    ], dtype=np.uint8)
 
 
 
