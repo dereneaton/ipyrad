@@ -21,9 +21,11 @@ from collections import Counter
 # third party imports
 import numpy as np
 import pandas as pd
+import ipyrad
 from numba import njit
 from .utils import IPyradError, clustdealer, splitalleles
-from .utils import BTS, TRANSINT, GETCONS
+from .utils import BTS, TRANSINT, GETCONS, DCONS
+
 
 # suppress the terrible h5 warning
 import warnings
@@ -445,17 +447,48 @@ class Step7:
                 raise IPyradError(rasyncs[job].exception())        
                 
     def remote_fill_depths(self):
-        locibits = glob.glob(os.path.join(self.data.tmpdir, "*.loci"))
-        sortbits = sorted(locibits, 
-            key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
-        indels = glob.glob(os.path.join(self.data.tmpdir, "*.npy"))
-        sindels = sorted(indels, 
-            key=lambda x: int(x.rsplit("-", 1)[-1][:-4]))
+        "send each sample to build depth arrays"
+        start = time.time()
+        printstr = ("indexing vcf depths ", "s7")        
+        rasyncs = {}
 
-        pass # fill_depths()
+        for sample in self.data.samples.values():
+            rasyncs[sample.name] = self.lbview.apply(
+                fill_vcf_depths, *(self.data, self.nsnps, sample))
+
+        # iterate until all chunks are processed
+        while 1:
+            ready = [rasyncs[i].ready() for i in rasyncs]
+            self.data._progressbar(len(ready), sum(ready), start, printstr)
+            time.sleep(0.5)
+            if len(ready) == sum(ready):
+                break          
+
+        # write stats
+        print("")
+        for job in rasyncs:
+            if not rasyncs[job].successful():
+                raise IPyradError(rasyncs[job].exception())        
 
     def remote_build_vcf(self):
-        pass
+        "write VCF file"
+        start = time.time()
+        printstr = ("writing vcf output  ", "s7")        
+        rasync = self.lbview.apply(build_vcf, self.data)          
+
+        # iterate until all chunks are processed
+        while 1:
+            ready = rasync.ready()
+            self.data._progressbar(1, ready, start, printstr)
+            time.sleep(0.5)
+            if ready:
+                break          
+
+        # write stats
+        print("")
+        if not rasync.successful():
+            raise IPyradError(rasync.exception())        
+
 
 # ------------------------------------------------------------
 # Classes initialized and run on remote engines.
@@ -1027,6 +1060,26 @@ class Converter:
 
 
     def write_geno(self):
+        with open(self.data.outfiles.geno, 'w') as out:
+            with h5py.File(self.data.snps_database, 'r') as io5:
+                genos = io5["genos"][:]
+                snpgenos = np.zeros(genos.shape[:2], dtype=np.uint8)
+                snpgenos.fill(9)
+                
+                # fill (0, 0)
+                snpgenos[np.all(genos == 0, axis=2)] = 2
+                
+                # fill (0, 1) and (1, 0)
+                snpgenos[np.sum(genos, axis=2) == 1] = 1
+                
+                # fill (1, 1)
+                snpgenos[np.all(genos == 1, axis=2)] = 0
+                
+                # write to file
+                np.savetxt(out, snpgenos, delimiter="", fmt="%d")
+
+
+    def old_write_geno(self):
 
         with open(self.data.outfiles.geno, 'w') as out:
             with h5py.File(self.data.snps_database, 'r') as io5:
@@ -1059,11 +1112,6 @@ class Converter:
 
                 # print to files
                 np.savetxt(out, snpgeno.T, delimiter="", fmt="%d")
-
-
-class Vcfbuilder:
-    def __init__(self):
-        pass
 
 
 # -----------------------------------------------------------
@@ -1292,11 +1340,23 @@ def fill_snp_array(data, ntaxa, nsnps):
             shape=(ntaxa, nsnps),
             dtype=np.uint8,
         )
-        # temporary array data sets 
+        # store snp locations
         io5.create_dataset(
             name="snpsmap",
             shape=(nsnps, 3),
             dtype=np.uint32,
+        )
+        # store snp locations
+        io5.create_dataset(
+            name="pseudoref",
+            shape=(nsnps, 4),
+            dtype=np.uint8,
+        )
+        # store genotype calls (0/0, 0/1, 0/2, etc.)
+        io5.create_dataset(
+            name="genos",
+            shape=(nsnps, ntaxa, 2),
+            dtype=np.uint8,
         )
 
         # gather all loci bits
@@ -1411,9 +1471,228 @@ def fill_snp_array(data, ntaxa, nsnps):
                 file=outstats,
             )
 
+        # fill in the reference and geno arrays
+        # convert snps to numeric.
+        snparr = io5["snps"][:].view("S1")
+        snparr = np.char.upper(snparr).view(np.uint8)
 
-def fill_vcf_depths(data, ntaxa, nsnps):
-    pass
+        # store pseudo-ref (most common base)
+        # with ambiguous bases resolved: (87, 78, 0, 0).
+        io5['pseudoref'][:] = reftrick(snparr, GETCONS)
+            
+        # geno matrix to fill (9 is empty)
+        for sidx in range(ntaxa):
+            resos = [DCONS[i] for i in snparr[sidx, :]]
+            io5['genos'][:, sidx, :] = get_genos(
+                np.array([i[0] for i in resos]), 
+                np.array([i[1] for i in resos]),
+                io5['pseudoref'][:]
+                )
+
+
+def fill_vcf_depths(data, nsnps, sample):
+    "fills an array with SNP depths for VCF file."
+    
+    # array to store vcfdepths for this taxon
+    vcfd = np.zeros((nsnps, 4), dtype=np.uint8)
+    
+    # load snpsmap with locations of SNPS on trimmed loci
+    with h5py.File(data.snps_database, 'r') as io5:
+        snpsmap = io5['snpsmap'][:, [0, 2]]   
+
+    # load catgs for this sample
+    with h5py.File(sample.files.database, 'r') as io5:
+        catgs = io5['catg'][:]
+        
+    # loci and indel chunks with sidx labels
+    locibits = glob.glob(os.path.join(data.tmpdir, "chunk*.loci"))
+    sortbits = sorted(locibits, key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
+    indels = glob.glob(os.path.join(data.tmpdir, "chunk*.npy"))
+    sindels = sorted(indels, key=lambda x: int(x.rsplit("-", 1)[-1][:-4]))           
+
+    # counters
+    locidx = 0
+    snpidx = 0
+    names = []
+    seqs = []
+
+    # iterate through loci to impute indels into catgs
+    for locbit, indbit in zip(sortbits, sindels):
+        localidx = 0
+
+        # load trim array with left trim values of loci
+        trim = np.load(indbit)
+        with open(locbit, 'r') as inloci:
+            for line in iter(inloci):
+
+                # continue filling locus
+                if "|\n" not in line:
+                    name, seq = line.split()
+                    names.append(name)
+                    seqs.append(seq)
+
+                # locus filled, process it.
+                else:
+                    # get snps for this locus
+                    locsnps = snpsmap[snpsmap[:, 0] == locidx + 1]
+                        
+                    # is this sample in the locus?
+                    if sample.name in names:
+                        
+                        # store catg idx
+                        sidxs = [
+                            int(i) for i in line.rsplit("|", 2)[1].split(',')]
+                        nidx = names.index(sample.name)
+                        sidx = sidxs[nidx]
+                        seq = seqs[nidx]
+
+                        # get trim for this locus
+                        itrim = trim[localidx]
+
+                        # enter snps into vcfd
+                        if locsnps.size:
+                            seqarr = np.array(list(seq))
+                            inds = np.where(seqarr == "-")[0]
+                            for snp in locsnps[:, 1]:
+                                # how many indels come before this position?
+                                shift = np.sum(inds < snp)
+
+                                # if this site itself is an indel then offset
+                                # would confuse it, and it should be zero.
+                                try:
+                                    if seqarr[snp] == "-":
+                                        vcfd[snpidx] = (0, 0, 0, 0)
+                                    else:                                                                       
+                                        # If IndexError on right end this means
+                                        # indels are shifted so that ---- 
+                                        # filled the end of alignment
+                                        vcfd[snpidx] = (
+                                            catgs[sidx, (snp + itrim) - shift]
+                                        )
+                                except IndexError:
+                                    vcfd[snpidx] = (0, 0, 0, 0)
+                                snpidx += 1
+
+                    # sample not in this locus still advance SNP counter
+                    else:
+                        snpidx += locsnps.shape[0]
+
+                    # advance counter and reset dict
+                    locidx += 1
+                    localidx += 1
+                    names = []
+                    seqs = []
+
+    # write vcfd to file
+    vcfout = os.path.join(data.tmpdir, sample.name + ".depths.hdf5")
+    with h5py.File(vcfout, 'w') as io5:
+        io5.create_dataset(
+            name="depths",
+            data=vcfd,
+        )
+
+
+def build_vcf(data, chunksize=1000):
+    "pull in data from several hdf5 databases to construct vcf string"
+
+    with h5py.File(data.snps_database, 'r') as io5:
+
+        # iterate over chunks
+        for chunk in range(0, io5['genos'].shape[0], chunksize):
+
+            # load array chunks
+            genos = io5['genos'][chunk:chunk + chunksize]
+            pref = io5['pseudoref'][chunk:chunk + chunksize]
+            snpmap = io5['snpsmap'][chunk:chunk + chunksize]
+
+            # get alt genotype calls
+            alts = [
+                b",".join(i).decode().strip(",")
+                for i in pref[:, 1:].view("S1") 
+            ]
+            
+            # build df label cols
+            df_pos = pd.DataFrame({
+                '#CHROM': ["locus_{}".format(i - 1) for i in snpmap[:, 0]],
+                'POS': snpmap[:, -1] + 1,  # 1-indexed
+                'ID': ['.'] * genos.shape[0],
+                'REF': [i.decode() for i in pref[:, 0].view("S1")],
+                'ALT': alts,
+                'QUAL': [13] * genos.shape[0],
+                'FILTER': ['PASS'] * genos.shape[0],
+            })
+
+            # get number of samples for each site
+            nsamps = (
+                genos.shape[1] - np.any(genos == 9, axis=2).sum(axis=1)
+                )
+
+            # store sum of coverage at each site
+            asums = []
+            
+            # build depth columns for each sample
+            df_depth = pd.DataFrame({})
+            for sname in data.snames:
+                
+                # build geno strings
+                genostrs = [
+                    b"/".join(i).replace(b"9", b".").decode()
+                    for i in genos[:, data.snames.index(sname)]
+                    .astype(bytes)
+                ]
+                
+                # build depth and depthsum strings
+                dpth = os.path.join(data.tmpdir, sname + ".depths.hdf5")
+                with h5py.File(dpth, 'r') as s5:
+                    dpt = s5['depths'][chunk:chunk + chunksize]
+                    sums = [sum(i) for i in dpt]
+                    strs = [
+                        ",".join([str(k) for k in i.tolist()])
+                        for i in dpt
+                    ]
+                    
+                    # save concat string to name
+                    df_depth[sname] = [
+                        "{}:{}:{}".format(i, j, k) for (i, j, k) in 
+                        zip(genostrs, sums, strs)]
+
+                    # add sums to global list
+                    asums.append(np.array(sums))
+
+            # make final columns
+            nsums = sum(asums)
+            colinfo = pd.Series(
+                name="INFO",
+                data=[
+                    "NS={};DP={}".format(i, j) for (i, j) in zip(nsamps, nsums)
+                ])
+            colform = pd.Series(
+                name="FORMAT",
+                data=["GT:DP:CATG"] * genos.shape[0],
+                )
+                    
+            # debugging           
+            arr = pd.concat([df_pos, colinfo, colform, df_depth], axis=1)
+
+            ## PRINTING VCF TO FILE
+            ## choose reference string
+            if data.paramsdict["reference_sequence"]:
+                reference = data.paramsdict["reference_sequence"]
+            else:
+                reference = "pseudo-reference (most common base at site)"
+
+            header = VCFHEADER.format(
+                date=time.strftime("%Y/%m/%d"),
+                version=ipyrad.__version__,
+                reference=os.path.basename(reference)
+                ) 
+
+            with open(data.outfiles.vcf, 'a') as out:
+                if chunk == 0:
+                    out.write(header)
+                    arr.to_csv(out, sep='\t', index=False)
+                else:
+                    arr.to_csv(out, sep='\t', index=False, header=False)
 
 
 # ----------------------------------------
@@ -1596,6 +1875,24 @@ def reftrick(iseq, consdict):
     return altrefs
 
 
+@njit
+def get_genos(f10, f01, pseudoref):
+    res = np.zeros((f10.size, 2), dtype=np.uint8)
+    
+    for i in range(f10.size):
+        match = np.where(f10[i] == pseudoref[i])[0]
+        if match.size:
+            res[i, 0] = match[0]
+        else:
+            res[i, 0] = 9
+        match = np.where(f01[i] == pseudoref[i])[0]
+        if match.size:
+            res[i, 1] = match[0]
+        else:
+            res[i, 1] = 9
+    return res
+
+
 # -----------------------------------------------------------
 # GLOBALS
 # -----------------------------------------------------------
@@ -1664,3 +1961,17 @@ STRDICT = {
     'N': '-9', 
     '-': '-9',
 }
+
+VCFHEADER = """\
+##fileformat=VCFv4.0
+##fileDate={date}
+##source=ipyrad_v.{version}
+##reference={reference}
+##phasing=unphased
+##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##FORMAT=<ID=CATG,Number=1,Type=String,Description="Base Counts (CATG)">
+"""
+
