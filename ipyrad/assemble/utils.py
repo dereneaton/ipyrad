@@ -900,6 +900,21 @@ GETCONS = np.array([
     ], dtype=np.uint8)
 
 
+DCONS = {
+    82: (71, 65),
+    75: (71, 84),
+    83: (71, 67),
+    89: (84, 67),
+    87: (84, 65),
+    77: (67, 65),
+    78: (9, 9),
+    45: (9, 9),
+    67: (67, 67),
+    65: (65, 65),
+    84: (84, 84),
+    71: (71, 71),
+}
+
 
 def clustdealer(pairdealer, optim):
     """ return optim clusters given iterators, and whether it got all or not"""
