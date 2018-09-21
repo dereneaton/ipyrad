@@ -104,6 +104,8 @@ class Step7:
 
         # output files already exist for this assembly (check stats). Raise
         # error unless using the force flag to prevent overwriting. 
+        self.data.stats_files.s7 = os.path.join(
+            self.data.dirs.outfiles, "{}_stats.txt".format(self.data.name))
         if not self.force:
             if os.path.exists(self.data.stats_files.s7):
                 raise IPyradError(
@@ -317,8 +319,6 @@ class Step7:
         self.ntaxa = len(self.samples)
 
         # write to file
-        self.data.stats_files.s7 = os.path.join(
-            self.data.dirs.outfiles, "{}_stats.txt".format(self.data.name))
         with open(self.data.stats_files.s7, 'w') as outstats:
             print(STATS_HEADER_1, file=outstats)
             self.data.stats_dfs.s7_filters.to_string(buf=outstats)
