@@ -241,6 +241,7 @@ class Step3:
 
             # REFERENCE
             elif self.data.paramsdict["assembly_method"] == "reference":
+                self.remote_index_refs()
                 self.remote_run(
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"),
@@ -1448,7 +1449,7 @@ def index_ref_with_bwa(data):
     error = proc.communicate()[1].decode()
 
     # error handling for one type of error on stderr
-    if error:
+    if proc.returncode:
         if "please use bgzip" in error:
             raise IPyradError(NO_ZIP_BINS.format(refseq_file))
         else:
@@ -1726,7 +1727,7 @@ def bedtools_merge(data, sample):
         -i <input_bam>  :   specifies the input file to bed'ize
         -d <int>        :   For PE set max distance between reads
     """
-    LOGGER.info("Entering bedtools_merge: %s", sample.name)
+    #LOGGER.info("Entering bedtools_merge: %s", sample.name)
     mappedreads = os.path.join(
         data.dirs.refmapping,
         "{}-mapped-sorted.bam".format(sample.name))
@@ -1748,9 +1749,9 @@ def bedtools_merge(data, sample):
         #cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
         cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
         cmd2.insert(2, "-d")
-    else:
-        cmd2.insert(2, str(-1 * data._hackersonly["min_SE_refmap_overlap"]))
-        cmd2.insert(2, "-d")
+    #else:
+    #    cmd2.insert(2, str(-1 * data._hackersonly["min_SE_refmap_overlap"]))
+    #    cmd2.insert(2, "-d")
 
     ## pipe output from bamtobed into merge
     LOGGER.info("stdv: bedtools merge cmds: %s %s", cmd1, cmd2)
@@ -1775,7 +1776,11 @@ def bedtools_merge(data, sample):
 
 
 def build_clusters_from_cigars(data, sample):
-    "directly building clusters relative to reference"
+    """
+    Directly building clusters relative to reference. Uses the function 
+    cigared() to impute indels relative to reference. This means add - for 
+    insertion and skip* deletions. Skipping is temporary solution...
+    """
     # get all regions with reads. Generator to yield (str, int, int)
     fullregions = bedtools_merge(data, sample).strip().split("\n")
     regions = (i.split("\t") for i in fullregions)
@@ -1788,11 +1793,13 @@ def build_clusters_from_cigars(data, sample):
             "{}-mapped-sorted.bam".format(sample.name)),
         'rb')
 
-    # iterate over all regions
+    # output path 
     opath = os.path.join(
         data.dirs.clusts, "{}.clustS.gz".format(sample.name))
     out = gzip.open(opath, 'wt')
     idx = 0
+
+    # iterate over all regions to build clusters
     clusters = []
     for reg in regions:
         # uncomment and compare against ref sequence when testing
@@ -1851,9 +1858,14 @@ def build_clusters_from_cigars(data, sample):
 
         # single-end data cluster building
         else:   
+            mstart = int(9e12)
+            mend = 0
+
             for read in reads:
                 rdict[read.qname] = read
-
+                mstart = min(mstart, read.aend - read.alen)
+                mend = max(mend, read.aend)
+        
             # sort keys by derep number
             keys = sorted(
                 rdict.keys(),
@@ -1865,21 +1877,22 @@ def build_clusters_from_cigars(data, sample):
                 r1 = rdict[key]
 
                 #aref = np.array(list(ref[1]))
-                lref = reg[2] - reg[1]
+                lref = mend - mstart
                 arr1 = np.zeros(lref, dtype="U1")
                 arr1.fill("-")
 
                 # how far ahead of the start does this read begin
                 seq = cigared(r1.seq, r1.cigar)
-                start = r1.reference_start - reg[1] 
-                arr1[start:start + len(seq)] = list(seq)
+                rstart = (r1.aend - r1.alen) - mstart
+                arr1[rstart:rstart + len(seq)] = list(seq)
                 aseq = "".join(arr1)
 
                 ori = "+"
                 if r1.is_reverse:
                     ori = "-"
                 derep = r1.qname.split("=")[-1]
-                rname = "{}:{}-{};size={};{}".format(*reg, derep, ori)
+                rname = "{}:{}-{};size={};{}".format(
+                    reg[0], mstart, mend, derep, ori)
                 clust.append("{}\n{}".format(rname, aseq))
 
         # store this cluster
