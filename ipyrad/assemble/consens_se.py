@@ -35,7 +35,6 @@ with warnings.catch_warnings():
 
 # TODO NOTES
 # - chunksizes are too big on tortas test data when ncpus=4
-# - can we store alleles (and indels) in the cigarstring?
 
 class Step5:
     "Organized Step 5 functions for all datatype and methods"
@@ -84,8 +83,8 @@ class Step5:
         for sample in self.samples:
             if os.path.exists(sample.files.consens):
                 os.remove(sample.files.consens)
-            dfile = sample.files.consens.replace(".consens.gz", ".catg.hdf5")
-            sample.files.database = dfile
+            dfile = sample.files.consens.rsplit(".", 2)[0]
+            sample.files.database = dfile + ".catg.hdf5"
             if os.path.exists(dfile):
                 os.remove(dfile)
 
@@ -514,6 +513,12 @@ class Processor:
         return 1
 
     def build_consens_and_array(self):
+        """
+        Makes base calls and converts - to N and trims terminal Ns. Setting 
+        internal - to Ns makes handling the insert of paired reference mapped
+        data much better... but puts N's into denovo data where we might other
+        wise choose to drop those columns... Think more about this...
+        """
         # get stacks of base counts
         sseqs = [list(seq) for seq in self.seqs]
         arrayed = np.concatenate(
@@ -533,8 +538,9 @@ class Processor:
         )
 
         # trim Ns from the left and right ends
-        self.consens[self.consens == b"-"] = b"N"
-        trim = np.where(self.consens != b"N")[0]
+        mask = self.consens.copy()
+        mask[mask == b"-"] = b"N"
+        trim = np.where(mask != b"N")[0]
         ltrim, rtrim = trim.min(), trim.max()
         self.consens = self.consens[ltrim:rtrim + 1]
         self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
@@ -621,6 +627,12 @@ class Processor:
 
     # ----------------------------------------------
     def write_chunk(self):
+        """
+        Writes chunk of consens reads to disk, stores depths, alleles, and 
+        chroms, and stores stats. For denovo data it writes consens chunk
+        as a fasta file. For reference data it writes as a SAM file that is
+        compatible to be converted to BAM (very stringent about cigars).
+        """
 
         # find last empty size
         end = np.where(np.all(self.refarr == 0, axis=1))[0]
@@ -655,28 +667,21 @@ class Processor:
                                 self.sample.name,
                                 self.refarr[i][0],
                                 self.refarr[i][1],
-                                self.refarr[i][2],
+                                self.refarr[i][1] + len(self.storeseq[i]),
+                                #self.refarr[i][2],
                                 0,
                                 self.revdict[self.refarr[i][0] - 1],
                                 self.refarr[i][1],
                                 0,
-                                #"{}M".format(refarr[i][2] - refarr[i][1]),
-                                make_allele_cigar(
-                                    "".join(['.' if i.islower() else i for i 
-                                             in self.storeseq[i].decode()]),
-                                    ".",
-                                    "S",
-                                ),
-                                #"{}M".format(len(self.storeseq[i].decode())),
+                                make_cigar(
+                                    np.array(list(self.storeseq[i].decode()))
+                                    ),
                                 "*",
                                 0,
-                                self.refarr[i][2] - self.refarr[i][1],
+                                #self.refarr[i][2] - self.refarr[i][1],
+                                len(self.storeseq[i]),
                                 self.storeseq[i].decode(),
                                 "*",
-                                # "XT:Z:{}".format(
-                                # make_indel_cigar(storeseq[i].decode())
-                                # ),
-
                             ) for i in self.storeseq.keys()]
                             ))
 
@@ -720,13 +725,8 @@ def concat_catgs(data, sample, isref):
     with h5py.File(tmpcats[0], 'r') as io5:
         _, maxlen, _ = io5['cats'].shape
 
-    # file handle for concat'd catg array
-    outcatg = os.path.join(
-        data.dirs.consens,
-        "{}.catg.hdf5".format(sample.name))
-
     # fill in the chunk array
-    with h5py.File(outcatg, 'w') as ioh5:
+    with h5py.File(sample.files.database, 'w') as ioh5:
         dcat = ioh5.create_dataset(
             name="catg",
             shape=(nrows, maxlen, 4),
@@ -892,7 +892,55 @@ def store_sample_stats(data, sample, statsdicts):
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
-# not currently used
+
+def make_cigar(arr):
+    "writes a cigar string with locations of indels and lower case ambigs"
+
+    # simplify data
+    arr[np.char.islower(arr)] = '.'
+    indel = np.bool_(arr == "-")
+    ambig = np.bool_(arr == ".")
+    arr[~(indel + ambig)] = "A"
+
+    # counters
+    cigar = ""
+    mcount = 0
+    tcount = 0
+    lastbit = arr[0]
+    for i, j in enumerate(arr):
+
+        # write to cigarstring when state change
+        if j != lastbit:
+            if mcount:
+                cigar += "{}{}".format(mcount, "M")
+                mcount = 0
+            else:
+                cigar += "{}{}".format(tcount, CIGARDICT.get(lastbit))
+                tcount = 0
+            mcount = 0
+            
+        # increase counters
+        if (j == '.' or j == '-'):
+            tcount += 1
+        else:
+            mcount += 1
+        lastbit = j
+        
+    # write final block
+    if mcount:
+        cigar += "{}{}".format(mcount, "M")
+    if tcount:
+        cigar += '{}{}'.format(tcount, CIGARDICT.get(lastbit))
+    return cigar
+
+
+CIGARDICT = {
+    '-': "I",
+    '.': "S",
+}
+
+
+# this is used in write_chunk for reference mapped data.
 def make_allele_cigar(seq, on='.', letter='S'):
     iii = seq.split(on)
     cig = ""
@@ -919,6 +967,7 @@ def make_allele_cigar(seq, on='.', letter='S'):
     if isi:
         cig += "{}{}".format(isi, letter)
     return cig
+
 
 
 # not currently used
@@ -1078,7 +1127,7 @@ def get_binom(base1, base2, estE, estH):
     return False, bestprob
 
 
-
+# not currently used...
 def removerepeats(consens, arrayed):
     """
     Checks for interior Ns in consensus seqs and removes those that are at
