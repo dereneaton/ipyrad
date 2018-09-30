@@ -23,7 +23,7 @@ import socket
 import subprocess as sps
 
 import numpy as np
-from pysam import AlignmentFile
+from pysam import AlignmentFile, FastaFile
 import ipyrad
 from .utils import IPyradWarningExit, IPyradError, fullcomp
 
@@ -238,8 +238,11 @@ class Step6:
             # build ...
             self.remote_build_ref_clusters()
 
-            # enter database values
-            #self.build_database()
+            # concat aligned files
+            self.concat_alignments()
+
+        # clean up step here...
+        # ...
 
         # set sample states
         for sample in self.samples:
@@ -336,7 +339,7 @@ class Step6:
         if not rasync.successful():
             raise IPyradError(rasync.exception())          
 
-    ## DENOVO FUNCS
+    ## DENOVO FUNCS ----------------------------------------------
     def remote_build_denovo_clusters(self):
         "build denovo clusters from vsearch clustered seeds"
         # filehandles; if not multiple tiers then 'x' is jobid 0
@@ -406,7 +409,7 @@ class Step6:
             finished = [i.ready() for i in jobs.values()]
             fwait = sum(finished)
             self.data._progressbar(allwait, fwait, start, printstr)
-            time.sleep(0.1)
+            time.sleep(0.4)
             if all(finished):
                 break
 
@@ -434,13 +437,16 @@ class Step6:
             self.data.name + "_clust_database.fa")
 
         # write clusters to file with a header that has all samples in db        
+        snames = sorted([i.name for i in self.samples])
         with open(self.data.clust_database, 'wt') as out:
-            out.write("#{}\n".format(",@".join(self.data.samples)))
+            out.write("#{}\n".format(",@".join(snames)))
             for clustfile in clustbits:
                 with open(clustfile, 'r') as indata:
-                    out.write(indata.read() + "//\n//\n")
+                    dat = indata.read()
+                    if dat:
+                        out.write(dat)# + "//\n//\n")
 
-    ## REFERENCE BASED FUNCTIONS
+    ## REFERENCE BASED FUNCTIONS ---------------------------------
     def remote_concat_bams(self):
         "merge bam files into a single large sorted indexed bam"
 
@@ -552,23 +558,57 @@ class Step6:
     def remote_build_ref_clusters(self):
         "build clusters and find variants/indels to store"
         
+        # send N jobs each taking chunk of regions
+        ncpus = self.data.ncpus
+        nloci = len(self.regions)
+        optim = int((nloci // ncpus) + (nloci % ncpus))
+        optim = int(np.ceil(optim / 2))
+
+        # send jobs to func
+        start = time.time()
+        printstr = ("building clusters   ", "s6")        
+        jobs = {}
+        for idx, chunk in enumerate(range(0, nloci, optim)):
+            region = self.regions[chunk: chunk + optim]
+            if region:
+                args = (self.data, idx, region)
+                jobs[idx] = self.lbview.apply(build_ref_clusters, *args)
+
+        # print progress while bits are aligning
+        allwait = len(jobs)
+        while 1:
+            finished = [i.ready() for i in jobs.values()]
+            fwait = sum(finished)
+            self.data._progressbar(allwait, fwait, start, printstr)
+            time.sleep(0.4)
+            if all(finished):
+                break
+
+        # check success
+        for idx in jobs:
+            if not jobs[idx].successful():
+                raise IPyradWarningExit(
+                    "error in step 6 {}".format(jobs[idx].get()))
+        print("")
+
+
+    def _deprecated(self):
         # prepare i/o
         bamfile = AlignmentFile(
             os.path.join(
                 self.data.dirs.across,
                 "{}.cat.sorted.bam".format(self.data.name)),
             'rb')
-        outfile = gzip.open(
-            os.path.join(
-                self.data.dirs.across,
-                "{}.catcons.gz".format(self.data.name)),
-            'wb')
+
+        # store path to clust database 
+        self.data.clust_database = os.path.join(
+            self.data.dirs.across, 
+            self.data.name + "_clust_database.fa")
+        outfile = open(self.data.clust_database, 'w')
 
         # write header with sample names
         snames = sorted([i.name for i in self.samples])
-        nsamples = len(snames)
-        outfile.write(
-            b" ".join([i.encode() for i in snames]) + b"\n")
+        outfile.write("#{}\n".format(",@".join(snames)))
 
         # get clusters
         iregions = iter(self.regions)
@@ -587,117 +627,122 @@ class Step6:
                 region[0], region[1] + 1, region[2] + 1,
                 )
 
-            # build cluster dict for sorting                
+            # build cluster dict for sorting
+            mstart = int(9e12)
+            mend = 0
             rdict = {}
             for read in reads:
-                rdict[read.qname] = read.seq   
+                rdict[read.qname] = (read.seq, read.cigar)
+                mstart = min(mstart, read.aend - read.alen)
+                mend = max(mend, read.aend)
+
             keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
             # make empty array
-            arr = np.zeros((nsamples + 1, len(refs)), dtype=bytes)
+            arr = np.zeros((len(keys) + 1, mend - mstart), dtype=bytes)
 
             # fill it
             arr[0] = list(refs)
             for idx, key in enumerate(keys):
                 # get start and stop from name
-                sname = key.rsplit("_", 1)[0]
                 rstart, rstop = key.rsplit(":", 2)[-1].split("-")
-                sidx = snames.index(sname)
 
                 # get start relative to ref
                 start = int(rstart) - int(region[1]) - 1
-                stop = start + int(rstop) - int(rstart)
-                print(sidx + 1, start, stop, arr.shape[1])
-                try:
-                    arr[sidx + 1, int(start): int(stop)] = list(rdict[key])
-                except ValueError:
-                    print(rdict[key])
+                stop = start + int(rstop) - int(rstart) 
+                seq, cigar = rdict[key]
+                arr[idx + 1, int(start): int(stop)] = list(seq)[start:arr.shape[1]]
+
+                # mod sequence according to cigar for indels and ambigs
+                for cidx, cig in enumerate(cigar):
+                    if cig[0] == 4:
+                        csums = sum(i[1] for i in cigar[:cidx])
+                        arr[idx + 1, csums] = arr[idx + 1, csums].lower()
+                    if cig[0] == 1:
+                        csums = sum(i[1] for i in cigar[:cidx])
+                        arr[idx + 1, csums] = b"-"
+
+            # fill terminal edges with N
+            arr[arr == b""] = b"N"
+
+            # duplicates merge here (only perfect merge on all Ns) and reshape
+            # the array to match. This will need to be resolved in catgs...
+            # if it does not merge then
+            # todo: skip when no dups present
+            try:
+                keys, arr = resolve_duplicates(keys, arr)
+            except IPyradError:
+                pass
 
             # get consens seq and variant site index 
-            clust = []
-            avars = refvars(arr.view(np.uint8), PSEUDO_REF)
-            dat = b"".join(avars.view("S1")[:, 0]).decode()
-            snpstring = "".join(["*" if i else " " for i in avars[:, 1]])
-            clust.append("ref_{}:{}-{}\n{}".format(*region, dat))
+            clust = [">ref_{}:{}@\n{}".format(
+                gidx, refn[1:], b"".join(arr[0]).decode()
+            )]
+            for idx, key in enumerate(keys):    
+                clust.append(
+                    ">{}\n{}".format(key, b"".join(arr[idx + 1]).decode())
+                )
+            clusts.append("\n".join(clust))
+            gidx += 1
 
-            # or, just build variant string (or don't...)
-            # write all loci with [locids, nsnps, npis, nindels, ?]
-            # for key in keys:
-            #     clust.append("{}\n{}".format(key, rdict[key]))
-            # clust.append("SNPs\n" + snpstring)
-            # clusts.append("\n".join(clust))
-
-
-        outfile.write(str.encode("\n//\n//\n".join(clusts) + "\n//\n//\n"))
+        outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
         outfile.close()
 
 
-# in progress
-def build_ref_clusters(data): 
+# TODO: retur newkeys for multiplle when merging
+def resolve_duplicates(keys, arr):
+    """
+    Tries to join together duplicate consens reads that were not previously
+    collapsed, likely because there was no overlap of the sequences for one 
+    or more samples, but there was for others. Joins two consens reads if the
+    """
+    newkeys = []
+    snames = np.array([i.rsplit(":", 2)[0].rsplit("_", 1)[0] for i in keys])
+    newarr = np.zeros((len(set(snames)) + 1, arr.shape[1]), dtype="S1")
+    
+    # put reference into arr
+    newarr[0] = arr[0]
+    
+    # fill rest while merging dups
+    nidx = 1
+    seen = set()
+    for sidx, key in enumerate(keys):
+        sname = snames[sidx]
+        if sname not in seen:
+            # add to list of seen names
+            seen.add(sname)
 
-    # prepare i/o
-    bamfile = AlignmentFile(
-        os.path.join(
-            self.data.dirs.across,
-            "{}.cat.sorted.bam".format(self.data.name)),
-        'rb')
-    outfile = gzip.open(
-        os.path.join(
-            self.data.dirs.across,
-            "{}.catcons.gz".format(self.data.name)),
-        'wb')
-
-    # write header with sample names
-    snames = sorted([i.name for i in self.samples])
-    nsamples = len(snames)
-    outfile.write(
-        b" ".join([i.encode() for i in snames]) + b"\n")
-
-    # get clusters
-    clusts = []
-    while 1:
-        # pull in the cluster
-        try:
-            region = next(iregions)
-            reads = bamfile.fetch(*region)
-        except StopIteration:
-            break
-
-        # pull in the reference for this region
-        refn, refs = get_ref_region(
-            data.paramsdict["reference_sequence"], 
-            region[0], region[1] + 1, region[2] + 1,
-            )
-
-        # build cluster dict for sorting                
-        rdict = {}
-        for read in reads:
-            rdict[read.qname] = read.seq   
-        keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
-
-        # make empty array
-        arr = np.zeros((len(rdict), len(refs)), dtype=bytes)
-       
-        # fill it
-        arr[0] = list(refs)
-        for idx, key in enumerate(keys):
-            # get start and stop from name
-            sname = key.rsplit("_", 1)[0]
-            rstart, rstop = key.rsplit(":", 2)[-1].split("-")
-            sidx = snames.index(sname)
-
-            # get start relative to ref
-            start = int(rstart) - int(region[1]) - 1
-            stop = start + int(rstop) - int(rstart)
-            print(sidx + 1, start, stop, arr.shape[1])
-            try:
-                arr[sidx + 1, int(start): int(stop)] = list(rdict[key])
-            except ValueError:
-                print(rdict[key])       
+            # get all rows of data for this sname (+1 b/c ref)
+            didx = np.where(snames == sname)[0] + 1
+            if didx.size > 1:
+                iarr = arr[didx, :].view(np.uint8)
+                iarr[iarr == 78] = 0
+                iarr[iarr == 45] = 0
+                if np.all(np.any(iarr == 0, axis=0)):
+                    newarr[nidx] = iarr.max(axis=0).view("S1")
+                else:
+                    raise IPyradError("duplicate could not be resolved")
+                # store key with reference to all dups
+                #print("\n".join(keys))
+                #print(didx)
+                #ikeys = [keys[i - 1] for i in didx]
+                #print(ikeys)
+                newkeys.append(keys[sidx])
+                
+            else:
+                # store array data and orig key
+                newarr[nidx] = arr[didx]
+                newkeys.append(keys[sidx])
+                
+            nidx += 1
+    
+    # fill terminal edges with N again since array can increase
+    newarr[newarr == b""] = b"N"
+    return newkeys, newarr
 
 
 def build_ref_regions(data):
-    "use bedtools to pull in clusters and match catgs with alignments"
+    "use bedtools to pull in consens reads overlapping some region of ref"
     cmd1 = [
         ipyrad.bins.bedtools,
         "bamtobed",
@@ -728,6 +773,109 @@ def build_ref_regions(data):
     return [(i, int(j), int(k)) for i, j, k in regs]
 
 
+def build_ref_clusters(data, idx, iregion):
+
+    # prepare i/o for bamfile with mapped reads
+    bamfile = AlignmentFile(
+        os.path.join(
+            data.dirs.across,
+            "{}.cat.sorted.bam".format(data.name)),
+        'rb')
+
+    # prepare i/o for pysam reference indexed
+    reffai = FastaFile(data.paramsdict["reference_sequence"])
+
+    # store path to cluster bit
+    outbit = os.path.join(data.tmpdir, "aligned_{}.fa".format(idx))
+
+    # get clusters
+    iregions = iter(iregion)
+    clusts = []
+
+    while 1:
+        # pull in all reads mapping to a bed region
+        try:
+            region = next(iregions)
+            reads = bamfile.fetch(*region)
+        except StopIteration:
+            break
+
+        # build a dict to reference seqs and cigars by name
+        mstart = 9e12
+        mend = 0        
+        rdict = {}
+        for read in reads:
+            rstart = read.reference_start
+            rend = rstart + read.qlen
+            mstart = min(mstart, rstart)
+            mend = max(mend, rend)
+            rdict[read.qname] = (read.seq, read.cigar, rstart, rend)
+        keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
+
+        # pull in the reference for this region (1-indexed)
+        refs = reffai.fetch(region[0], mstart + 1, mend + 1)
+
+        # make empty array
+        rlen = mend - mstart       
+        arr = np.zeros((len(keys) + 1, rlen), dtype=bytes)
+        arr[0] = list(refs.upper())
+
+        # fill arr with remaining samples
+        for idx, key in enumerate(keys):
+            seq, cigar, start, end = rdict[key]
+            
+            # how far ahead of ref start and short of ref end is this read
+            fidx = start - mstart
+            eidx = arr.shape[1] - (mend - end)
+
+            # enter into the array, trim end if longer than pulled ref
+            arr[idx + 1, fidx:eidx] = list(seq)[:eidx - fidx]
+
+            # mod sequence according to cigar for indels and ambigs
+            # csums is the location of impute on the seq, so it must be 
+            # incremented by fidx and not extend past eidx
+            for cidx, cig in enumerate(cigar):
+                if cig[0] == 4:
+                    csums = sum(i[1] for i in cigar[:cidx])
+                    csums += eidx
+                    if csums < fidx:
+                        arr[idx + 1, csums] = arr[idx + 1, csums].lower()
+                if cig[0] == 1:
+                    csums = sum(i[1] for i in cigar[:cidx])
+                    csums += eidx
+                    if csums < fidx:
+                        arr[idx + 1, csums] = b"-"
+
+        # fill terminal edges with N
+        arr[arr == b""] = b"N"
+
+        # duplicates merge here (only perfect merge on all Ns) and reshape
+        # the array to match. This will need to be resolved in catgs...
+        # if it does not merge then
+        try:
+            keys, arr = resolve_duplicates(keys, arr)
+        except IPyradError:
+            pass
+
+        # get consens seq and variant site index 
+        clust = [">reference_{}:{}:{}-{}\n{}".format(
+            0, 
+            region[0], mstart + 1, mend + 1, 
+            b"".join(arr[0]).decode()
+        )]
+        for idx, key in enumerate(keys):    
+            clust.append(
+                ">{}\n{}".format(key, b"".join(arr[idx + 1]).decode())
+            )
+        clusts.append("\n".join(clust))
+
+    # dump to temp file until concat in next step.
+    with open(outbit, 'w') as outfile:
+        if clusts:
+            outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
+
+
+# maybe pysam does this faster?
 def get_ref_region(reference, contig, rstart, rend):
     "returns the reference sequence over a given region"
     cmd = [
@@ -751,7 +899,10 @@ def build_concat_two(data, jobids, randomseed):
         data.dirs.across, 
         "{}-x-catshuf.fa".format(data.name))
     cmd1 = ['cat'] + seeds
-    cmd2 = [ipyrad.bins.vsearch, '--sortbylength', '-', '--output', allseeds]
+    cmd2 = [ipyrad.bins.vsearch, 
+        '--sortbylength', '-', 
+        '--fasta_width', '0',
+        '--output', allseeds]
     proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
     proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
     proc2.communicate()
@@ -760,7 +911,7 @@ def build_concat_two(data, jobids, randomseed):
 
 def build_concat_files(data, jobid, samples, randomseed):
     """
-    [This is run on an ipengine]
+    [This is returnn on an ipengine]
     Make a concatenated consens file with sampled alleles (no RSWYMK/rswymk).
     Orders reads by length and shuffles randomly within length classes
     """
