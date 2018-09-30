@@ -24,7 +24,7 @@ import pandas as pd
 import ipyrad
 from numba import njit
 from .utils import IPyradError, clustdealer, splitalleles
-from .utils import BTS, TRANSINT, GETCONS, DCONS
+from .utils import BTS, GETCONS, DCONS
 
 
 # suppress the terrible h5 warning
@@ -41,17 +41,22 @@ class Step7:
         self.force = force
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
+        self.data.isref = bool("ref" in self.data.paramsdict["assembly_method"])
+
+        # returns samples in the order we want them in the outputs
         self.samples = self.get_subsamples()
         self.setup_dirs()
         self.get_chunksize()
+        #self.chroms2ints()
 
         # dict mapping of samples to padded names for loci file aligning.
-        self.data.snames = sorted(list(self.data.samples.keys()))
+        self.data.snames = [i.name for i in self.samples]
         self.data.pnames, self.data.snppad = self.get_padded_names()      
 
         # output file formats to produce
         self.formats = set(['l']).union(
             set(self.data.paramsdict["output_formats"]))
+
 
     def run(self):
         # split clusters into bits.
@@ -74,7 +79,7 @@ class Step7:
         # send jobs to build vcf
         if 'v' in self.formats:
             self.remote_fill_depths()
-            self.remote_build_vcf()
+            self.remote_build_vcf()    
 
     ## init functions ------
     def get_subsamples(self):
@@ -104,13 +109,29 @@ class Step7:
 
         # output files already exist for this assembly (check stats). Raise
         # error unless using the force flag to prevent overwriting. 
-        self.data.stats_files.s7 = os.path.join(
-            self.data.dirs.outfiles, "{}_stats.txt".format(self.data.name))
+        self.data.stats_files.s7 = os.path.abspath(
+            os.path.join(
+                self.data.dirs.outfiles, 
+                "{}_stats.txt".format(self.data.name),
+            )
+        )
         if not self.force:
             if os.path.exists(self.data.stats_files.s7):
                 raise IPyradError(
         "Step 7 results already exist for this Assembly. Use force to overwrite.")
-        return list(set(self.data.samples.values()))
+
+        # if ref init a new sample for reference if including
+        if self.data.paramsdict['assembly_method'] == 'reference':
+            ref = ipyrad.Sample("reference")
+            snames = [ref] + sorted(
+                list(set(self.data.samples.values())), 
+                key=lambda x: x.name)
+            return snames
+
+        snames = sorted(
+            list(set(self.data.samples.values())),
+            key=lambda x: x.name)
+        return snames
 
     def setup_dirs(self):
         "Create temp h5 db for storing filters and depth variants"
@@ -179,7 +200,8 @@ class Step7:
     ## core functions ------
     def store_file_handles(self):
         # always produce a .loci file + whatever they ask for.
-        for outf in self.formats:
+        testformats = list(self.formats)
+        for outf in testformats:
 
             # if it requires a pop file and they don't have one then skip
             # and print a warning:
@@ -302,7 +324,7 @@ class Step7:
             pd.Series(cvar, name="var"),
             pd.Series(sumd, name="sum_var"),
             pd.Series(cpis, name="pis"),
-            pd.Series(sump, name="sum_pis"),           
+            pd.Series(sump, name="sum_pis"),
             ],          
             axis=1
         )
@@ -396,7 +418,7 @@ class Step7:
         print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())
+                raise IPyradError(rasyncs[job].get())
 
     def remote_build_arrays_and_write_loci(self):
         # start loci concatenating job on a remote
@@ -420,7 +442,7 @@ class Step7:
         print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())                
+                raise IPyradError(rasyncs[job].get())
 
     def remote_write_outfiles(self):
         "Calls Converter object funcs in parallel."
@@ -444,7 +466,7 @@ class Step7:
         print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())        
+                raise IPyradError(rasyncs[job].get())
                 
     def remote_fill_depths(self):
         "send each sample to build depth arrays"
@@ -453,8 +475,9 @@ class Step7:
         rasyncs = {}
 
         for sample in self.data.samples.values():
-            rasyncs[sample.name] = self.lbview.apply(
-                fill_vcf_depths, *(self.data, self.nsnps, sample))
+            if not sample.name == "reference":
+                rasyncs[sample.name] = self.lbview.apply(
+                    fill_vcf_depths, *(self.data, self.nsnps, sample))
 
         # iterate until all chunks are processed
         while 1:
@@ -468,7 +491,7 @@ class Step7:
         print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())        
+                raise IPyradError(rasyncs[job].get())
 
     def remote_build_vcf(self):
         "write VCF file"
@@ -487,7 +510,7 @@ class Step7:
         # write stats
         print("")
         if not rasync.successful():
-            raise IPyradError(rasync.exception())        
+            raise IPyradError(rasync.get())
 
 
 # ------------------------------------------------------------
@@ -504,6 +527,7 @@ class Processor:
         self.data = data
         self.chunks = chunks
         self.chunkfile = chunkfile
+        self.isref = data.paramsdict["assembly_method"] == "reference"
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
         self.filters = np.zeros((self.chunks, 5), dtype=np.bool_)
@@ -534,7 +558,6 @@ class Processor:
 
         # store list of edge trims for VCF building
         edgelist = []
-        #ns = len(self.data.snames)
 
         # todo: this could be an iterator...
         with open(self.chunkfile, 'rb') as infile:
@@ -557,26 +580,19 @@ class Processor:
                         aseqs.append(list(line))
                         useqs.append(list(line.upper()))
 
-                #names = [i[1:].rsplit("_", 1)[0] for i in lines[::2]]
-                #name_indices = [i[1:].rsplit("_", 1)[1] for i in lines[::2]]
-                #seqs = np.array([list(i) for i in lines[1::2]])
-                #seqs = np.array([list(i.upper()) for i in lines[1::2]])
-                #seqs = seqs.astype(bytes).view(np.uint8)
-
                 # filter to only include only samples in this assembly
                 mask = [i in self.data.snames for i in names]
                 names = np.array(names)[mask].tolist()
                 nidxs = np.array(nidxs)[mask].tolist()
                 useqs = np.array(useqs)[mask, :].astype(bytes).view(np.uint8)
                 aseqs = np.array(aseqs)[mask, :].astype(bytes).view(np.uint8)
-                #aseqs = np.array(seqs)[mask, :].astype(bytes).view(np.uint8)                
                 
                 # apply filters
                 efilter, edges = self.get_edges(useqs)
                 self.edges[iloc] = edges
                 self.filters[iloc, 0] = self.filter_dups(names)
-                self.filters[iloc, 0] += efilter
                 self.filters[iloc, 4] = self.filter_minsamp_pops(names)
+                self.filters[iloc, 4] += efilter
 
                 # should we fill terminal indels as N's here?
                 #...
@@ -617,21 +633,12 @@ class Processor:
 
                     # write to .loci string
                     locus = self.to_locus(
-                        names, nidxs, block1, block2, snparr1, snparr2,
+                        names, nidxs, block1, block2, snparr1, snparr2, edg,
                     )
                     self.outlist.append(locus)
 
                     # if VCF: store edge trim amount so we can line
-                    # up depth information from catgs. 
-                    #if "v" in self.data.paramsdict["output_formats"]:
                     edgelist.append(edges[0])
-                    #edgearr = np.zeros(ns, dtype=np.uint8)
-                    #for name, row in zip(names, aseqs):
-                    #    sidx = self.data.snames.index(name)
-                    #    trim = np.where(row != 45)[0]
-                    #    if trim.size:
-                    #        edgearr[sidx] = trim.min()
-                    #    edgelist.append(edgearr)
 
         # write the chunk to tmpdir
         with open(self.outfile, 'w') as outchunk:
@@ -641,7 +648,7 @@ class Processor:
         np.save(self.outarr, np.array(edgelist))
 
 
-    def to_locus(self, names, nidxs, block1, block2, snparr1, snparr2):
+    def to_locus(self, names, nidxs, block1, block2, snparr1, snparr2, edg):
         "write chunk to a loci string"
 
         # store as a list 
@@ -658,7 +665,24 @@ class Processor:
             "*" if snparr2[i, 1] else \
             " " for i in range(len(snparr2))
         ])
-        nidxstring = ",".join(nidxs)
+        if self.isref:
+            # get ref position from nidx 
+            nidbits = [i.rsplit(":", 2)[0] for i in nidxs[1:]]
+            refpos = ":".join(nidxs[0].rsplit(":", 2)[-2:])
+
+            # trim ref position for edge trims
+            chrom, pos = refpos.split(":")
+            start, end = pos.split("-")
+            start = int(start) + edg[0]
+            end = start + (edg[3] - edg[0])
+
+            # put back into string
+            refpos = "{}:{}-{}".format(chrom, start, end)
+            nidbits = [refpos] + nidbits
+            nidxstring = ",".join(nidbits)
+
+        else:
+            nidxstring = ",".join(nidxs)
 
         # if not paired data (with an insert)
         if not block2.size:
@@ -756,7 +780,8 @@ class Processor:
 
         # DEBUGGING
         # with open("/home/deren/test-indels.txt", 'a') as test:
-        #     print("{} {}".format(maxhet_numba(blocks, maxhet).max(), maxhet), file=test)
+        #     print("{} {}".format(maxhet_numba(blocks, maxhet).max(), maxhet),
+        # file=test)
         #     for row in range(blocks.shape[0]):
         #         print(blocks[row, :].tostring().decode(), file=test)
         #     print("\n\n", file=test)
@@ -768,11 +793,16 @@ class Processor:
 
     def get_edges(self, seqs):
         """
-        Trim based on three criteria and take the max for each edge.
+        Trim terminal edges or mask internal edges based on three criteria and
+        take the max for each edge.
         1. user entered hard trimming.
         2. removing cutsite overhangs.
         3. trimming singleton-like overhangs from seqs of diff lengths.
         """
+
+        # record whether to filter this locus based on sample coverage
+        bad = False
+        
         # 1. hard trim edges
         trim1 = np.array(self.data.paramsdict["trim_loci"])
 
@@ -788,8 +818,11 @@ class Processor:
 
         # 3. find where the edge is not indel marked (really unknown ("N"))
         trim3 = np.array([0, 0, 0, 0])
-        for pos in range(4):
-            trim3[pos] = check_minsamp(seqs, pos, 4)
+        try:            
+            for pos in range(4):
+                trim3[pos] = check_minsamp(seqs, pos, 4)
+        except ValueError:
+            bad = True
         
         # get max edges
         trim = np.max([trim1, trim2, trim3], axis=0)
@@ -803,7 +836,6 @@ class Processor:
         edges = (r1left, r1right, r2left, r2right)
         
         # get filter
-        bad = False
         if (r1right < r1left) or (r2left < r1right) or (r2right < r2left):
             bad = True
         return bad, edges
@@ -871,7 +903,7 @@ class Converter:
                 arrsize = io5['phymap'][-1]
 
                 # write dims
-                out.write("{} {}\n".format(len(self.data.samples), arrsize))
+                out.write("{} {}\n".format(len(self.data.snames), arrsize))
 
                 # write to disk
                 for idx in range(io5['phy'].shape[0]):
@@ -940,9 +972,11 @@ class Converter:
                 seqarr = io5['snps']
 
                 # write dims
-                out.write("{} {}\n".format(len(self.data.samples), seqarr.shape[1]))
+                out.write("{} {}\n".format(
+                    len(self.data.snames), seqarr.shape[1]))
 
-                # write to disk one row at a time (todo: chunk optimize for this.)
+                # write to disk one row at a time
+                # (todo: chunk optimize for this.)
                 for idx in range(io5['snps'].shape[0]):
                     seq = seqarr[idx, :].view("S1")
                     out.write(
@@ -956,28 +990,49 @@ class Converter:
     def write_snps_map(self):
         "write a map file with linkage information for SNPs file"
         with open(self.data.outfiles.snpsmap, 'w') as out:
-            with h5py.File(self.snps_database, 'r') as io5:
+            with h5py.File(self.data.snps_database, 'r') as io5:
                 # access array of data
                 maparr = io5["snpsmap"]
 
                 ## write to map file in chunks of 10000
                 for start in range(0, maparr.shape[1], 10000):
                     outchunk = []
-     
+
                     # grab chunk
                     rdat = maparr[start:start + 10000, :]
-                    
-                    # convert to text for writing
-                    for i in rdat:
-                        outchunk.append(
-                            "{}\trad{}_snp{}\t{}\t{}\n"
-                            .format(i[0], i[0] - 1, i[1], 0, i[2] + 1)
-                        )
-                    
+
+                    # get chroms
+                    if self.data.isref:
+                        revdict = chroms2ints(self.data, 1)
+                        for i in rdat:
+                            outchunk.append(
+                                "{}\t{}:{}\t{}\t{}\n"
+                                .format(
+                                    i[0], 
+                                    revdict[i[3]], 
+                                    i[4], 
+                                    i[3], 
+                                    i[2] + 1,
+                                )
+                            )
+                    else:    
+                        # convert to text for writing
+                        for i in rdat:
+                            outchunk.append(
+                                "{}\trad{}_snp{}\t{}\t{}\t{}\n"
+                                .format(
+                                    i[0], 
+                                    i[0] - 1, 
+                                    i[1], 
+                                    revdict[i[3]], 
+                                    i[2] + 1, i[4],
+                                )
+                            )
+
                     # write chunk to file
                     out.write("".join(outchunk))
                     outchunk = []
-
+                    
 
     def write_str(self):
         # write data from snps database, resolve ambiguous bases and numeric.
@@ -1079,41 +1134,6 @@ class Converter:
                 np.savetxt(out, snpgenos, delimiter="", fmt="%d")
 
 
-    def old_write_geno(self):
-
-        with open(self.data.outfiles.geno, 'w') as out:
-            with h5py.File(self.data.snps_database, 'r') as io5:
-                snparr = io5["snps"]
-                
-                # convert snps to numeric of pseudo-ref (most common base)
-                snparr = np.char.upper(
-                    io5["snps"][:].view("S1")).view(np.uint8)
-                snpref = reftrick(snparr, GETCONS)[:, :2]
-                
-                # geno matrix to fill (9 is empty)
-                snpgeno = np.zeros(snparr.shape, dtype=np.uint8)
-                snpgeno.fill(9)
-
-                # fill in complete hits (match to first column ref base)
-                mask2 = np.array(snparr == snpref[:, 0])
-                snpgeno[mask2] = 2
-
-                # fill in single hits as match to hetero of first+second column
-                ambref = np.apply_along_axis(
-                    lambda x: TRANSINT[tuple(x)], 1, snpref[:, :2])
-                mask1 = np.array(snparr[:] == ambref)
-                snpgeno[mask1] = 1
-
-                # fill in zero hits, meaning a perfect match to the second 
-                # column base anything else is left at 9 (missing), b/c it's
-                #  either missing or it is not bi-allelic. 
-                mask0 = np.array(snparr[:] == snpref[:, 1])
-                snpgeno[mask0] = 0
-
-                # print to files
-                np.savetxt(out, snpgeno.T, delimiter="", fmt="%d")
-
-
 # -----------------------------------------------------------
 # Step7 external functions that are run on engines. These do not require
 # The step class object but only the data class object, which avoids
@@ -1140,6 +1160,10 @@ def process_chunks(data, chunks, chunkfile):
 def convert_outputs(data, oformat):
     Converter(data).run(oformat)
 
+
+# ------------------------------------------------------------
+# funcs parallelized on remote engines 
+# -------------------------------------------------------------
 def write_loci_and_alleles(data):
 
     # write alleles file
@@ -1155,7 +1179,6 @@ def write_loci_and_alleles(data):
         pad = np.where(np.array(list(test.readline())) == " ")[0].max()
 
     # write to file while adding counters to the ordered loci
-    # TODO: this will need to grab chrom info on reference.
     outloci = open(data.outfiles.loci, 'w')
     if allel:
         outalleles = open(data.outfiles.alleles, 'w')
@@ -1172,11 +1195,17 @@ def write_loci_and_alleles(data):
                 if "|\n" not in line:
                     lchunk.append(line[:pad] + line[pad:].upper())
                 else:
-                    lchunk.append(
-                        "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
+                    snpstring, nidxs = line.rsplit("|", 2)[:2]
+                    if data.paramsdict["assembly_method"] == 'reference':
+                        refpos = nidxs.split(",")[0]
+                        lchunk.append(
+                            "{}|{}|\n".format(snpstring, refpos))                   
+                    else:
+                        lchunk.append(
+                            "{}|{}|\n".format(snpstring, idx))
                     idx += 1
 
-        # ALLELES: iterate through chunk files
+        # ALLELES: iterate through chunk files to write LOCI AND ALLELES
         else:
             for line in iter(open(bit, 'r')):
                 if "|\n" not in line:
@@ -1189,16 +1218,74 @@ def write_loci_and_alleles(data):
                     achunk.append(aname + "_0 " + spacer + all1)
                     achunk.append(aname + "_1 " + spacer + all2)
                 else:
-                    lchunk.append(
-                        "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
-                    achunk.append(
-                        "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
+                    snpstring, nidxs = line.rsplit("|", 2)[:2]
+                    asnpstring = "//  " + snpstring[2:]
+                    if data.paramsdict["assembly_method"] == 'reference':
+                        refpos = nidxs.split(",")[0]
+                        lchunk.append(
+                            "{}|{}|\n".format(snpstring, refpos))
+                        achunk.append(
+                            "{}|{}|\n".format(asnpstring, refpos))
+                    else:
+                        lchunk.append(
+                            "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
+                        achunk.append(
+                            "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
                     idx += 1
+
             outalleles.write("".join(achunk))
         outloci.write("".join(lchunk))
     outloci.close()
     if allel:
         outalleles.close()
+
+
+#VCF can use revdict and snpsmap to build everything, I think. BUT, merged
+#consens reads still need to be supported in fill_vcf_depths... 
+# somehow (sums?)
+
+def pseudoref2ref(pseudoref, ref):
+    """
+    Reorder psuedoref (observed bases at snps sites) to have the ref allele
+    listed first. On rare occasions when ref is 'N' then 
+    """
+    # create new empty array
+    npseudo = np.zeros(pseudoref.shape, dtype=np.uint8)
+
+    # at all sites where pseudo 0 matches reference, leave it
+    matched = np.where(pseudoref[:, 0] == ref)[0]
+    npseudo[matched] = pseudoref[matched, :]
+
+    # at other sites, shift order so ref is first
+    notmatched = np.where(pseudoref[:, 0] != ref)[0]
+    for row in notmatched:
+        dat = list(pseudoref[row])
+
+        # skips if ref allele is missing (N)
+        try:
+            # pop ref and insert it
+            new = dat.pop(dat.index(ref[row]))    
+            dat.insert(0, new)
+            npseudo[row] = dat
+        except ValueError:
+            npseudo[row] = pseudoref[row]
+
+    return npseudo
+
+
+def chroms2ints(data, which):
+    # if reference-mapped then parse the fai to get index number of chroms
+    fai = pd.read_csv(
+        data.paramsdict["reference_sequence"] + ".fai",
+        names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+        sep="\t",
+    )
+    faidict = {j: i for i, j in enumerate(fai.scaffold)}
+    if not which:
+        return faidict
+    else:
+        revdict = {j: i for i, j in faidict.items()}
+        return revdict
 
 
 def fill_seq_array(data, ntaxa, nbases, nloci):
@@ -1225,7 +1312,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
             key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
 
         # name order for entry in array
-        snames = sorted(list(data.samples.keys()))
+        snames = data.snames
         sidxs = {sample: i for (i, sample) in enumerate(snames)}
 
         # iterate through file
@@ -1313,7 +1400,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
 
         # write stats to the output file
         with open(data.stats_files.s7, 'a') as outstats:
-            trim = io5["phymap"][-1]
+            trim = io5["phymap"][locidx - 1]
             missmask = io5["phy"][:trim] == 78
             missmask += io5["phy"][:trim] == 45
             missing = 100 * (missmask.sum() / io5["phy"][:trim].size)
@@ -1321,14 +1408,17 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                 .format(
                     len(data.samples), 
                     trim, 
-                    missing,
+                    max(0, missing),
                 ),
                 file=outstats,
             )
 
 
 def fill_snp_array(data, ntaxa, nsnps):
-   
+
+    # get faidict to convert chroms to ints
+    faidict = chroms2ints(data, 0)    
+
     # open new database file handle
     with h5py.File(data.snps_database, 'w') as io5:
 
@@ -1340,10 +1430,11 @@ def fill_snp_array(data, ntaxa, nsnps):
             shape=(ntaxa, nsnps),
             dtype=np.uint8,
         )
-        # store snp locations
+        # store snp locations:
+        # (loc-counter, loc-snp-counter, loc-snp-pos, chrom, chrom-snp-pos)
         io5.create_dataset(
             name="snpsmap",
-            shape=(nsnps, 3),
+            shape=(nsnps, 5),
             dtype=np.uint32,
         )
         # store snp locations
@@ -1365,20 +1456,17 @@ def fill_snp_array(data, ntaxa, nsnps):
             key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
 
         # name order for entry in array
-        snames = sorted(list(data.samples.keys()))        
-        sidxs = {sample: i for (i, sample) in enumerate(snames)}
+        sidxs = {sample: i for (i, sample) in enumerate(data.snames)}
 
         # iterate through file
-        gstart = 0
         start = end = 0
-        maxsize = 100000
         tmploc = {}
         locidx = 1
         snpidx = 1            
 
         # array to store until writing
-        tmparr = np.zeros((ntaxa, maxsize + 5000), dtype=np.uint8)
-        tmpmap = np.zeros((nsnps, 3), dtype=np.uint32)
+        tmparr = np.zeros((ntaxa, nsnps), dtype=np.uint8)
+        tmpmap = np.zeros((nsnps, 5), dtype=np.uint32)
 
         # iterate over chunkfiles
         for bit in sortbits:
@@ -1409,53 +1497,35 @@ def fill_snp_array(data, ntaxa, nsnps):
                     for idx, name in enumerate(tmploc):
                         tmparr[sidxs[name], start:end] = snpsites[idx, :]
                         
+                    # store snpsmap data 1-indexed with chroms info
+                    if data.isref:
+                        chrom, pos = idxs.split(",")[0].split(":")
+                        start = int(pos.split("-")[0])
+                        chromidx = faidict[chrom]
+                        for isnp in range(snpsites.shape[1]):
+                            isnpx = snpsidx[isnp]
+                            tmpmap[snpidx - 1] = (
+                                locidx, isnp, isnpx, chromidx, isnpx + start,
+                            )
+                            snpidx += 1
                     # store snpsmap data (snpidx is 1-indexed)
-                    for isnp in range(snpsites.shape[1]):
-                        tmpmap[snpidx - 1] = (locidx, isnp, snpsidx[isnp])
-                        snpidx += 1
+                    else:
+                        for isnp in range(snpsites.shape[1]):
+                            tmpmap[snpidx - 1] = (locidx, isnp, snpsidx[isnp])
+                            snpidx += 1
                     locidx += 1
 
                     # reset locus
                     start = end
                     tmploc = {}
-                    
-                # dump tmparr when it gets large
-                if end > maxsize:
-                    # trim right overflow from tmparr
-                    trim = np.where(tmparr != 0)[1]
-                    if trim.size:
-                        trim = trim.max() + 1
-                    else:
-                        trim = tmparr.shape[1]
-
-                    # fill missing with 78 (N)
-                    tmparr[tmparr == 0] = 78
-
-                    # dump tmparr to hdf5
-                    io5['snps'][:, gstart:gstart + trim] = tmparr[:, :trim]
-
-                    # dump snpsmap to file
-                    #io5['snpsmap'][gstart:gstart + trim, :] = tmpmap
-
-                    # reset
-                    tmparr = np.zeros((ntaxa, maxsize + 5000), dtype=np.uint8)
-                    #tmpmap = np.zeros((self.nsnps, 3), dtype=np.uint32)
-                    gstart += trim
-                    start = end = 0
                         
-        # trim final chunk tmparr to size
-        trim = np.where(tmparr != 0)[1]
-        if trim.size:
-            trim = trim.max() + 1
-        else:
-            trim = tmparr.shape[1]
-
         # fill missing with 78 (N)
         tmparr[tmparr == 0] = 78
 
         # dump tmparr and maplist to hdf5       
-        io5['snps'][:, gstart:gstart + trim] = tmparr[:, :trim]
+        io5['snps'][:] = tmparr[:]
         io5['snpsmap'][:] = tmpmap
+        del tmparr
 
         # write stats output
         with open(data.stats_files.s7, 'a') as outstats:
@@ -1464,12 +1534,13 @@ def fill_snp_array(data, ntaxa, nsnps):
             missing = 100 * (missmask.sum() / io5["snps"][:nsnps].size)
             print("snps matrix size: ({}, {}), {:.2f}% missing sites."
                 .format(
-                    len(data.samples), 
-                    nsnps, 
+                    len(data.samples),
+                    nsnps,
                     missing,
                 ),
                 file=outstats,
             )
+
 
         # fill in the reference and geno arrays
         # convert snps to numeric.
@@ -1478,11 +1549,19 @@ def fill_snp_array(data, ntaxa, nsnps):
 
         # store pseudo-ref (most common base)
         # with ambiguous bases resolved: (87, 78, 0, 0).
-        io5['pseudoref'][:] = reftrick(snparr, GETCONS)
-            
-        # geno matrix to fill (9 is empty)
+        if data.paramsdict['assembly_method'] != 'reference':
+            io5['pseudoref'][:] = reftrick(snparr, GETCONS)
+    
+        else:
+            ref = snparr[data.snames.index('reference')]   
+            pseudoref = reftrick(snparr, GETCONS)
+            io5['pseudoref'][:] = pseudoref2ref(pseudoref, ref)
+
+        # fill for each taxon
         for sidx in range(ntaxa):
             resos = [DCONS[i] for i in snparr[sidx, :]]
+
+            # pseudoref version
             io5['genos'][:, sidx, :] = get_genos(
                 np.array([i[0] for i in resos]), 
                 np.array([i[1] for i in resos]),
@@ -1540,8 +1619,11 @@ def fill_vcf_depths(data, nsnps, sample):
                     if sample.name in names:
                         
                         # store catg idx
-                        sidxs = [
-                            int(i) for i in line.rsplit("|", 2)[1].split(',')]
+                        sidxs = [i for i in line.rsplit("|", 2)[1].split(',')]
+                        if data.isref:
+                            sidxs = [0] + [int(i) for i in sidxs[1:]]
+                        else:
+                            sidxs = [int(i) for i in sidxs]
                         nidx = names.index(sample.name)
                         sidx = sidxs[nidx]
                         seq = seqs[nidx]
@@ -1595,13 +1677,23 @@ def fill_vcf_depths(data, nsnps, sample):
 def build_vcf(data, chunksize=1000):
     "pull in data from several hdf5 databases to construct vcf string"
 
+    # dictionary to translate locus numbers to chroms
+    if data.isref:
+        revdict = chroms2ints(data, 1)
+
+    # pull locus numbers and positions from snps database
     with h5py.File(data.snps_database, 'r') as io5:
 
         # iterate over chunks
         for chunk in range(0, io5['genos'].shape[0], chunksize):
 
             # load array chunks
-            genos = io5['genos'][chunk:chunk + chunksize]
+            if data.isref:
+                genos = io5['genos'][chunk:chunk + chunksize, :, :]
+            else:
+                genos = io5['genos'][chunk:chunk + chunksize, 1:, :]
+
+            # if reference then psuedo ref is already ordered with REF first.
             pref = io5['pseudoref'][chunk:chunk + chunksize]
             snpmap = io5['snpsmap'][chunk:chunk + chunksize]
 
@@ -1610,10 +1702,16 @@ def build_vcf(data, chunksize=1000):
                 b",".join(i).decode().strip(",")
                 for i in pref[:, 1:].view("S1") 
             ]
+
+            # get chrom names
+            if data.isref:
+                chroms = [revdict[i] for i in snpmap[:, 3]]
+            else:
+                chroms = ["locus_{}".format(i - 1) for i in snpmap[:, 0]]
             
             # build df label cols
             df_pos = pd.DataFrame({
-                '#CHROM': ["locus_{}".format(i - 1) for i in snpmap[:, 0]],
+                '#CHROM': chroms,
                 'POS': snpmap[:, -1] + 1,  # 1-indexed
                 'ID': ['.'] * genos.shape[0],
                 'REF': [i.decode() for i in pref[:, 0].view("S1")],
@@ -1623,8 +1721,12 @@ def build_vcf(data, chunksize=1000):
             })
 
             # get number of samples for each site
+            offset = 0
+            if data.isref:
+                offset = 1
+
             nsamps = (
-                genos.shape[1] - np.any(genos == 9, axis=2).sum(axis=1)
+                genos.shape[1] - offset - np.any(genos == 9, axis=2).sum(axis=1)
                 )
 
             # store sum of coverage at each site
@@ -1633,31 +1735,32 @@ def build_vcf(data, chunksize=1000):
             # build depth columns for each sample
             df_depth = pd.DataFrame({})
             for sname in data.snames:
+                if sname != "reference":
                 
-                # build geno strings
-                genostrs = [
-                    b"/".join(i).replace(b"9", b".").decode()
-                    for i in genos[:, data.snames.index(sname)]
-                    .astype(bytes)
-                ]
-                
-                # build depth and depthsum strings
-                dpth = os.path.join(data.tmpdir, sname + ".depths.hdf5")
-                with h5py.File(dpth, 'r') as s5:
-                    dpt = s5['depths'][chunk:chunk + chunksize]
-                    sums = [sum(i) for i in dpt]
-                    strs = [
-                        ",".join([str(k) for k in i.tolist()])
-                        for i in dpt
+                    # build geno strings
+                    genostrs = [
+                        b"/".join(i).replace(b"9", b".").decode()
+                        for i in genos[:, data.snames.index(sname)]
+                        .astype(bytes)
                     ]
                     
-                    # save concat string to name
-                    df_depth[sname] = [
-                        "{}:{}:{}".format(i, j, k) for (i, j, k) in 
-                        zip(genostrs, sums, strs)]
+                    # build depth and depthsum strings
+                    dpth = os.path.join(data.tmpdir, sname + ".depths.hdf5")
+                    with h5py.File(dpth, 'r') as s5:
+                        dpt = s5['depths'][chunk:chunk + chunksize]
+                        sums = [sum(i) for i in dpt]
+                        strs = [
+                            ",".join([str(k) for k in i.tolist()])
+                            for i in dpt
+                        ]
+                        
+                        # save concat string to name
+                        df_depth[sname] = [
+                            "{}:{}:{}".format(i, j, k) for (i, j, k) in 
+                            zip(genostrs, sums, strs)]
 
-                    # add sums to global list
-                    asums.append(np.array(sums))
+                        # add sums to global list
+                        asums.append(np.array(sums))
 
             # make final columns
             nsums = sum(asums)
@@ -1703,7 +1806,15 @@ def check_minsamp(seq, position, minsamp):
     minsamp = min(minsamp, seq.shape[0])
     if position == 0:       
         mincovs = np.sum((seq != 78) & (seq != 45), axis=0)
-        return np.where(mincovs >= minsamp)[0].min()
+        # find leftmost edge with minsamp coverage
+        leftmost = np.where(mincovs >= minsamp)[0]
+        if leftmost.size:
+            return leftmost[0].min()
+        # no sites actually have minsamp coverage although there are minsamp
+        # rows of data, this can happen when reads only partially overlap. Loc
+        # should be excluded for minsamp filter.
+        else:
+            raise ValueError("no sites above minsamp coverage in edge trim")
     
     elif position == 1:
         mincovs = np.sum((seq != 78) & (seq != 45), axis=0)
@@ -1928,7 +2039,7 @@ following sample names are in the pop assignments but not in this Assembly:
 {}
 """
 POPULATION_REQUIRED = """\
-Warning: Skipping output format '{}'. Requires population assignments.
+Warning: Skipping output format '{}'. Requires population assignments.\
 """
 NEXHEADER = """#nexus
 begin data;
