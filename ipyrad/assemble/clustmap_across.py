@@ -592,104 +592,103 @@ class Step6:
         print("")
 
 
-    def _deprecated(self):
-        # prepare i/o
-        bamfile = AlignmentFile(
-            os.path.join(
-                self.data.dirs.across,
-                "{}.cat.sorted.bam".format(self.data.name)),
-            'rb')
+    # def _deprecated(self):
+    #     # prepare i/o
+    #     bamfile = AlignmentFile(
+    #         os.path.join(
+    #             self.data.dirs.across,
+    #             "{}.cat.sorted.bam".format(self.data.name)),
+    #         'rb')
 
-        # store path to clust database 
-        self.data.clust_database = os.path.join(
-            self.data.dirs.across, 
-            self.data.name + "_clust_database.fa")
-        outfile = open(self.data.clust_database, 'w')
+    #     # store path to clust database 
+    #     self.data.clust_database = os.path.join(
+    #         self.data.dirs.across, 
+    #         self.data.name + "_clust_database.fa")
+    #     outfile = open(self.data.clust_database, 'w')
 
-        # write header with sample names
-        snames = sorted([i.name for i in self.samples])
-        outfile.write("#{}\n".format(",@".join(snames)))
+    #     # write header with sample names
+    #     snames = sorted([i.name for i in self.samples])
+    #     outfile.write("#{}\n".format(",@".join(snames)))
 
-        # get clusters
-        iregions = iter(self.regions)
-        clusts = []
-        while 1:
-            # pull in the cluster
-            try:
-                region = next(iregions)
-                reads = bamfile.fetch(*region)
-            except StopIteration:
-                break
+    #     # get clusters
+    #     iregions = iter(self.regions)
+    #     clusts = []
+    #     while 1:
+    #         # pull in the cluster
+    #         try:
+    #             region = next(iregions)
+    #             reads = bamfile.fetch(*region)
+    #         except StopIteration:
+    #             break
 
-            # pull in the reference for this region
-            refn, refs = get_ref_region(
-                self.data.paramsdict["reference_sequence"], 
-                region[0], region[1] + 1, region[2] + 1,
-                )
+    #         # pull in the reference for this region
+    #         refn, refs = get_ref_region(
+    #             self.data.paramsdict["reference_sequence"], 
+    #             region[0], region[1] + 1, region[2] + 1,
+    #             )
 
-            # build cluster dict for sorting
-            mstart = int(9e12)
-            mend = 0
-            rdict = {}
-            for read in reads:
-                rdict[read.qname] = (read.seq, read.cigar)
-                mstart = min(mstart, read.aend - read.alen)
-                mend = max(mend, read.aend)
+    #         # build cluster dict for sorting
+    #         mstart = int(9e12)
+    #         mend = 0
+    #         rdict = {}
+    #         for read in reads:
+    #             rdict[read.qname] = (read.seq, read.cigar)
+    #             mstart = min(mstart, read.aend - read.alen)
+    #             mend = max(mend, read.aend)
 
-            keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
+    #         keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
-            # make empty array
-            arr = np.zeros((len(keys) + 1, mend - mstart), dtype=bytes)
+    #         # make empty array
+    #         arr = np.zeros((len(keys) + 1, mend - mstart), dtype=bytes)
 
-            # fill it
-            arr[0] = list(refs)
-            for idx, key in enumerate(keys):
-                # get start and stop from name
-                rstart, rstop = key.rsplit(":", 2)[-1].split("-")
+    #         # fill it
+    #         arr[0] = list(refs)
+    #         for idx, key in enumerate(keys):
+    #             # get start and stop from name
+    #             rstart, rstop = key.rsplit(":", 2)[-1].split("-")
 
-                # get start relative to ref
-                start = int(rstart) - int(region[1]) - 1
-                stop = start + int(rstop) - int(rstart) 
-                seq, cigar = rdict[key]
-                arr[idx + 1, int(start): int(stop)] = list(seq)[start:arr.shape[1]]
+    #             # get start relative to ref
+    #             start = int(rstart) - int(region[1]) - 1
+    #             stop = start + int(rstop) - int(rstart) 
+    #             seq, cigar = rdict[key]
+    #             arr[idx + 1, int(start): int(stop)] = list(seq)[start:arr.shape[1]]
 
-                # mod sequence according to cigar for indels and ambigs
-                for cidx, cig in enumerate(cigar):
-                    if cig[0] == 4:
-                        csums = sum(i[1] for i in cigar[:cidx])
-                        arr[idx + 1, csums] = arr[idx + 1, csums].lower()
-                    if cig[0] == 1:
-                        csums = sum(i[1] for i in cigar[:cidx])
-                        arr[idx + 1, csums] = b"-"
+    #             # mod sequence according to cigar for indels and ambigs
+    #             for cidx, cig in enumerate(cigar):
+    #                 if cig[0] == 4:
+    #                     csums = sum(i[1] for i in cigar[:cidx])
+    #                     arr[idx + 1, csums] = arr[idx + 1, csums].lower()
+    #                 if cig[0] == 1:
+    #                     csums = sum(i[1] for i in cigar[:cidx])
+    #                     arr[idx + 1, csums] = b"-"
 
-            # fill terminal edges with N
-            arr[arr == b""] = b"N"
+    #         # fill terminal edges with N
+    #         arr[arr == b""] = b"N"
 
-            # duplicates merge here (only perfect merge on all Ns) and reshape
-            # the array to match. This will need to be resolved in catgs...
-            # if it does not merge then
-            # todo: skip when no dups present
-            try:
-                keys, arr = resolve_duplicates(keys, arr)
-            except IPyradError:
-                pass
+    #         # duplicates merge here (only perfect merge on all Ns) and reshape
+    #         # the array to match. This will need to be resolved in catgs...
+    #         # if it does not merge then
+    #         # todo: skip when no dups present
+    #         try:
+    #             keys, arr = resolve_duplicates(keys, arr)
+    #         except IPyradError:
+    #             pass
 
-            # get consens seq and variant site index 
-            clust = [">ref_{}:{}@\n{}".format(
-                gidx, refn[1:], b"".join(arr[0]).decode()
-            )]
-            for idx, key in enumerate(keys):    
-                clust.append(
-                    ">{}\n{}".format(key, b"".join(arr[idx + 1]).decode())
-                )
-            clusts.append("\n".join(clust))
-            gidx += 1
+    #         # get consens seq and variant site index 
+    #         clust = [">ref_{}:{}@\n{}".format(
+    #             gidx, refn[1:], b"".join(arr[0]).decode()
+    #         )]
+    #         for idx, key in enumerate(keys):    
+    #             clust.append(
+    #                 ">{}\n{}".format(key, b"".join(arr[idx + 1]).decode())
+    #             )
+    #         clusts.append("\n".join(clust))
+    #         gidx += 1
 
-        outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
-        outfile.close()
+    #     outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
+    #     outfile.close()
 
 
-# TODO: retur newkeys for multiplle when merging
 def resolve_duplicates(keys, arr):
     """
     Tries to join together duplicate consens reads that were not previously
@@ -723,11 +722,9 @@ def resolve_duplicates(keys, arr):
                 else:
                     raise IPyradError("duplicate could not be resolved")
                 # store key with reference to all dups
-                #print("\n".join(keys))
-                #print(didx)
-                #ikeys = [keys[i - 1] for i in didx]
-                #print(ikeys)
-                newkeys.append(keys[sidx])
+                ikeys = [keys[i - 1] for i in didx]
+                fidxs = ";".join([i.rsplit("_", 1)[-1] for i in ikeys])
+                newkeys.append("{}_{}".format(sname, fidxs))
                 
             else:
                 # store array data and orig key
