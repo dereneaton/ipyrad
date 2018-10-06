@@ -516,8 +516,8 @@ class CLI:
             else:
                 # set CLI ipcluster terms
                 ipyclient = None
-                self.data._ipcluster["cores"] = (self.args.cores if self.args.cores
-                                                 else detect_cpus())
+                self.data._ipcluster["cores"] = (
+                    self.args.cores if self.args.cores else detect_cpus())
                 self.data._ipcluster["engines"] = "Local"
                 if self.args.MPI:
                     self.data._ipcluster["engines"] = "MPI"
@@ -534,7 +534,6 @@ class CLI:
             self.data.run(
                 steps=steps, 
                 force=self.args.force, 
-                #preview=self.args.preview, 
                 show_cluster=1, 
                 ipyclient=ipyclient,
                 )
