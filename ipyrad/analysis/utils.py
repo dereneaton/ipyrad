@@ -13,34 +13,27 @@ import sys
 import os
 
 # third party
-import numba
-import numpy as np
+from numba import njit, prange
 
 
-@numba.jit(nopython=True)
-def get_spans(maparr): #, spans):
+# parallel and prange give a xncores speedup!
+njit(parallel=True)
+def get_spans(maparr, spans):
     """ 
     Get span distance for each locus in original seqarray. This
     is used to create re-sampled arrays in each bootstrap to sample
-    unlinked SNPs. 
+    unlinked SNPs from.
     """
-
-    # test this; slower with empty spans inside?
-    spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-
-    # start at 0, finds change at 1-index of map file
-    bidx = 1
-    spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-
-    # read through marr and record when locus id changes
-    for idx in range(1, maparr.shape[0]):
-        cur = maparr[idx, 0]
-        if cur != bidx:
-            # idy = idx + 1
-            spans[cur - 2, 1] = idx
-            spans[cur - 1, 0] = idx
-            bidx = cur
-    spans[-1, 1] = maparr[-1, -1]
+    start = 0
+    end = 0
+    for idx in prange(1, spans.shape[0] + 1):
+        lines = maparr[maparr[:, 0] == idx]
+        if lines.size:
+            end = lines[:, 3].max()
+            spans[idx - 1] = [start, end]
+        else: 
+            spans[idx - 1] = [end, end]
+        start = spans[idx - 1, 1]
     return spans
 
 
@@ -70,20 +63,55 @@ def progressbar(njobs, finished, start, msg):
     sys.stdout.flush()
 
 
+# class Params(object):
+#     "A dict-like object for storing params values with a custom repr"
+   
+#     def __getitem__(self, key):
+#         return self.__dict__[key]
+
+#     def __setitem__(self, key, value):
+#         self.__dict__[key] = value
+
+#     def __repr__(self):
+#         _repr = ""
+#         keys = sorted(self.__dict__.keys())      
+#         _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+#         for key in keys:
+#             _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+#             _repr += _printstr.format(key, _val)
+#         return _repr
+
+
+# New params class is iterable returning keys
 class Params(object):
     "A dict-like object for storing params values with a custom repr"
-    
+    def __init__(self):
+        self._i = 0
+
     def __getitem__(self, key):
         return self.__dict__[key]
 
     def __setitem__(self, key, value):
         self.__dict__[key] = value
 
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]
+        if self._i > len(keys) - 1:
+            self._i = 0
+            raise StopIteration
+        else:
+            self._i += 1
+            return keys[self._i - 1]
+        
     def __repr__(self):
+        "return simple representation of dict with ~ shortened for paths"
         _repr = ""
-        keys = sorted(self.__dict__.keys())      
+        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]      
         _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
         for key in keys:
             _val = str(self[key]).replace(os.path.expanduser("~"), "~")
             _repr += _printstr.format(key, _val)
-        return _repr
+        return _repr        
