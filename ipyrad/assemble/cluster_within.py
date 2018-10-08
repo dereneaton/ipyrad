@@ -10,7 +10,7 @@ try:
     from itertools import izip, islice, chain
 except ImportError:
     from itertools import islice, chain
-    izip = zip
+    izip = zip 
 
 import os
 import gzip
