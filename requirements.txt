@@ -10,6 +10,7 @@ pandas>=0.16
 h5py
 networkx
 dask
+dask[array]
 pysam>=0.10.0
 setuptools
 
