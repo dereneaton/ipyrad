@@ -553,7 +553,7 @@ def build_clusters(data, sample, maxindels):
                         seqlist = []
 
                 ## store the new seed on top of fseq list
-                fseqs.append(">{}*\n{}".format(seed, alldereps[seed]))
+                fseqs = [">{}*\n{}".format(seed, alldereps[seed])] + fseqs
                 lastseed = seed
 
             ## add match to the seed
