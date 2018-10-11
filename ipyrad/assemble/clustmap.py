@@ -33,12 +33,12 @@ LOGGER = logging.getLogger(__name__)
 class Step3:
     "Class for organizing step functions across datatypes and read formats"
 
-    def __init__(self, data, maxindels, force, ipyclient):
+    def __init__(self, data, force, ipyclient):
 
         # store attributes
         self.data = data
         # self.noreverse = noreverse
-        self.maxindels = maxindels
+        self.maxindels = 8
         self.force = force
         self.ipyclient = ipyclient
         self.gbs = bool("gbs" in self.data.paramsdict["datatype"])
@@ -869,7 +869,6 @@ def cluster(data, sample, nthreads, force):
     Calls vsearch for clustering. cov varies by data type, values were chosen
     based on experience, but could be edited by users
     """
-
     # get dereplicated reads for denovo+reference or denovo-reference
     if "reference" in data.paramsdict["assembly_method"]:
         derephandle = os.path.join(
