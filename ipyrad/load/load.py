@@ -12,7 +12,8 @@ import numpy as np
 import pandas as pd
 from copy import deepcopy
 from collections import OrderedDict
-from ..core.assembly import Assembly, Sample
+from ..core.sample import Sample
+from ..core.assembly import Assembly
 from ..assemble.utils import IPyradWarningExit, ObjDict, IPyradError
 
 import logging
