@@ -2,10 +2,10 @@
 
 ## bring nested functions to top for API access
 from .core.assembly import Assembly, merge
-from .core.sample import Sample
-from .load import save_json, load_json
+#from .core.sample import Sample
 from .core.parallel import get_client as _get_client, cluster_info
 from .core.startup import Bins as _Bins
+from .load import save_json, load_json
 import logging as _logging
 
 
