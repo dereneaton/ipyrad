@@ -6,9 +6,7 @@ from __future__ import print_function
 import os
 import glob
 import sys
-import gzip
 import copy
-import h5py
 import time
 import string
 import datetime
@@ -16,15 +14,13 @@ import itertools
 import numpy as np
 import pandas as pd
 import ipyrad as ip
-import subprocess as sps
 import ipyparallel as ipp
 
 from collections import OrderedDict
 from ipyrad.assemble.utils import IPyradParamsError, IPyradWarningExit
 from ipyrad.assemble.utils import IPyradError, ObjDict
 from ipyrad.core.paramsinfo import paraminfo, paramname
-from ipyrad.core.sample import Sample
-# from ipyrad.assemble.refmap import index_reference_sequence
+
 
 # GLOBALS
 OUTPUT_FORMATS = {
@@ -318,280 +314,6 @@ class Assembly(object):
         if any(char in invalid_chars for char in name):
             raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
 
-
-    def _link_fastqs(
-        self,
-        path=None,
-        force=False,
-        append=False,
-        splitnames="_",
-        fields=None,
-        ipyclient=None):
-        """
-        Create Sample objects from demux'd fastq files in sorted_fastq_path,
-        or append additional fastq files to existing Samples. This provides
-        more flexible file input through the API than available in step1 of the
-        command line interface. If passed ipyclient it will run in parallel.
-
-        Note
-        ----
-        This function is called during step 1 if files are specified in
-        'sorted_fastq_path'.
-
-        Parameters
-        ----------
-        path : str
-            Path to the fastq files to be linked to Sample objects. The default
-            location is to select all files in the 'sorted_fastq_path'.
-            Alternatively a different path can be entered here.
-
-        append : bool
-            The default action is to overwrite fastq files linked to Samples if
-            they already have linked files. Use append=True to instead append
-            additional fastq files to a Sample (file names should be formatted
-            the same as usual, e.g., [name]_R1_[optional].fastq.gz).
-
-        splitnames : str
-            A string character used to file names. In combination with the
-            fields argument can be used to subselect filename fields names.
-
-        fields : list
-            A list of indices for the fields to be included in names after
-            fnames are split on the splitnames character. Useful for appending
-            seq names which must match existing names. If the largest index
-            is greater than the number of split strings in the name the index
-            if ignored. e.g., [2,3,4] ## excludes 0, 1 and >4
-
-        force : bool
-            Overwrites existing Sample data and statistics.
-
-        Returns
-        -------
-        str
-            Prints the number of new Sample objects created and the number of
-            fastq files linked to Sample objects in the Assembly object.
-        """
-
-        ## cannot both force and append at once
-        if force and append:
-            raise IPyradError("Cannot use force and append at the same time.")
-
-        if self.samples and not (force or append):
-            raise IPyradError(
-                "Files already linked to '{}'.".format(self.name) 
-              + " Use force=True to replace all files, or append=True to add"
-              + " additional files to existing Samples.")
-
-        ## make sure there is a workdir and workdir/fastqdir
-        self.dirs.fastqs = os.path.join(
-            self.paramsdict["project_dir"], self.name + "_fastqs")
-        if not os.path.exists(self.paramsdict["project_dir"]):
-            os.mkdir(self.paramsdict["project_dir"])
-
-        ## get path to data files
-        if not path:
-            path = self.paramsdict["sorted_fastq_path"]
-
-        ## but grab fastq/fq/gz, and then sort
-        fastqs = glob.glob(path)
-        ## Assert files are not .bz2 format
-        if any([i for i in fastqs if i.endswith(".bz2")]):
-            raise IPyradError(NO_SUPPORT_FOR_BZ2.format(path))
-        fastqs = [i for i in fastqs if i.endswith(".gz")
-                  or i.endswith(".fastq")
-                  or i.endswith(".fq")]
-        fastqs.sort()
-        ip.logger.debug("Linking these fastq files:\n{}".format(fastqs))
-
-        ## raise error if no files are found
-        if not fastqs:
-            raise IPyradError(NO_FILES_FOUND_PAIRS
-                        .format(self.paramsdict["sorted_fastq_path"]))
-
-        ## link pairs into tuples
-        if 'pair' in self.paramsdict["datatype"]:
-            ## check that names fit the paired naming convention
-            ## trying to support flexible types (_R2_, _2.fastq)
-            r1_try1 = [i for i in fastqs if "_R1_" in i]
-            r1_try2 = [i for i in fastqs if i.endswith("_1.fastq.gz")]
-            r1_try3 = [i for i in fastqs if i.endswith("_R1.fastq.gz")]
-
-            r2_try1 = [i for i in fastqs if "_R2_" in i]
-            r2_try2 = [i for i in fastqs if i.endswith("_2.fastq.gz")]
-            r2_try3 = [i for i in fastqs if i.endswith("_R2.fastq.gz")]
-
-            r1s = [r1_try1, r1_try2, r1_try3]
-            r2s = [r2_try1, r2_try2, r2_try3]
-
-            ## check that something was found
-            if not r1_try1 + r1_try2 + r1_try3:
-                raise IPyradWarningExit(
-                    "Paired filenames are improperly formatted. See Documentation")
-
-            ## find the one with the right number of R1s
-            for idx, tri in enumerate(r1s):
-                if len(tri) == len(fastqs)/2:
-                    break
-            r1_files = r1s[idx]
-            r2_files = r2s[idx]
-
-            if len(r1_files) != len(r2_files):
-                raise IPyradWarningExit(R1_R2_name_error\
-                    .format(len(r1_files), len(r2_files)))
-
-            fastqs = [(i, j) for i, j in zip(r1_files, r2_files)]
-
-        ## data are not paired, create empty tuple pair
-        else:
-            ## print warning if _R2_ is in names when not paired
-            idx = 0
-            if any(["_R2_" in i for i in fastqs]):
-                print(NAMES_LOOK_PAIRED_WARNING)
-            fastqs = [(i, "") for i in fastqs]
-
-        ## counters for the printed output
-        linked = 0
-        appended = 0
-
-        ## clear samples if force
-        if force:
-            self.samples = {}
-
-        ## track parallel jobs
-        linkjobs = {}
-        if ipyclient:
-            lbview = ipyclient.load_balanced_view()
-
-        ## iterate over input files
-        for fastqtuple in list(fastqs):
-            assert isinstance(fastqtuple, tuple), "fastqs not a tuple."
-            ## local counters
-            createdinc = 0
-            linkedinc = 0
-            appendinc = 0
-            ## remove file extension from name
-            if idx == 0:
-                sname = _name_from_file(fastqtuple[0], splitnames, fields)
-            elif idx == 1:
-                sname = os.path.basename(fastqtuple[0].rsplit("_1.fastq.gz", 1)[0])
-            elif idx == 2:
-                sname = os.path.basename(fastqtuple[0].rsplit("_R1.fastq.gz", 1)[0])
-            ip.logger.debug("New Sample name {}".format(sname))
-
-            if sname not in self.samples:
-                ## create new Sample
-                ip.logger.debug("Creating new sample - ".format(sname))
-                self.samples[sname] = Sample(sname)
-                self.samples[sname].stats.state = 1
-                self.samples[sname].barcode = None
-                self.samples[sname].files.fastqs.append(fastqtuple)
-                createdinc += 1
-                linkedinc += 1
-            else:
-                ## if not forcing, shouldn't be here with existing Samples
-                if append:
-                    #if fastqtuple not in self.samples[sname].files.fastqs:
-                    self.samples[sname].files.fastqs.append(fastqtuple)
-                    appendinc += 1
-
-                elif force:
-                    ## overwrite/create new Sample
-                    ip.logger.debug("Overwriting sample - ".format(sname))
-                    self.samples[sname] = Sample(sname)
-                    self.samples[sname].stats.state = 1
-                    self.samples[sname].barcode = None
-                    self.samples[sname].files.fastqs.append(fastqtuple)
-                    createdinc += 1
-                    linkedinc += 1
-                else:
-                    print("""
-        The files {} are already in Sample. Use append=True to append additional
-        files to a Sample or force=True to replace all existing Samples.
-        """.format(sname))
-
-            ## support serial execution w/o ipyclient
-            if not ipyclient:
-                if any([linkedinc, createdinc, appendinc]):
-                    gzipped = bool(fastqtuple[0].endswith(".gz"))
-                    nreads = 0
-                    for alltuples in self.samples[sname].files.fastqs:
-                        nreads += _zbufcountlines(alltuples[0], gzipped)
-                    self.samples[sname].stats.reads_raw = nreads/4
-                    self.samples[sname].stats_dfs.s1["reads_raw"] = nreads/4
-                    self.samples[sname].state = 1
-
-                    ip.logger.debug("Got reads for sample - {} {}".format(sname,\
-                                    self.samples[sname].stats.reads_raw))
-                    #created += createdinc
-                    linked += linkedinc
-                    appended += appendinc
-
-            ## do counting in parallel
-            else:
-                if any([linkedinc, createdinc, appendinc]):
-                    gzipped = bool(fastqtuple[0].endswith(".gz"))
-                    for sidx, tup in enumerate(self.samples[sname].files.fastqs):
-                        key = sname + "_{}".format(sidx)
-                        linkjobs[key] = lbview.apply(_bufcountlines,
-                                                    *(tup[0], gzipped))
-                    ip.logger.debug("sent count job for {}".format(sname))
-                    #created += createdinc
-                    linked += linkedinc
-                    appended += appendinc
-
-        ## wait for link jobs to finish if parallel
-        if ipyclient:
-            start = time.time()
-            printstr = ("loading reads       ", "s1")
-            while 1:
-                fin = [i.ready() for i in linkjobs.values()]
-                self._progressbar(len(fin), sum(fin), start, printstr)
-                time.sleep(0.1)
-                if len(fin) == sum(fin):
-                    break
-
-            ## collect link job results
-            print("")
-            sampdict = {i: 0 for i in self.samples}
-            for result in linkjobs:
-                sname = result.rsplit("_", 1)[0]
-                nreads = linkjobs[result].result()
-                sampdict[sname] += nreads
-
-            for sname in sampdict:
-                self.samples[sname].stats.reads_raw = sampdict[sname] / 4
-                self.samples[sname].stats_dfs.s1["reads_raw"] = (
-                    sampdict[sname] / 4)
-                self.samples[sname].state = 1
-
-        ## print if data were linked
-        #print("  {} new Samples created in '{}'.".format(created, self.name))
-        if linked:
-            ## double for paired data
-            if 'pair' in self.paramsdict["datatype"]:
-                linked = linked * 2
-            if self._headers:
-                print("{}{} fastq files loaded to {} Samples."
-                      .format(self._spacer, linked, len(self.samples)))
-            ## save the location where these files are located
-            self.dirs.fastqs = os.path.realpath(os.path.dirname(path))
-
-        if appended:
-            if self._headers:
-                print("{}{} fastq files appended to {} existing Samples."
-                      .format(self._spacer, appended, len(self.samples)))
-
-        ## save step-1 stats. We don't want to write this to the fastq dir, b/c
-        ## it is not necessarily inside our project dir. Instead, we'll write 
-        ## this file into our project dir in the case of linked_fastqs.
-        self.stats_dfs.s1 = self._build_stat("s1")
-        self.stats_files.s1 = os.path.join(
-            self.paramsdict["project_dir"],
-            self.name + '_s1_demultiplex_stats.txt')
-        with open(self.stats_files.s1, 'w') as outfile:
-            self.stats_dfs.s1.fillna(value=0).astype(np.int).to_string(outfile)
-
-
     def _link_barcodes(self):
         """
         Private function. Links Sample barcodes in a dictionary as
@@ -766,7 +488,7 @@ class Assembly(object):
 
 
     def get_params(self, param=""):
-        """ pretty prints params if called as a function """
+        "Pretty prints parameter settings to stdout"
         fullcurdir = os.path.realpath(os.path.curdir)
         if not param:
             for index, (key, value) in enumerate(self.paramsdict.items()):
@@ -786,7 +508,6 @@ class Assembly(object):
                     return self.paramsdict[param]
                 except KeyError:
                     return 'key not recognized'
-
 
 
     def set_params(self, param, newvalue):
@@ -851,9 +572,9 @@ class Assembly(object):
                 BAD_PARAMETER.format(param, inst, newvalue))
 
 
-
     def write_params(self, outfile=None, force=False):
-        """ Write out the parameters of this assembly to a file properly
+        """ 
+        Write out the parameters of this assembly to a file properly
         formatted as input for `ipyrad -p <params.txt>`. A good and
         simple way to share/archive parameter settings for assemblies.
         This is also the function that's used by __main__ to
@@ -894,7 +615,6 @@ class Assembly(object):
                 description = paraminfo(paramkey, short=True)
                 paramsfile.write(
                     "\n" + paramvalue + padding + paramindex + name + description)
-
 
 
     def branch(self, newname, subsamples=None, infile=None):
@@ -963,7 +683,6 @@ class Assembly(object):
             return newobj
 
 
-
     def save(self):
         """
         Save Assembly object to disk as a JSON file. Used for checkpointing,
@@ -973,81 +692,94 @@ class Assembly(object):
         ip.save_json(self)
 
 
-    def _step1func(self, force, preview, ipyclient):
-        """ hidden wrapped function to start step 1 """
-
-        ## check input data files
-        sfiles = self.paramsdict["sorted_fastq_path"]
-        rfiles = self.paramsdict["raw_fastq_path"]
-
-        ## do not allow both a sorted_fastq_path and a raw_fastq
-        if sfiles and rfiles:
-            raise IPyradWarningExit(NOT_TWO_PATHS)
-
-        ## but also require that at least one exists
-        if not (sfiles or rfiles):
-            raise IPyradWarningExit(NO_SEQ_PATH_FOUND)
-
-        ## print headers
-        if self._headers:
-            if sfiles:
-                print("\n{}Step 1: Loading sorted fastq data to Samples"
-                      .format(self._spacer))
-            else:
-                print("\n{}Step 1: Demultiplexing fastq data to Samples"
-                    .format(self._spacer))
-
-        ## if Samples already exist then no demultiplexing
-        if self.samples:
-            if not force:
-                print(SAMPLES_EXIST.format(len(self.samples), self.name))
-            else:
-                ## overwrite existing data else do demux
-                if glob.glob(sfiles):
-                    self._link_fastqs(ipyclient=ipyclient, force=force)
-                else:
-                    #assemble.demultiplex.run(self, preview, ipyclient, force)                    
-                    ip.assemble.demultiplex.run2(self, ipyclient, force)
-
-        ## Creating new Samples
-        else:
-            ## first check if demultiplexed files exist in sorted path
-            if glob.glob(sfiles):
-                self._link_fastqs(ipyclient=ipyclient)
-
-            ## otherwise do the demultiplexing
-            else:
-                #assemble.demultiplex.run(self, preview, ipyclient, force)
-                ip.assemble.demultiplex.run2(self, ipyclient, force)
-
-
     def _compatible_params_check(self):
-        """
-        check for mindepths after all params are set, b/c doing it while each
-        is being set becomes complicated """
+        "check params that must be compatible at run time"
 
-        ## do not allow statistical < majrule
+        # do not allow statistical < majrule
         val1 = self.paramsdict["mindepth_statistical"]
         val2 = self.paramsdict['mindepth_majrule']
         if val1 < val2:
-            msg = """
-    Warning: mindepth_statistical cannot not be < mindepth_majrule.
-    Forcing mindepth_majrule = mindepth_statistical = {}
-    """.format(val1)
-            ip.logger.warning(msg)
-            print(msg)
-            self.paramsdict["mindepth_majrule"] = val1
+            raise IPyradParamsError(
+                "mindepth_statistical cannot be < mindepth_majrule")
+        # other params to check ...
 
 
+    def _get_parallel(self, ipyclient, show_cluster):
+        "Start a parallel client with _ipcluster dict or start a new one."
 
-    def run(
-        self, 
-        steps=0, 
-        force=False, 
-        preview=False, 
-        ipyclient=None, 
-        show_cluster=0, 
-        **kwargs):
+        # connect to a running client or raise an error if not found.
+        if not ipyclient:
+            ipyclient = ip.core.parallel.get_client(self)
+
+        # print a message about the cluster status
+        if self._cli or show_cluster:
+            ip.cluster_info(ipyclient=ipyclient, spacer=self._spacer)
+
+        # print an Assembly name header if inside API
+        if not self._cli:
+            print("Assembly: {}".format(self.name))
+
+        # store ipyclient engine pids to the Assembly so we can hard-interrupt
+        # later if assembly is interrupted. Only stores pids of engines that 
+        # aren't busy at this moment, otherwise it would block.
+        self._ipcluster["pids"] = {}
+        for eid in ipyclient.ids:
+            engine = ipyclient[eid]
+            if not engine.outstanding:
+                pid = engine.apply(os.getpid).get()
+                self._ipcluster["pids"][eid] = pid
+        return ipyclient
+
+
+    def _cleanup_parallel(self, ipyclient):
+        try:
+            # save the Assembly... should we save here or not. I added save
+            # to substeps in six so we don't need it here. By removing it
+            # here there is less chance someone will bonk their json file
+            # by executing a bad run() command.
+            #self.save()  
+
+            # can't close client if it was never open
+            if ipyclient:
+
+                # send SIGINT (2) to all engines
+                try:
+                    ipyclient.abort()
+                    time.sleep(1)
+                    for engine_id, pid in self._ipcluster["pids"].items():
+                        if ipyclient.queue_status()[engine_id]["tasks"]:
+                            os.kill(pid, 2)
+                            ip.logger.info(
+                                'interrupted engine {} w/ SIGINT to {}'
+                                .format(engine_id, pid))
+                    time.sleep(1)
+                except ipp.NoEnginesRegistered:
+                    pass
+
+                # if CLI, stop jobs and shutdown. Don't use _cli here 
+                # because you can have a CLI object but use the --ipcluster
+                # flag, in which case we don't want to kill ipcluster.
+                if self._cli:
+                    ip.logger.info("  shutting down engines")
+                    ipyclient.shutdown(hub=True, block=False)
+                    ipyclient.close()
+                    ip.logger.info("  finished shutdown")
+                else:
+                    if not ipyclient.outstanding:
+                        ipyclient.purge_everything()
+                    else:
+                        # nanny: kill everything, something bad happened
+                        ipyclient.shutdown(hub=True, block=False)
+                        ipyclient.close()
+                        print("\nwarning: ipcluster shutdown and must be restarted")
+                
+        # if exception is close and save, print and ignore
+        except Exception as inst2:
+            print("warning: error during shutdown:\n{}".format(inst2))
+            ip.logger.error("shutdown warning: %s", inst2)
+
+
+    def run(self, steps=0, force=False, ipyclient=None, show_cluster=0, **kwargs):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -1061,225 +793,52 @@ class Assembly(object):
         ## wrap everything in a try statement to ensure that we save the
         ## Assembly object if it is interrupted at any point, and also
         ## to ensure proper cleanup of the ipyclient.
-        inst = None
         try:
-            # find a running ipcluster instance using self.ipcluster dict
-            if not ipyclient:
-                args = list(self._ipcluster.items()) + [("spacer", self._spacer)]
-                ipyclient = ip.core.parallel.get_client(**dict(args))
+            # get a running ipcluster instance or start one 
+            ipyclient = self._get_parallel(ipyclient, show_cluster)
 
-            ## print a message about the cluster status
-            ## if MPI setup then we are going to wait until all engines are
-            ## ready so that we can print how many cores started on each
-            ## host machine exactly.
-            if (self._cli) or show_cluster:
-                ip.cluster_info(ipyclient=ipyclient, spacer=self._spacer)
-
-            ## get the list of steps to run
+            # get the list of steps to run
             if isinstance(steps, int):
                 steps = str(steps)
             steps = sorted(list(steps))
 
-            ## print an Assembly name header if inside API
-            if not self._cli:
-                print("Assembly: {}".format(self.name))
+            # function dictionary
+            stepdict = {
+                "1": ip.assemble.demultiplex.Step1,
+                "2": ip.assemble.rawedit.Step2, 
+                "3": ip.assemble.clustmap.Step3,
+                "4": ip.assemble.jointestimate.Step4, 
+                "5": ip.assemble.consens_se.Step5, 
+                "6": ip.assemble.clustmap_across.Step6, 
+                "7": ip.assemble.write_outputs.Step7,
+            }
 
-            ## store ipyclient engine pids to the Assembly so we can 
-            ## hard-interrupt them later if assembly is interrupted. 
-            ## Only stores pids of engines that aren't busy at this moment, 
-            ## otherwise it would block here while waiting to find their pids.
-            self._ipcluster["pids"] = {}
-            for eid in ipyclient.ids:
-                engine = ipyclient[eid]
-                if not engine.outstanding:
-                    pid = engine.apply(os.getpid).get()
-                    self._ipcluster["pids"][eid] = pid
-
-            ## has many fixed arguments right now, but we may add these to
-            ## hackerz_only, or they may be accessed in the API.
-            if '1' in steps:
-                self._step1func(force, preview, ipyclient)
-                self.save()
-                ipyclient.purge_everything()
-
-            if '2' in steps:
-                args = [self, force, ipyclient]
-                ip.assemble.rawedit.Step2(*args).run()
-                self.save()
-                ipyclient.purge_everything()
-
-            if '3' in steps:
-                args = [self, 8, force, ipyclient]
-                ip.assemble.clustmap.Step3(*args).run()
-                self.save()
-                ipyclient.purge_everything()
-
-            if '4' in steps:
-                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
-                ip.assemble.jointestimate.Step4(**kwargs).run()
-                self.save()
-                ipyclient.purge_everything()
-
-            if '5' in steps:
-                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
-                ip.assemble.consens_se.Step5(**kwargs).run()
-                self.save()
-                ipyclient.purge_everything()
-
-            if '6' in steps:
-                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
-                ip.assemble.clustmap_across.Step6(**kwargs).run()
-                self.save()
-                ipyclient.purge_everything()
-
-            if '7' in steps:
-                kwargs = dict(data=self, force=force, ipyclient=ipyclient)
-                ip.assemble.write_outputs.Step7(**kwargs).run()
-                self.save()
-                ipyclient.purge_everything()
+            # tell user if they forgot to enter steps
             if not steps:
                 print("No assembly steps selected (e.g., '123')")
 
-        ## handle exceptions so they will be raised after we clean up below
+            # run step fuctions and save and clear memory after each
+            for step in steps:
+                stepdict[step](self, force, ipyclient).run()
+                self.save()
+                ipyclient.purge_everything()
+
         except KeyboardInterrupt as inst:
-            print("\n  Keyboard Interrupt by user")
-            ip.logger.info("assembly interrupted by user.")
+            print("\n{}Keyboard Interrupt by user".format(self._spacer))
 
         except (IPyradWarningExit, IPyradError) as inst:
-            ip.logger.error("IPyradWarningExit: %s", inst)
-            print("\n  Encountered an error (see details in ./ipyrad_log.txt)"+\
-                  "\n  Error summary is below -------------------------------"+\
-                  "\n{}".format(inst))
+            print("\n{}Encountered an IPyradError:\n{}{}".format(
+                self._spacer, self._spacer, inst))
+            raise
 
         except Exception as inst:
-            ip.logger.error(inst)
-            print("\n  Encountered an unexpected error (see ./ipyrad_log.txt)"+\
-                  "\n  Error message is below -------------------------------"+\
-                  "\n{}".format(inst))
+            print("\n{}Encountered an unexpected error:\n{}{}".format(
+                self._spacer, self._spacer, inst))
+            raise
 
         # close client when done or interrupted
         finally:
-            try:
-                # save the Assembly... should we save here or not. I added save
-                # to substeps in six so we don't need it here. By removing it
-                # here there is less chance someone will bonk their json file
-                # by executing a bad run() command.
-                #self.save()  
-
-                # can't close client if it was never open
-                if ipyclient:
-
-                    # send SIGINT (2) to all engines
-                    try:
-                        ipyclient.abort()
-                        time.sleep(1)
-                        for engine_id, pid in self._ipcluster["pids"].items():
-                            if ipyclient.queue_status()[engine_id]["tasks"]:
-                                os.kill(pid, 2)
-                                ip.logger.info(
-                                    'interrupted engine {} w/ SIGINT to {}'
-                                    .format(engine_id, pid))
-                        time.sleep(1)
-                    except ipp.NoEnginesRegistered:
-                        pass
-
-                    # if CLI, stop jobs and shutdown. Don't use _cli here 
-                    # because you can have a CLI object but use the --ipcluster
-                    # flag, in which case we don't want to kill ipcluster.
-                    if self._cli:
-                        ip.logger.info("  shutting down engines")
-                        ipyclient.shutdown(hub=True, block=False)
-                        ipyclient.close()
-                        ip.logger.info("  finished shutdown")
-                    else:
-                        if not ipyclient.outstanding:
-                            ipyclient.purge_everything()
-                        else:
-                            # nanny: kill everything, something bad happened
-                            ipyclient.shutdown(hub=True, block=False)
-                            ipyclient.close()
-                            print("\nwarning: ipcluster shutdown and must be restarted")
-                    
-            # if exception is close and save, print and ignore
-            except Exception as inst2:
-                print("warning: error during shutdown:\n{}".format(inst2))
-                ip.logger.error("shutdown warning: %s", inst2)
-
-
-
-def _get_samples(self, samples):
-    """
-    Internal function. Prelude for each step() to read in perhaps
-    non empty list of samples to process. Input is a list of sample names,
-    output is a list of sample objects.
-    """
-    
-    # if samples not entered use all samples
-    if not samples:
-        samples = list(self.samples.keys())
-
-    # Be nice and allow user to pass in only one sample as a string or list.
-    if isinstance(samples, str):
-        samples = list([samples])
-
-    # if sample keys, replace with sample obj
-    assert isinstance(samples, list), \
-        "to subselect samples enter as a list, e.g., [A, B]."
-    newsamples = [
-        self.samples.get(key) for key in samples if self.samples.get(key)]
-    strnewsamples = [i.name for i in newsamples]
-
-    ## are there any samples that did not make it into the dict?
-    badsamples = set(samples).difference(set(strnewsamples))
-    if badsamples:
-        outstring = ", ".join(badsamples)
-        raise IPyradError(
-            "Unrecognized Sample name(s) not linked to {}: {}"
-            .format(self.name, outstring))
-
-    ## require Samples
-    assert newsamples, \
-        "No Samples passed in and none in assembly {}".format(self.name)
-
-    return newsamples
-
-
-
-def _name_from_file(fname, splitnames, fields):
-    """ internal func: get the sample name from any pyrad file """
-    ## allowed extensions
-    file_extensions = [".gz", ".fastq", ".fq", ".fasta", ".clustS", ".consens"]
-    base, _ = os.path.splitext(os.path.basename(fname))
-
-    ## remove read number from name
-    base = base.replace("_R1_.", ".")\
-               .replace("_R1_", "")\
-               .replace("_R1.", ".")
-
-    ## remove extensions, retains '.' in file names.
-    while 1:
-        tmpb, tmpext = os.path.splitext(base)
-        if tmpext in file_extensions:        
-            base = tmpb
-        else:
-            break
-
-    if fields:
-        namebits = base.split(splitnames)
-        base = []
-        for field in fields:
-            try:
-                base.append(namebits[field])
-            except IndexError:
-                pass
-        base = splitnames.join(base)
-
-    if not base:
-        raise IPyradError("""
-    Found invalid/empty filename in link_fastqs. Check splitnames argument.
-    """)
-
-    return base
+            self._cleanup_parallel(ipyclient)
 
 
 
@@ -1394,46 +953,6 @@ def merge(name, assemblies):
     ## return the new Assembly object
     merged.save()
     return merged
-
-
-
-def _bufcountlines(filename, gzipped):
-    """
-    fast line counter. Used to quickly sum number of input reads when running
-    link_fastqs to append files. """
-    if gzipped:
-        fin = gzip.open(filename)
-    else:
-        fin = open(filename)
-    nlines = 0
-    buf_size = 1024 * 1024
-    read_f = fin.read  # loop optimization
-    buf = read_f(buf_size)
-    while buf:
-        nlines += buf.count(b'\n')
-        buf = read_f(buf_size)
-    fin.close()
-    return nlines
-
-
-## This is much faster than bufcountlines for really big files
-def _zbufcountlines(filename, gzipped):
-    """ faster line counter """
-    if gzipped:
-        cmd1 = ["gunzip", "-c", filename]
-    else:
-        cmd1 = ["cat", filename]
-    cmd2 = ["wc"]
-
-    proc1 = sps.Popen(cmd1, stdout=sps.PIPE, stderr=sps.PIPE)
-    proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, stderr=sps.PIPE)
-    res = proc2.communicate()[0]
-    if proc2.returncode:
-        raise IPyradWarningExit("error zbufcountlines {}:".format(res))
-    ip.logger.info(res)
-    nlines = int(res.split()[0])
-    return nlines
-
 
 
 def _tuplecheck(newvalue, dtype=str):
@@ -1804,6 +1323,17 @@ def _paramschecker(self, param, newvalue):
 
 
 ### ERROR MESSAGES ###################################
+UNKNOWN_EXCEPTION = """\
+{}Encountered an unexpected error (see ./ipyrad_log.txt)"+\
+{}Error message is below -------------------------------"+\
+{}
+"""
+
+IPYRAD_EXCEPTION = """\
+
+"""
+
+
 MISSING_PAIRFILE_ERROR = """\
     Paired file names must be identical except for _R1_ and _R2_. 
     Example, there are not matching files for samples: \n{}
@@ -1812,11 +1342,6 @@ MISSING_PAIRFILE_ERROR = """\
 PAIRED_FILENAMES_ERROR = """\
     Fastq filenames are malformed. R1 must contain the string _R1_ and
     R2 must be identical to R1, excepting the replacement of _R2_ for _R1_.
-    """
-
-R1_R2_name_error = """\
-    Paired file names must be identical except for _R1_ and _R2_.
-    We detect {} R1 files and {} R2 files.
     """
 
 REF_NOT_FOUND = """\
@@ -1900,26 +1425,6 @@ BAD_ASSEMBLY_NAME = """\
     Here's what you put:
     {}
     """
-NO_FILES_FOUND_PAIRS = """\
-    No files found in 'sorted_fastq_path': {}
-    Check that file names match the required convention for paired datatype
-    i.e., paired file names should be identical save for _R1_ and _R2_
-    (note the underscores before AND after R*).
-    """
-NO_SUPPORT_FOR_BZ2 = """\
-    Found bz2 formatted files in 'sorted_fastq_path': {}
-    ipyrad does not support bz2 files. The only supported formats for samples
-    are .gz, .fastq, and .fq. The easiest thing to do is probably go into
-    your sorted_fastq_path directory and issue this command `bunzip2 *`. You
-    will probably also need to update your params file to reflect the fact
-    that sample raw files now probably end with .fq or .fastq.
-    """
-NAMES_LOOK_PAIRED_WARNING = """\
-    Warning: '_R2_' was detected in a file name, which suggests the data may
-    be paired-end. If so, you should set the parameter 'datatype' to a paired
-    option (e.g., pairddrad or pairgbs) and re-run step 1, which will require
-    using the force flag (-f) to overwrite existing data.
-    """
 BAD_BARCODE = """\
     One or more barcodes contain invalid IUPAC nucleotide code characters.
     Barcodes must contain only characters from this list "RKSYWMCATG".
@@ -1938,21 +1443,9 @@ BAD_PARAMETER = """\
     {}
     You entered: {}
     """
-NOT_TWO_PATHS = """\
-    Error: Must enter a raw_fastq_path or sorted_fastq_path, but not both.
-    """
-NO_SEQ_PATH_FOUND = """\
-    Error: Step 1 requires that you enter one of the following:
-        (1) a sorted_fastq_path
-        (2) a raw_fastq_path + barcodes_path
-    """
 PARAMS_EXISTS = """
     Error: Params file already exists: {}
     Use force argument to overwrite.
-    """
-SAMPLES_EXIST = """\
-    Skipping: {} Samples already found in Assembly {}.
-    (can overwrite with force argument)\
     """
 EDITS_EXIST = """\
     Skipping: All {} selected Samples already edited.
