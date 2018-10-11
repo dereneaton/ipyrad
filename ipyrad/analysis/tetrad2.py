@@ -14,7 +14,7 @@ Theoretical Biology 374: 35-47
 
 # py2/3 compat
 from __future__ import print_function, division
-from builtins import range
+from builtins import range, str
 
 # standard lib
 import os
@@ -25,39 +25,47 @@ import time
 import copy
 import itertools
 import subprocess as sps
-from fractions import Fraction
 from collections import defaultdict
 
 # third party
+import toytree
 import numba
 import ctypes
 import datetime
 import numpy as np
 import ipyrad as ip
-from ipyrad.analysis.utils import progressbar, Params
+from scipy.special import comb
 from ipyrad.assemble.utils import IPyradError
+from ipyrad.analysis.utils import Params, get_spans  #, progressbar
 
-
-# # TOYTREE is required to run TETRAD
-# try:
-#     from toytree import ete3mini as ete3
-# except ImportError:
-#     raise IPyradError("""
-#     Error: tetrad requires the dependency 'toytree', which we haven't yet
-#     included in the ipyrad installation. For now, you can install toytree
-#     using conda with the following command: 
-
-#     conda install toytree -c eaton-lab
-#     """)
 
 
 class Tetrad(object):
     """
-    The main tetrad object for storing data and checkpointing. It is 
-    initialized with a name, and args to command line (e.g., sampling method, 
-    starting tree, nboots, etc.). 
-    """
+    The main tetrad object for saving/loading data and checkpointing with JSON,
+    connecting to parallel client, and storing results for eacy access.
 
+    Params: 
+        name (str): a string to use as prefix for outputs.
+        data (str): a phylip formatted file (.snps or .phy from ipyrad).
+        mapfile (str): [opt] a mapfile from ipyrad (.snpsmap).
+        method (str): [opt; def=all] 'all', 'random', or 'equal'.
+        guidetree (str): [opt] a newick file for guiding 'equal' method.
+        nquartets (int): [opt] number of samples for 'random' method.
+        nboots (int): [opt] number of non-parametric bootstrap replicates.
+        resolve_ambigs (bool): [def=True] Whether to include ambiguous sites.
+        load (bool): if True object is loaded from [workdir]/[name].json.
+        quiet (bool): if True progress is not printed to stdout.
+        save_invariants (bool): if True invariants array is written to hdf5.
+
+    Functions:
+        run()
+
+    Attributes:
+        params : optional params can be set after object instantiation
+        trees : access trees from object after analysis is finished
+        samples: names of samples in the data set
+    """
     def __init__(self,
         name, 
         data=None,
@@ -72,23 +80,38 @@ class Tetrad(object):
         quiet=False,
         save_invariants=False,
         *args, 
-        **kwargs):
+        **kwargs):      
 
-        ## check additional arguments from kwargs.
+        # check additional (hidden) arguments from kwargs.
+        self.quiet = quiet
         self.kwargs = {
             "initarr": True,
             "cli": False,
             }
         self.kwargs.update(kwargs)
 
-        ## name this assembly
+        # name this assembly
         self.samples = []
         self.name = name
         self.dirs = os.path.abspath(os.path.expanduser(workdir))
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
+        params = (method, nboots, nquartets, resolve_ambigs, save_invariants)
+        self._init_params(*params)
+        self._init_database()
+        self._init_file_handles(data, mapfile, guidetree)
 
-        ## store ipcluster information 
+        # is this a new analysis, or loading an existing object? If loading 
+        # then checkpoints and file handles are all pulled in. 
+        if load:
+            self._load(self.name, self.dirs)
+        else:
+            self._init_file_handles(data, mapfile, guidetree)
+            self._parse_names()
+            if self.kwargs["initarr"]:
+                self._init_seqarray()
+
+        # default ipcluster information for finding a running Client
         self._ipcluster = {
             "cluster_id": "", 
             "profile": "default",
@@ -100,7 +123,28 @@ class Tetrad(object):
             "pids": {},
             }
 
-        ## Sampling method attributes 
+        # Sampling method attributes (should I put path info in here too?)
+
+        # private attributes
+        self._chunksize = 1
+        self._tmp = None
+
+        # self.populations ## if we allow grouping samples
+        # (haven't done this yet)
+        self._count_quartets()
+
+        # stats is written to os.path.join(self.dirs, self.name+".stats.txt")
+        self.stats = Params()
+        self.stats.n_quartets_sampled = self.params.nquartets
+        #self.stats.avg
+
+        # checkpointing information
+        self.checkpoint = Params()
+        self.checkpoint.boots = 0
+        self.checkpoint.arr = 0
+
+    # INIT FUNCTIONS -----------------------------------------------
+    def _init_params(self, method, nboots, nquartets, resolve_ambigs, save_invariants):
         self.params = Params()
         self.params.method = method
         self.params.nboots = nboots
@@ -108,94 +152,92 @@ class Tetrad(object):
         self.params.resolve_ambigs = resolve_ambigs
         self.params.save_invariants = save_invariants
 
-        ## private attributes
-        self._chunksize = 0
-        self._tmp = None
 
-        ## self.populations ## if we allow grouping samples
-        ## (haven't done this yet)
-
-        ## hdf5 data bases init and delete existing
+    def _init_database(self):
         self.database = Params()
-        self.database.input = os.path.join(self.dirs, self.name + ".input.h5")
-        self.database.output = os.path.join(self.dirs, self.name + ".output.h5")        
+        self.database.input = os.path.join(
+            self.dirs, self.name + ".input.h5")
+        self.database.output = os.path.join(
+            self.dirs, self.name + ".output.h5")        
 
-        ## input files
-        self.files = Params()
-        self.files.data = data
-        self.files.mapfile = mapfile
-        self.files.tree = guidetree
+
+    def _init_file_handles(self, data, mapfile, guidetree):
+        "set handles and clear old data unless loaded existing data"
+
+        # input files
+        self.files = Params()       
         self.files.qdump = None
-        self.files.stats = None 
-
-        ## fill in files
+        self.files.data = os.path.abspath(data)
+        self.files.mapfile = None
+        self.files.guidetree = None
         if mapfile:
-            self.files.mapfile = os.path.abspath(os.path.expanduser(mapfile))
+            self.files.mapfile = os.path.abspath(mapfile)
         if guidetree:
-            self.files.tree = os.path.abspath(os.path.expanduser(guidetree))
-        ## check file paths:
-        if self.files.mapfile:
-            if not os.path.exists(self.files.mapfile):
-                raise IOError("file path {} not found".format(self.files.mapfile))
-        if self.files.tree:
-            if not os.path.exists(self.files.tree):
-                raise IOError("file path {} not found".format(self.files.tree))
+            self.files.guidetree = os.path.abspath(guidetree)
 
-        ## load tree file paths if they exist, or None if empty
+        # set tree file paths
         self.trees = Params()
-        self.trees.tree = os.path.join(self.dirs, self.name + ".full.tre")
-        self.trees.cons = os.path.join(self.dirs, self.name + ".consensus.tre")
-        self.trees.boots = os.path.join(self.dirs, self.name + ".boots")        
+        self.trees.tree = os.path.join(self.dirs, self.name + ".tre")
+        self.trees.cons = os.path.join(self.dirs, self.name + ".cons.tre")
+        self.trees.boots = os.path.join(self.dirs, self.name + ".boots.tre")        
         self.trees.nhx = os.path.join(self.dirs, self.name + ".nhx.tre")
-        for key, val in self.trees.__dict__.items():
-            if not os.path.exists(val):
-                self.trees.__dict__[key] = None
 
-        ## stats is written to os.path.join(self.dirs, self.name+".stats.txt")
-        #self.stats = Params()
-        #self.stats.n_quartets_sampled = self.params.nquartets
+        # check user supplied paths:
+        for sfile in self.files:
+            if self.files[sfile]:
+                if not os.path.exists(self.files[sfile]):
+                    raise IOError(
+                        "file path not found: {}".format(self.files[sfile])
+                        )
 
-        ## checkpointing information
-        self.checkpoint = Params()
-        self.checkpoint.boots = 0
-        self.checkpoint.arr = 0
+        # if not loading files
+        if not (data and os.path.exists(data)):
+            raise IPyradError(
+                "must enter a data (e.g., snp file) argument or use load=True")
 
-        ## init the by loading existing or parsing new data --------------------
-        if load:
-            self._load(self.name, self.dirs)
-            self._parse_names()
-        elif data and os.path.exists(data):
-            if self.kwargs["initarr"]:
-                self._init_seqarray(quiet=quiet)
-                self._parse_names()
-        else:
-            raise IPyradError("must enter a data (sequence file) argument.")
+        # remove any existing results files
+        for sfile in self.trees:
+            if self.trees[sfile]:
+                if os.path.exists(self.trees[sfile]):
+                    os.remove(self.trees[sfile])
 
-        ## check quartets ----------------------------------------------------
-        ## depending on the quartet sampling method selected the number of 
-        ## quartets that must be sampled will be calculated, or error raised.
-        total = n_choose_k(len(self.samples), 4)
+
+    def _count_quartets(self):
+        """
+        Depending on the quartet sampling method selected the number of 
+        quartets that must be sampled will be calculated, or error raised.
+        """
+        total = int(comb(len(self.samples), 4))
         if self.params.method == "all":
             self.params.nquartets = total
         else:
             if not self.params.nquartets:
                 self.params.nquartets = int(len(self.samples) ** 2.8)
-                print("using default setting for 'random' nquartets = N**2.8 ")
+                self._print(
+                    "using default setting for 'random' nquartets = N**2.8 ")
 
             if self.params.nquartets > total:
                 self.params.method = "all"
-                print(" Warning: nquartets > total possible quartets "
-                + "({})\n Changing to sampling method='all'".format(total))
+                self._print(
+                    " Warning: nquartets > total possible quartets " + 
+                    + "({})\n Changing to sampling method='all'".format(total))
 
-    ## INIT FUNCTIONS -----------------------------------------------
+
+    def _load_file_paths(self):
+        "load file paths if they exist, or None if empty"
+        for key, val in self.trees.__dict__.items():
+            if not os.path.exists(val):
+                self.trees.__dict__[key] = None
+
+
     def _parse_names(self):
-        """ parse sample names from the sequence file"""
+        "parse sample names from the sequence file"
         self.samples = []
         with iter(open(self.files.data, 'r')) as infile:
-            infile.next().strip().split()
+            next(infile)  
             while 1:
                 try:
-                    self.samples.append(infile.next().split()[0])
+                    self.samples.append(next(infile).split()[0])
                 except StopIteration:
                     break
 
@@ -211,7 +253,7 @@ class Tetrad(object):
         3) convert to uint8 for smaller memory load and faster computation. 
         """
 
-        ## read in the data (seqfile)
+        # read in the data (seqfile)
         spath = open(self.files.data, 'r')
         line = spath.readline().strip().split()
         ntax = int(line[0])
@@ -228,15 +270,18 @@ class Tetrad(object):
             io5.create_dataset("bootsarr", (ntax, nbp), dtype=np.uint8)
             io5.create_dataset("bootsmap", (nbp, 2), dtype=np.uint32)
 
-            ## if there is a map file, load it into the bootsmap
+            # if there is a map file, load it into the bootsmap
             if self.files.mapfile:
                 with open(self.files.mapfile, 'r') as inmap:
-                    ## parse the map file from txt and save as dataset
+                    
+                    # parse the map file from txt and save as dataset
                     maparr = np.genfromtxt(inmap, dtype=np.uint64)
+                    maparr[:, 1] = 0
+                    maparr = maparr.astype(int)
                     io5["bootsmap"][:] = maparr[:, [0, 3]]
 
-                    ## parse the span info from maparr and save to dataset
-                    spans = np.zeros((maparr[-1, 0], 2), np.uint64)
+                    # parse the span info from maparr and save to dataset
+                    spans = np.zeros((maparr[-1, 0], 2), dtype=np.uint64)
                     spans = get_spans(maparr, spans)
                     io5.create_dataset("spans", data=spans)
                     if not quiet:
@@ -247,7 +292,11 @@ class Tetrad(object):
 
             ## fill the tmp array from the input phy
             for line, seq in enumerate(spath):
-                tmpseq[line] = np.array(list(seq.split()[-1])).view(np.uint8)
+                tmpseq[line] = (
+                    np.array(list(seq.split()[-1]))
+                    .astype(bytes)
+                    .view(np.uint8)
+                )              
 
             ## convert '-' or '_' into 'N'
             tmpseq[tmpseq == 45] = 78
@@ -281,27 +330,26 @@ class Tetrad(object):
         Remove all existing results files and reinit the h5 arrays 
         so that the tetrad object is just like fresh from a CLI start.
         """
-
-        ## clear any existing results files
+        # clear any existing results files
         oldfiles = [self.files.qdump] + \
-            self.database.__dict__.values() + \
-            self.trees.__dict__.values()
+            list(self.database.__dict__.values()) + \
+            list(self.trees.__dict__.values())
         for oldfile in oldfiles:
             if oldfile:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
 
-        ## store old ipcluster info
+        # store old ipcluster info
         oldcluster = copy.deepcopy(self._ipcluster)
 
-        ## reinit the tetrad object data.
+        # reinit the tetrad object data.
         self.__init__(
             name=self.name, 
             data=self.files.data, 
             mapfile=self.files.mapfile,
             workdir=self.dirs,
             method=self.params.method,
-            guidetree=self.files.tree,
+            guidetree=self.files.guidetree,
             resolve_ambigs=self.params.resolve_ambigs,
             save_invariants=self.params.save_invariants,
             nboots=self.params.nboots, 
@@ -311,85 +359,11 @@ class Tetrad(object):
             cli=self.kwargs.get("cli")
             )
 
-        ## retain the same ipcluster info
+        # retain the same ipcluster info
         self._ipcluster = oldcluster
 
-    ## BOOTSTRAP SEQARRAY SAMPLING FUNCTIONS ------------------------
-    def _sample_bootseq_array(self):
-        """
-        Takes the seqarray and re-samples columns and saves to bootsarr.
-        """
-        ## use 'r+' to read and write to existing array. This is super 
-        ## similar to what is called in __init__. 
-        with h5py.File(self.database.input, 'r+') as io5:  
-            ## load in the seqarr and maparr
-            seqarr = io5["seqarr"][:]
 
-            ## resample columns with replacement
-            newarr = np.zeros(seqarr.shape, dtype=np.uint8)
-            cols = np.random.randint(0, seqarr.shape[1], seqarr.shape[1])
-            tmpseq = shuffle_cols(seqarr, newarr, cols)
-
-            ## resolve ambiguous bases randomly. We do this each time so that
-            ## we get different resolutions.
-            if self.params.resolve_ambigs:
-                tmpseq = resolve_ambigs(tmpseq)
-        
-            ## convert CATG bases to matrix indices
-            tmpseq[tmpseq == 65] = 0
-            tmpseq[tmpseq == 67] = 1
-            tmpseq[tmpseq == 71] = 2
-            tmpseq[tmpseq == 84] = 3
-
-            ## fill the boot array with a re-sampled phy w/ replacement
-            io5["bootsarr"][:] = tmpseq
-            del tmpseq    
-
-
-    def _sample_bootseq_array_map(self):
-        """
-        Re-samples loci with replacement to fill the bootarr sampling
-        only a single SNP from each locus according to the maparr. 
-        """
-        with h5py.File(self.database.input, 'r+') as io5:
-            ## load the original data (seqarr and spans)
-            seqarr = io5["seqarr"][:]
-            spans = io5["spans"][:]            
-
-            ## get size of the new locus re-samples array
-            nloci = spans.shape[0]
-            loci = np.random.choice(nloci, nloci)
-            arrlen = get_shape(spans, loci)
-
-            ## create a new bootsarr and maparr to fill
-            del io5["bootsarr"]
-            del io5["bootsmap"]
-            newbarr = np.zeros((seqarr.shape[0], arrlen), dtype=np.uint8)
-            newbmap = np.zeros((arrlen, 2), dtype=np.uint32)
-            newbmap[:, 1] = np.arange(1, arrlen+1)
-            
-            ## fill the new arrays            
-            tmpseq, tmpmap = fill_boot(seqarr, newbarr, newbmap, spans, loci)
-
-            ## resolve ambiguous bases randomly. We do this each time so that
-            ## we get different resolutions.
-            if self.params.resolve_ambigs:
-                tmpseq = resolve_ambigs(tmpseq)
-
-            ## convert CATG bases to matrix indices
-            tmpseq[tmpseq == 65] = 0
-            tmpseq[tmpseq == 67] = 1
-            tmpseq[tmpseq == 71] = 2
-            tmpseq[tmpseq == 84] = 3
-
-            ## store data sets
-            io5.create_dataset("bootsmap", data=tmpmap)
-            io5.create_dataset("bootsarr", data=tmpseq)
-            #LOGGER.info("resampled bootsarr \n %s", io5["bootsarr"][:, :10])
-            #LOGGER.info("resampled bootsmap \n %s", io5["bootsmap"][:10, :])
-
-    ## QUARTET TAXON SAMPLING FUNCTIONS -----------------------------
-    def _store_N_samples(self, start, ipyclient, quiet=False):
+    def _store_N_samples(self, ipyclient):
         """ 
         Find all quartets of samples and store in a large array
         A chunk size is assigned for sampling from the array of quartets
@@ -397,7 +371,7 @@ class Tetrad(object):
         large so that we don't spend a lot of time doing I/O, but small 
         enough that jobs finish often for checkpointing.
         """
-
+        # chunking
         breaks = 2
         if self.params.nquartets < 5000:
             breaks = 1
@@ -410,18 +384,24 @@ class Tetrad(object):
 
         ## chunk up the data
         ncpus = len(ipyclient)    
-        self._chunksize = (self.params.nquartets // (breaks * ncpus) \
-                        + (self.params.nquartets % (breaks * ncpus)))
+        self._chunksize = max([
+            1, 
+            sum([
+                (self.params.nquartets // (breaks * ncpus)),
+                (self.params.nquartets % (breaks * ncpus)),
+            ])
+        ])
 
         ## create h5 OUT empty arrays
         ## 'quartets' stores the inferred quartet relationship (1 x 4)
         ## This can get huge, so we need to choose the dtype wisely. 
         ## the values are simply the index of the taxa, so uint16 is good.
         with h5py.File(self.database.output, 'w') as io5:
-            io5.create_dataset("quartets", 
-                               (self.params.nquartets, 4), 
-                               dtype=np.uint16, 
-                               chunks=(self._chunksize, 4))
+            io5.create_dataset(
+                name="quartets", 
+                shape=(self.params.nquartets, 4), 
+                dtype=np.uint16, 
+                chunks=(self._chunksize, 4))
             ## group for bootstrap invariant matrices ((16, 16), uint32)
             ## these store the actual matrix counts. dtype uint32 can store
             ## up to 4294967295. More than enough. uint16 max is 65535.
@@ -442,10 +422,10 @@ class Tetrad(object):
                     compression='gzip')
             except RuntimeError:
                 raise IPyradError(
-                    "database file already exists for this analysis, "
-                  + "you must run with the force flag to overwrite")
+                    "database file already exists for this analysis, you must"
+                  + "run with the force flag to overwrite")
             
-        ## submit store job to write into self.database.input
+        # submit store job to write into self.database.input
         if self.params.method == "all":
             rasync = ipyclient[0].apply(store_all, self)
         elif self.params.method == "random":
@@ -454,15 +434,14 @@ class Tetrad(object):
             rasync = ipyclient[0].apply(store_equal, self) 
 
         ## progress bar 
-        printstr = "generating q-sets | {} | "
+        printstr = ("generating q-sets", "")
         prog = 0        
         while 1:
-            elapsed = datetime.timedelta(seconds=int(time.time() - start))
-            if not quiet:
-                if rasync.stdout:
-                    prog = int(rasync.stdout.strip().split()[-1])
-                progressbar(self.params.nquartets, prog,
-                            printstr.format(elapsed), spacer="")
+            if rasync.stdout:
+                prog = int(rasync.stdout.strip().split()[-1])
+            self._progressbar(
+                self.params.nquartets, prog, self.start, printstr)
+
             if not rasync.ready():
                 time.sleep(0.1)
             else:
@@ -470,151 +449,52 @@ class Tetrad(object):
 
         if not rasync.successful():
             raise IPyradError(rasync.result())
-        if not quiet:
-            print("")
-
-    ## QMC QUARTET-JOINING FUNCTIONS ---------------------------------
-    def _dump_qmc(self):
-        """
-        Writes the inferred quartet sets from the database to a text 
-        file to be used as input for QMC. Quartets that had no information
-        available (i.e., no SNPs) were written to the database as 0,0,0,0
-        and are excluded here from the output.
-        """
-
-        ## open the h5 database
-        with h5py.File(self.database.output, 'r') as io5:
-
-            ## create an output file for writing
-            self.files.qdump = os.path.join(self.dirs, self.name+".quartets.txt")
-            with open(self.files.qdump, 'w') as qdump:
-
-                ## pull from db
-                for idx in range(0, self.params.nquartets, self._chunksize):
-                    qchunk = io5["quartets"][idx:idx+self._chunksize, :]
-                    quarts = [tuple(j) for j in qchunk if np.any(j)]
-
-                    ## shuffle and format for qmc
-                    np.random.shuffle(quarts)
-                    chunk = ["{},{}|{},{}".format(*i) for i in quarts]
-                    qdump.write("\n".join(chunk)+"\n")
+        self._print("")
 
 
-    def _run_qmc(self, boot):
-        """
-        Runs quartet max-cut QMC on the quartets qdump file.
-        """
-
-        ## build command
-        self._tmp = os.path.join(self.dirs, ".tmptre")
-        cmd = [ip.bins.qmc, "qrtt=" + self.files.qdump, "otre=" + self._tmp]
-
-        ## run it
-        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-        res = proc.communicate()
-        if proc.returncode:
-            raise IPyradWarningExit(res[1])
-
-        ## parse tmp file written by qmc into a tree and rename it
-        with open(self._tmp, 'r') as intree:
-            tre = ete3.Tree(intree.read().strip())
-            names = tre.get_leaves()
-            for name in names:
-                name.name = self.samples[int(name.name)]
-            tmptre = tre.write(format=9)
-
-        ## save the tree to file
-        if boot:
-            self.trees.boots = os.path.join(self.dirs, self.name+".boots")
-            with open(self.trees.boots, 'a') as outboot:
-                outboot.write(tmptre + "\n")
-        else:
-            self.trees.tree = os.path.join(self.dirs, self.name+".tree")
-            with open(self.trees.tree, 'w') as outtree:
-                outtree.write(tmptre)
-
-        ## save the file
-        self._save()
+    def _print(self, message):
+        if not self.quiet:
+            print(message)
 
 
-    def _compute_stats(self, start, ipyclient, quiet=False):
-        "Compute sampling stats and consens trees"
-        
-        ## get name indices
-        names = self.samples
-
-        ## make a consensus from bootstrap reps.
-        if self.checkpoint.boots:
-            tre = ete3.Tree(self.trees.tree, format=0)
-            tre.unroot()
-            with open(self.trees.boots, 'r') as inboots:
-                bb = [ete3.Tree(i.strip(), format=0) for i in inboots.readlines()]
-                bb = [tre] + bb
-
-            ## calculate consensus supports
-            ctre, counts = consensus_tree(bb, names=names)
-            self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
-            with open(self.trees.cons, 'w') as ocons:
-                ocons.write(ctre.write(format=0))
-
-        else:
-            ctre = ete3.Tree(self.trees.tree, format=0)
-            ctre.unroot()
-
-        ## build stats file and write trees
-        self.trees.nhx = os.path.join(self.dirs, self.name + ".nhx")
-        lbview = ipyclient.load_balanced_view()
-        qtots = {}
-        qsamp = {}
-        tots = sum(1 for i in ctre.iter_leaves())
-        totn = set(ctre.get_leaf_names())
-
-        ## iterate over node traversal
-        for node in ctre.traverse():
-            ## this is slow, needs to look at every sampled quartet
-            ## so we send it to be processed on engines
-            qtots[node] = lbview.apply(get_total, *(tots, node))
-            qsamp[node] = lbview.apply(get_sampled, *(self, totn, node))
-
-        ## wait for jobs to finish (+1 to lenjob is for final progress printer)
-        alljobs = qtots.values() + qsamp.values()
-        lenjobs = len(alljobs) + 1
-        printstr = "calculating stats | {} | "
-        done = 0
-        while 1:
-            if not quiet:
-                done = sum([i.ready() for i in alljobs])
-                elapsed = datetime.timedelta(seconds=int(time.time()-start))
-                progressbar(lenjobs, done, 
-                    printstr.format(elapsed), spacer="")
-            if (lenjobs - 1) == done:
-                break
+    def _progressbar(self, njobs, finished, start, message):
+        # measure progress
+        if not self.quiet:
+            if njobs:
+                progress = 100 * (finished / float(njobs))
             else:
-                time.sleep(0.1)
-        ## store results in the tree object
-        for node in ctre.traverse():
-            total = qtots[node].result()
-            sampled = qsamp[node].result()
-            node.add_feature("quartets_total", total)
-            node.add_feature("quartets_sampled", sampled)
-        features = ["quartets_total", "quartets_sampled"]
+                progress = 100
 
-        ## update final progress
-        elapsed = datetime.timedelta(seconds=int(time.time()-start))        
-        progressbar(1, 1, printstr.format(elapsed), spacer="")
-        if not quiet:
-            print("")
+            # build the bar
+            hashes = '#' * int(progress / 5.)
+            nohash = ' ' * int(20 - len(hashes))
 
-        ## write tree in NHX format 
-        with open(self.trees.nhx, 'w') as outtre:
-            outtre.write(ctre.write(format=0, features=features))
+            # timestamp
+            elapsed = datetime.timedelta(seconds=int(time.time() - start))
+
+            # print to stderr
+            if self.kwargs["cli"]:
+                print("\r[{}] {:>3}% {} | {:<12} ".format(
+                    hashes + nohash,
+                    int(progress),
+                    elapsed,
+                    message[0],
+                ), end="")
+            else:
+                print("\r[{}] {:>3}% {} | {:<12} | {} |".format(*[
+                    hashes + nohash,
+                    int(progress),
+                    elapsed,
+                    message[0],
+                    message[1],
+                ]), end="")
+            sys.stdout.flush()
 
 
     def _save(self):
         """
         Save a JSON serialized tetrad instance to continue from a checkpoint.
         """
-
         ## save each attribute as dict
         fulldict = copy.deepcopy(self.__dict__)
         for i, j in fulldict.items():
@@ -644,7 +524,7 @@ class Tetrad(object):
                 continue
 
 
-    def _load(self, name, workdir, quiet=False):
+    def _load(self, name, workdir="analysis-tetrad"):
         "Load JSON serialized tetrad instance to continue from a checkpoint."
 
         ## load the JSON string and try with name+.json
@@ -670,7 +550,7 @@ class Tetrad(object):
         self.files.data = fullj["files"]["data"]
         self.files.mapfile = fullj["files"]["mapfile"]        
         self.dirs = fullj["dirs"]
-        self._init_seqarray(quiet=quiet)
+        self._init_seqarray()
         self._parse_names()
 
         ## fill in the same attributes
@@ -685,119 +565,65 @@ class Tetrad(object):
                 self.__setattr__(key, fullj[key])
 
 
-    def _inference(self, start, ipyclient, quiet):
-        """
-        Sends slices of quartet sets to parallel engines for computing, 
-        enters results into output database, sends finished quartet sets
-        to QMC for tree inference, and prints progress bars.
-        """
+    def _get_parallel(self, ipyclient):
+        if not ipyclient:
+            args = list(self._ipcluster.items()) + [("spacer", "")]
+            ipyclient = ip.core.parallel.get_client(**dict(args))
 
-        ## load-balancer for single-threaded execution jobs
-        lbview = ipyclient.load_balanced_view()
+            # if THAT fails, launch a custom ipcluster in cli mode
+            # self._ipcluster["cluster_id"] = 'ipyrad-cli'
+            # ... cli = True
+            # ... ipcluster_register()
 
-        ## an iterator that grabs quartet chunk start positions
-        jobs = range(self.checkpoint.arr, self.params.nquartets, self._chunksize)
+        # print the cluster connection information
+        if not self.quiet:
+            ip.cluster_info(ipyclient)
 
-        ## if this is a bootstrap then init a new boot array in the database
-        ## max val is 65535 in here if uint16
-        bootkey = "boot{}".format(self.checkpoint.boots)
-        with h5py.File(self.database.output, 'r+') as io5:
-            if bootkey not in io5["invariants"].keys():
-                io5["invariants"].create_dataset(
-                    bootkey, 
-                    (self.params.nquartets, 16, 16),
-                    dtype=np.uint16,
-                    chunks=(self._chunksize, 16, 16))
+        ## store ipyclient engine pids to the dict so we can 
+        ## hard-interrupt them later if assembly is interrupted. 
+        ## Only stores pids of engines that aren't busy at this moment, 
+        ## otherwise it would block here while waiting to find their pids.
+        self._ipcluster["pids"] = {}
+        for eid in ipyclient.ids:
+            engine = ipyclient[eid]
+            if not engine.outstanding:
+                pid = engine.apply(os.getpid).get()
+                self._ipcluster["pids"][eid] = pid
+        return ipyclient
 
-        ## start progress bar if new or skip if bootstrapping
-        elapsed = datetime.timedelta(seconds=int(time.time() - start))
-        if self.checkpoint.boots:
-            printstr = "bootstrap trees   | {} | "
-        else:
-            printstr = "initial tree      | {} | "
-            if not quiet:
-                progressbar(1, 0, printstr.format(elapsed), spacer="")
 
-        ## submit jobs distriuted across the cluster.
-        asyncs = {}
-        for job in jobs:
-            asyncs[job] = lbview.apply(nworker, *(self, job))
+    def _cleanup_parallel(self, ipyclient):
+        try:
+            ## save the Assembly
+            self._save()                
+            
+            ## can't close client if it was never open
+            if ipyclient:
 
-        ## wait for jobs to finish, catch results as they return and
-        ## enter them into the HDF5 database to keep memory low.
-        done = 0
-        while 1:
-            ## gather finished jobs
-            finished = [i for i, j in asyncs.iteritems() if j.ready()]
-
-            ## iterate over finished list
-            for key in finished:
-                rasync = asyncs[key]
-                if rasync.successful():
-                    ## store result
-                    done += 1
-                    results = rasync.result()
-                    self._insert_to_array(key, results)
-                    ## purge from memory
-                    del asyncs[key]
+                ## send SIGINT (2) to all engines
+                ipyclient.abort()
+                time.sleep(1)
+                for engine_id, pid in self._ipcluster["pids"].items():
+                    if ipyclient.queue_status()[engine_id]["tasks"]:
+                        os.kill(pid, 2)
+                    time.sleep(0.25)
+                
+                ## if CLI, stop jobs and shutdown
+                if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
+                    ipyclient.shutdown(hub=True, block=False)
+                    ipyclient.close()
                 else:
-                    raise IPyradError(rasync.result())
+                    if not ipyclient.outstanding:
+                        ipyclient.purge_everything()
+                    else:
+                        ## nanny: kill everything, something bad happened
+                        ipyclient.shutdown(hub=True, block=False)
+                        ipyclient.close()
+                        print("\nwarning: ipcluster shutdown and must be restarted")
 
-            # progress bar is different if first vs boot tree
-            if not quiet:
-                if not self.checkpoint.boots:
-                    progressbar(len(jobs), done, start, printstr)
-                else:
-                    progressbar(
-                        self.params.nboots, 
-                        self.checkpoint.boots, 
-                        printstr, 
-                        start)
-
-            ## done is counted on finish, so this means we're done
-            if len(asyncs) == 0:
-                break
-            else:
-                time.sleep(0.1)
-
-        ## dump quartets into a text file for QMC
-        self._dump_qmc()
-
-        ## send to QMC
-        if not self.checkpoint.boots:
-            self._run_qmc(0)
-        else:
-            self._run_qmc(1)
-
-        ## reset the checkpoint arr
-        self.checkpoint.arr = 0
-
-        ## print spacer if finished first tree or last boot.
-        if (not self.checkpoint.boots) and (not quiet):
-            print("")
-
-        elif (self.checkpoint.boots == self.params.nboots) and (not quiet):
-            print("")
-
-
-    def _insert_to_array(self, chunk, results):
-        "Enters results arrays into the HDF5 database."
-
-        ## two result arrs
-        chunksize = self._chunksize
-        qrts, invs = results
-
-        ## enter into db
-        with h5py.File(self.database.output, 'r+') as io5:
-            io5['quartets'][chunk:chunk + chunksize] = qrts
-
-            ## entered as 0-indexed !
-            if self.params.save_invariants:
-                if self.checkpoint.boots:
-                    key = "invariants/boot{}".format(self.checkpoint.boots)
-                    io5[key][chunk:chunk + chunksize] = invs
-                else:
-                    io5["invariants/boot0"][chunk:chunk + chunksize] = invs
+        ## if exception during shutdown then we really screwed up
+        except Exception as inst2:
+            print("warning: error during shutdown:\n{}".format(inst2))
 
 
     def run(self, force=False, quiet=False, ipyclient=None):
@@ -807,131 +633,410 @@ class Tetrad(object):
         force (bool):
             Overwrite existing results for object with the same name
             and workdir as this one.
-        verbose (int):
+        quiet (int):
             0=primt nothing; 1=print progress bars; 2=print pringress
             bars and cluster information.
         ipyclient (ipyparallel.Client object):
             A connected ipyclient object. If ipcluster instance is 
             not running on the default profile then ...
         """
-
-        ## force overwrite needs to clear out the HDF5 database
+        # force overwrite needs to clear out the HDF5 database
+        self.quiet = quiet
         if force:
             self._refresh()
 
-        ## print nquartet statement
-        if not quiet:
-            print("inferring {} quartet tree sets".format(self.params.nquartets))
+        # print nquartet statement
+        self._print(
+            "inferring {} quartet tree sets".format(self.params.nquartets))
 
-        ## wrap the run in a try statement to ensure we properly shutdown
-        ## and cleanup on exit or interrupt. 
-        inst = None
+        # wrap the run in a try statement to ensure we properly shutdown
         try:
-            ## find and connect to an ipcluster instance given the information
-            ## in the _ipcluster dictionary if a connected client was not given.
-            if not ipyclient:
-                args = self._ipcluster.items() + [("spacer", "")]
-                ipyclient = ip.core.parallel.get_client(**dict(args))
+            # find and connect to an ipcluster instance given the information
+            # in the _ipcluster dict. Connect to running one, or launch new. 
+            ipyclient = self._get_parallel(ipyclient)
 
-            ## print the cluster connection information
-            if not quiet:
-                ip.cluster_info(ipyclient)
+            # fill the input array with quartets to sample
+            self.start = time.time()
+            self._store_N_samples(ipyclient)
 
-            ## store ipyclient engine pids to the dict so we can 
-            ## hard-interrupt them later if assembly is interrupted. 
-            ## Only stores pids of engines that aren't busy at this moment, 
-            ## otherwise it would block here while waiting to find their pids.
-            self._ipcluster["pids"] = {}
-            for eid in ipyclient.ids:
-                engine = ipyclient[eid]
-                if not engine.outstanding:
-                    pid = engine.apply(os.getpid).get()
-                    self._ipcluster["pids"][eid] = pid            
-
-            ## fill the input array with quartets to sample --------------------
-            start = time.time()
-            if (not self.checkpoint.boots) and (not self.trees.tree):
-                self._store_N_samples(start, ipyclient, quiet=quiet)
-
-            ## calculate invariants for the full seqarray ----------------------
-            start = time.time()            
-            if not self.trees.tree:
-                self._inference(start, ipyclient, quiet=quiet)
+            # calculate invariants for the full seqarray 
+            self.start = time.time()
+            if os.path.exists(self.trees.tree):
+                print("initial tree already inferred")
             else:
-                if not quiet:
-                    print("initial tree already inferred")
-
-            ## calculate invariants for each bootstrap rep ----------------------
-            start = time.time()
+                Inference(self, ipyclient, self.start).run()
+                    
+            # calculate invariants for each bootstrap rep 
+            self.start = time.time()
             if self.params.nboots:
-                if self.checkpoint.boots: #<= self.params.nboots:
-                    if not quiet:
-                        print("{} bootstrap trees already inferred"\
-                              .format(self.checkpoint.boots))
+                if self.checkpoint.boots == self.params.nboots:
+                    print("{} bootstrap trees already inferred"
+                          .format(self.checkpoint.boots))
+                else:
+                    while self.checkpoint.boots < self.params.nboots:
+                        self.checkpoint.boots += 1
+                        Inference(self, ipyclient, self.start).run()
 
-                while self.checkpoint.boots < self.params.nboots:
-                    ## resample the bootseq array
-                    if self.files.mapfile:
-                        self._sample_bootseq_array_map()
-                    else:
-                        self._sample_bootseq_array()
+            # write output stats
+            TreeStats(self, ipyclient).run()
 
-                    ## start boot inference 
-                    self.checkpoint.boots += 1
-                    self._inference(start, ipyclient, quiet=quiet)
-
-            ## write output stats -----------------------------------------------
-            #self.files.stats = os.path.join(self.dirs, self.name+"_stats.txt")
-            start = time.time()
-            self._compute_stats(start, ipyclient, quiet=quiet)
-
-        ## handle exceptions so they will be raised after we clean up below
+        # handle exceptions so they will be raised after we clean up below
         except KeyboardInterrupt as inst:
             print("\nKeyboard Interrupt by user. Cleaning up...")
 
         except IPyradError as inst:
-            print("\nError encountered: {}".format(inst))
+            print("\nError encountered: {}\n[see trace below]\n".format(inst))
+            raise 
 
         except Exception as inst:
-            print("\nUnknown exception encountered: {}".format(inst))
+            print("\nException encountered: {}\n[see trace below]\n".format(inst))
+            raise
 
-        ## close client when done or interrupted
+        # close client when done or interrupted
         finally:
-            try:
-                ## save the Assembly
-                self._save()                
-                
-                ## can't close client if it was never open
-                if ipyclient:
+            self._cleanup_parallel(ipyclient)
 
-                    ## send SIGINT (2) to all engines
-                    ipyclient.abort()
-                    time.sleep(1)
-                    for engine_id, pid in self._ipcluster["pids"].items():
-                        if ipyclient.queue_status()[engine_id]["tasks"]:
-                            os.kill(pid, 2)
-                        time.sleep(0.25)
-                    
-                    ## if CLI, stop jobs and shutdown
-                    if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
-                        ipyclient.shutdown(hub=True, block=False)
-                        ipyclient.close()
-                    else:
-                        if not ipyclient.outstanding:
-                            ipyclient.purge_everything()
-                        else:
-                            ## nanny: kill everything, something bad happened
-                            ipyclient.shutdown(hub=True, block=False)
-                            ipyclient.close()
-                            print("\nwarning: ipcluster shutdown and must be restarted")
-                
-                ## reraise the error now that we're cleaned up
-                #if inst:
-                #    raise inst
 
-            ## if exception during shutdown then we really screwed up
-            except Exception as inst2:
-                print("warning: error during shutdown:\n{}".format(inst2))
+# class with functions run on the remote engines
+class Inference:
+    def __init__(self, tet, ipyclient, start=None, quiet=False):
+        self.tet = tet
+        self.quiet = quiet
+        self.boot = bool(self.tet.checkpoint.boots)
+        self.start = (start if start else time.time())
+        self.ipyclient = ipyclient
+        self.lbview = self.ipyclient.load_balanced_view()
+        self.jobs = range(
+            self.tet.checkpoint.arr, 
+            self.tet.params.nquartets, 
+            self.tet._chunksize)
+        self.printstr = ("initial tree   ", "")
+        if self.boot:
+            self.printstr = ("bootstrap trees ", "")
+
+    def run(self):
+        self.get_snp_array()
+        self.init_new_invariants_array()
+        self.fill_database()
+        self.write_tree()
+
+    # init funcs
+    def init_new_invariants_array(self):
+        "if this is a bootstrap then init a new boot array in the database"
+        ## max val is 65535 in here if uint16
+        bootkey = "boot{}".format(self.tet.checkpoint.boots)
+        with h5py.File(self.tet.database.output, 'r+') as io5:
+            if bootkey not in io5["invariants"].keys():
+                io5["invariants"].create_dataset(
+                    name=bootkey, 
+                    shape=(self.tet.params.nquartets, 16, 16),
+                    dtype=np.uint16,
+                    chunks=(self.tet._chunksize, 16, 16))
+
+
+    def get_snp_array(self):
+        # resample the bootseq array
+        if self.tet.files.mapfile:
+            self.sample_bootseq_array_map()
+        else:
+            self.sample_bootseq_array()
+
+
+    def insert_to_hdf5(self, chunk, results):
+        #two result arrs
+        chunksize = self.tet._chunksize
+        qrts, invs = results
+
+        ## enter into db
+        with h5py.File(self.tet.database.output, 'r+') as io5:
+            io5['quartets'][chunk:chunk + chunksize] = qrts
+
+            ## entered as 0-indexed !
+            if self.tet.params.save_invariants:
+                if self.boot:
+                    key = "invariants/boot{}".format(self.tet.checkpoint.boots)
+                    io5[key][chunk:chunk + chunksize] = invs
+                else:
+                    io5["invariants/boot0"][chunk:chunk + chunksize] = invs
+
+
+    def fill_database(self):
+        # submit jobs distriuted across the cluster.
+        asyncs = {}
+        for job in self.jobs:
+            asyncs[job] = self.lbview.apply(nworker, *(self.tet, job))
+
+        # wait for jobs to finish, catch results as they return and
+        # enter into HDF5 database and delete to keep memory low.
+        done = 0
+        while 1:
+            ## gather finished jobs
+            finished = [i for i, j in asyncs.items() if j.ready()]
+
+            ## iterate over finished list
+            for key in finished:
+                rasync = asyncs[key]
+                if rasync.successful():
+
+                    # store result and purge it
+                    done += 1
+                    results = rasync.result()
+                    self.insert_to_hdf5(key, results)
+                    del asyncs[key]
+                else:
+                    raise IPyradError(rasync.result())
+
+            # progress bar is different if first vs boot tree
+            if not self.quiet:
+                if not self.boot:
+                    self.tet._progressbar(
+                        len(self.jobs), 
+                        done, 
+                        self.start, 
+                        self.printstr,
+                    )
+                else:
+                    self.tet._progressbar(
+                        self.tet.params.nboots, 
+                        self.tet.checkpoint.boots, 
+                        self.start,
+                        self.printstr)
+
+            ## done is counted on finish, so this means we're done
+            if len(asyncs):
+                time.sleep(0.1)
+            else:
+                break
+
+
+    def write_tree(self):
+        # dump quartets into a text file for QMC
+        self.dump_qmc()
+
+        # send to QMC
+        if not self.boot:
+            self.run_qmc(0)
+            self.tet._print("")
+
+        else:
+            self.run_qmc(1)
+            if self.tet.checkpoint.boots == self.tet.params.nboots:
+                self.tet._print("")
+
+        ## reset the checkpoint arr
+        #self.tet.checkpoint.arr = 0
+
+
+    def sample_bootseq_array(self):
+        "Takes the seqarray and re-samples columns and saves to bootsarr."
+        ## use 'r+' to read and write to existing array. This is super 
+        ## similar to what is called in __init__. 
+        with h5py.File(self.tet.database.input, 'r+') as io5:  
+            ## load in the seqarr and maparr
+            seqarr = io5["seqarr"][:]
+
+            ## resample columns with replacement
+            newarr = np.zeros(seqarr.shape, dtype=np.uint8)
+            cols = np.random.randint(0, seqarr.shape[1], seqarr.shape[1])
+            tmpseq = shuffle_cols(seqarr, newarr, cols)
+
+            ## resolve ambiguous bases randomly. We do this each time so that
+            ## we get different resolutions.
+            if self.tet.params.resolve_ambigs:
+                tmpseq = resolve_ambigs(tmpseq)
+        
+            ## convert CATG bases to matrix indices
+            tmpseq[tmpseq == 65] = 0
+            tmpseq[tmpseq == 67] = 1
+            tmpseq[tmpseq == 71] = 2
+            tmpseq[tmpseq == 84] = 3
+
+            ## fill the boot array with a re-sampled phy w/ replacement
+            io5["bootsarr"][:] = tmpseq
+            del tmpseq    
+
+
+    def sample_bootseq_array_map(self):
+        """
+        Re-samples loci with replacement to fill the bootarr sampling
+        only a single SNP from each locus according to the maparr. 
+        """
+        with h5py.File(self.tet.database.input, 'r+') as io5:
+            ## load the original data (seqarr and spans)
+            seqarr = io5["seqarr"][:]
+            spans = io5["spans"][:]            
+
+            ## get size of the new locus re-samples array
+            nloci = spans.shape[0]
+            loci = np.random.choice(nloci, nloci)
+            arrlen = get_shape(spans, loci)
+
+            ## create a new bootsarr and maparr to fill
+            del io5["bootsarr"]
+            del io5["bootsmap"]
+            newbarr = np.zeros((seqarr.shape[0], arrlen), dtype=np.uint8)
+            newbmap = np.zeros((arrlen, 2), dtype=np.uint32)
+            newbmap[:, 1] = np.arange(1, arrlen + 1)
+            
+            ## fill the new arrays            
+            tmpseq, tmpmap = fill_boot(seqarr, newbarr, newbmap, spans, loci)
+
+            ## resolve ambiguous bases randomly. We do this each time so that
+            ## we get different resolutions.
+            if self.tet.params.resolve_ambigs:
+                tmpseq = resolve_ambigs(tmpseq)
+
+            ## convert CATG bases to matrix indices
+            tmpseq[tmpseq == 65] = 0
+            tmpseq[tmpseq == 67] = 1
+            tmpseq[tmpseq == 71] = 2
+            tmpseq[tmpseq == 84] = 3
+
+            ## store data sets
+            io5.create_dataset("bootsmap", data=tmpmap)
+            io5.create_dataset("bootsarr", data=tmpseq)
+
+
+    def dump_qmc(self):
+        """
+        Writes the inferred quartet sets from the database to a text 
+        file to be used as input for QMC. Quartets that had no information
+        available (i.e., no SNPs) were written to the database as 0,0,0,0
+        and are excluded here from the output.
+        """
+        ## open the h5 database
+        with h5py.File(self.tet.database.output, 'r') as io5:
+
+            ## create an output file for writing
+            self.tet.files.qdump = os.path.join(
+                self.tet.dirs, 
+                self.tet.name + ".quartets.txt")
+            with open(self.tet.files.qdump, 'w') as qdump:
+
+                ## pull from db
+                for idx in range(
+                    0, 
+                    self.tet.params.nquartets, 
+                    self.tet._chunksize):
+                    qchunk = io5["quartets"][idx:idx + self.tet._chunksize, :]
+                    quarts = [tuple(j) for j in qchunk if np.any(j)]
+
+                    ## shuffle and format for qmc
+                    np.random.shuffle(quarts)
+                    chunk = ["{},{}|{},{}".format(*i) for i in quarts]
+                    qdump.write("\n".join(chunk) + "\n")
+
+
+    def run_qmc(self, boot):
+        "Runs quartet max-cut QMC on the quartets qdump file."
+        # build command
+        self._tmp = os.path.join(self.tet.dirs, ".tmptre")
+        cmd = [
+            ip.bins.qmc, 
+            "qrtt=" + self.tet.files.qdump, 
+            "otre=" + self._tmp,
+        ]
+
+        # run QMC on quartets input
+        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+        res = proc.communicate()
+        if proc.returncode:
+            raise IPyradError(res[1])
+
+        # parse tmp file written by QMC into a tree and rename tips
+        ttre = toytree.tree(self._tmp)
+        tips = ttre.tree.get_leaves()
+        for tip in tips:
+            tip.name = self.tet.samples[int(tip.name)]
+        newick = ttre.tree.write(format=9)      
+
+        # save the tree to file
+        if boot:
+            with open(self.tet.trees.boots, 'a') as outboot:
+                outboot.write(newick + "\n")
+        else:
+            with open(self.tet.trees.tree, 'w') as outtree:
+                outtree.write(newick)
+
+        # save the new checkpoint and file paths
+        self.tet._save()
+
+
+class TreeStats:
+    def __init__(self, tet, ipyclient):
+        self.tet = tet
+        self.ipyclient = ipyclient
+        self.lbview = self.ipyclient.load_balanced_view()
+        self.start = (self.tet.start if self.tet.start else time.time())
+        self.samples = self.tet.samples
+
+    def run(self):
+        self.build_bootstrap_consensus()
+        self.build_nhx_stats()
+
+    def build_bootstrap_consensus(self):
+        "Compute sampling stats and consens trees"
+    
+        # make a consensus from bootstrap reps.
+        if self.tet.checkpoint.boots:
+            ttre = toytree.tree(self.tet.trees.tree, format=0).unroot()
+            with open(self.tet.trees.boots, 'r') as inboots:
+                bb = [
+                    toytree.tree(i.strip(), format=0).unroot() 
+                    for i in inboots.readlines()
+                ]
+                bb = [ttre] + bb
+
+            # calculate consensus supports
+            names = toytree.tree(self.tet.trees.tree).get_tip_labels()
+            self.ctre, self.counts = consensus_tree(bb, names=names)
+            self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
+            with open(self.trees.cons, 'w') as ocons:
+                ocons.write(self.ctre.write(format=0))
+
+        else:
+            self.ctre = toytree.tree(self.tet.trees.tree, format=0).unroot()
+
+    def build_nhx_stats(self):
+        ## build stats file and write trees
+        qtots = {}
+        qsamp = {}
+        tots = len(self.ctre)
+        totn = set(self.ctre.get_tip_labels())
+
+        ## iterate over node traversal
+        for node in self.ctre.tree.traverse():
+            # this is slow, needs to look at every sampled quartet
+            # so we send it to be processed on engines
+            qtots[node] = self.lbview.apply(get_total, *(tots, node))
+            qsamp[node] = self.lbview.apply(get_sampled, *(self, totn, node))
+
+        ## wait for jobs to finish (+1 to lenjob is for final progress printer)
+        alljobs = list(qtots.values()) + list(qsamp.values())
+        printstr = ("calculating stats", "")
+        done = 0
+        while 1:
+            done = [i.ready() for i in alljobs]
+            self.tet._progressbar(
+                sum(done), len(done), self.tet.start, printstr)
+            if all(done):
+                break
+            time.sleep(0.1)
+
+        ## store results in the tree object
+        for node in self.ctre.tree.traverse():
+            total = qtots[node].result()
+            sampled = qsamp[node].result()
+            node.add_feature("quartets_total", total)
+            node.add_feature("quartets_sampled", sampled)
+        features = ["quartets_total", "quartets_sampled"]
+
+        ## update final progress
+        self._progressbar(0, 0, 0, 0, True)
+
+        ## write tree in NHX format 
+        with open(self.tet.trees.nhx, 'w') as outtre:
+            outtre.write(self.ctre.tree.write(format=0, features=features))        
 
 
 
@@ -977,6 +1082,7 @@ def nworker(data, chunk):
         ## really, really, really tried. Tried again now that
         ## numba supports axis args for np.sum. Still can't 
         ## get speed improvements by numbifying this loop.
+        # TODO: new numba funcs supported, maybe this time...
         nmask = np.any(nall_mask[sidx], axis=0)
         nmask += np.all(seqs == seqs[0], axis=0) 
 
@@ -1051,15 +1157,15 @@ def chunk_to_matrices(narr, mapcol, nmask):
         if not nmask[idx]:
             if not mapcol[idx] == last_loc:
                 i = narr[:, idx]
-                mats[0, (4*i[0])+i[1], (4*i[2])+i[3]] += 1      
+                mats[0, (4 * i[0]) + i[1], (4 * i[2]) + i[3]] += 1      
                 last_loc = mapcol[idx]
 
     ## fill the alternates
     x = np.uint8(0)
     for y in np.array([0, 4, 8, 12], dtype=np.uint8):
         for z in np.array([0, 4, 8, 12], dtype=np.uint8):
-            mats[1, y:y+np.uint8(4), z:z+np.uint8(4)] = mats[0, x].reshape(4, 4)
-            mats[2, y:y+np.uint8(4), z:z+np.uint8(4)] = mats[0, x].reshape(4, 4).T
+            mats[1, y:y + np.uint8(4), z:z + np.uint8(4)] = mats[0, x].reshape(4, 4)
+            mats[2, y:y + np.uint8(4), z:z + np.uint8(4)] = mats[0, x].reshape(4, 4).T
             x += np.uint8(1)
 
     return mats
@@ -1069,7 +1175,7 @@ def chunk_to_matrices(narr, mapcol, nmask):
 ## quartet sampling funcs to fill the database
 ##################################################
 
-
+# replace self here with tet to be more clear
 def store_all(self):
     """
     Populate array with all possible quartets. This allows us to 
@@ -1091,7 +1197,7 @@ def store_all(self):
             ## send progress update to stdout on engine
             print(min(i, self.params.nquartets))
 
-
+# not yet updated
 def store_random(self):
     """
     Populate array with random quartets sampled from a generator.
@@ -1110,7 +1216,8 @@ def store_random(self):
 
         ## set generators
         qiter = itertools.combinations(range(len(self.samples)), 4)
-        rand = np.arange(0, n_choose_k(len(self.samples), 4))
+        #rand = np.arange(0, n_choose_k(len(self.samples), 4))
+        rand = np.arange(0, int(comb(len(self.samples), 4)))
         np.random.shuffle(rand)
         rslice = rand[:self.params.nquartets]
         rss = np.sort(rslice)
@@ -1121,7 +1228,7 @@ def store_random(self):
         print(self._chunksize)
 
         ## set to store
-        rando = riter.next()
+        rando = next(riter)
         tmpr = np.zeros((self.params.nquartets, 4), dtype=np.uint16)
         tidx = 0
         while 1:
@@ -1130,7 +1237,7 @@ def store_random(self):
                     if i == rando:
                         tmpr[tidx] = j
                         tidx += 1
-                        rando = riter.next()
+                        rando = next(riter)
 
                     ## print progress bar update to engine stdout
                     if not i % self._chunksize:
@@ -1142,7 +1249,7 @@ def store_random(self):
         fillsets[:] = tmpr
         del tmpr
 
-
+# not yet updated for toytree or py3
 def store_equal(self):
     """
     Takes a tetrad class object and populates array with random 
@@ -1186,8 +1293,9 @@ def store_equal(self):
             ## if small number at this split then sample all possible sets
             ## we will exhaust this quickly and then switch to random for 
             ## the larger splits.
-            total = n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2)
-            if total < squarts*2:
+            #total = n_choose_k(len(split[0]), 2) * n_choose_k(len(split[1]), 2)
+            total = int(comb(len(split[0]), 2)) * int(comb(len(split[1]), 2))
+            if total < squarts * 2:
                 qiter = (i + j for (i, j) in itertools.product(
                     itertools.combinations(split[0], 2), 
                     itertools.combinations(split[1], 2)))
@@ -1218,11 +1326,11 @@ def store_equal(self):
         ## keep filling quartets until nquartets are sampled.
         while i < self.params.nquartets:
             ## grab the next iterator
-            cycle, qiter = qitercycle.next()
+            cycle, qiter = next(qitercycle)
 
             ## sample from iterators, store sorted set.
             try:
-                qrtsamp = tuple(sorted(qiter.next()))
+                qrtsamp = tuple(sorted(next(qiter)))
                 if qrtsamp not in sampled:
                     sampled.add(qrtsamp)
                     edge_targeted += 1
@@ -1260,16 +1368,15 @@ def store_equal(self):
 ## some itertools cookbook recipes
 ########################################
 
-
-def n_choose_k(n, k):
-    """ 
-    Get the number of quartets as n-choose-k. This is used in equal 
-    splits to decide whether a split should be exhaustively sampled
-    or randomly sampled. Edges near tips can be exhaustive while highly 
-    nested edges can do with less sampling.
-    """
-    mulfunc = lambda x, y: x * y
-    return int(reduce(mulfunc, (Fraction(n  -i, i+1) for i in range(k)), 1))
+# def n_choose_k(n, k):
+#     """ 
+#     Get the number of quartets as n-choose-k. This is used in equal 
+#     splits to decide whether a split should be exhaustively sampled
+#     or randomly sampled. Edges near tips can be exhaustive while highly 
+#     nested edges can do with less sampling.
+#     """
+#     mulfunc = lambda x, y: x * y
+#     return int(reduce(mulfunc, (Fraction(n  -i, i+1) for i in range(k)), 1))
 
 
 def random_combination(nsets, n, k):
@@ -1299,26 +1406,28 @@ def random_product(iter1, iter2):
 ## JIT compiled parsing functions
 ########################################
 
-@numba.jit(nopython=True)
-def get_spans(maparr, spans):
-    """ 
-    Get span distance for each locus in original seqarray. This
-    is used to create re-sampled arrays in each bootstrap to sample
-    unlinked SNPs. 
-    """
-    ## start at 0, finds change at 1-index of map file
-    bidx = 1
-    spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-    ## read through marr and record when locus id changes
-    for idx in xrange(1, maparr.shape[0]):
-        cur = maparr[idx, 0]
-        if cur != bidx:
-            idy = idx + 1
-            spans[cur-2, 1] = idx
-            spans[cur-1, 0] = idx
-            bidx = cur
-    spans[-1, 1] = maparr[-1, -1]
-    return spans
+
+# this method is a bit faster maybe
+# @numba.jit(nopython=True)
+# def deprecated_get_spans(maparr, spans):
+#     """ 
+#     Get span distance for each locus in original seqarray. This
+#     is used to create re-sampled arrays in each bootstrap to sample
+#     unlinked SNPs. 
+#     """
+#     ## start at 0, finds change at 1-index of map file
+#     bidx = 1
+#     spans = np.zeros((maparr[-1, 0], 2), np.uint64)
+#     ## read through marr and record when locus id changes
+#     for idx in range(1, maparr.shape[0]):
+#         cur = maparr[idx, 0]
+#         if cur != bidx:
+#             idy = idx + 1
+#             spans[cur - 2, 1] = idx
+#             spans[cur - 1, 0] = idx
+#             bidx = cur
+#     spans[-1, 1] = maparr[-1, -1]
+#     return spans
 
 
 @numba.jit(nopython=True)
@@ -1332,7 +1441,7 @@ def resolve_ambigs(tmpseq):
     """
 
     ## the order of rows in GETCONS
-    for aidx in xrange(6):
+    for aidx in range(6):
         #np.uint([82, 75, 83, 89, 87, 77]):
         ambig, res1, res2 = GETCONS[aidx]
 
@@ -1340,7 +1449,7 @@ def resolve_ambigs(tmpseq):
         idx, idy = np.where(tmpseq == ambig)
         halfmask = np.random.choice(np.array([True, False]), idx.shape[0])
 
-        for col in xrange(idx.shape[0]):
+        for col in range(idx.shape[0]):
             if halfmask[col]:
                 tmpseq[idx[col], idy[col]] = res1
             else:
@@ -1348,17 +1457,15 @@ def resolve_ambigs(tmpseq):
     return tmpseq
 
 
-@numba.jit(nopython=True)#, cache=True)
+@numba.jit(nopython=True)
 def shuffle_cols(seqarr, newarr, cols):
-    """ 
-    Used in bootstrap resampling when no map file is present.
-    """
-    for idx in xrange(cols.shape[0]):
+    "Used in bootstrap resampling when no map file is present."
+    for idx in range(cols.shape[0]):
         newarr[:, idx] = seqarr[:, cols[idx]]
     return newarr
 
 
-@numba.jit(nopython=True)#, cache=True)
+@numba.jit(nopython=True)
 def get_shape(spans, loci):
     """ 
     Returns shape of new bootstrap resampled locus array. The 
@@ -1366,12 +1473,12 @@ def get_shape(spans, loci):
     of SNPs in the data set can change.
     """
     width = 0
-    for idx in xrange(loci.shape[0]):
+    for idx in range(loci.size):
         width += spans[loci[idx], 1] - spans[loci[idx], 0]
     return width
 
 
-@numba.jit(nopython=True)#, cache=True)
+@numba.jit(nopython=True)
 def fill_boot(seqarr, newboot, newmap, spans, loci):
     """ 
     Fills the new bootstrap SNP array and map array with
@@ -1381,7 +1488,7 @@ def fill_boot(seqarr, newboot, newmap, spans, loci):
     cidx = 0
   
     ## resample each locus
-    for i in xrange(loci.shape[0]):
+    for i in range(loci.shape[0]):
         
         ## grab a random locus's columns
         x1 = spans[loci[i]][0]
@@ -1394,10 +1501,10 @@ def fill_boot(seqarr, newboot, newmap, spans, loci):
         
         ## fill bootarr with n columns from seqarr
         ## the required length was already measured
-        newboot[:, cidx:cidx+cols.shape[1]] = rcols
+        newboot[:, cidx:cidx + cols.shape[1]] = rcols
 
         ## fill bootmap with new map info
-        newmap[cidx: cidx+cols.shape[1], 0] = i+1
+        newmap[cidx: cidx + cols.shape[1], 0] = i + 1
         
         ## advance column index
         cidx += cols.shape[1]
@@ -1584,7 +1691,7 @@ def filter_clades(clade_counts, cutoff):
     clades = np.array([list(i[0]) for i in clade_counts], dtype=np.int8)
     counts = np.array([i[1] for i in clade_counts], dtype=np.float64)
     
-    for idx in xrange(clades.shape[0]):
+    for idx in range(clades.shape[0]):
         conflict = False
     
         if counts[idx] < cutoff:
@@ -1634,15 +1741,15 @@ def find_clades(trees, names):
     ## index names from the first tree
     if not names:
         names = trees[0].get_leaf_names()
-    ndict = {j:i for i, j in enumerate(names)}
-    namedict = {i:j for i, j in enumerate(names)}
+    ndict = {j: i for i, j in enumerate(names)}
+    namedict = {i: j for i, j in enumerate(names)}
 
     ## store counts
     clade_counts = defaultdict(int)
     ## count as bitarray clades in each tree
     for tree in trees:
         tree.unroot()
-        for node in tree.traverse('postorder'):
+        for node in tree.tree.traverse('postorder'):
             #bits = bitarray('0'*len(tree))
             bits = np.zeros(len(tree), dtype=np.bool_)
             for child in node.iter_leaf_names():
@@ -1672,7 +1779,6 @@ def build_trees(fclade_counts, namedict):
     A subfunc of consensus_tree(). Build an unrooted consensus tree 
     from filtered clade counts. 
     """
-
     ## storage
     nodes = {}
     idxarr = np.arange(len(fclade_counts[0][0]))
@@ -1740,7 +1846,7 @@ def _byteify(data, ignore_dicts=False):
     """
     converts unicode to utf-8 when reading in json files
     """
-    if isinstance(data, unicode):
+    if isinstance(data, str):
         return data.encode("utf-8")
 
     if isinstance(data, list):
@@ -1749,7 +1855,6 @@ def _byteify(data, ignore_dicts=False):
     if isinstance(data, dict) and not ignore_dicts:
         return {
             _byteify(key, ignore_dicts=True): _byteify(value, ignore_dicts=True)
-            for key, value in data.iteritems()
+            for key, value in data.items()
         }
     return data
-
