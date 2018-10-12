@@ -108,11 +108,15 @@ class Step7:
         # output files already exist for this assembly. Raise
         # error unless using the force flag to prevent overwriting. 
         if not self.force:
-            if os.path.exists(os.path.join(
-                self.data.dirs.outfiles, 
+            _outdir = os.path.join(
+                self.data.paramsdict["project_dir"],
+                "{}_outfiles".format(self.data.name),
+                )
+            _outdir = os.path.realpath(_outdir)
+            if os.path.exists(os.path.join(_outdir, 
                 "{}.loci".format(self.data.name),
                 )):
-                raise IPyradError(                    
+                raise IPyradError(
         "Step 7 results exist for this Assembly. Use force to overwrite.")
 
         # if ref init a new sample for reference if including
@@ -136,6 +140,7 @@ class Step7:
             self.data.paramsdict["project_dir"],
             "{}_outfiles".format(self.data.name),
             )
+        self.data.dirs.outfiles = os.path.realpath(self.data.dirs.outfiles)
         if os.path.exists(self.data.dirs.outfiles):
             shutil.rmtree(self.data.dirs.outfiles)
         if not os.path.exists(self.data.dirs.outfiles):
@@ -151,8 +156,7 @@ class Step7:
 
         # make tmpdir directory
         self.data.tmpdir = os.path.join(
-            self.data.paramsdict["project_dir"],
-            "{}_outfiles".format(self.data.name),
+            self.data.dirs.outfiles, 
             "tmpdir",
             )
         if os.path.exists(self.data.tmpdir):
