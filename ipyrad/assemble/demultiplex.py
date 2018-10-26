@@ -48,8 +48,6 @@ class Step1:
             FileLinker(self).run()
         else:
             Demultiplexer(self).run()
-            #return Demultiplexer(self)
-
 
 
     def setup_dirs(self):
@@ -64,6 +62,12 @@ class Step1:
         if self.force:
             if os.path.exists(self.data.dirs.fastqs):
                 shutil.rmtree(self.data.dirs.fastqs)
+        # bail out if overwrite necessary but no force flag
+        else:
+            if os.path.exists(self.data.dirs.fastqs):
+                raise IPyradError(
+                    "Fastq dir {} already exists: use force flag to overwrite".
+                    format(self.data.dirs.fastqs))
 
         # ensure project dir exists
         if not os.path.exists(self.data.paramsdict["project_dir"]):
@@ -755,7 +759,7 @@ class BarMatch:
                 barcode1 = self.find3radbcode(read1)
                 barcode2 = self.find3radbcode(read2)
                 barcode = barcode1 + "+" + barcode2
-            barcode = barcode.decode()
+            barcode = barcode  # .decode()
        
             # find if it matches 
             sname_match = self.matchdict.get(barcode)
@@ -799,9 +803,9 @@ class BarMatch:
                     read2[3] = read2[3][len(barcode2):]
         
                 ## append to dsort
-                self.read1s[sname_match].append(b"".join(read1))
+                self.read1s[sname_match].append("".join(read1))  # b"".join(read1))
                 if 'pair' in self.data.paramsdict["datatype"]:
-                    self.read2s[sname_match].append(b"".join(read2))
+                    self.read2s[sname_match].append("".join(read2))  # b"".join(read2))
 
             else:
                 self.misses["_"] += 1
@@ -1251,7 +1255,8 @@ def writetofile(data, dsort, read, pid):
             "tmpdir",
             "tmp_{}_{}_{}.fastq".format(sname, rrr, pid))
         with open(handle, 'a') as out:
-            out.write(b"".join(dsort[sname]).decode())
+            out.write("".join(dsort[sname]))
+            # b"".join(dsort[sname]).decode())
 
 
 
@@ -1404,7 +1409,7 @@ def estimate_optim(data, testfile, ipyclient):
         
     ## We'll take the average of the size of a file based on the
     ## first 10000 reads to approximate number of reads in the main file
-    outfile.write(b"".join(islice(infile, 40000)))
+    outfile.write("".join(islice(infile, 40000)))
     outfile.close()
     infile.close()
 
