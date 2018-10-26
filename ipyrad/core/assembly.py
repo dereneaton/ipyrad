@@ -17,8 +17,8 @@ import ipyrad as ip
 import ipyparallel as ipp
 
 from collections import OrderedDict
-from ipyrad.assemble.utils import IPyradParamsError, IPyradWarningExit
-from ipyrad.assemble.utils import IPyradError, ObjDict
+from ipyrad.assemble.utils import IPyradParamsError, IPyradError
+from ipyrad.assemble.utils import ObjDict, IPyradWarningExit
 from ipyrad.core.paramsinfo import paraminfo, paramname
 
 
@@ -479,7 +479,7 @@ class Assembly(object):
         ## cannot have higher min for a pop than there are samples in the pop
         popmax = {i: len(popdict[i]) for i in popdict}
         if not all([popmax[i] >= popmins[i] for i in popdict]):
-            raise IPyradWarningExit(
+            raise IPyradError(
                 " minsample per pop value cannot be greater than the " +
                 " number of samples in the pop. Modify the populations file.")
 
@@ -568,7 +568,7 @@ class Assembly(object):
             self = _paramschecker(self, param, newvalue)
 
         except Exception as inst:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 BAD_PARAMETER.format(param, inst, newvalue))
 
 
@@ -779,7 +779,7 @@ class Assembly(object):
             ip.logger.error("shutdown warning: %s", inst2)
 
 
-    def run(self, steps=0, force=False, ipyclient=None, show_cluster=0, **kwargs):
+    def run(self, steps=0, force=False, ipyclient=None, show_cluster=0):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -997,7 +997,7 @@ def _paramschecker(self, param, newvalue):
         ## things would happen. Calling set_params on assembly_name only raises
         ## an informative error. Assembly_name is set at Assembly creation time
         ## and is immutable.
-        raise IPyradWarningExit(CANNOT_CHANGE_ASSEMBLY_NAME)
+        raise IPyradError(CANNOT_CHANGE_ASSEMBLY_NAME)
 
     elif param == 'project_dir':
         expandpath = _expander(newvalue)
@@ -1006,7 +1006,7 @@ def _paramschecker(self, param, newvalue):
                 expandpath = _expander(expandpath)
         ## Forbid spaces in path names
         if " " in expandpath:
-            raise IPyradWarningExit(BAD_PROJDIR_NAME.format(expandpath))
+            raise IPyradError(BAD_PROJDIR_NAME.format(expandpath))
         self.paramsdict["project_dir"] = expandpath
         self.dirs["project"] = expandpath
 
@@ -1014,16 +1014,16 @@ def _paramschecker(self, param, newvalue):
     ## assembly is a merge of several others, so this param has no
     ## value for this assembly
     elif param == 'raw_fastq_path':
-        if newvalue and not "Merged:" in newvalue:
+        if newvalue and "Merged:" not in newvalue:
             fullrawpath = _expander(newvalue)
             if os.path.isdir(fullrawpath):
-                raise IPyradWarningExit(RAW_PATH_ISDIR.format(fullrawpath))
+                raise IPyradError(RAW_PATH_ISDIR.format(fullrawpath))
             ## if something is found in path
             elif glob.glob(fullrawpath):
                 self.paramsdict['raw_fastq_path'] = fullrawpath
             ## else allow empty, tho it can still raise an error in step1
             else:
-                raise IPyradWarningExit(NO_RAW_FILE.format(fullrawpath))
+                raise IPyradError(NO_RAW_FILE.format(fullrawpath))
         else:
             self.paramsdict['raw_fastq_path'] = ""
 
@@ -1033,12 +1033,12 @@ def _paramschecker(self, param, newvalue):
     ## value for this assembly
     elif param == 'barcodes_path':
         ## if a value was entered check that it exists
-        if newvalue and not "Merged:" in newvalue:
+        if newvalue and "Merged:" not in newvalue:
             ## also allow for fuzzy match in names using glob
             fullbarpath = glob.glob(_expander(newvalue))[0]
             ## raise error if file is not found
             if not os.path.exists(fullbarpath):
-                raise IPyradWarningExit(BARCODE_NOT_FOUND.format(fullbarpath))
+                raise IPyradError(BARCODE_NOT_FOUND.format(fullbarpath))
             else:
                 self.paramsdict['barcodes_path'] = fullbarpath
                 self._link_barcodes()
@@ -1058,12 +1058,12 @@ def _paramschecker(self, param, newvalue):
             fullsortedpath = _expander(newvalue)
 
             if os.path.isdir(fullsortedpath):
-                raise IPyradWarningExit(SORTED_ISDIR.format(fullsortedpath))
+                raise IPyradError(SORTED_ISDIR.format(fullsortedpath))
             elif glob.glob(fullsortedpath):
                 self.paramsdict['sorted_fastq_path'] = fullsortedpath
 
             else:
-                raise IPyradWarningExit(SORTED_NOT_FOUND.format(fullsortedpath))
+                raise IPyradError(SORTED_NOT_FOUND.format(fullsortedpath))
         ## if no value was entered then set to "".
         else:
             self.paramsdict['sorted_fastq_path'] = ""
@@ -1080,7 +1080,7 @@ def _paramschecker(self, param, newvalue):
             fullrawpath = _expander(newvalue)
             if not os.path.isfile(fullrawpath):
                 ip.logger.info("reference sequence file not found.")
-                raise IPyradWarningExit(REF_NOT_FOUND.format(fullrawpath))
+                raise IPyradError(REF_NOT_FOUND.format(fullrawpath))
             self.paramsdict['reference_sequence'] = fullrawpath
         ## if no value was entered the set to "". Will be checked again
         ## at step3 if user tries to do refseq and raise error
@@ -1231,7 +1231,7 @@ def _paramschecker(self, param, newvalue):
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
         if not isinstance(newvalue, tuple):
-            raise IPyradWarningExit("""
+            raise IPyradError("""
     Error: edit_cutsites should be a tuple e.g., (0, 5) or ('TGCAG', 6),
     you entered {}
     """.format(newvalue))
@@ -1251,7 +1251,7 @@ def _paramschecker(self, param, newvalue):
         newvalue = tuple(newvalue)
         ## make sure we have a nice tuple
         if not isinstance(newvalue, tuple):
-            raise IPyradWarningExit("""
+            raise IPyradError("""
     Error: trim_reads should be a tuple e.g., (0, -5, -5, 0) 
     or (0, 90, 0, 90), or (0, 0, 0, 0). 
     You entered {}\n""".format(newvalue))
@@ -1305,7 +1305,7 @@ def _paramschecker(self, param, newvalue):
         if newvalue:
             if not os.path.isfile(fullpoppath):
                 ip.logger.warn("Population assignment file not found.")
-                raise IPyradWarningExit("""
+                raise IPyradError("""
     Warning: Population assignment file not found. This must be an
     absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to
     the directory where you're running ipyrad (./data/my_popfile.txt)
@@ -1414,7 +1414,7 @@ REQUIRE_ASSEMBLY_NAME = """\
     If you need a suggestion, name it after the organism you're working on.
     """
 REQUIRE_REFERENCE_PATH = """\
-    Assembly method {} requires that you enter a 'reference_sequence_path'.
+    Assembly method '{}' requires a 'reference_sequence' in parameter settings.
     """
 BAD_ASSEMBLY_NAME = """\
     No spaces or special characters of any kind are allowed in the assembly 
