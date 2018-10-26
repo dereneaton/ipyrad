@@ -121,7 +121,7 @@ class Step7:
 
         # if ref init a new sample for reference if including
         if self.data.paramsdict['assembly_method'] == 'reference':
-            ref = ipyrad.core.Sample("reference")
+            ref = ipyrad.core.sample.Sample("reference")
             snames = [ref] + sorted(
                 list(set(self.data.samples.values())), 
                 key=lambda x: x.name)
