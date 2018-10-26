@@ -49,55 +49,12 @@ class Step5:
         self.setup_dirs()
 
 
-    def setup_dirs(self):
-        "setup directories, remove old tmp files"
-
-        # final results dir
-        self.data.dirs.consens = os.path.join(
-            self.data.dirs.project, 
-            "{}_consens".format(self.data.name))
-        if not os.path.exists(self.data.dirs.consens):
-            os.mkdir(self.data.dirs.consens)
-
-        # tmpfile dir (zap it if it exists)
-        self.data.tmpdir = os.path.join(
-            self.data.dirs.project, 
-            "{}-tmpdir".format(self.data.name))
-        if os.path.exists(self.data.tmpdir):
-            shutil.rmtree(self.data.tmpdir)
-        if not os.path.exists(self.data.tmpdir):
-            os.mkdir(self.data.tmpdir)
-
-        # assign output file handles for s6
-        for sample in self.samples:
-            if not self.isref:
-                sample.files.consens = os.path.join(
-                    self.data.dirs.consens, 
-                    "{}.consens.gz".format(sample.name))
-            else:
-                sample.files.consens = os.path.join(
-                    self.data.dirs.consens, 
-                    "{}.consens.bam".format(sample.name))
-
-        # zap existing consens files for selected samples
-        for sample in self.samples:
-            if os.path.exists(sample.files.consens):
-                os.remove(sample.files.consens)
-            dfile = sample.files.consens.rsplit(".", 2)[0]
-            sample.files.database = dfile + ".catg.hdf5"
-            if os.path.exists(dfile):
-                os.remove(dfile)
-
-        # set up parallel client: allow user to throttle cpus
-        self.lbview = self.ipyclient.load_balanced_view()
-        if self.data._ipcluster["cores"]:
-            self.ncpus = self.data._ipcluster["cores"]
-        else:
-            self.ncpus = len(self.ipyclient.ids)
-
-
     def get_subsamples(self):
         "Apply state, ncluster, and force filters to select samples"
+
+        # bail out if no samples ready
+        if not hasattr(self.data.stats, "state"):
+            raise IPyradError("No samples ready for step 3")
 
         # filter samples by state
         state3 = self.data.stats.index[self.data.stats.state < 4]
@@ -155,6 +112,53 @@ class Step5:
                 self.data.stats.hetero_est.std(),
             ))
         return checked_samples
+
+
+    def setup_dirs(self):
+        "setup directories, remove old tmp files"
+
+        # final results dir
+        self.data.dirs.consens = os.path.join(
+            self.data.dirs.project, 
+            "{}_consens".format(self.data.name))
+        if not os.path.exists(self.data.dirs.consens):
+            os.mkdir(self.data.dirs.consens)
+
+        # tmpfile dir (zap it if it exists)
+        self.data.tmpdir = os.path.join(
+            self.data.dirs.project, 
+            "{}-tmpdir".format(self.data.name))
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
+        if not os.path.exists(self.data.tmpdir):
+            os.mkdir(self.data.tmpdir)
+
+        # assign output file handles for s6
+        for sample in self.samples:
+            if not self.isref:
+                sample.files.consens = os.path.join(
+                    self.data.dirs.consens, 
+                    "{}.consens.gz".format(sample.name))
+            else:
+                sample.files.consens = os.path.join(
+                    self.data.dirs.consens, 
+                    "{}.consens.bam".format(sample.name))
+
+        # zap existing consens files for selected samples
+        for sample in self.samples:
+            if os.path.exists(sample.files.consens):
+                os.remove(sample.files.consens)
+            dfile = sample.files.consens.rsplit(".", 2)[0]
+            sample.files.database = dfile + ".catg.hdf5"
+            if os.path.exists(dfile):
+                os.remove(dfile)
+
+        # set up parallel client: allow user to throttle cpus
+        self.lbview = self.ipyclient.load_balanced_view()
+        if self.data._ipcluster["cores"]:
+            self.ncpus = self.data._ipcluster["cores"]
+        else:
+            self.ncpus = len(self.ipyclient.ids)
 
 
     def run(self):
