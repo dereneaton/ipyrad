@@ -6,6 +6,7 @@ import numpy as np
 from collections import OrderedDict
 from ipyrad.assemble.utils import ObjDict
 
+
 class Sample(object):
     """ 
     ipyrad Sample object. Links to files associated with an individual 
