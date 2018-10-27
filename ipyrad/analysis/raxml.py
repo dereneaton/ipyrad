@@ -71,7 +71,7 @@ class Raxml(object):
         ## path attributes
         self._kwargs = {
             "f": "a", 
-            "T": 4,
+            "T": 4,  # <- change to zero !?
             "m": "GTRGAMMA",
             "N": 100,
             "x": 12345,
