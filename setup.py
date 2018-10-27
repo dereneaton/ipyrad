@@ -5,12 +5,6 @@ import glob
 import re
 
 
-def requires():
-    """ gets packages from requirements.txt """
-    with open('requirements.txt') as infile:
-        return infile.read().splitlines()
-
-
 # Auto-update ipyrad version from git repo tag
 # Fetch version from git tags, and write to version.py.
 # Also, when git is not available (PyPi package), use stored version.py.
@@ -28,8 +22,19 @@ setup(
     description="Interactive assembly and analysis of RADseq data sets",
     long_description=open('README.rst').read(),
     packages=find_packages(),
-    install_requires=requires(),
-    # dependencies=dependency_links(),
+    install_requires=[
+        "notebook",
+        "ipyparallel>=6.0.2",
+        "scipy>0.10",
+        "numpy>=1.9",
+        "numba>=0.37",
+        "pandas>=0.16",
+        "pysam>=0.10.0",
+        "h5py",
+        "mpi4py",
+        "cutadapt",
+        "toytree",
+    ],
     entry_points={
         'console_scripts': [
             'ipyrad = ipyrad.__main__:CLI',
@@ -40,9 +45,7 @@ setup(
     license='GPL',
     classifiers=[
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
     ],
 )
