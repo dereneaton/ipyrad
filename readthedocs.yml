@@ -1,6 +1,5 @@
 
 ## Don't build any extra formats
-
 conda:
     file: environment.yml
 
