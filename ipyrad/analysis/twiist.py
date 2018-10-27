@@ -16,8 +16,8 @@ import itertools
 # third party
 import pandas as pd
 import numpy as np
+import toytree
 from .raxml import Raxml as raxml
-#import toytree
 
 
 
@@ -25,7 +25,6 @@ class Twiist():
     """ 
     Performs phylo inference across sampled iterations to get weights.
     """
-    
     def __init__(
         self, 
         data,
@@ -46,7 +45,7 @@ class Twiist():
         self.imap = imap
         self.rmap = {}
         self.results_table = None
-        for k,v in self.imap.iteritems():
+        for k, v in self.imap.items():
             for i in v:
                 self.rmap[i] = k  
         self.ntests = ntests
@@ -55,7 +54,7 @@ class Twiist():
         
         ## fill mindict
         if not minmap:
-            minmap = {i:1 for i in self.imap}
+            minmap = {i: 1 for i in self.imap}
         self.minmap = minmap
         
         ## store all samples for this test
@@ -108,7 +107,7 @@ class Twiist():
             liter = (indata.read().strip().split("|\n"))
 
         ## store data as dict
-        seqdata = {i:"" for i in self.samples}
+        seqdata = {i: "" for i in self.samples}
 
         ## put chunks into a list
         for idx, loc in enumerate(liter):
@@ -117,14 +116,14 @@ class Twiist():
                 lines = loc.split("\n")[:-1]
                 names = [i.split()[0] for i in lines]
                 seqs = [i.split()[1] for i in lines]
-                dd = {i:j for i,j in zip(names, seqs)}
+                dd = {i: j for (i, j) in zip(names, seqs)}
 
                 ## add data to concatenated seqdict
                 for name in seqdata:
                     if name in names:
                         seqdata[name] += dd[name]
                     else:
-                        seqdata[name] += "N"*len(seqs[0])
+                        seqdata[name] += "N" * len(seqs[0])
                         
         ## concatenate into a phylip file
         return seqdata
@@ -174,16 +173,16 @@ class Twiist():
         for test in range(self.ntests): 
             
             ## submit jobs to run
-            async = lbview.apply(worker, self)
-            asyncs.append(async)
+            rasync = lbview.apply(worker, self)
+            asyncs.append(rasync)
             
         ## wait for jobs to finish
         ipyclient.wait()
 
         ## check for errors
-        for async in asyncs:
-            if not async.successful():
-                raise Exception("Error: {}".format(async.result()))
+        for rasync in asyncs:
+            if not rasync.successful():
+                raise Exception("Error: {}".format(rasync.result()))
 
         ## return results as df
         results = [i.result() for i in asyncs]
@@ -195,7 +194,7 @@ class Twiist():
         """
         return a toyplot barplot of the results table.
         """
-        if self.results_table == None:
+        if self.results_table is None:
             return "no results found"
         else:
             bb = self.results_table.sort_values(
@@ -230,7 +229,7 @@ def worker(self):
     for ridx, lidx in enumerate(liters):
         
         ## get subalignment for this iteration and make to nex
-        a,b,c,d = lidx
+        a, b, c, d = lidx
         sub = {}
         for i in lidx:
             if self.rmap[i] == "p1":
@@ -257,7 +256,8 @@ def worker(self):
             nexus = "{} {}\n".format(4, len(fullseqs[a])) + "\n".join(nex)    
 
             ## infer ML tree
-            treeorder = self.run_tree_inference(nexus, "{}.{}".format(hashval, ridx))
+            treeorder = self.run_tree_inference(
+                nexus, "{}.{}".format(hashval, ridx))
 
             ## add to list
             weights.append(treeorder)
@@ -270,7 +270,7 @@ def worker(self):
 
     ## return result as weights for the set topologies.
     trees = ["ABCD", "ACBD", "ADBC"]
-    wdict = {i:float(weights.count(i))/len(weights) for i in trees}
+    wdict = {i: float(weights.count(i)) / len(weights) for i in trees}
     return wdict
 
 
@@ -279,7 +279,7 @@ def get_order(tre):
     """
     return tree order
     """
-    anode = tre.tree&">A"
+    anode = tre.treenode.search_nodes(">A")[0]
     sister = anode.get_sisters()[0]
     sisters = (anode.name[1:], sister.name[1:])
     others = [i for i in list("ABCD") if i not in sisters]
@@ -291,7 +291,7 @@ def count_var(nex):
     count number of sites with cov=4, and number of variable sites.
     """
     arr = np.array([list(i.split()[-1]) for i in nex])
-    miss = np.any(arr=="N", axis=0)
+    miss = np.any(arr == "N", axis=0)
     nomiss = arr[:, ~miss]
     nsnps = np.invert(np.all(nomiss == nomiss[0, :], axis=0)).sum()
     return nomiss.shape[1], nsnps
