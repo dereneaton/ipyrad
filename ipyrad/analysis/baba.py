@@ -16,22 +16,13 @@ import itertools
 import pandas as pd
 import numpy as np
 import numba
+import toytree
 
 ## ipyrad tools
 from ipyrad.analysis.utils import Params, progressbar
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.write_outfiles import reftrick
-
-#from ipyrad.plotting.baba_panel_plot import baba_panel_plot
-# # special
-# try:
-#     import toytree
-# except ImportError:
-#     print("""
-#         toytree not installed, some functions are not available
-#         such as .generate_tests_from_tree() and .plot().
-#         Install toytree with 'conda install toytree -c eaton-lab'.
-#         """)
+from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 
 # set floating point precision in data frames to 3 for prettier printing
@@ -83,8 +74,8 @@ class Baba(object):
         else:
             self.data = data
 
-        if isinstance(newick, toytree.tree):
-            self.newick = newick.tree.write()
+        if isinstance(newick, toytree.Toytree.ToyTree):
+            self.newick = newick.newick
         else:
             self.newick = newick
 
@@ -242,14 +233,10 @@ class Baba(object):
         if isinstance(self.tests, dict):
             self.tests = [self.tests]
 
-        ## re-decompose the tree
-        ttree = toytree.tree(
-            self.newick,
-            orient='down',
-            use_edge_lengths=use_edge_lengths,
-            )
+        # re-decompose the tree
+        ttree = toytree.tree(self.newick)
 
-        ## subset test to show fewer
+        # subset test to show fewer
         if subset_tests is not None:
             #tests = self.tests[subset_tests]
             tests = [self.tests[i] for i in subset_tests]
