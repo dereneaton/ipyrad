@@ -216,10 +216,10 @@ class FileLinker:
         rasyncs = {}
         if createdinc:
             for sample in self.data.samples.values():
-                gzipped = bool(sample.files.fastqs[0].endswith(".gz"))
+                gzipped = bool(sample.files.fastqs[0][0].endswith(".gz"))
                 rasyncs[sample.name] = self.lbview.apply(
                     zbufcountlines, 
-                    *(sample.files.fastqs[0], gzipped)
+                    *(sample.files.fastqs[0][0], gzipped)
                 )
 
         # wait for link jobs to finish if parallel
