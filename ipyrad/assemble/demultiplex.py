@@ -368,9 +368,9 @@ class Demultiplexer:
             shutil.rmtree(self.tmpdir)
         os.makedirs(self.tmpdir)
 
-        # chunk into 4 pieces
+        # chunk into 16 pieces
         self.nreads = estimate_nreads(self.data, self.ftuples[0][0])
-        self.optim = int(self.nreads / 4)
+        self.optim = int(self.nreads / 16)
 
         # if more files than cpus or optim<8M: no chunking
         self.do_file_split = 0
@@ -388,8 +388,8 @@ class Demultiplexer:
         start = time.time()
         done = 0
         njobs = (
-            8 * len(self.ftuples) if "pair" in self.data.paramsdict["datatype"] 
-            else 4 * len(self.ftuples)
+            32 * len(self.ftuples) if "pair" in self.data.paramsdict["datatype"] 
+            else 16 * len(self.ftuples)
         )
         rasyncs = {}
         chunksdict = {}
