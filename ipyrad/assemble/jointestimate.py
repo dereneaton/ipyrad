@@ -43,7 +43,7 @@ class Step4:
 
         # bail out if no samples ready
         if not hasattr(self.data.stats, "state"):
-            raise IPyradError("No samples ready for step 3")
+            raise IPyradError("No samples ready for step 4")
 
         # filter samples by state
         state2 = self.data.stats.index[self.data.stats.state < 3]

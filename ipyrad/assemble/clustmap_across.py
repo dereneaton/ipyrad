@@ -73,6 +73,10 @@ class Step6:
     def get_subsamples(self):
         "Apply state, ncluster, and force filters to select samples"
 
+        # bail out if no samples ready
+        if not hasattr(self.data.stats, "state"):
+            raise IPyradError("No samples ready for step 6")
+
         # filter samples by state
         state4 = self.data.stats.index[self.data.stats.state < 5]
         state5 = self.data.stats.index[self.data.stats.state == 5]

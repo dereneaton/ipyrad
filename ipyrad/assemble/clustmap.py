@@ -273,7 +273,7 @@ class Step3:
         self.cleanup()
         self.data.save()
 
-    # init functions ------------------------------------
+
     def get_subsamples(self):
         "Apply state, ncluster, and force filters to select samples"
 

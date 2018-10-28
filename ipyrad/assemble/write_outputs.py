@@ -79,9 +79,13 @@ class Step7:
             self.remote_fill_depths()
             self.remote_build_vcf()    
 
-    ## init functions ------
+
     def get_subsamples(self):
         "get subsamples for this assembly. All must have been in step6"
+
+        # bail out if no samples ready
+        if not hasattr(self.data.stats, "state"):
+            raise IPyradError("No samples ready for step 7")
 
         # get samples from the database file
         if not os.path.exists(self.data.clust_database):
@@ -132,6 +136,7 @@ class Step7:
                 key=lambda x: x.name)
             return snames
 
+
     def setup_dirs(self):
         "Create temp h5 db for storing filters and depth variants"
 
@@ -177,6 +182,7 @@ class Step7:
             if os.path.exists(dbase):
                 os.remove(dbase)
 
+
     def get_chunksize(self):
         "get nloci and ncpus to chunk and distribute work across processors"
         # this file is inherited from step 6 to allow step7 branching.
@@ -191,6 +197,7 @@ class Step7:
         self.chunks = ((self.nraws // (self.ncpus * 2)) + \
                        (self.nraws % (self.ncpus * 2)))
 
+
     def get_padded_names(self):
         # get longest name
         longlen = max(len(i) for i in self.data.snames)
@@ -204,7 +211,7 @@ class Step7:
         snppad = "//" + " " * (longlen - 2 + padding)
         return pnames, snppad
 
-    ## core functions ------
+
     def store_file_handles(self):
         # always produce a .loci file + whatever they ask for.
         testformats = list(self.formats)
@@ -227,6 +234,7 @@ class Step7:
                     self.data.outfiles[ending[1:]] = os.path.join(
                         self.data.dirs.outfiles,
                         self.data.name + ending)           
+
 
     def collect_stats(self):
         "Collect results from Processor and write stats file."
@@ -368,6 +376,7 @@ class Step7:
             statcopy.to_string(buf=outstats)
             print("\n\n\n## Alignment matrix statistics:", file=outstats)
 
+
     def split_clusters(self):
         with open(self.data.clust_database, 'rb') as clusters:
             # skip header
@@ -401,6 +410,7 @@ class Step7:
                 if done:
                     break
 
+
     def remote_process_chunks(self):
         "Calls process chunks in parallel."
         start = time.time()
@@ -428,6 +438,7 @@ class Step7:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
 
+
     def remote_build_arrays_and_write_loci(self):
         # start loci concatenating job on a remote
         start = time.time()
@@ -452,6 +463,7 @@ class Step7:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
 
+
     def remote_write_outfiles(self):
         "Calls Converter object funcs in parallel."
         start = time.time()
@@ -475,7 +487,8 @@ class Step7:
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
-                
+      
+
     def remote_fill_depths(self):
         "send each sample to build depth arrays"
         start = time.time()
@@ -500,6 +513,7 @@ class Step7:
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
+
 
     def remote_build_vcf(self):
         "write VCF file"
