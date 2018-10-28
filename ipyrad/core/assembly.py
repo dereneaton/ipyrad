@@ -85,7 +85,8 @@ class Assembly(object):
     """
     def __init__(self, name, quiet=False, **kwargs):
 
-        ip.logger.debug("new assembly: {}".format(name))
+        #ip.logger.debug("new assembly: {}".format(name))
+        self.quiet = quiet
 
         # record whether we're in the CLI or API
         self._cli = False
@@ -103,8 +104,7 @@ class Assembly(object):
 
         ## print name, can't use run() spacer b/c no ipcluster settings yet.
         self.name = name
-        if not quiet:
-            print("{}New Assembly: {}".format(self._spacer, self.name))
+        self._print("{}New Assembly: {}".format(self._spacer, self.name))
 
         ## Store assembly version #
         self._version = ip.__version__
@@ -230,6 +230,7 @@ class Assembly(object):
             return "  "
         return ""
 
+
     @property
     def stats(self):
         """ Returns a data frame with Sample data and state. """
@@ -262,7 +263,17 @@ class Assembly(object):
         return sdf
 
 
+    def _print(self, value):
+        if not self.quiet:
+            print("{}{}".format(self._spacer, value))
+
+
+
     def _progressbar(self, njobs, finished, start, msg):
+
+        # bail
+        if self.quiet:
+            return
         # measure progress
         if njobs:
             progress = 100 * (finished / float(njobs))
@@ -307,12 +318,14 @@ class Assembly(object):
         ).dropna(axis=1, how='all')
         return newdat
 
-    # Test assembly name is valid and raise if contains any special characters
+
     def _check_name(self, name):
+        "Test assembly name is valid and raise if any special characters"
         invalid_chars = (
             string.punctuation.replace("_", "").replace("-", "") + " ")
         if any(char in invalid_chars for char in name):
             raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
+
 
     def _link_barcodes(self):
         """
@@ -717,7 +730,7 @@ class Assembly(object):
 
         # print an Assembly name header if inside API
         if not self._cli:
-            print("Assembly: {}".format(self.name))
+            self._print("Assembly: {}".format(self.name))
 
         # store ipyclient engine pids to the Assembly so we can hard-interrupt
         # later if assembly is interrupted. Only stores pids of engines that 
@@ -986,7 +999,6 @@ def _tuplecheck(newvalue, dtype=str):
                  .format(newvalue, inst))
 
     return newvalue
-
 
 
 def _paramschecker(self, param, newvalue):
