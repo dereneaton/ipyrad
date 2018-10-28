@@ -208,7 +208,7 @@ class FileLinker:
                 newsamp = Sample(sname)
                 newsamp.stats.state = 1
                 newsamp.barcode = None
-                newsamp.files.fastqs = ftup
+                newsamp.files.fastqs = [ftup]
                 self.data.samples[sname] = newsamp
                 createdinc += 1
 
@@ -273,8 +273,15 @@ class Demultiplexer:
         self.input = step.rfiles
         self.fastqs = glob.glob(self.input)
         self.ipyclient = step.ipyclient
+        # single engine jobs
         self.iview = self.ipyclient.load_balanced_view(targets=[0])
-        self.lbview = self.ipyclient.load_balanced_view()  # targets=fourth)
+
+        # limited multi-engine jobs
+        if len(self.ipyclient.ids) >= 12:
+            targets = self.ipyclient.ids[::4]
+        else:
+            targets = self.ipyclient.ids[:4]
+        self.lbview = self.ipyclient.load_balanced_view(targets=targets)
 
         # attrs filled by check_files
         self.ftuples = []
@@ -655,7 +662,11 @@ class Demultiplexer:
             else:
                 sample.files.fastqs = [
                     (os.path.join(
-                        self.data.dirs.fastqs, sname + "_R1_.fastq.gz"), "")]
+                        self.data.dirs.fastqs, 
+                        sname + "_R1_.fastq.gz",
+                        ),
+                    ""),
+                ]
 
             # fill in the summary stats
             sample.stats["reads_raw"] = int(self.stats.fsamplehits[sname])
