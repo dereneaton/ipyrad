@@ -193,13 +193,13 @@ class Step5:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
+                self.data._print("")
                 break
 
         # check for failures and collect results
-        print("")
         for sample in self.samples:
             if not jobs[sample.name].successful():
-                raise IPyradError(jobs[sample.name].exception())
+                raise IPyradError(jobs[sample.name].get())
             else:
                 hidepth, maxlen, _, _ = jobs[sample.name].result()
                 # recal_hidepth(self.data, sample)
@@ -232,13 +232,13 @@ class Step5:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
+                self.data._print("")
                 break
 
         ## check for failures
-        print("")
         for sample in self.samples:
             if not jobs[sample.name].successful():
-                raise IPyradError(jobs[sample.name].exception())
+                raise IPyradError(jobs[sample.name].get())
 
 
     def remote_process_chunks(self):
@@ -270,17 +270,16 @@ class Step5:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
+                self.data._print("")
                 break
 
         # check for failures
         for job in allsyncs:
             if not job.successful():
-                ip.logger.error("error in step 5: %s", job.exception())
-                raise IPyradError("error in process_chunks():\n{}"
-                                  .format(job.exception()))
+                raise IPyradError(
+                    "error in process_chunks():\n{}".format(job.get()))
 
         # collect all results for a sample and store stats 
-        print("")
         statsdicts = {}
         for sample in self.samples:
             statsdicts[sample.name] = [i.result() for i in jobs[sample.name]]
@@ -318,14 +317,13 @@ class Step5:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
+                self._data.print("")
                 break
 
         # check for failures:
-        print("")
         for job in alljobs:
             if not job.successful():
-                #ip.logger.error("error in step 5: %s", job.exception())
-                raise IPyradError(job.exception())
+                raise IPyradError(job.get())
 
 
     def data_store(self, statsdicts):
