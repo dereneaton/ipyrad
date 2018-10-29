@@ -430,10 +430,10 @@ class Step7:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.5)
             if len(ready) == sum(ready):
+                self.data._print("")
                 break          
 
-        # write stats
-        print("")
+        # write stats       
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
@@ -456,9 +456,9 @@ class Step7:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.5)
             if len(ready) == sum(ready):
+                self.data._print("")
                 break
         # check for errors
-        print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
@@ -480,10 +480,10 @@ class Step7:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.5)
             if len(ready) == sum(ready):
+                self.data._print("")
                 break          
 
         # write stats
-        print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
@@ -506,10 +506,10 @@ class Step7:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.5)
             if len(ready) == sum(ready):
-                break          
+                self.data._print("")
+                break
 
         # write stats
-        print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].get())
@@ -527,10 +527,10 @@ class Step7:
             self.data._progressbar(1, ready, start, printstr)
             time.sleep(0.5)
             if ready:
+                self.data._print("")
                 break          
 
         # write stats
-        print("")
         if not rasync.successful():
             raise IPyradError(rasync.get())
 
