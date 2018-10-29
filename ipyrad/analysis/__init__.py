@@ -17,10 +17,9 @@ __interactive__ = 1
 #from .tetrad import Tetrad as tetrad
 from .raxml import Raxml as raxml
 from .structure import Structure as structure
-
+from .tetrad2 import Tetrad as tetrad
 from .bucky import Bucky as bucky
 
-#from .tetrad2 import Tetrad as tetrad
 #from .baba import Baba as baba
 from .bpp import Bpp as bpp
 from .sratools import SRA as sratools
