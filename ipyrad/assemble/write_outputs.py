@@ -1036,6 +1036,7 @@ class Converter:
 
     def write_snps_map(self):
         "write a map file with linkage information for SNPs file"
+        counter = 1
         with open(self.data.outfiles.snpsmap, 'w') as out:
             with h5py.File(self.data.snps_database, 'r') as io5:
                 # access array of data
@@ -1058,9 +1059,11 @@ class Converter:
                                     i[0], 
                                     revdict[i[3]], i[4], 
                                     i[2] + 1,
-                                    i[4], 
+                                    counter,
+                                    #i[4], 
                                 )
                             )
+                            counter += 1
                     else:    
                         # convert to text for writing
                         for i in rdat:
@@ -1070,9 +1073,11 @@ class Converter:
                                     i[0], 
                                     i[0] - 1, i[4] - 1, i[2],
                                     i[2] + 1, 
-                                    i[4],
+                                    counter,
+                                    #i[4],
                                 )
                             )
+                            counter += 1
 
                     # write chunk to file
                     out.write("".join(outchunk))
