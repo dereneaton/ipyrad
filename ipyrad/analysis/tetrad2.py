@@ -36,7 +36,7 @@ import numpy as np
 import ipyrad as ip
 from scipy.special import comb
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.analysis.utils import Params, get_spans  #, progressbar
+from ipyrad.analysis.utils import Params, get_spans
 
 
 
@@ -77,18 +77,22 @@ class Tetrad(object):
         nboots=0, 
         resolve_ambigs=True, 
         load=False,
-        quiet=False,
         save_invariants=False,
         *args, 
         **kwargs):      
 
         # check additional (hidden) arguments from kwargs.
-        self.quiet = quiet
+        self.quiet = False
         self.kwargs = {
             "initarr": True,
             "cli": False,
             }
         self.kwargs.update(kwargs)
+
+        # are we in the CLI?
+        self._cli = False
+        if self.kwargs.get("cli"):
+            self._cli = True
 
         # name this assembly
         self.samples = []
@@ -143,7 +147,15 @@ class Tetrad(object):
         self.checkpoint.boots = 0
         self.checkpoint.arr = 0
 
-    # INIT FUNCTIONS -----------------------------------------------
+
+    @property
+    def _spacer(self):
+        """ return print spacer for CLI versus API """
+        if self._cli:
+            return "  "
+        return ""
+
+
     def _init_params(self, method, nboots, nquartets, resolve_ambigs, save_invariants):
         self.params = Params()
         self.params.method = method
@@ -481,12 +493,11 @@ class Tetrad(object):
                     message[0],
                 ), end="")
             else:
-                print("\r[{}] {:>3}% {} | {:<12} | {} |".format(*[
+                print("\r[{}] {:>3}% {} | {:<12} ".format(*[
                     hashes + nohash,
                     int(progress),
                     elapsed,
                     message[0],
-                    message[1],
                 ]), end="")
             sys.stdout.flush()
 
@@ -567,8 +578,8 @@ class Tetrad(object):
 
     def _get_parallel(self, ipyclient):
         if not ipyclient:
-            args = list(self._ipcluster.items()) + [("spacer", "")]
-            ipyclient = ip.core.parallel.get_client(**dict(args))
+            #args = list(self._ipcluster.items()) + [("spacer", "")]
+            ipyclient = ip.core.parallel.get_client(self) # **dict(args))
 
             # if THAT fails, launch a custom ipcluster in cli mode
             # self._ipcluster["cluster_id"] = 'ipyrad-cli'
@@ -945,10 +956,10 @@ class Inference:
 
         # parse tmp file written by QMC into a tree and rename tips
         ttre = toytree.tree(self._tmp)
-        tips = ttre.tree.get_leaves()
+        tips = ttre.treenode.get_leaves()
         for tip in tips:
             tip.name = self.tet.samples[int(tip.name)]
-        newick = ttre.tree.write(format=9)      
+        newick = ttre.treenode.write(format=9)      
 
         # save the tree to file
         if boot:
@@ -970,34 +981,23 @@ class TreeStats:
         self.start = (self.tet.start if self.tet.start else time.time())
         self.samples = self.tet.samples
 
+
     def run(self):
         self.build_bootstrap_consensus()
-        self.build_nhx_stats()
+        #self.build_nhx_stats()
+
 
     def build_bootstrap_consensus(self):
-        "Compute sampling stats and consens trees"
-    
+        "Compute sampling stats and consens trees"   
         # make a consensus from bootstrap reps.
         if self.tet.checkpoint.boots:
-            ttre = toytree.tree(self.tet.trees.tree, format=0).unroot()
-            with open(self.tet.trees.boots, 'r') as inboots:
-                bb = [
-                    toytree.tree(i.strip(), format=0).unroot() 
-                    for i in inboots.readlines()
-                ]
-                bb = [ttre] + bb
+            boottrees = toytree.mtree(self.tet.trees.boots)
+            self.ctre = boottrees.get_consensus_tree()
+            self.ctre.write(self.tet.trees.cons)
 
-            # calculate consensus supports
-            names = toytree.tree(self.tet.trees.tree).get_tip_labels()
-            self.ctre, self.counts = consensus_tree(bb, names=names)
-            self.trees.cons = os.path.join(self.dirs, self.name + ".cons")
-            with open(self.trees.cons, 'w') as ocons:
-                ocons.write(self.ctre.write(format=0))
-
-        else:
-            self.ctre = toytree.tree(self.tet.trees.tree, format=0).unroot()
 
     def build_nhx_stats(self):
+        "Compute quartet sampling stats, and maybe others"
         ## build stats file and write trees
         qtots = {}
         qsamp = {}
@@ -1005,10 +1005,12 @@ class TreeStats:
         totn = set(self.ctre.get_tip_labels())
 
         ## iterate over node traversal
-        for node in self.ctre.tree.traverse():
+        for node in self.ctre.treenode.traverse():
             # this is slow, needs to look at every sampled quartet
             # so we send it to be processed on engines
             qtots[node] = self.lbview.apply(get_total, *(tots, node))
+
+            # TODO: error here on pickling...
             qsamp[node] = self.lbview.apply(get_sampled, *(self, totn, node))
 
         ## wait for jobs to finish (+1 to lenjob is for final progress printer)
@@ -1024,7 +1026,7 @@ class TreeStats:
             time.sleep(0.1)
 
         ## store results in the tree object
-        for node in self.ctre.tree.traverse():
+        for node in self.ctre.treenode.traverse():
             total = qtots[node].result()
             sampled = qsamp[node].result()
             node.add_feature("quartets_total", total)
@@ -1197,6 +1199,7 @@ def store_all(self):
             ## send progress update to stdout on engine
             print(min(i, self.params.nquartets))
 
+
 # not yet updated
 def store_random(self):
     """
@@ -1249,6 +1252,7 @@ def store_random(self):
         fillsets[:] = tmpr
         del tmpr
 
+
 # not yet updated for toytree or py3
 def store_equal(self):
     """
@@ -1265,7 +1269,7 @@ def store_equal(self):
         if not os.path.exists(self.files.tree):
             raise IPyradError(
                 "To use sampling method 'equal' requires a guidetree")
-        tre = ete3.Tree(self.files.tree)
+        tre = toytree.etemini.TreeNode(self.files.tree)
         tre.unroot()
         tre.resolve_polytomy(recursive=True)
 
@@ -1647,7 +1651,7 @@ def get_sampled(data, totn, node):
                 break
 
             ## counts matches
-            qrts = io5["quartets"][idx:idx+data._chunksize]
+            qrts = io5["quartets"][idx:idx + data._chunksize]
             for qrt in qrts:
                 sqrt = set(qrt)
                 if all([sqrt.intersection(i) for i in [lendr, lendl, lenur, lenul]]):
@@ -1659,183 +1663,183 @@ def get_sampled(data, totn, node):
 
 
 
-def consensus_tree(trees, names=None, cutoff=0.0):
-    """ 
-    An extended majority rule consensus function for ete3. 
-    Modelled on the similar function from scikit-bio tree module. If 
-    cutoff=0.5 then it is a normal majority rule consensus, while if 
-    cutoff=0.0 then subsequent non-conflicting clades are added to the tree.
-    """
+# def consensus_tree(trees, names=None, cutoff=0.0):
+#     """ 
+#     An extended majority rule consensus function for ete3. 
+#     Modelled on the similar function from scikit-bio tree module. If 
+#     cutoff=0.5 then it is a normal majority rule consensus, while if 
+#     cutoff=0.0 then subsequent non-conflicting clades are added to the tree.
+#     """
 
-    ## find which clades occured with freq > cutoff
-    namedict, clade_counts = find_clades(trees, names=names)
+#     ## find which clades occured with freq > cutoff
+#     namedict, clade_counts = find_clades(trees, names=names)
 
-    ## filter out the < cutoff clades
-    fclade_counts = filter_clades(clade_counts, cutoff)
+#     ## filter out the < cutoff clades
+#     fclade_counts = filter_clades(clade_counts, cutoff)
 
-    ## build tree
-    consens_tree, _ = build_trees(fclade_counts, namedict)
-    ## make sure no singleton nodes were left behind
-    return consens_tree, clade_counts
+#     ## build tree
+#     consens_tree, _ = build_trees(fclade_counts, namedict)
+#     ## make sure no singleton nodes were left behind
+#     return consens_tree, clade_counts
 
 
 
-def filter_clades(clade_counts, cutoff):
-    """ 
-    A subfunc of consensus_tree(). Removes clades that occur 
-    with freq < cutoff.
-    """
+# def filter_clades(clade_counts, cutoff):
+#     """ 
+#     A subfunc of consensus_tree(). Removes clades that occur 
+#     with freq < cutoff.
+#     """
 
-    ## store clades that pass filter
-    passed = []
-    clades = np.array([list(i[0]) for i in clade_counts], dtype=np.int8)
-    counts = np.array([i[1] for i in clade_counts], dtype=np.float64)
+#     ## store clades that pass filter
+#     passed = []
+#     clades = np.array([list(i[0]) for i in clade_counts], dtype=np.int8)
+#     counts = np.array([i[1] for i in clade_counts], dtype=np.float64)
     
-    for idx in range(clades.shape[0]):
-        conflict = False
+#     for idx in range(clades.shape[0]):
+#         conflict = False
     
-        if counts[idx] < cutoff:
-            continue
+#         if counts[idx] < cutoff:
+#             continue
             
-        if np.sum(clades[idx]) > 1:
-            # check the current clade against all the accepted clades to see if
-            # it conflicts. A conflict is defined as:
-            # 1. the clades are not disjoint
-            # 2. neither clade is a subset of the other
-            # OR:
-            # 1. it is inverse of clade (affects only <fake> root state)
-            # because at root node it mirror images {0011 : 95}, {1100 : 5}.
-            for aidx in passed:
-                #intersect = clade.intersection(accepted_clade)
-                summed = clades[idx] + clades[aidx]
-                intersect = np.max(summed) > 1
-                subset_test0 = np.all(clades[idx] - clades[aidx] >= 0)
-                subset_test1 = np.all(clades[aidx] - clades[idx] >= 0)
-                invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
+#         if np.sum(clades[idx]) > 1:
+#             # check the current clade against all the accepted clades to see if
+#             # it conflicts. A conflict is defined as:
+#             # 1. the clades are not disjoint
+#             # 2. neither clade is a subset of the other
+#             # OR:
+#             # 1. it is inverse of clade (affects only <fake> root state)
+#             # because at root node it mirror images {0011 : 95}, {1100 : 5}.
+#             for aidx in passed:
+#                 #intersect = clade.intersection(accepted_clade)
+#                 summed = clades[idx] + clades[aidx]
+#                 intersect = np.max(summed) > 1
+#                 subset_test0 = np.all(clades[idx] - clades[aidx] >= 0)
+#                 subset_test1 = np.all(clades[aidx] - clades[idx] >= 0)
+#                 invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
 
-                if np.all(invert_test):
-                    counts[aidx] += counts[idx]
-                    conflict = True
-                if intersect:
-                    if (not subset_test0) and (not subset_test1):
-                        conflict = True
+#                 if np.all(invert_test):
+#                     counts[aidx] += counts[idx]
+#                     conflict = True
+#                 if intersect:
+#                     if (not subset_test0) and (not subset_test1):
+#                         conflict = True
 
-        if conflict == False:
-            passed.append(idx)
+#         if conflict == False:
+#             passed.append(idx)
 
-    ## rebuild the dict
-    rclades = []#j for i, j in enumerate(clade_counts) if i in passed]
-    ## set the counts to include mirrors
-    for idx in passed:
-        rclades.append((clades[idx], counts[idx]))
-    return rclades
-
-
-
-def find_clades(trees, names):
-    """ 
-    A subfunc of consensus_tree(). Traverses trees to count clade occurrences.
-    Names are ordered by names, else they are in the order of the first
-    tree. 
-    """
-    ## index names from the first tree
-    if not names:
-        names = trees[0].get_leaf_names()
-    ndict = {j: i for i, j in enumerate(names)}
-    namedict = {i: j for i, j in enumerate(names)}
-
-    ## store counts
-    clade_counts = defaultdict(int)
-    ## count as bitarray clades in each tree
-    for tree in trees:
-        tree.unroot()
-        for node in tree.tree.traverse('postorder'):
-            #bits = bitarray('0'*len(tree))
-            bits = np.zeros(len(tree), dtype=np.bool_)
-            for child in node.iter_leaf_names():
-                bits[ndict[child]] = True
-            ## if parent is root then mirror flip one child (where bit[0]=0)
-            # if not node.is_root():
-            #     if node.up.is_root():
-            #         if bits[0]:
-            #             bits.invert()
-            bitstring = "".join([np.binary_repr(i) for i in bits])
-            clade_counts[bitstring] += 1
-
-    ## convert to freq
-    for key, val in clade_counts.items():
-        clade_counts[key] = val / float(len(trees))
-
-    ## return in sorted order
-    clade_counts = sorted(clade_counts.items(), 
-                          key=lambda x: x[1],
-                          reverse=True)
-    return namedict, clade_counts
+#     ## rebuild the dict
+#     rclades = []#j for i, j in enumerate(clade_counts) if i in passed]
+#     ## set the counts to include mirrors
+#     for idx in passed:
+#         rclades.append((clades[idx], counts[idx]))
+#     return rclades
 
 
 
-def build_trees(fclade_counts, namedict):
-    """ 
-    A subfunc of consensus_tree(). Build an unrooted consensus tree 
-    from filtered clade counts. 
-    """
-    ## storage
-    nodes = {}
-    idxarr = np.arange(len(fclade_counts[0][0]))
-    queue = []
+# def find_clades(trees, names):
+#     """ 
+#     A subfunc of consensus_tree(). Traverses trees to count clade occurrences.
+#     Names are ordered by names, else they are in the order of the first
+#     tree. 
+#     """
+#     ## index names from the first tree
+#     if not names:
+#         names = trees[0].get_leaf_names()
+#     ndict = {j: i for i, j in enumerate(names)}
+#     namedict = {i: j for i, j in enumerate(names)}
 
-    ## create dict of clade counts and set keys
-    countdict = defaultdict(int)
-    for clade, count in fclade_counts:
-        mask = np.int_(list(clade)).astype(np.bool)
-        ccx = idxarr[mask]
-        queue.append((len(ccx), frozenset(ccx)))
-        countdict[frozenset(ccx)] = count
+#     ## store counts
+#     clade_counts = defaultdict(int)
+#     ## count as bitarray clades in each tree
+#     for tree in trees:
+#         tree.unroot()
+#         for node in tree.treenode.traverse('postorder'):
+#             #bits = bitarray('0'*len(tree))
+#             bits = np.zeros(len(tree), dtype=np.bool_)
+#             for child in node.iter_leaf_names():
+#                 bits[ndict[child]] = True
+#             ## if parent is root then mirror flip one child (where bit[0]=0)
+#             # if not node.is_root():
+#             #     if node.up.is_root():
+#             #         if bits[0]:
+#             #             bits.invert()
+#             bitstring = "".join([np.binary_repr(i) for i in bits])
+#             clade_counts[bitstring] += 1
 
-    while queue:
-        queue.sort()
-        (clade_size, clade) = queue.pop(0)
-        new_queue = []
+#     ## convert to freq
+#     for key, val in clade_counts.items():
+#         clade_counts[key] = val / float(len(trees))
+
+#     ## return in sorted order
+#     clade_counts = sorted(clade_counts.items(), 
+#                           key=lambda x: x[1],
+#                           reverse=True)
+#     return namedict, clade_counts
+
+
+
+# def build_trees(fclade_counts, namedict):
+#     """ 
+#     A subfunc of consensus_tree(). Build an unrooted consensus tree 
+#     from filtered clade counts. 
+#     """
+#     ## storage
+#     nodes = {}
+#     idxarr = np.arange(len(fclade_counts[0][0]))
+#     queue = []
+
+#     ## create dict of clade counts and set keys
+#     countdict = defaultdict(int)
+#     for clade, count in fclade_counts:
+#         mask = np.int_(list(clade)).astype(np.bool)
+#         ccx = idxarr[mask]
+#         queue.append((len(ccx), frozenset(ccx)))
+#         countdict[frozenset(ccx)] = count
+
+#     while queue:
+#         queue.sort()
+#         (clade_size, clade) = queue.pop(0)
+#         new_queue = []
     
-        # search for ancestors of clade
-        for (_, ancestor) in queue:
-            if clade.issubset(ancestor):
-                # update ancestor such that, in the following example:
-                # ancestor == {1, 2, 3, 4}
-                # clade == {2, 3}
-                # new_ancestor == {1, {2, 3}, 4}
-                new_ancestor = (ancestor - clade) | frozenset([clade])          
-                countdict[new_ancestor] = countdict.pop(ancestor)
-                ancestor = new_ancestor
+#         # search for ancestors of clade
+#         for (_, ancestor) in queue:
+#             if clade.issubset(ancestor):
+#                 # update ancestor such that, in the following example:
+#                 # ancestor == {1, 2, 3, 4}
+#                 # clade == {2, 3}
+#                 # new_ancestor == {1, {2, 3}, 4}
+#                 new_ancestor = (ancestor - clade) | frozenset([clade])          
+#                 countdict[new_ancestor] = countdict.pop(ancestor)
+#                 ancestor = new_ancestor
             
-            new_queue.append((len(ancestor), ancestor))
+#             new_queue.append((len(ancestor), ancestor))
    
-        # if the clade is a tip, then we have a name
-        if clade_size == 1:
-            name = list(clade)[0]
-            name = namedict[name]
-        else:
-            name = None 
+#         # if the clade is a tip, then we have a name
+#         if clade_size == 1:
+#             name = list(clade)[0]
+#             name = namedict[name]
+#         else:
+#             name = None 
         
-        # the clade will not be in nodes if it is a tip
-        children = [nodes.pop(c) for c in clade if c in nodes]
-        node = ete3.Tree(name=name)    
-        #node = toytree.tree(name=name).tree
-        for child in children:
-            node.add_child(child)
-        if not node.is_leaf():
-            node.dist = int(round(100*countdict[clade]))
-            node.support = int(round(100*countdict[clade]))
-        else:
-            node.dist = int(100) 
-            node.support = int(100)
+#         # the clade will not be in nodes if it is a tip
+#         children = [nodes.pop(c) for c in clade if c in nodes]
+#         node = toytree.etemini.TreeNode(name=name)    
+#         #node = toytree.tree(name=name).tree
+#         for child in children:
+#             node.add_child(child)
+#         if not node.is_leaf():
+#             node.dist = int(round(100 * countdict[clade]))
+#             node.support = int(round(100 * countdict[clade]))
+#         else:
+#             node.dist = int(100) 
+#             node.support = int(100)
         
-        nodes[clade] = node
-        queue = new_queue
-    tre = nodes.values()[0]
-    tre.unroot()
-    ## return the tree and other trees if present
-    return tre, list(nodes.values())
+#         nodes[clade] = node
+#         queue = new_queue
+#     tre = list(nodes.values())[0]
+#     tre.unroot()
+#     ## return the tree and other trees if present
+#     return tre, list(nodes.values())
 
     
 ###############################################
