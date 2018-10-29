@@ -25,7 +25,6 @@ import time
 import copy
 import itertools
 import subprocess as sps
-from collections import defaultdict
 
 # third party
 import toytree
@@ -94,12 +93,14 @@ class Tetrad(object):
         if self.kwargs.get("cli"):
             self._cli = True
 
-        # name this assembly
-        self.samples = []
+        # name, sample, and workdir
         self.name = name
+        self.samples = []
         self.dirs = os.path.abspath(os.path.expanduser(workdir))
         if not os.path.exists(self.dirs):
             os.mkdir(self.dirs)
+
+        # required arguments 
         params = (method, nboots, nquartets, resolve_ambigs, save_invariants)
         self._init_params(*params)
         self._init_database()
@@ -110,7 +111,7 @@ class Tetrad(object):
         if load:
             self._load(self.name, self.dirs)
         else:
-            self._init_file_handles(data, mapfile, guidetree)
+            #self._init_file_handles(data, mapfile, guidetree)
             self._parse_names()
             if self.kwargs["initarr"]:
                 self._init_seqarray()
@@ -264,7 +265,6 @@ class Tetrad(object):
         2) randomly resolve ambiguities (RSKWYM)
         3) convert to uint8 for smaller memory load and faster computation. 
         """
-
         # read in the data (seqfile)
         spath = open(self.files.data, 'r')
         line = spath.readline().strip().split()
@@ -731,7 +731,7 @@ class Inference:
         self.fill_database()
         self.write_tree()
 
-    # init funcs
+
     def init_new_invariants_array(self):
         "if this is a bootstrap then init a new boot array in the database"
         ## max val is 65535 in here if uint16
@@ -1095,10 +1095,10 @@ def nworker(data, chunk):
         rquartets[idx] = smps[idx][bidx]
         rinvariants[idx] = invar
 
-    ## reset thread limit
+    # reset thread limit
     set_mkl_thread_limit(oldlimit)
 
-    ## return results...
+    # return results...
     return rquartets, rinvariants
 
 
@@ -1112,7 +1112,6 @@ def calculate(seqnon, mapcol, nmask, tests):
     """
     Groups together several other numba funcs.
     """
-
     ## get the invariants matrix
     mats = chunk_to_matrices(seqnon, mapcol, nmask)
 
@@ -1411,29 +1410,6 @@ def random_product(iter1, iter2):
 ########################################
 
 
-# this method is a bit faster maybe
-# @numba.jit(nopython=True)
-# def deprecated_get_spans(maparr, spans):
-#     """ 
-#     Get span distance for each locus in original seqarray. This
-#     is used to create re-sampled arrays in each bootstrap to sample
-#     unlinked SNPs. 
-#     """
-#     ## start at 0, finds change at 1-index of map file
-#     bidx = 1
-#     spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-#     ## read through marr and record when locus id changes
-#     for idx in range(1, maparr.shape[0]):
-#         cur = maparr[idx, 0]
-#         if cur != bidx:
-#             idy = idx + 1
-#             spans[cur - 2, 1] = idx
-#             spans[cur - 1, 0] = idx
-#             bidx = cur
-#     spans[-1, 1] = maparr[-1, -1]
-#     return spans
-
-
 @numba.jit(nopython=True)
 def resolve_ambigs(tmpseq):
     """ 
@@ -1661,185 +1637,6 @@ def get_sampled(data, totn, node):
             idx += data._chunksize
     return sampled
 
-
-
-# def consensus_tree(trees, names=None, cutoff=0.0):
-#     """ 
-#     An extended majority rule consensus function for ete3. 
-#     Modelled on the similar function from scikit-bio tree module. If 
-#     cutoff=0.5 then it is a normal majority rule consensus, while if 
-#     cutoff=0.0 then subsequent non-conflicting clades are added to the tree.
-#     """
-
-#     ## find which clades occured with freq > cutoff
-#     namedict, clade_counts = find_clades(trees, names=names)
-
-#     ## filter out the < cutoff clades
-#     fclade_counts = filter_clades(clade_counts, cutoff)
-
-#     ## build tree
-#     consens_tree, _ = build_trees(fclade_counts, namedict)
-#     ## make sure no singleton nodes were left behind
-#     return consens_tree, clade_counts
-
-
-
-# def filter_clades(clade_counts, cutoff):
-#     """ 
-#     A subfunc of consensus_tree(). Removes clades that occur 
-#     with freq < cutoff.
-#     """
-
-#     ## store clades that pass filter
-#     passed = []
-#     clades = np.array([list(i[0]) for i in clade_counts], dtype=np.int8)
-#     counts = np.array([i[1] for i in clade_counts], dtype=np.float64)
-    
-#     for idx in range(clades.shape[0]):
-#         conflict = False
-    
-#         if counts[idx] < cutoff:
-#             continue
-            
-#         if np.sum(clades[idx]) > 1:
-#             # check the current clade against all the accepted clades to see if
-#             # it conflicts. A conflict is defined as:
-#             # 1. the clades are not disjoint
-#             # 2. neither clade is a subset of the other
-#             # OR:
-#             # 1. it is inverse of clade (affects only <fake> root state)
-#             # because at root node it mirror images {0011 : 95}, {1100 : 5}.
-#             for aidx in passed:
-#                 #intersect = clade.intersection(accepted_clade)
-#                 summed = clades[idx] + clades[aidx]
-#                 intersect = np.max(summed) > 1
-#                 subset_test0 = np.all(clades[idx] - clades[aidx] >= 0)
-#                 subset_test1 = np.all(clades[aidx] - clades[idx] >= 0)
-#                 invert_test = np.bool_(clades[aidx]) != np.bool_(clades[idx])
-
-#                 if np.all(invert_test):
-#                     counts[aidx] += counts[idx]
-#                     conflict = True
-#                 if intersect:
-#                     if (not subset_test0) and (not subset_test1):
-#                         conflict = True
-
-#         if conflict == False:
-#             passed.append(idx)
-
-#     ## rebuild the dict
-#     rclades = []#j for i, j in enumerate(clade_counts) if i in passed]
-#     ## set the counts to include mirrors
-#     for idx in passed:
-#         rclades.append((clades[idx], counts[idx]))
-#     return rclades
-
-
-
-# def find_clades(trees, names):
-#     """ 
-#     A subfunc of consensus_tree(). Traverses trees to count clade occurrences.
-#     Names are ordered by names, else they are in the order of the first
-#     tree. 
-#     """
-#     ## index names from the first tree
-#     if not names:
-#         names = trees[0].get_leaf_names()
-#     ndict = {j: i for i, j in enumerate(names)}
-#     namedict = {i: j for i, j in enumerate(names)}
-
-#     ## store counts
-#     clade_counts = defaultdict(int)
-#     ## count as bitarray clades in each tree
-#     for tree in trees:
-#         tree.unroot()
-#         for node in tree.treenode.traverse('postorder'):
-#             #bits = bitarray('0'*len(tree))
-#             bits = np.zeros(len(tree), dtype=np.bool_)
-#             for child in node.iter_leaf_names():
-#                 bits[ndict[child]] = True
-#             ## if parent is root then mirror flip one child (where bit[0]=0)
-#             # if not node.is_root():
-#             #     if node.up.is_root():
-#             #         if bits[0]:
-#             #             bits.invert()
-#             bitstring = "".join([np.binary_repr(i) for i in bits])
-#             clade_counts[bitstring] += 1
-
-#     ## convert to freq
-#     for key, val in clade_counts.items():
-#         clade_counts[key] = val / float(len(trees))
-
-#     ## return in sorted order
-#     clade_counts = sorted(clade_counts.items(), 
-#                           key=lambda x: x[1],
-#                           reverse=True)
-#     return namedict, clade_counts
-
-
-
-# def build_trees(fclade_counts, namedict):
-#     """ 
-#     A subfunc of consensus_tree(). Build an unrooted consensus tree 
-#     from filtered clade counts. 
-#     """
-#     ## storage
-#     nodes = {}
-#     idxarr = np.arange(len(fclade_counts[0][0]))
-#     queue = []
-
-#     ## create dict of clade counts and set keys
-#     countdict = defaultdict(int)
-#     for clade, count in fclade_counts:
-#         mask = np.int_(list(clade)).astype(np.bool)
-#         ccx = idxarr[mask]
-#         queue.append((len(ccx), frozenset(ccx)))
-#         countdict[frozenset(ccx)] = count
-
-#     while queue:
-#         queue.sort()
-#         (clade_size, clade) = queue.pop(0)
-#         new_queue = []
-    
-#         # search for ancestors of clade
-#         for (_, ancestor) in queue:
-#             if clade.issubset(ancestor):
-#                 # update ancestor such that, in the following example:
-#                 # ancestor == {1, 2, 3, 4}
-#                 # clade == {2, 3}
-#                 # new_ancestor == {1, {2, 3}, 4}
-#                 new_ancestor = (ancestor - clade) | frozenset([clade])          
-#                 countdict[new_ancestor] = countdict.pop(ancestor)
-#                 ancestor = new_ancestor
-            
-#             new_queue.append((len(ancestor), ancestor))
-   
-#         # if the clade is a tip, then we have a name
-#         if clade_size == 1:
-#             name = list(clade)[0]
-#             name = namedict[name]
-#         else:
-#             name = None 
-        
-#         # the clade will not be in nodes if it is a tip
-#         children = [nodes.pop(c) for c in clade if c in nodes]
-#         node = toytree.etemini.TreeNode(name=name)    
-#         #node = toytree.tree(name=name).tree
-#         for child in children:
-#             node.add_child(child)
-#         if not node.is_leaf():
-#             node.dist = int(round(100 * countdict[clade]))
-#             node.support = int(round(100 * countdict[clade]))
-#         else:
-#             node.dist = int(100) 
-#             node.support = int(100)
-        
-#         nodes[clade] = node
-#         queue = new_queue
-#     tre = list(nodes.values())[0]
-#     tre.unroot()
-#     ## return the tree and other trees if present
-#     return tre, list(nodes.values())
 
     
 ###############################################
