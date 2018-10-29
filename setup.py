@@ -17,9 +17,9 @@ setup(
     name="ipyrad",
     version=CUR_VERSION,
     url="https://github.com/dereneaton/ipyrad",
-    author="Deren Eaton",
+    author="Deren Eaton and Isaac Overcast",
     author_email="de2356@columbia.edu",
-    description="Interactive assembly and analysis of RADseq data sets",
+    description="Interactive assembly and analysis of RAD-seq data sets",
     long_description=open('README.rst').read(),
     packages=find_packages(),
     install_requires=[
@@ -34,6 +34,10 @@ setup(
         "mpi4py",
         "cutadapt",
         "toytree",
+        "requests",
+        #cython,     # tetrad
+        #mkl,        # tetrad
+        #
     ],
     entry_points={
         'console_scripts': [
