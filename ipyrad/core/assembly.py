@@ -83,10 +83,10 @@ class Assembly(object):
     object
          A new assembly object is returned.
     """
-    def __init__(self, name, quiet=False, **kwargs):
+    def __init__(self, name, **kwargs):
 
-        #ip.logger.debug("new assembly: {}".format(name))
-        self.quiet = quiet
+        # this is False and only updated during .run()
+        self.quiet = False
 
         # record whether we're in the CLI or API
         self._cli = False
@@ -792,7 +792,7 @@ class Assembly(object):
             ip.logger.error("shutdown warning: %s", inst2)
 
 
-    def run(self, steps=0, force=False, ipyclient=None, show_cluster=0):
+    def run(self, steps=0, force=False, ipyclient=None, quiet=False, show_cluster=False):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -800,12 +800,15 @@ class Assembly(object):
         connection is made using information from the _ipcluster dict of the
         Assembly class object.
         """
-        ## check that mindepth params are compatible, fix and report warning.
+        # hide all messages/progress bars       
+        self.quiet = quiet
+
+        # check that mindepth params are compatible, fix and report warning.
         self._compatible_params_check()
 
-        ## wrap everything in a try statement to ensure that we save the
-        ## Assembly object if it is interrupted at any point, and also
-        ## to ensure proper cleanup of the ipyclient.
+        # wrap everything in a try statement to ensure that we save the
+        # Assembly object if it is interrupted at any point, and also
+        # to ensure proper cleanup of the ipyclient.
         try:
             # get a running ipcluster instance or start one 
             ipyclient = self._get_parallel(ipyclient, show_cluster)
@@ -851,6 +854,8 @@ class Assembly(object):
 
         # close client when done or interrupted
         finally:
+            # unquiet 
+            self.quiet = False
             self._cleanup_parallel(ipyclient)
 
 
