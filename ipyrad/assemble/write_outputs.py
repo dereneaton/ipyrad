@@ -1548,7 +1548,8 @@ def fill_snp_array(data, ntaxa, nsnps):
                     if data.isref:
                         chrom, pos = idxs.split(",")[0].split(":")
                         start = int(pos.split("-")[0])
-                        chromidx = faidict[int(chrom)]
+                        #chromidx = faidict[int(chrom)]
+                        chromidx = int(chrom)
                         for isnp in range(snpsites.shape[1]):
                             isnpx = snpsidx[isnp]
                             tmpmap[snpidx - 1] = (
@@ -1887,7 +1888,7 @@ def build_vcf(data, chunksize=1000):
         
     # dictionary to translate locus numbers to chroms
     if data.isref:
-        revdict = chroms2ints(data, 0)
+        revdict = chroms2ints(data, 1)
 
     # pull locus numbers and positions from snps database
     with h5py.File(data.snps_database, 'r') as io5:
