@@ -1548,7 +1548,7 @@ def fill_snp_array(data, ntaxa, nsnps):
                     if data.isref:
                         chrom, pos = idxs.split(",")[0].split(":")
                         start = int(pos.split("-")[0])
-                        chromidx = faidict[chrom]
+                        chromidx = faidict[int(chrom)]
                         for isnp in range(snpsites.shape[1]):
                             isnpx = snpsidx[isnp]
                             tmpmap[snpidx - 1] = (
