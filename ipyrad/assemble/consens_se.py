@@ -317,7 +317,7 @@ class Step5:
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
-                self.data.print("")
+                self.data._print("")
                 break
 
         # check for failures:
