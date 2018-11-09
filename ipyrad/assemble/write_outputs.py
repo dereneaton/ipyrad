@@ -1465,7 +1465,7 @@ def fill_snp_array(data, ntaxa, nsnps):
 
     # get faidict to convert chroms to ints
     if data.isref:
-        faidict = chroms2ints(data, 1)
+        faidict = chroms2ints(data, 0)
 
     # open new database file handle
     with h5py.File(data.snps_database, 'w') as io5:
@@ -1549,8 +1549,8 @@ def fill_snp_array(data, ntaxa, nsnps):
                     if data.isref:
                         chrom, pos = idxs.split(",")[0].split(":")
                         start = int(pos.split("-")[0])
-                        #chromidx = faidict[int(chrom)]
-                        chromidx = int(chrom)
+                        chromidx = faidict[chrom]
+                        #chromidx = int(chrom)
                         for isnp in range(snpsites.shape[1]):
                             isnpx = snpsidx[isnp]
                             tmpmap[snpidx - 1] = (
