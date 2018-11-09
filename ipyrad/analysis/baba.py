@@ -16,13 +16,12 @@ import itertools
 import pandas as pd
 import numpy as np
 import numba
-import toytree
 
 ## ipyrad tools
+import toytree
 from ipyrad.analysis.utils import Params, progressbar
 from ipyrad.assemble.utils import IPyradError
 #from ipyrad.assemble.write_outfiles import reftrick    ## TODO REPLACE
-
 from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 

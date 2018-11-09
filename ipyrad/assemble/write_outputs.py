@@ -915,6 +915,7 @@ class Converter:
             self.write_phy()
 
         # phy array + phymap outputs
+        #TODO: Fix line ending in NEX--------------------------------------------------------------
         if oformat == "n":
             self.write_nex()
         

@@ -5,6 +5,7 @@
 import os
 import subprocess
 from ipyrad.assemble.utils import Params
+from ipyrad.assemble.utils import IPyradError
 
 ## alias
 OPJ = os.path.join
@@ -179,7 +180,7 @@ class Raxml(object):
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
         if os.path.exists(self.trees.info):
-            print("Error: set a new name for this job or use Force flag.\nFile exists: {}"\
+            print("Error Files Exist: set a new name or use Force flag.\n{}"
                   .format(self.trees.info))
             return 
 
@@ -203,8 +204,17 @@ class Raxml(object):
                     print("Error in raxml run\n" + self.stdout.decode())
                 else:
                     print("job {} finished successfully".format(self.params.n))
-            else:
-                print("job {} submitted to cluster".format(self.params.n))
+            else:               
+                if block:
+                    print("job {} running".format(self.params.n))
+                    ipyclient.wait()
+                    if self.rasync.successful():
+                        print("job {} finished successfully"
+                            .format(self.params.n))
+                    else:
+                        raise IPyradError(self.rasync.get())
+                else:
+                    print("job {} submitted to cluster".format(self.params.n))
 
 
 

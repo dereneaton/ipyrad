@@ -32,8 +32,9 @@ import numba
 import ctypes
 import datetime
 import numpy as np
-import ipyrad as ip
 from scipy.special import comb
+
+import ipyrad as ip
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import Params, get_spans
 

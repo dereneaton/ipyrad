@@ -4,7 +4,7 @@
 
 # py2/3 compat
 from __future__ import print_function
-from builtins import range
+#from builtins import range
 
 # standard lib
 import datetime
@@ -16,13 +16,13 @@ import os
 from numba import njit, prange
 
 
-# parallel and prange give a xncores speedup!
+# parallel and prange give a xncores speedup?
 njit(parallel=True)
 def get_spans(maparr, spans):
     """ 
     Get span distance for each locus in original seqarray. This
     is used to create re-sampled arrays in each bootstrap to sample
-    unlinked SNPs from.
+    unlinked SNPs from. Used on snpsphy or str or ...
     """
     start = 0
     end = 0
@@ -62,24 +62,6 @@ def progressbar(njobs, finished, start, msg):
     ]), end="")
     sys.stdout.flush()
 
-
-# class Params(object):
-#     "A dict-like object for storing params values with a custom repr"
-   
-#     def __getitem__(self, key):
-#         return self.__dict__[key]
-
-#     def __setitem__(self, key, value):
-#         self.__dict__[key] = value
-
-#     def __repr__(self):
-#         _repr = ""
-#         keys = sorted(self.__dict__.keys())      
-#         _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-#         for key in keys:
-#             _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-#             _repr += _printstr.format(key, _val)
-#         return _repr
 
 
 # New params class is iterable returning keys

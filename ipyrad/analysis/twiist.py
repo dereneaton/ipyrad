@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"Implementation of a twiist like method for anonymous RAD loci"
+"Implementation of a twiist like method for reference or anonymous RAD loci"
 
 # py2/3 compat
 from __future__ import print_function
@@ -34,6 +34,7 @@ class Twiist():
         ntests=100, 
         minsnps=1,
         randomseed=None,
+        reference=False,
         ):
 
         ## init random seed
@@ -41,6 +42,7 @@ class Twiist():
         np.random.seed(self.randomseed)
         
         ## store attributes
+        self.reference = reference
         self.data = data
         self.imap = imap
         self.rmap = {}
@@ -61,11 +63,45 @@ class Twiist():
         self.samples = list(itertools.chain(*[i for i in self.imap.values()]))
         
         ## get idxs of loci for this test
-        self.idxs = self.get_test_locus_idxs()
+        if self.reference:
+            self.idxs = self.get_ref_locus_idxs()
+
+            # todo: find nchroms, and chrom sizes
+            # ....
+
+        else:
+            self.idxs = self.get_denovo_locus_idxs()
                 
+
     
+    def get_ref_locus_idxs(self):
+        idxs = []
+
+        with open(self.data) as indata:
+            liter = (indata.read().strip().split("|\n"))
+
+        for idx, loc in enumerate(liter):
+            lines = loc.split("\n")
+            snpline = loc[-1]
+            locidx, chidx, pos = snpline.split("|")[1].split(":")            
+            names = [i.split()[0] for i in lines[:-1]]
+
+            ## check coverage
+            coverage = 0
+            for node in self.imap:
+                mincov = self.minmap[node]
+                if sum([i in names for i in self.imap[node]]) >= mincov:
+                    coverage += 1
+            
+            if coverage == len(self.imap.keys()):
+                pos1, pos2 = pos.split('-')
+                refinfo = (idx, chidx, pos1, pos2)
+                idxs.append(refinfo)
+        return idxs
+
+
     
-    def get_test_locus_idxs(self):
+    def get_denovo_locus_idxs(self):
         """ finds loci with sufficient sampling for this test"""
 
         ## store idx of passing loci
@@ -89,18 +125,21 @@ class Twiist():
                 if sum([i in names for i in self.imap[node]]) >= mincov:
                     coverage += 1
             if coverage == 4:
-                idxs.append(idx)          
+                idxs.append(idx)      
 
         ## concatenate into a phylip file
         return idxs
     
 
 
-    def sample_loci(self):
+    def sample_loci(self, window):
         """ finds loci with sufficient sampling for this test"""
 
         ## store idx of passing loci
-        idxs = np.random.choice(self.idxs, self.ntests)
+        if not self.reference:
+            idxs = np.random.choice(self.idxs, self.ntests)
+        else:
+            idxs = self.get_window_idxs(window)
 
         ## open handle, make a proper generator to reduce mem
         with open(self.data) as indata:
@@ -127,8 +166,26 @@ class Twiist():
                         
         ## concatenate into a phylip file
         return seqdata
-    
-    
+  
+
+
+    def get_window_idxs(self, window):
+        "Returns locus idxs that are on same chrom and within chunksize"
+
+        # get start position
+        locidx, chridx, pos1, pos2 = self.idxs[window]
+
+        # get end position
+        endwindow = pos2 + self.chunksize
+
+        idxs = []
+        for tup in self.idxs:
+            if tup[1] == chridx:
+                if int(tup[3]) < int(endwindow):
+                    idxs.append(tup[0])
+        return idxs
+
+
 
     def run_tree_inference(self, nexus, idx):
         """
@@ -144,7 +201,7 @@ class Twiist():
         ))
 
         ## write nexus to tmpfile
-        tmpfile.write(nexus)
+        tmpfile.write(str.encode(nexus))
         tmpfile.flush()
 
         ## infer the tree
@@ -164,16 +221,16 @@ class Twiist():
         """
         parallelize calls to worker function.
         """
-        
         ## connect to parallel client
         lbview = ipyclient.load_balanced_view()
         
         ## iterate over tests
         asyncs = []
-        for test in range(self.ntests): 
+        for window in range(self.ntests): 
             
             ## submit jobs to run
-            rasync = lbview.apply(worker, self)
+            args = (window, self)
+            rasync = lbview.apply(worker, *args)
             asyncs.append(rasync)
             
         ## wait for jobs to finish
@@ -211,14 +268,14 @@ class Twiist():
 
 
 
-def worker(self):
+def worker(self, window):
     """ 
     Calculates the quartet weights for the test at a random
     subsampled chunk of loci.
     """
 
     ## subsample loci 
-    fullseqs = self.sample_loci()
+    fullseqs = self.sample_loci(window)
 
     ## find all iterations of samples for this quartet
     liters = itertools.product(*self.imap.values())

@@ -24,8 +24,7 @@ MISSING_IMPORTS = """
 To use the ipa.structure module you must install two additional 
 libraries which can be done with the following conda command. 
 
-  conda install -c ipyrad structure clumpp
-  conda install -c eaton-lab toytree
+conda install -c ipyrad structure clumpp
 """
 
 
@@ -100,7 +99,7 @@ class Structure(object):
 
     def check_binaries(self):
         "check for structure and clumpp"
-        for binary in ['structure', 'clumpp']:
+        for binary in ['structure', 'CLUMPP']:
             cmd = ["which", binary]
             proc = sps.Popen(cmd, stdout=sps.PIPE, stderr=sps.PIPE)
             stdout = proc.communicate()[0]
@@ -139,11 +138,14 @@ class Structure(object):
         # if mapfile then parse it to an array
         if self.mapfile:
             with open(self.mapfile) as inmap:
-                maparr = np.genfromtxt(inmap)[:, [0, 3]].astype(np.uint64)
+                maparr = np.genfromtxt(inmap)
+                maparr[:, 1] = 0
+                maparr = maparr.astype(int)
                 spans = np.zeros((maparr[-1, 0], 2), np.uint64)
                 spans = get_spans(maparr, spans)
                 self.maparr = spans
-                self.nsites = spans.shape[0]
+                # nsites is not spans.shape b/c spans includes invariant loci.
+                #self.nsites = spans.shape[0]
         else:
             self.maparr = None
             
@@ -151,9 +153,14 @@ class Structure(object):
     def _subsample(self):
         "returns a subsample of unlinked snp sites"
         spans = self.maparr
-        samp = np.zeros(spans.shape[0], dtype=np.uint64)
-        for i in range(spans.shape[0]):
-            samp[i] = np.random.randint(spans[i, 0], spans[i, 1], 1)
+        samp = np.zeros(self.nsites, dtype=np.uint64)
+        i = 0
+        while 1:
+            if i == self.nsites:
+                break
+            if spans[i, 0] != spans[i, 1]:
+                samp[i] = np.random.randint(spans[i, 0], spans[i, 1], 1)   
+            i += 1
         return samp
 
 
@@ -183,7 +190,8 @@ class Structure(object):
         ipyclient=None,
         seed=12345, 
         force=False,
-        quiet=False, 
+        quiet=False,
+        block=False, 
         ):
 
         """ 
@@ -727,8 +735,6 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
 
 
 
-
-
 def _concat_reps(self, kpop, max_var_multiple, quiet, **kwargs):
     """
     Combine structure replicates into a single indfile, 
@@ -928,8 +934,6 @@ class Rep(object):
 
             stable += "\n"
         return stable
-
-
 
 
 
