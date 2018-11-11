@@ -34,6 +34,9 @@ def get_spans(maparr, spans):
         else: 
             spans[idx - 1] = [end, end]
         start = spans[idx - 1, 1]
+
+    # drop rows with no span (invariant loci)
+    spans = spans[spans[:, 0] != spans[:, 1]]
     return spans
 
 
