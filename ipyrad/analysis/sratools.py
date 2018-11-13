@@ -18,7 +18,7 @@ import subprocess as sps
 # third party
 import pandas as pd
 import ipyparallel as ipp
-from ipyrad.assemble.utils import IPyradWarningExit
+from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import Params, progressbar
 
 
@@ -64,7 +64,7 @@ class SRA(object):
             "quiet": 0, 
             "timeout": 60, 
             "cores": 0, 
-            "threads" : 2,
+            "threads": 2,
             "pids": {},
             }
 
@@ -74,7 +74,7 @@ class SRA(object):
         elif any([i in self.accession for i in ["SRP", "ERP", "DRP"]]):
             self.is_project = True
         else:
-            raise IPyradWarningExit(ACCESSION_ID)
+            raise IPyradError(ACCESSION_ID)
 
         self.check_binaries()
 
@@ -82,10 +82,10 @@ class SRA(object):
     def check_binaries(self):
         # check imports
         for binary in ['fastq-dump', 'esearch']:
-            proc = sps.Popen(['which', binary])
+            proc = sps.Popen(['which', binary], stdout=sps.PIPE)
             comm = proc.communicate()[0]
             if not comm:
-                raise IPyradWarningExit(MISSING_IMPORTS)
+                raise IPyradError(MISSING_IMPORTS)
 
 
     def run(self, 
@@ -171,7 +171,7 @@ class SRA(object):
                         print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
                 except OSError as inst:
                     ## If sra dir doesn't even exist something is broken.
-                    raise IPyradWarningExit("Download failed. Exiting.")
+                    raise IPyradError("Download failed. Exiting.")
 
                 ## remove fastq file matching to cached sra file
                 for srr in os.listdir(sradir):
@@ -220,7 +220,7 @@ class SRA(object):
         """
 
         ## get Run data with default fields (1,4,6,30)
-        df = self.fetch_runinfo(range(31), quiet=True)
+        df = self.fetch_runinfo(list(range(31)), quiet=True)
         sys.stdout.flush()
 
         ## if not ipyclient then use multiprocessing
@@ -231,7 +231,7 @@ class SRA(object):
         ## we need to include the accessions in the file names
         if name_fields:
             ## indexing requires -1 ints
-            fields = [int(i)-1 for i in fields_checker(name_fields)]
+            fields = [int(i) - 1 for i in fields_checker(name_fields)]
             ## make accession names, no spaces allowed
             df['Accession'] = pd.Series(df[df.columns[fields[0]]], index=df.index)
             for field in fields[1:]:
@@ -239,8 +239,8 @@ class SRA(object):
             df.Accession = [i.replace(" ", "_") for i in df.Accession]    
             ## check that names are unique
             if not df.Accession.shape[0] == df.Accession.unique().shape[0]:
-                raise IPyradWarningExit("names are not unique:\n{}"\
-                    .format(df.Accession))
+                raise IPyradError("names are not unique:\n{}"
+                                  .format(df.Accession))
 
         ## backup default naming scheme
         else:
@@ -262,7 +262,7 @@ class SRA(object):
                 srr = df.Run[idx]
                 outname = df.Accession[idx]
                 paired = df.spots_with_mates.values.astype(int).nonzero()[0].any()
-                fpath = os.path.join(self.workdir, outname+".fastq.gz")
+                fpath = os.path.join(self.workdir, outname + ".fastq.gz")
 
                 ## skip if exists and not force
                 skip = False
@@ -283,10 +283,10 @@ class SRA(object):
                 if not skip:
                     args = (self, srr, outname, paired)
                     if ipyclient:
-                        async = lb.apply_async(call_fastq_dump_on_SRRs, *args)
-                        asyncs.append(async)
+                        rasync = lb.apply_async(call_fastq_dump_on_SRRs, *args)
+                        asyncs.append(rasync)
                     else:
-                        print("Downloading file {}/{}: {}".format(idx+1, tidx, fpath))
+                        print("Downloading file {}/{}: {}".format(idx + 1, tidx, fpath))
                         call_fastq_dump_on_SRRs(*args)
                         sys.stdout.flush()
 
@@ -296,7 +296,7 @@ class SRA(object):
                 printstr = " Downloading fastq files | {} | "
                 start = time.time()
                 while 1:
-                    elapsed = datetime.timedelta(seconds=int(time.time()-start))
+                    elapsed = datetime.timedelta(seconds=int(time.time() - start))
                     ready = sum([i.ready() for i in asyncs])
                     progressbar(tots, ready, printstr.format(elapsed), spacer="")
                     time.sleep(0.1)
@@ -306,9 +306,9 @@ class SRA(object):
                 self._report(tots)
 
                 ## check for fails
-                for async in asyncs:
-                    if not async.successful():
-                        raise IPyradWarningExit(async.result())
+                for rasync in asyncs:
+                    if not rasync.successful():
+                        raise IPyradError(rasync.result())
 
 
 
@@ -318,8 +318,10 @@ class SRA(object):
 
     @property
     def fetch_fields(self):
-        fields = pd.DataFrame(data=[COLNAMES, range(1, len(COLNAMES)+1)]).T
-        fields.columns=['field', 'index']
+        fields = pd.DataFrame(
+            data=[COLNAMES, list(range(1, len(COLNAMES) + 1))]
+        ).T
+        fields.columns = ['field', 'index']
         return fields
 
 
@@ -341,7 +343,7 @@ class SRA(object):
             print("\rFetching project data...", end="")
 
         ## if no entry then fetch (nearly) all fields.
-        if fields == None:  
+        if fields is None:  
             fields = range(30)
         fields = fields_checker(fields)
 
@@ -372,12 +374,12 @@ class SRA(object):
         proc1.stdout.close()
         
         if o:
-            vals = o.strip().split("\n")
+            vals = o.decode().strip().split("\n")
             names = vals[0].split(",")
-            items = [i.split(",") for i in vals[1:]]
+            items = [i.split(",") for i in vals[1:] if i not in ["", vals[0]]]
             return pd.DataFrame(items, columns=names)
         else:
-            raise IPyradWarningExit("no samples found in {}".format(self.accession))
+            raise IPyradError("no samples found in {}".format(self.accession))
 
 
     def _set_vdbconfig_path(self):
@@ -457,7 +459,7 @@ def fields_checker(fields):
     elif isinstance(fields, (tuple, list)):
         fields = [str(i) for i in fields]
     else:
-        raise IPyradWarningExit("fields not properly formatted")
+        raise IPyradError("fields not properly formatted")
 
     ## do not allow zero in fields
     fields = [i for i in fields if i != '0']
