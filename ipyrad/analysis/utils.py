@@ -94,9 +94,10 @@ class Params(object):
     def __repr__(self):
         "return simple representation of dict with ~ shortened for paths"
         _repr = ""
-        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]      
-        _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-        for key in keys:
-            _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-            _repr += _printstr.format(key, _val)
+        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]
+        if keys:
+            _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+            for key in keys:
+                _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+                _repr += _printstr.format(key, _val)
         return _repr        
