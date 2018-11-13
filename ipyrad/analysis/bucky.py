@@ -58,7 +58,6 @@ class Bucky(object):
     bucky_niter:
         ...
 
-
     Attributes:
         ...u
     """
@@ -400,11 +399,11 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = "[mbsum] sum replicate runs      | {} | "
+        printstr = ("sum replicate runs", "mbsum")
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), printstr, start)
+                progressbar(len(ready), sum(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -447,11 +446,11 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = "[mb] infer gene-tree posteriors | {} | "        
+        printstr = ("infer gene-tree posteriors", 'mb')
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), printstr, start)
+                progressbar(len(ready), sum(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -487,7 +486,6 @@ class Bucky(object):
             An active ipyparallel client to distribute jobs to.
 
         """
-
         ## check for existing results files
         minidir = os.path.realpath(os.path.join(self.workdir, self.name))
         infiles = glob.glob(os.path.join(minidir, "*.sumt"))
@@ -505,10 +503,10 @@ class Bucky(object):
         ## submit each to be processed
         asyncs = []
         for alpha in alphas:
-            pathname = os.path.join(outroot, "CF-a"+str(alpha))
-            if (os.path.exists(pathname)) and (force!=True):
-                print("BUCKy results already exist for this object at alpha={}\n".format(alpha) +\
-                      "use force=True to overwrite existing results")
+            pathname = os.path.join(outroot, "CF-a" + str(alpha))
+            if (os.path.exists(pathname)) and (force != True):
+                print("BUCKy results already exist for this filepath. " + \
+                      "Use force to overwrite")
             else:
                 args = [
                     alpha, 
@@ -522,11 +520,11 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = "[bucky] infer CF posteriors     | {} | "
+        printstr = ("infer CF posteriors", "bucky")
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), printstr, start)
+                progressbar(len(ready), sum(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
