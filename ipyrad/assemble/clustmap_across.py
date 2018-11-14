@@ -25,7 +25,7 @@ import subprocess as sps
 import numpy as np
 from pysam import AlignmentFile, FastaFile
 import ipyrad
-from .utils import IPyradWarningExit, IPyradError, fullcomp
+from .utils import IPyradWarningExit, IPyradError, fullcomp, chroms2ints
 
 
 class Step6:
@@ -543,7 +543,7 @@ class Step6:
     def remote_build_ref_regions(self):
         "call bedtools remotely and track progress"
         start = time.time()
-        printstr = ("building clusters   ", "s6")
+        printstr = ("fetching regions    ", "s6")
         rasync = self.ipyclient[0].apply(build_ref_regions, self.data)
         while 1:
             done = rasync.ready()
@@ -558,6 +558,7 @@ class Step6:
             raise IPyradError(
                 "error in build ref regions: {}".format(rasync.exception()))
 
+
     # can parallelize
     def remote_build_ref_clusters(self):
         "build clusters and find variants/indels to store"
@@ -570,7 +571,7 @@ class Step6:
 
         # send jobs to func
         start = time.time()
-        printstr = ("building clusters   ", "s6")        
+        printstr = ("building loci       ", "s6")
         jobs = {}
         for idx, chunk in enumerate(range(0, nloci, optim)):
             region = self.regions[chunk: chunk + optim]
@@ -686,6 +687,9 @@ def build_ref_clusters(data, idx, iregion):
             "{}.cat.sorted.bam".format(data.name)),
         'rb')
 
+    # dict to map chromosome names to integers
+    faidict = chroms2ints(data, False)
+
     # prepare i/o for pysam reference indexed
     reffai = FastaFile(data.paramsdict["reference_sequence"])
 
@@ -764,7 +768,7 @@ def build_ref_clusters(data, idx, iregion):
         # get consens seq and variant site index 
         clust = [">reference_{}:{}:{}-{}\n{}".format(
             0, 
-            region[0], mstart + 1, mend + 1, 
+            faidict[region[0]] + 1, mstart + 1, mend + 1,   # 1-indexed
             b"".join(arr[0]).decode()
         )]
         for idx, key in enumerate(keys):    
@@ -779,18 +783,19 @@ def build_ref_clusters(data, idx, iregion):
             outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
 
 
-# maybe pysam does this faster?
-def get_ref_region(reference, contig, rstart, rend):
-    "returns the reference sequence over a given region"
-    cmd = [
-        ipyrad.bins.samtools, 'faidx',
-        reference,
-        "{}:{}-{}".format(contig, rstart + 1, rend),
-    ]
-    stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
-    name, seq = stdout.decode().split("\n", 1)
-    listseq = [name, seq.replace("\n", "")]
-    return listseq
+# DEPRECATED TO USE PYSAM INSTEAD
+# # maybe pysam does this faster?
+# def get_ref_region(reference, contig, rstart, rend):
+#     "returns the reference sequence over a given region"
+#     cmd = [
+#         ipyrad.bins.samtools, 'faidx',
+#         reference,
+#         "{}:{}-{}".format(contig, rstart + 1, rend),
+#     ]
+#     stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
+#     name, seq = stdout.decode().split("\n", 1)
+#     listseq = [name, seq.replace("\n", "")]
+#     return listseq
 
 
 def build_concat_two(data, jobids, randomseed):

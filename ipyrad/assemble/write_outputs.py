@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import ipyrad
 from numba import njit
-from .utils import IPyradError, clustdealer, splitalleles
+from .utils import IPyradError, clustdealer, splitalleles, chroms2ints
 from .utils import BTS, GETCONS, DCONS
 
 
@@ -194,7 +194,7 @@ class Step7:
 
         # chunk to approximately 2 chunks per core
         self.ncpus = len(self.ipyclient.ids)
-        self.chunks = ((self.nraws // (self.ncpus * 2)) + \
+        self.chunksize = ((self.nraws // (self.ncpus * 2)) + \
                        (self.nraws % (self.ncpus * 2)))
 
 
@@ -391,7 +391,7 @@ class Step7:
 
                 # if an engine is available pull off a chunk
                 try:
-                    done, chunk = clustdealer(pairdealer, self.chunks)
+                    done, chunk = clustdealer(pairdealer, self.chunksize)
                 except IndexError:
                     raise IPyradError(
                         "clust_database formatting error in %s", chunk)
@@ -420,7 +420,7 @@ class Step7:
         jobs = glob.glob(os.path.join(self.data.tmpdir, "chunk-*"))
         jobs = sorted(jobs, key=lambda x: int(x.rsplit("-")[-1]))        
         for jobfile in jobs:
-            args = (self.data, self.chunks, jobfile)
+            args = (self.data, self.chunksize, jobfile)
             rasyncs[jobfile] = self.lbview.apply(process_chunks, *args)
         
         # iterate until all chunks are processed
@@ -540,19 +540,19 @@ class Step7:
 # ------------------------------------------------------------
 
 class Processor:
-    def __init__(self, data, chunks, chunkfile):
+    def __init__(self, data, chunksize, chunkfile):
         """
         Takes a chunk of aligned loci and (1) applies filters to it; 
         (2) gets edges, (3) builds snpstring, (4) returns chunk and stats.
         """
         # init data
         self.data = data
-        self.chunks = chunks
+        self.chunksize = chunksize
         self.chunkfile = chunkfile
         self.isref = data.paramsdict["assembly_method"] == "reference"
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
-        self.filters = np.zeros((self.chunks, 5), dtype=np.bool_)
+        self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
         self.filterlabels = (
             'dups', 
             'maxind',  
@@ -560,7 +560,7 @@ class Processor:
             'maxshared',
             'minsamp', 
             )
-        self.edges = np.zeros((self.chunks, 4), dtype=np.uint16)
+        self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
         # store stats on sample coverage and locus coverage
         self.maxsnps = sum(self.data.paramsdict['max_SNPs_locus'])
@@ -575,6 +575,7 @@ class Processor:
         self.outfile = self.chunkfile + '.loci'
         self.outarr = self.chunkfile + '.npy'
         self.outpickle = self.chunkfile + '.p'
+
 
     def run(self):
 
@@ -1190,9 +1191,9 @@ class Converter:
 # The step class object but only the data class object, which avoids
 # problems with sending ipyclient (open file) to an engine.
 # -----------------------------------------------------------
-def process_chunks(data, chunks, chunkfile):
+def process_chunks(data, chunksize, chunkfile):
     # process chunk writes to files and returns proc with features.
-    proc = Processor(data, chunks, chunkfile)
+    proc = Processor(data, chunksize, chunkfile)
     proc.run()
 
     # write process stats to a pickle file for collating later.
@@ -1319,20 +1320,6 @@ def pseudoref2ref(pseudoref, ref):
 
     return npseudo
 
-
-def chroms2ints(data, which):
-    # if reference-mapped then parse the fai to get index number of chroms
-    fai = pd.read_csv(
-        data.paramsdict["reference_sequence"] + ".fai",
-        names=['scaffold', 'size', 'sumsize', 'a', 'b'],
-        sep="\t",
-    )
-    faidict = {j: i for i, j in enumerate(fai.scaffold)}
-    if not which:
-        return faidict
-    else:
-        revdict = {j: i for i, j in faidict.items()}
-        return revdict
 
 
 def fill_seq_array(data, ntaxa, nbases, nloci):
@@ -1465,7 +1452,7 @@ def fill_snp_array(data, ntaxa, nsnps):
 
     # get faidict to convert chroms to ints
     if data.isref:
-        faidict = chroms2ints(data, 0)
+        faidict = chroms2ints(data, True)
 
     # open new database file handle
     with h5py.File(data.snps_database, 'w') as io5:
@@ -1549,8 +1536,8 @@ def fill_snp_array(data, ntaxa, nsnps):
                     if data.isref:
                         chrom, pos = idxs.split(",")[0].split(":")
                         start = int(pos.split("-")[0])
-                        chromidx = faidict[chrom]
-                        #chromidx = int(chrom)
+                        #chromidx = faidict[chrom]
+                        chromidx = int(chrom)
                         for isnp in range(snpsites.shape[1]):
                             isnpx = snpsidx[isnp]
                             tmpmap[snpidx - 1] = (
@@ -1755,7 +1742,7 @@ def build_vcf(data, chunksize=1000):
         
     # dictionary to translate locus numbers to chroms
     if data.isref:
-        revdict = chroms2ints(data, 1)
+        revdict = chroms2ints(data, True)
 
     # pull locus numbers and positions from snps database
     with h5py.File(data.snps_database, 'r') as io5:
