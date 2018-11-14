@@ -175,6 +175,7 @@ class Step3:
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
 
+            # DENOVO PLUS
             else:
                 raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
@@ -264,6 +265,11 @@ class Step3:
                     printstr=("building clusters   ", "s3"),
                     args=(),
                 )
+
+            # DENOVO MINUS
+            elif self.data.paramsdict["assembly_method"] == "denovo-reference":
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not yet supported")
 
             else:
                 raise NotImplementedError(
