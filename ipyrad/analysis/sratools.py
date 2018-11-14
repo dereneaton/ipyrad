@@ -389,7 +389,7 @@ class SRA(object):
             ['vdb-config', '-p'], 
             stderr=sps.STDOUT, stdout=sps.PIPE)
         o, e = proc.communicate()
-        self._oldtmpdir = o.split("root>")[1][:-2]
+        self._oldtmpdir = o.decode().split("root>")[1][:-2]
 
         ## set new temp dir 
         proc = sps.Popen(
