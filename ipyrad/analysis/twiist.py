@@ -82,8 +82,8 @@ class Twiist():
 
         for idx, loc in enumerate(liter):
             lines = loc.split("\n")
-            snpline = loc[-1]
-            locidx, chidx, pos = snpline.split("|")[1].split(":")            
+            snpline = loc.split('|')[-1]
+            locidx, chidx, pos = snpline.split(":")            
             names = [i.split()[0] for i in lines[:-1]]
 
             ## check coverage
