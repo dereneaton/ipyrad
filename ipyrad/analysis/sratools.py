@@ -11,7 +11,6 @@ import sys
 import time
 import glob
 import shutil
-import datetime
 import multiprocessing
 import subprocess as sps
 
@@ -91,7 +90,7 @@ class SRA(object):
     def run(self, 
         force=False, 
         ipyclient=None, 
-        name_fields=30, 
+        name_fields=(1, 30), 
         name_separator="_", 
         dry_run=False):
         """
@@ -128,7 +127,7 @@ class SRA(object):
             if not os.path.exists(self.workdir):
                 os.makedirs(self.workdir)
 
-            ## get original directory for sra files 
+            ## set _oldtmpdir with original directory for sra files 
             ## probably /home/ncbi/public/sra by default.
             self._set_vdbconfig_path()
 
@@ -162,27 +161,28 @@ class SRA(object):
             ## we are finished if all .sra files were removed. If so, then
             ## let's also remove the dir. if not empty, leave it.
             sradir = os.path.join(self.workdir, "sra")
-            if os.path.exists(sradir) and (not os.listdir(sradir)):
-                shutil.rmtree(sradir)
-            else:
-                ## print warning
-                try:
-                    if os.path.exists(sradir) and os.listdir(sradir):
-                        print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
-                except OSError as inst:
-                    ## If sra dir doesn't even exist something is broken.
-                    raise IPyradError("Download failed. Exiting.")
-
-                ## remove fastq file matching to cached sra file
-                for srr in os.listdir(sradir):
-                    isrr = srr.split(".")[0]
-                    ipath = os.path.join(self.workdir, "*_{}*.gz".format(isrr))
-                    ifile = glob.glob(ipath)[0]
-                    if os.path.exists(ifile):
-                        os.remove(ifile)
-                ## remove cache of sra files
-                if os.path.exists(sradir):
+            if os.path.exists(sradir):
+                if not os.listdir(sradir):
                     shutil.rmtree(sradir)
+            
+                ## directory exists and is non-empty: 
+                ## need to remove unfinished sample!
+                else:
+                    ## print warning
+                    print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
+
+                    ## remove fastq file matching to cached sra file
+                    for srr in os.listdir(sradir):
+                        isrr = srr.split(".")[0]
+                        ipath = os.path.join(
+                            "{}*_{}*.gz".format(self.workdir, isrr))
+                        iglob = glob.glob(ipath)
+                        if iglob:
+                            ifile = iglob[0]
+                            if os.path.exists(ifile):
+                                os.remove(ifile)
+                ## remove cache of sra files
+                shutil.rmtree(sradir)
 
             ## cleanup ipcluster shutdown
             if ipyclient:
@@ -223,7 +223,7 @@ class SRA(object):
         df = self.fetch_runinfo(list(range(31)), quiet=True)
         sys.stdout.flush()
 
-        ## if not ipyclient then use multiprocessing
+        ## if not ipyclient then use multiprocessing?
         if ipyclient:
             lb = ipyclient.load_balanced_view()
 
@@ -245,7 +245,7 @@ class SRA(object):
         ## backup default naming scheme
         else:
             if len(set(df.SampleName)) != len(df.SampleName):
-                accs = (i+"-"+j for i, j in zip(df.SampleName, df.Run))
+                accs = ("{}-{}".format(i, j) for (i, j) in zip(df.SampleName, df.Run))
                 df.Accession = accs
             else:
                 df.Accession = df.SampleName
@@ -293,12 +293,11 @@ class SRA(object):
             ## progress bar while blocking parallel
             if ipyclient:
                 tots = df.Accession.shape[0]
-                printstr = " Downloading fastq files | {} | "
+                printstr = (" Downloading fastq files", "")
                 start = time.time()
                 while 1:
-                    elapsed = datetime.timedelta(seconds=int(time.time() - start))
                     ready = sum([i.ready() for i in asyncs])
-                    progressbar(tots, ready, printstr.format(elapsed), spacer="")
+                    progressbar(tots, ready, start, printstr)
                     time.sleep(0.1)
                     if tots == ready:
                         print("")
@@ -404,9 +403,9 @@ class SRA(object):
         ## set temp dir 
         if not self._oldtmpdir:
             self._oldtmpdir = os.path.join(os.path.expanduser("~"), "ncbi")
-        proc = sps.Popen(
-            ['vdb-config', '-s', 
-            'repository/user/main/public/root='+self._oldtmpdir],
+        proc = sps.Popen([
+            'vdb-config', '-s', 
+            'repository/user/main/public/root=' + self._oldtmpdir],
             stderr=sps.STDOUT, stdout=sps.PIPE)
         o, e = proc.communicate()
         #print('restoring tmpdir to {}'.format(self._oldtmpdir))
@@ -429,6 +428,15 @@ def call_fastq_dump_on_SRRs(self, srr, outname, paired):
         ]
     if paired:
         fd_cmd += ["--split-files"]
+
+    # # only available for linux... 
+    # fqd_cmd = [
+    #     "fasterq-dump", srr,
+    #     "--outfile", outname,
+    #     "--outdir", self.workdir, 
+    #     "--tempdir", os.path.join(self.workdir, "sra"),
+    #     "--progress", "0",        
+    #     ]
 
     ## call fq dump command
     proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
@@ -463,7 +471,6 @@ def fields_checker(fields):
 
     ## do not allow zero in fields
     fields = [i for i in fields if i != '0']
-
     return fields
 
 
