@@ -11,14 +11,13 @@ import sys
 import time
 import glob
 import shutil
-import multiprocessing
 import subprocess as sps
 
 # third party
 import pandas as pd
 import ipyparallel as ipp
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.analysis.utils import Params, progressbar
+from ipyrad.analysis.utils import progressbar
 
 
 # TODO: register this as an app with ncbi and avoid sratools altogether
@@ -92,7 +91,9 @@ class SRA(object):
         ipyclient=None, 
         name_fields=(1, 30), 
         name_separator="_", 
-        dry_run=False):
+        dry_run=False, 
+        split_pairs=None,
+        ):
         """
         Download the accessions into a the designated workdir. 
 
@@ -118,6 +119,10 @@ class SRA(object):
         dry_run: (bool)
             If True then a table of file names that _would_ be downloaded
             will be shown, but the actual files will note be downloaded.
+
+        split_pairs: (bool or None)
+            If True then pairs are split, if False they are not split, if None
+            then we will auto-detect if paired or not.
         """
 
         ## temporarily set directory for tmpfiles used by fastq-dump
@@ -147,13 +152,37 @@ class SRA(object):
                 name_fields=name_fields, 
                 name_separator=name_separator,
                 dry_run=dry_run,
+                split_pairs=split_pairs,
                 )
 
         ## exceptions to catch, cleanup and handle ipyclient interrupts
         except KeyboardInterrupt:
-            print("keyboard interrupt...")
+            print("\nkeyboard interrupt...")
 
         finally:
+
+            ## cleanup ipcluster shutdown
+            if ipyclient:
+                ## send SIGINT (2) to all engines still running tasks
+                try:
+                    ipyclient.abort()
+                    time.sleep(0.5)
+                    for engine_id, pid in self._ipcluster["pids"].items():
+                        if ipyclient.queue_status()[engine_id]["tasks"]:
+                            os.kill(pid, 2)
+                            print('killed', pid)
+                        time.sleep(0.1)
+                except ipp.NoEnginesRegistered:
+                    pass
+                ## clean memory space
+                if not ipyclient.outstanding:
+                    ipyclient.purge_everything()
+                ## uh oh, kill everything, something bad happened
+                else:
+                    ipyclient.shutdown(hub=True, block=False)
+                    ipyclient.close()
+                    print("\nwarning: ipcluster shutdown and must be restarted")
+
             ## reset working sra path
             self._restore_vdbconfig_path()
 
@@ -169,42 +198,25 @@ class SRA(object):
                 ## need to remove unfinished sample!
                 else:
                     ## print warning
-                    print(FAILED_DOWNLOAD.format(os.listdir(sradir)))
+                    fsamps = [i.rsplit(".", 2)[0] for i in os.listdir(sradir)]
+                    print(FAILED_DOWNLOAD.format(fsamps))
 
                     ## remove fastq file matching to cached sra file
                     for srr in os.listdir(sradir):
                         isrr = srr.split(".")[0]
                         ipath = os.path.join(
-                            "{}*_{}*.gz".format(self.workdir, isrr))
+                            self.workdir, 
+                            "*{}*.fastq.gz".format(isrr),
+                        )
                         iglob = glob.glob(ipath)
                         if iglob:
                             ifile = iglob[0]
                             if os.path.exists(ifile):
                                 os.remove(ifile)
+
                 ## remove cache of sra files
                 shutil.rmtree(sradir)
-
-            ## cleanup ipcluster shutdown
-            if ipyclient:
-                ## send SIGINT (2) to all engines still running tasks
-                try:
-                    ipyclient.abort()
-                    time.sleep(0.5)
-                    for engine_id, pid in self._ipcluster["pids"].items():
-                        if ipyclient.queue_status()[engine_id]["tasks"]:
-                            os.kill(pid, 2)
-                        time.sleep(0.1)
-                except ipp.NoEnginesRegistered:
-                    pass
-                ## clean memory space
-                if not ipyclient.outstanding:
-                    ipyclient.purge_everything()
-                ## uh oh, kill everything, something bad happened
-                else:
-                    ipyclient.shutdown(hub=True, block=False)
-                    ipyclient.close()
-                    print("\nwarning: ipcluster shutdown and must be restarted")
-                    
+                        
 
 
     def _submit_jobs(self, 
@@ -212,7 +224,9 @@ class SRA(object):
         ipyclient, 
         name_fields, 
         name_separator, 
-        dry_run):
+        dry_run, 
+        split_pairs,
+        ):
         """
         Download the accessions into a the designated workdir. 
         If file already exists it will only be overwritten if 
@@ -261,8 +275,13 @@ class SRA(object):
                 ## get args for this run
                 srr = df.Run[idx]
                 outname = df.Accession[idx]
-                paired = df.spots_with_mates.values.astype(int).nonzero()[0].any()
                 fpath = os.path.join(self.workdir, outname + ".fastq.gz")
+
+                ## get paired arg
+                if not split_pairs:
+                    paired = int(df.spots_with_mates[idx])
+                else:
+                    paired = bool(split_pairs)
 
                 ## skip if exists and not force
                 skip = False
@@ -293,7 +312,7 @@ class SRA(object):
             ## progress bar while blocking parallel
             if ipyclient:
                 tots = df.Accession.shape[0]
-                printstr = (" Downloading fastq files", "")
+                printstr = ("Downloading fastq files", "")
                 start = time.time()
                 while 1:
                     ready = sum([i.ready() for i in asyncs])
@@ -425,18 +444,10 @@ def call_fastq_dump_on_SRRs(self, srr, outname, paired):
         "--accession", outname,
         "--outdir", self.workdir, 
         "--gzip",
+        "--disable-multithreading",
         ]
     if paired:
         fd_cmd += ["--split-files"]
-
-    # # only available for linux... 
-    # fqd_cmd = [
-    #     "fasterq-dump", srr,
-    #     "--outfile", outname,
-    #     "--outdir", self.workdir, 
-    #     "--tempdir", os.path.join(self.workdir, "sra"),
-    #     "--progress", "0",        
-    #     ]
 
     ## call fq dump command
     proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
