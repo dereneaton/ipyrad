@@ -9,6 +9,15 @@ from .load import save_json, load_json
 import logging as _logging
 
 
+# Dunders
+__version__ = "0.8.0-dev"
+__author__ = "Deren Eaton & Isaac Overcast"
+
+# CLI __main__ changes to 0
+__interactive__ = 1
+
+
+
 def set_logger_level(level=None):
     #import os as _os
     import logging.config as _lconfig
@@ -67,9 +76,3 @@ set_logger_level()
 # get binaries
 bins = _Bins()
 
-# Dunders
-__version__ = "0.8.0"
-__author__ = "Deren Eaton & Isaac Overcast"
-
-# CLI __main__ changes to 0
-__interactive__ = 1

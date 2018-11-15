@@ -15,6 +15,15 @@ from ipyrad.analysis.utils import progressbar, Params
 from ipyrad.assemble.utils import IPyradError
 
 
+MISSING_IMPORTS = """
+To use the ipa.structure module you must install two additional 
+libraries which can be done with the following conda command. 
+
+conda install -c ipyrad bucky
+conda install -c BioBuilds mrbayes
+"""
+
+
 class Bucky(object):
     """
     Bucky analysis utility function for creating input files, setting parameters, 
@@ -49,7 +58,6 @@ class Bucky(object):
     bucky_niter:
         ...
 
-
     Attributes:
         ...u
     """
@@ -59,7 +67,6 @@ class Bucky(object):
         self.name = name
         self.data = data
         self._kwargs = {
-            #"maxloci": None,
             "minsnps": 0,
             "maxloci": None,
             "seed": None,
@@ -71,8 +78,12 @@ class Bucky(object):
             "bucky_nreps": 4,
             "bucky_niter": int(1e6),
             "copied": False,
+            "samples": None,
         }
         self._kwargs.update(kwargs)
+
+        ## check binaries
+        self.check_binaries()
 
         ## check workdir
         if workdir:
@@ -119,6 +130,15 @@ class Bucky(object):
         ## otherwise they are only set when they are made. 
         #_buckies = glob.glob(os.path.join(self.workdir, self.name, "*.bucky*"))
         ## ...
+
+    def check_binaries(self):
+        "check for structure and clumpp"
+        for binary in ['mb', 'mbsum', 'bucky']:
+            cmd = ["which", binary]
+            proc = sps.Popen(cmd, stdout=sps.PIPE, stderr=sps.PIPE)
+            stdout = proc.communicate()[0]
+            if not stdout:
+                raise IPyradError(MISSING_IMPORTS) 
 
 
     @property
@@ -174,8 +194,9 @@ class Bucky(object):
         ## use entered samples or parse them from the file
         if not self.samples:
             with open(self.files.data) as infile:
-                samples = set((i.split()[0] for i in infile.readlines() \
-                               if "//" not in i))
+                samples = set(
+                    (i.split()[0] for i in infile.readlines() if "//" not in i)                    
+                )
         else:
             samples = set(self.samples)
 
@@ -236,9 +257,9 @@ class Bucky(object):
                     if self._alleles:
                         ## trim off the allele number
                         samps = [i.rsplit("_", 1)[0] for i in _samples]
-                        mdict = dict(zip(samps, [i.tostring() for i in seqsamp]))
+                        mdict = dict(zip(samps, ["".join(i) for i in seqsamp]))
                     else:
-                        mdict = dict(zip(_samples, [i.tostring() for i in seqsamp]))
+                        mdict = dict(zip(_samples, ["".join(i) for i in seqsamp]))
                     self._write_nex(mdict, nloci)
 
                     ## quit early if using maxloci
@@ -251,7 +272,6 @@ class Bucky(object):
             path = os.path.join(self.workdir, self.name)
             path = path.replace(os.path.expanduser("~"), "~")
             print("wrote {} nexus files to {}".format(nloci, path))
-
 
 
 
@@ -338,7 +358,7 @@ class Bucky(object):
         with open(handle, 'w') as outnex:
             outnex.write(NEXBLOCK.format(**{
                 "ntax": len(mdict), 
-                "nchar": len(mdict.values()[0]), 
+                "nchar": len(list(mdict.values())[0]), 
                 "matrix": matrix,
                 "ngen": self.params.mb_mcmc_ngen, 
                 "sfreq": self.params.mb_mcmc_sample_freq, 
@@ -374,16 +394,16 @@ class Bucky(object):
             rep1 = trees1[tidx]
             rep2 = trees2[tidx]
             outname = os.path.join(minidir, str(tidx) + ".sumt")
-            rasync = lbview.apply(_call_mbsum, *(rep1, rep2, outname))
+            rasync = lbview.apply(call_mbsum, *(rep1, rep2, outname))
             asyncs.append(rasync)
 
         ## track progress
         start = time.time()
-        printstr = "[mbsum] sum replicate runs      | {} | "
+        printstr = ("sum replicate runs", "mbsum")
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), printstr, start)
+                progressbar(len(ready), sum(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -402,13 +422,11 @@ class Bucky(object):
         """
         calls the mrbayes block in each nexus file.
         """
-
         ## get all the nexus files for this object
         minidir = os.path.realpath(os.path.join(self.workdir, self.name))
         nexus_files = glob.glob(os.path.join(minidir, "*.nex"))
 
         ## clear existing files 
-        #existing = glob.glob(os.path.join(self.workdir, self.name, "*.nex"))
         existing = glob.glob(os.path.join(minidir, "*.nex.*"))
         if any(existing):
             if force:
@@ -417,25 +435,22 @@ class Bucky(object):
             else:
                 raise IPyradError(EXISTING_NEXdot_FILES.format(minidir))
 
-        ## write new nexus files, or should users do that before this?
-        #self.write_nexus_files(force=True)
-
         ## load balancer
         lbview = ipyclient.load_balanced_view()
 
         ## submit each to be processed
         asyncs = []
         for nex in nexus_files:
-            rasync = lbview.apply(_call_mb, nex)
+            rasync = lbview.apply(call_mb, nex)
             asyncs.append(rasync)
 
         ## track progress
         start = time.time()
-        printstr = "[mb] infer gene-tree posteriors | {} | "        
+        printstr = ("infer gene-tree posteriors", 'mb')
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), printstr, start)
+                progressbar(len(ready), sum(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -471,7 +486,6 @@ class Bucky(object):
             An active ipyparallel client to distribute jobs to.
 
         """
-
         ## check for existing results files
         minidir = os.path.realpath(os.path.join(self.workdir, self.name))
         infiles = glob.glob(os.path.join(minidir, "*.sumt"))
@@ -489,10 +503,10 @@ class Bucky(object):
         ## submit each to be processed
         asyncs = []
         for alpha in alphas:
-            pathname = os.path.join(outroot, "CF-a"+str(alpha))
-            if (os.path.exists(pathname)) and (force!=True):
-                print("BUCKy results already exist for this object at alpha={}\n".format(alpha) +\
-                      "use force=True to overwrite existing results")
+            pathname = os.path.join(outroot, "CF-a" + str(alpha))
+            if (os.path.exists(pathname)) and (force != True):
+                print("BUCKy results already exist for this filepath. " + \
+                      "Use force to overwrite")
             else:
                 args = [
                     alpha, 
@@ -501,16 +515,16 @@ class Bucky(object):
                     self.params.bucky_niter, 
                     pathname,
                     infiles]
-                rasync = lbview.apply(_call_bucky, *args)
+                rasync = lbview.apply(call_bucky, *args)
                 asyncs.append(rasync)
 
         ## track progress
         start = time.time()
-        printstr = "[bucky] infer CF posteriors     | {} | "
+        printstr = ("infer CF posteriors", "bucky")
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), printstr, start)
+                progressbar(len(ready), sum(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -527,7 +541,7 @@ class Bucky(object):
 
 #################################################
 
-def _call_bucky(alpha, nchains, nreps, niter, outname, infiles):
+def call_bucky(alpha, nchains, nreps, niter, outname, infiles):
     "call bucky binary command"
     # build command string
     cmd = [
@@ -548,7 +562,7 @@ def _call_bucky(alpha, nchains, nreps, niter, outname, infiles):
         return stdout
 
 
-def _call_mb(infile):
+def call_mb(infile):
     "call mrbayes on a nex file"
     # call mrbayes
     cmd = ['mb', infile]
@@ -560,7 +574,7 @@ def _call_mb(infile):
         return stdout
 
 
-def _call_mbsum(rep1, rep2, outname):
+def call_mbsum(rep1, rep2, outname):
     "calls mbsum for each pair of replicates"
     cmd = [
         "mbsum", 
@@ -605,10 +619,7 @@ def _count_PIS(seqsamp, N):
         return 0      
 
 
-
 ## GLOBALS
-
-
 NEXBLOCK = """\
 #NEXUS
 begin data;
@@ -670,6 +681,3 @@ _AMBIGS = {
     "-": ("-", "-"), 
     "N": ("N", "N"),
     }
-
-
-

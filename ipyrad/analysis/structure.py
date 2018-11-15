@@ -87,7 +87,7 @@ class Structure(object):
 
         # run checks
         self.check_binaries()
-        self.setupdirs()
+        self.setup_dirs()
         self.check_files()
 
         # params
@@ -107,7 +107,7 @@ class Structure(object):
                 raise IPyradError(MISSING_IMPORTS) 
 
 
-    def setupdirs(self):
+    def setup_dirs(self):
         ## make workdir if it does not exist
         if self.workdir:
             self.workdir = os.path.abspath(os.path.expanduser(self.workdir))
@@ -142,26 +142,19 @@ class Structure(object):
                 maparr[:, 1] = 0
                 maparr = maparr.astype(int)
                 spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-                spans = get_spans(maparr, spans)
-                self.maparr = spans
-                # nsites is not spans.shape b/c spans includes invariant loci.
-                #self.nsites = spans.shape[0]
+                self.maparr = get_spans(maparr, spans)
+                self.nsites = self.maparr.shape[0]
         else:
             self.maparr = None
             
 
     def _subsample(self):
         "returns a subsample of unlinked snp sites"
-        spans = self.maparr
-        samp = np.zeros(self.nsites, dtype=np.uint64)
-        i = 0
-        while 1:
-            if i == self.nsites:
-                break
-            if spans[i, 0] != spans[i, 1]:
-                samp[i] = np.random.randint(spans[i, 0], spans[i, 1], 1)   
-            i += 1
-        return samp
+        spans = np.zeros(self.maparr.shape[0], dtype=np.uint64)
+        for i in range(self.maparr.shape[0]):
+            spans[i] = np.random.randint(
+                self.maparr[i, 0], self.maparr[i, 1], 1)[0]
+        return spans
 
 
     @property
@@ -306,15 +299,17 @@ class Structure(object):
 
             else:
                 if not quiet:
-                    sys.stderr.write("submitted 1 structure job [{}-K-{}]\n"\
-                                 .format(self.name, kpop))
+                    sys.stderr.write(
+                        "submitted 1 structure job [{}-K-{}]\n"
+                        .format(self.name, kpop))
                 comm = _call_structure(*args)
                 return comm
 
         if ipyclient:
             if not quiet:
-                sys.stderr.write("submitted {} structure jobs [{}-K-{}]\n"\
-                                .format(nreps, self.name, kpop))
+                sys.stderr.write(
+                    "submitted {} structure jobs [{}-K-{}]\n"
+                    .format(nreps, self.name, kpop))
 
 
 
@@ -348,7 +343,7 @@ class Structure(object):
         tmp_m.write(self.mainparams._asfile())
         tmp_e.write(self.extraparams._asfile())
 
-        ## subsample SNPs as unlinked if a mapfile is present.
+        ## subsample SNPs as unlinked if a mapfile is present
         ## & write pop data to the tmp_s file if present
         assert len(self.popdata) == len(self.labels), \
             "popdata list must be the same length as the number of taxa"
@@ -878,7 +873,7 @@ class Rep(object):
 
         ## get table string        
         psearch = re.compile(r"\)   :  ")
-        dsearch = re.compile(r"\)    \d :  ")
+        dsearch = re.compile(r"\)\s+\d+ :  ")
         self.stable = self.parse(psearch, dsearch)
 
         ## record if it is high variance
@@ -915,7 +910,7 @@ class Rep(object):
                         " ".join(abc[4:])
                     )
                     self.inds += 1
-                    stable += outstr+"\n"
+                    stable += outstr + "\n"
 
                 elif popline:
                     ## check if sample is supervised...

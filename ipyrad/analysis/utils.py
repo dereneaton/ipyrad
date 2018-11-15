@@ -34,6 +34,9 @@ def get_spans(maparr, spans):
         else: 
             spans[idx - 1] = [end, end]
         start = spans[idx - 1, 1]
+
+    # drop rows with no span (invariant loci)
+    spans = spans[spans[:, 0] != spans[:, 1]]
     return spans
 
 
@@ -91,9 +94,10 @@ class Params(object):
     def __repr__(self):
         "return simple representation of dict with ~ shortened for paths"
         _repr = ""
-        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]      
-        _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-        for key in keys:
-            _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-            _repr += _printstr.format(key, _val)
+        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]
+        if keys:
+            _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
+            for key in keys:
+                _val = str(self[key]).replace(os.path.expanduser("~"), "~")
+                _repr += _printstr.format(key, _val)
         return _repr        

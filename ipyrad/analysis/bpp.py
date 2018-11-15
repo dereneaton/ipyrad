@@ -21,19 +21,9 @@ from ipyrad.assemble.utils import IPyradError, IPyradWarningExit
 
 # DUCT from where?
 
-
-
-# try:
-#     ## when you have time go back and set attrubutes on toytrees
-#     from toytree import ete3mini as ete
-# except ImportError:
-#     raise IPyradWarningExit("""
-#     Error: bpp requires the dependency 'toytree', which we haven't yet
-#     included in the ipyrad installation. For now, you can install toytree
-#     using conda with the following command: 
-
-#     conda install toytree -c eaton-lab
-#     """)
+# TODO: REPLACE DUCT
+# TODO: REPLACE TOYTREE USAGE
+# 
 
 MISSING_IMPORTS = """
 You are missing required packages to use ipa.bpp.

@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import ipyrad
 from numba import njit
-from .utils import IPyradError, clustdealer, splitalleles
+from .utils import IPyradError, clustdealer, splitalleles, chroms2ints
 from .utils import BTS, GETCONS, DCONS
 
 
@@ -194,7 +194,7 @@ class Step7:
 
         # chunk to approximately 2 chunks per core
         self.ncpus = len(self.ipyclient.ids)
-        self.chunks = ((self.nraws // (self.ncpus * 2)) + \
+        self.chunksize = ((self.nraws // (self.ncpus * 2)) + \
                        (self.nraws % (self.ncpus * 2)))
 
 
@@ -391,7 +391,7 @@ class Step7:
 
                 # if an engine is available pull off a chunk
                 try:
-                    done, chunk = clustdealer(pairdealer, self.chunks)
+                    done, chunk = clustdealer(pairdealer, self.chunksize)
                 except IndexError:
                     raise IPyradError(
                         "clust_database formatting error in %s", chunk)
@@ -420,7 +420,7 @@ class Step7:
         jobs = glob.glob(os.path.join(self.data.tmpdir, "chunk-*"))
         jobs = sorted(jobs, key=lambda x: int(x.rsplit("-")[-1]))        
         for jobfile in jobs:
-            args = (self.data, self.chunks, jobfile)
+            args = (self.data, self.chunksize, jobfile)
             rasyncs[jobfile] = self.lbview.apply(process_chunks, *args)
         
         # iterate until all chunks are processed
@@ -540,19 +540,19 @@ class Step7:
 # ------------------------------------------------------------
 
 class Processor:
-    def __init__(self, data, chunks, chunkfile):
+    def __init__(self, data, chunksize, chunkfile):
         """
         Takes a chunk of aligned loci and (1) applies filters to it; 
         (2) gets edges, (3) builds snpstring, (4) returns chunk and stats.
         """
         # init data
         self.data = data
-        self.chunks = chunks
+        self.chunksize = chunksize
         self.chunkfile = chunkfile
         self.isref = data.paramsdict["assembly_method"] == "reference"
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
-        self.filters = np.zeros((self.chunks, 5), dtype=np.bool_)
+        self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
         self.filterlabels = (
             'dups', 
             'maxind',  
@@ -560,7 +560,7 @@ class Processor:
             'maxshared',
             'minsamp', 
             )
-        self.edges = np.zeros((self.chunks, 4), dtype=np.uint16)
+        self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
         # store stats on sample coverage and locus coverage
         self.maxsnps = sum(self.data.paramsdict['max_SNPs_locus'])
@@ -575,6 +575,7 @@ class Processor:
         self.outfile = self.chunkfile + '.loci'
         self.outarr = self.chunkfile + '.npy'
         self.outpickle = self.chunkfile + '.p'
+
 
     def run(self):
 
@@ -1190,9 +1191,9 @@ class Converter:
 # The step class object but only the data class object, which avoids
 # problems with sending ipyclient (open file) to an engine.
 # -----------------------------------------------------------
-def process_chunks(data, chunks, chunkfile):
+def process_chunks(data, chunksize, chunkfile):
     # process chunk writes to files and returns proc with features.
-    proc = Processor(data, chunks, chunkfile)
+    proc = Processor(data, chunksize, chunkfile)
     proc.run()
 
     # write process stats to a pickle file for collating later.
@@ -1319,20 +1320,6 @@ def pseudoref2ref(pseudoref, ref):
 
     return npseudo
 
-
-def chroms2ints(data, which):
-    # if reference-mapped then parse the fai to get index number of chroms
-    fai = pd.read_csv(
-        data.paramsdict["reference_sequence"] + ".fai",
-        names=['scaffold', 'size', 'sumsize', 'a', 'b'],
-        sep="\t",
-    )
-    faidict = {j: i for i, j in enumerate(fai.scaffold)}
-    if not which:
-        return faidict
-    else:
-        revdict = {j: i for i, j in faidict.items()}
-        return revdict
 
 
 def fill_seq_array(data, ntaxa, nbases, nloci):
@@ -1465,7 +1452,7 @@ def fill_snp_array(data, ntaxa, nsnps):
 
     # get faidict to convert chroms to ints
     if data.isref:
-        faidict = chroms2ints(data, 1)
+        faidict = chroms2ints(data, True)
 
     # open new database file handle
     with h5py.File(data.snps_database, 'w') as io5:
@@ -1549,7 +1536,7 @@ def fill_snp_array(data, ntaxa, nsnps):
                     if data.isref:
                         chrom, pos = idxs.split(",")[0].split(":")
                         start = int(pos.split("-")[0])
-                        #chromidx = faidict[int(chrom)]
+                        #chromidx = faidict[chrom]
                         chromidx = int(chrom)
                         for isnp in range(snpsites.shape[1]):
                             isnpx = snpsidx[isnp]
@@ -1747,140 +1734,6 @@ def fill_vcf_depths(data, nsnps, sample):
         )
 
 
-# def depr_fill_vcf_depths(data, nsnps, sample):
-#     "fills an array with SNP depths for VCF file."
-    
-#     # array to store vcfdepths for this taxon (uint32 max=4294967295)
-#     vcfd = np.zeros((nsnps, 4), dtype=np.uint32)
-    
-#     # load snpsmap with locations of SNPS on trimmed loci
-#     with h5py.File(data.snps_database, 'r') as io5:
-#         snpsmap = io5['snpsmap'][:, [0, 2]]   
-
-#     # load catgs for this sample (this could be done more mem efficient...)
-#     with h5py.File(sample.files.database, 'r') as io5:
-#         catgs = io5['catg'][:]
-        
-#     # loci and indel chunks with sidx labels
-#     locibits = glob.glob(os.path.join(data.tmpdir, "chunk*.loci"))
-#     sortbits = sorted(locibits, key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
-#     indels = glob.glob(os.path.join(data.tmpdir, "chunk*.npy"))
-#     sindels = sorted(indels, key=lambda x: int(x.rsplit("-", 1)[-1][:-4]))           
-
-#     # counters
-#     locidx = 0
-#     snpidx = 0
-#     names = []
-#     seqs = []
-
-#     # iterate through loci to impute indels into catgs (from consens)
-#     for locbit, indbit in zip(sortbits, sindels):
-#         localidx = 0
-
-#         # load trim array with left trim values of loci
-#         trim = np.load(indbit)
-#         with open(locbit, 'r') as inloci:
-#             for line in iter(inloci):
-
-#                 # continue filling locus
-#                 if "|\n" not in line:
-#                     name, seq = line.split()
-#                     names.append(name)
-#                     seqs.append(seq)
-
-#                 # locus filled, process it.
-#                 else:
-#                     # get snps for this locus
-#                     locsnps = snpsmap[snpsmap[:, 0] == locidx + 1]
-                        
-#                     # is this sample in the locus?
-#                     if sample.name in names:
-                        
-#                         # store catg idx
-#                         sidxs = [i for i in line.rsplit("|", 2)[1].split(',')]
-#                         if data.isref:
-#                             r0, r1 = sidxs[0].rsplit(":", 1)[-1].split("-")
-#                             rlen = int(r1) - int(r0)
-#                             sidxs = [0] + [i for i in sidxs[1:]]                            
-#                         else:
-#                             sidxs = [i for i in sidxs]
-#                         nidx = names.index(sample.name)
-#                         sidx = sidxs[nidx]
-#                         seq = seqs[nidx]
-
-#                         # get trim for this locus
-#                         itrim = trim[localidx]
-
-#                         # enter snps into vcfd
-#                         if locsnps.size:
-#                             seqarr = np.array(list(seq))
-#                             inds = np.where(seqarr == "-")[0]
-#                             for snp in locsnps[:, 1]:
-#                                 # how many indels come before this position?
-#                                 shift = np.sum(inds < snp)
-
-#                                 # if this site itself is an indel then offset
-#                                 # would confuse it, and it should be zero.
-#                                 if seqarr[snp] != "-":
-
-#                                     # get strings from database tail (e.g., 3:0, or 3:0-4:90)
-#                                     sids = sidx.split("-")
-                                    
-#                                     # tuples (cidx, startpos) for each consens
-#                                     tids = [
-#                                         tuple(int(i) for i in i.split(":"))
-#                                         for i in sids
-#                                     ]
-                                   
-#                                     # start pos of all consens for this one
-#                                     inits = [i[1] for i in tids] + [rlen]
-                                    
-#                                     # for each (cidx, pos), fill if snppos in start:nextstart
-#                                     for tidx, tid in enumerate(tids):
-
-#                                         # position of snp on trimmed locus
-#                                         isnp = snp + itrim
-
-#                                         # same position on consens read
-#                                         id1 = isnp + tid[1]
-                                        
-#                                         # if pos falls in this consens enter it
-#                                         sid1 = id1 - shift
-
-#                                         # how far ahead of init is this snp
-#                                         spos = isnp - inits[tidx]
-
-#                                         # how far short of end 
-#                                         send = itrim + inits[tidx + 1]
-
-#                                         if (sid1 >= spos) and (sid1 < send):
-#                                             try:
-#                                                 vcfd[snpidx] += (
-#                                                     catgs[tid[0], sid1]
-#                                                 )
-#                                             except IndexError:
-#                                                 pass
-#                                                 #print(tid[0], sid1, tidx, '/', len(tids))
-#                                 snpidx += 1
-
-#                     # sample not in this locus still advance SNP counter
-#                     else:
-#                         snpidx += locsnps.shape[0]
-
-#                     # advance counter and reset dict
-#                     locidx += 1
-#                     localidx += 1
-#                     names = []
-#                     seqs = []
-
-#     # write vcfd to file
-#     vcfout = os.path.join(data.tmpdir, sample.name + ".depths.hdf5")
-#     with h5py.File(vcfout, 'w') as io5:
-#         io5.create_dataset(
-#             name="depths",
-#             data=vcfd,
-#         )
-
 
 def build_vcf(data, chunksize=1000):
     # removed at init of Step function anyway.
@@ -1889,7 +1742,7 @@ def build_vcf(data, chunksize=1000):
         
     # dictionary to translate locus numbers to chroms
     if data.isref:
-        revdict = chroms2ints(data, 1)
+        revdict = chroms2ints(data, True)
 
     # pull locus numbers and positions from snps database
     with h5py.File(data.snps_database, 'r') as io5:
