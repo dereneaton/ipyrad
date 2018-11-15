@@ -30,7 +30,7 @@ class Twiist():
         data,
         imap, 
         minmap=None,
-        chunksize=20, 
+        # chunksize=20, 
         ntests=100, 
         minsnps=1,
         randomseed=None,
@@ -51,7 +51,7 @@ class Twiist():
             for i in v:
                 self.rmap[i] = k  
         self.ntests = ntests
-        self.chunksize = chunksize
+        # self.chunksize = chunksize
         self.minsnps = minsnps
         
         ## fill mindict
@@ -82,8 +82,8 @@ class Twiist():
 
         for idx, loc in enumerate(liter):
             lines = loc.split("\n")
-            snpline = loc[-1]
-            locidx, chidx, pos = snpline.split("|")[1].split(":")            
+            snpline = loc.split('|')[-1]
+            locidx, chidx, pos = snpline.split(":")            
             names = [i.split()[0] for i in lines[:-1]]
 
             ## check coverage
@@ -93,10 +93,13 @@ class Twiist():
                 if sum([i in names for i in self.imap[node]]) >= mincov:
                     coverage += 1
             
+            ## check that the coverage meets threshold
+            ## refinfo is not being added correctly....
             if coverage == len(self.imap.keys()):
                 pos1, pos2 = pos.split('-')
                 refinfo = (idx, chidx, pos1, pos2)
-                idxs.append(refinfo)
+                idxs.append(refinfo) 
+                print(refinfo)
         return idxs
 
 
@@ -170,13 +173,14 @@ class Twiist():
 
 
     def get_window_idxs(self, window):
-        "Returns locus idxs that are on same chrom and within chunksize"
+        "Returns locus idxs that are on same chrom and within chunksize(window)"
 
         # get start position
         locidx, chridx, pos1, pos2 = self.idxs[window]
 
         # get end position
-        endwindow = pos2 + self.chunksize
+        # endwindow = pos2 + self.chunksize
+        endwindow = pos2 + window
 
         idxs = []
         for tup in self.idxs:
@@ -352,3 +356,5 @@ def count_var(nex):
     nomiss = arr[:, ~miss]
     nsnps = np.invert(np.all(nomiss == nomiss[0, :], axis=0)).sum()
     return nomiss.shape[1], nsnps
+
+
