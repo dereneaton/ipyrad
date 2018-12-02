@@ -214,8 +214,8 @@ class SRA(object):
                             if os.path.exists(ifile):
                                 os.remove(ifile)
 
-                ## remove cache of sra files
-                shutil.rmtree(sradir)
+                    ## remove cache of sra files
+                    shutil.rmtree(sradir)
                         
 
 
