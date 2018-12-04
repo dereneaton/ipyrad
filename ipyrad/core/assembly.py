@@ -268,7 +268,6 @@ class Assembly(object):
             print("{}{}".format(self._spacer, value))
 
 
-
     def _progressbar(self, njobs, finished, start, msg):
 
         # bail
@@ -978,7 +977,6 @@ def _tuplecheck(newvalue, dtype=str):
     Takes a string argument and returns value as a tuple.
     Needed for paramfile conversion from CLI to set_params args
     """
-
     if isinstance(newvalue, list):
         newvalue = tuple(newvalue)
 
@@ -993,17 +991,288 @@ def _tuplecheck(newvalue, dtype=str):
 
         ## If dtype fails to cast any element of newvalue
         except ValueError:
-            ip.logger.info("Assembly.tuplecheck() failed to cast to {} - {}"\
-                        .format(dtype, newvalue))
-            raise
+            raise IPyradError(
+                "Assembly.tuplecheck() failed to cast to {} - {}"\
+                .format(dtype, newvalue))
 
         except Exception as inst:
-            ip.logger.info(inst)
-            raise SystemExit(\
+            raise IPyradError(\
             "\nError: Param`{}` is not formatted correctly.\n({})\n"\
                  .format(newvalue, inst))
 
     return newvalue
+
+
+
+class Params:
+    def __init__(self):
+        self._name = "test"
+        self._project_dir = os.path.realpath("./analysis-ipyrad")
+        self._raw_fastq_path = ""
+        self._sorted_fastq_path = ""
+        self._assembly_method = "denovo"
+        self._reference_sequence = ""
+        self._datatype = "rad"
+        self._restriction_overhang = ("TGCAG", "")
+        self._max_low_qual_bases = 5
+        self._phred_Qscore_offset = 33
+        self._mindepth_statistical = 6
+        self._mindepth_majrule = 6
+        self._maxdepth = 10000
+        self._clust_threshold = 0.85
+        self._max_barcode_mismatch = 0
+        self._filter_adapters = 0
+        self._filter_min_trim_len = 35
+        self._max_alleles_consens = 2
+        self._max_Ns_consens = (8, 8)
+        self._max_Hs_consens = (5, 5)
+        self._min_samples_locus = 4
+
+
+
+    @property
+    def assembly_name(self):
+        return self._name
+    @assembly_name.setter    
+    def assembly_name(self, value):
+        raise IPyradError(CANNOT_CHANGE_ASSEMBLY_NAME)
+
+
+    @property
+    def project_dir(self):
+        return self._project_dir
+    @project_dir.setter
+    def project_dir(self, value):
+        if " " in value:
+            raise IPyradError(BAD_PROJDIR_NAME.format(value))
+        self._project_dir = os.path.realpath(os.path.expanduser(value))
+        self.dirs["project"] = self._project_dir
+
+
+    @property
+    def raw_fastq_path(self):
+        return self._raw_fastq_path
+    @raw_fastq_path.setter
+    def raw_fastq_path(self, value):
+        if value and ("Merged:" not in value):
+            fullpath = os.path.realpath(os.path.expanduser(value))
+            if os.path.isdir(fullpath):
+                raise IPyradError(RAW_PATH_ISDIR.format(fullpath))
+            elif glob.glob(fullpath):
+                self._raw_fastq_path = fullpath
+            else:
+                raise IPyradError(NO_RAW_FILE.format(fullpath))
+        # if 'Merged:' in value then set to ""
+        else:
+            self._raw_fastq_path = ""
+
+
+    @property
+    def barcodes_path(self):
+        return self._barcodes_path
+    @barcodes_path.setter
+    def barcodes_path(self, value):
+        if value and ("Merged:" not in value):
+            fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))
+            if not os.path.exists(fullbar):
+                raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
+            else:
+                self._barcodes_path = fullbar
+                self._link_barcodes()
+        # if 'Merged:' in value then set to ""
+        else:
+            self._barcodes_path = ""
+
+
+    @property
+    def sorted_fastq_path(self):
+        return self._sorted_fastq_path
+    @sorted_fastq_path.setter
+    def sorted_fastq_path(self, value):
+        if value and ("Merged:" not in value):
+            fullpath = os.path.realpath(os.path.expanduser(value))
+            if os.path.isdir(fullpath):
+                raise IPyradError(SORTED_ISDIR.format(fullpath))
+            elif glob.glob(fullpath):
+                self._sorted_fastq_path = fullpath
+            else:
+                raise IPyradError(SORTED_NOT_FOUND.format(fullpath))
+        # if 'Merged:' in value then set to ""
+        else:
+            self._sorted_fastq_path = ""
+
+
+    @property
+    def assembly_method(self):
+        return self._assembly_method
+    @assembly_method.setter
+    def assembly_method(self, value):
+        allowed = ["denovo", "reference", "denovo+reference", "denovo-reference"]
+        assert value in allowed, BAD_ASSEMBLY_METHOD.format(value)
+        self._assembly_method = value
+
+
+    @property
+    def reference_sequence(self):
+        return self._reference_sequence
+    @reference_sequence.setter
+    def reference_sequence(self, value):
+        fullpath = os.path.realpath(os.path.expanduser(value))
+        if not os.path.exists(fullpath):
+            raise IPyradError("reference sequence file not found")
+        if fullpath.endswith(".gz"):
+            raise IPyradError("reference sequence file must be decompressed.")
+        self._reference_sequence = fullpath
+
+        
+    @property
+    def datatype(self):
+        return self._datatype
+    @datatype.setter
+    def datatype(self, value):
+        allowed = [
+            'rad', 'gbs', 'ddrad', 'pairddrad',
+            'pairgbs', 'merged', '2brad', 'pair3rad',
+        ]
+        value = str(value)
+        if value not in allowed:
+            raise IPyradError("datatype not recognized: {}".format(value))
+        self._datatype = str(value)
+        # relink barcodes if 3rad datatype entered since link barcodes needs 
+        # to know that 3rad is the datatype.
+        if (value == "3rad") and (not self._sorted_fastq_path):
+            if "Merged:" not in self._barcodes_path:
+                self._link_barcodes()
+
+
+    @property
+    def restriction_overhang(self):
+        return self._restriction_overhang
+    @restriction_overhang.setter
+    def restriction_overhang(self, value):
+        value = _tuplecheck(value, str)
+        assert isinstance(value, tuple), "restriction_overhang must be a tuple"
+        # Handle the special case where the user has 1
+        # restriction overhang and does not include the trailing comma
+        if len(value) == 1:
+            # gbs users might not know to enter the second cut site so we do it
+            if self._datatype == "gbs":
+                value += value
+            else:
+                value += ("", )
+        # Handle 3rad datatype with only 3 cutters
+        if len(value) == 3:
+            value = (value[0], value[1], value[2], "")
+        assert len(value) <= 4, (
+            "restriction_overhang value must be a tuple of length 1, 2, or 3")
+        self._restriction_overhang = value
+
+
+    @property
+    def max_low_qual_bases(self):
+        return self._max_low_qual_bases
+    @max_low_qual_bases.setter
+    def max_low_qual_bases(self, value):
+        assert isinstance(value, int), "max_low_qual_bases must be an integer."
+        self._max_low_qual_bases = int(value)
+
+
+    @property
+    def phred_Qscore_offset(self):
+        return self._phred_Qscore_offset
+    @phred_Qscore_offset.setter
+    def phred_Qscore_offset(self, value):
+        assert isinstance(value, int), (
+            "phred_Qscore_offset must be an integer.")
+        self._phred_Qscore_offset = int(value)
+
+
+    @property
+    def mindepth_statistical(self):
+        return self._mindepth_statistical
+    @mindepth_statistical.setter
+    def mindepth_statistical(self, value):
+        assert isinstance(value, int), (
+            "mindepth_statistical must be an integer.")
+        if int(newvalue) < 5:
+            raise IPyradError(
+                "mindepth statistical must be >= 5. Use mindepth_majrule.")
+        self._mindepth_statistical = int(value)
+
+
+    @property
+    def mindepth_majrule(self):
+        return self._mindepth_majrule
+    @mindepth_majrule.setter
+    def mindepth_majrule(self, value):
+        assert isinstance(value, int), "mindepth_majrule must be an integer."
+        if int(newvalue) <= 0:
+            raise IPyradError("mindepth majrule must be >= 1.")
+        self._mindepth_majrule = int(value)
+
+
+    @property
+    def maxdepth(self):
+        return self._maxdepth
+    @maxdepth.setter
+    def maxdepth(self, value):
+        assert isinstance(value, int), "maxdepth must be an integer."
+        self._maxdepth = int(value)
+
+
+    @property
+    def clust_threshold(self):
+        return self._clust_threshold
+    @clust_threshold.setter
+    def clust_threshold(self, value):
+        value = float(value)
+        assert (value < 1) & (value > 0), (
+            "clust_threshold must be a decimal value between 0 and 1.")
+        self.paramsdict['clust_threshold'] = newvalue
+
+
+    @property
+    def max_barcode_mismatch(self):
+        return self._max_barcode_mismatch
+    @max_barcode_mismatch.setter
+    def max_barcode_mismatch(self, value):
+        assert isinstance(value, int), (
+            "max_barcode_mismatch must be an integer")
+        self._max_barcode_mismatch = int(value)
+
+
+    @property
+    def filter_adapters(self):
+        return self._filter_adapters
+    @filter_adapters.setter
+    def filter_adapters(self, value):
+        assert isinstance(value, int), (
+            "filter_adapters must be an integer")
+        self._filter_adapters = int(value)
+
+
+    @property
+    def filter_min_trim_len(self):
+        return self._filter_min_trim_len
+    @filter_min_trim_len.setter
+    def filter_min_trim_len(self, value):
+        assert isinstance(value, int), (
+            "filter_min_trim_len must be an integer")
+        self._filter_min_trim_len = int(value)
+
+
+    @property
+    def max_alleles_consens(self):
+        return self._max_alleles_consens
+    @max_alleles_consens.setter
+    def max_alleles_consens(self, value):
+        assert isinstance(value, int), (
+            "max_alleles_consens must be an integer")
+        self._max_alleles_consens = int(value)
+
+
+
+
 
 
 def _paramschecker(self, param, newvalue):
@@ -1147,6 +1416,8 @@ def _paramschecker(self, param, newvalue):
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
     For 3rad/seqcap may be up to 4 cut sites."""
         self.paramsdict['restriction_overhang'] = newvalue
+
+
 
     elif param == 'max_low_qual_bases':
         assert isinstance(int(newvalue), int), """
@@ -1303,13 +1574,13 @@ def _paramschecker(self, param, newvalue):
         if isinstance(newvalue, list):
             ## if more than letters, raise an warning
             if any([len(i) > 1 for i in newvalue]):
-                ip.logger.warning("""
+                self._print("""
     'output_formats' params entry is malformed. Setting to * to avoid errors.""")
-                newvalue = OUTPUT_FORMATS
+                newvalue = list(OUTPUT_FORMATS.keys())
             newvalue = tuple(newvalue)
             #newvalue = tuple([i for i in newvalue if i in allowed])
         if "*" in newvalue:
-            newvalue = OUTPUT_FORMATS
+            newvalue = list(OUTPUT_FORMATS.keys())
 
         ## set the param
         self.paramsdict['output_formats'] = newvalue

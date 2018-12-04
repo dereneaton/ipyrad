@@ -319,7 +319,7 @@ class Step3:
             else:
                 print("skipping {}; no reads found.")
         if not any(checked_samples):
-            raise IPyradError("no samples ready for step 3.")
+            raise IPyradError("No samples ready for step 3.")
 
         # sort samples so the largest is first
         checked_samples.sort(
@@ -1485,7 +1485,7 @@ def index_ref_with_sam(data):
     # error handling
     if error:
         if "please use bgzip" in error:
-            raise IPyradError(NO_ZIP_BINS.format(refseq_file))
+            raise IPyradError(NO_ZIP_BINS.format(refseq_file, error))
         else:
             raise IPyradError(error)
 
@@ -2329,6 +2329,8 @@ NO_ZIP_BINS = """
 
   Then edit your params file to remove the `.gz` from the end of the
   path to your reference sequence file and rerun step 3 with the `-f` flag.
+
+      error {}
   """
 REQUIRE_REFERENCE_PATH = """\
   Assembly method {} requires that you enter a 'reference_sequence_path'.

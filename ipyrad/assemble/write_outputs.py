@@ -1734,7 +1734,6 @@ def fill_vcf_depths(data, nsnps, sample):
         )
 
 
-
 def build_vcf(data, chunksize=1000):
     # removed at init of Step function anyway.
     if os.path.exists(data.outfiles.vcf):

@@ -66,8 +66,9 @@ class Twiist():
         for k, v in self.imap.items():
             for i in v:
                 self.rmap[i] = k
-
-        # fill mindict
+        self.ntests = ntests
+        self.minsnps = minsnps
+        
         if not minmap:
             minmap = {i: 1 for i in self.imap}
         self.minmap = minmap
@@ -124,6 +125,7 @@ class Twiist():
 
         for idx, loc in enumerate(liter):
             lines = loc.split("\n")
+
             snpline = lines[-1]
             locidx, chidx, pos = snpline.split("|")[1].split(":")            
             names = [i.split()[0] for i in lines[:-1]]
@@ -135,10 +137,13 @@ class Twiist():
                 if sum([i in names for i in self.imap[node]]) >= mincov:
                     coverage += 1
             
+            ## check that the coverage meets threshold
+            ## refinfo is not being added correctly....
             if coverage == len(self.imap.keys()):
                 pos1, pos2 = pos.split('-')
                 refinfo = (idx, chidx, pos1, pos2)
-                idxs.append(refinfo)
+                idxs.append(refinfo) 
+                print(refinfo)
         return idxs
 
 
@@ -423,3 +428,5 @@ def count_var(nex):
     nomiss = arr[:, ~miss]
     nsnps = np.invert(np.all(nomiss == nomiss[0, :], axis=0)).sum()
     return nomiss.shape[1], nsnps
+
+
