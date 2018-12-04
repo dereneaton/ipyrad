@@ -8,25 +8,35 @@ from builtins import range
 
 # standard
 import os
-import glob
-import uuid
+import sys
+import time
+import datetime
 import tempfile
 import itertools
 
 # third party
+from numba import njit
 import pandas as pd
 import numpy as np
 import toytree
 from .raxml import Raxml as raxml
 
+# suppress the terrible h5 warning
+import warnings
+with warnings.catch_warnings(): 
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import h5py
 
 
 class TreeSlider():
     """
-    Performs phylo inference across loci sampled in windows.
+    Performs phylo inference across RAD data sampled in windows. Uses the 
+    hdf5 database output from ipyrad as input (".seqs.hdf5"). 
 
     Parameters:
     ------------
+    name: name prefix for output files.
+    workdir: directory for output files.
     data: .loci file
     minmap: dictionary of minimum sampling to include window in analysis.
     minsnps: minimum number of SNPs to include window in analysis.
@@ -34,22 +44,25 @@ class TreeSlider():
     def __init__(
         self, 
         data,
+        name="test",
+        workdir="./analysis-treeslider",
+        window_size=50000, 
+        slide_size=10000,
+        scaffold_idx=None,
         imap=None,
         minmap=None,
-        minsnps=1,
-        window_size=10000, 
-        slide_interval=2000,
-        reference=None,
+        minsnps=2,
         ):
        
         # store attributes
-        self.data = data
+        self.name = name
+        self.workdir = os.path.realpath(os.path.expanduser(workdir))
+        self.data = os.path.realpath(os.path.expanduser(data))
         self.window_size = window_size
-        self.slide_interval = slide_interval
+        self.slide_size = slide_size
         self.minsnps = minsnps
-        self.reference = reference
                
-        # reverse of imap dictionary
+        # parse attributes
         self.imap = imap
         self.minmap = minmap
         self.rmap = None
@@ -57,287 +70,264 @@ class TreeSlider():
             for k, v in self.imap.items():
                 for i in v:
                     self.rmap[i] = k
+        if not scaffold_idx:
+            scaffold_idx = 0
+        self.scaffold_idx = scaffold_idx
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
 
         # fill mindict
         if not minmap:
-            self.minmap = {i: 1 for i in self.imap}               
+            if imap:
+                self.minmap = {i: 1 for i in self.imap}               
 
-    
-    def get_ref_locus_idxs(self):
-        idxs = []
+        # parsed attributes
+        self.scaffold_table = None
+        self.tree_table = None
+        self.phymap = None
+        self._pnames = None
 
-        with open(self.data) as indata:
-            liter = (indata.read().strip().split("|\n"))
+        self._parameter_check()
+        self._parse_scaffolds()
 
-        for idx, loc in enumerate(liter):
-            lines = loc.split("\n")
-            snpline = loc[-1]
-            locidx, chidx, pos = snpline.split("|")[1].split(":")            
-            names = [i.split()[0] for i in lines[:-1]]
 
-            ## check coverage
-            coverage = 0
-            for node in self.imap:
-                mincov = self.minmap[node]
-                if sum([i in names for i in self.imap[node]]) >= mincov:
-                    coverage += 1
+    def _parameter_check(self):
+        assert os.path.exists(self.data), "database file not found"
+        assert self.data.endswith(".seqs.hdf5"), (
+            "data must be '.seqs.hdf5' file.")
+
+
+    def _parse_scaffolds(self):
+        # get chromosome lengths from the database:
+        with h5py.File(self.data) as io5:
+            self._pnames = np.array([
+                i.decode() for i in io5["phymap"].attrs["phynames"]
+            ])
+            self._longname = 1 + max([len(i) for i in self._pnames])
+            self.scaffold_table = pd.DataFrame(
+                data={
+                "scaffold_name": [i.decode() for i in io5["scaffold_names"][:]],
+                "scaffold_length": io5["scaffold_lengths"][:],
+                }, 
+                columns=["scaffold_name", "scaffold_length"],
+            )
+
+    def _parse_scaffold_phymap(self):
+
+        # scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table
+        with h5py.File(self.data) as io5:
+            colnames = io5["phymap"].attrs["columns"]
+            mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
+            self.phymap = pd.DataFrame(
+                data=io5["phymap"][mask, :],
+                columns=[i.decode() for i in colnames],
+            )
             
-            if coverage == len(self.imap.keys()):
-                pos1, pos2 = pos.split('-')
-                refinfo = (idx, chidx, pos1, pos2)
-                idxs.append(refinfo)
-        return idxs
+
+    def _parse_tree_table(self):
+        chromlen = self.scaffold_table.loc[self.scaffold_idx, "scaffold_length"]
+        self.tree_table = pd.DataFrame(
+            data = {
+            "start": np.arange(0, chromlen - self.window_size, self.slide_size), 
+            "end": np.arange(self.window_size, chromlen, self.slide_size),
+            "nsnps": np.nan,
+            "nsamplecov": np.nan,
+            "tree": np.nan,
+            }, 
+            columns=["start", "end", "nsnps", "nsamplecov", "tree"], 
+        )
 
 
-    
-    def get_denovo_locus_idxs(self):
-        """ finds loci with sufficient sampling for this test"""
+    def run(self, scaffold_idx=0, window_size=None, slide_size=None, ipyclient=None):
+        
+        # re-parse the tree-table in case window and slide were updated: 
+        self.scaffold_idx = (scaffold_idx if scaffold_idx else self.scaffold_idx)
+        self.window_size = (window_size if window_size else self.window_size)
+        self.slide_size = (slide_size if slide_size else self.slide_size)
+        self._parse_tree_table()
+        self._parse_scaffold_phymap()
 
-        ## store idx of passing loci
-        idxs = []
-
-        ## open handle
-        with open(self.data) as indata:
-            liter = (indata.read().strip().split("|\n"))
-
-        ## put chunks into a list
-        for idx, loc in enumerate(liter):
-
-            ## parse chunk
-            lines = loc.split("\n")[:-1]
-            names = [i.split()[0] for i in lines]
-
-            ## check coverage
-            coverage = 0
-            for node in self.imap:
-                mincov = self.minmap[node]
-                if sum([i in names for i in self.imap[node]]) >= mincov:
-                    coverage += 1
-            if coverage == 4:
-                idxs.append(idx)      
-
-        ## concatenate into a phylip file
-        return idxs
-    
-
-
-    def sample_loci(self, window):
-        """ finds loci with sufficient sampling for this test"""
-
-        ## store idx of passing loci
-        if not self.reference:
-            idxs = np.random.choice(self.idxs, self.ntests)
-        else:
-            idxs = self.get_window_idxs(window)
-
-        ## open handle, make a proper generator to reduce mem
-        with open(self.data) as indata:
-            liter = (indata.read().strip().split("|\n"))
-
-        ## store data as dict
-        seqdata = {i: "" for i in self.samples}
-
-        ## put chunks into a list
-        for idx, loc in enumerate(liter):
-            if idx in idxs:
-                ## parse chunk
-                lines = loc.split("\n")[:-1]
-                names = [i.split()[0] for i in lines]
-                seqs = [i.split()[1] for i in lines]
-                dd = {i: j for (i, j) in zip(names, seqs)}
-
-                ## add data to concatenated seqdict
-                for name in seqdata:
-                    if name in names:
-                        seqdata[name] += dd[name]
-                    else:
-                        seqdata[name] += "N" * len(seqs[0])
-                        
-        ## concatenate into a phylip file
-        return seqdata
-  
-
-
-    def get_window_idxs(self, window):
-        "Returns locus idxs that are on same chrom and within chunksize"
-
-        # get start position
-        locidx, chridx, pos1, pos2 = self.idxs[window]
-
-        # get end position
-        endwindow = pos2 + self.chunksize
-
-        idxs = []
-        for tup in self.idxs:
-            if tup[1] == chridx:
-                if int(tup[3]) < int(endwindow):
-                    idxs.append(tup[0])
-        return idxs
-
-
-
-    def run_tree_inference(self, nexus, idx):
-        """
-        Write nexus to tmpfile, runs phyml tree inference, and parses
-        and returns the resulting tree. 
-        """
-        ## create a tmpdir for this test
-        tmpdir = tempfile.tempdir
-        tmpfile = os.path.join(tempfile.NamedTemporaryFile(
-            delete=False,
-            prefix=str(idx),
-            dir=tmpdir,
-        ))
-
-        ## write nexus to tmpfile
-        tmpfile.write(str.encode(nexus))
-        tmpfile.flush()
-
-        ## infer the tree
-        rax = raxml(name=str(idx), data=tmpfile.name, workdir=tmpdir, N=1, T=2)
-        rax.run(force=True, block=True, quiet=True)
-
-        ## clean up
-        tmpfile.close()
-
-        ## return tree order
-        order = get_order(toytree.tree(rax.trees.bestTree))
-        return "".join(order)
-
-
-    
-    def run(self, ipyclient):
-        """
-        parallelize calls to worker function.
-        """
-        ## connect to parallel client
+        # load balance parallel jbos
         lbview = ipyclient.load_balanced_view()
-        
-        ## iterate over tests
-        asyncs = []
-        for window in range(self.ntests): 
+
+        # distribute jobs on client
+        time0 = time.time()
+        rasyncs = {}
+        for idx in range(20): #self.tree_table.index
             
-            ## submit jobs to run
-            args = (window, self)
-            rasync = lbview.apply(worker, *args)
-            asyncs.append(rasync)
+            # get window margins
+            start, stop = self.tree_table.loc[idx, ["start", "end"]].astype(int)
             
-        ## wait for jobs to finish
-        ipyclient.wait()
+            # store async result
+            args = (self, start, stop)
+            rasyncs[idx] = lbview.apply(engine_process, *args)
 
-        ## check for errors
-        for rasync in asyncs:
-            if not rasync.successful():
-                raise Exception("Error: {}".format(rasync.result()))
+        # track progress and save result table
+        self._track_progress_and_store_results(rasyncs, time0)
+        self.tree_table.to_csv(
+            os.path.join(self.workdir, self.name + ".tree_table.csv"),
+            )
 
-        ## return results as df
-        results = [i.result() for i in asyncs]
-        self.results_table = pd.DataFrame(results)
+
+    def _track_progress_and_store_results(self, rasyncs, time0):
+        # track progress and collect results.
+        nwindows = self.tree_table.shape[1]
+        done = 0
+        while 1:
+            finished = [i for i in rasyncs if rasyncs[i].ready()]
+            for idx in finished:
+                if rasyncs[idx].successful():
+                    self.tree_table.loc[idx, :] = rasyncs[idx].get()
+                    del rasyncs[idx]
+                    done += 1
+                else:
+                    raise Exception(rasyncs[idx].get())
+            # progress
+            progressbar(done, nwindows, time0, "inferring raxml trees")
+            time.sleep(0.5)
+            if not rasyncs:
+                break
+
+
+def engine_process(self, start, stop):
     
-    
+    # pull up local phymap
+    with h5py.File(self.data) as io5:
+        mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
+        phymap = io5["phymap"][mask, :]
 
-    def plot(self):
-        """
-        return a toyplot barplot of the results table.
-        """
-        if self.results_table is None:
-            return "no results found"
-        else:
-            bb = self.results_table.sort_values(
-                by=["ABCD", "ACBD"], 
-                ascending=[False, True],
-                )
-
-            ## make a barplot
-            import toyplot
-            c = toyplot.Canvas(width=600, height=200)
-            a = c.cartesian()
-            m = a.bars(bb)
-            return c, a, m
-
-
-
-def worker(self, window):
-    """ 
-    Calculates the quartet weights for the test at a random
-    subsampled chunk of loci.
-    """
-
-    ## subsample loci 
-    fullseqs = self.sample_loci(window)
-
-    ## find all iterations of samples for this quartet
-    liters = itertools.product(*self.imap.values())
-
-    ## run tree inference for each iteration of sampledict
-    hashval = uuid.uuid4().hex
-    weights = []
-    for ridx, lidx in enumerate(liters):
-        
-        ## get subalignment for this iteration and make to nex
-        a, b, c, d = lidx
-        sub = {}
-        for i in lidx:
-            if self.rmap[i] == "p1":
-                sub["A"] = fullseqs[i]
-            elif self.rmap[i] == "p2":
-                sub["B"] = fullseqs[i]
-            elif self.rmap[i] == "p3":
-                sub["C"] = fullseqs[i]
-            else:
-                sub["D"] = fullseqs[i]
+    # get phy index for window margins
+    mask = (phymap[:, 3] > start) & (phymap[:, 4] < stop)
+    cmap = phymap[mask, :]
                 
-        ## write as nexus file
-        nex = []
-        for tax in list("ABCD"):
-            nex.append(">{}         {}".format(tax, sub[tax]))
-            
-        ## check for too much missing or lack of variants
-        nsites, nvar = count_var(nex)
+    # get seqarr for phy indices
+    phystring = None
+    tree = np.nan
+    nsamplecov = np.nan
+    nsnps = np.nan
 
-        ## only run test if there's variation present
-        if nvar > self.minsnps:
-               
-            ## format as nexus file
-            nexus = "{} {}\n".format(4, len(fullseqs[a])) + "\n".join(nex)    
+    # parse phylip string if there is sequence in this window
+    if cmap.size:
+        nsamplecov, nsnps, phystring = parse_phystring(self, cmap)
+    
+        # infer a tree if there is variation in this window
+        if nsamplecov >= 4 and nsnps >= self.minsnps:
+            fname = os.path.join(
+                tempfile.gettempdir(), str(os.getpid()) + ".tmp")
+            with open(fname, 'w') as temp:
+                temp.write(phystring)
 
-            ## infer ML tree
-            treeorder = self.run_tree_inference(
-                nexus, "{}.{}".format(hashval, ridx))
+            # init raxml object and run with blocking
+            rax = raxml(
+                data=fname, 
+                name="temp_" + str(os.getpid()), 
+                workdir=tempfile.gettempdir(),
+                T=1,
+                )
+            rax.run(force=True, quiet=True, block=True)
+            tree = toytree.tree(rax.trees.bestTree).newick
 
-            ## add to list
-            weights.append(treeorder)
-
-    ## cleanup - remove all files with the hash val
-    rfiles = glob.glob(os.path.join(tempfile.tempdir, "*{}*".format(hashval)))
-    for rfile in rfiles:
-        if os.path.exists(rfile):
-            os.remove(rfile)
-
-    ## return result as weights for the set topologies.
-    trees = ["ABCD", "ACBD", "ADBC"]
-    wdict = {i: float(weights.count(i)) / len(weights) for i in trees}
-    return wdict
+    return nsnps, nsamplecov, tree
 
 
 
-def get_order(tre):
-    """
-    return tree order
-    """
-    anode = tre.treenode.search_nodes(">A")[0]
-    sister = anode.get_sisters()[0]
-    sisters = (anode.name[1:], sister.name[1:])
-    others = [i for i in list("ABCD") if i not in sisters]
-    return sorted(sisters) + sorted(others)
+
+def parse_phystring(self, cmap):
+    "Returns phystring else 0 if filtered."
+
+    with h5py.File(self.data) as io5:
+        seqarr = io5["phy"][:, cmap[:, 1].min():cmap[:, 2].max()]
+
+    # calculate stats on seqarr
+    allNs = np.all(seqarr == 78, axis=1)
+    nsamplecov = seqarr.shape[0] - allNs.sum()
+    nsnps = count_snps(seqarr)
+
+    # dress up as phylip format
+    pnames = self._pnames[~allNs]
+    pseqs = seqarr[~allNs, :]
+    phylip = ["{} {}".format(len(pnames), pseqs.shape[1])]
+    for name, seq in zip(pnames, pseqs):
+        phylip.append("{} {}{}".format(
+            name, 
+            " " * (self._longname - len(name)), 
+            b"".join(seq.view("S1")).decode(),
+        ))
+    phystring = ("\n".join(phylip))
+    return nsnps, nsamplecov, phystring
+           
 
 
-def count_var(nex):
-    """
-    count number of sites with cov=4, and number of variable sites.
-    """
-    arr = np.array([list(i.split()[-1]) for i in nex])
-    miss = np.any(arr == "N", axis=0)
-    nomiss = arr[:, ~miss]
-    nsnps = np.invert(np.all(nomiss == nomiss[0, :], axis=0)).sum()
-    return nomiss.shape[1], nsnps
+
+
+def progressbar(finished, total, start, message):
+    progress = 100 * (finished / float(total))
+    hashes = '#' * int(progress / 5.)
+    nohash = ' ' * int(20 - len(hashes))
+    elapsed = datetime.timedelta(seconds=int(time.time() - start))
+    print("\r[{}] {:>3}% {} | {:<12} "
+        .format(hashes + nohash, int(progress), elapsed, message),
+        end="")
+    sys.stdout.flush()    
+
+
+
+@njit
+def count_snps(seqarr):
+    nsnps = 0
+    for site in range(seqarr.shape[1]):
+        # make new array
+        catg = np.zeros(4, dtype=np.int16)
+
+        ncol = seqarr[:, site]
+        for idx in range(ncol.shape[0]):
+            if ncol[idx] == 67:    # C
+                catg[0] += 1
+            elif ncol[idx] == 65:  # A
+                catg[1] += 1
+            elif ncol[idx] == 84:  # T
+                catg[2] += 1
+            elif ncol[idx] == 71:  # G
+                catg[3] += 1
+            elif ncol[idx] == 82:  # R
+                catg[1] += 1       # A
+                catg[3] += 1       # G
+            elif ncol[idx] == 75:  # K
+                catg[2] += 1       # T
+                catg[3] += 1       # G
+            elif ncol[idx] == 83:  # S
+                catg[0] += 1       # C
+                catg[3] += 1       # G
+            elif ncol[idx] == 89:  # Y
+                catg[0] += 1       # C
+                catg[2] += 1       # T
+            elif ncol[idx] == 87:  # W
+                catg[1] += 1       # A
+                catg[2] += 1       # T
+            elif ncol[idx] == 77:  # M
+                catg[0] += 1       # C
+                catg[1] += 1       # A
+        # get second most common site
+        catg.sort()
+
+        # if invariant e.g., [0, 0, 0, 9], then nothing (" ")
+        if catg[2] > 1:
+            nsnps += 1
+    return nsnps
+
+
+
+# proc = subprocess.Popen([
+#     self.raxml_binary, 
+#     "--msa", fname, 
+#     "--model", "JC", 
+#     "--threads", "1", 
+#     "--redo",
+#     ], 
+#     stderr=subprocess.PIPE, 
+#     stdout=subprocess.PIPE,
+# )
+# out, _ = proc.communicate()
+# if proc.returncode:
+#     raise Exception("raxml error: {}".format(out.decode()))
+# tre = toytree.tree(fname + ".raxml.bestTree")
