@@ -33,16 +33,15 @@ from .utils import comp, merge_pairs
 
 
 class Step3:
-    def __init__(self, data, samples, noreverse, maxindels, force, ipyclient):
+    def __init__(self, data, force, ipyclient):
 
         # store attributes
         self.data = data
-        self.noreverse = noreverse
-        self.maxindels = maxindels
+        self.maxindels = 8
         self.force = force
         self.ipyclient = ipyclient
         self.gbs = bool("gbs" in self.data.paramsdict["datatype"])
-        self.samples = self.check_samples(samples)
+        self.samples = self.get_subsamples()
 
         # init funcs
         self.setup_dirs()
@@ -73,34 +72,78 @@ class Step3:
             self.remote_run_align_cleanup()
 
 
-    def check_samples(self, samples):
-        ## list of samples to submit to queue
-        subsamples = []
+    def get_subsamples(self):
+        "Apply state, ncluster, and force filters to select samples"           
 
-        ## if sample is already done skip
-        for sample in samples:
-            if sample.stats.state < 2:
-                print("Sample not ready for clustering. First run step2 on: {}"
-                      .format(sample.name))
-                continue
+        # filter samples by state
+        state1 = self.data.stats.index[self.data.stats.state < 2]
+        state2 = self.data.stats.index[self.data.stats.state == 2]
+        state3 = self.data.stats.index[self.data.stats.state > 2]
 
-            if not self.force:
-                if sample.stats.state >= 3:
-                    print("Skipping {}; aleady clustered. Use force to re-cluster"
-                          .format(sample.name))
-                else:
-                    if sample.stats.reads_passed_filter:
-                        subsamples.append(sample)
+        # tell user which samples are not ready for step4
+        if state1.any():
+            print("skipping samples not in state==2:\n{}"
+                  .format(state1.tolist()))
+
+        if self.force:
+            # run all samples above state 2
+            subs = self.data.stats.index[self.data.stats.state > 1]
+            subsamples = [self.data.samples[i] for i in subs]
+
+        else:
+            # tell user which samples have already completed step 3
+            if state3.any():
+                print("skipping samples already finished step 4:\n{}"
+                      .format(state3.tolist()))
+
+            # run all samples in state 2
+            subsamples = [self.data.samples[i] for i in state2]
+
+        # check that kept samples have filtered data
+        checked_samples = []
+        for sample in subsamples:
+            if sample.stats.reads_passed_filter:
+                checked_samples.append(sample)
             else:
-                ## force to overwrite
-                if sample.stats.reads_passed_filter:
-                    subsamples.append(sample)
+                print("skipping {}; no filtered reads found.")
+        if not any(checked_samples):
+            raise IPyradError("no samples ready for step 4")
 
-        ## run subsamples
-        if not subsamples:
-            raise IPyradError(
-                "No Samples ready to be clustered. First run step 2.")
-        return subsamples
+        # sort samples so the largest is first
+        checked_samples.sort(
+            key=lambda x: x.stats.reads_passed_filter,
+            reverse=True,
+        )
+        return checked_samples
+
+    # def check_samples(self, samples):
+    #     ## list of samples to submit to queue
+    #     subsamples = []
+
+    #     ## if sample is already done skip
+    #     for sample in samples:
+    #         if sample.stats.state < 2:
+    #             print("Sample not ready for clustering. First run step2 on: {}"
+    #                   .format(sample.name))
+    #             continue
+
+    #         if not self.force:
+    #             if sample.stats.state >= 3:
+    #                 print("Skipping {}; aleady clustered. Use force to re-cluster"
+    #                       .format(sample.name))
+    #             else:
+    #                 if sample.stats.reads_passed_filter:
+    #                     subsamples.append(sample)
+    #         else:
+    #             ## force to overwrite
+    #             if sample.stats.reads_passed_filter:
+    #                 subsamples.append(sample)
+
+    #     ## run subsamples
+    #     if not subsamples:
+    #         raise IPyradError(
+    #             "No Samples ready to be clustered. First run step 2.")
+    #     return subsamples
 
 
     def setup_dirs(self):
@@ -132,10 +175,8 @@ class Step3:
         if not self.data.paramsdict["assembly_method"] == "denovo":
             for sample in self.samples:
                 refmap_init(self.data, sample, self.force)
-
             # set thread-count to 2 for paired-data
-            self.nthreads = 2
-        
+            self.nthreads = 2       
         # set thread-count to 1 for single-end data          
         else:
             self.nthreads = 1    
@@ -187,11 +228,6 @@ class Step3:
 
 
     def remote_run_dereps(self):
-
-        # skip this step if xyz files already exist and not force...
-        #for sample in self.samples:
-        #    pass
-
         # submit job ...
         start = time.time()
         printstr = ("dereplicating", "s3")
@@ -214,8 +250,7 @@ class Step3:
         Read carefully, this functions acts very differently depending on 
         datatype. Refmaps, then merges, then dereplicates, then denovo 
         clusters reads.
-        """
-        
+        """       
         # report location for debugging
         ip.logger.info("INSIDE derep %s", sample.name)
 
@@ -261,11 +296,16 @@ class Step3:
         ## remove all identical seqs with identical random i5 adapters.
         if "3rad" in self.data.paramsdict["datatype"]:
             declone_3rad(self.data, sample)
-            new_derep_and_sort(self.data,
-                os.path.join(self.data.dirs.edits, sample.name + "_declone.fastq"),
-                #os.path.join(self.data.dirs.edits, sample.name + "_derep.fastq"),
-                os.path.join(self.data.tmpdir, sample.name + "_derep.fastq"),
-                self.nthreads)
+            new_derep_and_sort(
+                self.data,
+                os.path.join(
+                    self.data.dirs.edits, 
+                    sample.name + "_declone.fastq"),
+                os.path.join(
+                    self.data.tmpdir, 
+                    sample.name + "_derep.fastq"),
+                self.nthreads,
+                )
         else:
             ## convert fastq to fasta, then derep and sort reads by their size.
             ## we pass in only one file b/c paired should be merged by now.
@@ -324,9 +364,6 @@ def new_derep_and_sort(data, infile, outfile, nthreads):
     if proc2.returncode:
         ip.logger.error("error inside derep_and_sort %s", errmsg)
         raise IPyradWarningExit(errmsg)
-
-
-
 
 
 
@@ -430,7 +467,6 @@ def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
 
     ## uncomment to plot the dag
     #_plot_dag(dag, results, snames)
-
 
 
 
@@ -1020,295 +1056,6 @@ def build_clusters(data, sample, maxindels):
 
 
 
-def setup_dirs(data):
-    """ sets up directories for step3 data """
-    ## make output folder for clusters
-    pdir = os.path.realpath(data.paramsdict["project_dir"])
-    data.dirs.clusts = os.path.join(
-        pdir, "{}_clust_{}"
-        .format(data.name, data.paramsdict["clust_threshold"]))
-    if not os.path.exists(data.dirs.clusts):
-        os.mkdir(data.dirs.clusts)
-
-    ## make a tmpdir for align files
-    data.tmpdir = os.path.abspath(os.path.expanduser(
-        os.path.join(pdir, data.name+'-tmpalign')))
-    if not os.path.exists(data.tmpdir):
-        os.mkdir(data.tmpdir)
-
-    ## If ref mapping, init samples and make the refmapping output directory.
-    if not data.paramsdict["assembly_method"] == "denovo":
-        ## make output directory for read mapping process
-        data.dirs.refmapping = os.path.join(
-            pdir, "{}_refmapping".format(data.name))
-        if not os.path.exists(data.dirs.refmapping):
-            os.mkdir(data.dirs.refmapping)
-
-
-
-def new_apply_jobs(data, samples, ipyclient, nthreads, maxindels, force):
-    """
-    Create a DAG of prealign jobs to be run in order for each sample. Track
-    Progress, report errors. Each assembly method has a slightly different
-    DAG setup, calling different functions.
-    """
-
-    ## is datatype gbs? used in alignment-trimming by align_and_parse()
-    is_gbs = bool("gbs" in data.paramsdict["datatype"])
-
-    ## Two view objects, threaded and unthreaded
-    lbview = ipyclient.load_balanced_view()
-
-    # TODO: for HPC this should make sure targets are spread on diff nodes.
-    eids = ipyclient.ids
-    if nthreads:
-        if nthreads < len(ipyclient.ids):
-            thview = ipyclient.load_balanced_view(targets=eids[::nthreads])
-        elif nthreads == 1:
-            thview = ipyclient.load_balanced_view()
-        else:
-            if len(ipyclient) > 40:
-                thview = ipyclient.load_balanced_view(targets=eids[::4])
-            else:
-                thview = ipyclient.load_balanced_view(targets=eids[::2])
-
-    # start progress bar
-    start = time.time()
-    printstr = (PRINTSTR["derep_concat_split"], "s3")
-    data._progressbar(10, 0, start, printstr)
-
-    ## get list of jobs/dependencies as a DAG for all pre-align funcs.
-    dag, joborder = build_dag(data, samples)
-
-    ## dicts for storing submitted jobs and results
-    results = {}
-
-    ## submit jobs to the engines in single or threaded views. The topological
-    ## sort makes sure jobs are input with all dependencies found.
-    for node in nx.topological_sort(dag):
-        ## get list of async results leading to this job
-        deps = [results.get(n) for n in dag.predecessors(node)]
-        deps = ipp.Dependency(dependencies=deps, failure=True)
-
-        ## get func, sample, and args for this func (including [data, sample])
-        funcstr, chunk, sname = node.split("-", 2)
-        func = FUNCDICT[funcstr]
-        sample = data.samples[sname]
-
-        ## args vary depending on the function
-        if funcstr in ["derep_concat_split", "cluster"]:
-            args = [data, sample, nthreads, force]
-        elif funcstr in ["mapreads"]:
-            args = [data, sample, nthreads, force]
-        elif funcstr in ["build_clusters"]:
-            args = [data, sample, maxindels]
-        elif funcstr in ["muscle_align"]:
-            handle = os.path.join(data.tmpdir, 
-                        "{}_chunk_{}.ali".format(sample.name, chunk))
-            args = [handle, maxindels, is_gbs]
-        else:
-            args = [data, sample]
-
-        # submit and store AsyncResult object. Some jobs are threaded.
-        if nthreads and (funcstr in THREADED_FUNCS):
-            #ip.logger.info('submitting %s to %s-threaded view', funcstr, nthreads)
-            with thview.temp_flags(after=deps, block=False):
-                results[node] = thview.apply(func, *args)
-        else:
-            #ip.logger.info('submitting %s to single-threaded view', funcstr)
-            with lbview.temp_flags(after=deps, block=False):
-                results[node] = lbview.apply(func, *args)
-
-    ## track jobs as they finish, abort if someone fails. This blocks here
-    ## until all jobs are done. Keep track of which samples have failed so
-    ## we only print the first error message.
-    sfailed = set()
-    for funcstr in joborder + ["muscle_align", "reconcat"]:
-        errfunc, sfails, msgs = trackjobs(data, funcstr, results)
-        ip.logger.info("{}-{}-{}".format(errfunc, sfails, msgs))
-        if errfunc:
-            for sidx in range(len(sfails)):
-                sname = sfails[sidx]
-                errmsg = msgs[sidx]
-                if sname not in sfailed:
-                    print("sample [{}] failed. See error in ./ipyrad_log.txt"
-                          .format(sname))
-                    ip.logger.error("sample [%s] failed in step [%s]; error: %s",
-                                 sname, errfunc, errmsg)
-                    sfailed.add(sname)
-
-    ## Cleanup of successful samples, skip over failed samples
-    badaligns = {}
-    for sample in samples:
-        ## The muscle_align step returns the number of excluded bad alignments
-        for rasync in results:
-            func, chunk, sname = rasync.split("-", 2)
-            if (func == "muscle_align") and (sname == sample.name):
-                if results[rasync].successful():
-                    badaligns[sample] = int(results[rasync].get())
-
-    ## for the samples that were successful:
-    for sample in badaligns:
-        ## store the result
-        sample.stats_dfs.s3.filtered_bad_align = badaligns[sample]
-        ## store all results
-        try:
-            sample_cleanup(data, sample)
-        except Exception as inst:
-            msg = "Sample {} failed this step. See ipyrad_log.txt.\
-                  ".format(sample.name)
-            print(msg)
-            ip.logger.error("%s - %s", sample.name, inst)
-
-    ## store the results to data
-    data_cleanup(data)
-
-    ## uncomment to plot the dag
-    #_plot_dag(dag, results, snames)
-
-
-
-def build_dag(data, samples):
-    """
-    build a directed acyclic graph describing jobs to be run in order.
-    """
-
-    ## Create DAGs for the assembly method being used, store jobs in nodes
-    snames = [i.name for i in samples]
-    dag = nx.DiGraph()
-
-    ## get list of pre-align jobs from globals based on assembly method
-    joborder = JOBORDER[data.paramsdict["assembly_method"]]
-
-    ## WHICH JOBS TO RUN: iterate over the sample names
-    for sname in snames:
-        ## append pre-align job for each sample to nodes list
-        for func in joborder:
-            dag.add_node("{}-{}-{}".format(func, 0, sname))
-
-        ## append align func jobs, each will have max 10
-        for chunk in range(10):
-            dag.add_node("{}-{}-{}".format("muscle_align", chunk, sname))
-
-        ## append final reconcat jobs
-        dag.add_node("{}-{}-{}".format("reconcat", 0, sname))
-
-    # ORDER OF JOBS: add edges/dependency between jobs: (first-this, then-that)
-    for sname in snames:
-        for sname2 in snames:
-            ## enforce that clust/map cannot start until derep is done for ALL
-            ## samples. This is b/c...
-            dag.add_edge("{}-{}-{}".format(joborder[0], 0, sname2),
-                         "{}-{}-{}".format(joborder[1], 0, sname))
-
-        ## add remaining pre-align jobs 
-        for idx in range(2, len(joborder)):
-            dag.add_edge("{}-{}-{}".format(joborder[idx - 1], 0, sname),
-                         "{}-{}-{}".format(joborder[idx], 0, sname))
-
-        ## Add 10 align jobs, none of which can start until all chunker jobs
-        ## are finished. Similarly, reconcat jobs cannot start until all align
-        ## jobs are finished.
-        for sname2 in snames:
-            for chunk in range(10):
-                dag.add_edge("{}-{}-{}".format("muscle_chunker", 0, sname2),
-                             "{}-{}-{}".format("muscle_align", chunk, sname))
-                ## add that the final reconcat job can't start until after
-                ## each chunk of its own sample has finished aligning.
-                dag.add_edge("{}-{}-{}".format("muscle_align", chunk, sname),
-                             "{}-{}-{}".format("reconcat", 0, sname))
-    ## return the dag
-    return dag, joborder
-
-
-
-def _plot_dag(dag, results, snames):
-    """
-    makes plot to help visualize the DAG setup. For developers only.
-    """
-    try:
-        import matplotlib.pyplot as plt
-        from matplotlib.dates import date2num
-        from matplotlib.cm import gist_rainbow
-
-        ## first figure is dag layout
-        plt.figure("dag_layout", figsize=(10, 10))
-        nx.draw(dag,
-                pos=nx.spring_layout(dag),
-                node_color='pink',
-                with_labels=True)
-        plt.savefig("./dag_layout.png", bbox_inches='tight', dpi=200)
-
-        ## second figure is times for steps
-        pos = {}
-        colors = {}
-
-        for node in dag:
-            #jobkey = "{}-{}".format(node, sample)
-            mtd = results[node].metadata
-            start = date2num(mtd.started)
-            #runtime = date2num(md.completed)# - start
-            ## sample id to separate samples on x-axis
-            _, _, sname = node.split("-", 2)
-            sid = snames.index(sname)
-            ## 1e6 to separate on y-axis
-            pos[node] = (start+sid, start*1e6)
-            colors[node] = mtd.engine_id
-
-        ## x just spaces out samples;
-        ## y is start time of each job with edge leading to next job
-        ## color is the engine that ran the job
-        ## all jobs were submitted as 3 second wait times
-        plt.figure("dag_starttimes", figsize=(10, 16))
-        nx.draw(dag, pos,
-                node_list=colors.keys(),
-                node_color=colors.values(),
-                cmap=gist_rainbow,
-                with_labels=True)
-        plt.savefig("./dag_starttimes.png", bbox_inches='tight', dpi=200)
-
-    except Exception as inst:
-        ip.logger.warning(inst)
-
-
-
-def trackjobs(data, func, results):
-    """
-    Blocks and prints progress for just the func being requested from a list
-    of submitted engine jobs. Returns whether any of the jobs failed.
-
-    func = str
-    results = dict of asyncs
-    """
-
-    ## TODO: try to insert a better way to break on KBD here.
-    ip.logger.info("inside trackjobs of %s", func)
-
-    ## get just the jobs from results that are relevant to this func
-    asyncs = [(i, results[i]) for i in results if i.split("-", 2)[0] == func]
-
-    ## progress bar
-    start = time.time()
-    while 1:
-        ## how many of this func have finished so far
-        ready = [i[1].ready() for i in asyncs]
-        printstr = (PRINTSTR[func], "s3")
-        data._progressbar(len(ready), sum(ready), start, printstr)
-        time.sleep(0.1)
-        if len(ready) == sum(ready):
-            break
-
-    print("")
-    sfails = []
-    errmsgs = []
-    for job in asyncs:
-        if not job[1].successful():
-            sfails.append(job[0])
-            errmsgs.append(job[1].result())
-
-    return func, sfails, errmsgs
-
-
 
 def declone_3rad(data, sample):
     """
@@ -1825,88 +1572,6 @@ def cleanup_and_die(async_results):
             ip.logger.warn("Got error - {}".format(i))
     return res
 
-
-
-def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
-    """ run the major functions for clustering within samples """
-
-    ## list of samples to submit to queue
-    subsamples = []
-
-    ## if sample is already done skip
-    for sample in samples:
-        ## If sample not in state 2 don't try to cluster it.
-        if sample.stats.state < 2:
-            print("Sample not ready for clustering. First run step 2 on : {}"
-                  .format(sample.name))
-            continue
-
-        if not force:
-            if sample.stats.state >= 3:
-                print("Skipping {}; aleady clustered. Use force to re-cluster"
-                      .format(sample.name))
-            else:
-                if sample.stats.reads_passed_filter:
-                    subsamples.append(sample)
-        else:
-            ## force to overwrite
-            if sample.stats.reads_passed_filter:
-                subsamples.append(sample)
-
-    ## run subsamples
-    if not subsamples:
-        print("No Samples ready to be clustered. First run step 2.")
-
-    else:
-        ## arguments to apply_jobs, inst catches exceptions
-        try:
-            ## make dirs that are needed including tmpdir
-            setup_dirs(data)
-
-            ## if refmapping make filehandles that will be persistent
-            if not data.paramsdict["assembly_method"] == "denovo":
-                for sample in subsamples:
-                    refmap_init(data, sample, force)
-
-                    ## set thread-count to 2 for paired-data
-                    nthreads = 2
-            ## set thread-count to 1 for single-end data          
-            else:
-                nthreads = 1
-
-            ## overwrite nthreads if value in _ipcluster dict
-            if "threads" in data._ipcluster.keys():
-                nthreads = int(data._ipcluster["threads"])
-
-                ## if more CPUs than there are samples then increase threads
-                _ncpus = len(ipyclient)
-                if _ncpus > 2 * len(data.samples):
-                    nthreads *= 2
-
-            ## submit jobs to be run on cluster
-            new_apply_jobs(
-                data, subsamples, ipyclient, nthreads, maxindels, force)
-
-        finally:
-            ## this can fail if jobs were not stopped properly and are still
-            ## writing to tmpdir. don't cleanup if debug is on.
-            try:
-                log_level = ip.logger.getEffectiveLevel()
-                if not log_level == 10:
-
-                    if os.path.exists(data.tmpdir):
-                        shutil.rmtree(data.tmpdir)
-
-                    ## get all refmap_derep.fastqs
-                    rdereps = glob.glob(
-                        os.path.join(data.dirs.edits, "*-refmap_derep.fastq"))
-
-                    ## Remove the unmapped fastq files
-                    for rmfile in rdereps:
-                        os.remove(rmfile)
-
-            except Exception as _:
-                ip.logger.warning("failed to cleanup files/dirs")
 
 
 ### GLOBALS
