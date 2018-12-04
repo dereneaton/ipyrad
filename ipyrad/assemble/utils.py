@@ -204,7 +204,7 @@ def chroms2ints(data, intkeys):
     """
     fai = pd.read_csv(
         data.paramsdict["reference_sequence"] + ".fai",
-        names=['scaffold', 'size', 'sumsize', 'a', 'b'],
+        names=['scaffold', 'length', 'sumsize', 'a', 'b'],
         sep="\t",
     )
     faidict = {j: i for i, j in enumerate(fai.scaffold)}
