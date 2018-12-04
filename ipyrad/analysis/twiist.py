@@ -12,29 +12,36 @@ import glob
 import uuid
 import tempfile
 import itertools
+import subprocess as sps
 
 # third party
 import pandas as pd
 import numpy as np
 import toytree
-from .raxml import Raxml as raxml
 
+from .raxml import Raxml as raxml
+from ipyrad.assemble.utils import IPyradError
+import ipyrad as ip
 
 
 class Twiist():
-    """ 
-    Performs phylo inference across sampled iterations to get weights.
+    """
+    Performs phylo inference across loci sampled in windows. If denovo then
+    span is the number of randomly sampled loci, and window is the number of 
+    random samples. If reference then window is the size of the window selected
+    and span is the 
     """
     def __init__(
-        self, 
+        self,
+        name, 
         data,
         imap, 
         minmap=None,
-        # chunksize=20, 
-        ntests=100, 
+        reference=False,
+        window=None, 
+        slide=None,
         minsnps=1,
         randomseed=None,
-        reference=False,
         ):
 
         ## init random seed
@@ -42,38 +49,74 @@ class Twiist():
         np.random.seed(self.randomseed)
         
         ## store attributes
-        self.reference = reference
+        self.name = name
         self.data = data
         self.imap = imap
         self.rmap = {}
         self.results_table = None
+        self.span = span
+        self.window = window
+        self.minsnps = minsnps
+
+        # reference data
+        self.reference = reference
+        self.chromlendict = {}
+
+        # reverse of imap dictionary
         for k, v in self.imap.items():
             for i in v:
-                self.rmap[i] = k  
+                self.rmap[i] = k
         self.ntests = ntests
-        # self.chunksize = chunksize
         self.minsnps = minsnps
         
-        ## fill mindict
         if not minmap:
             minmap = {i: 1 for i in self.imap}
         self.minmap = minmap
         
-        ## store all samples for this test
+        # store all samples for this test
         self.samples = list(itertools.chain(*[i for i in self.imap.values()]))
         
         ## get idxs of loci for this test
         if self.reference:
+            self.check_reference_is_indexed()
             self.idxs = self.get_ref_locus_idxs()
-
-            # todo: find nchroms, and chrom sizes
-            # ....
 
         else:
             self.idxs = self.get_denovo_locus_idxs()
                 
 
+    def check_reference_is_indexed(self):
+        if not os.path.exists(self.reference):
+            raise IOError(
+                "Reference file not found: {}".format(self.reference))
+
+        # If reference index exists then bail out unless force
+        if not os.path.exists(self.reference + ".fai"):
+
+            # simple samtools index for grabbing ref seqs
+            cmd = [ip.bins.samtools, "faidx", self.reference]
+            proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+            error = proc.communicate()[0].decode()
+
+            # error handling
+            if error:
+                if "please use bgzip" in error:
+                    raise IPyradError("BGZIP reference file not supported")
+                else:
+                    raise IPyradError(error)
+
+        # store  chrom lengths
+        table = pd.read_csv(
+            self.reference + ".fai", 
+            names=['scaffold', 'length', 'start', 'a', 'b'],
+            sep="\t",
+        )
+        self.chromlendict = {
+            table.scaffold[i]: table.length[i] for i in range(table.shape[0])
+        }
+
     
+
     def get_ref_locus_idxs(self):
         idxs = []
 
@@ -82,8 +125,9 @@ class Twiist():
 
         for idx, loc in enumerate(liter):
             lines = loc.split("\n")
-            snpline = loc.split('|')[-1]
-            locidx, chidx, pos = snpline.split(":")            
+
+            snpline = lines[-1]
+            locidx, chidx, pos = snpline.split("|")[1].split(":")            
             names = [i.split()[0] for i in lines[:-1]]
 
             ## check coverage
@@ -173,14 +217,13 @@ class Twiist():
 
 
     def get_window_idxs(self, window):
-        "Returns locus idxs that are on same chrom and within chunksize(window)"
+        "Returns locus idxs that are on same chrom and within window"
 
         # get start position
         locidx, chridx, pos1, pos2 = self.idxs[window]
 
         # get end position
-        # endwindow = pos2 + self.chunksize
-        endwindow = pos2 + window
+        endwindow = pos2 + self.window
 
         idxs = []
         for tup in self.idxs:
@@ -221,7 +264,7 @@ class Twiist():
 
 
     
-    def run(self, ipyclient):
+    def run_denovo(self, ipyclient):
         """
         parallelize calls to worker function.
         """
@@ -234,7 +277,7 @@ class Twiist():
             
             ## submit jobs to run
             args = (window, self)
-            rasync = lbview.apply(worker, *args)
+            rasync = lbview.apply(denovo_worker, *args)
             asyncs.append(rasync)
             
         ## wait for jobs to finish
@@ -250,6 +293,20 @@ class Twiist():
         self.results_table = pd.DataFrame(results)
     
     
+
+    def run_reference(self, ipyclient):
+        "parallelize worker function for reference data"
+
+        # connect to client
+        lbview = ipyclient.load_balanced_view()
+        rasyncs = []
+        for chrom, chromlen in self.chromlendict.items():
+            # skip chroms that are smaller than window size
+            if chromlen > self.window:
+                for window in range(0, chromlen, self.window):
+                    # check if there is data in this window
+                    pass
+
 
     def plot(self):
         """
@@ -272,16 +329,31 @@ class Twiist():
 
 
 
+def denovo_worker(self, window):
+
+    # sample random N (window) loci and return as a dict 
+    fullseqs = self.sample_loci(window)
+
+    # find all iterations of samples for this quartet
+    liters = itertools.product(*self.imap.values())
+
+    ## run tree inference for each iteration of sampledict
+    hashval = uuid.uuid4().hex
+    weights = []
+
+
+
+
 def worker(self, window):
     """ 
     Calculates the quartet weights for the test at a random
     subsampled chunk of loci.
     """
 
-    ## subsample loci 
+    # sample random N (window) loci and return as a dict 
     fullseqs = self.sample_loci(window)
 
-    ## find all iterations of samples for this quartet
+    # find all iterations of samples for this quartet
     liters = itertools.product(*self.imap.values())
 
     ## run tree inference for each iteration of sampledict

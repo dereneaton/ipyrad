@@ -197,14 +197,13 @@ AMBIGS = {
     }
 
 
-
 def chroms2ints(data, intkeys):
     """
     Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
     """
     fai = pd.read_csv(
         data.paramsdict["reference_sequence"] + ".fai",
-        names=['scaffold', 'length', 'sumsize', 'a', 'b'],
+        names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )
     faidict = {j: i for i, j in enumerate(fai.scaffold)}
