@@ -16,11 +16,12 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
+import toytree
 from ipyrad.analysis.utils import Params, progressbar
-from ipyrad.assemble.utils import IPyradError, IPyradWarningExit
+from ipyrad.assemble.utils import IPyradError
+
 
 # DUCT from where?
-
 # TODO: REPLACE DUCT
 # TODO: REPLACE TOYTREE USAGE
 # 
@@ -151,10 +152,11 @@ class Bpp(object):
 
         # store args
         self.name = name
-        self.data = data
-        self.workdir = workdir
+        self.data = os.path.realpath(os.path.expanduser(data))
+        self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.guidetree = guidetree
         self.imap = imap
+        self.load_existing_results = load_existing_results
 
         # update kwargs 
         self.asyncs = []
@@ -193,46 +195,45 @@ class Bpp(object):
             if not comm:
                 raise IPyradError(MISSING_IMPORTS)
 
-    # needs closer checking since the py3 reboot
+
     def check_files(self):
         # support for legacy args
         if self._kwargs.get("locifile"):
             self.data = self._kwargs.get("locifile")
         if not self.data:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "must enter a 'data' argument (an ipyrad .loci file).")
 
         # set the guidetree
         if not self.guidetree:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "must enter a 'guidetree' argument (a newick file or string).")
-        self.tree = ete.Tree(self.guidetree)
+        self.tree = toytree.tree(self.guidetree)
 
         # check workdir
-        if self.workdir:
-            self.workdir = os.path.abspath(os.path.expanduser(self.workdir))
-        else:
+        if not self.workdir:
             self.workdir = os.path.join(os.path.curdir, "analysis-bpp")
+        self.workdir = os.path.realpath(os.path.expanduser(self.workdir))           
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
         # parsing imap dictionary, or create simple 1-1 mapping
         if not self.imap:
-            self.imap = {i: [i] for i in self.tree.get_leaf_names()}
-        else:
-            self.imap = {}
-            for key, val in self.imap.items():
-                if isinstance(val, (int, str)):
-                    self.imap[key] = [str(val)]
-                elif isinstance(val, list):
-                    self.imap[key] = val
-                else:
-                    raise IPyradWarningExit(
-                        "imap dictionary is not properly formatted")
+            self.imap = {i: [i] for i in self.tree.get_tip_labels()}
+        # else:
+        #     # self.imap = {}
+        #     for key, val in self.imap.items():
+        #         if isinstance(val, (int, str)):
+        #             self.imap[key] = [str(val)]
+        #         elif isinstance(val, list):
+        #             self.imap[key] = val
+        #         else:
+        #             raise IPyradError(
+        #                 "imap dictionary is not properly formatted")
 
         # update stats if alleles instead of loci 
         if not self._kwargs["minmap"]:
-            self._kwargs["minmap"] = {i: 1 for i in self.tree.get_leaf_names()}
+            self._kwargs["minmap"] = {i: 1 for i in self.tree.get_tip_labels()}
 
         if ('.alleles.loci' in self.data) and (not self._kwargs['copied']):
             # add 0/1 to names
@@ -250,9 +251,9 @@ class Bpp(object):
 
         ## checks
         assert isinstance(self.imap, dict), "you must enter an IMAP dictionary"
-        assert set(self.imap.keys()) == set(self.tree.get_leaf_names()), \
+        assert set(self.imap.keys()) == set(self.tree.get_tip_labels()), (
                "IMAP keys must match guidetree names: \n{}\n{}"\
-               .format(self.imap.keys(), self.tree.get_leaf_names())
+               .format(self.imap.keys(), self.tree.get_tip_labels()))
 
         ## filters
         self.filters = Params()
@@ -276,7 +277,6 @@ class Bpp(object):
         ## load existing results files for this named bpp object if they exist
         if self.load_existing_results:
             self._load_existing_results(self.name, workdir=self.workdir)
-
 
 
     def _load_existing_results(self, name, workdir):
@@ -563,7 +563,8 @@ class Bpp(object):
         nspecies = str(len(self.imap))
         species = " ".join(sorted(self.imap))
         ninds = " ".join([str(len(self.imap[i])) for i in sorted(self.imap)])
-        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.tree.write(format=9)))
+        # self.tree.write(format=9)
+        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.tree.write(None, 9)))
 
         ## priors
         ctl.append("thetaprior = {} {}".format(*self.params.thetaprior))
@@ -608,7 +609,7 @@ class Bpp(object):
         """
 
         ## make deepcopy of self.__dict__ but do not copy async objects
-        subdict = {i:j for i,j in self.__dict__.iteritems() if i != "asyncs"}
+        subdict = {i:j for i,j in self.__dict__.items() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
         ## make back into a bpp object
@@ -625,9 +626,9 @@ class Bpp(object):
             )
 
         ## update special dict attributes but not files
-        for key, val in newobj.params.__dict__.iteritems():
+        for key, val in newobj.params.__dict__.items():
             newobj.params.__setattr__(key, self.params.__getattribute__(key))
-        for key, val in newobj.filters.__dict__.iteritems():
+        for key, val in newobj.filters.__dict__.items():
             newobj.filters.__setattr__(key, self.filters.__getattribute__(key))
 
         ## new object must have a different name than it's parent
