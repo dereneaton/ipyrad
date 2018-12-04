@@ -24,5 +24,6 @@ from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
 from .sratools import SRA as sratools
 from .twiist import Twiist as twiist
+from .treeslider import TreeSlider as treeslider
 #from .popgen import Popgen as popgen
 # from .treemix import Treemix as treemix
