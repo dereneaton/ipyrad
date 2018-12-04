@@ -949,7 +949,7 @@ class Converter:
             with h5py.File(self.seqs_database, 'r') as io5:
                 # load seqarray
                 seqarr = io5['phy']
-                arrsize = io5['phymap'][-1]
+                arrsize = io5['phymap'][-1, 2]
 
                 # write dims
                 out.write("{} {}\n".format(len(self.data.snames), arrsize))
@@ -971,7 +971,7 @@ class Converter:
             with h5py.File(self.seqs_database, 'r') as io5:
                 # load seqarray
                 seqarr = io5['phy'][:]
-                arrsize = io5['phymap'][-1]
+                arrsize = io5['phymap'][-1, 2]
 
                 ## write nexus seq header
                 out.write(NEXHEADER.format(seqarr.shape[0], arrsize))
@@ -980,7 +980,7 @@ class Converter:
                 chunksize = 100000  # this should be a multiple of 100
                 for bidx in range(0, arrsize, chunksize):
                     bigblock = seqarr[:, bidx:bidx + chunksize]
-                    lend = arrsize - bidx
+                    lend = int(arrsize - bidx)
 
                     ## write interleaved seqs 100 chars with longname+2 before
                     tmpout = []            
@@ -1001,7 +1001,7 @@ class Converter:
                 out.write(NEXCLOSER)
                 
                 ## add partition information from maparr
-                maparr = io5["phymap"][:]
+                maparr = io5["phymap"][:, 2]
                 charsetblock = []
                 charsetblock.append("BEGIN SETS;")
                 for idx in range(0, maparr.shape[0] - 1):
@@ -1218,6 +1218,10 @@ def convert_outputs(data, oformat):
 # -------------------------------------------------------------
 def write_loci_and_alleles(data):
 
+    # get faidict to convert chroms to ints
+    if data.isref:
+        faidict = chroms2ints(data, True)
+
     # write alleles file
     allel = 'a' in data.paramsdict["output_formats"]
 
@@ -1250,8 +1254,12 @@ def write_loci_and_alleles(data):
                     snpstring, nidxs = line.rsplit("|", 2)[:2]
                     if data.paramsdict["assembly_method"] == 'reference':
                         refpos = nidxs.split(",")[0]
+
+                        # translate refpos chrom idx (1-indexed) to chrom name
+                        cid, rid = refpos.split(":")
+                        cid = faidict[int(cid) - 1]
                         lchunk.append(
-                            "{}|{}:{}|\n".format(snpstring, idx, refpos))                   
+                            "{}|{}:{}:{}|\n".format(snpstring, idx, cid, rid))
                     else:
                         lchunk.append(
                             "{}|{}|\n".format(snpstring, idx))
@@ -1274,10 +1282,15 @@ def write_loci_and_alleles(data):
                     asnpstring = "//  " + snpstring[2:]
                     if data.paramsdict["assembly_method"] == 'reference':
                         refpos = nidxs.split(",")[0]
+
+                        # translate refpos chrom idx (1-indexed) to chrom name
+                        cid, rid = refpos.split(":")
+                        cid = faidict[int(cid) - 1]
+
                         lchunk.append(
-                            "{}|{}:{}|\n".format(snpstring, idx, refpos))
+                            "{}|{}:{}:{}|\n".format(snpstring, idx, cid, rid))
                         achunk.append(
-                            "{}|{}:{}|\n".format(asnpstring, idx, refpos))
+                            "{}|{}:{}:{}|\n".format(asnpstring, idx, cid, rid))
                     else:
                         lchunk.append(
                             "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
@@ -1321,24 +1334,33 @@ def pseudoref2ref(pseudoref, ref):
     return npseudo
 
 
-
 def fill_seq_array(data, ntaxa, nbases, nloci):
    
     # init/reset hdf5 database
     with h5py.File(data.seqs_database, 'w') as io5:
 
         # temporary array data sets 
-        io5.create_dataset(
+        phy = io5.create_dataset(
             name="phy",
             shape=(ntaxa, nbases), 
             dtype=np.uint8,
         )
         # temporary array data sets 
-        io5.create_dataset(
+        phymap = io5.create_dataset(
             name="phymap",
-            shape=(nloci,),
-            dtype=np.int64,
+            shape=(nloci, 5),
+            dtype=np.uint64,
         )
+
+        # store attrs of the reference genome to the phymap
+        if data.paramsdict["assembly_method"] == 'reference':
+            io5["scaffold_lengths"] = get_fai_values(data, "length")
+            io5["scaffold_names"] = get_fai_values(data, "scaffold").astype("S")
+            phymap.attrs["reference"] = data.paramsdict["reference_sequence"]
+            phymap.attrs["phynames"] = [i.encode() for i in data.pnames]
+            phymap.attrs["columns"] = [
+                b"chroms", b"phy0", b"phy1", b"pos0", b"pos1", 
+            ]
 
         # gather all loci bits
         locibits = glob.glob(os.path.join(data.tmpdir, "*.loci"))
@@ -1354,7 +1376,10 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         start = end = 0
         maxsize = 100000
         tmploc = {}
-        maplist = []
+        mapends = []
+        mapchroms = []
+        mappos0 = []
+        mappos1 = []
         mapstart = mapend = 0
         locidx = 0
 
@@ -1375,6 +1400,20 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                 else:
                     # convert seqs to an array
                     locidx += 1
+
+                    # parse chrom:pos-pos
+                    lineend = line.split("|")[1]
+                    chrom = int(lineend.split(":")[0])
+                    pos0, pos1 = 0, 0
+                    if data.paramsdict['assembly_method'] == 'reference':                    
+                        pos0, pos1 = (
+                            int(i) for i in lineend
+                            .split(":")[1]
+                            .split(",")[0]
+                            .split("-")
+                        )
+
+                    # seq into an array
                     loc = (np.array([list(i) for i in tmploc.values()])
                         .astype(bytes).view(np.uint8))
                     
@@ -1386,7 +1425,10 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     end = start + loc.shape[1]
                     for idx, name in enumerate(tmploc):
                         tmparr[sidxs[name], start:end] = loc[idx]
-                    maplist.append(gstart + end)
+                    mapends.append(gstart + end)
+                    mapchroms.append(chrom)
+                    mappos0.append(pos0)
+                    mappos1.append(pos1)
                     
                     # reset locus
                     start = end
@@ -1406,11 +1448,16 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     tmparr[tmparr == 0] = 78
                     
                     # dump tmparr to hdf5
-                    io5['phy'][:, gstart:gstart + trim] = tmparr[:, :trim]                       
-                    io5['phymap'][mapstart:locidx] = (
-                        np.array(maplist, dtype=np.int64))
+                    phy[:, gstart:gstart + trim] = tmparr[:, :trim]                       
+                    phymap[mapstart:locidx, 0] = mapchroms
+                    phymap[mapstart:locidx, 2] = mapends                       
+                    phymap[mapstart:locidx, 3] = mappos0
+                    phymap[mapstart:locidx, 4] = mappos1                       
                     mapstart = locidx
-                    maplist = []
+                    mapends = []
+                    mapchroms = []
+                    mappos0 = []
+                    mappos1 = []
                     
                     # reset
                     tmparr = np.zeros((ntaxa, maxsize + 5000), dtype=np.uint8)
@@ -1427,17 +1474,24 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         # fill missing with 78 (N)
         tmparr[tmparr == 0] = 78
 
-        # dump tmparr and maplist to hdf5
-        io5['phy'][:, gstart:gstart + trim] = tmparr[:, :trim]           
-        mapend = mapstart + len(maplist)
-        io5['phymap'][mapstart:mapend] = np.array(maplist, dtype=np.int64)
+        # dump tmparr and maplist to hdf5. Because we dropped sites that are 
+        # all N or - the length of phy data can be less than nbases and so 
+        # there can be 000 at the end of phy. This is ok, we trim it when
+        # writing phylip file, but good to be aware it's there for other things
+        phy[:, gstart:gstart + trim] = tmparr[:, :trim]           
+        mapend = mapstart + len(mapends) + 1
+        phymap[mapstart:mapend, 0] = mapchroms
+        phymap[mapstart:mapend, 2] = mapends
+        phymap[mapstart:mapend, 3] = mappos0
+        phymap[mapstart:mapend, 4] = mappos1
+        phymap[1:, 1] = phymap[:-1, 2]
 
         # write stats to the output file
         with open(data.stats_files.s7, 'a') as outstats:
-            trim = io5["phymap"][locidx - 1]
-            missmask = io5["phy"][:trim] == 78
-            missmask += io5["phy"][:trim] == 45
-            missing = 100 * (missmask.sum() / io5["phy"][:trim].size)
+            trim = phymap[-1, 2]  # locidx - 1]
+            missmask = phy[:trim] == 78
+            missmask += phy[:trim] == 45
+            missing = 100 * (missmask.sum() / phy[:trim].size)
             print("sequence matrix size: ({}, {}), {:.2f}% missing sites."
                 .format(
                     len(data.samples), 
@@ -2200,6 +2254,18 @@ def get_genos(f10, f01, pseudoref):
         else:
             res[i, 1] = 9
     return res
+
+
+
+def get_fai_values(data, value):
+    reference_file = data.paramsdict["reference_sequence"]
+    fai = pd.read_csv(
+        reference_file + ".fai",   
+        names=['scaffold', 'length', 'sumsize', 'a', 'b'],
+        sep="\t",
+    )
+    return fai[value].values  
+
 
 
 # -----------------------------------------------------------
