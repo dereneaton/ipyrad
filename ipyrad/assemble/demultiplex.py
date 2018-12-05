@@ -805,8 +805,8 @@ class BarMatch:
                 # Here we're just reusing the findbcode function for R2
                 # and reconfiguring the longbar tuple to have the maxlen for
                 # the R2 barcode.
-                barcode1 = self.find3radbcode(read1)
-                barcode2 = self.find3radbcode(read2)
+                barcode1 = find3radbcode(self.cutters, self.longbar, read1)
+                barcode2 = find3radbcode(self.cutters, self.longbar, read2)
                 barcode = barcode1 + "+" + barcode2
             barcode = barcode  # .decode()
        
@@ -852,9 +852,9 @@ class BarMatch:
                     read2[3] = read2[3][len(barcode2):]
         
                 # append to sorted reads list
-                self.read1s[sname_match].append("".join(read1))  # b"".join(read1))
+                self.read1s[sname_match].append(b"".join(read1).decode())
                 if 'pair' in self.data.paramsdict["datatype"]:
-                    self.read2s[sname_match].append("".join(read2))  # b"".join(read2))
+                    self.read2s[sname_match].append(b"".join(read2).decode()) 
 
             else:
                 self.misses["_"] += 1
@@ -991,7 +991,7 @@ def zbufcountlines(filename, gzipped):
     return nlines
 
 
-def find3radbcode(cutters, longbar, read1):
+def find3radbcode(cutters, longbar, read):
     """ find barcode sequence in the beginning of read """
     ## default barcode string
     for ambigcuts in cutters:
@@ -999,8 +999,8 @@ def find3radbcode(cutters, longbar, read1):
             ## If the cutter is unambiguous there will only be one.
             if not cutter:
                 continue
-            search = read1[1][:int(longbar[0] + len(cutter) + 1)]
-            splitsearch = search.rsplit(cutter, 1)
+            search = read[1][:int(longbar[0] + len(cutter) + 1)]
+            splitsearch = search.decode().rsplit(cutter, 1)
             if len(splitsearch) > 1:
                 return splitsearch[0]
     ## No cutter found
