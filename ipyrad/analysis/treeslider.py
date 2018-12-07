@@ -157,6 +157,7 @@ class TreeSlider():
                 print((
         "Tree table loaded from {}; Use force to instead overwrite"
         .format(tree_table_path)))
+                return
 
         # re-build tree table and phymap from (maybe new) params
         self._parse_tree_table()
@@ -180,7 +181,7 @@ class TreeSlider():
                 self.tree_table.shape[0], 
                 self.minsnps, 
                 self.scaffold_idx,
-                self.scaffold_table.loc[scaffold_idx],
+                self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
                 ), 
             end="")
 
@@ -235,7 +236,7 @@ def engine_process(database, cmap, minsnps, imap, minmap):
 
     # parse phylip string if there is sequence in this window
     if cmap.size:
-        nsamplecov, nsnps, phystring = parse_phystring(database, cmap)
+        nsnps, nsamplecov, phystring = parse_phystring(database, cmap)
     
         # infer a tree if there is variation in this window
         if nsamplecov >= 4 and nsnps >= minsnps:
