@@ -18,7 +18,7 @@ import subprocess as sps
 import pandas as pd
 import numpy as np
 import toytree
-
+import toyplot
 
 
 class Twisst:
@@ -71,9 +71,10 @@ class Twisst:
         # store order of imaps in results (abcd; acbd, adbc)
         abcd = sorted(self.imap.keys())
         self.wmap = {
-            "abcd": abcd, 
-            "acbd": [abcd[0], abcd[2], abcd[1], abcd[3]],
-            "adbd": [abcd[0], abcd[3], abcd[1], abcd[2]],
+            "abcd": ",".join(abcd[:2]) + "|" + ",".join(abcd[2:]), 
+            "acbd": ",".join([abcd[0], abcd[2]]) + "|" + ",".join([abcd[1], abcd[3]]),
+            "adbd": ",".join([abcd[0], abcd[3]]) + "|" + ",".join([abcd[1], abcd[2]]),
+            "unknown": "unknown",
         }
 
 
@@ -82,12 +83,14 @@ class Twisst:
 
         # do not overwrite tree table
         tree_weights_path = os.path.join(
-            self.workdir, self.name + ".tree_weights.csv")
+            self.workdir, 
+            self.name + ".tree_weights.csv")
         if os.path.exists(tree_weights_path):
             if not force:
                 print((
         "tree_weights table loaded from {}; Use force to instead overwrite."
         .format(tree_weights_path)))
+                self.tree_weights = pd.read_csv(tree_weights_path, index_col=0)
                 return
 
         # setup
@@ -122,6 +125,7 @@ class Twisst:
     def _track_progress_and_store_results(self, rasyncs, time0, done):
         # track progress and collect results.
         nwindows = self.tree_weights.shape[0]
+        message = "calculating tree weights | {}".format(self.name)
         while 1:
             finished = [i for i in rasyncs if rasyncs[i].ready()]
             for idx in finished:
@@ -132,9 +136,10 @@ class Twisst:
                 else:
                     raise Exception(rasyncs[idx].get())
             # progress
-            progressbar(done, nwindows, time0, "calculating tree weights")
+            progressbar(done, nwindows, time0, message)
             time.sleep(0.5)
             if not rasyncs:
+                print("")
                 break
 
         # frequencies excluding unresolved
@@ -156,8 +161,43 @@ class Twisst:
             self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
 
 
+    def draw_tree_weights(self):
+
+        # grab tree weights with and without unknowns
+        df1 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc", "uunk"]]
+        df2 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc"]]
+
+        # get rolling window means 
+        fills = df1.rolling(
+            window=30, min_periods=1, win_type="boxcar", center=True).mean()
+        lines = df2.rolling(
+            window=30, min_periods=1, win_type="boxcar", center=True).mean()        
+
+        # toyplot drawing
+        canvas = toyplot.Canvas(width=900, height=250)
+        axes = canvas.cartesian(
+            label="Chromosome 2",
+            xlabel="Position (Mb)",
+            ylabel="Subtree weighting",
+        )
+        m = axes.fill(fills, 
+            baseline="stacked", 
+            opacity=0.4, 
+            title=[self.wmap[i] for i in sorted(self.wmap.keys())],
+        )
+        m = axes.plot(lines, stroke_width=1.5)
+
+        axes.x.ticks.locator = toyplot.locator.Explicit(
+            locations=np.arange(0, 3000, 500),
+            labels=(
+                self.tree_table.start
+                .loc[np.arange(0, 3000, 500)] / int(1e6)
+                ).astype(int),
+        )
+
 
 def calculate_weights(imap, subtree):
+    "calculate tree weights by subsampling quartet trees for imap clades"
 
     # get a generator of unique nkey samples: e.g., quartets 
     tips = sorted(subtree.get_tip_labels(), key=lambda x: x.rsplit("-", 1)[0])
@@ -176,22 +216,20 @@ def calculate_weights(imap, subtree):
                 
         # get treenodes of pruned tips always in alphanumeric order of imaps
         tips = sorted(dtree.get_tip_labels())
-        nodes = [dtree.treenode.search_nodes(name=i)[0] for i in tips]
+
+        # get splits in the tree that are length (2, 2)
+        cache = dtree.treenode.get_cached_content("name")
+        edges = [i for i in dtree.treenode.get_edges(cache) if len(i[0]) == 2]
         
-        # get distances between tips in nnodes
-        dists = np.array([
-            nodes[0].get_distance(i, topology_only=True) for i in nodes
-        ])
-        
-        # get tip that is closest to the first tip in the list
-        one = dists[dists != 0].min()
-        nidx = np.argsort(dists)[1]
-        
-        # if multiple closest then polytomy is unresolved
-        if dists[dists == one].size != 1:
+        # unresolved subtree
+        if not edges:
             arr[3] += 1
-        # store split info
+            
+        # store resolved tree
         else:
+            split = [i for i in edges[0] if tips[0] in i][0]
+            split.remove(tips[0])
+            nidx = tips.index(split.pop())
             arr[nidx - 1] += 1
     return arr
     
@@ -250,6 +288,7 @@ def engine_process(newick, imap, rmap, minmap):
 
         # return values
         return True, subtree.nnodes, abcd, acbd, adbc, null, subtree.write()        
+
 
 
 def progressbar(finished, total, start, message):
