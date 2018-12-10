@@ -183,7 +183,11 @@ class TreeSlider():
                 self.scaffold_idx,
                 self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
                 ), 
-            end="")
+            end="")  
+        message = "inferring trees {}:{}".format(
+            self.scaffold_idx,
+            self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
+        )
 
         # submit jobs
         for idx in self.tree_table.index:
@@ -206,7 +210,7 @@ class TreeSlider():
         self.tree_table.to_csv(tree_table_path)
 
 
-    def _track_progress_and_store_results(self, rasyncs, time0):
+    def _track_progress_and_store_results(self, rasyncs, time0, message):
         # track progress and collect results.
         nwindows = self.tree_table.shape[0]
         done = 0
@@ -220,9 +224,10 @@ class TreeSlider():
                 else:
                     raise Exception(rasyncs[idx].get())
             # progress
-            progressbar(done, nwindows, time0, "inferring raxml trees")
+            progressbar(done, nwindows, time0, message)
             time.sleep(0.5)
             if not rasyncs:
+                print("")
                 break
 
 
