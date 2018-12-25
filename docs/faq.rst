@@ -1,11 +1,15 @@
 
 .. _faq:  
 
+Tuning Assembly Parameters
+==========================
+This is a collection of papers related to tuning different assembly
+parameters and how these may or may not impact downstream analysis. 
+Just because we include a paper here doesn't mean we endorse the results, 
+only that we think it's worth considering. Where necessary, we 
+highlight specific papers and interesting/important results below.
 
-FAQ
-===
-
-* wat
+* Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
 
 Troubleshooting Procedures
 ==========================
