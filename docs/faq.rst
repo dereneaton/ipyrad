@@ -9,6 +9,9 @@ Just because we include a paper here doesn't mean we endorse the results,
 only that we think it's worth considering. Where necessary, we 
 highlight specific papers and interesting/important results below.
 
+* Huang & Knowles 2016 - `Unforeseen Consequences of Excluding Missing Data from Next-Generation Sequences: Simulation Study of RAD Sequences <https://academic.oup.com/sysbio/article/65/3/357/2468879>`__
+    Especially useful. Don't over-filter missing data.
+* Shafer et al. 2016 - `Bioinformatic processing of RAD-seq data dramatically impacts downstream population genetic inference <https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12700>`__
 * Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
 
 Troubleshooting Procedures
