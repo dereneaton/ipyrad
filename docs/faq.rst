@@ -351,3 +351,7 @@ VERY IMPORTANT: This environment variable needs to be set in both .bashrc and .p
 Why is my structure analysis crashing when it looks like it should be working?
 ------------------------------------------------------------------------------
 When running structure, specifically in the `get_clumpp_table` call, you might be told that "No files ready for XXX-K-2 in </your/structure/folder>", when in fact there are files ready. Well it turns out that CLUMPP has a 100 character file name limit, and it'll crash with names longer than this. The ipyrad.analysis.structure functions use absolute paths to specify file names, so it's not hard to see how this 100 character limit could be violated. Try moving your structure analysis to a place higher in the file system hierarchy. Baffling!
+
+Problems with SRATools analysis package
+---------------------------------------
+Occasionlly with the sratools package you might have some trouble with downloading. It could look something like this `Exception in run() - index 29 is out of bounds for axis 0 with size 1`. This is a problem with your `esearch` install, which does not have https support built in. You can verify with with the command `esearch -db sra -query SRP021469`, which should give you an https protocol support error. You can easily fix this by installing `ssleay`: `conda install -c bioconda perl-net-ssleay`. Thanks to @ksil91.
