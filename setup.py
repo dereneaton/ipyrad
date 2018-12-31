@@ -35,9 +35,6 @@ setup(
         "cutadapt",
         "toytree",
         "requests",
-        #cython,     # tetrad
-        #mkl,        # tetrad
-        #
     ],
     entry_points={
         'console_scripts': [
