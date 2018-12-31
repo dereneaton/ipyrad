@@ -603,7 +603,7 @@ class Processor:
                         aseqs.append(list(line))
                         useqs.append(list(line.upper()))
 
-                # filter to only include only samples in this assembly
+                # filter to include only samples in this assembly
                 mask = [i in self.data.snames for i in names]
                 names = np.array(names)[mask].tolist()
                 nidxs = np.array(nidxs)[mask].tolist()
@@ -834,6 +834,7 @@ class Processor:
             return True
         return False
 
+
     def get_edges(self, seqs):
         """
         Trim terminal edges or mask internal edges based on three criteria and
@@ -842,7 +843,6 @@ class Processor:
         2. removing cutsite overhangs.
         3. trimming singleton-like overhangs from seqs of diff lengths.
         """
-
         # record whether to filter this locus based on sample coverage
         bad = False
         
@@ -861,9 +861,12 @@ class Processor:
 
         # 3. find where the edge is not indel marked (really unknown ("N"))
         trim3 = np.array([0, 0, 0, 0])
-        try:            
+        try:
+            minsamp = min(4, seqs.shape[0])
+            # minsamp = max(minsamp, self.data.paramsdict["min_samples_locus"])
+            mincovs = np.sum((seqs != 78) & (seqs != 45), axis=0)
             for pos in range(4):
-                trim3[pos] = check_minsamp(seqs, pos, 4)
+                trim3[pos] = check_minsamp(seqs, pos, minsamp, mincovs)
         except ValueError:
             bad = True
         
@@ -887,6 +890,7 @@ class Processor:
             bad = True
 
         return bad, edges
+
 
     def get_snpsarrs(self, block1, block2):
         if "pair" not in self.data.paramsdict["datatype"]:
@@ -1915,141 +1919,6 @@ def build_vcf(data, chunksize=1000):
                     arr.to_csv(out, sep='\t', index=False, header=False)
 
 
-def depr_build_vcf(data, chunksize=1000):
-    "pull in data from several hdf5 databases to construct vcf string"
-
-    # clear vcf if it exists (only relevant while testing; otherwise it is 
-    # removed at init of Step function anyway.
-    if os.path.exists(data.outfiles.vcf):
-        os.remove(data.outfiles.vcf)
-
-    # dictionary to translate locus numbers to chroms
-    if data.isref:
-        revdict = chroms2ints(data, 1)
-
-    # pull locus numbers and positions from snps database
-    with h5py.File(data.snps_database, 'r') as io5:
-
-        # iterate over chunks
-        for chunk in range(0, io5['genos'].shape[0], chunksize):
-
-            # load array chunks
-            if data.isref:
-                genos = io5['genos'][chunk:chunk + chunksize, :, :]
-            else:
-                genos = io5['genos'][chunk:chunk + chunksize, 1:, :]
-
-            # if reference then psuedo ref is already ordered with REF first.
-            pref = io5['pseudoref'][chunk:chunk + chunksize]
-            snpmap = io5['snpsmap'][chunk:chunk + chunksize]
-
-            # get alt genotype calls
-            alts = [
-                b",".join(i).decode().strip(",")
-                for i in pref[:, 1:].view("S1") 
-            ]
-
-            # get chrom names
-            if data.isref:
-                chroms = [revdict[i] for i in snpmap[:, 3]]
-                ids = [
-                    "loc{}_pos{}".format(i - 1, j) for (i, j) 
-                    in snpmap[:, [0, 2]]
-                ]
-
-            else:
-                chroms = ["locus_{}".format(i - 1) for i in snpmap[:, 0]]
-                ids = ['.'] * genos.shape[0]
-
-            # build df label cols
-            df_pos = pd.DataFrame({
-                '#CHROM': chroms,
-                'POS': snpmap[:, -1],  # 1-indexed
-                'ID': ids,             # 0-indexed
-                'REF': [i.decode() for i in pref[:, 0].view("S1")],
-                'ALT': alts,
-                'QUAL': [13] * genos.shape[0],
-                'FILTER': ['PASS'] * genos.shape[0],
-            })
-
-            # get number of samples for each site
-            offset = 0
-            if data.isref:
-                offset = 1
-
-            nsamps = (
-                genos.shape[1] - offset - np.any(genos == 9, axis=2).sum(axis=1)
-                )
-
-            # store sum of coverage at each site
-            asums = []
-            
-            # build depth columns for each sample
-            df_depth = pd.DataFrame({})
-            for sname in data.snames:
-                if sname != "reference":
-                
-                    # build geno strings
-                    genostrs = [
-                        b"/".join(i).replace(b"9", b".").decode()
-                        for i in genos[:, data.snames.index(sname)]
-                        .astype(bytes)
-                    ]
-                    
-                    # build depth and depthsum strings
-                    dpth = os.path.join(data.tmpdir, sname + ".depths.hdf5")
-                    with h5py.File(dpth, 'r') as s5:
-                        dpt = s5['depths'][chunk:chunk + chunksize]
-                        sums = [sum(i) for i in dpt]
-                        strs = [
-                            ",".join([str(k) for k in i.tolist()])
-                            for i in dpt
-                        ]
-                        
-                        # save concat string to name
-                        df_depth[sname] = [
-                            "{}:{}:{}".format(i, j, k) for (i, j, k) in 
-                            zip(genostrs, sums, strs)]
-
-                        # add sums to global list
-                        asums.append(np.array(sums))
-
-            # make final columns
-            nsums = sum(asums)
-            colinfo = pd.Series(
-                name="INFO",
-                data=[
-                    "NS={};DP={}".format(i, j) for (i, j) in zip(nsamps, nsums)
-                ])
-            colform = pd.Series(
-                name="FORMAT",
-                data=["GT:DP:CATG"] * genos.shape[0],
-                )
-                    
-            # debugging           
-            arr = pd.concat([df_pos, colinfo, colform, df_depth], axis=1)
-
-            ## PRINTING VCF TO FILE
-            ## choose reference string
-            if data.paramsdict["reference_sequence"]:
-                reference = data.paramsdict["reference_sequence"]
-            else:
-                reference = "pseudo-reference (most common base at site)"
-
-            header = VCFHEADER.format(
-                date=time.strftime("%Y/%m/%d"),
-                version=ipyrad.__version__,
-                reference=os.path.basename(reference)
-                ) 
-
-            with open(data.outfiles.vcf, 'a') as out:
-                if chunk == 0:
-                    out.write(header)
-                    arr.to_csv(out, sep='\t', index=False)
-                else:
-                    arr.to_csv(out, sep='\t', index=False, header=False)
-
-
 # ----------------------------------------
 # Processor external functions
 # ----------------------------------------
@@ -2083,14 +1952,14 @@ def check_minsamp(seq, position, minsamp):
 
 def check_cutter(seq, position, cutter, cutoff):
     "used in Processor.get_edges() for trimming edges for cutters"    
-    # Set slice position
-    if position == 0:
+
+    # Make slice to get first cutter from 5' read1
+    if not position:  # == 0:
         check = slice(0, cutter.shape[0])
-    elif position == 1:
-        check = slice(seq.shape[0] - cutter.shape[0], seq.shape[0])
-    ## TODO...
+
+    # Make slice to get second cutter from 3' read2
     else:
-        raise TypeError("position argument must be an int in 0, 1, 2, 3")
+        check = slice(seq.shape[1] - cutter.shape[0], seq.shape[1])
         
     # Find matching bases
     matching = seq[:, check] == cutter
@@ -2099,7 +1968,7 @@ def check_cutter(seq, position, cutter, cutoff):
     mask = np.where(
         (seq[:, check] != 78) & (seq[:, check] != 45) 
     )
-    
+
     # subset matching bases to include only unmasked
     matchset = matching[mask]
     
