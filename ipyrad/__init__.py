@@ -18,61 +18,60 @@ __interactive__ = 1
 
 
 
-def set_logger_level(level=None):
-    #import os as _os
-    import logging.config as _lconfig
+# def set_logger_level(level=None):
+#     #import os as _os
+#     import logging.config as _lconfig
 
-    # set the log level
-    if level:
-        assert level in [0, 1, 2, 3, "DEBUG", "INFO", "WARN", "ERROR"]
-        __loglevel__ = level
-    else:
-        __loglevel__ = "ERROR"
-        # if _os.path.exists(__debugflag__):
-        #     __loglevel__ = "DEBUG"
-        # else:
-        #     __loglevel__ = "ERROR"
+#     # set the log level
+#     if level:
+#         assert level in [0, 1, 2, 3, "DEBUG", "INFO", "WARN", "ERROR"]
+#         __loglevel__ = level
+#     else:
+#         __loglevel__ = "ERROR"
+#         # if _os.path.exists(__debugflag__):
+#         #     __loglevel__ = "DEBUG"
+#         # else:
+#         #     __loglevel__ = "ERROR"
 
-    # set the debug dict
-    _lconfig.dictConfig({
-        'version': 1,
-        'disable_existing_loggers': False,
+#     # set the debug dict
+#     _lconfig.dictConfig({
+#         'version': 1,
+#         'disable_existing_loggers': False,
 
-        'formatters': {
-            'standard': {
-                'format': "\t".join((
-                    "%(asctime)s", 
-                    "pid=%(process)d", 
-                    "[%(filename)s]", 
-                    "%(levelname)s", 
-                    "%(message)s"))
-            },
-        },
-        'handlers': {
-            __name__: {
-                'level': __loglevel__,
-                'class': 'logging.FileHandler',
-                'filename': __debugfile__,
-                'formatter': "standard",
-                'mode': 'a+'
-            }
-        },
-        'loggers': {
-            __name__: {
-                'handlers': [__name__],
-                'level': __loglevel__,
-                'propogate': True
-            }
-        }
-    })
+#         'formatters': {
+#             'standard': {
+#                 'format': "\t".join((
+#                     "%(asctime)s", 
+#                     "pid=%(process)d", 
+#                     "[%(filename)s]", 
+#                     "%(levelname)s", 
+#                     "%(message)s"))
+#             },
+#         },
+#         'handlers': {
+#             __name__: {
+#                 'level': __loglevel__,
+#                 'class': 'logging.FileHandler',
+#                 'filename': __debugfile__,
+#                 'formatter': "standard",
+#                 'mode': 'a+'
+#             }
+#         },
+#         'loggers': {
+#             __name__: {
+#                 'handlers': [__name__],
+#                 'level': __loglevel__,
+#                 'propogate': True
+#             }
+#         }
+#     })
 
 
 # log file
 __debugfile__ = "./ipyrad_log.txt"
 __debugflag__ = "./.debug"
-logger = _logging.getLogger(__name__)
-set_logger_level()
+# logger = _logging.getLogger(__name__)
+# set_logger_level()
 
 # get binaries
 bins = _Bins()
-
