@@ -23,7 +23,7 @@ import warnings
 import subprocess as sps
 
 import numpy as np
-from pysam import AlignmentFile
+import pysam
 import ipyrad as ip
 from .utils import IPyradError, IPyradWarningExit, bcomp, comp
 
@@ -415,7 +415,7 @@ class Step3:
 
 
     def remote_index_refs(self):
-        "index the reference seq for bwa and samtools"
+        "index the reference seq for bwa and samtools (pysam)"
         start = time.time()
         printstr = ("indexing reference  ", "s3")
         rasync1 = self.lbview.apply(
@@ -1477,17 +1477,12 @@ def index_ref_with_sam(data):
     if os.path.exists(refseq_file + ".fai"):
         return
 
-    # simple samtools index for grabbing ref seqs
-    cmd = [ip.bins.samtools, "faidx", refseq_file]
-    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-    error = proc.communicate()[0].decode()
+    # complain if file is bzipped
+    if refseq_file.endswith(".gz"):
+        raise IPyradError("You must decompress your genome file.") 
 
-    # error handling
-    if error:
-        if "please use bgzip" in error:
-            raise IPyradError(NO_ZIP_BINS.format(refseq_file, error))
-        else:
-            raise IPyradError(error)
+    # index the file
+    pysam.faidx(refseq_file)
 
 
 def mapping_reads(data, sample, nthreads):
@@ -1659,28 +1654,20 @@ def check_insert_size(data, sample):
     far apart mate pairs can be to still be considered for bedtools merging 
     downstream.
     """
+    sbam = os.path.join(
+        data.dirs.refmapping, 
+        "{}-mapped-sorted.bam".format(sample.name)
+    )
+    stats = pysam.stats(sbam)
+    statslines = [i for i in stats.split("\n") if i.startswith("SN")]
 
-    ## pipe stats output to grep
-    cmd1 = [
-        ip.bins.samtools, 
-        "stats", 
-        os.path.join(
-            data.dirs.refmapping, "{}-mapped-sorted.bam".format(sample.name)),
-    ]
-    cmd2 = ["grep", "SN"]
-    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
-    res = proc2.communicate()[0].decode()
-    if proc2.returncode:
-        raise IPyradWarningExit("error in %s: %s", cmd2, res)
-        
     ## starting vals
     avg_insert = 0
     stdv_insert = 0
     avg_len = 0
 
     ## iterate over results
-    for line in res.split("\n"):
+    for line in statslines:
         if "insert size average" in line:
             avg_insert = float(line.split(":")[-1].strip())
 
@@ -1691,9 +1678,6 @@ def check_insert_size(data, sample):
        
         elif "average length" in line:
             avg_len = float(line.split(":")[-1].strip())
-
-    LOGGER.debug("avg {} stdv {} avg_len {}"
-                 .format(avg_insert, stdv_insert, avg_len))
 
     ## If all values return successfully set the max inner mate distance.
     ## This is tricky. avg_insert is the average length of R1+R2+inner mate
@@ -1707,24 +1691,20 @@ def check_insert_size(data, sample):
         if stdv_insert < 5:
             stdv_insert = 5.
         if (2 * avg_len) < avg_insert:
-            hack = avg_insert + (3 * np.math.ceil(stdv_insert)) - (2 * avg_len)
+            hack = avg_insert + (3 * np.ceil(stdv_insert)) - (2 * avg_len)
 
         ## If it is > than the average insert size then most reads DO
         ## overlap, so we have to calculate inner mate distance a little 
         ## differently.
         else:
-            hack = (avg_insert - avg_len) + (3 * np.math.ceil(stdv_insert))
-            
+            hack = (avg_insert - avg_len) + (3 * np.ceil(stdv_insert))           
 
         ## set the hackerdict value
-        LOGGER.info("stdv: hacked insert size is %s", hack)
-        data._hackersonly["max_inner_mate_distance"] = int(np.math.ceil(hack))
+        data._hackersonly["max_inner_mate_distance"] = int(np.ceil(hack))
 
     else:
         ## If something fsck then set a relatively conservative distance
         data._hackersonly["max_inner_mate_distance"] = 300
-        LOGGER.debug("inner mate distance for {} - {}".format(sample.name,\
-                    data._hackersonly["max_inner_mate_distance"]))
 
 
 def bedtools_merge(data, sample):
@@ -1755,7 +1735,6 @@ def bedtools_merge(data, sample):
     # +++ scrath the above, we now deal with step ladder data
     if 'pair' in data.paramsdict["datatype"]:
         check_insert_size(data, sample)
-        #cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
         cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
         cmd2.insert(2, "-d")
     #else:
@@ -1796,7 +1775,7 @@ def build_clusters_from_cigars(data, sample):
     regions = ((i, int(j), int(k)) for (i, j, k) in regions)
 
     # access reads from bam file using pysam
-    bamfile = AlignmentFile(
+    bamfile = pysam.AlignmentFile(
         os.path.join(
             data.dirs.refmapping,
             "{}-mapped-sorted.bam".format(sample.name)),
@@ -1974,17 +1953,18 @@ def split_endtoend_reads(data, sample):
     splitderep2.close()
 
 
-def get_ref_region(reference, contig, rstart, rend):
-    "returns the reference sequence over a given region"
-    cmd = [
-        ip.bins.samtools, 'faidx',
-        reference,
-        "{}:{}-{}".format(contig, rstart + 1, rend),
-    ]
-    stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
-    name, seq = stdout.decode().split("\n", 1)
-    listseq = [name, seq.replace("\n", "")]
-    return listseq
+# DEPRECATED: SLOW
+# def get_ref_region(reference, contig, rstart, rend):
+#     "returns the reference sequence over a given region"
+#     cmd = [
+#         ip.bins.samtools, 'faidx',
+#         reference,
+#         "{}:{}-{}".format(contig, rstart + 1, rend),
+#     ]
+#     stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
+#     name, seq = stdout.decode().split("\n", 1)
+#     listseq = [name, seq.replace("\n", "")]
+#     return listseq
 
 
 def join_arrays(arr1, arr2):
