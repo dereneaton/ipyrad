@@ -808,18 +808,21 @@ class BarMatch:
                 barcode1 = find3radbcode(self.cutters, self.longbar, read1)
                 barcode2 = find3radbcode(self.cutters, self.longbar, read2)
                 barcode = barcode1 + "+" + barcode2
-            barcode = barcode  # .decode()
+
+            # ensure barcode is string
+            try:
+                barcode = barcode.decode()
+            except AttributeError:
+                pass          
        
             # find if it matches 
             sname_match = self.matchdict.get(barcode)
 
             if sname_match:
-                #sample_index[filestat[0]-1] = snames.index(sname_match) + 1
 
                 # add to observed set of bars
                 self.dbars[sname_match].add(barcode)
                 self.filestat[1:] += 1
-                #filestat[2] += 1
 
                 self.samplehits[sname_match] += 1
                 self.barhits[barcode] += 1
@@ -992,7 +995,7 @@ def zbufcountlines(filename, gzipped):
 
 
 def find3radbcode(cutters, longbar, read):
-    """ find barcode sequence in the beginning of read """
+    "find barcode sequence in the beginning of read"
     ## default barcode string
     for ambigcuts in cutters:
         for cutter in ambigcuts:
