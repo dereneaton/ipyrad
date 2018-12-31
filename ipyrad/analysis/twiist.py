@@ -8,9 +8,9 @@ from builtins import range
 
 # standard
 import os
-import glob
-import uuid
-import tempfile
+import sys
+import time
+import datetime
 import itertools
 import subprocess as sps
 
@@ -18,415 +18,286 @@ import subprocess as sps
 import pandas as pd
 import numpy as np
 import toytree
-
-from .raxml import Raxml as raxml
-from ipyrad.assemble.utils import IPyradError
-import ipyrad as ip
+import toyplot
 
 
-class Twiist():
+class Twisst:
     """
-    Performs phylo inference across loci sampled in windows. If denovo then
-    span is the number of randomly sampled loci, and window is the number of 
-    random samples. If reference then window is the size of the window selected
-    and span is the 
+    Perform tree weighting on a tree_table.
     """
     def __init__(
-        self,
-        name, 
-        data,
+        self, 
+        data, 
         imap, 
-        minmap=None,
-        reference=False,
-        window=None, 
-        slide=None,
+        minmap,
+        name=None, 
+        workdir="analysis-twisst",
         minsnps=1,
-        randomseed=None,
+        ipyclient=None,
         ):
 
-        ## init random seed
-        self.randomseed = randomseed
-        np.random.seed(self.randomseed)
-        
-        ## store attributes
-        self.name = name
-        self.data = data
+        # store attrs
         self.imap = imap
-        self.rmap = {}
-        self.results_table = None
-        self.span = span
-        self.window = window
+        self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
+        self.name = (name if name else "-".join(sorted(imap.keys())))
+        self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.minsnps = minsnps
 
-        # reference data
-        self.reference = reference
-        self.chromlendict = {}
+        # max clades currently is 4
+        assert len(imap) <= 4, "support limited to 4 imap clades currently."
 
-        # reverse of imap dictionary
+        # parse tree table csv file
+        self.tree_table = pd.read_csv(data, index_col=0)
+
+        # attrs to fill
+        self.rmap = {}
+        self.tree_weights = pd.DataFrame({
+            "minmap": np.repeat(False, self.tree_table.shape[0]),
+            "subtree": np.nan,
+            "nnnodes": np.nan,
+            "abcd": np.nan,
+            "acbd": np.nan,
+            "adbc": np.nan,
+            "unk": np.nan
+        }, 
+        columns=["minmap", "nnodes", "abcd", "acbd", "adbc", "unk", "subtree"],
+        )
+
+        # reverse of imap
         for k, v in self.imap.items():
             for i in v:
                 self.rmap[i] = k
-        self.ntests = ntests
-        self.minsnps = minsnps
-        
-        if not minmap:
-            minmap = {i: 1 for i in self.imap}
-        self.minmap = minmap
-        
-        # store all samples for this test
-        self.samples = list(itertools.chain(*[i for i in self.imap.values()]))
-        
-        ## get idxs of loci for this test
-        if self.reference:
-            self.check_reference_is_indexed()
-            self.idxs = self.get_ref_locus_idxs()
 
-        else:
-            self.idxs = self.get_denovo_locus_idxs()
-                
-
-    def check_reference_is_indexed(self):
-        if not os.path.exists(self.reference):
-            raise IOError(
-                "Reference file not found: {}".format(self.reference))
-
-        # If reference index exists then bail out unless force
-        if not os.path.exists(self.reference + ".fai"):
-
-            # simple samtools index for grabbing ref seqs
-            cmd = [ip.bins.samtools, "faidx", self.reference]
-            proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-            error = proc.communicate()[0].decode()
-
-            # error handling
-            if error:
-                if "please use bgzip" in error:
-                    raise IPyradError("BGZIP reference file not supported")
-                else:
-                    raise IPyradError(error)
-
-        # store  chrom lengths
-        table = pd.read_csv(
-            self.reference + ".fai", 
-            names=['scaffold', 'length', 'start', 'a', 'b'],
-            sep="\t",
-        )
-        self.chromlendict = {
-            table.scaffold[i]: table.length[i] for i in range(table.shape[0])
+        # store order of imaps in results (abcd; acbd, adbc)
+        abcd = sorted(self.imap.keys())
+        self.wmap = {
+            "abcd": ",".join(abcd[:2]) + "|" + ",".join(abcd[2:]), 
+            "acbd": ",".join([abcd[0], abcd[2]]) + "|" + ",".join([abcd[1], abcd[3]]),
+            "adbd": ",".join([abcd[0], abcd[3]]) + "|" + ",".join([abcd[1], abcd[2]]),
+            "unknown": "unknown",
         }
 
-    
 
-    def get_ref_locus_idxs(self):
-        idxs = []
+    def run(self, ipyclient, force=False):
+        "distribute jobs in parallel client"
 
-        with open(self.data) as indata:
-            liter = (indata.read().strip().split("|\n"))
+        # do not overwrite tree table
+        tree_weights_path = os.path.join(
+            self.workdir, 
+            self.name + ".tree_weights.csv")
+        if os.path.exists(tree_weights_path):
+            if not force:
+                print((
+        "tree_weights table loaded from {}; Use force to instead overwrite."
+        .format(tree_weights_path)))
+                self.tree_weights = pd.read_csv(tree_weights_path, index_col=0)
+                return
 
-        for idx, loc in enumerate(liter):
-            lines = loc.split("\n")
-
-            snpline = lines[-1]
-            locidx, chidx, pos = snpline.split("|")[1].split(":")            
-            names = [i.split()[0] for i in lines[:-1]]
-
-            ## check coverage
-            coverage = 0
-            for node in self.imap:
-                mincov = self.minmap[node]
-                if sum([i in names for i in self.imap[node]]) >= mincov:
-                    coverage += 1
-            
-            ## check that the coverage meets threshold
-            ## refinfo is not being added correctly....
-            if coverage == len(self.imap.keys()):
-                pos1, pos2 = pos.split('-')
-                refinfo = (idx, chidx, pos1, pos2)
-                idxs.append(refinfo) 
-                print(refinfo)
-        return idxs
-
-
-    
-    def get_denovo_locus_idxs(self):
-        """ finds loci with sufficient sampling for this test"""
-
-        ## store idx of passing loci
-        idxs = []
-
-        ## open handle
-        with open(self.data) as indata:
-            liter = (indata.read().strip().split("|\n"))
-
-        ## put chunks into a list
-        for idx, loc in enumerate(liter):
-
-            ## parse chunk
-            lines = loc.split("\n")[:-1]
-            names = [i.split()[0] for i in lines]
-
-            ## check coverage
-            coverage = 0
-            for node in self.imap:
-                mincov = self.minmap[node]
-                if sum([i in names for i in self.imap[node]]) >= mincov:
-                    coverage += 1
-            if coverage == 4:
-                idxs.append(idx)      
-
-        ## concatenate into a phylip file
-        return idxs
-    
-
-
-    def sample_loci(self, window):
-        """ finds loci with sufficient sampling for this test"""
-
-        ## store idx of passing loci
-        if not self.reference:
-            idxs = np.random.choice(self.idxs, self.ntests)
-        else:
-            idxs = self.get_window_idxs(window)
-
-        ## open handle, make a proper generator to reduce mem
-        with open(self.data) as indata:
-            liter = (indata.read().strip().split("|\n"))
-
-        ## store data as dict
-        seqdata = {i: "" for i in self.samples}
-
-        ## put chunks into a list
-        for idx, loc in enumerate(liter):
-            if idx in idxs:
-                ## parse chunk
-                lines = loc.split("\n")[:-1]
-                names = [i.split()[0] for i in lines]
-                seqs = [i.split()[1] for i in lines]
-                dd = {i: j for (i, j) in zip(names, seqs)}
-
-                ## add data to concatenated seqdict
-                for name in seqdata:
-                    if name in names:
-                        seqdata[name] += dd[name]
-                    else:
-                        seqdata[name] += "N" * len(seqs[0])
-                        
-        ## concatenate into a phylip file
-        return seqdata
-  
-
-
-    def get_window_idxs(self, window):
-        "Returns locus idxs that are on same chrom and within window"
-
-        # get start position
-        locidx, chridx, pos1, pos2 = self.idxs[window]
-
-        # get end position
-        endwindow = pos2 + self.window
-
-        idxs = []
-        for tup in self.idxs:
-            if tup[1] == chridx:
-                if int(tup[3]) < int(endwindow):
-                    idxs.append(tup[0])
-        return idxs
-
-
-
-    def run_tree_inference(self, nexus, idx):
-        """
-        Write nexus to tmpfile, runs phyml tree inference, and parses
-        and returns the resulting tree. 
-        """
-        ## create a tmpdir for this test
-        tmpdir = tempfile.tempdir
-        tmpfile = os.path.join(tempfile.NamedTemporaryFile(
-            delete=False,
-            prefix=str(idx),
-            dir=tmpdir,
-        ))
-
-        ## write nexus to tmpfile
-        tmpfile.write(str.encode(nexus))
-        tmpfile.flush()
-
-        ## infer the tree
-        rax = raxml(name=str(idx), data=tmpfile.name, workdir=tmpdir, N=1, T=2)
-        rax.run(force=True, block=True, quiet=True)
-
-        ## clean up
-        tmpfile.close()
-
-        ## return tree order
-        order = get_order(toytree.tree(rax.trees.bestTree))
-        return "".join(order)
-
-
-    
-    def run_denovo(self, ipyclient):
-        """
-        parallelize calls to worker function.
-        """
-        ## connect to parallel client
+        # setup
         lbview = ipyclient.load_balanced_view()
-        
-        ## iterate over tests
-        asyncs = []
-        for window in range(self.ntests): 
-            
-            ## submit jobs to run
-            args = (window, self)
-            rasync = lbview.apply(denovo_worker, *args)
-            asyncs.append(rasync)
-            
-        ## wait for jobs to finish
-        ipyclient.wait()
+        time0 = time.time()
+        rasyncs = {}
 
-        ## check for errors
-        for rasync in asyncs:
-            if not rasync.successful():
-                raise Exception("Error: {}".format(rasync.result()))
+        # initial progress ticker to run during job submission
+        print("\rbuilding database...", end="")
 
-        ## return results as df
-        results = [i.result() for i in asyncs]
-        self.results_table = pd.DataFrame(results)
-    
-    
-
-    def run_reference(self, ipyclient):
-        "parallelize worker function for reference data"
-
-        # connect to client
-        lbview = ipyclient.load_balanced_view()
-        rasyncs = []
-        for chrom, chromlen in self.chromlendict.items():
-            # skip chroms that are smaller than window size
-            if chromlen > self.window:
-                for window in range(0, chromlen, self.window):
-                    # check if there is data in this window
-                    pass
-
-
-    def plot(self):
-        """
-        return a toyplot barplot of the results table.
-        """
-        if self.results_table is None:
-            return "no results found"
-        else:
-            bb = self.results_table.sort_values(
-                by=["ABCD", "ACBD"], 
-                ascending=[False, True],
-                )
-
-            ## make a barplot
-            import toyplot
-            c = toyplot.Canvas(width=600, height=200)
-            a = c.cartesian()
-            m = a.bars(bb)
-            return c, a, m
-
-
-
-def denovo_worker(self, window):
-
-    # sample random N (window) loci and return as a dict 
-    fullseqs = self.sample_loci(window)
-
-    # find all iterations of samples for this quartet
-    liters = itertools.product(*self.imap.values())
-
-    ## run tree inference for each iteration of sampledict
-    hashval = uuid.uuid4().hex
-    weights = []
-
-
-
-
-def worker(self, window):
-    """ 
-    Calculates the quartet weights for the test at a random
-    subsampled chunk of loci.
-    """
-
-    # sample random N (window) loci and return as a dict 
-    fullseqs = self.sample_loci(window)
-
-    # find all iterations of samples for this quartet
-    liters = itertools.product(*self.imap.values())
-
-    ## run tree inference for each iteration of sampledict
-    hashval = uuid.uuid4().hex
-    weights = []
-    for ridx, lidx in enumerate(liters):
-        
-        ## get subalignment for this iteration and make to nex
-        a, b, c, d = lidx
-        sub = {}
-        for i in lidx:
-            if self.rmap[i] == "p1":
-                sub["A"] = fullseqs[i]
-            elif self.rmap[i] == "p2":
-                sub["B"] = fullseqs[i]
-            elif self.rmap[i] == "p3":
-                sub["C"] = fullseqs[i]
+        # distribute jobs on client
+        done = 0        
+        for idx in self.tree_table.index:
+            newick = self.tree_table.tree[idx]
+            if not pd.isna(newick):
+                args = (newick, self.imap, self.rmap, self.minmap)
+                rasyncs[idx] = lbview.apply(engine_process, *args)
             else:
-                sub["D"] = fullseqs[i]
+                done += 1
+
+        # progress bar
+        sys.stdout.flush()
+        self._track_progress_and_store_results(rasyncs, time0, done)
+
+        # make outdir if it doesn't exist and write table to it
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
+        self.tree_weights.to_csv(tree_weights_path)
+
+
+
+    def _track_progress_and_store_results(self, rasyncs, time0, done):
+        # track progress and collect results.
+        nwindows = self.tree_weights.shape[0]
+        message = "calculating tree weights | {}".format(self.name)
+        while 1:
+            finished = [i for i in rasyncs if rasyncs[i].ready()]
+            for idx in finished:
+                if rasyncs[idx].successful():
+                    self.tree_weights.loc[idx, :] = rasyncs[idx].get()
+                    del rasyncs[idx]
+                    done += 1
+                else:
+                    raise Exception(rasyncs[idx].get())
+            # progress
+            progressbar(done, nwindows, time0, message)
+            time.sleep(0.5)
+            if not rasyncs:
+                print("")
+                break
+
+        # frequencies excluding unresolved
+        self.tree_weights["fabcd"] = (self.tree_weights["abcd"] / 
+            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+        self.tree_weights["facbd"] = (self.tree_weights["acbd"] / 
+            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+        self.tree_weights["fadbc"] = (self.tree_weights["adbc"] / 
+            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+
+        # frequencies with unresolved
+        self.tree_weights["uabcd"] = (self.tree_weights["abcd"] / 
+            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        self.tree_weights["uacbd"] = (self.tree_weights["acbd"] / 
+            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        self.tree_weights["uadbc"] = (self.tree_weights["adbc"] / 
+            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        self.tree_weights["uunk"] = (self.tree_weights["unk"] / 
+            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+
+
+    def draw_tree_weights(self):
+
+        # grab tree weights with and without unknowns
+        df1 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc", "uunk"]]
+        df2 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc"]]
+
+        # get rolling window means 
+        fills = df1.rolling(
+            window=30, min_periods=1, win_type="boxcar", center=True).mean()
+        lines = df2.rolling(
+            window=30, min_periods=1, win_type="boxcar", center=True).mean()        
+
+        # toyplot drawing
+        canvas = toyplot.Canvas(width=900, height=250)
+        axes = canvas.cartesian(
+            label="Chromosome 2",
+            xlabel="Position (Mb)",
+            ylabel="Subtree weighting",
+        )
+        m = axes.fill(fills, 
+            baseline="stacked", 
+            opacity=0.4, 
+            title=[self.wmap[i] for i in sorted(self.wmap.keys())],
+        )
+        m = axes.plot(lines, stroke_width=1.5)
+
+        axes.x.ticks.locator = toyplot.locator.Explicit(
+            locations=np.arange(0, 3000, 500),
+            labels=(
+                self.tree_table.start
+                .loc[np.arange(0, 3000, 500)] / int(1e6)
+                ).astype(int),
+        )
+
+
+def calculate_weights(imap, subtree):
+    "calculate tree weights by subsampling quartet trees for imap clades"
+
+    # get a generator of unique nkey samples: e.g., quartets 
+    tips = sorted(subtree.get_tip_labels(), key=lambda x: x.rsplit("-", 1)[0])
+    groups = itertools.groupby(tips, lambda x: x.rsplit("-", 1)[0])
+    quarts = itertools.product(*(set(j) for (i, j) in groups))
+    
+    # record results
+    arr = np.zeros(4, dtype=int)
+    
+    # prune tree and measure topo dists
+    for idx, quart in enumerate(quarts):
+        
+        # get pruned tree
+        droptips = set(subtree.get_tip_labels()) - set(quart)
+        dtree = subtree.drop_tips(droptips)
                 
-        ## write as nexus file
-        nex = []
-        for tax in list("ABCD"):
-            nex.append(">{}         {}".format(tax, sub[tax]))
+        # get treenodes of pruned tips always in alphanumeric order of imaps
+        tips = sorted(dtree.get_tip_labels())
+
+        # get splits in the tree that are length (2, 2)
+        cache = dtree.treenode.get_cached_content("name")
+        edges = [i for i in dtree.treenode.get_edges(cache) if len(i[0]) == 2]
+        
+        # unresolved subtree
+        if not edges:
+            arr[3] += 1
             
-        ## check for too much missing or lack of variants
-        nsites, nvar = count_var(nex)
-
-        ## only run test if there's variation present
-        if nvar > self.minsnps:
-               
-            ## format as nexus file
-            nexus = "{} {}\n".format(4, len(fullseqs[a])) + "\n".join(nex)    
-
-            ## infer ML tree
-            treeorder = self.run_tree_inference(
-                nexus, "{}.{}".format(hashval, ridx))
-
-            ## add to list
-            weights.append(treeorder)
-
-    ## cleanup - remove all files with the hash val
-    rfiles = glob.glob(os.path.join(tempfile.tempdir, "*{}*".format(hashval)))
-    for rfile in rfiles:
-        if os.path.exists(rfile):
-            os.remove(rfile)
-
-    ## return result as weights for the set topologies.
-    trees = ["ABCD", "ACBD", "ADBC"]
-    wdict = {i: float(weights.count(i)) / len(weights) for i in trees}
-    return wdict
+        # store resolved tree
+        else:
+            split = [i for i in edges[0] if tips[0] in i][0]
+            split.remove(tips[0])
+            nidx = tips.index(split.pop())
+            arr[nidx - 1] += 1
+    return arr
+    
 
 
 
-def get_order(tre):
+def engine_process(newick, imap, rmap, minmap):
     """
-    return tree order
+    Load toytree for an interval, rename tips to clades with imap, prune
+    samples from tree that are not in the test, test for minmap sampling, 
+    calculate weights for tree hypothesis, and return tuple of 
+    (minmap, weight, subtree).
     """
-    anode = tre.treenode.search_nodes(">A")[0]
-    sister = anode.get_sisters()[0]
-    sisters = (anode.name[1:], sister.name[1:])
-    others = [i for i in list("ABCD") if i not in sisters]
-    return sorted(sisters) + sorted(others)
+    # load toytree
+    ttree = toytree.tree(newick)
+    
+    # incremental counter for subtree names from imap
+    intmap = {i:0 for i in minmap}
+
+    # keep track of names to drop from tree (not in imap)
+    drops = []
+
+    # map names to imap
+    for node in ttree.treenode.traverse():
+        if node.is_leaf():
+            if node.name in rmap:
+                imapname = rmap[node.name]
+                node.name = "{}-{}".format(imapname, intmap[imapname])
+                intmap[imapname] += 1
+            else:
+                drops.append(node.name)
+
+    # test whether intmap meets minmap filter
+    minfilter = [intmap[i] >= minmap[i] for i in minmap]
+
+    # default values
+    minmap = False
+    weight = np.nan
+    nnodes = np.nan
+    subtree = np.nan
+    abcd = acbd = adbc = unknown = np.nan
+
+    # apply filter
+    if not all(minfilter):
+        return minmap, nnodes, abcd, acbd, adbc, unknown, subtree
+    else:
+
+        # order is defined by alphanumeric order of imap
+        abcd = tuple(sorted(imap.keys()))
+        acbd = (abcd[0], abcd[2], abcd[1], abcd[3])
+        adbc = (abcd[0], abcd[3], abcd[1], abcd[2])
+
+        # calculate weights
+        subtree = ttree.drop_tips(drops).collapse_polytomies().unroot()
+        abcd, acbd, adbc, null = calculate_weights(imap, subtree)
+
+        # return values
+        return True, subtree.nnodes, abcd, acbd, adbc, null, subtree.write()        
 
 
-def count_var(nex):
-    """
-    count number of sites with cov=4, and number of variable sites.
-    """
-    arr = np.array([list(i.split()[-1]) for i in nex])
-    miss = np.any(arr == "N", axis=0)
-    nomiss = arr[:, ~miss]
-    nsnps = np.invert(np.all(nomiss == nomiss[0, :], axis=0)).sum()
-    return nomiss.shape[1], nsnps
 
+def progressbar(finished, total, start, message):
+    progress = 100 * (finished / float(total))
+    hashes = '#' * int(progress / 5.)
+    nohash = ' ' * int(20 - len(hashes))
+    elapsed = datetime.timedelta(seconds=int(time.time() - start))
+    print("\r[{}] {:>3}% {} | {:<12} "
+        .format(hashes + nohash, int(progress), elapsed, message),
+        end="")
+    sys.stdout.flush()    
 
