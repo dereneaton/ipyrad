@@ -20,7 +20,6 @@ import time
 import shutil
 import pickle
 import numpy as np
-import ipyrad as ip
 import subprocess as sps
 from collections import Counter
 
@@ -282,6 +281,10 @@ class Demultiplexer:
         else:
             targets = self.ipyclient.ids[:4]
         self.lbview = self.ipyclient.load_balanced_view(targets=targets)
+
+        # we better have barcodes...
+        if not self.data.barcodes:
+            self.data._link_barcodes()
 
         # attrs filled by check_files
         self.ftuples = []
@@ -990,7 +993,6 @@ def zbufcountlines(filename, gzipped):
     res = proc2.communicate()[0]
     if proc2.returncode:
         raise IPyradError("error zbufcountlines {}:".format(res))
-    ip.logger.info(res)
     nlines = int(res.split()[0])
     return nlines
 
