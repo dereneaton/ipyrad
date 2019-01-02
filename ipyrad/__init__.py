@@ -5,8 +5,8 @@ from .core.assembly import Assembly, merge
 #from .core.sample import Sample
 from .core.parallel import get_client as _get_client, cluster_info
 from .core.startup import Bins as _Bins
-from .load import save_json, load_json
-import logging as _logging
+from .load_json import load_json
+# import logging as _logging
 
 
 # Dunders
