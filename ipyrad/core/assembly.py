@@ -8,9 +8,9 @@ import glob
 import sys
 import copy
 import time
+import json
 import string
 import datetime
-import itertools
 import numpy as np
 import pandas as pd
 import ipyrad as ip
@@ -64,11 +64,7 @@ class Assembly(object):
     barcodes : dict
         Returns a dictionary with Sample names as keys and barcodes as values.
         The barcodes information is fetched from parameter 3
-        `[Assembly].paramsdict['barcodes_path']`.
-    dirs : dict
-        Returns a dictionary with the location of directories that contain
-        linked Sample object files and stats results.
-
+        '[Assembly].params.barcodes_path'
 
     Functions
     ---------
@@ -88,28 +84,17 @@ class Assembly(object):
         # this is False and only updated during .run()
         self.quiet = False
 
-        # record whether we're in the CLI or API
+        # If using CLI then "cli" is included in kwargs
         self._cli = False
         if kwargs.get("cli"):
             self._cli = True           
 
-        # Make sure assembly name is not empty
-        if not name:
-            raise IPyradParamsError(REQUIRE_ASSEMBLY_NAME)
-
-        ## Do some checking here to make sure the name doesn't have
-        ## special characters, spaces, or path delimiters. Allow _ and -.
-        ## This will raise an error immediately if there are bad chars in name.
-        self._check_name(name)
-
-        ## print name, can't use run() spacer b/c no ipcluster settings yet.
+        # No special characters in assembly name
+        check_name(name)      
         self.name = name
-        self._print("{}New Assembly: {}".format(self._spacer, self.name))
+        self._print("New Assembly: {}".format(self.name))
 
-        ## Store assembly version #
-        self._version = ip.__version__
-
-        ## stores default ipcluster launch info
+        # Default ipcluster launch info
         self._ipcluster = {
             "cluster_id": "",
             "profile": "default",
@@ -120,75 +105,39 @@ class Assembly(object):
             "threads": 2,
             "pids": {},
         }
+        # ipcluster settings can be set during init using kwargs
         for key, val in kwargs.items():
             if key in self._ipcluster:
                 self._ipcluster[key] = val
 
-        ## print headers, this is used as a 'quiet' option
-        ## or to control differences in printing between API and CLI
-        self._headers = 0
-
-        ## used to set checkpoints within step 6
-        self._checkpoint = 0
-
-        ## statsfiles is a dict with file locations
-        ## stats_dfs is a dict with pandas dataframes
+        # statsfiles is a dict with file locations
+        # stats_dfs is a dict with pandas dataframes
         self.stats_files = ObjDict({})
         self.stats_dfs = ObjDict({})
 
-        ## samples linked
+        # samples linked {sample-name: sample-object}
         self.samples = {}
 
-        ## samples linked
-        self.populations = OrderedDict()
+        # populations {popname: poplist}
+        self.populations = {}  # OrderedDict()
 
-        ## multiplex files linked
+        # multiplex files linked
         self.barcodes = ObjDict()
 
-        ## outfiles locations
+        # outfiles locations
         self.outfiles = ObjDict()
         self.outfiles.loci = ""
 
-        ## storing supercatg file
+        # storing supercatg file
         self.clust_database = ""
         self.database = ""
 
         ## the default params dict
-        self.paramsdict = OrderedDict([
-            ("assembly_name", name),
-            ("project_dir", "./"),  # os.path.realpath(os.path.curdir)),
-            ("raw_fastq_path", ""),
-            ("barcodes_path", ""),
-            ("sorted_fastq_path", ""),
-            ("assembly_method", "denovo"),
-            ("reference_sequence", ""),
-            ("datatype", 'rad'),
-            ("restriction_overhang", ("TGCAG", "")),
-            ("max_low_qual_bases", 5),
-            ("phred_Qscore_offset", 33),
-            ("mindepth_statistical", 6),
-            ("mindepth_majrule", 6),
-            ("maxdepth", 10000),
-            ("clust_threshold", 0.85),
-            ("max_barcode_mismatch", 0),
-            ("filter_adapters", 0),
-            ("filter_min_trim_len", 35),
-            ("max_alleles_consens", 2),
-            ("max_Ns_consens", (5, 5)),
-            ("max_Hs_consens", (8, 8)),
-            ("min_samples_locus", 4),
-            ("max_SNPs_locus", (20, 20)),
-            ("max_Indels_locus", (8, 8)),
-            ("max_shared_Hs_locus", 0.50),
-            ("trim_reads", (0, 0, 0, 0)),
-            ("trim_loci", (0, 0, 0, 0)),
-            ("output_formats", ['p', 's', 'v']),
-            ("pop_assign_file", ""),
-        ])
+        self.params = Params(self)
 
         ## Store data directories for this Assembly. Init with default project
         self.dirs = ObjDict({
-            "project": os.path.realpath(self.paramsdict["project_dir"]),
+            "project": os.path.realpath(self.params.project_dir),
             "fastqs": "",
             "edits": "",
             "clusts": "",
@@ -198,9 +147,6 @@ class Assembly(object):
         })
 
         ## Default hackers only parameters dictionary
-        ## None of the safeguards of the paramsdict, no nice accessor
-        ## functions, so you have to be sure of what you're doing if
-        ## you change these values.
         self._hackersonly = OrderedDict([
             ("random_seed", 42),
             ("max_fragment_length", 50),
@@ -247,6 +193,10 @@ class Assembly(object):
         for column in statdat:
             if column not in ["hetero_est", "error_est"]:
                 statdat[column] = np.nan_to_num(statdat[column]).astype(int)
+
+        # build step 6-7 stats from database
+        # ...
+
         return statdat
 
 
@@ -261,6 +211,10 @@ class Assembly(object):
             index=nameordered,
         ).dropna(axis=1, how='all')
         return sdf
+
+
+    def save(self):
+        save_json(self)
 
 
     def _print(self, value):
@@ -308,7 +262,11 @@ class Assembly(object):
 
 
     def _build_stat(self, idx):
-        """ Returns a data frame with Sample stats for each step """
+        """ 
+        Returns an Assembly stats data frame rom Sample stats data frames.
+        e.g., data.stats_dfs.s1 = self.build_stats("s1")
+        """
+        # build steps 1-5 stats from samples
         nameordered = list(self.samples.keys())
         nameordered.sort()
         newdat = pd.DataFrame(
@@ -316,14 +274,6 @@ class Assembly(object):
             index=nameordered,
         ).dropna(axis=1, how='all')
         return newdat
-
-
-    def _check_name(self, name):
-        "Test assembly name is valid and raise if any special characters"
-        invalid_chars = (
-            string.punctuation.replace("_", "").replace("-", "") + " ")
-        if any(char in invalid_chars for char in name):
-            raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
 
 
     def _link_barcodes(self):
@@ -337,7 +287,7 @@ class Assembly(object):
         ## parse barcodefile
         try:
             ## allows fuzzy match to barcodefile name
-            barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
+            barcodefile = glob.glob(self.params._barcodes_path)[0]
 
             ## read in the file
             bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
@@ -349,30 +299,32 @@ class Assembly(object):
             ## if replicates are present then print a warning
             reps = bdf[0].unique().shape[0] != bdf[0].shape[0]
             if reps:
-                print("{spacer}Warning: technical replicates (same name) will be combined."\
-                      .format(**{'spacer': self._spacer}))
+                self._print(
+                    "Warning: technical replicates (same name) are combined")
+
                 ## add -technical-replicate-N to replicate names
                 reps = [i for i in bdf[0] if list(bdf[0]).count(i) > 1]
                 ureps = list(set(reps))
                 for name in ureps:
                     idxs = bdf[bdf[0] == ureps[0]].index.tolist()
                     for num, idx in enumerate(idxs):
-                        bdf.ix[idx][0] = bdf.ix[idx][0] + "-technical-replicate-" + str(num+1)
+                        bdf.ix[idx][0] = (
+                            "{}-technical-replicate-{}"
+                            .format(bdf.ix[idx][0], str(num + 1))
+                        )
 
             ## make sure chars are all proper
             if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
-                ip.logger.warn(BAD_BARCODE)
                 raise IPyradError(BAD_BARCODE)
 
             ## 3rad/seqcap use multiplexed barcodes
             ## We'll concatenate them with a plus and split them later
-            if "3rad" in self.paramsdict["datatype"]:
+            if "3rad" in self.params._datatype:
                 try:
                     bdf[2] = bdf[2].str.upper()
                     self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
                 except KeyError as inst:
-                    msg = "    3rad assumes multiplexed barcodes. Doublecheck your barcodes file."
-                    ip.logger.error(msg)
+                    msg = "3rad assumes multiplexed barcodes. Doublecheck your barcodes file."
                     raise IPyradError(msg)
             else:
                 ## set attribute on Assembly object
@@ -380,12 +332,11 @@ class Assembly(object):
 
         except (IOError, IndexError):
             raise IPyradError(
-                "    Barcodes file not found. You entered: {}"
-                .format(self.paramsdict["barcodes_path"]))
+                "Barcodes file not found. You entered: {}"
+                .format(self.params.barcodes_path))
 
         except ValueError as inst:
             msg = "    Barcodes file format error."
-            ip.logger.warn(msg)
             raise IPyradError(inst)
 
 
@@ -433,10 +384,11 @@ class Assembly(object):
         """
         if not popdict:
             ## glob it in case of fuzzy matching
-            popfile = glob.glob(self.paramsdict["pop_assign_file"])[0]
+            popfile = glob.glob(self.params.pop_assign_file)[0]
             if not os.path.exists(popfile):
-                raise IPyradError("Population assignment file not found: {}"\
-                                  .format(self.paramsdict["pop_assign_file"]))
+                raise IPyradError(
+                    "Population assignment file not found: {}"
+                    .format(self.params.pop_assign_file))
 
             try:
                 ## parse populations file
@@ -466,8 +418,8 @@ class Assembly(object):
 
             except (ValueError, IOError):
                 ip.logger.warn("Populations file may be malformed.")
-                raise IPyradError("  Populations file malformed - {}"\
-                                  .format(popfile))
+                raise IPyradError(
+                    "  Populations file malformed - {}".format(popfile))
 
         else:
             ## pop dict is provided by user
@@ -477,15 +429,15 @@ class Assembly(object):
         ## check popdict. Filter for bad samples
         ## Warn user but don't bail out, could be setting the pops file
         ## on a new assembly w/o any linked samples.
-        badsamples = [
-            i for i in itertools.chain(*popdict.values())
-            if i not in self.samples.keys()]
+        # badsamples = [
+            # i for i in itertools.chain(*popdict.values())
+            # if i not in self.samples.keys()]
 
-        if any(badsamples):
-            ip.logger.warn(
-                "Some names from population input do not match Sample "\
-              + "names: ".format(", ".join(badsamples)))
-            ip.logger.warn("If this is a new assembly this is normal.")
+        # if any(badsamples):
+        #     ip.logger.warn(
+        #         "Some names from population input do not match Sample "\
+        #       + "names: ".format(", ".join(badsamples)))
+        #     ip.logger.warn("If this is a new assembly this is normal.")
 
         ## check popmins
         ## cannot have higher min for a pop than there are samples in the pop
@@ -501,35 +453,14 @@ class Assembly(object):
 
     def get_params(self, param=""):
         "Pretty prints parameter settings to stdout"
-        fullcurdir = os.path.realpath(os.path.curdir)
-        if not param:
-            for index, (key, value) in enumerate(self.paramsdict.items()):
-                if isinstance(value, str):
-                    value = value.replace(fullcurdir + "/", "./")
-                sys.stdout.write(
-                    "{}{:<4}{:<28}{:<45}\n"
-                    .format(self._spacer, index, key, str(value)),
-                )
-        else:
-            try:
-                if int(param):
-                    #sys.stdout.write(self.paramsdict.values()[int(param)-1])
-                    return self.paramsdict.values()[int(param)]
-            except (ValueError, TypeError, NameError, IndexError):
-                try:
-                    return self.paramsdict[param]
-                except KeyError:
-                    return 'key not recognized'
+        return self.params
 
 
     def set_params(self, param, newvalue):
         """
-        Set a parameter to a new value. Raises error if newvalue is wrong type.
-
-        Note
-        ----
-        Use [Assembly].get_params() to see the parameter values currently
-        linked to the Assembly object.
+        Set a parameter to a new value in a verbose way. 
+        Raises error if newvalue is wrong type.
+        Use .get_params() or .params to see current assembly parameters. 
 
         Parameters
         ----------
@@ -557,31 +488,16 @@ class Assembly(object):
         ## param 'max_shared_Hs_locus' can be an int or a float:
         [Assembly].set_params('max_shared_Hs_locus', 0.25)
 
+        ## Simpler alternative: set attribute directly
+        [Assembly].params.max_shared_Hs_locus = 0.25
         """
-
-        ## this includes current params and some legacy params for conversion
-        legacy_params = ["edit_cutsites", "trim_overhang"]
-        current_params = self.paramsdict.keys()
-        allowed_params = list(current_params) + legacy_params
-
-        ## require parameter recognition
-        if param not in allowed_params:
+        # check param in keys
+        if "_" + param not in self.params._keys:
             raise IPyradParamsError(
                 "Parameter key not recognized: {}".format(param))
-
-        ## make string
-        param = str(param)
-        ## get index if param is keyword arg (this index is now zero based!)
-        if len(param) < 3:
-            param = list(self.paramsdict.keys())[int(param)]
-
-        ## run assertions on new param
-        try:
-            self = _paramschecker(self, param, newvalue)
-
-        except Exception as inst:
-            raise IPyradError(
-                BAD_PARAMETER.format(param, inst, newvalue))
+        
+        # set parameter newvalue
+        setattr(self.params, param, newvalue)
 
 
     def write_params(self, outfile=None, force=False):
@@ -593,7 +509,7 @@ class Assembly(object):
         generate default params.txt files for `ipyrad -n`
         """
         if outfile is None:
-            outfile = "params-" + self.name + ".txt"
+            outfile = "params-{}.txt".format(self.name)
 
         ## Test if params file already exists?
         ## If not forcing, test for file and bail out if it exists
@@ -607,22 +523,22 @@ class Assembly(object):
             header += ("-" * (80 - len(header)))
             paramsfile.write(header)
 
-            ## Whip through the current paramsdict and write out the current
+            ## Whip through the current params and write out the current
             ## param value, the ordered dict index number. Also,
             ## get the short description from paramsinfo. Make it look pretty,
             ## pad nicely if at all possible.
-            for key, val in self.paramsdict.items():  
-                ## If multiple elements, write them out comma separated
+            for key in self.params._keys:
+                val = getattr(self.params, key)
+
+                # If multiple elements, write them out comma separated
                 if isinstance(val, list) or isinstance(val, tuple):
                     paramvalue = ", ".join([str(i) for i in val])
                 else:
                     paramvalue = str(val)
 
                 padding = (" " * (30 - len(paramvalue)))
-                paramkey = list(self.paramsdict.keys()).index(key)
+                paramkey = self.params._keys.index(key)
                 paramindex = " ## [{}] ".format(paramkey)
-                ip.logger.debug("\t".join([str(i) for i in
-                    (key, val, paramindex)]))
                 name = "[{}]: ".format(paramname(paramkey))
                 description = paraminfo(paramkey, short=True)
                 paramsfile.write(
@@ -640,14 +556,14 @@ class Assembly(object):
         ## is there a better way to ask if it already exists?
         if (newname == self.name or os.path.exists(
                 os.path.join(
-                    self.paramsdict["project_dir"],
+                    self.params.project_dir,
                     newname + ".assembly"))):
-            print("{}Assembly object named {} already exists"\
-                  .format(self._spacer, newname))
+            self._print(
+                "Assembly object named {} already exists".format(newname))
 
         else:
-            ## Make sure the new name doesn't have any wacky characters
-            self._check_name(newname)
+            # Make sure the new name doesn't have any wacky characters
+            check_name(newname)
 
             ## Bozo-check. Carve off 'params-' if it's in the new name.
             if newname.startswith("params-"):
@@ -656,7 +572,7 @@ class Assembly(object):
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
-            newobj.paramsdict["assembly_name"] = newname
+            newobj.params.assembly_name = newname
 
             if subsamples and infile:
                 print(BRANCH_NAMES_AND_INPUT)
@@ -666,7 +582,7 @@ class Assembly(object):
                     remove = 1
                     infile = infile[1:]
                 if os.path.exists(infile):
-                    subsamples = _read_sample_names(infile)
+                    subsamples = read_sample_names(infile)
 
             ## if remove then swap the samples
             if remove:
@@ -695,21 +611,12 @@ class Assembly(object):
             return newobj
 
 
-    def save(self):
-        """
-        Save Assembly object to disk as a JSON file. Used for checkpointing,
-        ipyrad auto-saves after every assembly step. File is saved to:
-        [project_dir]/[assembly_name].json
-        """
-        ip.save_json(self)
-
-
     def _compatible_params_check(self):
         "check params that must be compatible at run time"
 
         # do not allow statistical < majrule
-        val1 = self.paramsdict["mindepth_statistical"]
-        val2 = self.paramsdict['mindepth_majrule']
+        val1 = self.params.mindepth_statistical
+        val2 = self.params.mindepth_majrule
         if val1 < val2:
             raise IPyradParamsError(
                 "mindepth_statistical cannot be < mindepth_majrule")
@@ -859,157 +766,17 @@ class Assembly(object):
 
 
 
-def _read_sample_names(fname):
-    """ Read in sample names from a plain text file. This is a convenience
-    function for branching so if you have tons of sample names you can
-    pass in a file rather than having to set all the names at the command
-    line.
-    """
-    try:
-        with open(fname, 'r') as infile:
-            subsamples = [x.split()[0] for x in infile.readlines() if x.strip()]
-
-    except Exception as inst:
-        print("Failed to read input file with sample names.\n{}".format(inst))
-        raise inst
-
-    return subsamples
-
-
-
-def _expander(namepath):
-    """ expand ./ ~ and ../ designators in location names """
-    if "~" in namepath:
-        namepath = os.path.expanduser(namepath)
-    else:
-        namepath = os.path.abspath(namepath)
-    return namepath
-
-
-
-def merge(name, assemblies):
-    """
-    Creates and returns a new Assembly object in which samples from two or more
-    Assembly objects with matching names are 'merged'. Merging does not affect 
-    the actual files written on disk, but rather creates new Samples that are 
-    linked to multiple data files, and with stats summed.
-    """
-
-    ## checks
-    assemblies = list(assemblies)
-
-    ## create new Assembly as a branch (deepcopy)
-    merged = assemblies[0].branch(name)
-
-    ## get all sample names from all Assemblies
-    allsamples = set(merged.samples.keys())
-    for iterass in assemblies[1:]:
-        allsamples.update(set(iterass.samples.keys()))
-
-    ## Make sure we have the max of all values for max frag length
-    ## from all merging assemblies.
-    merged._hackersonly["max_fragment_length"] =\
-        max([x._hackersonly["max_fragment_length"] for x in assemblies])
-
-    ## warning message?
-    warning = 0
-
-    ## iterate over assembly objects, skip first already copied
-    for iterass in assemblies[1:]:
-        ## iterate over allsamples, add if not in merged
-        for sample in iterass.samples:
-            ## iterate over stats, skip 'state'
-            if sample not in merged.samples:
-                merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
-                ## if barcodes data present then keep it
-                if iterass.barcodes.get(sample):
-                    merged.barcodes[sample] = iterass.barcodes[sample]
-            else:
-                ## merge stats and files of the sample
-                for stat in merged.stats.keys()[1:]:
-                    merged.samples[sample].stats[stat] += \
-                                iterass.samples[sample].stats[stat]
-                ## merge file references into a list
-                for filetype in ['fastqs', 'edits']:
-                    merged.samples[sample].files[filetype] += \
-                                iterass.samples[sample].files[filetype]
-                if iterass.samples[sample].files["clusters"]:
-                    warning += 1
-
-    ## print warning if clusters or later was present in merged assembly
-    if warning:
-        print("""\
-    Warning: the merged Assemblies contained Samples that are identically named,
-    and so ipyrad has attempted to merge these Samples. This is perfectly fine to
-    do up until step 3, but not after, because at step 3 all reads for a Sample
-    should be included during clustering/mapping. Take note, you can merge Assemblies
-    at any step *if they do not contain the same Samples*, however, here that is not
-    the case. If you wish to proceed with this merged Assembly you will have to
-    start from step 3, therefore the 'state' of the Samples in this new merged
-    Assembly ({}) have been set to 2.
-    """.format(name))
-        for sample in merged.samples:
-            merged.samples[sample].stats.state = 2
-            ## clear stats
-            for stat in ["refseq_mapped_reads", "refseq_unmapped_reads",
-                         "clusters_total", "clusters_hidepth", "hetero_est",
-                         "error_est", "reads_consens"]:
-                merged.samples[sample].stats[stat] = 0
-            ## clear files
-            for ftype in ["mapped_reads", "unmapped_reads", "clusters",
-                          "consens", "database"]:
-                merged.samples[sample].files[ftype] = []
-
-    ## Set the values for some params that don't make sense inside
-    ## merged assemblies
-    merged_names = ", ".join([x.name for x in assemblies])
-    merged.paramsdict["raw_fastq_path"] = "Merged: " + merged_names
-    merged.paramsdict["barcodes_path"] = "Merged: " + merged_names
-    merged.paramsdict["sorted_fastq_path"] = "Merged: " + merged_names
-
-    ## return the new Assembly object
-    merged.save()
-    return merged
-
-
-def _tuplecheck(newvalue, dtype=str):
-    """
-    Takes a string argument and returns value as a tuple.
-    Needed for paramfile conversion from CLI to set_params args
-    """
-    if isinstance(newvalue, list):
-        newvalue = tuple(newvalue)
-
-    if isinstance(newvalue, str):
-        newvalue = newvalue.rstrip(")").strip("(")
-        try:
-            newvalue = tuple([dtype(i.strip()) for i in newvalue.split(",")])
-
-        ## Type error is thrown by tuple if it's applied to a non-iterable.
-        except TypeError:
-            newvalue = tuple(dtype(newvalue))
-
-        ## If dtype fails to cast any element of newvalue
-        except ValueError:
-            raise IPyradError(
-                "Assembly.tuplecheck() failed to cast to {} - {}"\
-                .format(dtype, newvalue))
-
-        except Exception as inst:
-            raise IPyradError(\
-            "\nError: Param`{}` is not formatted correctly.\n({})\n"\
-                 .format(newvalue, inst))
-
-    return newvalue
-
-
-
 class Params:
-    def __init__(self):
-        self._name = "test"
+    def __init__(self, data):
+
+        # harder to 'update' values if data is here...
+        self.data = data
+
+        self._assembly_name = data.name
         self._project_dir = os.path.realpath("./analysis-ipyrad")
         self._raw_fastq_path = ""
         self._sorted_fastq_path = ""
+        self._barcodes_path = ""
         self._assembly_method = "denovo"
         self._reference_sequence = ""
         self._datatype = "rad"
@@ -1024,15 +791,67 @@ class Params:
         self._filter_adapters = 0
         self._filter_min_trim_len = 35
         self._max_alleles_consens = 2
-        self._max_Ns_consens = (8, 8)
-        self._max_Hs_consens = (5, 5)
+        self._max_Ns_consens = (5, 5)
+        self._max_Hs_consens = (8, 8)
         self._min_samples_locus = 4
-
-
-
+        self._max_SNPs_locus = (20, 20)
+        self._max_Indels_locus = (8, 8)
+        self._max_shared_Hs_locus = 0.5
+        self._trim_reads = (0, 0, 0, 0)
+        self._trim_loci = (0, 0, 0, 0)
+        self._output_formats = list("psv")
+        self._pop_assign_file = ""
+        
+        self._keys = [
+            "_assembly_name",
+            "_project_dir",
+            "_raw_fastq_path",
+            "_sorted_fastq_path", 
+            "_barcodes_path",
+            "_assembly_method",
+            "_reference_sequence",
+            "_datatype", 
+            "_restriction_overhang",
+            "_max_low_qual_bases", 
+            "_phred_Qscore_offset", 
+            "_mindepth_statistical", 
+            "_mindepth_majrule", 
+            "_maxdepth", 
+            "_clust_threshold", 
+            "_max_barcode_mismatch", 
+            "_filter_adapters", 
+            "_filter_min_trim_len",
+            "_max_alleles_consens", 
+            "_max_Ns_consens", 
+            "_max_Hs_consens", 
+            "_min_samples_locus", 
+            "_max_SNPs_locus", 
+            "_max_Indels_locus", 
+            "_max_shared_Hs_locus", 
+            "_trim_reads", 
+            "_trim_loci", 
+            "_output_formats", 
+            "_pop_assign_file",            
+        ]
+                
+        
+    def __repr__(self):
+        fullcurdir = os.path.realpath(os.path.curdir)
+        printstr = ""
+        for idx, key in enumerate(self._keys):
+            value = self.__getattribute__(key)
+            if isinstance(value, str):
+                value = value.replace(fullcurdir + "/", "./")
+                value = value.replace(os.path.expanduser("~"), "~")
+            printstr += "{:<4}{:<28}{:<45}\n".format(idx, key[1:], str(value))
+        return printstr
+    
+    def __str__(self):
+        return self.__repr__()
+        
     @property
     def assembly_name(self):
-        return self._name
+        return self._assembly_name
     @assembly_name.setter    
     def assembly_name(self, value):
         raise IPyradError(CANNOT_CHANGE_ASSEMBLY_NAME)
@@ -1046,7 +865,6 @@ class Params:
         if " " in value:
             raise IPyradError(BAD_PROJDIR_NAME.format(value))
         self._project_dir = os.path.realpath(os.path.expanduser(value))
-        self.dirs["project"] = self._project_dir
 
 
     @property
@@ -1073,12 +891,16 @@ class Params:
     @barcodes_path.setter
     def barcodes_path(self, value):
         if value and ("Merged:" not in value):
-            fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))
+
+            # allow fuzzy name match
+            fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))[0]
+
+            # file must exist
             if not os.path.exists(fullbar):
                 raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
             else:
                 self._barcodes_path = fullbar
-                self._link_barcodes()
+                self.data._link_barcodes()
         # if 'Merged:' in value then set to ""
         else:
             self._barcodes_path = ""
@@ -1124,47 +946,41 @@ class Params:
             raise IPyradError("reference sequence file must be decompressed.")
         self._reference_sequence = fullpath
 
-        
+
     @property
     def datatype(self):
         return self._datatype
     @datatype.setter
     def datatype(self, value):
-        allowed = [
-            'rad', 'gbs', 'ddrad', 'pairddrad',
-            'pairgbs', 'merged', '2brad', 'pair3rad',
-        ]
-        value = str(value)
-        if value not in allowed:
-            raise IPyradError("datatype not recognized: {}".format(value))
+        allowed = (
+            'rad', 'gbs', 'ddrad', 'pairddrad', 
+            'pairgbs', '2brad', 'pair3rad', 'merged'
+        )
+        assert value in allowed, (
+            "datatype must be one of: {}".format(", ".join(allowed)))
         self._datatype = str(value)
-        # relink barcodes if 3rad datatype entered since link barcodes needs 
-        # to know that 3rad is the datatype.
-        if (value == "3rad") and (not self._sorted_fastq_path):
-            if "Merged:" not in self._barcodes_path:
-                self._link_barcodes()
 
-
-    @property
+            
+    @property 
     def restriction_overhang(self):
         return self._restriction_overhang
     @restriction_overhang.setter
     def restriction_overhang(self, value):
-        value = _tuplecheck(value, str)
-        assert isinstance(value, tuple), "restriction_overhang must be a tuple"
-        # Handle the special case where the user has 1
-        # restriction overhang and does not include the trailing comma
-        if len(value) == 1:
-            # gbs users might not know to enter the second cut site so we do it
-            if self._datatype == "gbs":
-                value += value
-            else:
-                value += ("", )
+        # returns string values as a tuple ("", "") or ("",)
+        value = tuplecheck(value, str)
+        
+        # expand GBS for user if they set only one cutter 
+        if (self.datatype == "GBS") & (len(value) == 1):
+            value = (value[0], value[0])
+
         # Handle 3rad datatype with only 3 cutters
-        if len(value) == 3:
+        elif len(value) == 3:
             value = (value[0], value[1], value[2], "")
-        assert len(value) <= 4, (
-            "restriction_overhang value must be a tuple of length 1, 2, or 3")
+            self.data._link_barcodes()
+
+        assert len(value) <= 4, """
+    most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
+    For 3rad/seqcap may be up to 4 cut sites."""
         self._restriction_overhang = value
 
 
@@ -1182,8 +998,7 @@ class Params:
         return self._phred_Qscore_offset
     @phred_Qscore_offset.setter
     def phred_Qscore_offset(self, value):
-        assert isinstance(value, int), (
-            "phred_Qscore_offset must be an integer.")
+        assert isinstance(value, int), "phred_Qscore_offset must be an integer."
         self._phred_Qscore_offset = int(value)
 
 
@@ -1192,11 +1007,10 @@ class Params:
         return self._mindepth_statistical
     @mindepth_statistical.setter
     def mindepth_statistical(self, value):
-        assert isinstance(value, int), (
-            "mindepth_statistical must be an integer.")
-        if int(newvalue) < 5:
-            raise IPyradError(
-                "mindepth statistical must be >= 5. Use mindepth_majrule.")
+        assert isinstance(value, int), "mindepth_statistical must be an integer."
+        # do not allow values below 5
+        assert int(value) >= 5, (
+            "mindepth_statistical cannot be <5. Use mindepth_majrule.")
         self._mindepth_statistical = int(value)
 
 
@@ -1206,8 +1020,6 @@ class Params:
     @mindepth_majrule.setter
     def mindepth_majrule(self, value):
         assert isinstance(value, int), "mindepth_majrule must be an integer."
-        if int(newvalue) <= 0:
-            raise IPyradError("mindepth majrule must be >= 1.")
         self._mindepth_majrule = int(value)
 
 
@@ -1216,7 +1028,6 @@ class Params:
         return self._maxdepth
     @maxdepth.setter
     def maxdepth(self, value):
-        assert isinstance(value, int), "maxdepth must be an integer."
         self._maxdepth = int(value)
 
 
@@ -1228,7 +1039,7 @@ class Params:
         value = float(value)
         assert (value < 1) & (value > 0), (
             "clust_threshold must be a decimal value between 0 and 1.")
-        self.paramsdict['clust_threshold'] = newvalue
+        self._clust_threshold = value
 
 
     @property
@@ -1236,8 +1047,6 @@ class Params:
         return self._max_barcode_mismatch
     @max_barcode_mismatch.setter
     def max_barcode_mismatch(self, value):
-        assert isinstance(value, int), (
-            "max_barcode_mismatch must be an integer")
         self._max_barcode_mismatch = int(value)
 
 
@@ -1246,8 +1055,7 @@ class Params:
         return self._filter_adapters
     @filter_adapters.setter
     def filter_adapters(self, value):
-        assert isinstance(value, int), (
-            "filter_adapters must be an integer")
+        assert value in (0, 1, 2, 3), "filter_adapters must be 0, 1, 2, or 3"
         self._filter_adapters = int(value)
 
 
@@ -1256,8 +1064,6 @@ class Params:
         return self._filter_min_trim_len
     @filter_min_trim_len.setter
     def filter_min_trim_len(self, value):
-        assert isinstance(value, int), (
-            "filter_min_trim_len must be an integer")
         self._filter_min_trim_len = int(value)
 
 
@@ -1266,348 +1072,386 @@ class Params:
         return self._max_alleles_consens
     @max_alleles_consens.setter
     def max_alleles_consens(self, value):
-        assert isinstance(value, int), (
-            "max_alleles_consens must be an integer")
         self._max_alleles_consens = int(value)
 
 
+    @property
+    def max_Ns_consens(self):
+        return self._max_Ns_consens
+    @max_Ns_consens.setter
+    def max_Ns_consens(self, value):
+        value = tuplecheck(value, int)
+        assert isinstance(value, tuple), (
+            "max_Ns_consens should be a tuple e.g., (5, 5)")
+        self._max_Ns_consens = value
 
 
+    @property
+    def max_Hs_consens(self):
+        return self._max_Hs_consens
+    @max_Hs_consens.setter
+    def max_Hs_consens(self, value):
+        value = tuplecheck(value, int)
+        assert isinstance(value, tuple), (
+            "max_Hs_consens should be a tuple e.g., (5, 5)")
+        self._max_Hs_consens = value
 
 
-def _paramschecker(self, param, newvalue):
-    """ Raises exceptions when params are set to values they should not be"""
-
-    if param == 'assembly_name':
-        ## Make sure somebody doesn't try to change their assembly_name, bad
-        ## things would happen. Calling set_params on assembly_name only raises
-        ## an informative error. Assembly_name is set at Assembly creation time
-        ## and is immutable.
-        raise IPyradError(CANNOT_CHANGE_ASSEMBLY_NAME)
-
-    elif param == 'project_dir':
-        expandpath = _expander(newvalue)
-        if not expandpath.startswith("/"):
-            if os.path.exists(expandpath):
-                expandpath = _expander(expandpath)
-        ## Forbid spaces in path names
-        if " " in expandpath:
-            raise IPyradError(BAD_PROJDIR_NAME.format(expandpath))
-        self.paramsdict["project_dir"] = expandpath
-        self.dirs["project"] = expandpath
-
-    ## `Merged:` in newvalue for raw_fastq_path indicates that this
-    ## assembly is a merge of several others, so this param has no
-    ## value for this assembly
-    elif param == 'raw_fastq_path':
-        if newvalue and "Merged:" not in newvalue:
-            fullrawpath = _expander(newvalue)
-            if os.path.isdir(fullrawpath):
-                raise IPyradError(RAW_PATH_ISDIR.format(fullrawpath))
-            ## if something is found in path
-            elif glob.glob(fullrawpath):
-                self.paramsdict['raw_fastq_path'] = fullrawpath
-            ## else allow empty, tho it can still raise an error in step1
-            else:
-                raise IPyradError(NO_RAW_FILE.format(fullrawpath))
-        else:
-            self.paramsdict['raw_fastq_path'] = ""
+    @property
+    def min_samples_locus(self):
+        return self._min_samples_locus
+    @min_samples_locus.setter
+    def min_samples_locus(self, value):
+        self._min_samples_locus = int(value)
 
 
-    ## `Merged:` in newvalue for barcodes_path indicates that this
-    ## assembly is a merge of several others, so this param has no
-    ## value for this assembly
-    elif param == 'barcodes_path':
-        ## if a value was entered check that it exists
-        if newvalue and "Merged:" not in newvalue:
-            ## also allow for fuzzy match in names using glob
-            fullbarpath = glob.glob(_expander(newvalue))[0]
-            ## raise error if file is not found
-            if not os.path.exists(fullbarpath):
-                raise IPyradError(BARCODE_NOT_FOUND.format(fullbarpath))
-            else:
-                self.paramsdict['barcodes_path'] = fullbarpath
-                self._link_barcodes()
-
-        ## if no path was entered then set barcodes path to empty.
-        ## this is checked again during step 1 and will raise an error
-        ## if you try demultiplexing without a barcodes file
-        else:
-            self.paramsdict['barcodes_path'] = newvalue
-
-
-    ## `Merged:` in newvalue for sorted_fastq_path indicates that this
-    ## assembly is a merge of several others, so this param has no
-    ## value for this assembly
-    elif param == 'sorted_fastq_path':
-        if newvalue and not "Merged:" in newvalue:
-            fullsortedpath = _expander(newvalue)
-
-            if os.path.isdir(fullsortedpath):
-                raise IPyradError(SORTED_ISDIR.format(fullsortedpath))
-            elif glob.glob(fullsortedpath):
-                self.paramsdict['sorted_fastq_path'] = fullsortedpath
-
-            else:
-                raise IPyradError(SORTED_NOT_FOUND.format(fullsortedpath))
-        ## if no value was entered then set to "".
-        else:
-            self.paramsdict['sorted_fastq_path'] = ""
-
-
-    elif param == 'assembly_method':
-        methods = ["denovo", "reference", "denovo+reference", "denovo-reference"]
-        assert newvalue in methods, BAD_ASSEMBLY_METHOD.format(newvalue)
-        self.paramsdict['assembly_method'] = newvalue
-
-
-    elif param == 'reference_sequence':
-        if newvalue:
-            fullrawpath = _expander(newvalue)
-            if not os.path.isfile(fullrawpath):
-                ip.logger.info("reference sequence file not found.")
-                raise IPyradError(REF_NOT_FOUND.format(fullrawpath))
-            self.paramsdict['reference_sequence'] = fullrawpath
-        ## if no value was entered the set to "". Will be checked again
-        ## at step3 if user tries to do refseq and raise error
-        else:
-            self.paramsdict['reference_sequence'] = ""
-
-
-    elif param == 'datatype':
-        ## list of allowed datatypes
-        datatypes = ['rad', 'gbs', 'ddrad', 'pairddrad',
-                     'pairgbs', 'merged', '2brad', 'pair3rad']
-        ## raise error if something else
-        if str(newvalue) not in datatypes:
-            raise IPyradError("""
-    datatype {} not recognized, must be one of: {}
-    """.format(newvalue, datatypes))
-        else:
-            self.paramsdict['datatype'] = str(newvalue)
-            ## link_barcodes is called before datatypes is set
-            ## we need to know the datatype so we can read in
-            ## the multiplexed barcodes for 3rad. This seems
-            ## a little annoying, but it was better than any
-            ## alternatives I could think of.
-            if "3rad" in self.paramsdict['datatype'] and not \
-            self.paramsdict['sorted_fastq_path'].strip():
-                if "Merged:" not in self.paramsdict['barcodes_path']:
-                    self._link_barcodes()
-
-    elif param == 'restriction_overhang':
-        newvalue = _tuplecheck(newvalue, str)
-        assert isinstance(newvalue, tuple), """
-    cut site must be a tuple, e.g., (TGCAG, '') or (TGCAG, CCGG)"""
-        ## Handle the special case where the user has 1
-        ## restriction overhang and does not include the trailing comma
-        if len(newvalue) == 1:
-            ## for gbs users might not know to enter the second cut site
-            ## so we do it for them.
-            if self.paramsdict["datatype"] == "gbs":
-                newvalue += newvalue
-            else:
-                newvalue += ("",)
-
-        ## Handle 3rad datatype with only 3 cutters
-        if len(newvalue) == 3:
-            newvalue = (newvalue[0], newvalue[1], newvalue[2], "")
-        assert len(newvalue) <= 4, """
-    most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
-    For 3rad/seqcap may be up to 4 cut sites."""
-        self.paramsdict['restriction_overhang'] = newvalue
-
-
-
-    elif param == 'max_low_qual_bases':
-        assert isinstance(int(newvalue), int), """
-    max_low_qual_bases must be an integer."""
-        self.paramsdict['max_low_qual_bases'] = int(newvalue)
-
-    elif param == 'phred_Qscore_offset':
-        assert isinstance(int(newvalue), int), \
-            "phred_Qscore_offset must be an integer."
-        self.paramsdict['phred_Qscore_offset'] = int(newvalue)
-
-    elif param == 'mindepth_statistical':
-        assert isinstance(int(newvalue), int), \
-            "mindepth_statistical must be an integer."
-        ## do not allow values below 5
-        if int(newvalue) < 5:
-            raise IPyradError("""
-    mindepth statistical cannot be set < 5. Use mindepth_majrule.""")
-        else:
-            self.paramsdict['mindepth_statistical'] = int(newvalue)
-
-    elif param == 'mindepth_majrule':
-        assert isinstance(int(newvalue), int), \
-            "mindepth_majrule must be an integer."
-        self.paramsdict['mindepth_majrule'] = int(newvalue)
-
-    elif param == 'maxdepth':
-        self.paramsdict['maxdepth'] = int(newvalue)
-
-    elif param == 'clust_threshold':
-        newvalue = float(newvalue)
-        assert (newvalue < 1) & (newvalue > 0), \
-        "clust_threshold must be a decimal value between 0 and 1."
-        self.paramsdict['clust_threshold'] = newvalue
-
-    elif param == 'max_barcode_mismatch':
-        self.paramsdict['max_barcode_mismatch'] = int(newvalue)
-
-    elif param == 'filter_adapters':
-        self.paramsdict['filter_adapters'] = int(newvalue)
-
-    elif param == 'filter_min_trim_len':
-        self.paramsdict["filter_min_trim_len"] = int(newvalue)
-
-    elif param == 'max_alleles_consens':
-        self.paramsdict['max_alleles_consens'] = int(newvalue)
-
-    elif param == 'max_Ns_consens':
-        newvalue = _tuplecheck(newvalue, int)
-        assert isinstance(newvalue, tuple), \
-        "max_Ns_consens should be a tuple e.g., (8, 8)"
-        self.paramsdict['max_Ns_consens'] = newvalue
-
-    elif param == 'max_Hs_consens':
-        newvalue = _tuplecheck(newvalue, int)
-        assert isinstance(newvalue, tuple), \
-        "max_Hs_consens should be a tuple e.g., (5, 5)"
-        self.paramsdict['max_Hs_consens'] = newvalue
-
-    elif param == 'min_samples_locus':
-        self.paramsdict['min_samples_locus'] = int(newvalue)
-
-    elif param == 'max_shared_Hs_locus':
-        if isinstance(newvalue, str):
-            if newvalue.isdigit():
-                newvalue = int(newvalue)
+    @property
+    def max_shared_Hs_locus(self):
+        return self._max_shared_Hs_locus
+    @max_shared_Hs_locus.setter
+    def max_shared_Hs_locus(self, value):
+        if isinstance(value, str):
+            if value.isdigit():
+                value = int(value)
             else:
                 try:
-                    newvalue = float(newvalue)
+                    value = float(value)
                 except Exception as inst:
                     raise IPyradParamsError("""
-    max_shared_Hs_locus must be int or float, you put: {}""".format(newvalue))
-        self.paramsdict['max_shared_Hs_locus'] = newvalue
-
-    elif param == 'max_SNPs_locus':
-        newvalue = _tuplecheck(newvalue, int)
-        assert isinstance(newvalue, tuple), \
-        "max_SNPs_locus should be a tuple e.g., (20, 20)"
-        self.paramsdict['max_SNPs_locus'] = newvalue
-
-    elif param == 'max_Indels_locus':
-        newvalue = _tuplecheck(newvalue, int)
-        assert isinstance(newvalue, tuple), \
-        "max_Indels_locus should be a tuple e.g., (5, 100)"
-        self.paramsdict['max_Indels_locus'] = newvalue
-
-    ## deprecated but retained for legacy, now uses trim_reads (below)
-    elif param == 'edit_cutsites':
-        ## Force into a string tuple
-        newvalue = _tuplecheck(newvalue)
-        ## try converting each tup element to ints
-        newvalue = list(newvalue)
-        for i in range(2):
-            try:
-                newvalue[i] = int(newvalue[i])
-            except (ValueError, IndexError):
-                newvalue.append(0)
-                pass
-        newvalue = tuple(newvalue)
-        ## make sure we have a nice tuple
-        if not isinstance(newvalue, tuple):
-            raise IPyradError("""
-    Error: edit_cutsites should be a tuple e.g., (0, 5) or ('TGCAG', 6),
-    you entered {}
-    """.format(newvalue))
-        self.paramsdict['edit_cutsites'] = newvalue
-
-    elif param == 'trim_reads':
-        ## Force into a string tuple
-        newvalue = _tuplecheck(newvalue)
-        ## try converting each tup element to ints
-        newvalue = list(newvalue)
-        for i in range(4):
-            try:
-                newvalue[i] = int(newvalue[i])
-            except (ValueError, IndexError):
-                newvalue.append(0)
-                pass
-        newvalue = tuple(newvalue)
-        ## make sure we have a nice tuple
-        if not isinstance(newvalue, tuple):
-            raise IPyradError("""
-    Error: trim_reads should be a tuple e.g., (0, -5, -5, 0) 
-    or (0, 90, 0, 90), or (0, 0, 0, 0). 
-    You entered {}\n""".format(newvalue))
-        self.paramsdict['trim_reads'] = newvalue        
-
-    ## deprecated but retained for legacy, now named trim_loci 
-    elif param == 'trim_overhang':
-        newvalue = _tuplecheck(newvalue, str)
-        assert isinstance(newvalue, tuple), \
-        "trim_overhang should be a tuple e.g., (4, *, *, 4)"
-        self.paramsdict['trim_overhang'] = tuple([int(i) for i in newvalue])
-
-    elif param == 'trim_loci':
-        newvalue = _tuplecheck(newvalue, str)
-        assert isinstance(newvalue, tuple), \
-        "trim_overhang should be a tuple e.g., (0, -5, -5, 0)"
-        self.paramsdict['trim_loci'] = tuple([int(i) for i in newvalue])
+    max_shared_Hs_locus must be int or float, you put: {}""".format(alue))
+        self._max_shared_Hs_locus = value
 
 
-    elif param == 'output_formats':
+    @property
+    def max_SNPs_locus(self):
+        return self._max_SNPs_locus
+    @max_SNPs_locus.setter
+    def max_SNPs_locus(self, value):
+        value = tuplecheck(value, int)
+        assert isinstance(value, tuple), (
+            "max_SNPs_locus should be a tuple e.g., (20, 20)")
+        self._max_SNPs_locus = value
 
-        ## Handle the case where output formats is an empty string
-        if isinstance(newvalue, str):
-            ## strip commas and spaces from string so we have only letters
-            newvalue = newvalue.replace(",", "").replace(" ", "")
-            newvalue = list(newvalue)
-            if not newvalue:
-                newvalue = ["*"]
-        if isinstance(newvalue, tuple):
-            newvalue = list(newvalue)
 
-        if isinstance(newvalue, list):
-            ## if more than letters, raise an warning
-            if any([len(i) > 1 for i in newvalue]):
+    @property
+    def max_Indels_locus(self):
+        return self._max_Indels_locus
+    @max_Indels_locus.setter
+    def max_Indels_locus(self, value):
+        value = tuplecheck(value, int)
+        assert isinstance(value, tuple), (
+            "max_Indels_locus should be a tuple e.g., (5, 100)")
+        self._max_Indels_locus = value
+
+
+    @property
+    def trim_reads(self):
+        return self._trim_reads
+    @trim_reads.setter
+    def trim_reads(self, value):        
+        value = tuplecheck(value)
+        assert [isinstance(i, int) for i in value], (
+            "trim_reads should be a tuple of integers, e.g., (0, 90, 0, 90).")
+        self._trim_reads = tuple([int(i) for i in value])
+
+
+    @property
+    def trim_loci(self):
+        return self._trim_loci
+    @trim_loci.setter
+    def trim_loci(self, value):
+        value = tuplecheck(value, str)
+        assert isinstance(value, tuple), (
+            "trim_loci should be a tuple e.g., (0, -5, -5, 0)")
+        self._trim_loci = tuple([int(i) for i in value])
+
+
+    @property
+    def output_formats(self):
+        return self._output_formats
+    @output_formats.setter
+    def output_formats(self, value):
+        # Handle the case where output formats is an empty string
+        if isinstance(value, str):
+            # strip commas and spaces from string so we have only letters
+            value = value.replace(",", "").replace(" ", "")
+            value = list(value)
+            if not value:
+                value = ["*"]
+        if isinstance(value, tuple):
+            value = list(value)
+
+        if isinstance(value, list):
+            # if more than letters, raise an warning
+            if any([len(i) > 1 for i in value]):
                 self._print("""
     'output_formats' params entry is malformed. Setting to * to avoid errors.""")
-                newvalue = list(OUTPUT_FORMATS.keys())
-            newvalue = tuple(newvalue)
-            #newvalue = tuple([i for i in newvalue if i in allowed])
-        if "*" in newvalue:
-            newvalue = list(OUTPUT_FORMATS.keys())
+                value = "*"
+        
+        if "*" in value:
+            value = list(OUTPUT_FORMATS.keys())
 
-        ## set the param
-        self.paramsdict['output_formats'] = newvalue
+        # set the param
+        self._output_formats = value
 
 
-    elif param == 'pop_assign_file':
-        fullpoppath = _expander(newvalue)
+    @property
+    def pop_assign_file(self):
+        return self._pop_assign_file
+    @pop_assign_file.setter
+    def pop_assign_file(self, value):
+        fullpath = os.path.realpath(os.path.expanduser(value))
 
-        ## if a path is entered, raise exception if not found
-        if newvalue:
-            if not os.path.isfile(fullpoppath):
-                ip.logger.warn("Population assignment file not found.")
+        # if a path is entered, raise exception if not found
+        if value:
+            if not os.path.isfile(fullpath):
                 raise IPyradError("""
     Warning: Population assignment file not found. This must be an
     absolute path (/home/wat/ipyrad/data/my_popfile.txt) or relative to
     the directory where you're running ipyrad (./data/my_popfile.txt)
-    You entered: {}\n""".format(fullpoppath))
-        ## should we add a check here that all pop samples are in samples?
-
-            self.paramsdict['pop_assign_file'] = fullpoppath
+    You entered: {}\n""".format(fullpath))
+            self._pop_assign_file = fullpath
             self._link_populations()
+
         else:
-            self.paramsdict['pop_assign_file'] = ""
-            ## Don't forget to possibly blank the populations dictionary
+            # Don't forget to possibly blank the populations dictionary
+            self._pop_assign_file = ""
             self.populations = {}
 
-    return self
+
+class Encoder(json.JSONEncoder):
+    """ 
+    Save JSON string with tuples embedded as described in stackoverflow
+    thread. Modified here to include dictionary values as tuples.
+    link: http://stackoverflow.com/questions/15721363/
+
+    This Encoder Class is used as the 'cls' argument to json.dumps()
+    """
+    def encode(self, obj):
+        """ function to encode json string"""
+        def hint_tuples(item):
+            """ embeds __tuple__ hinter in json strings """
+            if isinstance(item, tuple):
+                return {'__tuple__': True, 'items': item}
+            if isinstance(item, list):
+                return [hint_tuples(e) for e in item]
+            if isinstance(item, dict):
+                return {
+                    key: hint_tuples(val) for key, val in item.items()
+                    }
+            else:
+                return item
+        return super(Encoder, self).encode(hint_tuples(obj))
+
+
+def default(o):
+    # https://stackoverflow.com/questions/11942364/
+    # typeerror-integer-is-not-json-serializable-when-
+    # serializing-json-in-python?utm_medium=organic&utm_
+    # source=google_rich_qa&utm_campaign=google_rich_qa
+    if isinstance(o, np.int64): 
+        return int(o)  
+    raise TypeError
+
+
+def save_json(data):
+    """ 
+    Save assembly and samples as json 
+    ## data as dict
+    #### skip _ipcluster because it's made new
+    #### statsfiles save only keys
+    #### samples save only keys
+    """
+    # store params without the reference to Assembly object in params
+    paramsdict = data.params.__dict__
+    paramsdict = {i: j for (i, j) in paramsdict.items() if i != "data"}
+
+    # store all other dicts
+    datadict = OrderedDict([
+        # ("_version", data.__dict__["_version"]),
+        # ("_checkpoint", data.__dict__["_checkpoint"]),
+        ("name", data.__dict__["name"]), 
+        ("dirs", data.__dict__["dirs"]),
+        ("paramsdict", paramsdict),
+        ("samples", list(data.__dict__["samples"].keys())),
+        ("populations", data.__dict__["populations"]),
+        ("database", data.__dict__["database"]),
+        ("clust_database", data.__dict__["clust_database"]),        
+        ("outfiles", data.__dict__["outfiles"]),
+        ("barcodes", data.__dict__["barcodes"]),
+        ("stats_files", data.__dict__["stats_files"]),
+        ("_hackersonly", data.__dict__["_hackersonly"]),
+        ])
+
+    ## sample dict
+    sampledict = OrderedDict([])
+    for key, sample in data.samples.items():
+        sampledict[key] = sample._to_fulldict()
+
+    ## json format it using cumstom Encoder class
+    fulldumps = json.dumps({
+        "assembly": datadict,
+        "samples": sampledict
+        },
+        cls=Encoder,
+        sort_keys=False, indent=4, separators=(",", ":"),
+        default=default,
+        )
+
+    ## save to file
+    assemblypath = os.path.join(data.dirs.project, data.name + ".json")
+    if not os.path.exists(data.dirs.project):
+        os.mkdir(data.dirs.project)
+    
+    ## protect save from interruption
+    done = 0
+    while not done:
+        try:
+            with open(assemblypath, 'w') as jout:
+                jout.write(fulldumps)
+            done = 1
+        except (KeyboardInterrupt, SystemExit): 
+            print('.')
+            continue
+
+
+def merge(name, assemblies):
+    """
+    Creates and returns a new Assembly object in which samples from two or more
+    Assembly objects with matching names are 'merged'. Merging does not affect 
+    the actual files written on disk, but rather creates new Samples that are 
+    linked to multiple data files, and with stats summed.
+    """
+
+    ## checks
+    assemblies = list(assemblies)
+
+    ## create new Assembly as a branch (deepcopy)
+    merged = assemblies[0].branch(name)
+
+    ## get all sample names from all Assemblies
+    allsamples = set(merged.samples.keys())
+    for iterass in assemblies[1:]:
+        allsamples.update(set(iterass.samples.keys()))
+
+    ## Make sure we have the max of all values for max frag length
+    ## from all merging assemblies.
+    merged._hackersonly["max_fragment_length"] =\
+        max([x._hackersonly["max_fragment_length"] for x in assemblies])
+
+    ## warning message?
+    warning = 0
+
+    ## iterate over assembly objects, skip first already copied
+    for iterass in assemblies[1:]:
+        ## iterate over allsamples, add if not in merged
+        for sample in iterass.samples:
+            ## iterate over stats, skip 'state'
+            if sample not in merged.samples:
+                merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
+                ## if barcodes data present then keep it
+                if iterass.barcodes.get(sample):
+                    merged.barcodes[sample] = iterass.barcodes[sample]
+            else:
+                ## merge stats and files of the sample
+                for stat in merged.stats.keys()[1:]:
+                    merged.samples[sample].stats[stat] += (
+                        iterass.samples[sample].stats[stat])
+                ## merge file references into a list
+                for filetype in ['fastqs', 'edits']:
+                    merged.samples[sample].files[filetype] += (
+                        iterass.samples[sample].files[filetype])
+                if iterass.samples[sample].files["clusters"]:
+                    warning += 1
+
+    ## print warning if clusters or later was present in merged assembly
+    if warning:
+        print("""\
+    Warning: the merged Assemblies contained Samples that are identically named,
+    and so ipyrad has attempted to merge these Samples. This is perfectly fine to
+    do up until step 3, but not after, because at step 3 all reads for a Sample
+    should be included during clustering/mapping. Take note, you can merge Assemblies
+    at any step *if they do not contain the same Samples*, however, here that is not
+    the case. If you wish to proceed with this merged Assembly you will have to
+    start from step 3, therefore the 'state' of the Samples in this new merged
+    Assembly ({}) have been set to 2.
+    """.format(name))
+        for sample in merged.samples:
+            merged.samples[sample].stats.state = 2
+            ## clear stats
+            for stat in ["refseq_mapped_reads", "refseq_unmapped_reads",
+                         "clusters_total", "clusters_hidepth", "hetero_est",
+                         "error_est", "reads_consens"]:
+                merged.samples[sample].stats[stat] = 0
+            ## clear files
+            for ftype in ["mapped_reads", "unmapped_reads", "clusters",
+                          "consens", "database"]:
+                merged.samples[sample].files[ftype] = []
+
+    ## Set the values for some params that don't make sense inside
+    ## merged assemblies
+    merged_names = ", ".join([x.name for x in assemblies])
+    merged.params.raw_fastq_path = "Merged: " + merged_names
+    merged.params.barcodes_path = "Merged: " + merged_names
+    merged.params.sorted_fastq_path = "Merged: " + merged_names
+
+    ## return the new Assembly object
+    merged.save()
+    return merged
+
+
+def tuplecheck(newvalue, dtype=str):
+    """
+    Takes a string argument and returns value as a tuple.
+    Needed for paramfile conversion from CLI to set_params args
+    """
+    if isinstance(newvalue, list):
+        newvalue = tuple(newvalue)
+
+    if isinstance(newvalue, str):
+        newvalue = newvalue.rstrip(")").strip("(")
+        try:
+            newvalue = tuple([dtype(i.strip()) for i in newvalue.split(",")])
+
+        ## Type error is thrown by tuple if it's applied to a non-iterable.
+        except TypeError:
+            newvalue = tuple(dtype(newvalue))
+
+        ## If dtype fails to cast any element of newvalue
+        except ValueError:
+            raise IPyradError(
+                "Assembly.tuplecheck() failed to cast to {} - {}"
+                .format(dtype, newvalue)
+            )
+
+        except Exception as inst:
+            raise IPyradError(
+                "\nError: Param`{}` is not formatted correctly.\n({})\n"
+                .format(newvalue, inst)
+            )
+    return newvalue
+
+
+def check_name(name):
+    invalid_chars = (
+        string.punctuation.replace("_", "").replace("-", "") + " ")
+    if any(char in invalid_chars for char in name):
+        raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
+
+
+def read_sample_names(fname):
+    """ 
+    Read in sample names from a text file, a convenience function for branching
+    """
+    try:
+        with open(fname, 'r') as infile:
+            subsamples = [x.split()[0] for x in infile.readlines() if x.strip()]
+
+    except Exception as inst:
+        print("Failed to read input file with sample names.\n{}".format(inst))
+        raise inst
+
+    return subsamples
 
 
 ### ERROR MESSAGES ###################################
