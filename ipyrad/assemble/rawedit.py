@@ -11,7 +11,6 @@ from __future__ import print_function
 import os
 import time
 import numpy as np
-import ipyrad as ip
 import subprocess as sps
 from .utils import IPyradWarningExit, IPyradError, fullcomp
 
@@ -501,7 +500,6 @@ def cutadaptit_pairs(data, sample):
             data._link_barcodes()
         except IPyradError as inst:
             pass
-            # ip.logger.warning("  error adding barcodes info: %s", inst)
 
     ## barcodes are present meaning they were parsed to the samples in step 1.
     if data.barcodes:
@@ -630,110 +628,56 @@ def cutadaptit_pairs(data, sample):
         cmdf1.insert(1, '-A')         
 
     ## do modifications to read1 and write to tmp file
-    # ip.logger.debug(" ".join(cmdf1))
-    #sys.exit()
-    try:
-        proc1 = sps.Popen(
-            cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
-        res1 = proc1.communicate()[0]
-    except KeyboardInterrupt:
-        proc1.kill()
-        # ip.logger.info("this is where I want it to interrupt")
-        raise KeyboardInterrupt()
-
-    ## raise errors if found
+    proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
+    res1 = proc1.communicate()[0]
     if proc1.returncode:
-        raise IPyradWarningExit(" error [returncode={}]: {}\n{}"
-            .format(proc1.returncode, " ".join(cmdf1), res1))
-
-    # ip.logger.debug("Exiting cutadaptit_pairs - {}".format(sname))
-    ## return results string to be parsed outside of engine
+        raise IPyradWarningExit("error in cutadapt: {}".format(res1.decode()))
     return res1
 
 
-# deprecated
-def run2(data, samples, force, ipyclient):
-    """ 
-    Filter for samples that are already finished with this step, allow others
-    to run, pass them to parallel client function to filter with cutadapt. 
-    """
 
-    ## create output directories 
-    data.dirs.edits = os.path.join(
-        os.path.realpath(data.params.project_dir),
-        data.name + "_edits")
-    if not os.path.exists(data.dirs.edits):
-        os.makedirs(data.dirs.edits)
+# # replaced in Step2 object
+# def concat_reads(data, subsamples, ipyclient):
+#     """ concatenate if multiple input files for a single samples """
 
-    ## get samples
-    subsamples = choose_samples(samples, force)
+#     ## concatenate reads if they come from merged assemblies.
+#     if any([len(i.files.fastqs) > 1 for i in subsamples]):
+#         ## run on single engine for now
+#         start = time.time()
+#         printstr = ("concatenating inputs", "s2")
+#         finished = 0
+#         catjobs = {}
+#         for sample in subsamples:
+#             if len(sample.files.fastqs) > 1:
+#                 catjobs[sample.name] = ipyclient[0].apply(
+#                     concat_multiple_inputs, *(data, sample))
+#             else:
+#                 sample.files.concat = sample.files.fastqs
 
-    ## only allow extra adapters in filters==3, 
-    ## and add poly repeats if not in list of adapters
-    if int(data.params.filter_adapters) == 3:
-        if not data._hackersonly["p3_adapters_extra"]:
-            for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
-                data._hackersonly["p3_adapters_extra"].append(poly)
-        if not data._hackersonly["p5_adapters_extra"]:    
-            for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
-                data._hackersonly["p5_adapters_extra"].append(poly)
-    else:
-        data._hackersonly["p5_adapters_extra"] = []
-        data._hackersonly["p3_adapters_extra"] = []
+#         ## wait for all to finish
+#         while 1:
+#             finished = sum([i.ready() for i in catjobs.values()])
+#             data._progressbar(len(catjobs), finished, start, printstr)
+#             time.sleep(0.1)
+#             if finished == len(catjobs):
+#                 break
 
-    ## concat is not parallelized (since it's disk limited, generally)
-    subsamples = concat_reads(data, subsamples, ipyclient)
+#         ## collect results, which are concat file handles.
+#         print("")
+#         for rasync in catjobs:
+#             if catjobs[rasync].successful():
+#                 data.samples[rasync].files.concat = catjobs[rasync].result()
+#             else:
+#                 error = catjobs[rasync].result()  # exception()
+#                 # ip.logger.error("error in step2 concat %s", error)
+#                 raise IPyradWarningExit(
+#                     "error in step2 concat: {}".format(error))
+#     else:
+#         for sample in subsamples:
+#             ## just copy fastqs handles to concat attribute
+#             sample.files.concat = sample.files.fastqs
 
-    ## cutadapt is parallelized by ncores/2 because cutadapt spawns threads
-    lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
-    run_cutadapt(data, subsamples, lbview)
-
-    ## cleanup is ...
-    assembly_cleanup(data)
-
-
-# used in Step2 object
-def concat_reads(data, subsamples, ipyclient):
-    """ concatenate if multiple input files for a single samples """
-
-    ## concatenate reads if they come from merged assemblies.
-    if any([len(i.files.fastqs) > 1 for i in subsamples]):
-        ## run on single engine for now
-        start = time.time()
-        printstr = ("concatenating inputs", "s2")
-        finished = 0
-        catjobs = {}
-        for sample in subsamples:
-            if len(sample.files.fastqs) > 1:
-                catjobs[sample.name] = ipyclient[0].apply(
-                    concat_multiple_inputs, *(data, sample))
-            else:
-                sample.files.concat = sample.files.fastqs
-
-        ## wait for all to finish
-        while 1:
-            finished = sum([i.ready() for i in catjobs.values()])
-            data._progressbar(len(catjobs), finished, start, printstr)
-            time.sleep(0.1)
-            if finished == len(catjobs):
-                break
-
-        ## collect results, which are concat file handles.
-        print("")
-        for rasync in catjobs:
-            if catjobs[rasync].successful():
-                data.samples[rasync].files.concat = catjobs[rasync].result()
-            else:
-                error = catjobs[rasync].result()  # exception()
-                # ip.logger.error("error in step2 concat %s", error)
-                raise IPyradWarningExit(
-                    "error in step2 concat: {}".format(error))
-    else:
-        for sample in subsamples:
-            ## just copy fastqs handles to concat attribute
-            sample.files.concat = sample.files.fastqs
-
-    return subsamples
+#     return subsamples
 
 
 
@@ -781,10 +725,10 @@ def run_cutadapt(data, subsamples, lbview):
             else:
                 parse_pair_results(data, data.samples[rasync], res)
         else:
-            print("  found an error in step2; see ipyrad_log.txt")
-            # ip.logger.error(
-                # "error in run_cutadapt(): %s", rawedits[rasync].exception())
-
+            raise IPyradError(
+                "error in {}: {}"
+                .format(rasync, rawedits[rasync].get())
+            )
 
 
 def choose_samples(samples, force):
