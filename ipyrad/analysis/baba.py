@@ -518,14 +518,19 @@ def _loci_to_arr(loci, taxdict, mindict):
     taxdict and min coverage from mindict. 
     """
 
+    ## get max length of loci
+    maxlen = np.max(np.array([len(locus.split("\n")[0]) for locus in loci]))
+
     ## make the array (4 or 5) and a mask array to remove loci without cov
     nloci = len(loci)
     keep = np.zeros(nloci, dtype=np.bool_)
-    arr = np.zeros((nloci, 4, 300), dtype=np.float64)
+    # arr = np.zeros((nloci, 4, 300), dtype=np.float64)
+    arr = np.zeros((nloci, 4, maxlen), dtype=np.float64)
 
     ## six rows b/c one for each p3, and for the fused p3 ancestor
     if len(taxdict) == 5:
-        arr = np.zeros((nloci, 6, 300), dtype=np.float64)
+        # arr = np.zeros((nloci, 6, 300), dtype=np.float64)
+        arr = np.zeros((nloci, 6, maxlen), dtype=np.float64)        
 
     ## if not mindict, make one that requires 1 in each taxon
     if isinstance(mindict, int):
