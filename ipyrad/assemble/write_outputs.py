@@ -40,7 +40,7 @@ class Step7:
         self.force = force
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
-        self.data.isref = bool("ref" in self.data.paramsdict["assembly_method"])
+        self.data.isref = bool("ref" in self.data.params.assembly_method)
 
         # returns samples in the order we want them in the outputs
         self.samples = self.get_subsamples()
@@ -53,7 +53,7 @@ class Step7:
 
         # output file formats to produce
         self.formats = set(['l']).union(
-            set(self.data.paramsdict["output_formats"]))
+            set(self.data.params.output_formats))
 
 
     def run(self):
@@ -113,7 +113,7 @@ class Step7:
         # error unless using the force flag to prevent overwriting. 
         if not self.force:
             _outdir = os.path.join(
-                self.data.paramsdict["project_dir"],
+                self.data.params.project_dir,
                 "{}_outfiles".format(self.data.name),
                 )
             _outdir = os.path.realpath(_outdir)
@@ -124,7 +124,7 @@ class Step7:
         "Step 7 results exist for this Assembly. Use force to overwrite.")
 
         # if ref init a new sample for reference if including
-        if self.data.paramsdict['assembly_method'] == 'reference':
+        if self.data.params.assembly_method == 'reference':
             ref = ipyrad.core.sample.Sample("reference")
             snames = [ref] + sorted(
                 list(set(self.data.samples.values())), 
@@ -142,7 +142,7 @@ class Step7:
 
         # make new output directory
         self.data.dirs.outfiles = os.path.join(
-            self.data.paramsdict["project_dir"],
+            self.data.params.project_dir,
             "{}_outfiles".format(self.data.name),
             )
         self.data.dirs.outfiles = os.path.realpath(self.data.dirs.outfiles)
@@ -321,7 +321,7 @@ class Step7:
         ## get locus cov and sums 
         lrange = range(1, len(self.samples) + 1)
         covs = pd.Series(lcovs, name="locus_coverage", index=lrange)
-        start = self.data.paramsdict["min_samples_locus"] - 1
+        start = self.data.params.min_samples_locus - 1
         sums = pd.Series(
             {i: np.sum(covs[start:i]) for i in lrange},            
             name="sum_coverage", 
@@ -329,7 +329,7 @@ class Step7:
         self.data.stats_dfs.s7_loci = pd.concat([covs, sums], axis=1)
 
         ## get SNP distribution       
-        maxsnps = sum(self.data.paramsdict['max_SNPs_locus'])
+        maxsnps = sum(self.data.params.max_SNPs_locus)
         sumd = {}
         sump = {}
         for i in range(maxsnps):
@@ -549,7 +549,7 @@ class Processor:
         self.data = data
         self.chunksize = chunksize
         self.chunkfile = chunkfile
-        self.isref = data.paramsdict["assembly_method"] == "reference"
+        self.isref = data.params.assembly_method == "reference"
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
         self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
@@ -563,7 +563,7 @@ class Processor:
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
         # store stats on sample coverage and locus coverage
-        self.maxsnps = sum(self.data.paramsdict['max_SNPs_locus'])
+        self.maxsnps = sum(self.data.params.max_SNPs_locus)
         self.scov = {i: 0 for i in self.data.snames}
         self.lcov = {i: 0 for i in range(1, len(self.data.snames) + 1)}
         self.var = {i: 0 for i in range(self.maxsnps)}
@@ -751,7 +751,7 @@ class Processor:
    
     def filter_minsamp_pops(self, names):
         if not self.data.populations:
-            mins = self.data.paramsdict["min_samples_locus"]
+            mins = self.data.params.min_samples_locus
             if len(names) < mins:
                 return True
             return False
@@ -771,11 +771,11 @@ class Processor:
     def filter_maxindels(self, block1, block2):
         "max internal indels. Denovo vs. Ref, single versus paired."
         # get max indels for read1, read2
-        maxi = self.data.paramsdict["max_Indels_locus"]
+        maxi = self.data.params.max_Indels_locus
         maxi = np.array(maxi).astype(np.int64)
 
         # single-end
-        if "pair" not in self.data.paramsdict["datatype"]:
+        if "pair" not in self.data.params.datatype:
             inds = maxind_numba(block1)
             if inds > maxi[0]:
                 return True
@@ -792,11 +792,11 @@ class Processor:
     def filter_maxvars(self, snpstring1, snpstring2):
 
         # get max snps for read1, read2
-        maxs = self.data.paramsdict["max_SNPs_locus"]
+        maxs = self.data.params.max_SNPs_locus
         maxs = np.array(maxs).astype(np.int64)
 
         # single-end
-        if "pair" not in self.data.paramsdict["datatype"]:
+        if "pair" not in self.data.params.datatype:
             if np.sum(snpstring1, axis=1).sum() > maxs[0]:
                 return True
             return False
@@ -811,14 +811,14 @@ class Processor:
         blocks = np.concatenate([block1, block2], axis=1)
 
         # calculate as a proportion
-        maxhet = self.data.paramsdict["max_shared_Hs_locus"]       
+        maxhet = self.data.params.max_shared_Hs_locus
         if isinstance(maxhet, float):
             maxhet = np.floor(maxhet * blocks.shape[0]).astype(np.int16)
         elif isinstance(maxhet, int):
             maxhet = np.int16(maxhet)
 
         # unless maxhet was set to 0, use 1 as a min setting
-        if self.data.paramsdict["max_shared_Hs_locus"] != 0:
+        if self.data.params.max_shared_Hs_locus != 0:
             maxhet = max(1, maxhet)
 
         # DEBUGGING
@@ -847,12 +847,12 @@ class Processor:
         bad = False
         
         # 1. hard trim edges
-        trim1 = np.array(self.data.paramsdict["trim_loci"])
+        trim1 = np.array(self.data.params.trim_loci)
 
         # 2. fuzzy match for trimming restriction site where it's expected.
         trim2 = np.array([0, 0, 0, 0])
         overhangs = np.array([
-            i.encode() for i in self.data.paramsdict["restriction_overhang"]
+            i.encode() for i in self.data.params.restriction_overhang
             ])
         for pos, overhang in enumerate(overhangs):
             if overhang:
@@ -886,14 +886,14 @@ class Processor:
             bad = True
 
         # if loc length is too short then filter
-        if (r2right - r1left) < self.data.paramsdict["filter_min_trim_len"]:
+        if (r2right - r1left) < self.data.params.filter_min_trim_len:
             bad = True
 
         return bad, edges
 
 
     def get_snpsarrs(self, block1, block2):
-        if "pair" not in self.data.paramsdict["datatype"]:
+        if "pair" not in self.data.params.datatype:
             snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
             snpsarr1 = snpcount_numba(block1, snpsarr1)
             snpsarr2 = np.array([])
@@ -909,7 +909,7 @@ class Converter:
     "functions for converting hdf5 arrays into output files"
     def __init__(self, data):
         self.data = data
-        self.output_formats = self.data.paramsdict["output_formats"]
+        self.output_formats = self.data.params.output_formats
         self.seqs_database = self.data.seqs_database
         self.snps_database = self.data.snps_database        
 
@@ -1096,7 +1096,7 @@ class Converter:
             with h5py.File(self.data.snps_database, 'r') as io5:
                 snparr = io5["snps"]
 
-                if self.data.paramsdict["max_alleles_consens"] > 1:
+                if self.data.params.max_alleles_consens > 1:
                     for idx, name in enumerate(self.data.pnames):
                         # get row of data
                         snps = snparr[idx, :].view("S1")
@@ -1227,7 +1227,7 @@ def write_loci_and_alleles(data):
         faidict = chroms2ints(data, True)
 
     # write alleles file
-    allel = 'a' in data.paramsdict["output_formats"]
+    allel = 'a' in data.params.output_formats
 
     # gather all loci bits
     locibits = glob.glob(os.path.join(data.tmpdir, "*.loci"))
@@ -1256,7 +1256,7 @@ def write_loci_and_alleles(data):
                     lchunk.append(line[:pad] + line[pad:].upper())
                 else:
                     snpstring, nidxs = line.rsplit("|", 2)[:2]
-                    if data.paramsdict["assembly_method"] == 'reference':
+                    if data.params.assembly_method == 'reference':
                         refpos = nidxs.split(",")[0]
 
                         # translate refpos chrom idx (1-indexed) to chrom name
@@ -1284,7 +1284,7 @@ def write_loci_and_alleles(data):
                 else:
                     snpstring, nidxs = line.rsplit("|", 2)[:2]
                     asnpstring = "//  " + snpstring[2:]
-                    if data.paramsdict["assembly_method"] == 'reference':
+                    if data.params.assembly_method == 'reference':
                         refpos = nidxs.split(",")[0]
 
                         # translate refpos chrom idx (1-indexed) to chrom name
@@ -1357,10 +1357,10 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         )
 
         # store attrs of the reference genome to the phymap
-        if data.paramsdict["assembly_method"] == 'reference':
+        if data.params.assembly_method == 'reference':
             io5["scaffold_lengths"] = get_fai_values(data, "length")
             io5["scaffold_names"] = get_fai_values(data, "scaffold").astype("S")
-            phymap.attrs["reference"] = data.paramsdict["reference_sequence"]
+            phymap.attrs["reference"] = data.params.reference_sequence
             phymap.attrs["phynames"] = [i.encode() for i in data.pnames]
             phymap.attrs["columns"] = [
                 b"chroms", b"phy0", b"phy1", b"pos0", b"pos1", 
@@ -1409,7 +1409,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     lineend = line.split("|")[1]
                     chrom = int(lineend.split(":")[0])
                     pos0, pos1 = 0, 0
-                    if data.paramsdict['assembly_method'] == 'reference':                    
+                    if data.params.assembly_method == 'reference':                    
                         pos0, pos1 = (
                             int(i) for i in lineend
                             .split(":")[1]
@@ -1645,7 +1645,7 @@ def fill_snp_array(data, ntaxa, nsnps):
 
         # store pseudo-ref (most common base)
         # with ambiguous bases resolved: (87, 78, 0, 0).
-        if data.paramsdict['assembly_method'] != 'reference':
+        if data.params.assembly_method != 'reference':
             io5['pseudoref'][:] = reftrick(snparr, GETCONS)
     
         else:
@@ -1900,8 +1900,8 @@ def build_vcf(data, chunksize=1000):
             #print(arr.head())
             ## PRINTING VCF TO FILE
             ## choose reference string
-            if data.paramsdict["reference_sequence"]:
-                reference = data.paramsdict["reference_sequence"]
+            if data.params.reference_sequence:
+                reference = data.params.reference_sequence
             else:
                 reference = "pseudo-reference (most common base at site)"
 
@@ -1922,7 +1922,7 @@ def build_vcf(data, chunksize=1000):
 # ----------------------------------------
 # Processor external functions
 # ----------------------------------------
-def check_minsamp(seq, position, minsamp):
+def check_minsamp(seq, position, minsamp, mincovs):
     "used in Processor.get_edges() for trimming edges of - or N sites."
     minsamp = min(minsamp, seq.shape[0])
     if position == 0:       
@@ -2127,7 +2127,7 @@ def get_genos(f10, f01, pseudoref):
 
 
 def get_fai_values(data, value):
-    reference_file = data.paramsdict["reference_sequence"]
+    reference_file = data.params.reference_sequence
     fai = pd.read_csv(
         reference_file + ".fai",   
         names=['scaffold', 'length', 'sumsize', 'a', 'b'],
@@ -2136,10 +2136,6 @@ def get_fai_values(data, value):
     return fai[value].values  
 
 
-
-# -----------------------------------------------------------
-# GLOBALS
-# -----------------------------------------------------------
 AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
 STATS_HEADER_1 = """
 ## The number of loci caught by each filter.

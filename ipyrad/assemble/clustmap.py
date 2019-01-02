@@ -17,8 +17,7 @@ import gzip
 import glob
 import time
 import shutil
-import logging
-import tempfile
+# import tempfile
 import warnings
 import subprocess as sps
 
@@ -26,8 +25,6 @@ import numpy as np
 import pysam
 import ipyrad as ip
 from .utils import IPyradError, IPyradWarningExit, bcomp, comp
-
-LOGGER = logging.getLogger(__name__)
 
 
 class Step3:
@@ -41,7 +38,7 @@ class Step3:
         self.maxindels = 8
         self.force = force
         self.ipyclient = ipyclient
-        self.gbs = bool("gbs" in self.data.paramsdict["datatype"])
+        self.gbs = bool("gbs" in self.data.params.datatype)
         self.samples = self.get_subsamples()
 
         # init funcs
@@ -53,10 +50,10 @@ class Step3:
         "Run the assembly functions for this step"
 
         ## paired-end data methods ------------------------------
-        if "pair" in self.data.paramsdict["datatype"]:
+        if "pair" in self.data.params.datatype:
 
             # DENOVO ----
-            if self.data.paramsdict["assembly_method"] == "denovo":
+            if self.data.params.assembly_method == "denovo":
                 self.remote_run(
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"),
@@ -82,7 +79,7 @@ class Step3:
                 self.remote_run_align_cleanup()
 
             # REFERENCE ----
-            elif self.data.paramsdict["assembly_method"] == "reference":
+            elif self.data.params.assembly_method == "reference":
                 self.remote_index_refs()
                 self.remote_run(
                     function=concat_multiple_edits,
@@ -126,7 +123,7 @@ class Step3:
                 )
 
             # DENOVO MINUS
-            elif self.data.paramsdict["assembly_method"] == "denovo-reference":
+            elif self.data.params.assembly_method == "denovo-reference":
                 raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
 
@@ -225,7 +222,7 @@ class Step3:
         ## single-end methods ------------------------------------
         else:
             # DENOVO
-            if self.data.paramsdict["assembly_method"] == "denovo":
+            if self.data.params.assembly_method == "denovo":
                 self.remote_run(
                     function=concat_multiple_edits,
                     printstr=("concatenating       ", "s3"),
@@ -241,7 +238,7 @@ class Step3:
                 self.remote_run_align_cleanup()
 
             # REFERENCE
-            elif self.data.paramsdict["assembly_method"] == "reference":
+            elif self.data.params.assembly_method == "reference":
                 self.remote_index_refs()
                 self.remote_run(
                     function=concat_multiple_edits,
@@ -267,7 +264,7 @@ class Step3:
                 )
 
             # DENOVO MINUS
-            elif self.data.paramsdict["assembly_method"] == "denovo-reference":
+            elif self.data.params.assembly_method == "denovo-reference":
                 raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
 
@@ -277,7 +274,6 @@ class Step3:
 
         self.remote_run_sample_cleanup()
         self.cleanup()
-        self.data.save()
 
 
     def get_subsamples(self):
@@ -332,10 +328,10 @@ class Step3:
     def setup_dirs(self):
         "setup directories for the tmp files and cluster/ref outputs"
         # make output folder for clusters
-        pdir = os.path.realpath(self.data.paramsdict["project_dir"])
+        pdir = os.path.realpath(self.data.params.project_dir)
         self.data.dirs.clusts = os.path.join(
             pdir, "{}_clust_{}"
-            .format(self.data.name, self.data.paramsdict["clust_threshold"]))
+            .format(self.data.name, self.data.params.clust_threshold))
         if not os.path.exists(self.data.dirs.clusts):
             os.mkdir(self.data.dirs.clusts)
 
@@ -348,7 +344,7 @@ class Step3:
             os.mkdir(self.data.tmpdir)
 
         # If ref mapping, init samples and make refmapping output directory
-        if self.data.paramsdict["assembly_method"] != "denovo":
+        if self.data.params.assembly_method != "denovo":
             self.data.dirs.refmapping = os.path.join(
                 pdir, "{}_refmapping".format(self.data.name))
             if not os.path.exists(self.data.dirs.refmapping):
@@ -649,7 +645,7 @@ def dereplicate(data, sample, nthreads):
 
     ## datatypes options
     strand = "plus"
-    if data.paramsdict["datatype"] is ('gbs' or '2brad'):
+    if data.params.datatype is ('gbs' or '2brad'):
         strand = "both"
 
     ## do dereplication with vsearch
@@ -664,13 +660,11 @@ def dereplicate(data, sample, nthreads):
         "--sizeout", 
         "--relabel_md5",
     ]
-    ip.logger.info("derep cmd %s", cmd)
 
     ## build PIPEd job
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc.communicate()[0]
     if proc.returncode:
-        ip.logger.error("error inside dereplicate %s", errmsg)
         raise IPyradWarningExit(errmsg)
 
 
@@ -739,10 +733,10 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
 
     ## get the maxn and minlen values
     try:
-        maxn = sum(data.paramsdict['max_low_qual_bases'])
+        maxn = sum(data.params.max_low_qual_bases)
     except TypeError:
-        maxn = data.paramsdict['max_low_qual_bases']
-    minlen = str(max(32, data.paramsdict["filter_min_trim_len"]))
+        maxn = data.params.max_low_qual_bases
+    minlen = str(max(32, data.params.filter_min_trim_len))
 
     # vsearch merge can now take gzipped files (v.2.8)
     cmd = [
@@ -762,7 +756,6 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--threads", "2",
         "--fastq_allowmergestagger",
     ]
-    LOGGER.debug("merge cmd: %s", " ".join(cmd))
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     res = proc.communicate()[0].decode()
     if proc.returncode:
@@ -880,7 +873,7 @@ def cluster(data, sample, nthreads, force):
     based on experience, but could be edited by users
     """
     # get dereplicated reads for denovo+reference or denovo-reference
-    if "reference" in data.paramsdict["assembly_method"]:
+    if "reference" in data.params.assembly_method:
         derephandle = os.path.join(
             data.tmpdir, 
             "{}_derep.fastq".format(sample.name))
@@ -920,11 +913,11 @@ def cluster(data, sample, nthreads, force):
     strand = "plus"
     cov = 0.75
     minsl = 0.5
-    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
+    if data.params.datatype in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.5
         minsl = 0.5
-    elif data.paramsdict["datatype"] == 'pairgbs':
+    elif data.params.datatype == 'pairgbs':
         strand = "both"
         cov = 0.75
         minsl = 0.75
@@ -939,7 +932,7 @@ def cluster(data, sample, nthreads, force):
            "-cluster_smallmem", derephandle,
            "-strand", strand,
            "-query_cov", str(cov),
-           "-id", str(data.paramsdict["clust_threshold"]),
+           "-id", str(data.params.clust_threshold),
            "-minsl", str(minsl),
            "-userout", uhandle,
            "-userfields", "query+target+id+gaps+qstrand+qcov",
@@ -953,13 +946,11 @@ def cluster(data, sample, nthreads, force):
            "-usersort"]
 
     ## run vsearch
-    ip.logger.debug("%s", cmd)
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res = proc.communicate()[0]
 
     # check for errors
     if proc.returncode:
-        ip.logger.error("error %s: %s", cmd, res)
         raise IPyradWarningExit("cmd {}: {}".format(cmd, res))
 
 
@@ -972,7 +963,7 @@ def build_clusters(data, sample, maxindels):
     """
 
     ## If reference assembly then here we're clustering the unmapped reads
-    if "reference" in data.paramsdict["assembly_method"]:
+    if "reference" in data.params.assembly_method:
         derepfile = os.path.join(
             data.tmpdir, sample.name + "-refmap_derep.fastq")
     else:
@@ -1052,11 +1043,9 @@ def build_clusters(data, sample, maxindels):
                 seq = comp(alldereps[hit])[::-1]
             else:
                 seq = alldereps[hit]
-            ## only save if not too many indels
+            # only save if not too many indels
             if int(ind) <= maxindels:
                 fseqs.append(">{};{}\n{}".format(hit, ori, seq))
-            else:
-                ip.logger.info("filtered by maxindels: %s %s", ind, seq)
 
     ## write whatever is left over to the clusts file
     if fseqs:
@@ -1105,19 +1094,15 @@ def muscle_chunker(data, sample):
     randomly distribute the clusters among the files. If assembly method is
     reference then this step is just a placeholder and nothing happens. 
     """
-    ## log our location for debugging
-    ip.logger.info("inside muscle_chunker")
 
     ## only chunk up denovo data, refdata has its own chunking method which 
     ## makes equal size chunks, instead of uneven chunks like in denovo
-    if data.paramsdict["assembly_method"] != "reference":
+    if data.params.assembly_method != "reference":
         ## get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name + ".clust.txt")
         with iter(open(clustfile, 'rt')) as clustio:
             nloci = sum(1 for i in clustio if "//" in i) // 2
-            #tclust = clustio.read().count("//")//2
             optim = (nloci // 20) + (nloci % 20)
-            ip.logger.info("optim for align chunks: %s", optim)
 
         ## write optim clusters to each tmp file
         clustio = open(clustfile, 'rt')
@@ -1159,7 +1144,6 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
                 raise IPyradError("no clusters in file: {}".format(handle))
 
     except (IOError, IPyradError):
-        LOGGER.debug("skipping empty chunk - {}".format(handle))
         return 0
 
     ## count discarded clusters for printing to stats later
@@ -1184,10 +1168,6 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
         outhandle = handle.rsplit(".", 1)[0] + ".aligned"
         with open(outhandle, 'wb') as outfile:
             outfile.write(str.encode("\n//\n//\n".join(refined) + "\n"))
-
-    ## remove the old tmp file
-    if not LOGGER.getEffectiveLevel() == 10:
-        os.remove(handle)
     return highindels
 
 
@@ -1200,7 +1180,6 @@ def reconcat(data, sample):
 
     ## sort by chunk number, cuts off last 8 =(aligned)
     chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
-    ip.logger.info("chunk %s", chunks)
 
     ## concatenate finished reads
     sample.files.clusters = os.path.join(
@@ -1307,9 +1286,9 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 
             # Malformed clust. Dictionary creation with only 1 element 
             except ValueError as inst:
-                ip.logger.debug(
-                    "Bad PE cluster - {}\nla1 - {}\nla2 - {}"
-                    .format(clust, lines1, lines2))
+                print("Bad PE cluster - {}\nla1 - {}\nla2 - {}"
+                      .format(clust, lines1, lines2)
+                      )
 
             ## Either reads are SE, or at least some pairs are merged.
             except IndexError:
@@ -1442,11 +1421,11 @@ def gbs_trim(align1):
 def index_ref_with_bwa(data):
     "Index the reference sequence, unless it already exists"
     # get ref file from params
-    refseq_file = data.paramsdict['reference_sequence']
+    refseq_file = data.param.reference_sequence
     index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
     if not os.path.exists(refseq_file):
         raise IPyradError(
-            REQUIRE_REFERENCE_PATH.format(data.paramsdict["assembly_method"]))
+            REQUIRE_REFERENCE_PATH.format(data.params.assembly_method))
 
     # If reference sequence already exists then bail out of this func
     if all([os.path.isfile(refseq_file + i) for i in index_files]):
@@ -1468,10 +1447,10 @@ def index_ref_with_bwa(data):
 def index_ref_with_sam(data):
     "Index ref for building scaffolds w/ index numbers in steps 5-6"
     # get ref file from params
-    refseq_file = data.paramsdict['reference_sequence']
+    refseq_file = data.params.reference_sequence
     if not os.path.exists(refseq_file):
         raise IPyradError(
-            REQUIRE_REFERENCE_PATH.format(data.paramsdict["assembly_method"]))
+            REQUIRE_REFERENCE_PATH.format(data.params.assembly_method))
 
     # If reference index exists then bail out unless force
     if os.path.exists(refseq_file + ".fai"):
@@ -1511,7 +1490,7 @@ def mapping_reads(data, sample, nthreads):
         "{}-unmapped.fastq".format(sample.name))
 
     # infiles: dereplicated read1 and read2 files
-    if "pair" not in data.paramsdict["datatype"]:
+    if "pair" not in data.params.datatype:
         infiles = [
             os.path.join(data.tmpdir, "{}_derep.fastq".format(sample.name))]
     else:
@@ -1553,7 +1532,7 @@ def mapping_reads(data, sample, nthreads):
         ip.bins.bwa, "mem",
         "-t", str(max(1, nthreads)),
         "-M",
-        data.paramsdict['reference_sequence'],
+        data.params.reference_sequence,
     ]
     cmd1 += infiles
 
@@ -1598,7 +1577,7 @@ def mapping_reads(data, sample, nthreads):
     # Insert additional arguments for paired data to the commands.
     # We assume Illumina paired end reads for the orientation
     # of mate pairs (orientation: ---> <----).
-    if 'pair' in data.paramsdict["datatype"]:
+    if 'pair' in data.params.datatype:
         # add samtools filter for only keep if both pairs hit
         # 0x1 - Read is paired
         # 0x2 - Each read properly aligned
@@ -1618,11 +1597,9 @@ def mapping_reads(data, sample, nthreads):
 
 
     # cmd2 writes to sname.unmapped.bam and fills pipe with mapped BAM data
-    LOGGER.debug(" ".join(cmd2))
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
 
     # cmd3 pulls mapped BAM from pipe and writes to sname.mapped-sorted.bam
-    LOGGER.debug(" ".join(cmd3))
     proc3 = sps.Popen(
         cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[0]
@@ -1631,7 +1608,6 @@ def mapping_reads(data, sample, nthreads):
     proc2.stdout.close()
 
     # cmd4 indexes the bam file
-    LOGGER.debug(" ".join(cmd4))
     proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
     error4 = proc4.communicate()[0]
     if proc4.returncode:
@@ -1640,7 +1616,6 @@ def mapping_reads(data, sample, nthreads):
     # Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
     # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which
     # will then need to be merged.
-    LOGGER.debug(" ".join(cmd5))
     proc5 = sps.Popen(cmd5, stderr=sps.STDOUT, stdout=sps.PIPE)
     error5 = proc5.communicate()[0]
     if proc5.returncode:
@@ -1716,7 +1691,6 @@ def bedtools_merge(data, sample):
         -i <input_bam>  :   specifies the input file to bed'ize
         -d <int>        :   For PE set max distance between reads
     """
-    #LOGGER.info("Entering bedtools_merge: %s", sample.name)
     mappedreads = os.path.join(
         data.dirs.refmapping,
         "{}-mapped-sorted.bam".format(sample.name))
@@ -1733,7 +1707,7 @@ def bedtools_merge(data, sample):
     # stairstep syndrome when a + and - read are both extending from
     # the same cutsite. Passing a negative number to `merge -d` gets this done.
     # +++ scrath the above, we now deal with step ladder data
-    if 'pair' in data.paramsdict["datatype"]:
+    if 'pair' in data.params.datatype:
         check_insert_size(data, sample)
         cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
         cmd2.insert(2, "-d")
@@ -1742,7 +1716,6 @@ def bedtools_merge(data, sample):
     #    cmd2.insert(2, "-d")
 
     ## pipe output from bamtobed into merge
-    LOGGER.info("stdv: bedtools merge cmds: %s %s", cmd1, cmd2)
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
     result = proc2.communicate()[0].decode()
@@ -1759,7 +1732,6 @@ def bedtools_merge(data, sample):
 
     # Report the number of regions we're returning
     nregions = len(result.strip().split("\n"))
-    LOGGER.info("bedtools_merge: Got # regions: %s", nregions)
     return result
 
 
@@ -1798,7 +1770,7 @@ def build_clusters_from_cigars(data, sample):
         rdict = {}
 
         # paired-end data cluster building
-        if "pair" in data.paramsdict["datatype"]:
+        if "pair" in data.params.datatype:
 
             # match paired reads together in a dictionary
             for read in reads:
@@ -2084,13 +2056,12 @@ def store_sample_stats(data, sample, maxlens, depths):
 
     else:
         # store which min was used to calculate hidepth here
-        sample.stats_dfs.s3["hidepth_min"] = (
-            data.paramsdict["mindepth_majrule"])
+        sample.stats_dfs.s3["hidepth_min"] = data.params.mindepth_majrule
 
         # If our longest sequence is longer than the current max_fragment_len
         # then update max_fragment_length. For assurance we require that
         # max len is 4 greater than maxlen, to allow for pair separators.
-        hidepths = depths >= data.paramsdict["mindepth_majrule"]
+        hidepths = depths >= data.params.mindepth_majrule
         maxlens = maxlens[hidepths]
 
         # Handle the case where there are no hidepth clusters
@@ -2102,8 +2073,8 @@ def store_sample_stats(data, sample, maxlens, depths):
             data._hackersonly["max_fragment_length"] = int(maxlen + 4)
 
         # make sense of stats
-        keepmj = depths[depths >= data.paramsdict["mindepth_majrule"]]
-        keepstat = depths[depths >= data.paramsdict["mindepth_statistical"]]
+        keepmj = depths[depths >= data.params.mindepth_majrule]
+        keepstat = depths[depths >= data.params.mindepth_statistical]
 
         # sample summary stat assignments
         sample.stats["state"] = 3
@@ -2137,14 +2108,14 @@ def store_sample_stats(data, sample, maxlens, depths):
     # If PE, samtools reports the _actual_ number of reads mapped, both
     # R1 and R2, so here if PE divide the results by 2 to stay consistent
     # with how we've been reporting R1 and R2 as one "read pair"
-    if "pair" in data.paramsdict["datatype"]:
+    if "pair" in data.params.datatype:
         sample.stats["refseq_mapped_reads"] = sum(depths)
         sample.stats["refseq_unmapped_reads"] = int(
             sample.stats.reads_passed_filter - \
             sample.stats["refseq_mapped_reads"])
 
     # cleanup
-    if not data.paramsdict["assembly_method"] == "denovo":    
+    if not data.params.assembly_method == "denovo":    
         unmapped = os.path.join(
             data.dirs.refmapping, 
             sample.name + "-unmapped.bam")
@@ -2156,20 +2127,20 @@ def store_sample_stats(data, sample, maxlens, depths):
                 os.remove(rfile)
 
     # if loglevel==DEBUG
-    log_level = ip.logger.getEffectiveLevel()
-    if log_level != 10:
+    # log_level = ip.logger.getEffectiveLevel()
+    # if log_level != 10:
         ## Clean up loose files only if not in DEBUG
         ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
-        derepfile = os.path.join(data.dirs.edits, sample.name + "_derep.fastq")
-        mergefile = os.path.join(data.dirs.edits, sample.name + "_merged_.fastq")
-        uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
-        usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
-        hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-        clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
+    derepfile = os.path.join(data.dirs.edits, sample.name + "_derep.fastq")
+    mergefile = os.path.join(data.dirs.edits, sample.name + "_merged_.fastq")
+    uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
+    usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
+    hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
+    clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
 
-        for rfile in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
-            if os.path.exists(rfile):
-                os.remove(rfile)
+    for rfile in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
+        if os.path.exists(rfile):
+            os.remove(rfile)
 
 
 def declone_3rad(data, sample):
@@ -2180,69 +2151,8 @@ def declone_3rad(data, sample):
     off the adapter, and push it down the pipeline. This will
     remove all identical seqs with identical random i5 adapters.
     """
-    ip.logger.info("Entering declone_3rad - {}".format(sample.name))
-
-    ## Append i5 adapter to the head of each read. Merged file is input, and
-    ## still has fq qual score so also have to append several qscores for the
-    ## adapter bases. Open the merge file, get quarts, go through each read
-    ## and append the necessary stuff.
-    adapter_seqs_file = tempfile.NamedTemporaryFile(
-        mode='wb',
-        delete=False,
-        dir=data.dirs.edits,
-        suffix="_append_adapters_.fastq"
-        )
 
     try:
-        with open(sample.files.edits[0][0]) as infile:
-            quarts = izip(*[iter(infile)] * 4)
-
-            ## a list to store until writing
-            writing = []
-            counts = 0
-
-            while 1:
-                try:
-                    read = next(quarts)
-                except StopIteration:
-                    break
-
-                ## Split on +, get [1], split on "_" (can be either _r1 or
-                ## _m1 if merged reads) and get [0] for the i5
-                ## prepend "EEEEEEEE" as qscore for the adapters
-                i5 = read[0].split("+")[1].split("_")[0]
-
-                ## If any non ACGT in the i5 then drop this sequence
-                if 'N' in i5:
-                    continue
-                writing.append("\n".join([
-                    read[0].strip(),
-                    i5 + read[1].strip(),
-                    read[2].strip(),
-                    "E" * 8 + read[3].strip()]
-                ))
-
-                ## Write the data in chunks
-                counts += 1
-                if not counts % 1000:
-                    adapter_seqs_file.write("\n".join(writing)+"\n")
-                    writing = []
-            if writing:
-                adapter_seqs_file.write("\n".join(writing))
-                adapter_seqs_file.close()
-
-        tmp_outfile = tempfile.NamedTemporaryFile(mode='wb',
-                                        delete=False,
-                                        dir=data.dirs.edits,
-                                        suffix="_decloned_w_adapters_.fastq")
-
-        ## Close the tmp file bcz vsearch will write to it by name, then
-        ## we will want to reopen it to read from it.
-        tmp_outfile.close()
-        ## Derep the data (adapters+seq)
-        derep_and_sort(data, adapter_seqs_file.name,
-                       os.path.join(data.dirs.edits, tmp_outfile.name), 2)
-
         ## Remove adapters from head of sequence and write out
         ## tmp_outfile is now the input file for the next step
         ## first vsearch derep discards the qscore so we iterate
@@ -2279,9 +2189,6 @@ def declone_3rad(data, sample):
                     outfile.write("\n".join(writing))
                     outfile.close()
 
-        ip.logger.info("Removed pcr duplicates from {} - {}"
-                    .format(sample.name, counts - counts2))
-
     except Exception as inst:
         raise IPyradError(
             "    Caught error while decloning 3rad data - {}".format(inst))
@@ -2305,7 +2212,8 @@ NO_ZIP_BINS = """
   your file is probably gzip compressed. The simplest fix is to gunzip
   your reference sequence by running this command:
 
-      gunzip {}
+ 
+ \     gunzip {}
 
   Then edit your params file to remove the `.gz` from the end of the
   path to your reference sequence file and rerun step 3 with the `-f` flag.

@@ -37,8 +37,8 @@ class Step1:
         self.ipyclient = ipyclient
 
         # check input data files
-        self.sfiles = self.data.paramsdict["sorted_fastq_path"]
-        self.rfiles = self.data.paramsdict["raw_fastq_path"]
+        self.sfiles = self.data.params.sorted_fastq_path
+        self.rfiles = self.data.params.raw_fastq_path
         self.select_method()
         self.setup_dirs()
 
@@ -54,7 +54,7 @@ class Step1:
         "create output directory, tmp directory."
         # assign fastq dir
         self.data.dirs.fastqs = os.path.join(
-            self.data.paramsdict["project_dir"], 
+            self.data.params.project_dir,
             self.data.name + "_fastqs")       
         self.data.dirs.fastqs = os.path.realpath(self.data.dirs.fastqs)
 
@@ -70,8 +70,8 @@ class Step1:
                     format(self.data.dirs.fastqs))
 
         # ensure project dir exists
-        if not os.path.exists(self.data.paramsdict["project_dir"]):
-            os.mkdir(self.data.paramsdict["project_dir"])
+        if not os.path.exists(self.data.params.project_dir):
+            os.mkdir(self.data.params.project_dir)
 
         # ensure fastq dir exists
         if not os.path.exists(self.data.dirs.fastqs):
@@ -89,7 +89,7 @@ class Step1:
             raise IPyradError(NO_SEQ_PATH_FOUND)
 
         # print headers
-        if self.data._headers:
+        if self.data._cli:
             if self.sfiles:
                 self.data._print(
                     "\n{}Step 1: Loading sorted fastq data to Samples"
@@ -148,10 +148,10 @@ class FileLinker:
         self.fastqs = [i for i in self.fastqs if i.split(".")[-1] in endings]
         if not self.fastqs:
             raise IPyradError(NO_FILES_FOUND_PAIRS
-                .format(self.data.paramsdict["sorted_fastq_path"]))
+                .format(self.data.params.sorted_fastq_path))
 
         # link pairs into tuples
-        if 'pair' in self.data.paramsdict["datatype"]:
+        if 'pair' in self.data.params.datatype:
             # check that names fit the paired naming convention
             # trying to support flexible types (_R2_, _2.fastq)
             r1_try1 = [i for i in self.fastqs if "_R1_" in i]
@@ -247,9 +247,9 @@ class FileLinker:
         # print if data were linked
         if createdinc:
             # double for paired data
-            if 'pair' in self.data.paramsdict["datatype"]:
+            if 'pair' in self.data.params.datatype:
                 createdinc = createdinc * 2
-            if self.data._headers:
+            if self.data._cli:
                 self.data._print("{}{} fastq files loaded to {} Samples."
                     .format(self.data._spacer, createdinc, len(self.samples)))
 
@@ -258,7 +258,7 @@ class FileLinker:
         # this file into our project dir in the case of linked_fastqs.
         self.data.stats_dfs.s1 = self.data._build_stat("s1")
         self.data.stats_files.s1 = os.path.join(
-            self.data.paramsdict["project_dir"],
+            self.data.params.project_dir,
             self.data.name + '_s1_demultiplex_stats.txt')
         with open(self.data.stats_files.s1, 'w') as outfile:
             (self.data.stats_dfs.s1
@@ -320,13 +320,13 @@ class Demultiplexer:
         # check for data using glob for fuzzy matching
         if not self.fastqs:
             raise IPyradError(
-                NO_RAWS.format(self.data.paramsdict["raw_fastq_path"]))
+                NO_RAWS.format(self.data.params.raw_fastq_path))
 
         # find longest barcode
-        if not os.path.exists(self.data.paramsdict["barcodes_path"]):
+        if not os.path.exists(self.data.params.barcodes_path):
             raise IPyradError(
                 "Barcodes file not found. You entered: '{}'".format(
-                    self.data.paramsdict["barcodes_path"]))
+                    self.data.params.barcodes_path))
 
         # Handle 3rad multi-barcodes. Gets len of the first one. 
         blens = [len(i.split("+")[0]) for i in self.data.barcodes.values()]
@@ -336,13 +336,13 @@ class Demultiplexer:
             self.longbar = (max(blens), 'diff')
 
         # For 3rad we need to add the length info for barcodes_R2
-        if "3rad" in self.data.paramsdict["datatype"]:
+        if "3rad" in self.data.params.datatype:
             blens = [
                 len(i.split("+")[1]) for i in self.data.barcodes.values()]
             self.longbar = (self.longbar[0], self.longbar[1], max(blens))
 
         # gather raw sequence filenames (people want this to be flexible ...)
-        if 'pair' in self.data.paramsdict["datatype"]:
+        if 'pair' in self.data.params.datatype:
             firsts = [i for i in self.fastqs if "_R1_" in i]
             if not firsts:
                 raise IPyradError(
@@ -359,7 +359,8 @@ class Demultiplexer:
         # (TWGC, ) ==> [TAGC, TTGC]
         # (TWGC, AATT) ==> [TAGC, TTGC]
         self.cutters = [
-            ambigcutters(i) for i in self.data.paramsdict["restriction_overhang"]]
+            ambigcutters(i) for i in self.data.params.restriction_overhang
+        ]
         assert self.cutters, "Must enter a restriction_overhang for demultiplexing."
 
         # get matchdict
@@ -395,7 +396,7 @@ class Demultiplexer:
         start = time.time()
         done = 0
         njobs = (
-            32 * len(self.ftuples) if "pair" in self.data.paramsdict["datatype"] 
+            32 * len(self.ftuples) if "pair" in self.data.params.datatype
             else 16 * len(self.ftuples)
         )
         rasyncs = {}
@@ -568,7 +569,7 @@ class Demultiplexer:
                 .format(fname, dat[0], dat[1], dat[2])
             )
             # repeat for pairfile
-            if 'pair' in self.data.paramsdict["datatype"]:
+            if 'pair' in self.data.params.datatype:
                 fname = fname.replace("_R1_", "_R2_")
                 outfile.write(
                     "{:<35}  {:>13}{:>13}{:>13}\n"
@@ -652,7 +653,7 @@ class Demultiplexer:
                 sample.barcode = self.data.barcodes[sname]
 
             # file names        
-            if 'pair' in self.data.paramsdict["datatype"]:
+            if 'pair' in self.data.params.datatype:
                 sample.files.fastqs = [(
                     os.path.join(
                         self.data.dirs.fastqs, sname + "_R1_.fastq.gz"),
@@ -746,7 +747,7 @@ class BarMatch:
 
     def get_matching_function(self):
         if self.longbar[1] == 'same':
-            if self.data.paramsdict["datatype"] == '2brad':
+            if self.data.params.datatype == '2brad':
                 return getbarcode1
             else:
                 return getbarcode2
@@ -798,7 +799,7 @@ class BarMatch:
                 break
         
             # use barcode finding function to separate read from barcode
-            if '3rad' not in self.data.paramsdict["datatype"]:
+            if '3rad' not in self.data.params.datatype:
                 # Parse barcode. Uses the parsing function selected above.
                 barcode = self.demux(self.cutters, read1, self.longbar)
             else:
@@ -833,13 +834,13 @@ class BarMatch:
         
                 # trim off barcode
                 lenbar = len(barcode)
-                if '3rad' in self.data.paramsdict["datatype"]:
+                if '3rad' in self.data.params.datatype:
                     ## Iff 3rad trim the len of the first barcode
                     lenbar = len(barcode1)
         
                 # for 2brad we trim the barcode AND the synthetic overhang
                 # The `+1` is because it trims the newline
-                if self.data.paramsdict["datatype"] == '2brad':
+                if self.data.params.datatype == '2brad':
                     overlen = len(self.cutters[0][0]) + lenbar + 1
                     read1[1] = read1[1][:-overlen] + "\n"
                     read1[3] = read1[3][:-overlen] + "\n"
@@ -849,14 +850,14 @@ class BarMatch:
         
                 # Trim barcode off R2 and append. Only 3rad datatype
                 # pays the cpu cost of splitting R2
-                if '3rad' in self.data.paramsdict["datatype"]:
+                if '3rad' in self.data.params.datatype:
                     read2 = list(read2)
                     read2[1] = read2[1][len(barcode2):]
                     read2[3] = read2[3][len(barcode2):]
         
                 # append to sorted reads list
                 self.read1s[sname_match].append(b"".join(read1).decode())
-                if 'pair' in self.data.paramsdict["datatype"]:
+                if 'pair' in self.data.params.datatype:
                     self.read2s[sname_match].append(b"".join(read2).decode()) 
 
             else:
@@ -869,7 +870,7 @@ class BarMatch:
                 
                 # write reads to file
                 writetofile(self.data, self.read1s, 1, self.epid)
-                if 'pair' in self.data.paramsdict["datatype"]:
+                if 'pair' in self.data.params.datatype:
                     writetofile(self.data, self.read2s, 2, self.epid)
                 
                 # clear out lits of sorted reads
@@ -881,7 +882,7 @@ class BarMatch:
 
         ## write the remaining reads to file
         writetofile(self.data, self.read1s, 1, self.epid)
-        if 'pair' in self.data.paramsdict["datatype"]:
+        if 'pair' in self.data.params.datatype:
             writetofile(self.data, self.read2s, 2, self.epid)
 
         ## return stats in saved pickle b/c return_queue is too small
@@ -1094,7 +1095,7 @@ def collate_files(data, sname, tmp1s, tmp2s):
     for tmpfile in tmp1s:
         os.remove(tmpfile)
 
-    if 'pair' in data.paramsdict["datatype"]:
+    if 'pair' in data.params.datatype:
         ## out handle
         out2 = os.path.join(data.dirs.fastqs, "{}_R2_.fastq.gz".format(sname))
         out = io.BufferedWriter(gzip.open(out2, 'w'))
@@ -1137,7 +1138,7 @@ def inverse_barcodes(data):
         matchdict[barc] = sname
         poss.add(barc)
 
-        if data.paramsdict["max_barcode_mismatch"] > 0:
+        if data.params.max_barcode_mismatch:
             ## get 1-base diffs
             for idx1, base in enumerate(barc):
                 diffs = bases.difference(base)
@@ -1157,11 +1158,11 @@ def inverse_barcodes(data):
             then lower the value of max_barcode_mismatch and rerun step 1\n"""
             .format(sname, barc, 
                 matchdict[tbar1], data.barcodes[matchdict[tbar1]],
-                data.paramsdict["max_barcode_mismatch"]))
+                data.params.max_barcode_mismatch))
 
                 ## if allowing two base difference things get big
                 ## for each modified bar, allow one modification to other bases
-                if data.paramsdict["max_barcode_mismatch"] > 1:
+                if data.params.max_barcode_mismatch > 1:
                     for idx2, _ in enumerate(tbar1):
                         ## skip the base that is already modified
                         if idx2 != idx1:
@@ -1181,7 +1182,7 @@ def inverse_barcodes(data):
              then lower the value of max_barcode_mismatch and rerun step 1\n"""
              .format(sname, barc, 
                      matchdict[tbar2], data.barcodes[matchdict[tbar2]],
-                     data.paramsdict["max_barcode_mismatch"]))
+                     data.params.max_barcode_mismatch))
     return matchdict
 
 
@@ -1194,7 +1195,8 @@ def estimate_nreads(data, testfile):
     ## count the len of one file and assume all others are similar len
     insize = os.path.getsize(testfile)
     tmp_file_name = os.path.join(
-        data.paramsdict["project_dir"], "tmp-step1-count.fq")
+        data.params.project_dir, 
+        "tmp-step1-count.fq")
 
     if testfile.endswith(".gz"):
         infile = gzip.open(testfile)
@@ -1335,7 +1337,7 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
     chunks1 = sorted(glob.glob(chunk1 + "*"))
 
     # repeat for paired reads
-    if "pair" in data.paramsdict["datatype"]:
+    if "pair" in data.params.datatype:
         proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
         proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
         res = proc4.communicate()[0]
@@ -1424,7 +1426,7 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
     
         barcode = ""
         ## Get barcode_R2 and check for matching sample name
-        if '3rad' in data.paramsdict["datatype"]:
+        if '3rad' in data.params.datatype:
             ## Here we're just reusing the findbcode function
             ## for R2, and reconfiguring the longbar tuple to have the
             ## maxlen for the R2 barcode
@@ -1456,11 +1458,11 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
     
             ## trim off barcode
             lenbar = len(barcode)
-            if '3rad' in data.paramsdict["datatype"]:
+            if '3rad' in data.params.datatype:
                 ## Iff 3rad trim the len of the first barcode
                 lenbar = len(barcode1)
     
-            if data.paramsdict["datatype"] == '2brad':
+            if data.params.datatype == '2brad':
                 overlen = len(cutters[0][0]) + lenbar + 1
                 read1[1] = read1[1][:-overlen] + "\n"
                 read1[3] = read1[3][:-overlen] + "\n"
@@ -1470,14 +1472,14 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
     
             ## Trim barcode off R2 and append. Only 3rad datatype
             ## pays the cpu cost of splitting R2
-            if '3rad' in data.paramsdict["datatype"]:
+            if '3rad' in data.params.datatype:
                 read2 = list(read2)
                 read2[1] = read2[1][len(barcode2):]
                 read2[3] = read2[3][len(barcode2):]
     
             ## append to dsort
             dsort1[sname_match].append("".join(read1))
-            if 'pair' in data.paramsdict["datatype"]:
+            if 'pair' in data.params.datatype:
                 dsort2[sname_match].append("".join(read2))
 
         else:
@@ -1492,7 +1494,7 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
         if not filestat[0] % waitchunk:
             ## write the remaining reads to file"
             writetofile(data, dsort1, 1, epid)
-            if 'pair' in data.paramsdict["datatype"]:
+            if 'pair' in data.params.datatype:
                 writetofile(data, dsort2, 2, epid)
             ## clear out dsorts
             for sample in data.barcodes:
@@ -1510,7 +1512,7 @@ def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
 
     ## write the remaining reads to file
     writetofile(data, dsort1, 1, epid)
-    if 'pair' in data.paramsdict["datatype"]:
+    if 'pair' in data.params.datatype:
         writetofile(data, dsort2, 2, epid)
 
     ## return stats in saved pickle b/c return_queue is too small

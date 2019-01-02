@@ -32,7 +32,7 @@ class Step6:
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.randomseed = int(self.data._hackersonly["random_seed"])
-        self.isref = bool('ref' in self.data.paramsdict["assembly_method"])
+        self.isref = bool('ref' in self.data.params.assembly_method)
         self.force = force
         self.ipyclient = ipyclient
         self.samples = self.get_subsamples()
@@ -48,7 +48,7 @@ class Step6:
     def setup_dirs(self, force=False):
         "set up across and tmpalign dirs and init h5 database file"
         self.data.dirs.across = os.path.realpath(os.path.join(
-            self.data.paramsdict["project_dir"],
+            self.data.params.project_dir,
             "{}_across".format(self.data.name)))
         self.data.tmpdir = os.path.join(
             self.data.dirs.across,
@@ -203,7 +203,7 @@ class Step6:
     def run(self):
 
         # DENOVO
-        if self.data.paramsdict["assembly_method"] == "denovo":
+        if self.data.params.assembly_method == "denovo":
 
             # prepare clustering inputs for hierarchical clustering
             self.remote_build_concats_tier1()
@@ -231,7 +231,7 @@ class Step6:
             # concat aligned files
             self.concat_alignments()
 
-        elif self.data.paramsdict["assembly_method"] == "reference":
+        elif self.data.params.assembly_method == "reference":
 
             # prepare bamfiles (merge and sort)
             self.remote_concat_bams()
@@ -691,7 +691,7 @@ def build_ref_clusters(data, idx, iregion):
     faidict = chroms2ints(data, False)
 
     # prepare i/o for pysam reference indexed
-    reffai = FastaFile(data.paramsdict["reference_sequence"])
+    reffai = FastaFile(data.params.reference_sequence)
 
     # store path to cluster bit
     outbit = os.path.join(data.tmpdir, "aligned_{}.fa".format(idx))
@@ -924,10 +924,10 @@ def cluster(data, jobid, nthreads, print_progress=False):
     ## (too low of cov values yield too many poor alignments)
     strand = "plus"
     cov = 0.75         # 0.90
-    if data.paramsdict["datatype"] in ["gbs", "2brad"]:
+    if data.params.datatype in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.60
-    elif data.paramsdict["datatype"] == "pairgbs":
+    elif data.params.datatype == "pairgbs":
         strand = "both"
         cov = 0.75     # 0.90
 
@@ -936,7 +936,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
            "-strand", strand,
            "-query_cov", str(cov),
            "-minsl", str(0.5),
-           "-id", str(data.paramsdict["clust_threshold"]),
+           "-id", str(data.params.clust_threshold),
            "-userout", uhaplos,
            "-notmatched", hhaplos,
            "-userfields", "query+target+qstrand",

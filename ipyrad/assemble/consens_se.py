@@ -43,7 +43,7 @@ class Step5:
         self.data = data
         self.force = force
         self.samples = self.get_subsamples()
-        self.isref = bool("reference" in data.paramsdict["assembly_method"])
+        self.isref = bool("reference" in data.params.assembly_method)
         self.ipyclient = ipyclient
         self.lbview = ipyclient.load_balanced_view()
         self.setup_dirs()
@@ -102,7 +102,7 @@ class Step5:
                 sample.stats.hetero_est = 0.001
                 sample.stats.error_est = 0.0001
 
-        if self.data._headers:
+        if self.data._cli:
             print(u"  Mean error  [{:.5f} sd={:.5f}]".format(
                 self.data.stats.error_est.mean(),
                 self.data.stats.error_est.std(),
@@ -423,12 +423,12 @@ class Processor:
         self.este = self.data.stats.error_est.mean()
         self.esth = self.data.stats.hetero_est.mean()
         self.maxlen = self.data._hackersonly["max_fragment_length"]
-        if 'pair' in self.data.paramsdict["datatype"]:
-            self.maxhet = sum(self.data.paramsdict["max_Hs_consens"])
-            self.maxn = sum(self.data.paramsdict["max_Ns_consens"])
+        if 'pair' in self.data.params.datatype:
+            self.maxhet = sum(self.data.params.max_Hs_consens)
+            self.maxn = sum(self.data.params.max_Ns_consens)
         else:
-            self.maxhet = self.data.paramsdict["max_Hs_consens"][0]
-            self.maxn = self.data.paramsdict["max_Ns_consens"][0]
+            self.maxhet = self.data.params.max_Hs_consens[0]
+            self.maxn = self.data.params.max_Ns_consens[0]
         # not enforced for ref
         if self.isref:
             self.maxn = int(1e6)
@@ -462,7 +462,7 @@ class Processor:
         # if reference-mapped then parse the fai to get index number of chroms
         if self.isref:
             fai = pd.read_csv(
-                self.data.paramsdict["reference_sequence"] + ".fai",
+                self.data.params.reference_sequence + ".fai",
                 names=['scaffold', 'size', 'sumsize', 'a', 'b'],
                 sep="\t")
             self.faidict = {j: i for i, j in enumerate(fai.scaffold)}
@@ -533,8 +533,8 @@ class Processor:
         # get unphased consens sequence from arrayed
         self.consens = base_caller(
             self.arrayed, 
-            self.data.paramsdict["mindepth_majrule"], 
-            self.data.paramsdict["mindepth_statistical"],
+            self.data.params.mindepth_majrule, 
+            self.data.params.mindepth_statistical,
             self.esth, 
             self.este,
         )
@@ -599,15 +599,8 @@ class Processor:
                 try:
                     self.consens = storealleles(self.consens, self.hidx, alleles)
                 except (IndexError, KeyError):
-                    # the H sites do not form good alleles
-                    ip.logger.info("failed at phasing loc, skipping")
-                    ip.logger.info("""
-                        consens %s
-                        hidx %s
-                        alleles %s
-                        """, self.consens, self.hidx, alleles)
-                    # todo return phase or no-phase and store for later
-                    # ...
+                    pass
+
 
     def store_data(self):
         # current counter
@@ -807,7 +800,7 @@ def concat_reference_consens(data, sample):
     with open(samfile, 'w') as outf:
 
         # parse fai file for writing headers
-        fai = "{}.fai".format(data.paramsdict["reference_sequence"])
+        fai = "{}.fai".format(data.params.reference_sequence)
         fad = pd.read_csv(fai, sep="\t", names=["SN", "LN", "POS", "N1", "N2"])
         headers = ["@HD\tVN:1.0\tSO:coordinate"]
         headers += [
@@ -1220,8 +1213,9 @@ def removerepeats(consens, arrayed):
 
 def nfilter1(data, reps):
     "applies read depths filter"
-    if sum(reps) >= data.paramsdict["mindepth_majrule"] and \
-        sum(reps) <= data.paramsdict["maxdepth"]:
+    bool1 = sum(reps) >= data.params.mindepth_majrule
+    bool2 = sum(reps) <= data.params.maxdepth
+    if bool1 & bool2:       
         return 1
     return 0
 
@@ -1288,13 +1282,8 @@ def nfilter4(consens, hidx, arrayed):
         try:
             consens = storealleles(consens, hidx, alleles)
         except (IndexError, KeyError):
-            ## the H sites do not form good alleles
-            ip.logger.info("failed at phasing loc, skipping")
-            ip.logger.info("""
-    consens %s
-    hidx %s
-    alleles %s
-                """, consens, hidx, alleles)
+            pass
+
         return consens, nalleles
 
     ## just return the info for later filtering

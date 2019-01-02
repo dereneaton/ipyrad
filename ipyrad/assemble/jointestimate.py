@@ -32,7 +32,7 @@ class Step4:
         self.data = data
         self.force = force
         self.ipyclient = ipyclient
-        self.haploid = bool(data.paramsdict["max_alleles_consens"] == 1)
+        self.haploid = bool(data.params.max_alleles_consens == 1)
         if self.haploid:
             print("Running haploid inference (infer E with H fixed to 0)")
         self.samples = self.get_subsamples()
@@ -91,7 +91,6 @@ class Step4:
         "call the remote functions"
         self.remote_run_optim()
         self.cleanup()
-        self.data.save()
 
 
     def remote_run_optim(self):
@@ -267,8 +266,8 @@ def recal_hidepth(data, sample):
     recalculated. Check and recalculate if necessary.
     """
     # the minnest depth
-    majrdepth = data.paramsdict["mindepth_majrule"]
-    statdepth = data.paramsdict["mindepth_statistical"]
+    majrdepth = data.params.mindepth_majrule
+    statdepth = data.params.mindepth_statistical
 
     # if nothing changes return existing maxlen value
     maxlen = data._hackersonly["max_fragment_length"]
@@ -294,7 +293,6 @@ def recal_hidepth(data, sample):
         raise IPyradError(
             "No clusts with depth sufficient for statistical basecalling.")
 
-    # LOGGER.info("%s %s %s", maxlens.shape, maxlens.mean(), maxlens.std())
     maxlens = maxlens[hidepths]
     maxlen = int(maxlens.mean() + (2. * maxlens.std()))
     return keepmj.shape[0], maxlen, keepst.shape[0], statlen
@@ -324,8 +322,8 @@ def stackarray(data, sample):
     # don't use sequence edges / restriction overhangs
     cutlens = [None, None]
     try:
-        cutlens[0] = len(data.paramsdict["restriction_overhang"][0])
-        cutlens[1] = maxlen - len(data.paramsdict["restriction_overhang"][1])
+        cutlens[0] = len(data.params.restriction_overhang[0])
+        cutlens[1] = maxlen - len(data.params.restriction_overhang[1])
     except TypeError:
         pass
 
@@ -353,7 +351,7 @@ def stackarray(data, sample):
             ])
 
             ## enforce minimum depth for estimates
-            if arrayed.shape[0] >= data.paramsdict["mindepth_statistical"]:
+            if arrayed.shape[0] >= data.params.mindepth_statistical:
                 # remove edge columns and select only the first 500
                 # derep reads, just like in step 5
                 arrayed = arrayed[:500, cutlens[0]:cutlens[1]]
@@ -416,7 +414,7 @@ def optim(data, sample):
         del tstack
 
         ## if data are haploid fix H to 0
-        if int(data.paramsdict["max_alleles_consens"]) == 1:
+        if int(data.params.max_alleles_consens) == 1:
             pstart = np.array([0.001], dtype=np.float64)
             hetero = 0.
             errors = scipy.optimize.fmin(
@@ -443,8 +441,8 @@ def optim(data, sample):
         ## have depth sufficient for statistical basecalling. In this case
         ## we just set the default hetero and errors values to 0.01/0.001
         ## which is the default.
-        ip.logger.debug(
-            "Found sample with no clusters hidepth - {}".format(sample.name))
+        # ip.logger.debug(
+            # "Found sample with no clusters hidepth - {}".format(sample.name))
         pass
 
     return hetero, errors, success
