@@ -662,7 +662,7 @@ class Assembly(object):
             print("warning: error during shutdown:\n{}".format(inst2))
 
 
-    def run(self, steps=0, force=False, ipyclient=None, quiet=False, show_cluster=False):
+    def run(self, steps=None, force=False, ipyclient=None, quiet=False, show_cluster=False):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -684,9 +684,12 @@ class Assembly(object):
             ipyclient = self._get_parallel(ipyclient, show_cluster)
 
             # get the list of steps to run
-            if isinstance(steps, int):
-                steps = str(steps)
-            steps = sorted(list(steps))
+            if steps:
+                if isinstance(steps, int):
+                    steps = str(steps)
+                steps = sorted(list(steps))
+            else:
+                print("No assembly steps selected (e.g., '123')")
 
             # function dictionary
             stepdict = {
@@ -698,11 +701,7 @@ class Assembly(object):
                 "6": ip.assemble.clustmap_across.Step6, 
                 "7": ip.assemble.write_outputs.Step7,
             }
-
-            # tell user if they forgot to enter steps
-            if not steps:
-                print("No assembly steps selected (e.g., '123')")
-
+              
             # run step fuctions and save and clear memory after each
             for step in steps:
                 stepdict[step](self, force, ipyclient).run()
@@ -988,7 +987,7 @@ class Params:
             fullbar = fullbar[0]
             if not os.path.exists(fullbar):
                 raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
-                                
+
             else:
                 self._barcodes_path = fullbar
                 self._data._link_barcodes()
