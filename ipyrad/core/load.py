@@ -19,7 +19,6 @@ def load_json(path, quiet=False, cli=False):
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
-
     # load the JSON string and try with name+.json
     checkfor = [path + ".json", path]
     for inpath in checkfor:
@@ -70,16 +69,24 @@ def load_json(path, quiet=False, cli=False):
 
     # Import the hackersonly dict. In this case we don't have the nice
     # set_params so we're shooting from the hip to reset the values
-    try:
-        oldhackersonly = fullj["assembly"].pop("_hackersonly")
-        for param, val in oldhackersonly.items():
-            if val is None:
-                null._hackersonly[param] = None
-            else:
-                null._hackersonly[param] = val
 
-    except Exception as inst:
-        pass
+    # legacy support for private hackers
+    try:
+        oldhackersonly = fullj["assembly"].pop("hackersonly")
+    except KeyError:
+        oldhackersonly = fullj["assembly"].pop("_hackersonly")
+
+    # update new hackers with old values
+    null.hackersonly._data.update(oldhackersonly)
+
+
+    # for param, val in oldhackersonly.items():
+    #     if val is None:
+    #         null.hackersonly.param = None
+    #     else:
+    #         null.hackersonly.param = val
+    # except Exception as inst:
+    # pass
     #     LOGGER.warning("""
     # Load assembly error resetting hackersonly dict element. We will just use
     # the default value in the current assembly.""")
@@ -216,7 +223,6 @@ def load_json(path, quiet=False, cli=False):
     null.stats_dfs = ObjDict(null.stats_dfs)    
     null.populations = ObjDict(null.populations)
     null.outfiles = ObjDict(null.outfiles)
-
     return null
 
 

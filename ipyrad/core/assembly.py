@@ -21,6 +21,20 @@ from ipyrad.assemble.utils import IPyradParamsError, IPyradError
 from ipyrad.assemble.utils import ObjDict, IPyradWarningExit
 from ipyrad.core.paramsinfo import paraminfo, paramname
 
+# check hard installs
+try:
+    import pysam
+except ImportError:
+    print("""
+You must first install 'pysam' with either conda or pip, e.g.,: 
+
+    conda install bioconda::pysam
+
+    or 
+
+    pip install pysam
+""")
+
 
 # GLOBALS
 OUTPUT_FORMATS = {
@@ -122,7 +136,7 @@ class Assembly(object):
         self.populations = {}  # OrderedDict()
 
         # multiplex files linked
-        self.barcodes = ObjDict()
+        self.barcodes = {}
 
         # outfiles locations
         self.outfiles = ObjDict()
@@ -134,6 +148,7 @@ class Assembly(object):
 
         ## the default params dict
         self.params = Params(self)
+        self.hackersonly = Hackers()
 
         ## Store data directories for this Assembly. Init with default project
         self.dirs = ObjDict({
@@ -146,25 +161,6 @@ class Assembly(object):
             "outfiles": "",
         })
 
-        ## Default hackers only parameters dictionary
-        self._hackersonly = OrderedDict([
-            ("random_seed", 42),
-            ("max_fragment_length", 50),
-            ("max_inner_mate_distance", 60),
-            ("p5_adapter", "AGATCGGAAGAGC"),
-            ("p3_adapter", "AGATCGGAAGAGC"),
-            ("p3_adapters_extra", []),
-            ("p5_adapters_extra", []),
-            ("preview_step1", 4000000),
-            ("preview_step2", 100000),
-            ("output_loci_name_buffer", 5),
-            ("query_cov", None),
-            ("smalt_index_wordlen", 8),
-            ("aligner", "bwa"),
-            ("min_SE_refmap_overlap", 10),
-            ("refmap_merge_PE", True),
-            ("bwa_args", "")
-        ])
 
     def __str__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
@@ -278,66 +274,54 @@ class Assembly(object):
 
     def _link_barcodes(self):
         """
-        Private function. Links Sample barcodes in a dictionary as
-        [Assembly].barcodes, with barcodes parsed from the 'barcodes_path'
-        parameter. This function is called during set_params() when setting
-        the barcodes_path.
+        Parses Sample barcodes to a dictionary from 'barcodes_path'. This 
+        function is called whenever a barcode-ish param is changed. 
         """
-
-        ## parse barcodefile
-        try:
-            ## allows fuzzy match to barcodefile name
-            barcodefile = glob.glob(self.params._barcodes_path)[0]
-
-            ## read in the file
-            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
-            bdf = bdf.dropna()
-
-            ## make sure bars are upper case
-            bdf[1] = bdf[1].str.upper()
-
-            ## if replicates are present then print a warning
-            reps = bdf[0].unique().shape[0] != bdf[0].shape[0]
-            if reps:
-                self._print(
-                    "Warning: technical replicates (same name) are combined")
-
-                ## add -technical-replicate-N to replicate names
-                reps = [i for i in bdf[0] if list(bdf[0]).count(i) > 1]
-                ureps = list(set(reps))
-                for name in ureps:
-                    idxs = bdf[bdf[0] == ureps[0]].index.tolist()
-                    for num, idx in enumerate(idxs):
-                        bdf.ix[idx][0] = (
-                            "{}-technical-replicate-{}"
-                            .format(bdf.ix[idx][0], str(num + 1))
-                        )
-
-            ## make sure chars are all proper
-            if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
-                raise IPyradError(BAD_BARCODE)
-
-            ## 3rad/seqcap use multiplexed barcodes
-            ## We'll concatenate them with a plus and split them later
-            if "3rad" in self.params._datatype:
-                try:
-                    bdf[2] = bdf[2].str.upper()
-                    self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
-                except KeyError as inst:
-                    msg = "3rad assumes multiplexed barcodes. Doublecheck your barcodes file."
-                    raise IPyradError(msg)
-            else:
-                ## set attribute on Assembly object
-                self.barcodes = dict(zip(bdf[0], bdf[1]))
-
-        except (IOError, IndexError):
+        # find barcodefile
+        barcodefile = glob.glob(self.params.barcodes_path)
+        if not barcodefile:
             raise IPyradError(
                 "Barcodes file not found. You entered: {}"
                 .format(self.params.barcodes_path))
 
-        except ValueError as inst:
-            msg = "    Barcodes file format error."
-            raise IPyradError(inst)
+        # read in the file
+        bdf = pd.read_csv(barcodefile[0], header=None, delim_whitespace=1)
+        bdf = bdf.dropna()
+
+        # make sure bars are upper case
+        bdf[1] = bdf[1].str.upper()
+
+        # if replicates are present then print a warning
+        if bdf[0].value_counts().max() > 1:
+            self._print("Warning: technical replicates (same name) present.")
+
+            # adds -technical-replicate-N to replicate names (NON_DEFAULT)
+            # if not self.hackersonly.merge_technical_replicates:                   
+            repeated = (bdf[0].value_counts() > 1).index
+            for rep in repeated:
+                farr = bdf[bdf[0] == rep]
+                for idx, index in enumerate(farr.index):
+                    bdf.loc[index, 0] = (
+                        "{}-technical-replicate-{}".format(rep, idx))
+                            
+        # make sure chars are all proper
+        if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
+            raise IPyradError(BAD_BARCODE)
+
+        # store barcodes as a dict
+        self.barcodes = dict(zip(bdf[0], bdf[1]))
+
+        # 3rad/seqcap use multiplexed barcodes
+        if "3rad" in self.params.datatype:
+            if not bdf.shape[1] == 3:
+                raise IPyradError(
+                    "pair3rad datatype should have two barcodes per sample.")
+        
+            # We'll concatenate them with a plus and split them later
+            bdf[2] = bdf[2].str.upper()
+            self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))               
+        
+
 
 
     def _link_populations(self, popdict=None, popmins=None):
@@ -766,11 +750,134 @@ class Assembly(object):
 
 
 
+class Hackers:
+    def __init__(self):
+
+        # private dictionary so we can check dtypes before changing 
+        self._data = dict([
+            ("random_seed", 42),
+            ("max_fragment_length", 50),
+            ("max_inner_mate_distance", 60),
+            ("p5_adapter", "AGATCGGAAGAGC"),
+            ("p3_adapter", "AGATCGGAAGAGC"),
+            ("p3_adapters_extra", []),
+            ("p5_adapters_extra", []),
+            ("query_cov", None),
+            ("bwa_args", ""),
+            ("demultiplex_on_i7_tags", False),
+            ("declone_PCR_duplicates", False),
+            ("merge_technical_replicates", False),
+            # ("output_loci_name_buffer", 5),
+        ])
+
+    # pretty printing of object
+    def __repr__(self):
+        printstr = ""
+        for idx, (key, val) in enumerate(self._data.items()):
+            printstr += "{:<4}{:<28}{:<45}\n".format(idx, key, str(val))
+        return printstr
+    
+    def __str__(self):
+        return self.__repr__()        
+
+    # setters
+    @property
+    def random_seed(self):
+        return self._data["random_seed"]
+    @random_seed.setter
+    def random_seed(self, value):
+        self._data["random_seed"] = int(value)
+
+    @property
+    def max_fragment_length(self):
+        return self._data["max_fragment_length"]
+    @max_fragment_length.setter
+    def max_fragment_length(self, value):
+        self._data["max_fragment_length"] = int(value)
+
+    @property
+    def max_inner_mate_distance(self):
+        return self._data["max_inner_mate_distance"]
+    @max_inner_mate_distance.setter
+    def max_inner_mate_distance(self, value):
+        self._data["max_inner_mate_distance"] = int(value)
+
+    @property
+    def p5_adapter(self):
+        return self._data["p5_adapter"]
+    @p5_adapter.setter
+    def p5_adapter(self, value):
+        self._data["p5_adapter"] = str(value)
+
+    @property
+    def p5_adapters_extra(self):
+        return self._data["p5_adapters_extra"]
+    @p5_adapters_extra.setter
+    def p5_adapters_extra(self, value):
+        if isinstance(value, str):
+            self._data["p5_adapters_extra"] = [value]
+        else:
+            self._data["p5_adapters_extra"] = value
+
+    @property
+    def p3_adapter(self):
+        return self._data["p3_adapter"]
+    @p3_adapter.setter
+    def p3_adapter(self, value):
+        self._data["p3_adapter"] = str(value)
+
+    @property
+    def p3_adapters_extra(self):
+        return self._data["p3_adapters_extra"]
+    @p3_adapters_extra.setter
+    def p3_adapters_extra(self, value):
+        if isinstance(value, str):
+            self._data["p3_adapters_extra"] = [value]
+        else:
+            self._data["p3_adapters_extra"] = value
+
+    @property
+    def query_cov(self):
+        return self._data["query_cov"]
+    @query_cov.setter
+    def query_cov(self, value):
+        self._data["query_cov"] = float(value)
+
+    @property
+    def bwa_args(self):
+        return self._bwa_args
+    @bwa_args.setter
+    def bwa_args(self, value):
+        self._data["bwa_args"] = str(value)
+
+    @property
+    def demultiplex_on_i7_tags(self):
+        return self._data["demultiplex_on_i7_tags"]
+    @demultiplex_on_i7_tags.setter
+    def demultiplex_on_i7_tags(self, value):
+        self._data["demultiplex_on_i7_tags"] = bool(value)
+
+    @property
+    def declone_PCR_duplicates(self):
+        return self._data["declone_PCR_duplicates"]
+    @declone_PCR_duplicates.setter
+    def declone_PCR_duplicates(self, value):
+        self._data["declone_PCR_duplicates"] = bool(value)
+
+    @property
+    def merge_technical_replicates(self):
+        return self._data["merge_technical_replicates"]
+    @merge_technical_replicates.setter
+    def merge_technical_replicates(self, value):
+        self._data["merge_technical_replicates"] = bool(value)
+
+    
+
 class Params:
     def __init__(self, data):
 
         # harder to 'update' values if data is here...
-        self.data = data
+        self._data = data
 
         self._assembly_name = data.name
         self._project_dir = os.path.realpath("./analysis-ipyrad")
@@ -900,7 +1007,7 @@ class Params:
                 raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
             else:
                 self._barcodes_path = fullbar
-                self.data._link_barcodes()
+                self._data._link_barcodes()
         # if 'Merged:' in value then set to ""
         else:
             self._barcodes_path = ""
@@ -959,6 +1066,8 @@ class Params:
         assert value in allowed, (
             "datatype must be one of: {}".format(", ".join(allowed)))
         self._datatype = str(value)
+        if "3rad" in value:
+            self._data._link_barcodes()
 
             
     @property 
@@ -976,7 +1085,7 @@ class Params:
         # Handle 3rad datatype with only 3 cutters
         elif len(value) == 3:
             value = (value[0], value[1], value[2], "")
-            self.data._link_barcodes()
+            self._data._link_barcodes()
 
         assert len(value) <= 4, """
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
@@ -1264,12 +1373,10 @@ def save_json(data):
     """
     # store params without the reference to Assembly object in params
     paramsdict = data.params.__dict__
-    paramsdict = {i: j for (i, j) in paramsdict.items() if i != "data"}
+    paramsdict = {i: j for (i, j) in paramsdict.items() if i != "_data"}
 
     # store all other dicts
     datadict = OrderedDict([
-        # ("_version", data.__dict__["_version"]),
-        # ("_checkpoint", data.__dict__["_checkpoint"]),
         ("name", data.__dict__["name"]), 
         ("dirs", data.__dict__["dirs"]),
         ("paramsdict", paramsdict),
@@ -1280,7 +1387,7 @@ def save_json(data):
         ("outfiles", data.__dict__["outfiles"]),
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),
-        ("_hackersonly", data.__dict__["_hackersonly"]),
+        ("hackersonly", data.hackersonly._data),
         ])
 
     ## sample dict
