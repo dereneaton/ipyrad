@@ -1,20 +1,17 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 """ Sample object """
 
-#import os
 import pandas as pd
 import numpy as np
 from collections import OrderedDict
-from ipyrad.assemble.util import ObjDict
-
-# pylint: disable=C0103
-# pylint: disable=R0903
+from ipyrad.assemble.utils import ObjDict
 
 
 class Sample(object):
-    """ ipyrad Sample object. Links to files associated
-    with an individual sample, used to combine samples 
-    into Assembly objects."""
+    """ 
+    ipyrad Sample object. Links to files associated with an individual 
+    sample, used to combine samples into Assembly objects.
+    """
 
     def __init__(self, name=""):
         ## a sample name
@@ -23,14 +20,14 @@ class Sample(object):
 
         ## link to files
         self.files = ObjDict({
-              "fastqs": [],
-              "edits": [],
-              "mapped_reads": [],
-              "unmapped_reads": [],
-              "clusters": [],
-              "consens": [],
-              "database": []
-              })
+            "fastqs": [],
+            "edits": [],
+            "mapped_reads": [],
+            "unmapped_reads": [],
+            "clusters": [],
+            "consens": [],
+            "database": []
+            })
 
         ## summary stats dictionary
         self.stats = pd.Series(
@@ -44,7 +41,8 @@ class Sample(object):
                    "clusters_hidepth",
                    "hetero_est",
                    "error_est",
-                   "reads_consens",]).astype(np.object)
+                   "reads_consens",
+                   ]).astype(np.object)
 
         ## stats for each step
         self.stats_dfs = ObjDict({
@@ -122,6 +120,3 @@ class Sample(object):
             ])
 
         return returndict
-
-
-

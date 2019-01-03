@@ -62,7 +62,17 @@ Release Notes
 ------
 **February 21, 2018**
 
+- mergefix
+- merge fix
+- some releasenotes fixes
+
+=======
+0.7.23
+------
+**February 21, 2018**
+
 - Fix filter_min_trim_len not honoring the setting in the params file.
+
 
 0.7.22
 ------
@@ -78,11 +88,6 @@ Release Notes
 - allow subsetting in baba plot, and bug fix for generate_tests dynamic func
 - undo dumb commit
 - added --download to the docs example
--  "Updating ipyrad/__init__.py to version - -h
-
--h
---
-**January 31, 2018**
 
 0.7.21
 ------
@@ -94,8 +99,6 @@ Release Notes
 - update ipyparallel tutorial
 - update ipa structure notebook
 - docs updates
-- update docs
-- update docs
 - improved cleanup on sra tools
 - updated bucky cookbook
 - updated --help for sra download
@@ -122,15 +125,10 @@ Release Notes
 **November 16, 2017**
 
 - bugfix; error was raised in no barcodes during step2 filtering for gbs data. Now just a warning is printed
-- bugfix; error was raised in no barcodes during step2 filtering for gbs data. Now just a warning is printed
 - Fixed structure conda meta.yaml
 - Fix ipcluster warning message.
 - Adding to the faq explaining stats better
 - new working meta.yaml
-- trying alternatives with setup files for jupyter conda bug fix
-- trying alternatives with setup files for jupyter conda bug fix
-- trying alternatives with setup files for jupyter conda bug fix
-- trying alternatives with setup files for jupyter conda bug fix
 - trying alternatives with setup files for jupyter conda bug fix
 - updating setup.py stuff to try to fix jupyter missing in conda install
 
@@ -142,7 +140,6 @@ Release Notes
 - skip concat edits of merged reads if merge file exists unless force flag is set
 - added a progress bar tracker for reference indexing
 - speed improvement to refmapping, only tests merge of read pairs if their mapped positions overlap
-- update to docs
 - update to docs
 - update API userguide
 - added twiist tool

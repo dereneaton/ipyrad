@@ -12,16 +12,21 @@ __interactive__ = 1
 ## it clobbers the file name as a import. 
 
 
-#from .tree import Tree as tree
-#from toytree import tree
 #from .tetrad import Tetrad as tetrad
-from .structure import Structure as structure
-from .treemix import Treemix as treemix
-from .tetrad2 import Tetrad as tetrad
 from .raxml import Raxml as raxml
+from .structure import Structure as structure
+from .tetrad import Tetrad as tetrad
 from .bucky import Bucky as bucky
-from .baba import Baba as baba
+
+#from .baba import Baba as baba
 from .bpp import Bpp as bpp
 from .sratools import SRA as sratools
+<<<<<<< HEAD
 from .twiist import Twiist as twiist
 from .pca import PCA as pca
+=======
+from .twiist import Twisst as twisst
+from .treeslider import TreeSlider as treeslider
+#from .popgen import Popgen as popgen
+# from .treemix import Treemix as treemix
+>>>>>>> origin/hotfix

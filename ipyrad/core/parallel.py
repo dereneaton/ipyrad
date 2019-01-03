@@ -1,25 +1,39 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 """ functions to auto-launch an ipcluster instance """
 
 ## imports for running ipcluster
 from __future__ import print_function
+from io import StringIO
 
 import ipyparallel as ipp
 import subprocess
-import cStringIO
+import socket
 import shlex
 import time
 import sys
 import os
 
-from ipyrad.assemble.util import IPyradWarningExit
+from ipyrad.assemble.utils import IPyradWarningExit
 
-# pylint: disable=W0212
-# pylint: disable=W0142
 
-import logging
-LOGGER = logging.getLogger(__name__)
+def cluster_info(ipyclient, spacer=""):
+    """ reports host and engine info for an ipyclient """    
+    ## get engine data, skips busy engines.    
+    hosts = []
+    for eid in ipyclient.ids:
+        engine = ipyclient[eid]
+        if not engine.outstanding:
+            hosts.append(engine.apply(socket.gethostname))
+
+    ## report it
+    hosts = [i.get() for i in hosts]
+    result = []
+    for hostname in set(hosts):
+        result.append("{}host compute node: [{} cores] on {}"
+                      .format(spacer, hosts.count(hostname), hostname))
+    print("\n".join(result))
+
 
 
 ## start ipcluster
@@ -48,13 +62,13 @@ def start_ipcluster(data):
                    
     ## wrap ipcluster start
     try: 
-        LOGGER.info(shlex.split(standard))
+        # ip.logger.info(shlex.split(standard))
         subprocess.check_call(shlex.split(standard), 
             stderr=subprocess.STDOUT,
             stdout=subprocess.PIPE)
 
     except subprocess.CalledProcessError as inst:
-        LOGGER.debug("  ipcontroller already running.")
+        # ip.logger.debug("  ipcontroller already running.")
         raise
 
     except Exception as inst:
@@ -70,13 +84,13 @@ def register_ipcluster(data):
     so that ipcluster will be killed on exit.
     """
     ## check if this pid already has a running cluster
-    data._ipcluster["cluster_id"] = "ipyrad-cli-"+str(os.getpid())
+    data._ipcluster["cluster_id"] = "ipyrad-cli-" + str(os.getpid())
     start_ipcluster(data)
     return data
 
 
 
-def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kwargs):
+def get_client(data):
     """ 
     Creates a client to view ipcluster engines for a given profile and 
     returns it with at least one engine spun up and ready to go. If no 
@@ -85,25 +99,33 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
     of engines is set then it waits even longer to try to find that number
     of engines.
     """
+    # shorthand for ipcluster dict
+    class ipclusterdict:
+        def __init__(self, data):
+            for key, val in data._ipcluster.items():
+                self.__setattr__(key, val)
+            self.spacer = data._spacer
+    ipd = ipclusterdict(data)
 
     ## save stds for later, we're gonna hide them to prevent external printing 
     save_stdout = sys.stdout 
     save_stderr = sys.stderr
-    sys.stdout = cStringIO.StringIO()
-    sys.stderr = cStringIO.StringIO()
+    sys.stdout = StringIO()
+    sys.stderr = StringIO()
 
     ## get cluster_info print string
-    connection_string = "{}establishing parallel connection:".format(spacer)
+    connection_string = (
+        "{}establishing parallel connection:".format(ipd.spacer))
 
     ## wrapped search for ipcluster
     try: 
         ## are we looking for a running ipcluster instance?
-        if profile not in [None, "default"]:
-            args = {'profile': profile, "timeout": timeout}
+        if ipd.profile not in [None, "default"]:
+            args = {'profile': ipd.profile, "timeout": ipd.timeout}
         else:
-            clusterargs = [cluster_id, profile, timeout]
+            clusterargs = [ipd.cluster_id, ipd.profile, ipd.timeout]
             argnames = ["cluster_id", "profile", "timeout"]
-            args = {key:value for key, value in zip(argnames, clusterargs)}
+            args = {key: value for key, value in zip(argnames, clusterargs)}
 
         ## get connection within timeout window of wait time and hide messages
         ipyclient = ipp.Client(**args)
@@ -111,8 +133,8 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
         sys.stderr = save_stderr
 
         ## check that all engines have connected            
-        if (engines == "MPI") or ("ipyrad-cli-" in cluster_id):
-            if not quiet:
+        if (ipd.engines == "MPI") or ("ipyrad-cli-" in ipd.cluster_id):
+            if not ipd.quiet:
                 print(connection_string)
 
         for _ in range(6000):
@@ -121,19 +143,19 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
             ## If MPI then wait for all engines to start so we can report
             ## how many cores are on each host. If Local then only wait for
             ## one engine to be ready and then just go.
-            if (engines == "MPI") or ("ipyrad-cli-" in cluster_id):
+            if (ipd.engines == "MPI") or ("ipyrad-cli-" in ipd.cluster_id):
                 ## wait for cores to be connected
-                if cores:
+                if ipd.cores:
                     time.sleep(0.1)
-                    if initid == cores:
+                    if initid == ipd.cores:
                         break
                 if initid:
                     time.sleep(3)
                     if len(ipyclient) == initid:
                         break
             else:
-                if cores:
-                    if initid == cores:
+                if ipd.cores:
+                    if initid == ipd.cores:
                         break
                 else:
                     if initid:
@@ -142,31 +164,18 @@ def get_client(cluster_id, profile, engines, timeout, cores, quiet, spacer, **kw
 
     except KeyboardInterrupt as inst:
         ## ensure stdout is reset even if Exception was raised            
-        sys.stdout = save_stdout
-        sys.stderr = save_stderr
         raise inst
 
     ## This is raised if ipcluster is not running ------------
     except IOError as inst:
         ## ensure stdout is reset even if Exception was raised
-        sys.stdout = save_stdout
-        sys.stderr = save_stderr
-        if "ipyrad-cli-" in cluster_id:
+        if "ipyrad-cli-" in ipd.cluster_id:
             raise IPyradWarningExit(NO_IPCLUSTER_CLI)
         else:
             raise IPyradWarningExit(NO_IPCLUSTER_API)
 
     except (ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
-        ## raised by ipp if no connection file is found for 'nwait' seconds
-        sys.stdout = save_stdout
-        sys.stderr = save_stderr
-        raise inst
-
-    except Exception as inst:
-        ## if any other exceptions were missed...
-        sys.stdout = save_stdout
-        sys.stderr = save_stderr
-        raise inst
+        raise
 
     finally:
         ## ensure that no matter what we reset the stds
@@ -192,4 +201,3 @@ NO_IPCLUSTER_API = """
     Also, if you changed the 'profile' or 'cluster_id' setting from their 
     default values you must enter these into the Assembly._ipcluster dictionary.
     """
-

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 """ 
 Aligns reads to a reference genome. Returns unaligned reads to the de novo
@@ -6,7 +6,12 @@ pipeline. Aligned reads get concatenated to the *clustS.gz files at the
 end of step3
 """
 
+# py2/3 compatible funcs
 from __future__ import print_function
+try:
+    from itertools import izip
+except ImportError:
+    izip = zip
 
 import os
 import gzip
@@ -16,18 +21,11 @@ import pysam
 import ipyrad
 import numpy as np
 import subprocess as sps
-from ipyrad.assemble.util import *
-from ipyrad.assemble.rawedit import comp
+from ipyrad.assemble.utils import IPyradWarningExit
+#from ipyrad.assemble.rawedit import comp
 
 import logging
 LOGGER = logging.getLogger(__name__)
-
-# pylint: disable=W0142
-# pylint: disable=W0212
-# pylint: disable=R0915
-# pylint: disable=R0914
-# pylint: disable=R0912
-# pylint: disable=C0301
 
 
 def sample_cleanup(data, sample):
@@ -71,7 +69,7 @@ def index_reference_sequence(data, force=False):
 
     ## If reference sequence already exists then bail out of this func
     if not force:
-        if all([os.path.isfile(refseq_file+i) for i in index_files]):
+        if all([os.path.isfile(refseq_file + i) for i in index_files]):
             return
     #if data._headers:
     #    print(INDEX_MSG.format(data._hackersonly["aligner"]))
@@ -553,7 +551,6 @@ def fetch_cluster_pairs(data, samfile, chrom, rstart, rend):
 
 
 
-
 def ref_build_and_muscle_chunk(data, sample):
     """ 
     1. Run bedtools to get all overlapping regions
@@ -776,7 +773,7 @@ def split_merged_reads(outhandles, input_derep):
 
     with open(input_derep, 'r') as infile: 
         ## Read in the infile two lines at a time: (seqname, sequence)
-        duo = itertools.izip(*[iter(infile)]*2)
+        duo = izip(*[iter(infile)] * 2)
 
         ## lists for storing results until ready to write
         split1s = []
@@ -1241,8 +1238,8 @@ def refmap_stats(data, sample):
     and update sample.stats 
     """
     ## shorter names
-    mapf = os.path.join(data.dirs.refmapping, sample.name+"-mapped-sorted.bam")
-    umapf = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    mapf = os.path.join(data.dirs.refmapping, sample.name + "-mapped-sorted.bam")
+    umapf = os.path.join(data.dirs.refmapping, sample.name + "-unmapped.bam")
 
     ## get from unmapped
     cmd1 = [ipyrad.bins.samtools, "flagstat", umapf]
@@ -1265,24 +1262,42 @@ def refmap_stats(data, sample):
         sample.stats["refseq_unmapped_reads"] = int(result1.split()[0])
         sample.stats["refseq_mapped_reads"] = int(result2.split()[0])
 
+    umap1file = os.path.join(data.dirs.edits, sample.name+"-tmp-umap1.fastq")
+    umap2file = os.path.join(data.dirs.edits, sample.name+"-tmp-umap2.fastq")
+    unmapped = os.path.join(data.dirs.refmapping, sample.name+"-unmapped.bam")
+    samplesam = os.path.join(data.dirs.refmapping, sample.name+".sam")
+    split1 = os.path.join(data.dirs.edits, sample.name+"-split1.fastq")
+    split2 = os.path.join(data.dirs.edits, sample.name+"-split2.fastq")
+    refmap_derep = os.path.join(data.dirs.edits, sample.name+"-refmap_derep.fastq")
+    for f in [umap1file, umap2file, unmapped, samplesam, split1, split2, refmap_derep]:
+        try:
+            os.remove(f)
+        except:
+            pass
+
+
     sample_cleanup(data, sample)
 
 
 
 def refmap_init(data, sample, force):
     """ create some file handles for refmapping """
-    ## make some persistent file handles for the refmap reads files
-    sample.files.unmapped_reads = os.path.join(data.dirs.edits, 
-                                  "{}-refmap_derep.fastq".format(sample.name))
-    sample.files.mapped_reads = os.path.join(data.dirs.refmapping,
-                                  "{}-mapped-sorted.bam".format(sample.name))
+    
+    # make some persistent file handles for the refmap reads files
+    sample.files.unmapped_reads = os.path.join(
+        data.dirs.edits, 
+        "{}-refmap_derep.fastq".format(sample.name))
+
+    sample.files.mapped_reads = os.path.join(
+        data.dirs.refmapping,
+        "{}-mapped-sorted.bam".format(sample.name))
+
 
     ## TODO: This code came with my effort to skip redoing refmapping
     ## Which i abandoned, I think. It doesn't do anything but print a
     ## message that isn't true right now.
     #if os.path.exists(sample.files.mapped_reads) and not force:
     #    print("Skip mapping for {}. Use -f to force remapping.".format(sample.name))
-
 
 
 ## GLOBALS

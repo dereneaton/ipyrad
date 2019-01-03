@@ -1,61 +1,43 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
-""" D-statistic calculations """
-# pylint: disable=E1101
-# pylint: disable=F0401
-# pylint: disable=W0142
-# pylint: disable=R0915
-# pylint: disable=R0914
-# pylint: disable=R0912
+"D-statistic calculations"
 
+# py2/3 compat
 from __future__ import print_function, division
+from builtins import range
 
-## ipyrad tools
-from ipyrad.assemble.write_outfiles import reftrick, GETCONS2
-from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
-from ipyrad.analysis.bpp import Params
-from ipyrad.plotting.baba_panel_plot import baba_panel_plot
+import os
+import time
+import copy
+import types
+import itertools
 
 #import scipy.stats as st  ## used for dfoil
 import pandas as pd
 import numpy as np
 import numba
-import itertools
-import datetime
-import types
-import copy
-import time
-import os
 
-## non-standard imports
-try: 
-    import msprime as ms
-except ImportError:
-    pass
-
-try:
-    import toytree
-except ImportError:
-    print("""
-        toytree not installed, some functions are not available
-        such as .generate_tests_from_tree() and .plot().
-        Install toytree with 'conda install toytree -c eaton-lab'.
-        """)
+## ipyrad tools
+import toytree
+from ipyrad.analysis.utils import Params, progressbar
+from ipyrad.assemble.utils import IPyradError
+#from ipyrad.assemble.write_outfiles import reftrick    ## TODO REPLACE
+from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 
-## set floating point precision in data frames to 3 for prettier printing
+# set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
 
 
 class Baba(object):
     "new baba class object"
     def __init__(self, 
-        data=None, 
-        tests=None, 
-        newick=None, 
-        nboots=1000, 
+        data=None,
+        tests=None,
+        newick=None,
+        nboots=1000,
         mincov=1):
-        """ 
+        """
         ipyrad.analysis Baba Class object.
 
         Parameters
@@ -92,8 +74,8 @@ class Baba(object):
         else:
             self.data = data
 
-        if isinstance(newick, toytree.tree):
-            self.newick = newick.tree.write()
+        if isinstance(newick, toytree.Toytree.ToyTree):
+            self.newick = newick.newick
         else:
             self.newick = newick
 
@@ -132,7 +114,6 @@ class Baba(object):
                 return pd.DataFrame(pd.Series(self.tests)).T
         else:
             return None
-
 
 
     def run(self, 
@@ -199,13 +180,14 @@ class Baba(object):
 
     def plot(self, 
         show_test_labels=True, 
-        use_edge_lengths=True,         
+        use_edge_lengths=False,         
         collapse_outgroup=False, 
         pct_tree_x=0.5, 
         pct_tree_y=0.2,
         subset_tests=None,
+        prune_tree_to_tests=False,
         #toytree_kwargs=None,
-        *args, 
+        *args,
         **kwargs):
 
         """ 
@@ -251,15 +233,11 @@ class Baba(object):
         if isinstance(self.tests, dict):
             self.tests = [self.tests]
 
-        ## re-decompose the tree
-        ttree = toytree.tree(
-            self.newick, 
-            orient='down', 
-            use_edge_lengths=use_edge_lengths,
-            )
+        # re-decompose the tree
+        ttree = toytree.tree(self.newick)
 
-        ## subset test to show fewer
-        if subset_tests != None:
+        # subset test to show fewer
+        if subset_tests is not None:
             #tests = self.tests[subset_tests]
             tests = [self.tests[i] for i in subset_tests]
             boots = self.results_boots[subset_tests]
@@ -267,17 +245,24 @@ class Baba(object):
             tests = self.tests
             boots = self.results_boots
 
+        ## if prune tree
+        if prune_tree_to_tests:
+            alltesttaxa = set(itertools.chain(*self.taxon_table.values[0]))
+            ttree = ttree.drop_tips([i for i in ttree.get_tip_labels()
+                                     if i not in alltesttaxa])
+            ttree.tree.ladderize()
+
         ## make the plot
         canvas, axes, panel = baba_panel_plot(
             ttree=ttree,
-            tests=tests, 
-            boots=boots, 
-            show_test_labels=show_test_labels, 
-            use_edge_lengths=use_edge_lengths, 
-            collapse_outgroup=collapse_outgroup, 
+            tests=tests,
+            boots=boots,
+            show_test_labels=show_test_labels,
+            use_edge_lengths=use_edge_lengths,
+            collapse_outgroup=collapse_outgroup,
             pct_tree_x=pct_tree_x,
             pct_tree_y=pct_tree_y,
-            *args, 
+            *args,
             **kwargs)
         return canvas, axes, panel
 
@@ -349,8 +334,12 @@ def batch(
         pass #sims()
 
     ## iterate over tests (repeats mindicts if fewer than taxdicts)
-    itests = iter(taxdicts)
-    imdict = itertools.cycle([mindicts])
+    if not taxdicts:
+        print("no tests found")
+        return
+    else:
+        itests = iter(taxdicts)
+        imdict = itertools.cycle([mindicts])
 
     #for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
     for i in xrange(len(ipyclient)):
@@ -513,7 +502,7 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
     else:
         ## get results
         res, boots = _get_signif_5(arr, nboots)
-         ## make int a DataFrame
+        ## make int a DataFrame
         res = pd.DataFrame(res,
             index=["p3", "p4", "shared"], 
             columns=["Dstat", "bootmean", "bootstd", "Z", "ABxxA", "BAxxA", "nloci"]
@@ -529,6 +518,9 @@ def _loci_to_arr(loci, taxdict, mindict):
     taxdict and min coverage from mindict. 
     """
 
+    ## get max length of loci
+    maxlen = np.max(np.array([len(locus.split("\n")[0]) for locus in loci]))
+
     ## make the array (4 or 5) and a mask array to remove loci without cov
     nloci = len(loci)
     maxlen = np.max(np.array([len(locus.split("\n")[0]) for locus in loci]))
@@ -537,7 +529,8 @@ def _loci_to_arr(loci, taxdict, mindict):
 
     ## six rows b/c one for each p3, and for the fused p3 ancestor
     if len(taxdict) == 5:
-        arr = np.zeros((nloci, 6, maxlen), dtype=np.float64)
+        # arr = np.zeros((nloci, 6, 300), dtype=np.float64)
+        arr = np.zeros((nloci, 6, maxlen), dtype=np.float64)        
 
     ## if not mindict, make one that requires 1 in each taxon
     if isinstance(mindict, int):
@@ -558,7 +551,7 @@ def _loci_to_arr(loci, taxdict, mindict):
     outg = keys[-1]
 
     ## grab seqs just for the good guys
-    for loc in xrange(nloci):
+    for loc in range(nloci):
 
         ## parse the locus
         lines = loci[loc].split("\n")[:-1]
@@ -660,7 +653,8 @@ def tree2tests(newick, constraint_dict, constraint_exact):
         constraint_exact = [constraint_exact] * 4
     elif isinstance(constraint_exact, list):
         if len(constraint_exact) != len(constraint_dict):
-            raise Exception("constraint_exact must be bool or [bool, bool, bool, bool]")
+            raise Exception(
+                "constraint_exact must be bool or list of bools of length N")
     
     ## constraints
     cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
@@ -759,7 +753,7 @@ def _reffreq2(ancestral, iseq, consdict):
     
     ## fill in both copies
     for seq in xrange(iseq.shape[0]):
-        for col in xrange(iseq.shape[1]):  
+        for col in xrange(iseq.shape[1]):
 
             ## get this base and check if it is hetero
             base = iseq[seq][col]
@@ -789,7 +783,7 @@ def _reffreq2(ancestral, iseq, consdict):
 
 @numba.jit(nopython=True)
 def _prop_dstat(arr):
-    
+
     ## numerator
     abba = ((1.-arr[:, 0]) * (arr[:, 1]) * (arr[:, 2]) * (1.-arr[:, 3]))  
     baba = ((arr[:, 0]) * (1.-arr[:, 1]) * (arr[:, 2]) * (1.-arr[:, 3]))
@@ -802,7 +796,7 @@ def _prop_dstat(arr):
         dst = top.sum() / float(sbot)
     else:
         dst = 0
-    
+
     return abba.sum(), baba.sum(), dst
 
 
@@ -876,304 +870,13 @@ def _get_signif_5(arr, nboots):
     return statsarr, bootsarr
 
 
-
-
-######################################################################
-## Simulation functions (requires msprime)
-######################################################################
-
-
-class Sim(object):
-    def __init__(self, names, sims, nreps, debug):
-        self.names = names
-        self.sims = sims
-        self.nreps = nreps
-        self.debug = debug
-
-
-
-def _simulate(self, nreps, admix=None, Ns=500000, gen=20):
-    """
-    Enter a baba.Tree object in which the 'tree' attribute (newick 
-    derived tree) has edge lengths in units of generations. You can 
-    use the 'gen' parameter to multiply branch lengths by a constant. 
-
-    Parameters:
-    -----------
-
-    nreps: (int)
-        Number of reps (loci) to simulate under the demographic scenario
-    tree: (baba.Tree object)
-        A baba.Tree object initialized by calling baba.Tree(*args). 
-    admix: (list)
-        A list of admixture events to occur on the tree. Nodes must be 
-        reference by their index number, and events must occur in time
-        intervals when edges exist. Use the .draw() function of the 
-        baba.Tree object to see node index numbers and coalescent times.
-    Ns: (float)
-        Fixed effective population size for all lineages (may allow to vary
-        in the future). 
-    gen: (int)
-        A multiplier applied to branch lengths to scale into units of 
-        generations. Example, if all edges on a tree were 1 then you might
-        enter 50000 to multiply so that edges are 50K generations long.
-
-    """
-
-    ## node ages
-    Taus = np.array(list(set(self.verts[:, 1]))) * 1e4 * gen
-
-    ## The tips samples, ordered alphanumerically
-    ## Population IDs correspond to their indexes in pop config
-    ntips = len(self.tree)
-    #names = {name: idx for idx, name in enumerate(sorted(self.tree.get_leaf_names()))}
-    ## rev ladderized leaf name order (left to right on downward facing tree)
-    names = {name: idx for idx, name in enumerate(self.tree.get_leaf_names()[::-1])}
-    pop_config = [
-        ms.PopulationConfiguration(sample_size=2, initial_size=Ns)
-        for i in range(ntips)
-    ]
-
-    ## migration matrix all zeros init
-    migmat = np.zeros((ntips, ntips)).tolist()
-
-    ## a list for storing demographic events
-    demog = []
-
-    ## coalescent times
-    coals = sorted(list(set(self.verts[:, 1])))[1:]
-    for ct in xrange(len(coals)):
-        ## check for admix event before next coalescence
-        ## ...
-        
-        ## print coals[ct], nidxs, time
-        nidxs = np.where(self.verts[:, 1] == coals[ct])[0]
-        time = Taus[ct+1]
-
-        ## add coalescence at each node
-        for nidx in nidxs:
-            node = self.tree.search_nodes(name=str(nidx))[0]
-
-            ## get destionation (lowest child idx number), and other
-            dest = sorted(node.get_leaves(), key=lambda x: x.idx)[0]
-            otherchild = [i for i in node.children if not 
-                          i.get_leaves_by_name(dest.name)][0]
-
-            ## get source
-            if otherchild.is_leaf():
-                source = otherchild
-            else:
-                source = sorted(otherchild.get_leaves(), key=lambda x: x.idx)[0]
-            
-            ## add coal events
-            event = ms.MassMigration(
-                        time=int(time),
-                        source=names[source.name], 
-                        destination=names[dest.name], 
-                        proportion=1.0)
-            #print(int(time), names[source.name], names[dest.name])
-        
-            ## ...
-            demog.append(event)
-            
-            
-    ## sim the data
-    replicates = ms.simulate(
-        population_configurations=pop_config,
-        migration_matrix=migmat,
-        demographic_events=demog,
-        num_replicates=nreps,
-        length=100, 
-        mutation_rate=1e-8)
-    return replicates
-
-
-
-## simulates data on 12 taxon tree with two admixture events
-def _sim_admix_12(nreps, Ns=500000, gen=20):
-    
-    # Set the ML values of various parameters
-    Taus = np.array([0, 1, 2, 3, 4, 5]) * 1e4 * gen
-
-    # Migration rates C -> B and from IJ -> EF
-    m_C_B = 2e-6
-    m_IJ_EF = 2e-6
-    
-    # Population IDs correspond to their indexes in pop_config.
-    ntips = len(tree.tree)
-    pop_config = [
-        ms.PopulationConfiguration(sample_size=2, initial_size=Ns)
-        for i in range(ntips)]
-    
-    ## migration matrix all zeros time=0
-    migmat = np.zeros((ntips, ntips)).tolist()
-    
-    ## set up demography
-    demog = [
-        ## initial migration from C -> B
-        ms.MigrationRateChange(time=0, rate=m_C_B, matrix_index=(1, 2)),
-        ms.MigrationRateChange(time=Taus[1], rate=0),
-
-        # merge events at time 1 (b,a), (f,e), (j,i)
-        ms.MassMigration(time=Taus[1], source=1, destination=0, proportion=1.0), 
-        ms.MassMigration(time=Taus[1], source=5, destination=4, proportion=1.0), 
-        ms.MassMigration(time=Taus[1], source=9, destination=8, proportion=1.0), 
-        
-        ## migration from IJ -> EF (backward in time)
-        ms.MigrationRateChange(time=Taus[1], rate=m_IJ_EF, matrix_index=(4, 8)), 
-
-        ## merge events at time 2 (c,a), (g,e), (k,i)
-        ms.MassMigration(time=Taus[2], source=2, destination=0, proportion=1.0), 
-        ms.MassMigration(time=Taus[2], source=6, destination=4, proportion=1.0), 
-        ms.MassMigration(time=Taus[2], source=10, destination=8, proportion=1.0), 
-
-        ## end migration at ABC and merge
-        ms.MigrationRateChange(time=Taus[2], rate=0),
-        ms.MassMigration(time=Taus[3], source=3, destination=0, proportion=1.0), 
-        ms.MassMigration(time=Taus[3], source=7, destination=4, proportion=1.0), 
-        ms.MassMigration(time=Taus[3], source=11, destination=8, proportion=1.0),   
-        
-        ## merge EFJH -> IJKL
-        ms.MassMigration(time=Taus[4], source=8, destination=4, proportion=1.0),   
-        
-        ## merge ABCD -> EFJHIJKL
-        ms.MassMigration(time=Taus[5], source=4, destination=0, proportion=1.0),   
-    ]
-
-    ## sim the data
-    replicates = ms.simulate(
-        population_configurations=pop_config,
-        migration_matrix=migmat,
-        demographic_events=demog,
-        num_replicates=nreps,
-        length=100, 
-        mutation_rate=1e-9)
-    
-    return replicates
-
-
-
-#def _msp_to_arr(simreps, test):
-def _msp_to_arr(Sim, test):
-    
-    ## the fixed tree dictionary
-    #fix = {j: [i, i+1] for j, i in zip(list("abcdefghijkl"), range(0, 24, 2))}
-    fix = {j: [i, i+1] for j, i in zip(Sim.names, range(0, len(Sim.names)*2, 2))}
-    
-    ## fill taxdict by test
-    keys = ['p1', 'p2', 'p3', 'p4']
-    arr = np.zeros((Sim.nreps, 4, 100))
-    
-    ## unless it's a 5-taxon test
-    if len(test) == 5:
-        arr = np.zeros((100000, 6, 100))
-        keys += ['p5']
-    
-    ## create array sampler for taxa
-    taxs = [test[key] for key in keys]
-    idxs = [list(itertools.chain(*[fix[j] for j in i])) for i in taxs]
-
-    ## iterate over reps filling arr
-    idx = 0
-    for trees in simreps:
-        
-        ## build genotype array
-        shape = trees.get_num_mutations(), trees.get_sample_size()
-        garr = np.empty(shape, dtype="u1")
-    
-        ## fill the garr
-        for variant in trees.variants():
-            garr[variant.index] = variant.genotypes
-        
-        if len(test) == 4:
-            if garr.shape[0]:
-                ## fill my arr with freqs
-                for pdx, tax in enumerate(idxs):
-                    freq = garr[:, tax]
-                    freq = freq.sum(axis=1) / float(freq.shape[1])
-                    maxsz = min(freq.shape[0], 100)
-                    arr[idx, pdx, :maxsz] = freq[:maxsz]
-        else:
-            if garr.shape[0]:
-                ## get the easy ones
-                p1 = garr[:, idxs[0]]
-                p2 = garr[:, idxs[1]]
-                p5 = garr[:, idxs[4]]
-                p34 = garr[:, idxs[2]+idxs[3]]
-
-                ## identity of SNPs is important
-                p3 = garr[:, idxs[2]]
-                p4 = garr[:, idxs[3]]
-                
-                ## any rows with data in b are masked in a
-                mask3 = np.where(p3.sum(axis=1) == 0)[0]
-                mask4 = np.where(p4.sum(axis=1) == 0)[0]
-                masked_p3 = p3[mask4]
-                masked_p4 = p4[mask3]
-                
-                ## enter frequencies
-                freq = p1
-                freq = freq.sum(axis=1) / float(freq.shape[1])
-                maxsz = min(freq.shape[0], 100)
-                arr[idx, 0, :maxsz] = freq[:maxsz]
-                
-                freq = p2
-                freq = freq.sum(axis=1) / float(freq.shape[1])
-                maxsz = min(freq.shape[0], 100)
-                arr[idx, 1, :maxsz] = freq[:maxsz]
-               
-                freq = masked_p3
-                freq = freq.sum(axis=1) / float(freq.shape[1])
-                maxsz = min(freq.shape[0], 100)
-                arr[idx, 2, :maxsz] = freq[:maxsz]               
-               
-                freq = masked_p4
-                freq = freq.sum(axis=1) / float(freq.shape[1])
-                maxsz = min(freq.shape[0], 100)
-                arr[idx, 3, :maxsz] = freq[:maxsz]
-               
-                freq = p34
-                freq = freq.sum(axis=1) / float(freq.shape[1])
-                maxsz = min(freq.shape[0], 100)
-                arr[idx, 4, :maxsz] = freq[:maxsz]
-                 
-                freq = p5
-                freq = freq.sum(axis=1) / float(freq.shape[1])
-                maxsz = min(freq.shape[0], 100)
-                arr[idx, 5, :maxsz] = freq[:maxsz]
-        idx += 1
-
-    ## reduce the size of arr to min loci        
-    arr = arr[:idx+1]
-    
-    ## reduce the size of arr to min len
-    minl = np.where(np.all(np.all(arr==0, axis=1) == True, axis=0))[0]
-    if np.any(minl):
-        minl = minl.min()
-    else:
-        minl = None
-    arr = arr[:, :, :minl]
-    
-    return arr
-
-
-
-## combines sim_admix12 + msp_to_arr + baba to return single (stats, boots)
-def sim_admix_12_baba(nreps, test, mindict, nboots):
-    sims = _sim_admix_12(nreps)
-    arr = _msp_to_arr(sims, test)
-    stats, boots = baba(arr, test, mindict, nboots)
-    return stats, boots
-
-
-
-
 #######################################################################
+
 if __name__ == "__main__":
 
     ## test input files
-    LOCIFILE = "/home/deren/Dropbox/RADexplore/EmpVib/" \
-              +"vib_half_64tip_c85d6m4p99.loci"
+    LOCIFILE = "/home/deren/Dropbox/RADexplore/EmpVib/"\
+              + "vib_half_64tip_c85d6m4p99.loci"
 
     # ## taxon list to parse from LOCIFILE
     TAXONLIST = ['acutifolium_DRY3_MEX_006',

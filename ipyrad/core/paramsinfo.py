@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 """ Return explanation and options for each parameter. 
     ip.get_params_info(1) or ip.get_params_info("project_dir") 

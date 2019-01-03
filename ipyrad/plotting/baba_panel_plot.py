@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 """
 a panel plot function for baba results 
@@ -15,10 +15,12 @@ import itertools
 # pylint: disable=W0212
 
 ## color palette
-COLORS = {"p1": toyplot.color.Palette()[0], 
-          "p2": toyplot.color.Palette()[1],
-          "p3": toyplot.color.near_black, 
-          "p4": toyplot.color.Palette()[-1],}
+COLORS = {
+    "p1": toyplot.color.Palette()[0], 
+    "p2": toyplot.color.Palette()[1],
+    "p3": toyplot.color.near_black, 
+    "p4": toyplot.color.Palette()[-1],
+}
 
 
 

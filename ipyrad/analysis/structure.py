@@ -1,34 +1,34 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
-""" convenience wrappers for running structure in a jupyter notebook"""
+"convenience wrappers for running structure in a jupyter notebook"
 
+# py2/3 compat
+from __future__ import print_function
+from builtins import range
+
+# standard lib
 import os
-import glob
-import sys
 import re
-import subprocess
+import sys
+import glob
+import subprocess as sps
+
+# third party
 import numpy as np
 import pandas as pd
-from ipyrad.analysis.tetrad import get_spans
-from ipyrad.assemble.util import Params, IPyradWarningExit
+from ipyrad.analysis.utils import get_spans, Params
+from ipyrad.assemble.utils import IPyradError
 
-# pylint: disable=W0142
-# pylint: disable=W0212
-# pylint: disable=C0301
-# pylint: disable=R0902
-# pylint: disable=R0903
-
-OPJ = os.path.join
 
 MISSING_IMPORTS = """
 To use the ipa.structure module you must install two additional 
 libraries which can be done with the following conda command. 
 
-  conda install -c ipyrad structure clumpp
-  conda install -c eaton-lab toytree
+conda install -c ipyrad structure clumpp
 """
 
-## These are almost all default values.
+
+# These are almost all default values.
 class Structure(object):
     """ 
     Create and return an ipyrad.analysis Structure Object. This object allows
@@ -78,65 +78,88 @@ class Structure(object):
     
     """    
     def __init__(self, name, data, workdir=None, mapfile=None):
+
+        # store args
         self.name = name
-        self.data = os.path.abspath(os.path.expanduser(data))
+        self.data = data
+        self.workdir = workdir
+        self.mapfile = mapfile
+
+        # run checks
+        self.check_binaries()
+        self.setup_dirs()
+        self.check_files()
+
+        # params
         self.mainparams = _MainParams()
         self.extraparams = _ExtraParams()
         self.clumppparams = _ClumppParams()
         self.asyncs = []
 
-        ## check that bpp is installed and in path
-        for binary in ['structure']:
-            if not subprocess.call("type " + binary, 
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE) == 0:
-                raise IPyradWarningExit(MISSING_IMPORTS) 
 
+    def check_binaries(self):
+        "check for structure and clumpp"
+        for binary in ['structure', 'CLUMPP']:
+            cmd = ["which", binary]
+            proc = sps.Popen(cmd, stdout=sps.PIPE, stderr=sps.PIPE)
+            stdout = proc.communicate()[0]
+            if not stdout:
+                raise IPyradError(MISSING_IMPORTS) 
+
+
+    def setup_dirs(self):
         ## make workdir if it does not exist
-        if workdir:
-            self.workdir = os.path.abspath(os.path.expanduser(workdir))
+        if self.workdir:
+            self.workdir = os.path.abspath(os.path.expanduser(self.workdir))
         else:
-            self.workdir = OPJ(os.path.abspath('.'), "analysis-structure")
+            self.workdir = os.path.join(
+                os.path.abspath('.'), 
+                "analysis-structure")
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        ## check that strfile exists, print and parse some info from it
-        with open(data) as ifile:
+
+    def check_files(self):
+        "check that strfile exists, print and parse some info from it"
+
+        # expand path
+        self.data = os.path.abspath(os.path.expanduser(self.data))
+        with open(self.data) as ifile:
             lines = ifile.readlines()
-            self.ntaxa = len(lines)//2
+            self.ntaxa = len(lines) // 2
             self.nsites = len(lines[0].strip().split()[1:])
             self.labels = [i.split('\t')[0].strip() for i in lines][::2]
             self.popdata = [i.split('\t')[1] for i in lines][::2]
             self.popflag = [i.split('\t')[2] for i in lines][::2]
             self.locdata = [i.split('\t')[3] for i in lines][::2]
             self.phenotype = [i.split('\t')[4] for i in lines][::2]
-            #self.extra = [i.split('\t')[5] for i in lines][::2] #default extracols=0
             del lines
 
-        ## if mapfile then parse it to an array
-        if mapfile:
-            with open(mapfile) as inmap:
-                maparr = np.genfromtxt(inmap)[:, [0, 3]].astype(np.uint64)
+        # if mapfile then parse it to an array
+        if self.mapfile:
+            with open(self.mapfile) as inmap:
+                maparr = np.genfromtxt(inmap)
+                maparr[:, 1] = 0
+                maparr = maparr.astype(int)
                 spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-                spans = get_spans(maparr, spans)
-                self.maparr = spans
-                self.nsites = spans.shape[0]
+                self.maparr = get_spans(maparr, spans)
+                self.nsites = self.maparr.shape[0]
         else:
             self.maparr = None
             
 
     def _subsample(self):
-        """ returns a subsample of unlinked snp sites """
-        spans = self.maparr
-        samp = np.zeros(spans.shape[0], dtype=np.uint64)
-        for i in xrange(spans.shape[0]):
-            samp[i] = np.random.randint(spans[i, 0], spans[i, 1], 1)
-        return samp
+        "returns a subsample of unlinked snp sites"
+        spans = np.zeros(self.maparr.shape[0], dtype=np.uint64)
+        for i in range(self.maparr.shape[0]):
+            spans[i] = np.random.randint(
+                self.maparr[i, 0], self.maparr[i, 1], 1)[0]
+        return spans
 
 
     @property
     def header(self):
+        "returns a header dataframe for viewing"
         header = pd.DataFrame(
             [self.labels, self.popdata, self.popflag, self.locdata, self.phenotype],
             index=["labels", "popdata", "popflag", "locdata", "phenotype"]).T
@@ -145,19 +168,23 @@ class Structure(object):
 
     @property
     def result_files(self):
-        """ returns a list of files that have finished structure """
-        reps = OPJ(self.workdir, self.name+"-K-*-rep-*_f")
+        "returns a list of files that have finished structure"
+        reps = os.path.join(
+            self.workdir, 
+            self.name + "-K-*-rep-*_f")
         repfiles = glob.glob(reps)
         return repfiles
 
 
-    def run(self,
+    def run(
+        self,
         kpop, 
         nreps, 
         ipyclient=None,
         seed=12345, 
         force=False,
-        quiet=False, 
+        quiet=False,
+        block=False, 
         ):
 
         """ 
@@ -165,9 +192,9 @@ class Structure(object):
         object. K is the number of populations, randomseed if not set will be 
         randomly drawn, ipyclient if not entered will raise an error. If nreps
         is set then multiple jobs will be started from new seeds, each labeled
-        by its replicate number. If force=True then replicates will be overwritten, 
-        otherwise, new replicates will be created starting with the last file N 
-        found in the workdir. 
+        by its replicate number. If force=True then replicates will be 
+        overwritten, otherwise, new replicates will be created starting with 
+        the last file N found in the workdir. 
 
         Parameters:
         -----------
@@ -224,25 +251,19 @@ class Structure(object):
 
         ## block until all jobs finish
         ipyclient.wait()
-
         """
-        ## initiate starting seed
+
+        # initiate starting seed
         np.random.seed(seed)
 
-        ## check for stuructre here
-        proc = subprocess.Popen(["which", "structure"],
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT).communicate()
-        if not proc:
-            raise Exception(\
-                "structure is not installed: run `conda install structure -c ipyrad`")
-
-        ## start load balancer
+        # start load balancer
         if ipyclient:
             lbview = ipyclient.load_balanced_view()
 
-        ## remove old jobs with this same name
-        handle = OPJ(self.workdir, self.name+"-K-{}-*".format(kpop))
+        # remove old jobs with this same name
+        handle = os.path.join(
+            self.workdir, 
+            self.name + "-K-{}-*".format(kpop))
         oldjobs = glob.glob(handle)
         if force or (not oldjobs):
             for job in oldjobs:
@@ -254,7 +275,7 @@ class Structure(object):
             repend = repstart + nreps
 
         ## check that there is a ipcluster instance running
-        for rep in xrange(repstart, repend):
+        for rep in range(repstart, repend):
 
             ## sample random seed for this rep
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
@@ -273,20 +294,22 @@ class Structure(object):
 
             if ipyclient:
                 ## call structure
-                async = lbview.apply(_call_structure, *(args))
-                self.asyncs.append(async)
+                rasync = lbview.apply(_call_structure, *(args))
+                self.asyncs.append(rasync)
 
             else:
                 if not quiet:
-                    sys.stderr.write("submitted 1 structure job [{}-K-{}]\n"\
-                                 .format(self.name, kpop))
+                    sys.stderr.write(
+                        "submitted 1 structure job [{}-K-{}]\n"
+                        .format(self.name, kpop))
                 comm = _call_structure(*args)
                 return comm
 
         if ipyclient:
             if not quiet:
-                sys.stderr.write("submitted {} structure jobs [{}-K-{}]\n"\
-                                .format(nreps, self.name, kpop))
+                sys.stderr.write(
+                    "submitted {} structure jobs [{}-K-{}]\n"
+                    .format(nreps, self.name, kpop))
 
 
 
@@ -298,23 +321,29 @@ class Structure(object):
         run structure separately.
         """
 
-        ## check params
+        # check params
         self.mainparams.numreps = int(self.mainparams.numreps)
         self.mainparams.burnin = int(self.mainparams.burnin)
 
-        ## write tmp files for the job. Rando avoids filename conflict.
-        mname = OPJ(self.workdir, "tmp-{}-{}-{}.mainparams.txt".format(self.name, kpop, rep))
-        ename = OPJ(self.workdir, "tmp-{}-{}-{}.extraparams.txt".format(self.name, kpop, rep))
-        sname = OPJ(self.workdir, "tmp-{}-{}-{}.strfile.txt".format(self.name, kpop, rep))
+        # write tmp files for the job. Rando avoids filename conflict.
+        mname = os.path.join(
+            self.workdir, 
+            "tmp-{}-{}-{}.mainparams.txt".format(self.name, kpop, rep))
+        ename = os.path.join(
+            self.workdir, 
+            "tmp-{}-{}-{}.extraparams.txt".format(self.name, kpop, rep))
+        sname = os.path.join(
+            self.workdir, 
+            "tmp-{}-{}-{}.strfile.txt".format(self.name, kpop, rep))
         tmp_m = open(mname, 'w')
         tmp_e = open(ename, 'w')
         tmp_s = open(sname, 'w')
 
-        ## write params files
+        # write params files
         tmp_m.write(self.mainparams._asfile())
         tmp_e.write(self.extraparams._asfile())
 
-        ## subsample SNPs as unlinked if a mapfile is present.
+        ## subsample SNPs as unlinked if a mapfile is present
         ## & write pop data to the tmp_s file if present
         assert len(self.popdata) == len(self.labels), \
             "popdata list must be the same length as the number of taxa"
@@ -445,30 +474,29 @@ class Structure(object):
 
 
 
-
-
 def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpop, rep):
-    """ make the subprocess call to structure """
-    ## create call string
+    "make the subprocess call to structure"
+
+    # create call string
     outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
 
-    cmd = ["structure", 
-           "-m", mname, 
-           "-e", ename, 
-           "-K", str(kpop),
-           "-D", str(seed), 
-           "-N", str(ntaxa), 
-           "-L", str(nsites),
-           "-i", sname, 
-           "-o", outname]
+    cmd = [
+        "structure", 
+        "-m", mname, 
+        "-e", ename, 
+        "-K", str(kpop),
+        "-D", str(seed), 
+        "-N", str(ntaxa), 
+        "-L", str(nsites),
+        "-i", sname, 
+        "-o", outname,
+    ]
 
-    ## call the shell function
-    proc = subprocess.Popen(cmd,
-                            stdout=subprocess.PIPE, 
-                            stderr=subprocess.STDOUT)
+    # call the shell function
+    proc = sps.Popen(cmd, stdout=sps.PIPE, stderr=sps.STDOUT)
     comm = proc.communicate()
 
-    ## cleanup
+    # cleanup
     oldfiles = [mname, ename, sname]
     for oldfile in oldfiles:
         if os.path.exists(oldfile):
@@ -624,7 +652,7 @@ class _ClumppParams(Params):
 
 
 def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
-    """ private function to clumpp results"""
+    "private function to clumpp results"
 
     ## concat results for k=x
     reps, excluded = _concat_reps(self, kpop, max_var_multiple, quiet)
@@ -650,27 +678,33 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
                 "{}-K-{}.indfile".format(self.name, kpop))
     miscfile = os.path.join(self.workdir, 
                 "{}-K-{}.miscfile".format(self.name, kpop))
-    cmd = ["CLUMPP", clumphandle, 
-           "-i", indfile,
-           "-o", outfile, 
-           "-j", miscfile,
-           "-r", str(nreps), 
-           "-c", str(ninds), 
-           "-k", str(kpop)]
 
-    ## call clumpp
-    proc = subprocess.Popen(cmd, 
-                            stderr=subprocess.STDOUT, 
-                            stdout=subprocess.PIPE)
-    _ = proc.communicate()
+    # shorten filenames because clumpp can't handle names > 50 chars.
+    for filename in [clumphandle, indfile, outfile]:
+        filename = filename.replace(os.path.expanduser('~'), '~', 1)
+    cmd = [
+        "CLUMPP", clumphandle, 
+        "-i", indfile,
+        "-o", outfile, 
+        "-j", miscfile,
+        "-r", str(nreps), 
+        "-c", str(ninds), 
+        "-k", str(kpop),
+    ]
 
-    ## cleanup
+    # call clumpp
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    comm = proc.communicate()   
+
+    # cleanup
     for rfile in [indfile, miscfile]:
         if os.path.exists(rfile):
             os.remove(rfile)
 
-    ## parse clumpp results file
-    ofile = os.path.join(self.workdir, "{}-K-{}.outfile".format(self.name, kpop))
+    # parse clumpp results file
+    ofile = os.path.join(
+        self.workdir, 
+        "{}-K-{}.outfile".format(self.name, kpop))
     if os.path.exists(ofile):
         csvtable = pd.read_csv(ofile, delim_whitespace=True, header=None)
         table = csvtable.loc[:, 5:]
@@ -681,13 +715,18 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
         if not quiet:
             sys.stderr.write(
                 "[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
-                .format(kpop, nreps, nreps+excluded, max_var_multiple))
+                .format(kpop, nreps, nreps + excluded, max_var_multiple))
         return table
 
     else:
+        # TODO: shouldn't we raise an error here?
         sys.stderr.write("No files ready for {}-K-{} in {}\n"\
                          .format(self.name, kpop, self.workdir))
-        return 
+        if len(outfile) > 50:
+            print("""
+    This error may be caused by the length of your output filename. For some 
+    reason Clumpp cannot handle filenames longer than 50 characters...
+    """, file=sys.stderr)
 
 
 
@@ -708,8 +747,9 @@ def _concat_reps(self, kpop, max_var_multiple, quiet, **kwargs):
     reps = []
     with open(outf, 'w') as outfile:
         repfiles = glob.glob(
-            os.path.join(self.workdir, 
-                self.name+"-K-{}-rep-*_f".format(kpop)))
+            os.path.join(
+                self.workdir, 
+                self.name + "-K-{}-rep-*_f".format(kpop)))
 
         ## get result as a Rep object
         for rep in repfiles:
@@ -776,7 +816,7 @@ def _get_evanno_table(self, kpops, max_var_multiple, quiet):
         else:
             ninds = nreps = 0
         if not reps:
-            print "no result files found"
+            print("no result files found")
 
         ## all we really need is the lnlik
         replnliks.append([i.est_lnlik for i in reps])
@@ -820,7 +860,6 @@ def _get_evanno_table(self, kpops, max_var_multiple, quiet):
 
 
 
-
 class Rep(object):
     """ parsed structure result file object """
     def __init__(self, repfile, kpop):
@@ -834,7 +873,7 @@ class Rep(object):
 
         ## get table string        
         psearch = re.compile(r"\)   :  ")
-        dsearch = re.compile(r"\)    \d :  ")
+        dsearch = re.compile(r"\)\s+\d+ :  ")
         self.stable = self.parse(psearch, dsearch)
 
         ## record if it is high variance
@@ -871,7 +910,7 @@ class Rep(object):
                         " ".join(abc[4:])
                     )
                     self.inds += 1
-                    stable += outstr+"\n"
+                    stable += outstr + "\n"
 
                 elif popline:
                     ## check if sample is supervised...
@@ -890,8 +929,6 @@ class Rep(object):
 
             stable += "\n"
         return stable
-
-
 
 
 
@@ -1003,4 +1040,3 @@ RANDOM_INPUTORDERFILE         {random_inputorderfile}      #
 OVERRIDE_WARNINGS             {override_warnings}          #
 ORDER_BY_RUN                  {order_by_run}               #
 """
-

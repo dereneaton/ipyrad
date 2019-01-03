@@ -4,7 +4,8 @@
 
 import os
 import subprocess
-from ipyrad.assemble.util import Params
+from ipyrad.assemble.utils import Params
+from ipyrad.assemble.utils import IPyradError
 
 ## alias
 OPJ = os.path.join
@@ -71,7 +72,7 @@ class Raxml(object):
         ## path attributes
         self._kwargs = {
             "f": "a", 
-            "T": 4,
+            "T": 4,  # <- change to zero !?
             "m": "GTRGAMMA",
             "N": 100,
             "x": 12345,
@@ -107,8 +108,8 @@ class Raxml(object):
         ## check binary
         self._get_binary()
 
-        ## attributes
-        self.async = None
+        ## attributesx
+        self.rasync = None
         self.stdout = None
         self.stderr = None
 
@@ -179,7 +180,7 @@ class Raxml(object):
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
         if os.path.exists(self.trees.info):
-            print("Error: set a new name for this job or use Force flag.\nFile exists: {}"\
+            print("Error Files Exist: set a new name or use Force flag.\n{}"
                   .format(self.trees.info))
             return 
 
@@ -193,18 +194,27 @@ class Raxml(object):
         else:
             ## find all hosts and submit job to the host with most available engines
             lbview = ipyclient.load_balanced_view()
-            self.async = lbview.apply(_call_raxml, self._command_list)
+            self.rasync = lbview.apply(_call_raxml, self._command_list)
 
         ## initiate random seed
         if not quiet:
             if not ipyclient:
                 ## look for errors
-                if "Overall execution time" not in self.stdout:
-                    print("Error in raxml run\n" + self.stdout)
+                if "Overall execution time" not in self.stdout.decode():
+                    print("Error in raxml run\n" + self.stdout.decode())
                 else:
                     print("job {} finished successfully".format(self.params.n))
-            else:
-                print("job {} submitted to cluster".format(self.params.n))
+            else:               
+                if block:
+                    print("job {} running".format(self.params.n))
+                    ipyclient.wait()
+                    if self.rasync.successful():
+                        print("job {} finished successfully"
+                            .format(self.params.n))
+                    else:
+                        raise IPyradError(self.rasync.get())
+                else:
+                    print("job {} submitted to cluster".format(self.params.n))
 
 
 
@@ -274,6 +284,7 @@ BINARY_ERROR = """
 
   or, you can set it after object creation with:
     rax.params.binary = "raxmlHPC-PTHREADS"
-"""
 
-  
+  If you install raxml with conda ipyrad should be able to find it:
+  'conda install raxml -c bioconda'
+"""

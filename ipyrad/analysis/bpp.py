@@ -1,31 +1,30 @@
 #!/usr/bin/env python
 
-""" convert loci file to bpp format input files """
+"convert loci file to bpp format input files"
 
+# py2/3 compat
+from __future__ import print_function
+from builtins import range
+
+# standard lib
 import os
 import sys
 import glob
 import copy
-import itertools
-import subprocess
+import subprocess as sps
+from collections import Counter
+
 import numpy as np
 import pandas as pd
+import toytree
+from ipyrad.analysis.utils import Params, progressbar
+from ipyrad.assemble.utils import IPyradError
 
-from collections import Counter
-from ipyrad.assemble.util import DUCT, IPyradWarningExit
 
-
-try:
-    ## when you have time go back and set attrubutes on toytrees
-    from toytree import ete3mini as ete
-except ImportError:
-    raise IPyradWarningExit("""
-    Error: bpp requires the dependency 'toytree', which we haven't yet
-    included in the ipyrad installation. For now, you can install toytree
-    using conda with the following command: 
-
-    conda install toytree -c eaton-lab
-    """)
+# DUCT from where?
+# TODO: REPLACE DUCT
+# TODO: REPLACE TOYTREE USAGE
+# 
 
 MISSING_IMPORTS = """
 You are missing required packages to use ipa.bpp.
@@ -151,96 +150,110 @@ class Bpp(object):
         *args, 
         **kwargs):
 
-
-        ## path attributes
+        # store args
         self.name = name
+        self.data = os.path.realpath(os.path.expanduser(data))
+        self.workdir = os.path.realpath(os.path.expanduser(workdir))
+        self.guidetree = guidetree
+        self.imap = imap
+        self.load_existing_results = load_existing_results
+
+        # update kwargs 
         self.asyncs = []
         self._kwargs = {
-                "binary": "bpp",
-                "maxloci": None,
-                "minmap": None,
-                "minsnps": 0,
-                "infer_sptree": 0,
-                "infer_delimit": 0,
-                "delimit_alg": (0, 5),
-                "seed": 12345,
-                "burnin": 1000,
-                "nsample": 10000,
-                "sampfreq": 2,
-                "thetaprior": (2, 2000),
-                "tauprior": (2, 2000, 1),
-                "usedata": 1,
-                "cleandata": 0,
-                "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
-                "copied": False,
-            }
+            "binary": "bpp",
+            "maxloci": None,
+            "minmap": None,
+            "minsnps": 0,
+            "infer_sptree": 0,
+            "infer_delimit": 0,
+            "delimit_alg": (0, 5),
+            "seed": 12345,
+            "burnin": 1000,
+            "nsample": 10000,
+            "sampfreq": 2,
+            "thetaprior": (2, 2000),
+            "tauprior": (2, 2000, 1),
+            "usedata": 1,
+            "cleandata": 0,
+            "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
+            "copied": False,
+        }
         self._kwargs.update(kwargs)
 
+        # run checks
+        self.check_binary()
+        self.check_files()
+
+
+    def check_binary(self):
         ## check that bpp is installed and in path
         for binary in [self._kwargs["binary"]]:
-            if not subprocess.call("type " + binary, 
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE) == 0:
-                raise IPyradWarningExit(MISSING_IMPORTS)        
+            cmd = ['which', binary]
+            proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
+            comm = proc.communicate()[0]
+            if not comm:
+                raise IPyradError(MISSING_IMPORTS)
 
-        ## support for legacy args
+
+    def check_files(self):
+        # support for legacy args
         if self._kwargs.get("locifile"):
-            data = self._kwargs.get("locifile")
-        if not data:
-            raise IPyradWarningExit(
+            self.data = self._kwargs.get("locifile")
+        if not self.data:
+            raise IPyradError(
                 "must enter a 'data' argument (an ipyrad .loci file).")
 
-        ## set the guidetree
-        if not guidetree:
-            raise IPyradWarningExit(
+        # set the guidetree
+        if not self.guidetree:
+            raise IPyradError(
                 "must enter a 'guidetree' argument (a newick file or string).")
-        self.tree = ete.Tree(guidetree)
+        self.tree = toytree.tree(self.guidetree)
 
-        ## check workdir
-        if workdir:
-            self.workdir = os.path.abspath(os.path.expanduser(workdir))
-        else:
+        # check workdir
+        if not self.workdir:
             self.workdir = os.path.join(os.path.curdir, "analysis-bpp")
+        self.workdir = os.path.realpath(os.path.expanduser(self.workdir))           
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        ## parsing imap dictionary, or create simple 1-1 mapping
-        if not imap:
-            self.imap = {i:[i] for i in self.tree.get_leaf_names()}
-        else:
-            self.imap = {}
-            for key, val in imap.items():
-                if isinstance(val, (int, str)):
-                    self.imap[key] = [str(val)]
-                elif isinstance(val, list):
-                    self.imap[key] = val
-                else:
-                    raise IPyradWarningExit("imap dictionary is not properly formatted")
+        # parsing imap dictionary, or create simple 1-1 mapping
+        if not self.imap:
+            self.imap = {i: [i] for i in self.tree.get_tip_labels()}
+        # else:
+        #     # self.imap = {}
+        #     for key, val in self.imap.items():
+        #         if isinstance(val, (int, str)):
+        #             self.imap[key] = [str(val)]
+        #         elif isinstance(val, list):
+        #             self.imap[key] = val
+        #         else:
+        #             raise IPyradError(
+        #                 "imap dictionary is not properly formatted")
 
-        ## update stats if alleles instead of loci 
+        # update stats if alleles instead of loci 
         if not self._kwargs["minmap"]:
-            self._kwargs["minmap"] = {i:1 for i in self.tree.get_leaf_names()}
+            self._kwargs["minmap"] = {i: 1 for i in self.tree.get_tip_labels()}
 
-        if ('.alleles.loci' in data) and (not self._kwargs['copied']):
-            ## add 0/1 to names
+        if ('.alleles.loci' in self.data) and (not self._kwargs['copied']):
+            # add 0/1 to names
             keys = self.imap.keys()
             for key in keys:
                 oldvals = self.imap[key]
                 newvals = []
                 for val in oldvals:
-                    newvals += [val+"_0", val+"_1"]
+                    newvals += [val + "_0", val + "_1"]
                 self.imap[key] = newvals
 
-            ## double the minmap (copied attribute protects from double 2X)
+            # double the minmap (copied attribute protects from double 2X)
             self._kwargs["minmap"] = \
-                {key: val*2 for key, val in self._kwargs['minmap'].items()}
+                {key: val * 2 for key, val in self._kwargs['minmap'].items()}
 
         ## checks
         assert isinstance(self.imap, dict), "you must enter an IMAP dictionary"
-        assert set(self.imap.keys()) == set(self.tree.get_leaf_names()), \
+        assert set(self.imap.keys()) == set(self.tree.get_tip_labels()), (
                "IMAP keys must match guidetree names: \n{}\n{}"\
-               .format(self.imap.keys(), self.tree.get_leaf_names())
+               .format(self.imap.keys(), self.tree.get_tip_labels()))
 
         ## filters
         self.filters = Params()
@@ -256,15 +269,14 @@ class Bpp(object):
 
         ## results files
         self.files = Params()
-        self.files.data = data
+        self.files.data = self.data
         self.files.mcmcfiles = []
         self.files.outfiles = []
         self.files.treefiles = []
         
         ## load existing results files for this named bpp object if they exist
-        if load_existing_results:
-            self._load_existing_results(name, workdir=self.workdir)
-
+        if self.load_existing_results:
+            self._load_existing_results(self.name, workdir=self.workdir)
 
 
     def _load_existing_results(self, name, workdir):
@@ -289,7 +301,8 @@ class Bpp(object):
                 self.files.treefiles.append(tree)        
 
 
-    def run(self,
+    def run(
+        self,
         ipyclient, 
         nreps=1, 
         quiet=False,
@@ -338,7 +351,7 @@ class Bpp(object):
         lbview = ipyclient.load_balanced_view()
 
         ## send jobs
-        for job in xrange(nreps):
+        for job in range(nreps):
 
             ## make repname and make ctl filename
             self._name = "{}_r{}".format(self.name, job)
@@ -360,8 +373,8 @@ class Bpp(object):
                 ctlfile = self._write_ctlfile()
                 
                 ## submit to engines
-                async = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, is_alg00))
-                self.asyncs.append(async)
+                rasync = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, is_alg00))
+                self.asyncs.append(rasync)
 
                 ## save tree file if alg 00
                 if is_alg00:
@@ -441,7 +454,7 @@ class Bpp(object):
 
         ## iterate over loci, printing to outfile
         nkept = 0
-        for iloc in xrange(nloci):
+        for iloc in range(nloci):
             lines = loci[iloc].split("//")[0].split()
             names = lines[::2]
             names = ["^"+i for i in names]
@@ -470,12 +483,12 @@ class Bpp(object):
                 npis = 0
                 arr = np.array(seqs)
                 arr = np.zeros((arr.shape[0]*2, arr.shape[1]), dtype="S1")
-                for row in xrange(len(seqs)):
+                for row in range(len(seqs)):
                     fillrow = 2 * row
                     arr[fillrow] = [DUCT[i][0] for i in seqs[row]]
                     arr[fillrow+1] = [DUCT[i][1] for i in seqs[row]]
                     
-                for col in xrange(arr.shape[1]):
+                for col in range(arr.shape[1]):
                     bases = arr[:, col]
                     bases = bases[bases != "N"]
                     bases = bases[bases != "-"]
@@ -550,7 +563,8 @@ class Bpp(object):
         nspecies = str(len(self.imap))
         species = " ".join(sorted(self.imap))
         ninds = " ".join([str(len(self.imap[i])) for i in sorted(self.imap)])
-        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.tree.write(format=9)))
+        # self.tree.write(format=9)
+        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.tree.write(None, 9)))
 
         ## priors
         ctl.append("thetaprior = {} {}".format(*self.params.thetaprior))
@@ -595,7 +609,7 @@ class Bpp(object):
         """
 
         ## make deepcopy of self.__dict__ but do not copy async objects
-        subdict = {i:j for i,j in self.__dict__.iteritems() if i != "asyncs"}
+        subdict = {i:j for i,j in self.__dict__.items() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
         ## make back into a bpp object
@@ -612,9 +626,9 @@ class Bpp(object):
             )
 
         ## update special dict attributes but not files
-        for key, val in newobj.params.__dict__.iteritems():
+        for key, val in newobj.params.__dict__.items():
             newobj.params.__setattr__(key, self.params.__getattribute__(key))
-        for key, val in newobj.filters.__dict__.iteritems():
+        for key, val in newobj.filters.__dict__.items():
             newobj.filters.__setattr__(key, self.filters.__getattribute__(key))
 
         ## new object must have a different name than it's parent
@@ -655,11 +669,7 @@ class Bpp(object):
 def _call_bpp(binary, ctlfile, is_alg00):
 
     ## call the command and block until job finishes
-    proc = subprocess.Popen(
-        ["bpp", ctlfile], 
-        stderr=subprocess.STDOUT, 
-        stdout=subprocess.PIPE
-        )
+    proc = sps.Popen(["bpp", ctlfile], stderr=sps.STDOUT, stdout=sps.PIPE)
     comm = proc.communicate()
 
     ## Look for the ~/Figtree.tre file that bpp creates.
@@ -678,33 +688,9 @@ def _call_bpp(binary, ctlfile, is_alg00):
     return comm
 
 
-
-class Params(object):
-    """ 
-    A dict-like object for storing params values with a custom repr
-    """
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __repr__(self):
-        _repr = ""
-        keys = sorted(self.__dict__.keys())      
-        _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-        for key in keys:
-            _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-            _repr += _printstr.format(key, _val)
-        return _repr
-        
-
-
 class Result_00(object):
     """ parse bpp results object for 00 scenario """
     pass
-
-
 
 
 def _parse_00(ofile):
@@ -730,9 +716,6 @@ def _parse_00(ofile):
             ).T
         return df
    
-
-
-
 
 def _parse_01(ofiles, individual=False):
     """ 
@@ -772,7 +755,7 @@ def _parse_01(ofiles, individual=False):
         ## get mean results across reps
         #return cols
         res = []
-        for i in xrange(len(cols)):
+        for i in range(len(cols)):
             x = dat
             x[:, 3] = cols[i].astype(str)
             x = pd.DataFrame(x[:, 1:])
@@ -781,7 +764,6 @@ def _parse_01(ofiles, individual=False):
             x["nspecies"] = nspecies
             res.append(x)
         return res
-
 
 
 ## GLOBALS
@@ -805,4 +787,3 @@ SPECIESTREE = """\
 species&tree = {} {}
                  {}
                  {}"""  
-
