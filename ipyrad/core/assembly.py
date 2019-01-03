@@ -861,8 +861,8 @@ class Params:
         self._assembly_name = data.name
         self._project_dir = os.path.realpath("./analysis-ipyrad")
         self._raw_fastq_path = ""
-        self._sorted_fastq_path = ""
         self._barcodes_path = ""
+        self._sorted_fastq_path = ""
         self._assembly_method = "denovo"
         self._reference_sequence = ""
         self._datatype = "rad"
@@ -892,8 +892,8 @@ class Params:
             "_assembly_name",
             "_project_dir",
             "_raw_fastq_path",
-            "_sorted_fastq_path", 
             "_barcodes_path",
+            "_sorted_fastq_path", 
             "_assembly_method",
             "_reference_sequence",
             "_datatype", 
@@ -977,6 +977,8 @@ class Params:
     @barcodes_path.setter
     def barcodes_path(self, value):
         if value and ("Merged:" not in value):
+
+            print(value, "HEEEEERE\n\n")
 
             # allow fuzzy name match
             fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))
