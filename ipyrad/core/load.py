@@ -10,7 +10,8 @@ import itertools
 import pandas as pd
 from ..core.sample import Sample
 from ..core.assembly import Assembly
-from ..assemble.utils import IPyradWarningExit, ObjDict, IPyradError
+from ..assemble.utils import ObjDict
+from ..assemble.utils import IPyradWarningExit, IPyradError, IPyradParamsError
 
 
 
@@ -64,7 +65,7 @@ def load_json(path, quiet=False, cli=False):
         if param not in ["assembly_name", "keys"]:
             try:
                 null.set_params(param, val)
-            except IPyradWarningExit as inst:
+            except (IPyradWarningExit, IPyradParamsError) as inst:
                 pass
 
     # Import the hackersonly dict. In this case we don't have the nice
