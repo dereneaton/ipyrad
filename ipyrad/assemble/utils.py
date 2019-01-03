@@ -15,10 +15,6 @@ except ImportError:
 import os
 import gzip
 import socket
-import tempfile
-#from collections import defaultdict
-import subprocess as sps
-
 import pandas as pd
 import numpy as np
 import ipyrad
