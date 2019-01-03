@@ -85,15 +85,18 @@ class Step2(object):
         in list of adapters. 
         """
         if int(self.data.params.filter_adapters) == 3:
-            if not self.data._hackersonly["p3_adapters_extra"]:
+            if not self.data.hackersonly.p3_adapters_extra:
                 for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
-                    self.data._hackersonly["p3_adapters_extra"].append(poly)
-            if not self.data._hackersonly["p5_adapters_extra"]:    
+                    self.data.hackersonly.p3_adapters_extra = (
+                        self.data.hackersonly.p3_adapters_extra + [poly])
+
+            if not self.data.hackersonly.p5_adapters_extra:
                 for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
-                    self.data._hackersonly["p5_adapters_extra"].append(poly)
+                    self.data.hackersonly.p5_adapters_extra = (
+                        self.data.hackersonly.p5_adapters_extra + [poly])
         else:
-            self.data._hackersonly["p5_adapters_extra"] = []
-            self.data._hackersonly["p3_adapters_extra"] = []        
+            self.data.hackersonly.p5_adapters_extra = []
+            self.data.hackersonly.p3_adapters_extra = []        
 
 
     def run(self):
@@ -153,14 +156,14 @@ class Step2(object):
         rawedits = {}
 
         # send samples to cutadapt filtering
-        if "pair" in self.data.params.datatype:
-            for sample in self.samples:
-                rawedits[sample.name] = self.lbview.apply(
+        for sample in self.samples:
+            if "pair" in self.data.params.datatype:
+                rasync = self.lbview.apply(
                     cutadaptit_pairs, *(self.data, sample))
-        else:
-            for sample in self.samples:
-                rawedits[sample.name] = self.lbview.apply(
+            else:
+                rasync = self.lbview.apply(
                     cutadaptit_single, *(self.data, sample))
+            rawedits[sample.name] = rasync
 
         ## wait for all to finish
         while 1:
@@ -168,10 +171,10 @@ class Step2(object):
             self.data._progressbar(len(rawedits), finished, start, printstr)
             time.sleep(0.1)
             if finished == len(rawedits):
+                print("")
                 break
 
-        ## collect results, report failures, and store stats. async = sample.name
-        print("")
+        ## collect results, report failures, store stats. async = sample.name
         for rasync in rawedits:
             if rawedits[rasync].successful():
                 res = rawedits[rasync].result()
@@ -184,9 +187,10 @@ class Step2(object):
                     parse_pair_results(
                         self.data, self.data.samples[rasync], res)
             else:
-                print("  found an error in step2; see ipyrad_log.txt")
-                # ip.logger.error(
-                    # "error in run_cutadapt(): %s", rawedits[rasync].exception())
+                raise IPyradError(
+                    "error in {}: {}"
+                    .format(rasync, rawedits[rasync].get())
+                )
 
 
     def assembly_cleanup(self):
@@ -206,9 +210,8 @@ class Step2(object):
 
 
 
-
 def assembly_cleanup(data):
-    """ cleanup for assembly object """
+    "cleanup for assembly object"
 
     ## build s2 results data frame
     data.stats_dfs.s2 = data._build_stat("s2")
@@ -346,7 +349,7 @@ def parse_pair_results(data, sample, res):
         print("No reads passed filtering in Sample: {}".format(sample.name))
 
 
-
+# CALLED BY STEP
 def cutadaptit_single(data, sample):
     """ 
     Applies quality and adapter filters to reads using cutadapt. If the ipyrad
@@ -354,45 +357,58 @@ def cutadaptit_single(data, sample):
     mintrimlen. If filter=1, we add quality filters. If filter=2 we add
     adapter filters. 
     """
-
     sname = sample.name
-    ## if (GBS, ddRAD) we look for the second cut site + adapter. For single-end
-    ## data we don't bother trying to remove the second barcode since it's not
-    ## as critical as with PE data.
+    # if (GBS, ddRAD) we look for the second cut site + adapter. For SE
+    # data we don't bother trying to remove the second barcode since it's not
+    # as critical as with PE data.
     if data.params.datatype == "rad":
-        adapter = data._hackersonly["p3_adapter"]
+        adapter = data.hackersonly.p3_adapter
+    
     else:
-        ## if GBS then the barcode can also be on the other side. 
+        # if GBS then the barcode can also be on the other side. 
         if data.param.datatype == "gbs":
+           
 
-            ## make full adapter (-revcompcut-revcompbarcode-adapter)
-            ## and add adapter without revcompbarcode
             if data.barcodes:
-                adapter = (
-                    fullcomp(data.params.restriction_overhang[1])[::-1] \
-                  + fullcomp(data.barcodes[sample.name])[::-1] \
-                  + data._hackersonly["p3_adapter"])
-                ## add incomplete adapter to extras (-recompcut-adapter)
-                data._hackersonly["p3_adapters_extra"].append(
-                    fullcomp(data.params.restriction_overhang[1])[::-1] \
-                  + data._hackersonly["p3_adapter"])
-            else:
-                # ip.logger.warning("No barcode information present, and is therefore not "+\
-                               # "being used for adapter trimming of SE gbs data.")
-                ## else no search for barcodes on 3'
-                adapter = \
-                    fullcomp(data.params.restriction_overhang[1])[::-1] \
-                  + data._hackersonly["p3_adapter"]
-        else:
-            adapter = \
-                fullcomp(data.params.restriction_overhang[1])[::-1] \
-              + data._hackersonly["p3_adapter"]
 
-    ## get length trim parameter from new or older version of ipyrad params
+                # make full adapter (-revcompcut-revcompbarcode-adapter)                
+                adapter = "".join([
+                    fullcomp(data.params.restriction_overhang[1])[::-1], 
+                    fullcomp(data.barcodes[sample.name])[::-1], 
+                    data.hackersonly.p3_adapter, 
+                ])
+            
+                # and add adapter without revcompbarcode (incomplete)
+                incomplete_adapter = "".join([
+                    fullcomp(data.params.restriction_overhang[1])[::-1], 
+                    data.hackersonly.p3_adapter
+                ])                
+
+                # append incomplete adapter to extras (-recompcut-adapter)
+                data.hackersonly.p3_adapters_extra = [
+                    data.hackersonly.p3_adapters_extra, 
+                    incomplete_adapter,
+                ]
+
+            else:
+                # else no search for barcodes on 3'
+                adapter = "".join([
+                    fullcomp(data.params.restriction_overhang[1])[::-1], 
+                    data._hackersonly["p3_adapter"], 
+                ])
+
+        # not GBS, simple
+        else:
+            adapter = "".join([
+                fullcomp(data.params.restriction_overhang[1])[::-1], 
+                data._hackersonly["p3_adapter"], 
+            ])
+
+    # get length trim parameter from new or older version of ipyrad params
     trim5r1 = trim3r1 = []
     trimlen = data.params.trim_reads
         
-    ## trim 5' end
+    # trim 5' end
     if trimlen[0]:
         trim5r1 = ["-u", str(trimlen[0])]
     if trimlen[1] < 0:
@@ -436,7 +452,6 @@ def cutadaptit_single(data, sample):
         cmdf1.insert(1, adapter)
         cmdf1.insert(1, "-a")
 
-
     ## do modifications to read1 and write to tmp file
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     try:
@@ -453,7 +468,7 @@ def cutadaptit_single(data, sample):
     return res1
 
 
-
+# CALLED BY STEP
 ## BEING MODIFIED FOR MULTIPLE BARCODES (i.e., merged samples. NOT PERFECT YET)
 def cutadaptit_pairs(data, sample):
     """
@@ -636,138 +651,12 @@ def cutadaptit_pairs(data, sample):
 
 
 
-# # replaced in Step2 object
-# def concat_reads(data, subsamples, ipyclient):
-#     """ concatenate if multiple input files for a single samples """
-
-#     ## concatenate reads if they come from merged assemblies.
-#     if any([len(i.files.fastqs) > 1 for i in subsamples]):
-#         ## run on single engine for now
-#         start = time.time()
-#         printstr = ("concatenating inputs", "s2")
-#         finished = 0
-#         catjobs = {}
-#         for sample in subsamples:
-#             if len(sample.files.fastqs) > 1:
-#                 catjobs[sample.name] = ipyclient[0].apply(
-#                     concat_multiple_inputs, *(data, sample))
-#             else:
-#                 sample.files.concat = sample.files.fastqs
-
-#         ## wait for all to finish
-#         while 1:
-#             finished = sum([i.ready() for i in catjobs.values()])
-#             data._progressbar(len(catjobs), finished, start, printstr)
-#             time.sleep(0.1)
-#             if finished == len(catjobs):
-#                 break
-
-#         ## collect results, which are concat file handles.
-#         print("")
-#         for rasync in catjobs:
-#             if catjobs[rasync].successful():
-#                 data.samples[rasync].files.concat = catjobs[rasync].result()
-#             else:
-#                 error = catjobs[rasync].result()  # exception()
-#                 # ip.logger.error("error in step2 concat %s", error)
-#                 raise IPyradWarningExit(
-#                     "error in step2 concat: {}".format(error))
-#     else:
-#         for sample in subsamples:
-#             ## just copy fastqs handles to concat attribute
-#             sample.files.concat = sample.files.fastqs
-
-#     return subsamples
-
-
-
-def run_cutadapt(data, subsamples, lbview):
-    """
-    sends fastq files to cutadapt
-    """
-    ## choose cutadapt function based on datatype
-    start = time.time()
-    printstr = ("processing reads    ", "s2")
-    finished = 0
-    rawedits = {}
-
-    ## sort subsamples so that the biggest files get submitted first
-    subsamples.sort(key=lambda x: x.stats.reads_raw, reverse=True)
-    # ip.logger.info([i.stats.reads_raw for i in subsamples])
-
-    ## send samples to cutadapt filtering
-    if "pair" in data.params.datatype:
-        for sample in subsamples:
-            rawedits[sample.name] = lbview.apply(
-                cutadaptit_pairs, *(data, sample))
-    else:
-        for sample in subsamples:
-            rawedits[sample.name] = lbview.apply(
-                cutadaptit_single, *(data, sample))
-
-    ## wait for all to finish
-    while 1:
-        finished = sum([i.ready() for i in rawedits.values()])
-        data._progressbar(len(rawedits), finished, start, printstr)
-        time.sleep(0.1)
-        if finished == len(rawedits):
-            break
-
-    ## collect results, report failures, and store stats. async = sample.name
-    print("")
-    for rasync in rawedits:
-        if rawedits[rasync].successful():
-            res = rawedits[rasync].result()
-
-            ## if single cleanup is easy
-            if "pair" not in data.params.datatype:
-                parse_single_results(data, data.samples[rasync], res)
-            else:
-                parse_pair_results(data, data.samples[rasync], res)
-        else:
-            raise IPyradError(
-                "error in {}: {}"
-                .format(rasync, rawedits[rasync].get())
-            )
-
-
-def choose_samples(samples, force):
-    "filter out samples that are already done with this step, unless force"
-
-    ## hold samples that pass
-    subsamples = []
-    ## filter the samples again
-    if not force:
-        for sample in samples:
-            if sample.stats.state >= 2:
-                print("""\
-    Skipping Sample {}; Already filtered. Use force argument to overwrite.\
-    """.format(sample.name))
-            elif not sample.stats.reads_raw:
-                print("""\
-    Skipping Sample {}; No reads found in file {}\
-    """.format(sample.name, sample.files.fastqs))
-            else:
-                subsamples.append(sample)
-
-    else:
-        for sample in samples:
-            if not sample.stats.reads_raw:
-                print("""\
-    Skipping Sample {}; No reads found in file {}\
-    """.format(sample.name, sample.files.fastqs))
-            else:
-                subsamples.append(sample)
-    return subsamples
-
-
-
+# CALLED BY STEP
 def concat_multiple_inputs(data, sample):
     """ 
     If multiple fastq files were appended into the list of fastqs for samples
     then we merge them here before proceeding. 
     """
-
     ## if more than one tuple in fastq list
     if len(sample.files.fastqs) > 1:
         ## create a cat command to append them all (doesn't matter if they 
