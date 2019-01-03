@@ -21,10 +21,20 @@ class Step2(object):
         self.force = force
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view(self.ipyclient.ids[::2])
+        self.print_headers()
         self.samples = self.get_subsamples()
         self.check_binaries()
         self.setup_dirs()
         self.check_adapters()
+
+
+    def print_headers(self):
+        if self.data._cli:
+            self.data._print(
+                "\n{}Step 2: Filtering and trimming reads"
+                .format(self.data._spacer)
+            )
+
 
     def get_subsamples(self):
         "Apply state, ncluster, and force filters to select samples"
@@ -65,6 +75,7 @@ class Step2(object):
         )
         return checked_samples
 
+
     def setup_dirs(self):
         self.data.dirs.edits = os.path.join(
             self.data.params.project_dir,
@@ -72,12 +83,14 @@ class Step2(object):
         if not os.path.exists(self.data.dirs.edits):
             os.makedirs(self.data.dirs.edits)        
 
+
     def check_binaries(self):
         cmd = ['which', 'cutadapt']
         proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
         comm = proc.communicate()[0]
         if not comm:
             raise IPyradError("program 'cutadapt' not found.")
+
 
     def check_adapters(self):
         """
@@ -394,14 +407,14 @@ def cutadaptit_single(data, sample):
                 # else no search for barcodes on 3'
                 adapter = "".join([
                     fullcomp(data.params.restriction_overhang[1])[::-1], 
-                    data._hackersonly["p3_adapter"], 
+                    data.hackersonly.p3_adapter, 
                 ])
 
         # not GBS, simple
         else:
             adapter = "".join([
                 fullcomp(data.params.restriction_overhang[1])[::-1], 
-                data._hackersonly["p3_adapter"], 
+                data.hackersonly.p3_adapter, 
             ])
 
     # get length trim parameter from new or older version of ipyrad params
@@ -445,7 +458,7 @@ def cutadaptit_single(data, sample):
     ## poly adapters added to its list. 
     if int(data.params.filter_adapters) > 1:
         ## first enter extra cuts (order of input is reversed)
-        for extracut in list(set(data._hackersonly["p3_adapters_extra"]))[::-1]:
+        for extracut in list(set(data.hackersonly.p3_adapters_extra))[::-1]:
             cmdf1.insert(1, extracut)
             cmdf1.insert(1, "-a")
         ## then put the main cut so it appears first in command
@@ -479,7 +492,6 @@ def cutadaptit_pairs(data, sample):
     positives that trim a little extra from the ends of reads. Should we add
     a warning about this when filter_adapters=2 and no barcodes?
     """
-    # ip.logger.debug("Entering cutadaptit_pairs - {}".format(sample.name))
     sname = sample.name
 
     ## applied to read pairs
@@ -508,31 +520,40 @@ def cutadaptit_pairs(data, sample):
     ## the sample specific barcodes will be saved to each Sample under its
     ## .barcode attribute as a list. 
 
+    # try linking barcodes again in case user just added a barcodes path
     if not data.barcodes:
-        ## try linking barcodes again in case user just added a barcodes path
-        ## after receiving the warning. We assume no technical replicates here.
         try:
             data._link_barcodes()
         except IPyradError as inst:
             pass
 
-    ## barcodes are present meaning they were parsed to the samples in step 1.
+    # only effects this engine copy of barcodes (not lost from real data)
+    if data.params.datatype == "pair3rad":
+        data.barcodes = {}       
+
+    # barcodes are present meaning they were parsed to the samples in step 1.
     if data.barcodes:
         try:
-            adapter1 = fullcomp(
-                data.params.restriction_overhang[1])[::-1] \
-              + data._hackersonly["p3_adapter"]
+            adapter1 = "".join([
+                fullcomp(data.params.restriction_overhang[1])[::-1], 
+                data.hackersonly.p3_adapter, 
+            ])
+            
+            # which barcode
             if isinstance(sample.barcode, list):
                 bcode = fullcomp(sample.barcode[0])[::-1]
             elif isinstance(data.barcodes[sample.name], list):
                 bcode = fullcomp(data.barcodes[sample.name][0][::-1])
             else:
                 bcode = fullcomp(data.barcodes[sample.name])[::-1]
-            ## add full adapter (-revcompcut-revcompbcode-adapter)
-            adapter2 = fullcomp(
-                data.params.restriction_overhang[0])[::-1] \
-              + bcode \
-              + data._hackersonly["p5_adapter"]      
+
+            # add full adapter (-revcompcut-revcompbcode-adapter)
+            adapter2 = "".join([
+                fullcomp(data.params.restriction_overhang[0])[::-1], 
+                bcode,
+                data.hackersonly.p5_adapter, 
+            ])
+
         except KeyError as inst:
             msg = """
     Sample name does not exist in the barcode file. The name in the barcode file
@@ -541,22 +562,19 @@ def cutadaptit_pairs(data, sample):
     be referenced in the barcode file as WatDo_PipPrep_100. The name in your
     barcode file for this sample must match: {}
     """.format(sample.name)
-            # ip.logger.error(msg)
             raise IPyradWarningExit(msg)
+
     else:
-        print(NO_BARS_GBS_WARNING)
-        #adapter1 = fullcomp(data.paramsdict["restriction_overhang"][1])[::-1]+\
-        #           data._hackersonly["p3_adapter"]
-        #adapter2 = "XXX"
-        adapter1 = data._hackersonly["p3_adapter"]
-        adapter2 = fullcomp(data._hackersonly["p5_adapter"])
+        if data.params.datatype != "pair3rad":
+            print(NO_BARS_GBS_WARNING)
+        adapter1 = data.hackersonly.p3_adapter
+        adapter2 = fullcomp(data.hackersonly.p5_adapter)
 
-
-    ## parse trim_reads
+    # parse trim_reads
     trim5r1 = trim5r2 = trim3r1 = trim3r2 = []
     trimlen = data.params.trim_reads
         
-    ## trim 5' end
+    # trim 5' end
     if trimlen[0]:
         trim5r1 = ["-u", str(trimlen[0])]
     if trimlen[1] < 0:
@@ -564,7 +582,7 @@ def cutadaptit_pairs(data, sample):
     if trimlen[1] > 0:
         trim3r1 = ["--length", str(trimlen[1])]
 
-    ## legacy support for trimlen = 0,0 default
+    # legacy support for trimlen = 0,0 default
     if len(trimlen) > 2:
         if trimlen[2]:
             trim5r2 = ["-U", str(trimlen[2])]
@@ -575,13 +593,8 @@ def cutadaptit_pairs(data, sample):
                 trim3r2 = ["-U", str(trimlen[3])]
             if trimlen[3] > 0:            
                 trim3r2 = ["--length", str(trimlen[3])]
-    # else:
-        # legacy support
-        # trimlen = data.paramsdict.get("edit_cutsites")
-        # trim5r1 = ["-u", str(trimlen[0])]
-        # trim5r2 = ["-U", str(trimlen[1])]
 
-    ## testing new 'trim_reads' setting
+    # testing new 'trim_reads' setting
     cmdf1 = ["cutadapt"]
     if trim5r1:
         cmdf1 += trim5r1
@@ -620,17 +633,25 @@ def cutadaptit_pairs(data, sample):
         ## if technical replicates then add other copies
         if isinstance(sample.barcode, list):
             for extrabar in sample.barcode[1:]:
-                data._hackersonly["p5_adapters_extra"] += \
-                    fullcomp(data.params.restriction_overhang[0])[::-1] + \
-                    fullcomp(extrabar)[::-1] + \
-                    data._hackersonly["p5_adapter"]
-                data._hackersonly["p5_adapters_extra"] += \
-                    fullcomp(data.params.restriction_overhang[1])[::-1] + \
-                    data._hackersonly["p3_adapter"]
+                
+                data.hackersonly.p5_adapters_extra.append(
+                    "".join([
+                        fullcomp(data.params.restriction_overhang[0])[::-1], 
+                        fullcomp(extrabar)[::-1], 
+                        data.hackersonly.p5_adapter
+                    ])
+                )
+
+                data.hackersonly.p5_adapters_extra.append(
+                    "".join([
+                        fullcomp(data.params.restriction_overhang[1])[::-1], 
+                        data.hackersonly.p3_adapter,
+                    ])
+                )
 
         ## first enter extra cuts
-        zcut1 = list(set(data._hackersonly["p3_adapters_extra"]))[::-1]
-        zcut2 = list(set(data._hackersonly["p5_adapters_extra"]))[::-1]
+        zcut1 = list(set(data.hackersonly.p3_adapters_extra))[::-1]
+        zcut2 = list(set(data.hackersonly.p5_adapters_extra))[::-1]
         for ecut1, ecut2 in zip(zcut1, zcut2):
             cmdf1.insert(1, ecut1)
             cmdf1.insert(1, "-a")

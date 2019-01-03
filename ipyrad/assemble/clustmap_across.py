@@ -31,10 +31,11 @@ from .utils import IPyradWarningExit, IPyradError, fullcomp, chroms2ints
 class Step6:
     def __init__(self, data, force, ipyclient):
         self.data = data
-        self.randomseed = int(self.data._hackersonly["random_seed"])
+        self.randomseed = int(self.data.hackersonly.random_seed)
         self.isref = bool('ref' in self.data.params.assembly_method)
         self.force = force
         self.ipyclient = ipyclient
+        self.print_headers()
         self.samples = self.get_subsamples()
         self.setup_dirs(force)
 
@@ -43,6 +44,14 @@ class Step6:
         self.assign_groups()
         self.hostd = {}
         self.tune_hierarchical_threading()
+
+
+    def print_headers(self):
+        if self.data._cli:
+            self.data._print(
+                "\n{}Step 6: Clustering/Mapping across samples "
+                .format(self.data._spacer)
+            )
 
 
     def setup_dirs(self, force=False):

@@ -39,11 +39,13 @@ class Step3:
         self.force = force
         self.ipyclient = ipyclient
         self.gbs = bool("gbs" in self.data.params.datatype)
+        self.print_headers()
         self.samples = self.get_subsamples()
 
         # init funcs
         self.setup_dirs()
         self.tune_threads()
+
 
 
     def run(self):
@@ -274,6 +276,15 @@ class Step3:
 
         self.remote_run_sample_cleanup()
         self.cleanup()
+
+
+    def print_headers(self):
+        # print headers
+        if self.data._cli:
+            self.data._print(
+                "\n{}Step 3: Clustering/Mapping reads within samples"
+                .format(self.data._spacer)
+            )
 
 
     def get_subsamples(self):

@@ -42,11 +42,20 @@ class Step5:
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.force = force
+        self.print_headers()
         self.samples = self.get_subsamples()
         self.isref = bool("reference" in data.params.assembly_method)
         self.ipyclient = ipyclient
         self.lbview = ipyclient.load_balanced_view()
         self.setup_dirs()
+
+
+    def print_headers(self):
+        if self.data._cli:
+            self.data._print(
+                "\n{}Step 5: Consensus base/allele calling "
+                .format(self.data._spacer)
+            )
 
 
     def get_subsamples(self):
@@ -209,7 +218,7 @@ class Step5:
                 maxlens.append(maxlen)
         
         # update hackersdict with max fragement length
-        self.data._hackersonly["max_fragment_length"] = max(maxlens)
+        self.data.hackersonly.max_fragment_length = max(maxlens)
 
 
     def remote_make_chunks(self):
@@ -422,7 +431,7 @@ class Processor:
         self.optim = int(self.chunkfile.split(".")[-2])
         self.este = self.data.stats.error_est.mean()
         self.esth = self.data.stats.hetero_est.mean()
-        self.maxlen = self.data._hackersonly["max_fragment_length"]
+        self.maxlen = self.data.hackersonly.max_fragment_length
         if 'pair' in self.data.params.datatype:
             self.maxhet = sum(self.data.params.max_Hs_consens)
             self.maxn = sum(self.data.params.max_Ns_consens)

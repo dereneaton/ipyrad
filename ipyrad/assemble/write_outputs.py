@@ -43,6 +43,7 @@ class Step7:
         self.data.isref = bool("ref" in self.data.params.assembly_method)
 
         # returns samples in the order we want them in the outputs
+        self.print_headers()
         self.samples = self.get_subsamples()
         self.setup_dirs()
         self.get_chunksize()
@@ -78,6 +79,14 @@ class Step7:
         if 'v' in self.formats:
             self.remote_fill_depths()
             self.remote_build_vcf()    
+
+
+    def print_headers(self):
+        if self.data._cli:
+            self.data._print(
+                "\n{}Step 7: Filtering and formatting output files "
+                .format(self.data._spacer)
+            )
 
 
     def get_subsamples(self):

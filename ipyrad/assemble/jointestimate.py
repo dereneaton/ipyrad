@@ -19,7 +19,6 @@ import scipy.optimize
 import scipy.stats
 import numpy as np
 import numba
-import ipyrad as ip
 
 from .clustmap import get_quick_depths
 from .utils import IPyradError, clustdealer
@@ -35,7 +34,16 @@ class Step4:
         self.haploid = bool(data.params.max_alleles_consens == 1)
         if self.haploid:
             print("Running haploid inference (infer E with H fixed to 0)")
+        self.print_headers()
         self.samples = self.get_subsamples()
+
+
+    def print_headers(self):
+        if self.data._cli:
+            self.data._print(
+                "\n{}Step 4: Joint estimation of error rate and heterozygosity"
+                .format(self.data._spacer)
+            )
 
 
     def get_subsamples(self):
@@ -71,13 +79,18 @@ class Step4:
 
         # check that kept samples have clusters
         checked_samples = []
+        nodata_samples = []
         for sample in subsamples:
             if sample.stats.clusters_hidepth:
                 checked_samples.append(sample)
             else:
-                print("skipping {}; no clusters found.")
+                nodata_samples.append(sample)
         if not any(checked_samples):
             raise IPyradError("no samples ready for step 4")
+        else:
+            for sample in nodata_samples:
+                print("{}skipping {}; no clusters found."
+                    .format(self.data._spacer, sample))
 
         # sort samples so the largest is first
         checked_samples.sort(

@@ -38,6 +38,7 @@ class Step1:
         # check input data files
         self.sfiles = self.data.params.sorted_fastq_path
         self.rfiles = self.data.params.raw_fastq_path
+        self.print_headers()
         self.select_method()
         self.setup_dirs()
 
@@ -77,6 +78,19 @@ class Step1:
             os.mkdir(self.data.dirs.fastqs)
 
 
+    def print_headers(self):
+        # print headers
+        if self.data._cli:
+            if self.sfiles:
+                self.data._print(
+                    "\n{}Step 1: Loading sorted fastq data to Samples"
+                    .format(self.data._spacer))
+            else:
+                self.data._print(
+                    "\n{}Step 1: Demultiplexing fastq data to Samples"
+                    .format(self.data._spacer))
+
+
     def select_method(self):
         "Checks file paths and for existing samples and returns function"
         # do not allow both a sorted_fastq_path and a raw_fastq
@@ -86,17 +100,6 @@ class Step1:
         # but also require that at least one exists
         if not (self.sfiles or self.rfiles):
             raise IPyradError(NO_SEQ_PATH_FOUND)
-
-        # print headers
-        if self.data._cli:
-            if self.sfiles:
-                self.data._print(
-                    "\n{}Step 1: Loading sorted fastq data to Samples"
-                    .format(self._spacer))
-            else:
-                self.data._print(
-                    "\n{}Step 1: Demultiplexing fastq data to Samples"
-                    .format(self._spacer))
 
         # if Samples already exist then bail out unless force
         if self.data.samples:
