@@ -93,12 +93,12 @@ class Step3:
                     args=(False, False,),
                     threaded=True,
                 )
-                #if "3rad" not in data.paramsdict["datatype"]:
-                #    self.remote_run(
-                #        function=dereplicate,
-                #        printstr=("declone 3RAD        ", "s3"),
-                #        args=(self.nthreads, self.force),
-                #        )
+                if self.data.hackersonly.declone_PCR_duplicates:
+                    self.remote_run(
+                        function=declone_3rad,
+                        printstr=("declone 3RAD        ", "s3"),
+                        args=(self.nthreads, self.force),
+                    )
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"),
@@ -923,8 +923,8 @@ def cluster(data, sample, nthreads, force):
         minsl = 0.75
 
     ## If this value is not null (which is the default) then override query cov
-    if data._hackersonly["query_cov"]:
-        cov = str(data._hackersonly["query_cov"])
+    if data.hackersonly.query_cov:
+        cov = str(data.hackersonly.query_cov)
         assert float(cov) <= 1, "query_cov must be <= 1.0"
 
     ## get call string
@@ -1537,7 +1537,7 @@ def mapping_reads(data, sample, nthreads):
     cmd1 += infiles
 
     # Insert optional flags for bwa
-    bwa_args = data._hackersonly["bwa_args"].split()
+    bwa_args = data.hackersonly.bwa_args.split()
     bwa_args.reverse()
     for arg in bwa_args:
         cmd1.insert(2, arg)
@@ -1675,11 +1675,11 @@ def check_insert_size(data, sample):
             hack = (avg_insert - avg_len) + (3 * np.ceil(stdv_insert))           
 
         ## set the hackerdict value
-        data._hackersonly["max_inner_mate_distance"] = int(np.ceil(hack))
+        data.hackersonly.max_inner_mate_distance = int(np.ceil(hack))
 
     else:
         ## If something fsck then set a relatively conservative distance
-        data._hackersonly["max_inner_mate_distance"] = 300
+        data.hackersonly.max_inner_mate_distance = 300
 
 
 def bedtools_merge(data, sample):
@@ -1709,7 +1709,7 @@ def bedtools_merge(data, sample):
     # +++ scrath the above, we now deal with step ladder data
     if 'pair' in data.params.datatype:
         check_insert_size(data, sample)
-        cmd2.insert(2, str(data._hackersonly["max_inner_mate_distance"]))
+        cmd2.insert(2, str(data.hackersonly.max_inner_mate_distance))
         cmd2.insert(2, "-d")
     #else:
     #    cmd2.insert(2, str(-1 * data._hackersonly["min_SE_refmap_overlap"]))
@@ -2069,8 +2069,8 @@ def store_sample_stats(data, sample, maxlens, depths):
             maxlen = int(maxlens.mean() + (2. * maxlens.std()))
         else:
             maxlen = 0
-        if maxlen > data._hackersonly["max_fragment_length"]:
-            data._hackersonly["max_fragment_length"] = int(maxlen + 4)
+        if maxlen > data.hackersonly.max_fragment_length:
+            data.hackersonly.max_fragment_length = int(maxlen + 4)
 
         # make sense of stats
         keepmj = depths[depths >= data.params.mindepth_majrule]
@@ -2152,6 +2152,13 @@ def declone_3rad(data, sample):
     remove all identical seqs with identical random i5 adapters.
     """
 
+    # tmp_outfile = tempfile.NamedTemporaryFile(
+    #     mode='wb',
+    #     delete=False,
+    #     dir=data.dirs.edits,
+    #     suffix="_append_adapters_.fastq",
+    # )
+
     try:
         ## Remove adapters from head of sequence and write out
         ## tmp_outfile is now the input file for the next step
@@ -2198,8 +2205,8 @@ def declone_3rad(data, sample):
         ## just ignore it.
         try:
             ## Clean up temp files
-            if os.path.exists(adapter_seqs_file.name):
-                os.remove(adapter_seqs_file.name)
+            if os.path.exists(tmp_outfile.name):
+                os.remove(tmp_outfile.name)
             if os.path.exists(tmp_outfile.name):
                 os.remove(tmp_outfile.name)
         except Exception as inst:
