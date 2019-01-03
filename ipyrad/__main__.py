@@ -9,12 +9,8 @@ from pkg_resources import get_distribution
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
-import logging
-import time
 import sys
 import os
-
-LOGGER = logging.getLogger(__name__)
 
 
 class CLI:
@@ -42,8 +38,7 @@ class CLI:
         self._check_args()
 
         # if args.debug turn on the debugger
-        self._hardlog_cli()
-        self._set_logger()
+        # self._hardlog_cli()
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
@@ -76,7 +71,6 @@ class CLI:
             # get response and parse it
             url = "https://anaconda.org/ipyrad/ipyrad"
             response = requests.get(url)
-            ip.logger.debug(url, response.reason)
             htmldat = response.text.split("\n")
 
             # pull version from html
@@ -105,9 +99,9 @@ class CLI:
 
 
     def _parse_params(self):
-        """ Parse the params file args, create and return Assembly object."""
+        "Parse the params file args, create and return Assembly object."
 
-        ## check that params.txt file is correctly formatted.
+        # check that params.txt file is correctly formatted.
         try:
             with open(self.args.params) as paramsin:
                 lines = paramsin.readlines()
@@ -120,7 +114,7 @@ class CLI:
             i.split("##")[0].strip() for i in lines[1:] if not i.strip() == ""]
 
         # create a null assembly and return params dict
-        keys = ip.Assembly('null', quiet=True).paramsdict.keys()
+        keys = [i[1:] for i in ip.Assembly('null', quiet=True).params._keys]
         self.parsedict = {str(i): j for (i, j) in zip(keys, items)}
 
 
@@ -179,10 +173,6 @@ class CLI:
         self.parser.add_argument("--MPI", action='store_true',
             help="connect to parallel CPUs across multiple nodes")
 
-        #self.parser.add_argument("--preview", action='store_true',
-        #    help="run ipyrad in preview mode. Subset the input file so it'll run"\
-        #        + "quickly so you can verify everything is working")
-
         self.parser.add_argument("--ipcluster", metavar="ipcluster", 
             dest="ipcluster",
             type=str, nargs="?", const="default",
@@ -193,41 +183,41 @@ class CLI:
             help="download fastq files by accession (e.g., SRP or SRR)")
 
 
-    def _hardlog_cli(self):
+    # def _hardlog_cli(self):
 
-        # Log the current version. End run around the LOGGER
-        # so it'll always print regardless of log level.
-        with open(ip.__debugfile__, 'a') as logfile:
-            logfile.write(HEADER)
-            logfile.write("\n  Begin run: {}".format(
-                time.strftime("%Y-%m-%d %H:%M")))
-            logfile.write("\n  Using args {}".format(vars(self.args)))
-            logfile.write("\n  Platform info: {}".format(os.uname()))
+    #     # Log the current version. End run around the LOGGER
+    #     # so it'll always print regardless of log level.
+    #     with open(ip.__debugfile__, 'a') as logfile:
+    #         logfile.write(HEADER)
+    #         logfile.write("\n  Begin run: {}".format(
+    #             time.strftime("%Y-%m-%d %H:%M")))
+    #         logfile.write("\n  Using args {}".format(vars(self.args)))
+    #         logfile.write("\n  Platform info: {}".format(os.uname()))
 
 
-    def _set_logger(self):
+    # def _set_logger(self):
 
-        ## Turn the debug output written to ipyrad_log.txt up to 11!
-        ## Clean up the old one first, it's cleaner to do this here than
-        ## at the end (exceptions, etc)
-        #if os.path.exists(ip.__debugflag__):
-        #    os.remove(ip.__debugflag__)
+    #     ## Turn the debug output written to ipyrad_log.txt up to 11!
+    #     ## Clean up the old one first, it's cleaner to do this here than
+    #     ## at the end (exceptions, etc)
+    #     #if os.path.exists(ip.__debugflag__):
+    #     #    os.remove(ip.__debugflag__)
 
-        if self.args.debug:
-            print("  ** Enabling debug mode ** ")
-            ip.set_logger_level("DEBUG")
-            #ip._debug_on()
-            #atexit.register(ip._debug_off)
+    #     if self.args.debug:
+    #         print("  ** Enabling debug mode ** ")
+    #         ip.set_logger_level("DEBUG")
+    #         #ip._debug_on()
+    #         #atexit.register(ip._debug_off)
 
-        ## Only blank the log file if we're actually going to run a new
-        ## assembly. This used to be in __init__, but had the side effect
-        ## of occasionally blanking the log file in an undesirable fashion
-        ## for instance if you run a long assembly and it crashes and
-        ## then you run `-r` and it blanks the log, it's crazymaking.
-        if os.path.exists(ip.__debugfile__):
-            if os.path.getsize(ip.__debugfile__) > 50000000:
-                with open(ip.__debugfile__, 'w') as clear:
-                    clear.write("file reset")
+    #     ## Only blank the log file if we're actually going to run a new
+    #     ## assembly. This used to be in __init__, but had the side effect
+    #     ## of occasionally blanking the log file in an undesirable fashion
+    #     ## for instance if you run a long assembly and it crashes and
+    #     ## then you run `-r` and it blanks the log, it's crazymaking.
+    #     if os.path.exists(ip.__debugfile__):
+    #         if os.path.getsize(ip.__debugfile__) > 50000000:
+    #             with open(ip.__debugfile__, 'w') as clear:
+    #                 clear.write("file reset")
 
 
     def _flagnew(self):
@@ -339,9 +329,7 @@ class CLI:
         ## used for loading existing.
         ##
         ## Be nice if the user includes the extension.
-        #project_dir = ip.core.assembly._expander(parsedict['1'])
-        #assembly_name = parsedict['0']
-        project_dir = ip.core.assembly._expander(self.parsedict['project_dir'])
+        project_dir = self.parsedict['project_dir']
         assembly_name = self.parsedict['assembly_name']
         assembly_file = os.path.join(project_dir, assembly_name)
 
@@ -542,7 +530,6 @@ class CLI:
         if self.args.results:
             self._showstats()
           
-
 
 
 def sratools_download(SRP, workdir='SRA_fastqs', force=False):
