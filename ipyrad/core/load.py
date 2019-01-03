@@ -20,29 +20,25 @@ def load_json(path, quiet=False, cli=False):
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
-    # load the JSON string and try with name+.json
-    checkfor = [path + ".json", path]
-    for inpath in checkfor:
-        inpath = inpath.replace("~", os.path.expanduser("~"))
-        try:
-            with open(inpath, 'rb') as infile:
-                fullj = json.loads(infile.read(), object_hook=tup_and_byte)
-        except IOError:
-            pass
-
     # create a new empty Assembly
-    try:
+    json_path = path + ".json"
+    json_path = json_path.replace("~", os.path.expanduser("~"))
+
+    if os.path.exists(json_path):
+        with open(json_path, 'rb') as infile:
+            fullj = json.loads(infile.read(), object_hook=tup_and_byte)
+
         oldname = fullj["assembly"].pop("name")
         olddir = fullj["assembly"]["dirs"]["project"]
         oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
         null = Assembly(oldname, quiet=True, cli=cli)
 
-    except (UnboundLocalError, AttributeError) as inst:
+    else:
         raise IPyradError("""
     Could not find saved Assembly file (.json) in expected location.
     Checks in: [project_dir]/[assembly_name].json
     Checked: {}
-    """.format(inpath))
+    """.format(json_path))
 
     # print msg with shortpath
     if not quiet:
