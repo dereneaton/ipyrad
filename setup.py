@@ -29,11 +29,11 @@ setup(
         "numpy>=1.9",
         "numba>=0.37",
         "pandas>=0.16",
-        "pysam>=0.10.0",
+        "pysam>=0.10.0",  # ipyrad::
         "h5py",
         "mpi4py",
-        "cutadapt",
-        "toytree",
+        "cutadapt",    # ipyrad::
+        "toytree",     # eaton-lab::
         "requests",
     ],
     entry_points={
