@@ -980,11 +980,15 @@ class Params:
         if value and ("Merged:" not in value):
 
             # allow fuzzy name match
-            fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))[0]
+            fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))
+            if not fullbar:
+                raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
 
             # file must exist
+            fullbar = fullbar[0]
             if not os.path.exists(fullbar):
                 raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
+                                
             else:
                 self._barcodes_path = fullbar
                 self._data._link_barcodes()
