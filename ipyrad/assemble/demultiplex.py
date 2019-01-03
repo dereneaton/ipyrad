@@ -283,8 +283,8 @@ class Demultiplexer:
         self.lbview = self.ipyclient.load_balanced_view(targets=targets)
 
         # we better have barcodes...
-        if not self.data.barcodes:
-            self.data._link_barcodes()
+        # if not self.data.barcodes:
+        # self.data._link_barcodes()
 
         # attrs filled by check_files
         self.ftuples = []
@@ -341,7 +341,8 @@ class Demultiplexer:
         # For 3rad we need to add the length info for barcodes_R2
         if "3rad" in self.data.params.datatype:
             blens = [
-                len(i.split("+")[1]) for i in self.data.barcodes.values()]
+                len(i.split("+")[1]) for i in self.data.barcodes.values()
+            ]
             self.longbar = (self.longbar[0], self.longbar[1], max(blens))
 
         # gather raw sequence filenames (people want this to be flexible ...)
@@ -453,8 +454,12 @@ class Demultiplexer:
         for handle, ftuplist in self.chunksdict.items():
             for fidx, ftuple in enumerate(ftuplist):
                 args = (
-                    self.data, ftuple, self.longbar, 
-                    self.cutters, self.matchdict, fidx,
+                    self.data, 
+                    ftuple, 
+                    self.longbar, 
+                    self.cutters, 
+                    self.matchdict, 
+                    fidx,
                     )
                 rasync = self.lbview.apply(barmatch, args)
                 rasyncs[ridx] = (handle, rasync)
@@ -619,21 +624,21 @@ class Demultiplexer:
                         offhitstring += (
                             "{:<35}  {:>13} {:>13} {:>13}\n"
                             .format(sname, hit, offhit, 
-                                self.stats.fbarhits[offhit] / 2)
+                                int(self.stats.fbarhits[offhit] / 2))
                             )
                         #sumoffhits += fbarhits[offhit]
             
                 # write string to file
                 outfile.write("{:<35}  {:>13} {:>13} {:>13}\n"
                     .format(sname, hit, hit, 
-                        self.stats.fbarhits[hit] / 2))
+                        int(self.stats.fbarhits[hit] / 2)))
                 outfile.write(offhitstring)
             
         # write misses
         misskeys = list(self.stats.fmisses.keys())
         misskeys.sort(key=self.stats.fmisses.get)
         for key in misskeys[::-1]:
-            outfile.write('{:<35}  {:>13}{:>13}{:>13}\n'
+            outfile.write('{:<35}  {:>13} {:>13} {:>13}\n'
                 .format("no_match", "_", key, self.stats.fmisses[key]))
         outfile.close()        
 
@@ -801,17 +806,21 @@ class BarMatch:
             except StopIteration:
                 break
         
-            # use barcode finding function to separate read from barcode
-            if '3rad' not in self.data.params.datatype:
-                # Parse barcode. Uses the parsing function selected above.
-                barcode = self.demux(self.cutters, read1, self.longbar)
+            # i7 barcodes (get from name string instead of sequence)
+            if self.data.hackersonly.demultiplex_on_i7_tags:
+                barcode = read1[0].decode().rsplit(":", 1)[-1].split("+")[0]
+
             else:
-                # Here we're just reusing the findbcode function for R2
-                # and reconfiguring the longbar tuple to have the maxlen for
-                # the R2 barcode.
-                barcode1 = find3radbcode(self.cutters, self.longbar, read1)
-                barcode2 = find3radbcode(self.cutters, self.longbar, read2)
-                barcode = barcode1 + "+" + barcode2
+                # COMBINATORIAL BARCODES (BCODE1+BCODE2)
+                if '3rad' in self.data.params.datatype:
+                    barcode1 = find3radbcode(self.cutters, self.longbar, read1)
+                    barcode2 = find3radbcode(self.cutters, self.longbar, read2)
+                    barcode = barcode1 + "+" + barcode2
+
+                # USE BARCODE PARSER: length or splitting
+                else:
+                    # Parse barcode. Uses the parsing function selected above.
+                    barcode = self.demux(self.cutters, read1, self.longbar)
 
             # ensure barcode is string
             try:
@@ -836,27 +845,32 @@ class BarMatch:
                     self.barhits[barcode] = 1
         
                 # trim off barcode
-                lenbar = len(barcode)
+                lenbar1 = len(barcode)
                 if '3rad' in self.data.params.datatype:
                     ## Iff 3rad trim the len of the first barcode
-                    lenbar = len(barcode1)
+                    lenbar1 = len(barcode1)
+                    lenbar2 = len(barcode2)
+
+                # no trim on i7 demux
+                if self.data.hackersonly.demultiplex_on_i7_tags:
+                    lenbar1 = lenbar2 = 0
         
                 # for 2brad we trim the barcode AND the synthetic overhang
                 # The `+1` is because it trims the newline
                 if self.data.params.datatype == '2brad':
-                    overlen = len(self.cutters[0][0]) + lenbar + 1
+                    overlen = len(self.cutters[0][0]) + lenbar1 + 1
                     read1[1] = read1[1][:-overlen] + "\n"
                     read1[3] = read1[3][:-overlen] + "\n"
                 else:
-                    read1[1] = read1[1][lenbar:]
-                    read1[3] = read1[3][lenbar:]
+                    read1[1] = read1[1][lenbar1:]
+                    read1[3] = read1[3][lenbar1:]
         
                 # Trim barcode off R2 and append. Only 3rad datatype
                 # pays the cpu cost of splitting R2
                 if '3rad' in self.data.params.datatype:
                     read2 = list(read2)
-                    read2[1] = read2[1][len(barcode2):]
-                    read2[3] = read2[3][len(barcode2):]
+                    read2[1] = read2[1][lenbar2:]
+                    read2[3] = read2[3][lenbar2:]
         
                 # append to sorted reads list
                 self.read1s[sname_match].append(b"".join(read1).decode())
@@ -942,6 +956,7 @@ def barmatch(args):
     return pkl
 
 
+# CALLED BY FILELINKER
 def get_name_from_file(fname, splitnames, fields):
     "Grab Sample names from demultiplexed input fastq file names"
 
@@ -1225,87 +1240,6 @@ def estimate_nreads(data, testfile):
     return inputreads
 
 
-# def _cleanup_and_die(data):
-#     """ cleanup func for step 1 """
-#     tmpfiles = glob.glob(os.path.join(data.dirs.fastqs, "tmp_*_R*.fastq"))
-#     tmpfiles += glob.glob(os.path.join(data.dirs.fastqs, "tmp_*.p"))
-#     for tmpf in tmpfiles:            
-#         os.remove(tmpf)
-
-
-
-
-# def demux2(data, chunkfiles, cutters, longbar, matchdict, ipyclient):
-#     """ 
-#     Submit chunks to be sorted by the barmatch() function then 
-#     calls putstats().
-#     """
-
-#     ## parallel stuff, limit to 1/4 of available cores for RAM limits.
-#     start = time.time()
-#     printstr = ("sorting reads       ", "s1")
-#     lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::4])
-
-#     ## store statcounters and async results in dicts
-#     perfile = {}
-#     filesort = {}
-#     total = 0
-#     done = 0 
-
-#     ## chunkfiles is a dict with {handle: chunkslist, ...}. The func barmatch
-#     ## writes results to samplename files with PID number, and also writes a 
-#     ## pickle for chunk specific results with fidx suffix, which it returns.
-#     for handle, rawtuplist in chunkfiles.items():
-#         for fidx, rawtuple in enumerate(rawtuplist):
-#             # get args for job
-#             args = (data, rawtuple, cutters, longbar, matchdict, fidx)
-
-#             # submit the job --------------------
-#             rasync = lbview.apply(barmatch, *args)
-#             filesort[total] = (handle, rasync)
-#             total += 1
-
-#             # get ready to receive stats: 'total', 'cutfound', 'matched'
-#             perfile[handle] = np.zeros(3, dtype=np.int)
-
-#     ## stats for each sample
-#     fdbars = {}
-#     fsamplehits = Counter()
-#     fbarhits = Counter()
-#     fmisses = Counter()
-
-#     ## a tuple to hold my dictionaries
-#     statdicts = perfile, fsamplehits, fbarhits, fmisses, fdbars
-
-#     ## wait for jobs to finish
-#     while 1:
-#         fin = [i for i, j in filesort.items() if j[1].ready()]
-#         data._progressbar(total, done, start, printstr)
-#         time.sleep(0.1)
-#         if total == done:
-#             break
-
-#         ## cleanup
-#         for key in fin:
-#             tup = filesort[key]
-#             if tup[1].successful():
-#                 pfile = tup[1].result()
-#                 handle = tup[0]
-#                 if pfile:
-#                     ## check if this needs to return data
-#                     putstats(pfile, handle, statdicts)
-#                     ## purge to conserve memory
-#                     del filesort[key]
-#                     done += 1
-#             else:
-#                 ip.logger.debug(tup[1].exception())
-#                 raise IPyradError(tup[1].exception())
-#     print("")
-#     return statdicts         
-
-
-
-
 # used by splitfiles()
 def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
     """ 
@@ -1354,177 +1288,6 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
 
     # ensure full progress bar b/c estimates njobs could be off
     return list(zip(chunks1, chunks2))
-
-
-
-## EXPERIMENTAL; not yet implemented
-def barmatch2(data, tups, cutters, longbar, matchdict, fnum):
-    """
-    cleaner barmatch func...
-    """
-
-    ## how many reads to store before writing to disk
-    waitchunk = int(1e6)
-    ## pid name for this engine
-    epid = os.getpid()
-
-    ## counters for total reads, those with cutsite, and those that matched
-    filestat = np.zeros(3, dtype=np.int)
-    ## store observed sample matches
-    samplehits = {}
-    ## dictionaries to store first and second reads until writing to file
-    dsort1 = {} 
-    dsort2 = {} 
-    ## dictionary for all bars matched in sample
-    dbars = {} 
-
-    ## fill for sample names
-    for sname in data.barcodes:
-        if "-technical-replicate-" in sname:
-            sname = sname.rsplit("-technical-replicate", 1)[0]
-        samplehits[sname] = 0
-        dsort1[sname] = []
-        dsort2[sname] = []
-        dbars[sname] = set()
-
-    ## store observed bars
-    barhits = {}
-    for barc in matchdict:
-        barhits[barc] = 0
-
-    ## store others
-    misses = {}
-    misses['_'] = 0
-
-    ## build func for finding barcode
-    getbarcode = get_barcode_func(data, longbar)
-
-    ## get quart iterator of reads
-    if tups[0].endswith(".gz"):
-        ofunc = gzip.open
-    else:
-        ofunc = open
-
-    ## create iterators 
-    ofile1 = ofunc(tups[0], 'r')
-    fr1 = iter(ofile1) 
-    quart1 = izip(fr1, fr1, fr1, fr1)
-    if tups[1]:
-        ofile2 = ofunc(tups[1], 'r')
-        fr2 = iter(ofile2)  
-        quart2 = izip(fr2, fr2, fr2, fr2)
-        quarts = izip(quart1, quart2)
-    else:
-        quarts = izip(quart1, iter(int, 1))
-
-    ## go until end of the file
-    while 1:
-        try:
-            read1, read2 = next(quarts)
-            read1 = list(read1)
-            filestat[0] += 1
-        except StopIteration:
-            break
-    
-        barcode = ""
-        ## Get barcode_R2 and check for matching sample name
-        if '3rad' in data.params.datatype:
-            ## Here we're just reusing the findbcode function
-            ## for R2, and reconfiguring the longbar tuple to have the
-            ## maxlen for the R2 barcode
-            ## Parse barcode. Use the parsing function selected above.
-            barcode1 = find3radbcode(cutters=cutters, 
-                                longbar=longbar, read1=read1)
-            barcode2 = find3radbcode(cutters=cutters, 
-                                longbar=(longbar[2], longbar[1]), read1=read2)
-            barcode = barcode1 + "+" + barcode2
-        else:
-            ## Parse barcode. Uses the parsing function selected above.
-            barcode = getbarcode(cutters, read1, longbar)
-   
-        ## find if it matches 
-        sname_match = matchdict.get(barcode)
-
-        if sname_match:
-            #sample_index[filestat[0]-1] = snames.index(sname_match) + 1
-            ## record who matched
-            dbars[sname_match].add(barcode)
-            filestat[1] += 1
-            filestat[2] += 1
-            samplehits[sname_match] += 1
-            barhits[barcode] += 1
-            if barcode in barhits:
-                barhits[barcode] += 1
-            else:
-                barhits[barcode] = 1
-    
-            ## trim off barcode
-            lenbar = len(barcode)
-            if '3rad' in data.params.datatype:
-                ## Iff 3rad trim the len of the first barcode
-                lenbar = len(barcode1)
-    
-            if data.params.datatype == '2brad':
-                overlen = len(cutters[0][0]) + lenbar + 1
-                read1[1] = read1[1][:-overlen] + "\n"
-                read1[3] = read1[3][:-overlen] + "\n"
-            else:
-                read1[1] = read1[1][lenbar:]
-                read1[3] = read1[3][lenbar:]
-    
-            ## Trim barcode off R2 and append. Only 3rad datatype
-            ## pays the cpu cost of splitting R2
-            if '3rad' in data.params.datatype:
-                read2 = list(read2)
-                read2[1] = read2[1][len(barcode2):]
-                read2[3] = read2[3][len(barcode2):]
-    
-            ## append to dsort
-            dsort1[sname_match].append("".join(read1))
-            if 'pair' in data.params.datatype:
-                dsort2[sname_match].append("".join(read2))
-
-        else:
-            misses["_"] += 1
-            if barcode:
-                filestat[1] += 1
-
-        ## how can we make it so all of the engines aren't trying to write to
-        ## ~100-200 files all at the same time? This is the I/O limit we hit..
-        ## write out at 100K to keep memory low. It is fine on HPC which can 
-        ## write parallel, but regular systems might crash
-        if not filestat[0] % waitchunk:
-            ## write the remaining reads to file"
-            writetofile(data, dsort1, 1, epid)
-            if 'pair' in data.params.datatype:
-                writetofile(data, dsort2, 2, epid)
-            ## clear out dsorts
-            for sample in data.barcodes:
-                if "-technical-replicate-" in sname:
-                    sname = sname.rsplit("-technical-replicate", 1)[0]
-                dsort1[sname] = []
-                dsort2[sname] = []
-            ## reset longlist
-            #longlist = np.zeros(waitchunk, dtype=np.uint32)                
-
-    ## close open files
-    ofile1.close()
-    if tups[1]:
-        ofile2.close()
-
-    ## write the remaining reads to file
-    writetofile(data, dsort1, 1, epid)
-    if 'pair' in data.params.datatype:
-        writetofile(data, dsort2, 2, epid)
-
-    ## return stats in saved pickle b/c return_queue is too small
-    ## and the size of the match dictionary can become quite large
-    samplestats = [samplehits, barhits, misses, dbars]
-    outname = os.path.join(data.dirs.fastqs, "tmp_{}_{}.p".format(epid, fnum))
-    with open(outname, 'wb') as wout:
-        pickle.dump([filestat, samplestats], wout)
-
-    return outname
 
 
 ## GLOBALS
