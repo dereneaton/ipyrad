@@ -28,14 +28,14 @@ class CLI:
             epilog=EPILOG)
 
         # check for a new version of ipyrad and warn user of upgrade
-        self._check_version()
+        self.check_version()
 
         # parse the command line to get CLI args
         self._parse_command_line()
         self.args = self.parser.parse_args()
 
         # bail if no args for 'params' or 'new'
-        self._check_args()
+        self.check_args()
 
         # if args.debug turn on the debugger
         # self._hardlog_cli()
@@ -51,10 +51,10 @@ class CLI:
             self._merge_assemblies()
     
         # fill parsedict from paramsfile
-        self._parse_params()
+        self.parse_params()
 
         # functions below here involve an Assembly object.
-        self._getassembly()
+        self._get_assembly()
         if self.args.branch:
             self._branch_assembly()
         self._run()
@@ -62,8 +62,8 @@ class CLI:
 
 
 
-    def _check_version(self):
-        """ Test if there's a newer version and nag the user to upgrade."""
+    def check_version(self):
+        "Test if there's a newer version and nag the user to upgrade."
         import requests
         from distutils.version import LooseVersion
 
@@ -88,7 +88,7 @@ class CLI:
             pass
 
 
-    def _check_args(self):
+    def check_args(self):
         if not any(i in ["params", "new"] for i in vars(self.args).keys()):
             print("""
         Bad arguments: ipyrad command must include at least one of the 
@@ -98,24 +98,24 @@ class CLI:
             sys.exit(1)
 
 
-    def _parse_params(self):
+    def parse_params(self):
         "Parse the params file args, create and return Assembly object."
 
         # check that params.txt file is correctly formatted.
-        try:
+        if not os.path.exists(self.args.params):
+            raise IPyradWarningExit("  No params file found")
+        else:
             with open(self.args.params) as paramsin:
                 lines = paramsin.readlines()
-        except IOError as _:
-            sys.exit("  No params file found")
 
-        # make into a dict. Ignore blank lines at the end of file
-        # Really this will ignore all blank lines
-        items = [
-            i.split("##")[0].strip() for i in lines[1:] if not i.strip() == ""]
+        # get values from the params file lines
+        vals = [i.split("##")[0].strip() for i in lines[1:] if i.strip()]
 
-        # create a null assembly and return params dict
+        # get keys in order from a tmp assembly
         keys = [i[1:] for i in ip.Assembly('null', quiet=True).params._keys]
-        self.parsedict = {str(i): j for (i, j) in zip(keys, items)}
+        
+        # store as a dict
+        self.parsedict = {str(i): j for (i, j) in zip(keys, vals)}
 
 
     def _parse_command_line(self):
@@ -303,7 +303,7 @@ class CLI:
         for params_file in self.args.merge[1:]:
             self.args.params = params_file
             self.parse_params()  # self.args)
-            assemblies.append(self.getassembly().data)  # self.args, parsedict)
+            assemblies.append(self.get_assembly().data)  # self.args, parsedict)
 
         ## Do the merge
         merged_assembly = ip.merge(newname, assemblies)
@@ -317,64 +317,38 @@ class CLI:
         sys.exit(1)
 
 
-    def _getassembly(self):
+    def _get_assembly(self):
         """ 
         loads assembly or creates a new one and set its params from 
         parsedict. Does not launch ipcluster. 
-        """
-
-        ## Creating an assembly with a full path in the name will "work"
-        ## but it is potentially dangerous, so here we have assembly_name
-        ## and assembly_file, name is used for creating new in cwd, file is
-        ## used for loading existing.
-        ##
-        ## Be nice if the user includes the extension.
+        """      
+        # Be nice if the user includes the extension.
         project_dir = self.parsedict['project_dir']
         assembly_name = self.parsedict['assembly_name']
-        assembly_file = os.path.join(project_dir, assembly_name)
+        json_file = os.path.join(project_dir, assembly_name)
+        if not json_file.endswith(".json"):
+            json_file += ".json"
 
-        ## Assembly creation will handle error checking  on
-        ## the format of the assembly_name
-
-        ## make sure the working directory exists.
+        # make sure the working directory exists.
         if not os.path.exists(project_dir):
             os.mkdir(project_dir)
 
-        try:
-            ## If 1 and force then go ahead and create a new assembly
-            if ('1' in self.args.steps) and self.args.force:
+        # Create new Assembly instead of loading if NEW 
+        if '1' in self.args.steps:
+            if self.args.force:
                 data = ip.Assembly(assembly_name, cli=True)
             else:
-                data = ip.load_json(assembly_file, cli=True)
-                data._cli = True
+                raise IPyradError(
+                    "Assembly already exists, use force to overwrite")
+        else:
+            data = ip.load_json(json_file, cli=True)
 
-        except IPyradWarningExit as _:
-            ## if no assembly is found then go ahead and make one
-            if '1' not in self.args.steps:
-                raise IPyradWarningExit(
-                    "  Error: You must first run step 1 on the assembly: {}"
-                    .format(assembly_file))
-            else:
-                ## create a new assembly object
-                data = ip.Assembly(assembly_name, cli=True)
+        # Update json assembly with params in paramsfile in case they changed
+        for key, param in self.parsedict.items():
+            if key not in ["assembly_name"]:
+                data.set_params(key, param)
 
-        ## for entering some params...
-        for param in self.parsedict:
-
-            ## trap assignment of assembly_name since it is immutable.
-            if param == "assembly_name":
-                ## Raise error if user tried to change assembly name
-                if self.parsedict[param] != data.name:
-                    data.set_params(param, self.parsedict[param])
-            else:
-                ## all other params should be handled by set_params
-                try:
-                    data.set_params(param, self.parsedict[param])
-                except IndexError as _:
-                    print("Malformed params file: {}".format(self.args.params))
-                    print("Bad parameter {} - {}".format(
-                        param, self.parsedict[param]))
-                    sys.exit(-1)
+        # store it.
         self.data = data
 
 

@@ -15,13 +15,12 @@ from ..assemble.utils import IPyradWarningExit, IPyradError, IPyradParamsError
 
 
 
-def load_json(path, quiet=False, cli=False):
+def load_json(json_path, quiet=False, cli=False):
     """ 
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
     # create a new empty Assembly
-    json_path = path + ".json"
     json_path = json_path.replace("~", os.path.expanduser("~"))
 
     if os.path.exists(json_path):
