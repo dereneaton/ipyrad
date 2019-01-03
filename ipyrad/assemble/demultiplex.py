@@ -83,12 +83,10 @@ class Step1:
         if self.data._cli:
             if self.sfiles:
                 self.data._print(
-                    "\n{}Step 1: Loading sorted fastq data to Samples"
-                    .format(self.data._spacer))
+                    "\n  Step 1: Loading sorted fastq data to Samples")
             else:
                 self.data._print(
-                    "\n{}Step 1: Demultiplexing fastq data to Samples"
-                    .format(self.data._spacer))
+                    "\nStep 1: Demultiplexing fastq data to Samples")
 
 
     def select_method(self):
@@ -252,8 +250,13 @@ class FileLinker:
             if 'pair' in self.data.params.datatype:
                 createdinc = createdinc * 2
             if self.data._cli:
-                self.data._print("{}{} fastq files loaded to {} Samples."
-                    .format(self.data._spacer, createdinc, len(self.samples)))
+                self.data._print(
+                    "{} fastq files loaded to {} Samples."
+                    .format(
+                        createdinc, 
+                        len(self.data.samples),
+                    )
+                )
 
         # save step-1 stats. We don't want to write this to the fastq dir, b/c
         # it is not necessarily inside our project dir. Instead, we'll write 
