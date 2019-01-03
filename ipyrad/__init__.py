@@ -17,5 +17,19 @@ __interactive__ = 1
 __debugfile__ = "./ipyrad_log.txt"
 __debugflag__ = "./.debug"
 
-# get binaries
+# check binaries
 bins = _Bins()
+
+# check hard installs
+try:
+    import pysam
+except ImportError:
+    print("""
+You must first install 'pysam' with either conda or pip, e.g.,: 
+
+    conda install bioconda::pysam
+
+    or 
+
+    pip install pysam
+""")
