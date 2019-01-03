@@ -21,20 +21,6 @@ from ipyrad.assemble.utils import IPyradParamsError, IPyradError
 from ipyrad.assemble.utils import ObjDict, IPyradWarningExit
 from ipyrad.core.paramsinfo import paraminfo, paramname
 
-# check hard installs
-try:
-    import pysam
-except ImportError:
-    print("""
-You must first install 'pysam' with either conda or pip, e.g.,: 
-
-    conda install bioconda::pysam
-
-    or 
-
-    pip install pysam
-""")
-
 
 # GLOBALS
 OUTPUT_FORMATS = {
@@ -95,18 +81,19 @@ class Assembly(object):
     """
     def __init__(self, name, **kwargs):
 
-        # this is False and only updated during .run()
-        self.quiet = False
-
         # If using CLI then "cli" is included in kwargs
         self._cli = False
         if kwargs.get("cli"):
             self._cli = True           
 
+        # this is False and only updated during .run()
+        self.quiet = False
+
         # No special characters in assembly name
         check_name(name)      
         self.name = name
-        self._print("New Assembly: {}".format(self.name))
+        if not kwargs.get("quiet"):
+            self._print("New Assembly: {}".format(self.name))
 
         # Default ipcluster launch info
         self._ipcluster = {
@@ -133,7 +120,7 @@ class Assembly(object):
         self.samples = {}
 
         # populations {popname: poplist}
-        self.populations = {}  # OrderedDict()
+        self.populations = {}
 
         # multiplex files linked
         self.barcodes = {}
@@ -401,7 +388,6 @@ class Assembly(object):
                     raise IPyradError(NO_MIN_SAMPLES_PER_POP)
 
             except (ValueError, IOError):
-                ip.logger.warn("Populations file may be malformed.")
                 raise IPyradError(
                     "  Populations file malformed - {}".format(popfile))
 
@@ -652,9 +638,6 @@ class Assembly(object):
                     for engine_id, pid in self._ipcluster["pids"].items():
                         if ipyclient.queue_status()[engine_id]["tasks"]:
                             os.kill(pid, 2)
-                            ip.logger.info(
-                                'interrupted engine {} w/ SIGINT to {}'
-                                .format(engine_id, pid))
                     time.sleep(1)
                 except ipp.NoEnginesRegistered:
                     pass
@@ -663,10 +646,8 @@ class Assembly(object):
                 # because you can have a CLI object but use the --ipcluster
                 # flag, in which case we don't want to kill ipcluster.
                 if self._cli:
-                    ip.logger.info("  shutting down engines")
                     ipyclient.shutdown(hub=True, block=False)
                     ipyclient.close()
-                    ip.logger.info("  finished shutdown")
                 else:
                     if not ipyclient.outstanding:
                         ipyclient.purge_everything()
@@ -679,7 +660,6 @@ class Assembly(object):
         # if exception is close and save, print and ignore
         except Exception as inst2:
             print("warning: error during shutdown:\n{}".format(inst2))
-            ip.logger.error("shutdown warning: %s", inst2)
 
 
     def run(self, steps=0, force=False, ipyclient=None, quiet=False, show_cluster=False):
@@ -733,7 +713,7 @@ class Assembly(object):
             print("\n{}Keyboard Interrupt by user".format(self._spacer))
 
         except (IPyradWarningExit, IPyradError) as inst:
-            print("\n{}Encountered an IPyradError:\n{}{}".format(
+            print("\n{}Encountered an IPyradError:\n{}{}\n".format(
                 self._spacer, self._spacer, inst))
             raise
 
@@ -1098,8 +1078,11 @@ class Params:
         return self._max_low_qual_bases
     @max_low_qual_bases.setter
     def max_low_qual_bases(self, value):
-        assert isinstance(value, int), "max_low_qual_bases must be an integer."
-        self._max_low_qual_bases = int(value)
+        try:
+            value = int(value)
+        except TypeError:
+            raise IPyradParamsError("max_low_qual_bases must be an integer.")
+        self._max_low_qual_bases = value
 
 
     @property
@@ -1107,7 +1090,10 @@ class Params:
         return self._phred_Qscore_offset
     @phred_Qscore_offset.setter
     def phred_Qscore_offset(self, value):
-        assert isinstance(value, int), "phred_Qscore_offset must be an integer."
+        try:
+            value = int(value)
+        except TypeError:
+            raise IPyradParamsError("phred_Qscore_offset must be an integer.")
         self._phred_Qscore_offset = int(value)
 
 
@@ -1116,10 +1102,13 @@ class Params:
         return self._mindepth_statistical
     @mindepth_statistical.setter
     def mindepth_statistical(self, value):
-        assert isinstance(value, int), "mindepth_statistical must be an integer."
+        try:
+            value = int(value)
+        except TypeError:
+            raise IPyradParamsError("mindepth_statistical must be an integer.")
         # do not allow values below 5
         assert int(value) >= 5, (
-            "mindepth_statistical cannot be <5. Use mindepth_majrule.")
+            "mindepth_statistical cannot be <5. Set mindepth_majrule instead.")
         self._mindepth_statistical = int(value)
 
 
@@ -1128,7 +1117,10 @@ class Params:
         return self._mindepth_majrule
     @mindepth_majrule.setter
     def mindepth_majrule(self, value):
-        assert isinstance(value, int), "mindepth_majrule must be an integer."
+        try:
+            value = int(value)
+        except TypeError:
+            raise IPyradParamsError("mindepth_majrule must be an integer.")
         self._mindepth_majrule = int(value)
 
 
@@ -1164,8 +1156,9 @@ class Params:
         return self._filter_adapters
     @filter_adapters.setter
     def filter_adapters(self, value):
+        value = int(value)
         assert value in (0, 1, 2, 3), "filter_adapters must be 0, 1, 2, or 3"
-        self._filter_adapters = int(value)
+        self._filter_adapters = value
 
 
     @property
@@ -1257,11 +1250,20 @@ class Params:
     def trim_reads(self):
         return self._trim_reads
     @trim_reads.setter
-    def trim_reads(self, value):        
-        value = tuplecheck(value)
-        assert [isinstance(i, int) for i in value], (
-            "trim_reads should be a tuple of integers, e.g., (0, 90, 0, 90).")
-        self._trim_reads = tuple([int(i) for i in value])
+    def trim_reads(self, value):
+        # cast to ints
+        value = tuplecheck(value, int)
+
+        # check that entries make sense 
+        if value[1] > 0:
+            if not value[1] > value[0]:
+                raise IPyradError(BAD_TRIM_READS)
+        if value[3] > 0:
+            if not value[3] > value[2]:
+                raise IPyradError(BAD_TRIM_READS)
+        if (value[0] < 0) or (value[2] < 0):
+            raise IPyradError(BAD_TRIM_READS)       
+        self._trim_reads = value
 
 
     @property
@@ -1325,7 +1327,7 @@ class Params:
         else:
             # Don't forget to possibly blank the populations dictionary
             self._pop_assign_file = ""
-            self.populations = {}
+            self._data.populations = {}
 
 
 class Encoder(json.JSONEncoder):
@@ -1745,6 +1747,13 @@ NO_RAW_FILE = """\
     the file extension. If it is a relative path be sure the path is
     correct with respect to the directory you're running ipyrad from.
     You entered: {}
+"""
+
+BAD_TRIM_READS = """\
+    Bad trim_reads entry. Think of these values like slice indices, but with 
+    0 as a special character meaning no effect. So (0, 80, 0, 0) trims the 
+    first read to 80 bp. (5, 80, 0, 0) trims R1 to keep only bp 5-80. 
+    See documentation for details.
 """
 
 BRANCH_NAMES_AND_INPUT = \
