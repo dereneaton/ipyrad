@@ -154,39 +154,31 @@ class FileLinker:
         # link pairs into tuples
         if 'pair' in self.data.params.datatype:
             # check that names fit the paired naming convention
-            # trying to support flexible types (_R2_, _2.fastq)
-            r1_try1 = [i for i in self.fastqs if "_R1_" in i]
-            r1_try2 = [i for i in self.fastqs if i.endswith("_1.fastq.gz")]
-            r1_try3 = [i for i in self.fastqs if i.endswith("_R1.fastq.gz")]
+            r1s = [i for i in self.fastqs if "_R1_" in i]
+            r2s = [i for i in self.fastqs if "_R2_" in i]
 
-            r2_try1 = [i for i in self.fastqs if "_R2_" in i]
-            r2_try2 = [i for i in self.fastqs if i.endswith("_2.fastq.gz")]
-            r2_try3 = [i for i in self.fastqs if i.endswith("_R2.fastq.gz")]
-
-            r1s = [r1_try1, r1_try2, r1_try3]
-            r2s = [r2_try1, r2_try2, r2_try3]
-
-            # check that something was found
-            if not r1_try1 + r1_try2 + r1_try3:
+            # file checks
+            if not r1s:
                 raise IPyradError(
-                    "Paired filenames are improperly formatted. See Docs.")
+                    "No fastqs files found. Names may be improperly formatted. See Docs.")
+            if len(r1s) != len(r2s):
+                raise IPyradError(
+                    R1_R2_name_error.format(len(r1s), len(r2s)))
 
-            # find the one with the right number of R1s
-            for idx, tri in enumerate(r1s):
-                if len(tri) == len(self.fastqs) / 2:
-                    break
-            r1_files = r1s[idx]
-            r2_files = r2s[idx]
-
-            if len(r1_files) != len(r2_files):
-                raise IPyradError(R1_R2_name_error.format(
-                    len(r1_files), len(r2_files)))
-            self.ftuples = [(i, j) for i, j in zip(r1_files, r2_files)]
+            # store tuples                    
+            self.ftuples = []
+            for r1file in r1s:
+                r2file = r1file.replace("_R1_", "_R2_")
+                if not os.path.exists(r2file):
+                    raise IPyradError(
+                        "Expected R2 file {} to match R1 file {}"
+                        .format(r1file, r2file)
+                        )
+                self.ftuples.append((r1file, r2file))
 
         # data are not paired, create empty tuple pair
         else:
             # print warning if _R2_ is in names when not paired
-            idx = 0
             if any(["_R2_" in i for i in self.fastqs]):
                 print(NAMES_LOOK_PAIRED_WARNING)
             self.ftuples = [(i, "") for i in self.fastqs]
