@@ -92,7 +92,7 @@ class Assembly(object):
         # No special characters in assembly name
         check_name(name)      
         self.name = name
-        if not kwargs.get("quiet"):
+        if (not kwargs.get("quiet")) and (not self._cli):
             self._print("New Assembly: {}".format(self.name))
 
         # Default ipcluster launch info
@@ -709,7 +709,7 @@ class Assembly(object):
                 ipyclient.purge_everything()
 
         except KeyboardInterrupt as inst:
-            print("\n{}Keyboard Interrupt by user".format(self._spacer))
+            print("\n{}Keyboard Interrupt by user\n".format(self._spacer))
 
         except (IPyradWarningExit, IPyradError) as inst:
             print("\n{}Encountered an IPyradError:\n{}{}\n".format(
@@ -717,7 +717,7 @@ class Assembly(object):
             raise
 
         except Exception as inst:
-            print("\n{}Encountered an unexpected error:\n{}{}".format(
+            print("\n{}Encountered an unexpected error:\n{}{}\n".format(
                 self._spacer, self._spacer, inst))
             raise
 
