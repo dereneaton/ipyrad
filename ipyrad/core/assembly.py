@@ -824,7 +824,7 @@ class Hackers:
 
     @property
     def bwa_args(self):
-        return self.data["bwa_args"]
+        return self._data["bwa_args"]
     @bwa_args.setter
     def bwa_args(self, value):
         self._data["bwa_args"] = str(value)
