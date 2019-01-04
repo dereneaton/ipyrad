@@ -48,7 +48,7 @@ class CLI:
 
         # check for merge of branches
         if self.args.merge:
-            self._merge_assemblies()
+            self.merge_assemblies()
     
         # fill parsedict from paramsfile
         self.parse_params()
@@ -56,8 +56,8 @@ class CLI:
         # functions below here involve an Assembly object.
         self.get_assembly()
         if self.args.branch:
-            self._branch_assembly()
-        self._run()
+            self.branch_assembly()
+        self.run()
         sys.exit(1)
 
 
@@ -265,7 +265,7 @@ class CLI:
             sys.exit(1)
 
 
-    def _merge_assemblies(self):
+    def merge_assemblies(self):
         """ 
         merge all given assemblies into a new assembly. Copies the params
         from the first passed in extant assembly. this function is called 
@@ -284,14 +284,14 @@ class CLI:
 
         # Make sure the first arg isn't a params file, someone could do it...
         newname = self.args.merge[0]
-        if os.path.exists(newname) and "params-" in newname:
+        if os.path.exists(newname) and ("params-" in newname):
             sys.exit(_WRONG_ORDER_CLI_MERGE) 
 
         # Make sure first arg will create a param file that doesn't exist
-        if os.path.exists("params-" + newname + ".txt") and not self.args.force:
+        if os.path.exists("params-" + newname + ".txt") and (not self.args.force):
             sys.exit(_NAME_EXISTS_MERGE.format("params-" + newname + ".txt"))
 
-        ## Make sure the rest of the args are params files that already exist
+        # Make sure the rest of the args are params files that already exist
         assemblies_to_merge = self.args.merge[1:]
         for assembly in assemblies_to_merge:
             if not os.path.exists(assembly):
@@ -302,11 +302,11 @@ class CLI:
         assemblies = []
         for params_file in self.args.merge[1:]:
             self.args.params = params_file
-            self.parse_params()  # self.args)
-            assemblies.append(self.get_assembly().data)  
-            # self.args, parsedict)
+            self.parse_params()
+            self.get_assembly()
+            assemblies.append(self.data)
 
-        ## Do the merge
+        # Do the merge
         merged_assembly = ip.merge(newname, assemblies)
 
         ## Write out the merged assembly params file and report success
@@ -335,12 +335,17 @@ class CLI:
             os.mkdir(project_dir)
 
         # Create new Assembly instead of loading if NEW 
-        if '1' in self.args.steps:
-            if self.args.force:
-                data = ip.Assembly(assembly_name, cli=True)
+        if self.args.steps:
+
+            # starting a new assembly
+            if '1' in self.args.steps:
+                if self.args.force:
+                    data = ip.Assembly(assembly_name, cli=True)
+                else:
+                    raise IPyradError(
+                        "Assembly already exists, use force to overwrite")
             else:
-                raise IPyradError(
-                    "Assembly already exists, use force to overwrite")
+                data = ip.load_json(json_file, cli=True)
         else:
             data = ip.load_json(json_file, cli=True)
 
@@ -393,7 +398,7 @@ class CLI:
             print("No stats to display")
 
 
-    def _branch_assembly(self):
+    def branch_assembly(self):
         """ 
         Load the passed in assembly and create a branch. Copy it
         to a new assembly, and also write out the appropriate params.txt
@@ -448,7 +453,7 @@ class CLI:
         sys.exit(1)
 
 
-    def _run(self):
+    def run(self):
         """ main function """
 
         if self.args.steps:
