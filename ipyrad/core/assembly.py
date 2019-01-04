@@ -1056,7 +1056,7 @@ class Params:
 
         # update barcode dist for expected second bcode
         if "3rad" in value:
-            if self.params.barcodes_path:
+            if self.barcodes_path:
                 self._data._link_barcodes()
 
             
@@ -1075,7 +1075,7 @@ class Params:
         # Handle 3rad datatype with only 3 cutters
         elif len(value) == 3:
             value = (value[0], value[1], value[2], "")
-            if self.params.barcodes_path:
+            if self.barcodes_path:
                 self._data._link_barcodes()
 
         assert len(value) <= 4, """
