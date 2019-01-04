@@ -1030,12 +1030,15 @@ class Params:
         return self._reference_sequence
     @reference_sequence.setter
     def reference_sequence(self, value):
-        fullpath = os.path.realpath(os.path.expanduser(value))
-        if not os.path.exists(fullpath):
-            raise IPyradError("reference sequence file not found")
-        if fullpath.endswith(".gz"):
-            raise IPyradError("reference sequence file must be decompressed.")
-        self._reference_sequence = fullpath
+        if value:
+            fullpath = os.path.realpath(os.path.expanduser(value))
+            if not os.path.exists(fullpath):
+                raise IPyradError("reference sequence file not found")
+            if fullpath.endswith(".gz"):
+                raise IPyradError("reference sequence file must be decompressed.")
+            self._reference_sequence = fullpath
+        else:
+            self._reference_sequence = ""
 
 
     @property
