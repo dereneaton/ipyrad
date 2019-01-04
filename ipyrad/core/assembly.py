@@ -1053,8 +1053,11 @@ class Params:
         assert value in allowed, (
             "datatype must be one of: {}".format(", ".join(allowed)))
         self._datatype = str(value)
+
+        # update barcode dist for expected second bcode
         if "3rad" in value:
-            self._data._link_barcodes()
+            if self.params.barcodes_path:
+                self._data._link_barcodes()
 
             
     @property 
@@ -1072,7 +1075,8 @@ class Params:
         # Handle 3rad datatype with only 3 cutters
         elif len(value) == 3:
             value = (value[0], value[1], value[2], "")
-            self._data._link_barcodes()
+            if self.params.barcodes_path:
+                self._data._link_barcodes()
 
         assert len(value) <= 4, """
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
