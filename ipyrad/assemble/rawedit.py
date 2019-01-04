@@ -116,6 +116,7 @@ class Step2(object):
         self.remote_concat_multiple_raws()
         self.remote_run_cutadapt()
         self.assembly_cleanup()
+        self.data.save()
 
 
     def remote_concat_multiple_raws(self):
