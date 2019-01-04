@@ -48,6 +48,7 @@ class Step1:
             FileLinker(self).run()
         else:
             Demultiplexer(self).run()
+        self.data.save()
 
 
     def setup_dirs(self):
@@ -86,7 +87,7 @@ class Step1:
                     "\n  Step 1: Loading sorted fastq data to Samples")
             else:
                 self.data._print(
-                    "\nStep 1: Demultiplexing fastq data to Samples")
+                    "\n  Step 1: Demultiplexing fastq data to Samples")
 
 
     def select_method(self):
