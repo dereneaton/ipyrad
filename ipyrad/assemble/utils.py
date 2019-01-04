@@ -195,7 +195,7 @@ def chroms2ints(data, intkeys):
     Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
     """
     fai = pd.read_csv(
-        data.param.reference_sequence + ".fai",
+        data.params.reference_sequence + ".fai",
         names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )

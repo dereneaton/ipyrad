@@ -257,6 +257,7 @@ class Step5:
         start = time.time()
         jobs = {sample.name: [] for sample in self.samples}
         printstr = ("consens calling     ", "s5")
+        self.data._progressbar(0, 0, start, printstr)
 
         # submit jobs
         for sample in self.samples:
@@ -300,7 +301,8 @@ class Step5:
         # concatenate and store catgs
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
-
+        self.data._progressbar(0, 0, start, printstr)
+        
         # concat catgs for each sample
         asyncs1 = {}
         for sample in self.samples:
