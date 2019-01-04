@@ -1432,7 +1432,7 @@ def gbs_trim(align1):
 def index_ref_with_bwa(data):
     "Index the reference sequence, unless it already exists"
     # get ref file from params
-    refseq_file = data.param.reference_sequence
+    refseq_file = data.params.reference_sequence
     index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
     if not os.path.exists(refseq_file):
         raise IPyradError(
