@@ -978,8 +978,6 @@ class Params:
     def barcodes_path(self, value):
         if value and ("Merged:" not in value):
 
-            print(value, "HEEEEERE\n\n")
-
             # allow fuzzy name match
             fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))
             if not fullbar:
