@@ -951,6 +951,7 @@ class Params:
         if " " in value:
             raise IPyradError(BAD_PROJDIR_NAME.format(value))
         self._project_dir = os.path.realpath(os.path.expanduser(value))
+        self.dirs.project_dir = self._project_dir
 
 
     @property
