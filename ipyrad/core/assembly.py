@@ -542,7 +542,7 @@ class Assembly(object):
             ## create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
-            newobj.params.assembly_name = newname
+            newobj.params._assembly_name = newname
 
             if subsamples and infile:
                 print(BRANCH_NAMES_AND_INPUT)
@@ -1435,49 +1435,50 @@ def merge(name, assemblies):
     the actual files written on disk, but rather creates new Samples that are 
     linked to multiple data files, and with stats summed.
     """
-
-    ## checks
+    # make sure assemblies is a list of more than one
+    assert len(assemblies) > 1, (
+        "You must enter a list of >1 Assemblies to merge")
     assemblies = list(assemblies)
 
-    ## create new Assembly as a branch (deepcopy)
+    # create new Assembly as a branch (deepcopy) of the first in list
     merged = assemblies[0].branch(name)
 
-    ## get all sample names from all Assemblies
+    # get all sample names from all Assemblies
     allsamples = set(merged.samples.keys())
     for iterass in assemblies[1:]:
         allsamples.update(set(iterass.samples.keys()))
 
-    ## Make sure we have the max of all values for max frag length
-    ## from all merging assemblies.
-    merged._hackersonly["max_fragment_length"] =\
-        max([x._hackersonly["max_fragment_length"] for x in assemblies])
+    # Make sure we have the max of all values for max frag length
+    # from all merging assemblies.
+    merged.hackersonly.max_fragment_length = max(
+        [i.hackersonly.max_fragment_length for i in assemblies])
 
-    ## warning message?
+    # warning message?
     warning = 0
 
-    ## iterate over assembly objects, skip first already copied
+    # iterate over assembly objects, skip first already copied
     for iterass in assemblies[1:]:
-        ## iterate over allsamples, add if not in merged
+        # iterate over allsamples, add if not in merged
         for sample in iterass.samples:
-            ## iterate over stats, skip 'state'
+            # iterate over stats, skip 'state'
             if sample not in merged.samples:
                 merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
-                ## if barcodes data present then keep it
+                # if barcodes data present then keep it
                 if iterass.barcodes.get(sample):
                     merged.barcodes[sample] = iterass.barcodes[sample]
             else:
-                ## merge stats and files of the sample
+                # merge stats and files of the sample
                 for stat in merged.stats.keys()[1:]:
                     merged.samples[sample].stats[stat] += (
                         iterass.samples[sample].stats[stat])
-                ## merge file references into a list
+                # merge file references into a list
                 for filetype in ['fastqs', 'edits']:
                     merged.samples[sample].files[filetype] += (
                         iterass.samples[sample].files[filetype])
                 if iterass.samples[sample].files["clusters"]:
-                    warning += 1
+                    warning = 1
 
-    ## print warning if clusters or later was present in merged assembly
+    # print warning if clusters or later was present in merged assembly
     if warning:
         print("""\
     Warning: the merged Assemblies contained Samples that are identically named,
@@ -1501,14 +1502,14 @@ def merge(name, assemblies):
                           "consens", "database"]:
                 merged.samples[sample].files[ftype] = []
 
-    ## Set the values for some params that don't make sense inside
-    ## merged assemblies
-    merged_names = ", ".join([x.name for x in assemblies])
+    # Set the values for some params that don't make sense inside
+    # merged assemblies
+    merged_names = ", ".join([i.name for i in assemblies])
     merged.params.raw_fastq_path = "Merged: " + merged_names
     merged.params.barcodes_path = "Merged: " + merged_names
     merged.params.sorted_fastq_path = "Merged: " + merged_names
 
-    ## return the new Assembly object
+    # return the new Assembly object
     merged.save()
     return merged
 
