@@ -19,9 +19,6 @@ import pandas as pd
 import numpy as np
 import ipyrad
 
-import logging
-LOGGER = logging.getLogger(__name__)
-
 
 ### custom Exception classes
 class IPyradParamsError(Exception):
@@ -198,7 +195,7 @@ def chroms2ints(data, intkeys):
     Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
     """
     fai = pd.read_csv(
-        data.paramsdict["reference_sequence"] + ".fai",
+        data.param.reference_sequence + ".fai",
         names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )
@@ -465,7 +462,6 @@ def clustdealer(pairdealer, optim):
             taker = takewhile(lambda x: x[0] != b"//\n", pairdealer)
             oneclust = [b"".join(next(taker))]
         except StopIteration:
-            #LOGGER.debug('last chunk %s', chunk)
             return 1, chunk
 
         ## load one cluster
@@ -493,7 +489,7 @@ def get_threaded_view(ipyclient, split=True):
 
     ## group ids into a dict by their hostnames
     ## e.g., {a: [0, 1, 4], b: [2, 3], c: [5, 6, 7, 8]}
-    hostdict = {i:[] for i in hosts}  # defaultdict(list)
+    hostdict = {i: [] for i in hosts}  # defaultdict(list)
     for host, eid in zip(hosts, eids):
         hostdict[host].append(eid)
 
@@ -525,7 +521,6 @@ def get_threaded_view(ipyclient, split=True):
     ## make sure split numbering is correct
     #threaded = hostdict.values()
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
-    LOGGER.info("threaded_view: %s", dict(hostdict))
     return hostdict
 
 
