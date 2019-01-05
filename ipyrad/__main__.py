@@ -102,8 +102,10 @@ class CLI:
         "Parse the params file args, create and return Assembly object."
 
         # check that params.txt file is correctly formatted.
-        if not os.path.exists(self.args.params):
-            raise IPyradWarningExit("  No params file found")
+        if not self.args.params:
+            raise IPyradWarningExit("\n  No params file found\n")
+        elif not os.path.exists(self.args.params):
+            raise IPyradWarningExit("\n  No params file found\n")
         else:
             with open(self.args.params) as paramsin:
                 lines = paramsin.readlines()
@@ -139,8 +141,8 @@ class CLI:
         self.parser.add_argument('-q', "--quiet", action='store_true',
             help="do not print to stderror or stdout.")
 
-        self.parser.add_argument('-d', "--debug", action='store_true',
-            help="print lots more info to ipyrad_log.txt.")
+        # self.parser.add_argument('-d', "--debug", action='store_true',
+            # help="print lots more info to ipyrad_log.txt.")
 
         self.parser.add_argument('-n', metavar='new', dest="new", type=str, 
             default=None, 
