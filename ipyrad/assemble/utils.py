@@ -37,7 +37,7 @@ class IPyradWarningExit(SystemExit):
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
-        if not ipyrad.__interactive__:
+        if ipyrad.__interactive__:
             raise IPyradError(*args, **kwargs)
         else:
             SystemExit.__init__(self, *args, **kwargs)
