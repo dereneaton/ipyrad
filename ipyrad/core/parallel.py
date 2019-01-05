@@ -4,7 +4,11 @@
 
 ## imports for running ipcluster
 from __future__ import print_function
-from io import StringIO
+
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 import ipyparallel as ipp
 import subprocess
@@ -14,7 +18,6 @@ import time
 import sys
 import os
 
-import ipyrad as ip
 from ipyrad.assemble.utils import IPyradWarningExit
 
 
