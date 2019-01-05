@@ -12,7 +12,6 @@ except ImportError:
 # standard
 import os
 import time
-import tempfile
 import requests
 import subprocess as sps
 
@@ -85,10 +84,9 @@ class SRA(object):
             if not comm:
                 raise IPyradError(MISSING_IMPORTS)
 
-
     def run(
         self, 
-        ipyclient,
+        ipyclient=None,
         force=False, 
         name_fields=(1, 30), 
         name_separator="_", 
@@ -244,21 +242,24 @@ class SRA(object):
             return
 
         # send download jobs
+        nfinished = 0
+        ntotal = int(df.shape[0]) * 2
         start = time.time()
         message = "downloading/converting fastq data files"
-        progressbar(0, 1, start, message)
         download_asyncs = {}
         for sidx in df.index:
+            progressbar(nfinished, ntotal, start, message)
             acc = df.Accession[sidx]
             url = df.download_path[sidx]
             out = os.path.join(self.workdir, acc) + ".sra"
             out = os.path.realpath(os.path.expanduser(out))
-            download_asyncs[acc] = lbview.apply(download_file, *(url, out))
-            time.sleep(1.1)
 
-        # collect results and send to fasterq-dump one at a time
-        ntotal = len(download_asyncs) * 2
-        nfinished = 0
+            if ipyclient:
+                download_asyncs[acc] = lbview.apply(download_file, *(url, out)) 
+            else:
+                download_asyncs[acc] = download_file(url, out)
+                nfinished += 1
+            time.sleep(1.1)
 
         # continue until all jobs finish
         while 1:
@@ -271,21 +272,29 @@ class SRA(object):
             # submit conversion job on finished downloads
             running = list(download_asyncs.keys())
             for key in running:
-                job = download_asyncs[key]
-                if job.ready():
-                    if job.successful():
-                        nfinished += 1  
+                if ipyclient:                
+                    job = download_asyncs[key]
+                    if job.ready():
+                        if job.successful():
+                            nfinished += 1  
 
-                        # submit new job
-                        srr = job.get()
-                        paired = bool(split_pairs)
-                        args = (srr, paired, gzip)
-                        self._call_fastq_dump_on_SRRs(*args)
-                        download_asyncs.pop(key)
-                        nfinished += 1
-                    else:
-                        raise IPyradError(job.get())
-
+                            # submit new job
+                            srr = job.get()
+                            paired = bool(split_pairs)
+                            args = (srr, paired, gzip)
+                            self._call_fastq_dump_on_SRRs(*args)
+                            download_asyncs.pop(key)
+                            nfinished += 1
+                        else:
+                            raise IPyradError(job.get())
+                else:
+                    srr = download_asyncs[key]
+                    paired = bool(split_pairs)
+                    args = (srr, paired, gzip)
+                    self._call_fastq_dump_on_SRRs(*args)
+                    download_asyncs.pop(key)
+                    nfinished += 1
+                
         # final report
         self._report(int(ntotal / 2))
 
