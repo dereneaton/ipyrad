@@ -246,7 +246,7 @@ class SRA(object):
         # send download jobs
         start = time.time()
         message = "downloading/converting fastq data files"
-        progressbar(0, 0, start, message)
+        progressbar(0, 1, start, message)
         download_asyncs = {}
         for sidx in df.index:
             acc = df.Accession[sidx]
@@ -265,6 +265,7 @@ class SRA(object):
             # track progress and break
             progressbar(nfinished, ntotal, start, message)
             if nfinished == ntotal:
+                print("")
                 break
 
             # submit conversion job on finished downloads
