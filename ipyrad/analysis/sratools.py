@@ -244,6 +244,9 @@ class SRA(object):
             return
 
         # send download jobs
+        start = time.time()
+        message = "downloading/converting fastq data files"
+        progressbar(0, 0, start, message)
         download_asyncs = {}
         for sidx in df.index:
             acc = df.Accession[sidx]
@@ -256,12 +259,9 @@ class SRA(object):
         # collect results and send to fasterq-dump one at a time
         ntotal = len(download_asyncs) * 2
         nfinished = 0
-        start = time.time()
-        message = "downloading/converting fastq data files"
 
         # continue until all jobs finish
         while 1:
-
             # track progress and break
             progressbar(nfinished, ntotal, start, message)
             if nfinished == ntotal:
@@ -276,10 +276,9 @@ class SRA(object):
                         nfinished += 1  
 
                         # submit new job
-                        srr = os.path.split(job.get())[1]
-                        outname = srr.rsplit(".sra")[0] + ".fastq"
+                        srr = job.get()
                         paired = bool(split_pairs)
-                        args = (srr, outname, paired, gzip)
+                        args = (srr, paired, gzip)
                         self._call_fastq_dump_on_SRRs(*args)
                         download_asyncs.pop(key)
                         nfinished += 1
@@ -414,9 +413,7 @@ class SRA(object):
 
 
     def fetch_runinfo(self, fields=None, quiet=False):
-        """
-        Requests based utils for fetching SRA IDs and URLs
-        """
+        "Requests based utils for fetching SRA IDs and URLs"
         # 
         if not quiet: 
             print("\rFetching project data...", end="")
@@ -458,12 +455,17 @@ class SRA(object):
 
 
 
-    def _call_fastq_dump_on_SRRs(self, srr, outname, paired, gzip):
+    def _call_fastq_dump_on_SRRs(self, srr, paired, gzip):
         """
         calls fastq-dump on SRRs, relabels fastqs by their accession
         names, and writes them to the workdir. Saves temp sra files
         in the designated tmp folder and immediately removes them.
         """
+
+        # build outname
+        outname = os.path.split(srr)[-1]
+        outname = outname.rsplit(".sra")[0]
+
         ## build command for fastq-dumping
         fd_cmd = [
             "fastq-dump", srr,
@@ -479,6 +481,9 @@ class SRA(object):
         ## call fq dump command
         proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
         o, e = proc.communicate()
+
+        if proc.returncode:
+            raise IPyradError(o.decode())
 
         ## delete the temp sra file from the place 
         if os.path.exists(srr):
