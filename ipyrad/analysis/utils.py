@@ -41,29 +41,42 @@ def get_spans(maparr, spans):
 
 
 
-def progressbar(njobs, finished, start, msg):
-    "simple progress bar for ipyrad analysis tools"
-
-    # measure progress
-    if njobs:
-        progress = 100 * (finished / float(njobs))
-    else:
-        progress = 100
-
-    # build the bar
+def progressbar(finished, total, start, message):
+    progress = 100 * (finished / float(total))
     hashes = '#' * int(progress / 5.)
     nohash = ' ' * int(20 - len(hashes))
-
-    # timestamp
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    print("\r[{}] {:>3}% {} | {:<12} | {} |".format(*[
-        hashes + nohash,
-        int(progress),
-        elapsed,
-        msg[0],
-        msg[1],
-    ]), end="")
-    sys.stdout.flush()
+    print("\r[{}] {:>3}% {} | {:<12} "
+        .format(hashes + nohash, int(progress), elapsed, message),
+        end="")
+    sys.stdout.flush()    
+
+
+
+
+# def progressbar(njobs, finished, start, msg):
+#     "simple progress bar for ipyrad analysis tools"
+
+#     # measure progress
+#     if njobs:
+#         progress = 100 * (finished / float(njobs))
+#     else:
+#         progress = 100
+
+#     # build the bar
+#     hashes = '#' * int(progress / 5.)
+#     nohash = ' ' * int(20 - len(hashes))
+
+#     # timestamp
+#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
+#     print("\r[{}] {:>3}% {} | {:<12} | {} |".format(*[
+#         hashes + nohash,
+#         int(progress),
+#         elapsed,
+#         msg[0],
+#         msg[1],
+#     ]), end="")
+#     sys.stdout.flush()
 
 
 
