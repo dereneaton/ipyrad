@@ -4,7 +4,7 @@
 from __future__ import print_function, division  
 
 from ipyrad.core.parallel import register_ipcluster
-from ipyrad.assemble.utils import IPyradError, IPyradWarningExit, detect_cpus
+from ipyrad.assemble.utils import IPyradWarningExit, detect_cpus
 from pkg_resources import get_distribution
 import ipyparallel as ipp
 import ipyrad as ip
@@ -344,7 +344,7 @@ class CLI:
                 if self.args.force:
                     data = ip.Assembly(assembly_name, cli=True)
                 else:
-                    raise IPyradError(
+                    raise IPyradWarningExit(
                         "Assembly already exists, use force to overwrite")
             else:
                 data = ip.load_json(json_file, cli=True)
@@ -377,13 +377,13 @@ class CLI:
         # load the assembly 
         data = ip.load_json(json_file, quiet=True, cli=True)
         print(
-            "\nSummary stats of Assembly {}".format(data.name) \
-           +"\n------------------------------------------------")
+            "\nSummary stats of Assembly {}".format(data.name) +
+            "\n------------------------------------------------")
         
         if not data.stats.empty:
             print(data.stats)
-            print("\n\nFull stats files"\
-             +"\n------------------------------------------------")
+            print("\n\nFull stats files" + 
+                "\n------------------------------------------------")
 
             fullcurdir = os.path.realpath(os.path.curdir)
             for i in range(1, 8):
