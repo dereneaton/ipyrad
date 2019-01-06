@@ -1825,7 +1825,9 @@ def build_vcf(data, chunksize=1000):
             if data.isref:
                 genos = io5['genos'][chunk:chunk + chunksize, 1:, :]
                 snames = data.snames[1:]
-                chroms = [revdict[i] for i in snpmap[:, 3]]
+
+                # 1-indexed to 0-indexed (1/9/2019)
+                chroms = [revdict[i - 1] for i in snpmap[:, 3]]
                 ids = [
                     "loc{}_pos{}".format(i - 1, j) for (i, j) 
                     in snpmap[:, [0, 2]]
