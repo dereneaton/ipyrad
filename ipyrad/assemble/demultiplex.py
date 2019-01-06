@@ -69,10 +69,10 @@ class Step1:
         # bail out if overwrite necessary but no force flag.
         else:
             if os.path.exists(self.data.dirs.fastqs):
-                print("Skipping; Fastq dir {} already exists: use force to overwrite"
+                raise IPyradError(
+                    "Fastq dir {} already exists: use force to overwrite"
                     .format(self.data.dirs.fastqs))
                 self.skip = True
-
 
         # ensure project dir exists
         if not os.path.exists(self.data.params.project_dir):
