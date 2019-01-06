@@ -1072,7 +1072,8 @@ class Converter:
                                 "{}\t{}:{}\t{}\t{}\n"
                                 .format(
                                     i[0], 
-                                    revdict[i[3]], i[4], 
+                                    # 1-index to 0-index fix (1/6/19)
+                                    revdict[i[3] - 1], i[4], 
                                     i[2] + 1,
                                     counter,
                                     #i[4], 
