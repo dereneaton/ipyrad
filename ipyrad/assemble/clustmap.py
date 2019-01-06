@@ -671,11 +671,12 @@ def dereplicate(data, sample, nthreads):
         "--relabel_md5",
     ]
 
-    ## build PIPEd job
+    ## build PIPEd job   
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc.communicate()[0]
     if proc.returncode:
-        raise IPyradWarningExit(errmsg)
+        raise IPyradError(errmsg.decode())
+        # raise IPyradWarningExit(errmsg.decode())
 
 
 def concat_multiple_edits(data, sample):
@@ -2225,10 +2226,9 @@ def declone_3rad(data, sample):
 
 # globals
 NO_ZIP_BINS = """
-  Reference sequence must be uncompressed fasta or bgzip compressed,
+  Reference sequence must be de-compressed fasta or bgzip compressed,
   your file is probably gzip compressed. The simplest fix is to gunzip
   your reference sequence by running this command:
-
  
  \     gunzip {}
 
@@ -2239,4 +2239,4 @@ NO_ZIP_BINS = """
   """
 REQUIRE_REFERENCE_PATH = """\
   Assembly method {} requires that you enter a 'reference_sequence_path'.
-  """
+"""
