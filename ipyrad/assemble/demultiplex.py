@@ -34,6 +34,7 @@ class Step1:
         self.data = data
         self.force = force
         self.ipyclient = ipyclient
+        self.skip = False
 
         # check input data files
         self.sfiles = self.data.params.sorted_fastq_path
@@ -44,11 +45,12 @@ class Step1:
 
 
     def run(self):
-        if self.method == "link_fastqs":
-            FileLinker(self).run()
-        else:
-            Demultiplexer(self).run()
-        self.data.save()
+        if not self.skip:
+            if self.method == "link_fastqs":
+                FileLinker(self).run()
+            else:
+                Demultiplexer(self).run()
+            self.data.save()
 
 
     def setup_dirs(self):
@@ -59,16 +61,18 @@ class Step1:
             self.data.name + "_fastqs")       
         self.data.dirs.fastqs = os.path.realpath(self.data.dirs.fastqs)
 
-        # remove existing if force flag
+        # remove existing if force flag.
         if self.force:
             if os.path.exists(self.data.dirs.fastqs):
                 shutil.rmtree(self.data.dirs.fastqs)
-        # bail out if overwrite necessary but no force flag
+
+        # bail out if overwrite necessary but no force flag.
         else:
             if os.path.exists(self.data.dirs.fastqs):
-                raise IPyradError(
-                    "Fastq dir {} already exists: use force flag to overwrite".
-                    format(self.data.dirs.fastqs))
+                print("Skipping; Fastq dir {} already exists: use force to overwrite"
+                    .format(self.data.dirs.fastqs))
+                self.skip = True
+
 
         # ensure project dir exists
         if not os.path.exists(self.data.params.project_dir):
