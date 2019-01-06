@@ -17,7 +17,6 @@ import gzip
 import glob
 import time
 import shutil
-# import tempfile
 import warnings
 import subprocess as sps
 
