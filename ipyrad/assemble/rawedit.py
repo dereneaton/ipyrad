@@ -396,10 +396,7 @@ def cutadaptit_single(data, sample):
                 ])                
 
                 # append incomplete adapter to extras (-recompcut-adapter)
-                data.hackersonly.p3_adapters_extra = [
-                    data.hackersonly.p3_adapters_extra, 
-                    incomplete_adapter,
-                ]
+                data.hackersonly.p3_adapters_extra.append(incomplete_adapter)
 
             else:
                 # else no search for barcodes on 3'
@@ -455,8 +452,11 @@ def cutadaptit_single(data, sample):
     ## if filter_adapters==3 then p3_adapters_extra will already have extra
     ## poly adapters added to its list. 
     if int(data.params.filter_adapters) > 1:
-        ## first enter extra cuts (order of input is reversed)
+
+        ## TODO: ------------
+        ## first enter extra cuts (order of input is reversed) -----------------------
         for extracut in list(set(data.hackersonly.p3_adapters_extra))[::-1]:
+
             cmdf1.insert(1, extracut)
             cmdf1.insert(1, "-a")
         ## then put the main cut so it appears first in command
