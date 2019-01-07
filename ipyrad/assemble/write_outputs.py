@@ -23,7 +23,7 @@ import pandas as pd
 import ipyrad
 from numba import njit
 from .utils import IPyradError, clustdealer, splitalleles, chroms2ints
-from .utils import BTS, GETCONS, DCONS
+from .utils import BTS, GETCONS, DCONS, bcomp
 
 
 # suppress the terrible h5 warning
@@ -203,8 +203,10 @@ class Step7:
 
         # chunk to approximately 2 chunks per core
         self.ncpus = len(self.ipyclient.ids)
-        self.chunksize = ((self.nraws // (self.ncpus * 2)) + \
-                       (self.nraws % (self.ncpus * 2)))
+        self.chunksize = sum([
+            (self.nraws // (self.ncpus * 2)),
+            (self.nraws % (self.ncpus * 2)),
+        ])
 
 
     def get_padded_names(self):
@@ -352,11 +354,14 @@ class Step7:
             ],          
             axis=1
         )
-        ## trim SNP distribution to exclude unobserved endpoints
-        varmin = (self.data.stats_dfs.s7_snps['var'] != 0).idxmin()
-        pismin = (self.data.stats_dfs.s7_snps['pis'] != 0).idxmin()
-        amin = max([varmin, pismin])
-        self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.iloc[:amin]
+
+        # trim SNP distribution to exclude unobserved endpoints
+        snpmax = np.where(
+            np.any(
+                self.data.stats_dfs.s7_snps.loc[:, ["var", "pis"]] != 0, axis=1
+                )
+            )[0].max()
+        self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.loc[:snpmax]
 
         ## store dimensions for array building 
         self.nloci = ftable.iloc[6, 2]
@@ -547,6 +552,23 @@ class Step7:
 # ------------------------------------------------------------
 # Classes initialized and run on remote engines.
 # ------------------------------------------------------------
+def process_chunks(data, chunksize, chunkfile):
+    # process chunk writes to files and returns proc with features.
+    proc = Processor(data, chunksize, chunkfile)
+    proc.run()
+
+    # write process stats to a pickle file for collating later.
+    out = {
+        "filters": proc.filters, 
+        "lcov": proc.lcov, 
+        "scov": proc.scov,
+        "var": proc.var,
+        "pis": proc.pis,
+        "nbases": proc.nbases
+    }
+    with open(proc.outpickle, 'wb') as outpickle:
+        pickle.dump(out, outpickle)
+
 
 class Processor:
     def __init__(self, data, chunksize, chunkfile):
@@ -569,6 +591,7 @@ class Processor:
             'maxshared',
             'minsamp', 
             )
+        # (R1>, <R1, R2>, <R2)
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
         # store stats on sample coverage and locus coverage
@@ -587,9 +610,6 @@ class Processor:
 
 
     def run(self):
-
-        # store list of edge trims for VCF building
-        edgelist = []
 
         # todo: this could be an iterator...
         with open(self.chunkfile, 'rb') as infile:
@@ -620,13 +640,15 @@ class Processor:
                 aseqs = np.array(aseqs)[mask, :].astype(bytes).view(np.uint8)
                 
                 # apply filters
-                efilter, edges = self.get_edges(useqs)
-                self.edges[iloc] = edges
+                edges = Edges(self.data, useqs)
+                self.edges[iloc] = edges.edges
                 self.filters[iloc, 0] = self.filter_dups(names)
                 self.filters[iloc, 4] = self.filter_minsamp_pops(names)
-                self.filters[iloc, 4] += efilter
+                self.filters[iloc, 4] += int(edges.bad)
 
-                # for denovo store shift of left edge by alignment in nidxs
+                # [denovo]: store shift of left edge start position from 
+                # alignment, this position is needed for pulling depths in VCF.
+                # [ref]: nidx string will be updated in to_locus() with edg
                 if not self.isref:
                     ishift = [
                         np.where(aseqs[i] != 45)[0].min() 
@@ -636,25 +658,24 @@ class Processor:
                         "{}:{}".format(i, j) for (i, j) in zip(nidxs, ishift)
                     ]
 
-                # should we fill terminal indels as N's here?
-                #...
+                    # mask insert in denovo data
+                    aseqs[:, edges.edges[1]:edges.edges[2]] = 110
+                    useqs[:, edges.edges[1]:edges.edges[2]] = 78
 
                 # trim edges, need to use uppered seqs for maxvar & maxshared
                 edg = self.edges[iloc]
-                ublock1 = useqs[:, edg[0]:edg[1]]
-                ublock2 = useqs[:, edg[2]:edg[3]]
-                block1 = aseqs[:, edg[0]:edg[1]]
-                block2 = aseqs[:, edg[2]:edg[3]]
+                ublock = useqs[:, edg[0]:edg[3]]
+                ablock = aseqs[:, edg[0]:edg[3]]
 
                 # apply filters on edge trimmed reads
-                self.filters[iloc, 1] += self.filter_maxindels(block1, block2)
+                self.filters[iloc, 1] += self.filter_maxindels(ublock)
 
                 # get snpstring on trimmed reads
-                snparr1, snparr2 = self.get_snpsarrs(ublock1, ublock2)
-                self.filters[iloc, 2] = self.filter_maxvars(snparr1, snparr2)
+                snparr = self.get_snpsarrs(ublock)
+                self.filters[iloc, 2] = self.filter_maxvars(snparr)
 
                 # apply filters on edge trimmed reads
-                self.filters[iloc, 3] = self.filter_maxshared(ublock1, ublock2)
+                self.filters[iloc, 3] = self.filter_maxshared(ublock)
 
                 # store stats for the locus that passed filtering
                 if not self.filters[iloc, :].sum():                   
@@ -664,49 +685,35 @@ class Processor:
                     self.lcov[useqs.shape[0]] += 1             
 
                     # do SNP distribution counter
-                    if snparr2.size:
-                        snps = np.concatenate([snparr1, snparr2])
-                        self.nbases += ublock1.shape[1] + ublock1.shape[1]
-                    else:
-                        snps = snparr1
-                        self.nbases += ublock1.shape[1]
-                    self.var[snps[:, :].sum()] += 1
-                    self.pis[snps[:, 1].sum()] += 1                   
+                    self.nbases += ublock.shape[1]
+                    self.var[snparr[:, :].sum()] += 1
+                    self.pis[snparr[:, 1].sum()] += 1                   
 
                     # write to .loci string
-                    locus = self.to_locus(
-                        names, nidxs, block1, block2, snparr1, snparr2, edg,
-                    )
+                    locus = self.to_locus(names, nidxs, ablock, snparr, edg)
                     self.outlist.append(locus)
-
-                    # if VCF: store edge trim amount so we can line
-                    edgelist.append(edges[0])
 
         # write the chunk to tmpdir
         with open(self.outfile, 'w') as outchunk:
             outchunk.write("\n".join(self.outlist) + "\n")
 
         # convert edgelist to an array and save as .npy
-        np.save(self.outarr, np.array(edgelist))
+        np.save(self.outarr, self.edges[:, 0])
 
 
-    def to_locus(self, names, nidxs, block1, block2, snparr1, snparr2, edg):
+    def to_locus(self, names, nidxs, block, snparr, edg):
         "write chunk to a loci string"
 
         # store as a list 
         locus = []
 
         # convert snparrs to snpstrings
-        snpstring1 = "".join([
-            "-" if snparr1[i, 0] else \
-            "*" if snparr1[i, 1] else \
-            " " for i in range(len(snparr1))
-        ])
-        snpstring2 = "".join([
-            "-" if snparr2[i, 0] else \
-            "*" if snparr2[i, 1] else \
-            " " for i in range(len(snparr2))
-        ])
+        snpstring = "".join([
+            "-" if snparr[i, 0] else "*" if snparr[i, 1] else " " 
+            for i in range(len(snparr))
+            ])
+
+        # get nidx string for getting vcf depths to match SNPs
         if self.isref:
             # get ref position from nidxs 
             refpos = ":".join(nidxs[0].rsplit(":", 2)[-2:])
@@ -733,30 +740,28 @@ class Processor:
             nidbits = [refpos] + nidbits
             nidxstring = ",".join(nidbits)
 
+        # denovo stores start read start position in the nidx string
         else:
             nidxstring = ",".join(nidxs)
 
         # if not paired data (with an insert)
-        if not block2.size:
-            for idx, name in enumerate(names):
-                locus.append(
-                    "{}{}".format(
-                        self.data.pnames[name],
-                        block1[idx, :].tostring().decode())
+        for idx, name in enumerate(names):
+            locus.append(
+                "{}{}".format(
+                    self.data.pnames[name],
+                    block[idx, :].tostring().decode())
                 )
-            locus.append("{}{}|{}|".format(
-                self.data.snppad, snpstring1, nidxstring))
-        else:
-            raise NotImplementedError("see here")
-
+        locus.append("{}{}|{}|".format(
+            self.data.snppad, snpstring, nidxstring))
         return "\n".join(locus)
 
-    ## filters based on names -----
+
     def filter_dups(self, names):
         unames = [i.rsplit("_", 1)[0] for i in names]
         if len(set(unames)) < len(names):
             return True
         return False
+
    
     def filter_minsamp_pops(self, names):
         if not self.data.populations:
@@ -776,142 +781,198 @@ class Processor:
                 return True
             return False
 
-    ## filters based on seqs ------
-    def filter_maxindels(self, block1, block2):
+
+    def filter_maxindels(self, ublock):  # 1, block2):
         "max internal indels. Denovo vs. Ref, single versus paired."
         # get max indels for read1, read2
         maxi = self.data.params.max_Indels_locus
         maxi = np.array(maxi).astype(np.int64)
+        inds = maxind_numba(ublock)
+        if inds > maxi[0]:
+            return True
+        return False
+        # # single-end
+        # if "pair" not in self.data.params.datatype:
+        #     inds = maxind_numba(block1)
+        #     if inds > maxi[0]:
+        #         return True
+        #     return False
 
-        # single-end
-        if "pair" not in self.data.params.datatype:
-            inds = maxind_numba(block1)
-            if inds > maxi[0]:
-                return True
-            return False
+        # # todo: if paired then worry about splits
+        # else:
+        #     inds1 = maxind_numba(block1)
+        #     inds2 = maxind_numba(block2)            
+        #     if (inds1 > maxi[0]) or (inds2 > maxi[1]):
+        #         return True
+        #     return False
 
-        # todo: if paired then worry about splits
-        else:
-            inds1 = maxind_numba(block1)
-            inds2 = maxind_numba(block2)            
-            if (inds1 > maxi[0]) or (inds2 > maxi[1]):
-                return True
-            return False
 
-    def filter_maxvars(self, snpstring1, snpstring2):
-
+    def filter_maxvars(self, snpstring):  # 1, snpstring2):
         # get max snps for read1, read2
         maxs = self.data.params.max_SNPs_locus
         maxs = np.array(maxs).astype(np.int64)
+        if np.sum(snpstring, axis=1).sum() > maxs[0]:
+            return True
+        return False
+        # # single-end
+        # if "pair" not in self.data.params.datatype:
+        #     if np.sum(snpstring1, axis=1).sum() > maxs[0]:
+        #         return True
+        #     return False
 
-        # single-end
-        if "pair" not in self.data.params.datatype:
-            if np.sum(snpstring1, axis=1).sum() > maxs[0]:
-                return True
-            return False
+        # else:
+        #     if (np.sum(snpstring1, axis=1).sum() > maxs[0]) or \
+        #        (np.sum(snpstring2, axis=1).sum() > maxs[1]):
+        #         return True
+        #     return False
 
-        else:
-            if (np.sum(snpstring1, axis=1).sum() > maxs[0]) or \
-               (np.sum(snpstring2, axis=1).sum() > maxs[1]):
-                return True
-            return False
 
-    def filter_maxshared(self, block1, block2):
-        blocks = np.concatenate([block1, block2], axis=1)
-
+    def filter_maxshared(self, block):  # 1, block2):
+        # blocks = np.concatenate([block1, block2], axis=1)
         # calculate as a proportion
         maxhet = self.data.params.max_shared_Hs_locus
         if isinstance(maxhet, float):
-            maxhet = np.floor(maxhet * blocks.shape[0]).astype(np.int16)
+            maxhet = np.floor(maxhet * block.shape[0]).astype(np.int16)
         elif isinstance(maxhet, int):
             maxhet = np.int16(maxhet)
-
         # unless maxhet was set to 0, use 1 as a min setting
         if self.data.params.max_shared_Hs_locus != 0:
             maxhet = max(1, maxhet)
-
-        # DEBUGGING
-        # with open("/home/deren/test-indels.txt", 'a') as test:
-        #     print("{} {}".format(maxhet_numba(blocks, maxhet).max(), maxhet),
-        # file=test)
-        #     for row in range(blocks.shape[0]):
-        #         print(blocks[row, :].tostring().decode(), file=test)
-        #     print("\n\n", file=test)
-
         # get max from combined block
-        if maxhet_numba(blocks, maxhet).max() > maxhet:
+        if maxhet_numba(block, maxhet).max() > maxhet:
             return True
         return False
 
 
-    def get_edges(self, seqs):
-        """
-        Trim terminal edges or mask internal edges based on three criteria and
-        take the max for each edge.
-        1. user entered hard trimming.
-        2. removing cutsite overhangs.
-        3. trimming singleton-like overhangs from seqs of diff lengths.
-        """
-        # record whether to filter this locus based on sample coverage
-        bad = False
+    def get_snpsarrs(self, block):  # 1, block2):
+        snpsarr = np.zeros((block.shape[1], 2), dtype=np.bool_)
+        return snpcount_numba(block, snpsarr)
+        # if "pair" not in self.data.params.datatype:
+        #     snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
+        #     snpsarr1 = snpcount_numba(block1, snpsarr1)
+        #     snpsarr2 = np.array([])
+        # else:
+        #     snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
+        #     snpsarr1 = snpcount_numba(block1, snpsarr1)
+        #     snpsarr2 = np.zeros((block2.shape[1], 2), dtype=np.bool_)
+        #     snpsarr2 = snpcount_numba(block2, snpsarr2)
+        # return snpsarr1, snpsarr2
+
+
+##############################################################
+
+class Edges:
+    "Trims edges of overhanging sequences, cutsites, and pair inserts"
+    def __init__(self, data, seqs):
+        self.data = data
+        self.seqs = seqs
+        self.trimseq = None
+        self.bad = False
+        self.edges = np.array([0, 0, 0, self.seqs.shape[1]])
+        self.trims = np.array([0, 0, 0, self.seqs.shape[1]])
+
+        # get edges of good locus
+        self.trim_for_coverage()
+        self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
+
+        # apply edge filtering to locus
+        self.trim_overhangs()
+        self.trim_param_trim_loci()
         
-        # 1. hard trim edges
-        trim1 = np.array(self.data.params.trim_loci)
-
-        # 2. fuzzy match for trimming restriction site where it's expected.
-        trim2 = np.array([0, 0, 0, 0])
-        overhangs = np.array([
-            i.encode() for i in self.data.params.restriction_overhang
-            ])
-        for pos, overhang in enumerate(overhangs):
-            if overhang:
-                cutter = np.array(list(overhang))
-                trim2[pos] = check_cutter(seqs, pos, cutter, 0.75)
-
-        # 3. find where the edge is not indel marked (really unknown ("N"))
-        trim3 = np.array([0, 0, 0, 0])
-        try:
-            minsamp = min(4, seqs.shape[0])
-            # minsamp = max(minsamp, self.data.paramsdict["min_samples_locus"])
-            mincovs = np.sum((seqs != 78) & (seqs != 45), axis=0)
-            for pos in range(4):
-                trim3[pos] = check_minsamp(seqs, pos, minsamp, mincovs)
-        except ValueError:
-            bad = True
-        
-        # get max edges
-        trim = np.max([trim1, trim2, trim3], axis=0)
-
-        # return edges as slice indices
-        r1left = trim[0]
-        r1right = seqs.shape[1] - trim[1]
-
-        # TODO: resolve r2
-        r2left = r2right = r1right
-        edges = (r1left, r1right, r2left, r2right)
-        
-        # get filter
-        if (r1right < r1left) or (r2left < r1right) or (r2right < r2left):
-            bad = True
-
-        # if loc length is too short then filter
-        if (r2right - r1left) < self.data.params.filter_min_trim_len:
-            bad = True
-
-        return bad, edges
+        # check that locus has anything left
+        self.trim_check()
 
 
-    def get_snpsarrs(self, block1, block2):
-        if "pair" not in self.data.params.datatype:
-            snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
-            snpsarr1 = snpcount_numba(block1, snpsarr1)
-            snpsarr2 = np.array([])
-        else:
-            snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
-            snpsarr1 = snpcount_numba(block1, snpsarr1)
-            snpsarr2 = np.zeros((block2.shape[1], 2), dtype=np.bool_)
-            snpsarr2 = snpcount_numba(block2, snpsarr2)
-        return snpsarr1, snpsarr2
+    def trim_for_coverage(self):
+        "trim edges to where data is not N or -"
+
+        # at least this much cov at each site
+        minsamp = min(4, self.seqs.shape[0])
+
+        # how much cov at each site?
+        mincovs = np.sum((self.seqs != 78) & (self.seqs != 45), axis=0)
+
+        # locus left trim
+        self.edges[0] = locus_left_trim(self.seqs, minsamp, mincovs)
+        self.edges[3] = locus_right_trim(self.seqs, minsamp, mincovs)
+
+        # find insert region for paired data to mask it
+        self.edges[1] = 0
+        self.edges[2] = 0
+
+
+    def trim_overhangs(self):
+        "fuzzy match to trim the restriction_overhangs from r1 and r2"
+
+        # trim left side for overhang
+        cutter = self.data.params.restriction_overhang[0].encode()
+        cutter = np.array(list(cutter))
+        slx = slice(0, cutter.shape[0])
+        matching = self.trimseq[:, slx] == cutter
+        mask = np.where(
+            (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
+        matchset = matching[mask]
+        if matchset.sum() / matchset.size >= 0.75:
+            self.trims[0] = len(cutter)
+
+        # trim right side for overhang
+        if self.data.params.restriction_overhang[1]:
+            cutter = self.data.params.restriction_overhang[1].encode()
+            cutter = bcomp(cutter)[::-1]
+            cutter = np.array(list(cutter))
+            slx = slice(
+                self.trimseq.shape[1] - cutter.shape[0], self.trimseq.shape[1])
+            matching = self.trimseq[:, slx] == cutter
+            mask = np.where(
+                (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
+            matchset = matching[mask]
+            if matchset.sum() / matchset.size >= 0.75:
+                self.trims[3] = len(cutter)
+
+
+    def trim_param_trim_loci(self):
+        "user entered hard trims"
+        self.trims[0] = max([self.trims[0], self.data.params.trim_loci[0]])
+        self.trims[1] = (self.trims[1] - self.data.params.trim_loci[0]
+            if self.trims[1] else 0)
+        self.trims[2] = (self.trims[2] + self.data.params.trim_loci[2]
+            if self.trims[2] else 0)
+        self.trims[3] = max([self.trims[3], self.data.params.trim_loci[3]])
+
+
+    def trim_check(self):
+        self.edges[0] += self.trims[0]
+        self.edges[1] -= self.trims[1]
+        self.edges[2] += self.trims[2]
+        self.edges[3] -= self.trims[3]
+
+        # checks
+        if any(self.edges < 0):
+            self.bad = True
+        if self.edges[3] <= self.edges[0]:
+            self.bad = True
+        if self.edges[1] > self.edges[2]:
+            self.bad = True
+
+
+# jit
+def locus_left_trim(seqs, minsamp, mincovs):
+    leftmost = np.where(mincovs >= minsamp)[0]
+    if leftmost.size:
+        return leftmost.min()
+    return 0
+
+# jit
+def locus_right_trim(seqs, minsamp, mincovs):
+    rightmost = np.where(mincovs >= minsamp)[0]
+    if rightmost.size:
+        return rightmost.max() + 1
+    return 0
+
+###############################################################
+
+def convert_outputs(data, oformat):
+    Converter(data).run(oformat)
 
 
 class Converter:
@@ -929,7 +990,6 @@ class Converter:
             self.write_phy()
 
         # phy array + phymap outputs
-        #TODO: Fix line ending in NEX--------------------------------------------------------------
         if oformat == "n":
             self.write_nex()
         
@@ -960,9 +1020,12 @@ class Converter:
         # write from hdf5 array
         with open(self.data.outfiles.phy, 'w') as out:
             with h5py.File(self.seqs_database, 'r') as io5:
-                # load seqarray
+                # load seqarray 
                 seqarr = io5['phy']
                 arrsize = io5['phymap'][-1, 2]
+
+                # if reference then inserts are not trimmed from phy
+                # ...
 
                 # write dims
                 out.write("{} {}\n".format(len(self.data.snames), arrsize))
@@ -1198,33 +1261,6 @@ class Converter:
                 
                 # write to file
                 np.savetxt(out, snpgenos, delimiter="", fmt="%d")
-
-
-# -----------------------------------------------------------
-# Step7 external functions that are run on engines. These do not require
-# The step class object but only the data class object, which avoids
-# problems with sending ipyclient (open file) to an engine.
-# -----------------------------------------------------------
-def process_chunks(data, chunksize, chunkfile):
-    # process chunk writes to files and returns proc with features.
-    proc = Processor(data, chunksize, chunkfile)
-    proc.run()
-
-    # write process stats to a pickle file for collating later.
-    out = {
-        "filters": proc.filters, 
-        "lcov": proc.lcov, 
-        "scov": proc.scov,
-        "var": proc.var,
-        "pis": proc.pis,
-        "nbases": proc.nbases
-    }
-    with open(proc.outpickle, 'wb') as outpickle:
-        pickle.dump(out, outpickle)
-
-
-def convert_outputs(data, oformat):
-    Converter(data).run(oformat)
 
 
 # ------------------------------------------------------------
@@ -1518,10 +1554,6 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
 
 def fill_snp_array(data, ntaxa, nsnps):
 
-    # get faidict to convert chroms to ints
-    if data.isref:
-        faidict = chroms2ints(data, True)
-
     # open new database file handle
     with h5py.File(data.snps_database, 'w') as io5:
 
@@ -1576,7 +1608,7 @@ def fill_snp_array(data, ntaxa, nsnps):
             # iterate lines of file until locus endings
             for line in iter(open(bit, 'r')):
                 
-                # still filling locus until |\n
+                # while still filling locus until |\n store name,seq in dict
                 if "|\n" not in line:
                     name, seq = line.split()
                     tmploc[name] = seq
@@ -1584,10 +1616,9 @@ def fill_snp_array(data, ntaxa, nsnps):
                 # locus is full, dump it
                 else:
                     # convert seqs to an array
-                    loc = (
-                        np.array([list(i) for i in tmploc.values()])
-                        .astype(bytes).view(np.uint8)
-                        )
+                    loc = np.array(
+                        [list(i) for i in tmploc.values()]
+                    ).astype(bytes).view(np.uint8)                        
                     snps, idxs, _ = line[len(data.snppad):].rsplit("|", 2)
                     snpsmask = np.array(list(snps)) != " "
                     snpsidx = np.where(snpsmask)[0]
@@ -1612,6 +1643,7 @@ def fill_snp_array(data, ntaxa, nsnps):
                                 locidx, isnp, isnpx, chromidx, isnpx + start,
                             )
                             snpidx += 1
+
                     # store snpsmap data (snpidx is 1-indexed)
                     else:
                         for isnp in range(snpsites.shape[1]):
@@ -1931,65 +1963,6 @@ def build_vcf(data, chunksize=1000):
                     arr.to_csv(out, sep='\t', index=False, header=False)
 
 
-# ----------------------------------------
-# Processor external functions
-# ----------------------------------------
-def check_minsamp(seq, position, minsamp, mincovs):
-    "used in Processor.get_edges() for trimming edges of - or N sites."
-    minsamp = min(minsamp, seq.shape[0])
-    if position == 0:       
-        mincovs = np.sum((seq != 78) & (seq != 45), axis=0)
-        # find leftmost edge with minsamp coverage
-        leftmost = np.where(mincovs >= minsamp)[0]
-        if leftmost.size:
-            return leftmost[0].min()
-        # no sites actually have minsamp coverage although there are minsamp
-        # rows of data, this can happen when reads only partially overlap. Loc
-        # should be excluded for minsamp filter.
-        else:
-            raise ValueError("no sites above minsamp coverage in edge trim")
-    
-    elif position == 1:
-        mincovs = np.sum((seq != 78) & (seq != 45), axis=0)
-        maxhit = np.where(mincovs >= minsamp)[0].max()
-        return seq.shape[1] - (maxhit + 1)
-
-    ## TODO...    
-    elif position == 2:
-        return 0
-    
-    else:
-        return 0
-
-
-def check_cutter(seq, position, cutter, cutoff):
-    "used in Processor.get_edges() for trimming edges for cutters"    
-
-    # Make slice to get first cutter from 5' read1
-    if not position:  # == 0:
-        check = slice(0, cutter.shape[0])
-
-    # Make slice to get second cutter from 3' read2
-    else:
-        check = slice(seq.shape[1] - cutter.shape[0], seq.shape[1])
-        
-    # Find matching bases
-    matching = seq[:, check] == cutter
-    
-    # check for cutter at 5' read1
-    mask = np.where(
-        (seq[:, check] != 78) & (seq[:, check] != 45) 
-    )
-
-    # subset matching bases to include only unmasked
-    matchset = matching[mask]
-    
-    # allow for N percent matching
-    if matchset.sum() / matchset.size <= cutoff:
-        return 0
-    return cutter.shape[0]
-
-
 # -------------------------------------------------------------
 # jitted Processor functions (njit = nopython mode)
 # -------------------------------------------------------------
@@ -2226,4 +2199,3 @@ VCFHEADER = """\
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
 ##FORMAT=<ID=CATG,Number=1,Type=String,Description="Base Counts (CATG)">
 """
-
