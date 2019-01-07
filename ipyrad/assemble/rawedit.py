@@ -380,11 +380,8 @@ def cutadaptit_single(data, sample):
     
     else:
         # if GBS then the barcode can also be on the other side. 
-        if data.param.datatype == "gbs":
-           
-
+        if data.params.datatype == "gbs":
             if data.barcodes:
-
                 # make full adapter (-revcompcut-revcompbarcode-adapter)                
                 adapter = "".join([
                     fullcomp(data.params.restriction_overhang[1])[::-1], 
