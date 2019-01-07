@@ -869,7 +869,7 @@ class Edges:
         self.trimseq = None
         self.bad = False
         self.edges = np.array([0, 0, 0, self.seqs.shape[1]])
-        self.trims = np.array([0, 0, 0, self.seqs.shape[1]])
+        self.trims = np.array([0, 0, 0, 0])  # self.seqs.shape[1]])
 
         # get edges of good locus
         self.trim_for_coverage()
