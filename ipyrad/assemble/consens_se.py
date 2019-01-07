@@ -301,8 +301,8 @@ class Step5:
         # concatenate and store catgs
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
-        self.data._progressbar(0, 0, start, printstr)
-        
+        self.data._progressbar(0, 1, start, printstr)
+
         # concat catgs for each sample
         asyncs1 = {}
         for sample in self.samples:
