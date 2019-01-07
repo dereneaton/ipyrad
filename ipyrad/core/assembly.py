@@ -859,7 +859,7 @@ class Params:
         self._data = data
 
         self._assembly_name = data.name
-        self._project_dir = os.path.realpath("./analysis-ipyrad")
+        self._project_dir = os.path.realpath("./")
         self._raw_fastq_path = ""
         self._barcodes_path = ""
         self._sorted_fastq_path = ""
