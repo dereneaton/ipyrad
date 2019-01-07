@@ -338,14 +338,16 @@ class CLI:
 
         # Create new Assembly instead of loading if NEW 
         if self.args.steps:
-
             # starting a new assembly
             if '1' in self.args.steps:
                 if self.args.force:
                     data = ip.Assembly(assembly_name, cli=True)
                 else:
-                    raise IPyradWarningExit(
+                    if os.path.exists(json_file):
+                        raise IPyradWarningExit(
                         "Assembly already exists, use force to overwrite")
+                    else:
+                        data = ip.Assembly(assembly_name, cli=True)
             else:
                 data = ip.load_json(json_file, cli=True)
         else:
