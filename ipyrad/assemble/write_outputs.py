@@ -361,7 +361,7 @@ class Step7:
                 self.data.stats_dfs.s7_snps.loc[:, ["var", "pis"]] != 0, axis=1
                 )
             )[0]
-        if snpmax:
+        if snpmax.size:
             snpmax = snpmax.max()
             self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.loc[:snpmax]
 
@@ -876,16 +876,21 @@ class Edges:
         self.bad = False
         self.edges = np.array([0, 0, 0, self.seqs.shape[1]])
         self.trims = np.array([0, 0, 0, 0])  # self.seqs.shape[1]])
+        self.minlen = self.data.params.filter_min_trim_len
 
         # get edges of good locus
         self.trim_for_coverage()
         self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
 
         # apply edge filtering to locus
-        if not self.bad:
-            self.trim_overhangs()
-            self.trim_param_trim_loci()
-        
+        try:
+            if not self.bad:
+                self.trim_overhangs()
+                self.trim_param_trim_loci()
+        except Exception:  # TypeError
+            self.bad = True
+            # TODO: logger here for errors
+
         # check that locus has anything left
         self.trim_check()
 
@@ -920,6 +925,11 @@ class Edges:
         matching = self.trimseq[:, slx] == cutter
         mask = np.where(
             (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
+        # print(self.trimseq[:, :10])
+        # print(matching)
+        # print(mask)
+        # print(matching[mask])
+        # print("")
         matchset = matching[mask]
         if matchset.sum() / matchset.size >= 0.75:
             self.trims[0] = len(cutter)
@@ -962,7 +972,8 @@ class Edges:
             self.bad = True
         if self.edges[1] > self.edges[2]:
             self.bad = True
-
+        if (self.edges[3] - self.edges[0]) < self.minlen:
+            self.bad = True
 
 # jit
 def locus_left_trim(seqs, minsamp, mincovs):
