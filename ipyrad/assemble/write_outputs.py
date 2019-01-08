@@ -648,6 +648,10 @@ class Processor:
                 self.filters[iloc, 4] = self.filter_minsamp_pops(names)
                 self.filters[iloc, 4] += int(edges.bad)
 
+                # bail out of locus now if it is already bad...
+                if self.filters[iloc].sum():
+                    continue
+
                 # [denovo]: store shift of left edge start position from 
                 # alignment, this position is needed for pulling depths in VCF.
                 # [ref]: nidx string will be updated in to_locus() with edg
@@ -680,11 +684,11 @@ class Processor:
                 self.filters[iloc, 3] = self.filter_maxshared(ublock)
 
                 # store stats for the locus that passed filtering
-                if not self.filters[iloc, :].sum():                   
+                if not self.filters[iloc, :].sum():
                     # do sample and locus counters
                     for name in names:
                         self.scov[name] += 1
-                    self.lcov[useqs.shape[0]] += 1             
+                    self.lcov[useqs.shape[0]] += 1
 
                     # do SNP distribution counter
                     self.nbases += ublock.shape[1]
@@ -764,7 +768,7 @@ class Processor:
             return True
         return False
 
-   
+
     def filter_minsamp_pops(self, names):
         if not self.data.populations:
             mins = self.data.params.min_samples_locus
@@ -878,8 +882,9 @@ class Edges:
         self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
 
         # apply edge filtering to locus
-        self.trim_overhangs()
-        self.trim_param_trim_loci()
+        if not self.bad:
+            self.trim_overhangs()
+            self.trim_param_trim_loci()
         
         # check that locus has anything left
         self.trim_check()
@@ -897,6 +902,8 @@ class Edges:
         # locus left trim
         self.edges[0] = locus_left_trim(self.seqs, minsamp, mincovs)
         self.edges[3] = locus_right_trim(self.seqs, minsamp, mincovs)
+        if self.edges[3] <= self.edges[0]:
+            self.bad = True
 
         # find insert region for paired data to mask it
         self.edges[1] = 0
