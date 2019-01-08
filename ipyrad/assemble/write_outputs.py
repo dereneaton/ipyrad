@@ -360,8 +360,10 @@ class Step7:
             np.any(
                 self.data.stats_dfs.s7_snps.loc[:, ["var", "pis"]] != 0, axis=1
                 )
-            )[0].max()
-        self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.loc[:snpmax]
+            )[0]
+        if snpmax:
+            snpmax = snpmax.max()
+            self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.loc[:snpmax]
 
         ## store dimensions for array building 
         self.nloci = ftable.iloc[6, 2]
