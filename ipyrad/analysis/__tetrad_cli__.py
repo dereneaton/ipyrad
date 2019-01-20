@@ -1,26 +1,22 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+
 """ the main CLI for calling tetrad """
 
 from __future__ import print_function, division  # Requires Python 2.7+
 
 from ipyrad.core.parallel import register_ipcluster
-from ipyrad.assemble.util import IPyradWarningExit, detect_cpus
+from ipyrad.assemble.utils import IPyradWarningExit, detect_cpus
+
 import ipyparallel as ipp
 import pkg_resources
 import ipyrad as ip
 import numpy as np
 import argparse
-import logging
 import sys
 import os
 import ipyrad.analysis as ipa
 
-# pylint: disable=W0212
-# pylint: disable=C0301
-# pylint: disable=E1101
-
-LOGGER = logging.getLogger(__name__)
-__interactive__ = False
+# __interactive__ = False
 
 
 def parse_command_line():
@@ -139,8 +135,9 @@ def parse_command_line():
 
     ## RAISE errors right away for some bad argument combinations:
     if args.method not in ["random", "equal", "all"]:
-        raise IPyradWarningExit("  method argument (-m) must be one of"+\
-        """ "all", "random", or "equal.\n""")
+        raise IPyradWarningExit(
+            "method argument (-m) must be one of 'all', 'random', or 'equal'"
+        )
 
     ## if 'random' require nquarts argument
     #if args.method == 'random':
@@ -181,12 +178,12 @@ def main():
     ## set random seed
     np.random.seed(args.rseed)
 
-    ## debugger----------------------------------------
-    if os.path.exists(ip.__debugflag__):
-        os.remove(ip.__debugflag__)
-    if args.debug:
-        print("\n  ** Enabling debug mode ** ")
-        ip._debug_on()
+    # ## debugger----------------------------------------
+    # if os.path.exists(ip.__debugflag__):
+    #     os.remove(ip.__debugflag__)
+    # if args.debug:
+    #     print("\n  ** Enabling debug mode ** ")
+    #     ip._debug_on()
 
     ## if JSON, load existing Tetrad analysis -----------------------
     if args.json:
@@ -228,8 +225,9 @@ def main():
                               save_invariants=args.invariants,
                               )
         else:
-            raise SystemExit(QUARTET_EXISTS\
-            .format(args.name, args.workdir, args.workdir, args.name, args.name))
+            raise SystemExit(QUARTET_EXISTS
+            .format(args.name, args.workdir, args.workdir, args.name, args.name)
+            )
 
     ## boots can be set either for a new object or loaded JSON to continue it
     if args.boots:
@@ -263,10 +261,7 @@ def main():
     data.run(force=args.force, ipyclient=ipyclient)
 
 
-
-
 ## CONSTANTS AND WARNINGS
-
 HEADER = """
 -------------------------------------------------------
 tetrad [v.{}] (ipyrad.analysis toolkit)
@@ -289,9 +284,5 @@ Continuing checkpointed analysis: {}
 """
 
 
-
-
 if __name__ == "__main__": 
     main()
-
-
