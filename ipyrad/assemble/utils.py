@@ -13,7 +13,6 @@ except ImportError:
     izip = zip
 
 import os
-import gzip
 import socket
 import pandas as pd
 import numpy as np
