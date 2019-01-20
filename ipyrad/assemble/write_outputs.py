@@ -77,6 +77,7 @@ class Step7:
 
         # send jobs to build vcf
         if 'v' in self.formats:
+            # throttle job to avoid memory errors based on catg size
             self.remote_fill_depths()
             self.remote_build_vcf()    
 
@@ -572,6 +573,8 @@ def process_chunks(data, chunksize, chunkfile):
         pickle.dump(out, outpickle)
 
 
+##############################################################
+
 class Processor:
     def __init__(self, data, chunksize, chunkfile):
         """
@@ -607,9 +610,8 @@ class Processor:
         # tmp outfile list and filename
         self.outlist = []
         self.outfile = self.chunkfile + '.loci'
-        self.outarr = self.chunkfile + '.npy'
         self.outpickle = self.chunkfile + '.p'
-
+        self.outarr = self.chunkfile + '.npy'
 
     def run(self):
 
@@ -637,6 +639,8 @@ class Processor:
                 # filter to include only samples in this assembly
                 mask = [i in self.data.snames for i in names]
                 names = np.array(names)[mask].tolist()
+
+                # [ref] store consens read start position as mapped to ref
                 nidxs = np.array(nidxs)[mask].tolist()
                 useqs = np.array(useqs)[mask, :].astype(bytes).view(np.uint8)
                 aseqs = np.array(aseqs)[mask, :].astype(bytes).view(np.uint8)
@@ -703,8 +707,9 @@ class Processor:
         with open(self.outfile, 'w') as outchunk:
             outchunk.write("\n".join(self.outlist) + "\n")
 
-        # convert edgelist to an array and save as .npy
-        np.save(self.outarr, self.edges[:, 0])
+        # thin edgelist to filtered loci and write to array
+        mask = np.invert(self.filters.sum(axis=1).astype(np.bool_))
+        np.save(self.outarr, self.edges[mask, 0])
 
 
     def to_locus(self, names, nidxs, block, snparr, edg):
@@ -724,7 +729,7 @@ class Processor:
             # get ref position from nidxs 
             refpos = ":".join(nidxs[0].rsplit(":", 2)[-2:])
 
-            # trim ref position for edge trims
+            # trim ref position string for edge trims
             chrom, pos = refpos.split(":")
             ostart, end = pos.split("-")
             start = int(ostart) + edg[0]
@@ -737,6 +742,10 @@ class Processor:
                 bkey = []
                 for cbit in bit.split(";"):
                     cidx, _, pos = cbit.split(":")
+
+                    # start pos of sample is its consens start pos + ostart
+                    # where ostart is the ref position start after trim. So 
+                    # how far ahead of ref start does the consens read start.
                     posplus = int(pos.split("-")[0]) - int(ostart)
                     bkey.append("{}:{}".format(cidx, posplus))
                 nidbits.append("-".join(bkey))                       
@@ -975,6 +984,7 @@ class Edges:
         if (self.edges[3] - self.edges[0]) < self.minlen:
             self.bad = True
 
+
 # jit
 def locus_left_trim(seqs, minsamp, mincovs):
     leftmost = np.where(mincovs >= minsamp)[0]
@@ -994,6 +1004,8 @@ def locus_right_trim(seqs, minsamp, mincovs):
 def convert_outputs(data, oformat):
     Converter(data).run(oformat)
 
+
+###############################################################
 
 class Converter:
     "functions for converting hdf5 arrays into output files"
@@ -1727,131 +1739,150 @@ def fill_snp_array(data, ntaxa, nsnps):
                 )
 
 
-def fill_vcf_depths(data, nsnps, sample):
-    "fills an array with SNP depths for VCF file."
-    
-    # array to store vcfdepths for this taxon
-    vcfd = np.zeros((nsnps, 4), dtype=np.uint32)
-    
-    # load snpsmap with locations of SNPS on trimmed loci
-    with h5py.File(data.snps_database, 'r') as io5:
-        snpsmap = io5['snpsmap'][:, [0, 2]]   
+###############################################################
 
-    # load catgs for this sample (this could be done more mem efficient...)
-    with h5py.File(sample.files.database, 'r') as io5:
-        catgs = io5['catg'][:]
+class VCF_filler:
+    """
+    Incorporate indels and trim amounts when grabbing depths from CATG arrays
+    (depth arrays from step 5). Indels are only releveant to denovo data.
+    """
+    def __init__(self, data, nsnps, sample):
+
+        # input locus bits
+        self.locbits = glob.glob(os.path.join(data.tmpdir, "chunk*.loci"))
+        self.locbits = sorted(
+            self.locbits, key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
+        self.loclines = None
+
+        # input arrays of indels arrays
+        self.indbits = glob.glob(os.path.join(data.tmpdir, "chunk*.indels*"))
+        if not self.indbits:
+            self.indbits = [None] * len(self.locbits)
+
+        # input trim arrays
+        self.trimbits = glob.glob(os.path.join(data.tmpdir, "chunk*.npy"))
+        self.trimbits = sorted(
+            self.trimbits, key=lambda x: int(x.rsplit("-", 1)[-1][:-4]))
+
+        # array to store vcfdepths for this taxon
+        self.vcfd = np.zeros((nsnps, 4), dtype=np.uint32)
+
+        # the sample for this comp
+        self.sname = sample.name
+        self.isref = bool(data.isref)
         
-    # loci and indel chunks with sidx labels
-    locibits = glob.glob(os.path.join(data.tmpdir, "chunk*.loci"))
-    sortbits = sorted(locibits, key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
-    indels = glob.glob(os.path.join(data.tmpdir, "chunk*.npy"))
-    sindels = sorted(indels, key=lambda x: int(x.rsplit("-", 1)[-1][:-4]))           
+        # snpsmap has locations of SNPs on trimmed loci, e.g., 
+        # no SNPs are on loc 1 and 2, first is on 3 at post-trim pos 11
+        # [    3     0    11     1 41935]
+        # [    4     0    57     1 56150]
+        with h5py.File(data.snps_database, 'r') as io5:
+            self.snpsmap = io5['snpsmap'][:, [0, 2]]   
 
-    # counters
-    locidx = 0
-    snpidx = 0
-    names = []
-    seqs = []
+        # All catgs for this sample (this could be done more mem efficient...)
+        with h5py.File(sample.files.database, 'r') as io5:
+            self.catgs = io5['catg'][:]
+            self.maxlen = self.catgs.shape[1]
 
-    # iterate through loci to impute indels into catgs (from consens)
-    for locbit, indbit in zip(sortbits, sindels):
-        localidx = 0
+        # Sample-level counters
+        self.locidx = 0
+        self.snpidx = 0
 
-        # load trim array with left trim values of loci
-        trim = np.load(indbit)
-        with open(locbit, 'r') as inloci:
-            for line in iter(inloci):
 
-                # continue filling locus
-                if "|\n" not in line:
-                    name, seq = line.split()
-                    names.append(name)
-                    seqs.append(seq)
+    def run(self):
+        "loops over chunked files streaming through all loci for this sample"
+        for idx in range(len(self.locbits)):
+            self.localidx = 0
+            self.locfill(idx)
 
-                # locus filled, process it.
+
+    def locfill(self, idx):
+        "iterates over loci in chunkfile to get and enter catgs for snps"
+        # load the arrays for this bit
+        edges = np.load(self.trimbits[idx])
+        inds = self.indbits[idx]
+        if inds:
+            inds = np.load(inds)
+
+        # iterate over the chunk of trimmed loci
+        self.loclines = iter(open(self.locbits[idx], 'r'))
+        while 1:
+            try:
+                self.yield_loc()
+            except StopIteration:
+                break
+
+            # get snps for this locus (1-indexed locus idxs)
+            self.locsnps = self.snpsmap[self.snpsmap[:, 0] == self.locidx]
+
+            # get global trim for this locus (0-indexed edge arr)
+            self.gtrim = edges[self.localidx - 1]
+
+            # if SNPs and data for this sample enter catgs
+            if (self.locsnps.size) and (self.sname in self.names):                   
+                if self.isref:
+                    self.ref_enter_catgs()
                 else:
-                    # get snps for this locus
-                    locsnps = snpsmap[snpsmap[:, 0] == locidx + 1]
-                        
-                    # is this sample in the locus?
-                    if sample.name in names:
-                        
-                        # store catg idx
-                        sidxs = [i for i in line.rsplit("|", 2)[1].split(',')]
-                        if data.isref:
-                            r0, r1 = sidxs[0].rsplit(":", 1)[-1].split("-")
-                            rlen = int(r1) - int(r0)
-                            sidxs = [0] + [i for i in sidxs[1:]]
-                        else:
-                            rlen = len(seqs[0])
-                            sidxs = [i for i in sidxs]
-                        nidx = names.index(sample.name)
-                        sidx = sidxs[nidx]
-                        seq = seqs[nidx]
+                    self.denovo_enter_catgs()
+            else:
+                # advance SNP counter even though this sample wasn't in SNP
+                self.snpidx += self.locsnps.shape[0]
 
-                        # get trim for this locus
-                        itrim = trim[localidx]
 
-                        # enter snps into vcfd
-                        if locsnps.size:
-                            seqarr = np.array(list(seq))
-                            inds = np.where(seqarr == "-")[0]
-                            for snp in locsnps[:, 1]:
-                                # how many indels come before this position?
-                                shift = np.sum(inds < snp)
+    def ref_enter_catgs(self):
 
-                                # skip depths for indel sites, skips it for inds counter 
-                                if seqarr[snp] != "-":
-                                    
-                                    # get strings from database tail (e.g., 3:0, or 3:0-4:90)
-                                    sids = sidx.split("-")
-                                    
-                                    # convert to tuple pairs (cidx, startpos)
-                                    tids = [tuple(int(i) for i in i.split(":")) for i in sids]
+        # map SNP position to pre-trim locus position
+        nidx = self.names.index(self.sname)
+        sidx = self.sidxs[nidx]
+        tups = [[int(j) for j in i.split(":")] for i in sidx.split("-")]
 
-                                    # all start positions in a list, append refend
-                                    inits = [i[1] for i in tids] + [rlen]
-                                    
-                                    # for each (cidx, pos), fill if snppos is in start:nextstart
-                                    for tidx, tid in enumerate(tids):
-                                        
-                                        # position of snp on locus depends on the locus edge trim
-                                        isnp = snp + itrim
-                                        
-                                        # find this position in the consens read
-                                        id1 = isnp - tid[1]
-                                        sid1 = id1 - shift
-                                        spos = isnp - inits[tidx]  # inits[tidx] + isnp
-                                        send = itrim + inits[tidx + 1]     # inits[tidx + 1] + isnp
+        # SNP is in samples, so get and store catg data for locidx
+        # [0] post-trim chrom:start-end of locus
+        # [1:] how far ahead of start does this sample start
+        # FOR DEBUGGING 
+        # seq = seqs[nidx]
+        # seqarr = np.array(list(seq))
 
-                                        # if pos falls in this consens read then enter it
-                                        try:
-                                            if (sid1 >= spos) and (sid1 < send):
-                                                vcfd[snpidx] += (
-                                                    catgs[tid[0], sid1]
-                                                )
-                                        except IndexError:
-                                            pass
-                                            #print(locidx, tid[0], sid1, tidx, '/', len(tids), snpidx)
-                                snpidx += 1
+        # enter each SNP 
+        for snp in self.locsnps[:, 1]:
+            # in case multiple consens were merged in step 6 of this sample
+            for tup in tups:
+                cidx, coffset = tup
+                pos = snp + (self.gtrim - coffset)
+                if (pos > 0) & (pos < self.maxlen):
+                    self.vcfd[self.snpidx] += self.catgs[cidx, pos]
+            self.snpidx += 1
 
-                    # sample not in this locus still advance SNP counter
-                    else:
-                        snpidx += locsnps.shape[0]
 
-                    # advance counter and reset dict
-                    locidx += 1
-                    localidx += 1
-                    names = []
-                    seqs = []
+    def yield_loc(self):
+        self.names = []
+        self.seqs = []
+        while 1:
+            line = next(self.loclines)
+            if "|\n" not in line:
+                name, seq = line.split()
+                self.names.append(name)
+                self.seqs.append(seq)
+            else:
+                self.locidx += 1
+                self.localidx += 1                
+                self.sidxs = [i for i in line.rsplit("|", 2)[1].split(',')]
+                break
 
-    # write vcfd to file
+
+
+def fill_vcf_depths(data, nsnps, sample):
+    "get catg depths for this sample."
+    filler = VCF_filler(data, nsnps, sample)
+    filler.run()
+
+    # write vcfd to file and cleanup
     vcfout = os.path.join(data.tmpdir, sample.name + ".depths.hdf5")
     with h5py.File(vcfout, 'w') as io5:
         io5.create_dataset(
             name="depths",
-            data=vcfd,
-        )
+            data=filler.vcfd,
+            )
+    del filler
 
 
 def build_vcf(data, chunksize=1000):
@@ -2130,7 +2161,6 @@ def get_genos(f10, f01, pseudoref):
     return res
 
 
-
 def get_fai_values(data, value):
     reference_file = data.params.reference_sequence
     fai = pd.read_csv(
@@ -2219,3 +2249,135 @@ VCFHEADER = """\
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
 ##FORMAT=<ID=CATG,Number=1,Type=String,Description="Base Counts (CATG)">
 """
+
+
+### DEPRECATED
+# def fill_vcf_depths(data, nsnps, sample):
+#     "fills an array with SNP depths for VCF file."
+    
+#     # array to store vcfdepths for this taxon
+#     vcfd = np.zeros((nsnps, 4), dtype=np.uint32)
+    
+#     # load snpsmap with locations of SNPS on trimmed loci
+#     with h5py.File(data.snps_database, 'r') as io5:
+#         snpsmap = io5['snpsmap'][:, [0, 2]]   
+
+#     # load catgs for this sample (this could be done more mem efficient...)
+#     with h5py.File(sample.files.database, 'r') as io5:
+#         catgs = io5['catg'][:]
+        
+#     # loci chunk files to be streamed through (these are already trimmed)
+#     locibits = glob.glob(os.path.join(data.tmpdir, "chunk*.loci"))
+#     sortbits = sorted(locibits, key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
+
+#     # counters
+#     locidx = 0
+#     snpidx = 0
+#     names = []
+#     seqs = []
+
+#     # iterate through loci to incorporate trims and indels to get catgs
+#     for locbit in sortbits:
+
+#         # counter for this chunk
+#         localidx = 0
+
+#         # get edge trim array for this loc chunk
+#         arrfilt = np.load(locbit.split(""))
+
+#         # load trim array with left trim values of loci
+#         trim = np.load(indbit)
+#         with open(locbit, 'r') as inloci:
+#             for line in iter(inloci):
+
+#                 # continue filling locus
+#                 if "|\n" not in line:
+#                     name, seq = line.split()
+#                     names.append(name)
+#                     seqs.append(seq)
+
+#                 # locus filled, process it.
+#                 else:
+#                     # get snps for this locus
+#                     locsnps = snpsmap[snpsmap[:, 0] == locidx + 1]
+                        
+#                     # is this sample in the locus?
+#                     if sample.name in names:
+                        
+#                         # store catg idx
+#                         sidxs = [i for i in line.rsplit("|", 2)[1].split(',')]
+#                         if data.isref:
+#                             r0, r1 = sidxs[0].rsplit(":", 1)[-1].split("-")
+#                             rlen = int(r1) - int(r0)
+#                             sidxs = [0] + [i for i in sidxs[1:]]
+#                         else:
+#                             rlen = len(seqs[0])
+#                             sidxs = [i for i in sidxs]
+#                         nidx = names.index(sample.name)
+#                         sidx = sidxs[nidx]
+#                         seq = seqs[nidx]
+
+#                         # get trim for this locus
+#                         itrim = trim[localidx]
+
+#                         # enter snps into vcfd
+#                         if locsnps.size:
+#                             seqarr = np.array(list(seq))
+#                             inds = np.where(seqarr == "-")[0]
+#                             for snp in locsnps[:, 1]:
+#                                 # how many indels come before this position?
+#                                 shift = np.sum(inds < snp)
+
+#                                 # skip depths for indel sites, skips it for inds counter 
+#                                 if seqarr[snp] != "-":
+                                    
+#                                     # get strings from database tail (e.g., 3:0, or 3:0-4:90)
+#                                     sids = sidx.split("-")
+                                    
+#                                     # convert to tuple pairs (cidx, startpos)
+#                                     # locus start positions
+#                                     tids = [tuple(int(i) for i in i.split(":")) for i in sids]
+
+#                                     # all start positions in a list, append refend
+#                                     inits = [i[1] for i in tids] + [rlen]
+                                    
+#                                     # for each (cidx, pos), fill if snppos is in start:nextstart
+#                                     for tidx, tid in enumerate(tids):
+                                        
+#                                         # position of snp on locus depends on the locus edge trim
+#                                         isnp = snp + itrim
+                                        
+#                                         # find this position in the consens read
+#                                         id1 = isnp - tid[1]
+#                                         sid1 = id1 - shift
+#                                         spos = isnp - inits[tidx]  # inits[tidx] + isnp
+#                                         send = itrim + inits[tidx + 1]     # inits[tidx + 1] + isnp
+
+#                                         # if pos falls in this consens read then enter it
+#                                         try:
+#                                             if (sid1 >= spos) and (sid1 < send):
+#                                                 vcfd[snpidx] += (
+#                                                     catgs[tid[0], sid1]
+#                                                 )
+#                                         except IndexError:
+#                                             pass
+#                                             #print(locidx, tid[0], sid1, tidx, '/', len(tids), snpidx)
+#                                 snpidx += 1
+
+#                     # sample not in this locus still advance SNP counter
+#                     else:
+#                         snpidx += locsnps.shape[0]
+
+#                     # advance counter and reset dict
+#                     locidx += 1
+#                     localidx += 1
+#                     names = []
+#                     seqs = []
+
+#     # write vcfd to file
+#     vcfout = os.path.join(data.tmpdir, sample.name + ".depths.hdf5")
+#     with h5py.File(vcfout, 'w') as io5:
+#         io5.create_dataset(
+#             name="depths",
+#             data=vcfd,
+#         )
