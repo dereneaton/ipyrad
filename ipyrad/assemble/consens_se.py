@@ -1114,7 +1114,8 @@ def get_binom(base1, base2, estE, estH):
 
     ## calculate probs
     bsum = base1 + base2
-    hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
+    hetprob = scipy.special.comb(bsum, base1) / (2. ** (bsum))
+    # hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
     homoa = scipy.stats.binom.pmf(base2, bsum, estE)
     homob = scipy.stats.binom.pmf(base1, bsum, estE)
 
