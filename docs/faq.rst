@@ -10,9 +10,11 @@ only that we think it's worth considering. Where necessary, we
 highlight specific papers and interesting/important results below.
 
 * Huang & Knowles 2016 - `Unforeseen Consequences of Excluding Missing Data from Next-Generation Sequences: Simulation Study of RAD Sequences <https://academic.oup.com/sysbio/article/65/3/357/2468879>`__
-    Especially useful. Don't over-filter missing data.
+    Especially useful. TL;DR Don't over-filter missing data. In practice this means allowing for more permissive `min_samples_locus` parameter settings. Sometimes people have a tendency to treat RAD data as if it were a giant multi-locus Sanger dataset. They want to see a "complete data matrix", so use very high `min_samples_locus` settings in order to reduce the amount of missing data. This is bad, and this paper shows us why.
 * Shafer et al. 2016 - `Bioinformatic processing of RAD-seq data dramatically impacts downstream population genetic inference <https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12700>`__
+    
 * Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
+    Don't over-filter your data. Filtering too strictly on MAF reduces power to detect population structure. Given that low-frequency variants retain much of the signal of recent history this result seems sensible.
 
 Troubleshooting Procedures
 ==========================
