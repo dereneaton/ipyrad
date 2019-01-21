@@ -662,7 +662,8 @@ class Bpp(object):
 
         ## others
         else:
-            return "summary function not yet ready for this type of result"
+            print("summary function not yet ready for this type of result")
+            return 0
 
 
 
