@@ -772,16 +772,16 @@ class Processor:
 
 
     def filter_dups(self, names):
-        unames = [i.rsplit("_", 1)[0] for i in names]
-        if len(set(unames)) < len(names):
+        # unames = [i.rsplit("_", 1)[0] for i in names]
+        # if len(set(unames)) < len(names):
+        if len(set(names)) < len(names):            
             return True
         return False
 
 
     def filter_minsamp_pops(self, names):
         if not self.data.populations:
-            mins = self.data.params.min_samples_locus
-            if len(names) < mins:
+            if len(names) < self.data.params.min_samples_locus:
                 return True
             return False
 
