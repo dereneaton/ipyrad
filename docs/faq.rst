@@ -357,3 +357,7 @@ When running structure, specifically in the `get_clumpp_table` call, you might b
 Problems with SRATools analysis package
 ---------------------------------------
 Occasionlly with the sratools package you might have some trouble with downloading. It could look something like this `Exception in run() - index 29 is out of bounds for axis 0 with size 1`. This is a problem with your `esearch` install, which does not have https support built in. You can verify with with the command `esearch -db sra -query SRP021469`, which should give you an https protocol support error. You can easily fix this by installing `ssleay`: `conda install -c bioconda perl-net-ssleay`. Thanks to @ksil91.
+
+ValueError in step 7
+--------------------
+During step 7 if you see something like this `error in filter_stacks on chunk 0: ValueError(zero-size array to reduction operation minimum which has no identity)` it means that one of your filtering parameters is filtering out all the loci. This is bad, obviously, and it's probably because one of your filtering parameters is too strict. Take a look at a couple of the samples in the *_consens directory to make sure they are reasonable, then try adjusting your filtering parameters based on how the consensus reads look.
