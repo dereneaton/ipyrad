@@ -1321,7 +1321,12 @@ def filter_indels(data, superints, edgearr):
             block2 = superints[idx, :, edgearr[idx, 2]:edgearr[idx, 3]]
 
             sums1 = maxind_numba(block1)
-            sums2 = maxind_numba(block2)
+            ## If all loci are merged then block2 will be empty which will
+            ## cause maxind_numba to throw a very confusing ValueError
+            if np.any(block2):
+                sums2 = maxind_numba(block2)
+            else:
+                sums2 = 0
 
             if (sums1 > maxinds[0]) or (sums2 > maxinds[1]):
                 ifilter[idx] = True
