@@ -73,7 +73,7 @@ class Twisst:
         self.wmap = {
             "abcd": ",".join(abcd[:2]) + "|" + ",".join(abcd[2:]), 
             "acbd": ",".join([abcd[0], abcd[2]]) + "|" + ",".join([abcd[1], abcd[3]]),
-            "adbd": ",".join([abcd[0], abcd[3]]) + "|" + ",".join([abcd[1], abcd[2]]),
+            "adbc": ",".join([abcd[0], abcd[3]]) + "|" + ",".join([abcd[1], abcd[2]]),
             "unknown": "unknown",
         }
 
@@ -161,39 +161,53 @@ class Twisst:
             self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
 
 
-    def draw_tree_weights(self):
+    def draw_tree_weights(self, minsnps=4, window=25, min_periods=2, label=None, signif=3):
 
-        # grab tree weights with and without unknowns
-        df1 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc", "uunk"]]
-        df2 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc"]]
+        # make dataframe copy and censor low snps windows
+        df = self.tree_weights.loc[:, ["fabcd", "facbd", "fadbc"]].copy()
+        df[self.tree_table.nsnps < minsnps] = np.nan
 
         # get rolling window means 
-        fills = df1.rolling(
-            window=30, min_periods=1, win_type="boxcar", center=True).mean()
-        lines = df2.rolling(
-            window=30, min_periods=1, win_type="boxcar", center=True).mean()        
+        fills = df.rolling(
+            window=window, 
+            min_periods=min_periods, 
+            win_type="boxcar", 
+            center=True).mean()
 
         # toyplot drawing
         canvas = toyplot.Canvas(width=900, height=250)
         axes = canvas.cartesian(
-            label="Chromosome 2",
+            label=label,
             xlabel="Position (Mb)",
             ylabel="Subtree weighting",
         )
         m = axes.fill(fills, 
             baseline="stacked", 
             opacity=0.4, 
-            title=[self.wmap[i] for i in sorted(self.wmap.keys())],
+            title=[self.wmap[i] for i in ["abcd", "acbd", "adbc"]],
         )
-        m = axes.plot(lines, stroke_width=1.5)
+        m = axes.plot(fills["fabcd"], stroke_width=1.25)
+        m = axes.plot(fills["fabcd"] + fills["facbd"], stroke_width=1.25)
 
+        # mark significantly deviating regions
+        for col in ["fabcd", "facbd", "fadbc"]:
+            deviant = fills[col].mean() + (signif * fills[col].std())
+            tops = np.where(fills[col] > deviant)[0]
+            m = axes.scatterplot(
+                tops, 
+                np.repeat(1.05, tops.size), 
+                marker="r1x0.25", size=5)
+
+        # style axes
+        indexer = np.arange(0, self.tree_table.index.max(), 250)
+        axes.x.ticks.show = True
         axes.x.ticks.locator = toyplot.locator.Explicit(
-            locations=np.arange(0, 3000, 500),
+            locations=np.arange(0, self.tree_table.index.max(), 250),
             labels=(
-                self.tree_table.start
-                .loc[np.arange(0, 3000, 500)] / int(1e6)
+                self.tree_table.start[indexer] / int(1e6)
                 ).astype(int),
         )
+        return canvas, axes
 
 
 def calculate_weights(imap, subtree):
