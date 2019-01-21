@@ -924,6 +924,7 @@ class Edges:
         self.edges[2] = 0
 
 
+    ### TODO: generalize to search both ends for both cutters
     def trim_overhangs(self):
         "fuzzy match to trim the restriction_overhangs from r1 and r2"
 
@@ -1848,7 +1849,7 @@ class VCF_filler:
             for tup in tups:
                 cidx, coffset = tup
                 pos = snp + (self.gtrim - coffset)
-                if (pos > 0) & (pos < self.maxlen):
+                if (pos >= 0) & (pos < self.maxlen):
                     self.vcfd[self.snpidx] += self.catgs[cidx, pos]
             self.snpidx += 1
 
