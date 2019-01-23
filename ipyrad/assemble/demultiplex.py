@@ -1266,8 +1266,17 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
     cmd4 = ["split", "-a", "4", "-l", str(int(optim) * 4), "-", chunk2]
 
     # start 'split ... | gunzip -c rawfile'
-    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
+    proc1 = sps.Popen(
+        cmd1, 
+        stderr=sps.STDOUT, 
+        stdout=sps.PIPE, 
+        universal_newlines=True)
+    proc3 = sps.Popen(
+        cmd3, 
+        stderr=sps.STDOUT, 
+        stdout=sps.PIPE, 
+        stdin=proc1.stdout, 
+        universal_newlines=True)
     res = proc3.communicate()[0]
     if proc3.returncode:
         raise IPyradError("error in zcat_make_temps:\n{}".format(res))
@@ -1277,8 +1286,17 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
 
     # repeat for paired reads
     if "pair" in data.params.datatype:
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+        proc2 = sps.Popen(
+            cmd2, 
+            stderr=sps.STDOUT, 
+            stdout=sps.PIPE, 
+            universal_newlines=True)
+        proc4 = sps.Popen(
+            cmd4, 
+            stderr=sps.STDOUT, 
+            stdout=sps.PIPE, 
+            stdin=proc2.stdout, 
+            universal_newlines=True)
         res = proc4.communicate()[0]
         if proc4.returncode:
             raise IPyradError("error in zcat_make_temps:\n{}".format(res))            
