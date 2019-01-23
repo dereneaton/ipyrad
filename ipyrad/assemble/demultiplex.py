@@ -876,9 +876,9 @@ class BarMatch:
                     read2[3] = read2[3][lenbar2:]
         
                 # append to sorted reads list
-                self.read1s[sname_match].append(b"".join(read1).decode())
+                self.read1s[sname_match].append((b"".join(read1)).decode())
                 if 'pair' in self.data.params.datatype:
-                    self.read2s[sname_match].append(b"".join(read2).decode()) 
+                    self.read2s[sname_match].append((b"".join(read2)).decode()) 
 
             else:
                 self.misses["_"] += 1
