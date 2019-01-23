@@ -862,8 +862,8 @@ class BarMatch:
                 # The `+1` is because it trims the newline
                 if self.data.params.datatype == '2brad':
                     overlen = len(self.cutters[0][0]) + lenbar1 + 1
-                    read1[1] = read1[1][:-overlen] + b"\n"
-                    read1[3] = read1[3][:-overlen] + b"\n"
+                    read1[1] = read1[1][:-overlen] + "\n"
+                    read1[3] = read1[3][:-overlen] + "\n"
                 else:
                     read1[1] = read1[1][lenbar1:]
                     read1[3] = read1[3][lenbar1:]
@@ -876,9 +876,9 @@ class BarMatch:
                     read2[3] = read2[3][lenbar2:]
         
                 # append to sorted reads list
-                self.read1s[sname_match].append((b"".join(read1)).decode())
+                self.read1s[sname_match].append(b"".join(read1).decode())
                 if 'pair' in self.data.params.datatype:
-                    self.read2s[sname_match].append((b"".join(read2)).decode()) 
+                    self.read2s[sname_match].append(b"".join(read2).decode())
 
             else:
                 self.misses["_"] += 1
