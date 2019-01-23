@@ -421,14 +421,17 @@ class Demultiplexer:
                 rasyncs[handle] = self.iview.apply(zcat_make_temps, *args)
 
         # track progress until finished
+        # for each file submitted we expect it to create 16 or 32 files.
         if rasyncs:
             while 1:
-                done = len(glob.glob(os.path.join(self.tmpdir, "chunk*_*_*")))
-                self.data._progressbar(
-                    njobs, min(njobs, done - 1), start, printstr)
-                time.sleep(0.5)
+                # break when all jobs are finished
                 if all([i.ready() for i in rasyncs.values()]):
                     break
+                
+                # ntemp files written or being written
+                done = len(glob.glob(os.path.join(self.tmpdir, "chunk*_*_*")))
+                self.data._progressbar(njobs, done, start, printstr)
+                time.sleep(0.5)
 
             # store results
             for key, val in rasyncs.items():
@@ -436,7 +439,7 @@ class Demultiplexer:
 
             # clean up                    
             self.ipyclient.purge_everything()                    
-            self.data._progressbar(njobs, njobs, start, printstr)
+            self.data._progressbar(10, 10, start, printstr)
             self.data._print("")
 
         # return value
