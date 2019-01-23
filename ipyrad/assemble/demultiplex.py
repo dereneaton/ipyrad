@@ -374,7 +374,11 @@ class Demultiplexer:
         self.matchdict = inverse_barcodes(self.data)
 
 
-    def setup_for_splitting(self):
+    def setup_for_splitting(self, omin=int(8e6)):
+        """
+        Decide to split or not based on whether 1/16th of file size is 
+        bigger than omin, which is default to 8M reads.
+        """
         # create a tmpdir for chunked_files and a chunk optimizer 
         self.tmpdir = os.path.realpath(
             os.path.join(self.data.dirs.fastqs, "tmpdir")
@@ -389,7 +393,6 @@ class Demultiplexer:
 
         # if more files than cpus or optim<8M: no chunking
         self.do_file_split = 0
-        omin = int(8e6)
         if (len(self.ftuples) > len(self.ipyclient)) or (self.optim > omin):
             self.do_file_split = 1
 
@@ -770,12 +773,15 @@ class BarMatch:
 
 
     def open_read_generators(self):
+        """
+        Gzips are always bytes so let's use rb to make unzipped also bytes.
+        """
 
         # get file type
         if self.ftuple[0].endswith(".gz"):
-            self.ofile1 = gzip.open(self.ftuple[0], 'r')
+            self.ofile1 = gzip.open(self.ftuple[0], 'rb')
         else:
-            self.ofile1 = open(self.ftuple[0], 'r')
+            self.ofile1 = open(self.ftuple[0], 'rb')
 
         # create iterators 
         fr1 = iter(self.ofile1) 
@@ -784,9 +790,9 @@ class BarMatch:
         # create second read iterator for paired data
         if self.ftuple[1]:
             if self.ftuple[0].endswith(".gz"):
-                self.ofile2 = gzip.open(self.ftuple[1], 'r')
+                self.ofile2 = gzip.open(self.ftuple[1], 'rb')
             else:
-                self.ofile2 = open(self.ftuple[1], 'r')
+                self.ofile2 = open(self.ftuple[1], 'rb')
 
             # create iterators
             fr2 = iter(self.ofile2)  
@@ -865,8 +871,8 @@ class BarMatch:
                 # The `+1` is because it trims the newline
                 if self.data.params.datatype == '2brad':
                     overlen = len(self.cutters[0][0]) + lenbar1 + 1
-                    read1[1] = read1[1][:-overlen] + "\n"
-                    read1[3] = read1[3][:-overlen] + "\n"
+                    read1[1] = read1[1][:-overlen] + b"\n"
+                    read1[3] = read1[3][:-overlen] + b"\n"
                 else:
                     read1[1] = read1[1][lenbar1:]
                     read1[3] = read1[3][lenbar1:]
@@ -892,9 +898,9 @@ class BarMatch:
             if not self.filestat[0] % int(1e6):
                 
                 # write reads to file
-                writetofile(self.data, self.read1s, 1, self.epid)
+                write_to_file(self.data, self.read1s, 1, self.epid)
                 if 'pair' in self.data.params.datatype:
-                    writetofile(self.data, self.read2s, 2, self.epid)
+                    write_to_file(self.data, self.read2s, 2, self.epid)
                 
                 # clear out lits of sorted reads
                 for sname in self.data.barcodes:
@@ -904,9 +910,9 @@ class BarMatch:
                     self.read2s[sname] = []             
 
         ## write the remaining reads to file
-        writetofile(self.data, self.read1s, 1, self.epid)
+        write_to_file(self.data, self.read1s, 1, self.epid)
         if 'pair' in self.data.params.datatype:
-            writetofile(self.data, self.read2s, 2, self.epid)
+            write_to_file(self.data, self.read2s, 2, self.epid)
 
         ## return stats in saved pickle b/c return_queue is too small
         ## and the size of the match dictionary can become quite large
@@ -1060,7 +1066,7 @@ def getbarcode3(cutters, read1, longbar):
 
 
 
-def writetofile(data, dsort, read, pid):
+def write_to_file(data, dsort, read, pid):
     "Writes sorted data to tmp files"
     if read == 1:
         rrr = "R1"
@@ -1070,13 +1076,16 @@ def writetofile(data, dsort, read, pid):
     # appends to file for each sample, avoids parallel fighting by using 
     # pid assigned file handle.
     for sname in dsort:
+
+        # file out handle
         handle = os.path.join(
             data.dirs.fastqs, 
             "tmpdir",
             "tmp_{}_{}_{}.fastq".format(sname, rrr, pid))
+
+        # append to this sample name
         with open(handle, 'a') as out:
             out.write("".join(dsort[sname]))
-            # b"".join(dsort[sname]).decode())
 
 
 
