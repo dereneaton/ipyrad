@@ -862,8 +862,8 @@ class BarMatch:
                 # The `+1` is because it trims the newline
                 if self.data.params.datatype == '2brad':
                     overlen = len(self.cutters[0][0]) + lenbar1 + 1
-                    read1[1] = read1[1][:-overlen] + "\n"
-                    read1[3] = read1[3][:-overlen] + "\n"
+                    read1[1] = read1[1][:-overlen] + b"\n"
+                    read1[3] = read1[3][:-overlen] + b"\n"
                 else:
                     read1[1] = read1[1][lenbar1:]
                     read1[3] = read1[3][lenbar1:]
