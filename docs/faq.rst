@@ -16,6 +16,12 @@ highlight specific papers and interesting/important results below.
 * Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
     Don't over-filter your data. Filtering too strictly on MAF reduces power to detect population structure. Given that low-frequency variants retain much of the signal of recent history this result seems sensible.
 
+Dealing with Missing Data Downstream
+====================================
+
+* Ferretti et al 2012 - `Neutrality Tests for Sequences with Missing Data <http://www.genetics.org/content/genetics/191/4/1397.full.pdf>`__
+    "In this article we presented a general framework for estimators of variability and neutrality tests based on the frequency spectrum that take into account missing data in a natural way." Cool paper, however no code is provided to implement this.
+
 Troubleshooting Procedures
 ==========================
 
