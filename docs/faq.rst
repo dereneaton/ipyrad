@@ -1,5 +1,7 @@
 
 .. _faq:  
+Frequenty Asked Questions
+=========================
 
 Tuning Assembly Parameters
 ==========================
@@ -225,11 +227,11 @@ it's probably because you are on a cluster and it's using an old version of GLIB
 fix this you need to recompile whatever binary isn't working on your crappy old machine.
 Easiest way to do this is a conda local build and install. Using `bpp` as the example:
 
-```
-git clone https://github.com/dereneaton/ipyrad.git
-conda build ipyrad/conda.recipe/bpp/
-conda install --use-local bpp
-```
+.. parsed-literal:: 
+
+    git clone https://github.com/dereneaton/ipyrad.git
+    conda build ipyrad/conda.recipe/bpp/
+    conda install --use-local bpp
 
 How do I interpret the `distribution of SNPs (var and pis) per locus` in the *_stats.txt output file
 ----------------------------------------------------------------------------------------------------
