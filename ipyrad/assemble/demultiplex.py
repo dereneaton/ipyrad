@@ -806,6 +806,7 @@ def prechecks2(data, force):
     ## (TWGC, ) ==> [TAGC, TTGC]
     ## (TWGC, AATT) ==> [TAGC, TTGC]
     cutters = [ambigcutters(i) for i in data.paramsdict["restriction_overhang"]]
+    print(cutters)
     assert cutters, "Must enter a `restriction_overhang` for demultiplexing."
 
     ## get matchdict

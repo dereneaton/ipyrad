@@ -28,6 +28,7 @@ requirements:
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0     
+    - openssl<1.1.0
 
   run:
     - python {{PY_VER}}*,>=2.7
@@ -47,7 +48,8 @@ requirements:
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0
-    - scikit-allel >=1.1.10
+    - scikit-allel >=1.2.0
+    - openssl<1.1.0
 
   commands:
     - ipyrad -h

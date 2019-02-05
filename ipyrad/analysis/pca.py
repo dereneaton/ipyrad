@@ -294,7 +294,7 @@ class PCA(object):
         if self.ncomponents > len(self.samples_vcforder):
             self.ncomponents = len(self.samples_vcforder)
             print("  INFO: # PCs < # samples. Forcing # PCs = {}".format(self.ncomponents))
-        coords, model = allel.stats.pca(allele_counts, n_components=self.ncomponents, scaler='patterson')
+        coords, model = allel.pca(allele_counts, n_components=self.ncomponents, scaler='patterson')
 
         self.pcs = pd.DataFrame(coords,
                                 index=self.samples_vcforder,
@@ -364,7 +364,7 @@ class PCA(object):
                 be same length as the number of samples.
         """
         allele_counts = self.genotypes.to_n_alt()
-        dist = allel.stats.pairwise_distance(allele_counts, metric=metric)
+        dist = allel.pairwise_distance(allele_counts, metric=metric)
         if not ax:
             fig = plt.figure(figsize=(5, 5))
             ax = fig.add_subplot(1, 1, 1)
