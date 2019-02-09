@@ -257,7 +257,7 @@ class Step5:
         start = time.time()
         jobs = {sample.name: [] for sample in self.samples}
         printstr = ("consens calling     ", "s5")
-        self.data._progressbar(0, 0, start, printstr)
+        self.data._progressbar(0, 1, start, printstr)
 
         # submit jobs
         for sample in self.samples:
@@ -278,7 +278,7 @@ class Step5:
         while 1:
             ready = [i.ready() for i in allsyncs]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
+            time.sleep(0.5)
             if len(ready) == sum(ready):
                 self.data._print("")
                 break
