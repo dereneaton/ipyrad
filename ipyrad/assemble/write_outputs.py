@@ -1499,11 +1499,11 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     # convert seqs to an array
                     locidx += 1
 
-                    # parse chrom:pos-pos
-                    lineend = line.split("|")[1]
-                    chrom = int(lineend.split(":")[0])
-                    pos0, pos1 = 0, 0
-                    if data.params.assembly_method == 'reference':                    
+                    # parse chrom:pos-pos                   
+                    if data.params.assembly_method == 'reference':
+                        lineend = line.split("|")[1]
+                        chrom = int(lineend.split(":")[0])
+                        pos0, pos1 = 0, 0                    
                         pos0, pos1 = (
                             int(i) for i in lineend
                             .split(":")[1]
@@ -1511,11 +1511,12 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                             .split("-")
                         )
 
+
                     # seq into an array
                     loc = (np.array([list(i) for i in tmploc.values()])
                         .astype(bytes).view(np.uint8))
                     
-                    # drop the site that are all N or -
+                    # drop the site that are all N or - (e.g., pair inserts)
                     mask = np.all((loc == 45) | (loc == 78), axis=0)
                     loc = loc[:, ~mask]
                     
@@ -1524,9 +1525,13 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     for idx, name in enumerate(tmploc):
                         tmparr[sidxs[name], start:end] = loc[idx]
                     mapends.append(gstart + end)
-                    mapchroms.append(chrom)
-                    mappos0.append(pos0)
-                    mappos1.append(pos1)
+
+                    if data.params.assembly_method == 'reference':
+                        mapchroms.append(chrom)
+                        mappos0.append(pos0)
+                        mappos1.append(pos1)
+                    else:
+                        mapchroms.append(locidx - 1)
                     
                     # reset locus
                     start = end
@@ -1548,9 +1553,10 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     # dump tmparr to hdf5
                     phy[:, gstart:gstart + trim] = tmparr[:, :trim]                       
                     phymap[mapstart:locidx, 0] = mapchroms
-                    phymap[mapstart:locidx, 2] = mapends                       
-                    phymap[mapstart:locidx, 3] = mappos0
-                    phymap[mapstart:locidx, 4] = mappos1                       
+                    phymap[mapstart:locidx, 2] = mapends
+                    if data.params.assembly_method == 'reference':
+                        phymap[mapstart:locidx, 3] = mappos0
+                        phymap[mapstart:locidx, 4] = mappos1                       
                     mapstart = locidx
                     mapends = []
                     mapchroms = []
@@ -1580,8 +1586,9 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         mapend = mapstart + len(mapends) + 1
         phymap[mapstart:mapend, 0] = mapchroms
         phymap[mapstart:mapend, 2] = mapends
-        phymap[mapstart:mapend, 3] = mappos0
-        phymap[mapstart:mapend, 4] = mappos1
+        if data.params.assembly_method == 'reference':        
+            phymap[mapstart:mapend, 3] = mappos0
+            phymap[mapstart:mapend, 4] = mappos1
         phymap[1:, 1] = phymap[:-1, 2]
 
         # write stats to the output file
