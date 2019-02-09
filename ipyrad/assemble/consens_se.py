@@ -23,7 +23,7 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import scipy.stats
-import scipy.misc
+# import scipy.misc
 
 import ipyrad as ip
 from .jointestimate import recal_hidepth
@@ -499,6 +499,7 @@ class Processor:
 
 
     def parse_cluster(self, chunk):
+        "read in cluster chunk to get .names & .seqs and ref position"
         # get names and seqs
         piece = chunk[0].decode().strip().split("\n")
         self.names = piece[0::2]
@@ -518,12 +519,15 @@ class Processor:
             chromint = self.faidict[chrom] + 1
             self.ref_position = (int(chromint), int(pos0), int(pos1))
 
+
     def filter_mindepth(self):
+        "return 1 if READ depth > minimum param"
         # exit if nreps is less than mindepth setting
         if not nfilter1(self.data, self.reps):
             self.filters['depth'] += 1
             return 0
         return 1
+
 
     def build_consens_and_array(self):
         """
@@ -549,6 +553,11 @@ class Processor:
             self.esth, 
             self.este,
         )
+
+        # map Ns to sites with depths below mindepth bases 
+        # (pop calls can recovere these in step 7)
+
+
 
         # trim Ns from the left and right ends
         mask = self.consens.copy()
@@ -1025,7 +1034,7 @@ def base_caller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
         # the site of focus
         carr = arr[:, col]
 
-        # if site is all dash then fill it
+        # if site is all dash then fill it dash (45)
         if np.all(carr == 45):
             cons[col] = 45
             
@@ -1035,11 +1044,11 @@ def base_caller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
             mask += carr == 78
             marr = carr[~mask]
             
-            # skip if only empties
-            if not marr.shape[0]:
+            # call N if no real bases, or below majrule.
+            if marr.shape[0] < mindepth_majrule:
                 cons[col] = 78
                 
-            # skip if not variable
+            # if not variable
             elif np.all(marr == marr[0]):
                 cons[col] = marr[0]
 
