@@ -922,7 +922,7 @@ def cluster(data, sample, nthreads, force):
     ##    small minsl and high query cov allows trimmed reads to match to untrim
     ##    seed for rad/ddrad/pairddrad.
     strand = "plus"
-    cov = 0.75
+    cov = 0.5
     minsl = 0.5
     if data.params.datatype in ["gbs", "2brad"]:
         strand = "both"
