@@ -1991,7 +1991,7 @@ def build_vcf(data, chunksize=1000):
                 'ALT': alts,
                 'QUAL': [13] * genos.shape[0],
                 'FILTER': ['PASS'] * genos.shape[0],
-            })
+                })
 
             # get sample coverage at each site
             nsamps = (
@@ -2042,8 +2042,12 @@ def build_vcf(data, chunksize=1000):
                 data=["GT:DP:CATG"] * genos.shape[0],
                 )
 
-            # debugging           
-            arr = pd.concat([df_pos, colinfo, colform, df_depth], axis=1)
+            # concat and order columns correctly
+            infocols = pd.concat([df_pos, colinfo, colform])
+            infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]]
+            arr = pd.concat([infocols, df_depth], axis=1)
+
+            # debugging                       
             #print(arr.head())
             ## PRINTING VCF TO FILE
             ## choose reference string
