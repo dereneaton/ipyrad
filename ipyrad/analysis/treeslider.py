@@ -149,9 +149,15 @@ class TreeSlider():
             "ts-sc{}-wi{}-sl{}".format(scaffold_idx, window_size, slide_size)
         )
 
-        # do not overwrite tree table
+        # get scaffold name
+        scaf_name = self.scaffold_table.scaffold_name.loc[self.scaffold_idx]
+
+        # get outfile name
         tree_table_path = os.path.join(
-            self.workdir, self.name + ".tree_table.csv")
+            self.workdir, 
+            "{}-{}.tree_table.csv".format(self.name, scaf_name))
+
+        # do not overwrite tree table
         if os.path.exists(tree_table_path):
             if not force:
                 print((
@@ -181,12 +187,13 @@ class TreeSlider():
                 self.tree_table.shape[0], 
                 self.minsnps, 
                 self.scaffold_idx,
-                self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
+                scaf_name,
                 ), 
             end="")  
         message = "inferring trees {}:{}".format(
             self.scaffold_idx,
-            self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
+            scaf_name,
+            # self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
         )
 
         # submit jobs
@@ -206,7 +213,7 @@ class TreeSlider():
         # track progress and save result table
         io5.close()
         sys.stdout.flush()
-        self._track_progress_and_store_results(rasyncs, time0)
+        self._track_progress_and_store_results(rasyncs, time0, "inferring raxml trees")
         self.tree_table.to_csv(tree_table_path)
 
 
