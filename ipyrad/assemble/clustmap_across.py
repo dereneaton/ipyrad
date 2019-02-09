@@ -240,6 +240,7 @@ class Step6:
             # concat aligned files
             self.concat_alignments()
 
+
         elif self.data.params.assembly_method == "reference":
 
             # prepare bamfiles (merge and sort)
@@ -350,7 +351,8 @@ class Step6:
         # check for errors
         self.ipyclient.wait()
         if not rasync.successful():
-            raise IPyradError(rasync.exception())          
+            raise IPyradError(rasync.exception())
+
 
     ## DENOVO FUNCS ----------------------------------------------
     def remote_build_denovo_clusters(self):
@@ -458,6 +460,13 @@ class Step6:
                     dat = indata.read()
                     if dat:
                         out.write(dat)  # + "//\n//\n")
+
+        # final cleanup
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
+
+
+
 
     ## REFERENCE BASED FUNCTIONS ---------------------------------
     def remote_concat_bams(self):
@@ -932,7 +941,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
     ## parameters that vary by datatype
     ## (too low of cov values yield too many poor alignments)
     strand = "plus"
-    cov = 0.75         # 0.90
+    cov = 0.5         # 0.90
     if data.params.datatype in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.60
