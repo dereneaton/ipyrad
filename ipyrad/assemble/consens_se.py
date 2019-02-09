@@ -259,7 +259,7 @@ class Step5:
         printstr = ("consens calling     ", "s5")
         self.data._progressbar(0, 1, start, printstr)
 
-        # submit jobs
+        # submit jobs (10 per sample === can be hundreds of jobs...)
         for sample in self.samples:
             chunks = glob.glob(os.path.join(
                 self.data.tmpdir,
@@ -272,7 +272,8 @@ class Step5:
                     self.lbview.apply(
                         process_chunks,
                         *(self.data, sample, chunk, self.isref)))
-                
+                self.data._progressbar(0, 1, start, printstr)
+               
         # track progress - just wait for all to finish before concat'ing
         allsyncs = list(chain(*[jobs[i] for i in jobs]))
         while 1:
@@ -489,13 +490,24 @@ class Processor:
                 done, chunk = clustdealer(pairdealer, 1)
                 if chunk:  
                     self.parse_cluster(chunk)
+
+                    # enough reads at this locus position
                     if self.filter_mindepth():
-                        self.build_consens_and_array()
-                        self.get_heteros()
-                        if self.filter_maxhetero():
-                            if self.filter_maxN_minLen():
-                                self.get_alleles()
-                                self.store_data()
+
+                        # enough overlapping bases for at least one call in loc
+                        if self.build_consens_and_array():
+                            self.get_heteros()
+
+                            # not too many heterozygote calls
+                            if self.filter_maxhetero():
+
+                                # trimmed loc can't be too N or too short
+                                if self.filter_maxN_minLen():
+                                    self.get_alleles()
+
+                                    # nfilter4 should be put back in here 
+                                    # ...
+                                    self.store_data()
 
 
     def parse_cluster(self, chunk):
@@ -554,25 +566,28 @@ class Processor:
             self.este,
         )
 
-        # map Ns to sites with depths below mindepth bases 
-        # (pop calls can recovere these in step 7)
-
-
-
         # trim Ns from the left and right ends
         mask = self.consens.copy()
         mask[mask == b"-"] = b"N"
         trim = np.where(mask != b"N")[0]
-        ltrim, rtrim = trim.min(), trim.max()
-        self.consens = self.consens[ltrim:rtrim + 1]
-        self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
 
-        # update position for trimming
-        self.ref_position = (
-            self.ref_position[0], 
-            self.ref_position[1] + ltrim,
-            self.ref_position[1] + ltrim + rtrim + 1,
-            )
+        # bail out b/c no bases were called 
+        if not trim.size:
+            self.filters['depth'] += 1
+            return 0
+
+        else:
+            ltrim, rtrim = trim.min(), trim.max()
+            self.consens = self.consens[ltrim:rtrim + 1]
+            self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
+
+            # update position for trimming
+            self.ref_position = (
+                self.ref_position[0], 
+                self.ref_position[1] + ltrim,
+                self.ref_position[1] + ltrim + rtrim + 1,
+                )
+            return 1
 
     def get_heteros(self):
         self.hidx = [
