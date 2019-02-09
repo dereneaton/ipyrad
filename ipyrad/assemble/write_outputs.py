@@ -79,7 +79,7 @@ class Step7:
         if 'v' in self.formats:
             # throttle job to avoid memory errors based on catg size
             self.remote_fill_depths()
-            self.remote_build_vcf()    
+            self.remote_build_vcf()
 
 
     def print_headers(self):
@@ -613,6 +613,7 @@ class Processor:
         self.outpickle = self.chunkfile + '.p'
         self.outarr = self.chunkfile + '.npy'
 
+
     def run(self):
 
         # todo: this could be an iterator...
@@ -656,26 +657,34 @@ class Processor:
                 if self.filters[iloc].sum():
                     continue
 
-                # [denovo]: store shift of left edge start position from 
-                # alignment, this position is needed for pulling depths in VCF.
-                # [ref]: nidx string will be updated in to_locus() with edg
-                if not self.isref:
-                    ishift = [
-                        np.where(aseqs[i] != 45)[0].min() 
-                        for i in range(aseqs.shape[0])
-                    ]
-                    nidxs = [
-                        "{}:{}".format(i, j) for (i, j) in zip(nidxs, ishift)
-                    ]
-
-                    # mask insert in denovo data
-                    aseqs[:, edges.edges[1]:edges.edges[2]] = 110
-                    useqs[:, edges.edges[1]:edges.edges[2]] = 78
-
                 # trim edges, need to use uppered seqs for maxvar & maxshared
                 edg = self.edges[iloc]
                 ublock = useqs[:, edg[0]:edg[3]]
                 ablock = aseqs[:, edg[0]:edg[3]]
+
+                # [denovo]: store shift of left edge start position from 
+                # alignment, this position is needed for pulling depths in VCF.
+                # [ref]: nidx string will be updated in to_locus() with edg
+                if not self.isref:
+
+                    # what is the leftmost consens edge (not -)
+                    ishift = [
+                        np.where(aseqs[i] != 45)[0].min() 
+                        for i in range(aseqs.shape[0])
+                    ]
+
+                    # fill nidxs with nidxs and shift info
+                    inidxs = []
+                    for idx, (i, j) in enumerate(zip(nidxs, ishift)):
+                        
+                        # add to ishift if trimmed region contains indels
+                        indshift = (aseqs[idx, j:edges.edges[0]] == 45).size
+                        inidxs.append("{}-{}".format(i, j + indshift))
+                    nidxs = inidxs
+
+                    # mask insert in denovo data
+                    aseqs[:, edges.edges[1]:edges.edges[2]] = 110
+                    useqs[:, edges.edges[1]:edges.edges[2]] = 78
 
                 # apply filters on edge trimmed reads
                 self.filters[iloc, 1] += self.filter_maxindels(ublock)
@@ -982,6 +991,7 @@ class Edges:
             self.bad = True
         if self.edges[1] > self.edges[2]:
             self.bad = True
+        # check total length including insert
         if (self.edges[3] - self.edges[0]) < self.minlen:
             self.bad = True
 
@@ -1476,8 +1486,13 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                 
                 # still filling locus until |\n
                 if "|\n" not in line:
-                    name, seq = line.split()
-                    tmploc[name] = seq
+
+                    # if empty skip
+                    try:
+                        name, seq = line.split()
+                        tmploc[name] = seq
+                    except ValueError:
+                        continue
 
                 # locus is full, dump it
                 else:
@@ -1643,8 +1658,11 @@ def fill_snp_array(data, ntaxa, nsnps):
                 
                 # while still filling locus until |\n store name,seq in dict
                 if "|\n" not in line:
-                    name, seq = line.split()
-                    tmploc[name] = seq
+                    try:
+                        name, seq = line.split()
+                        tmploc[name] = seq
+                    except ValueError:
+                        continue
 
                 # locus is full, dump it
                 else:
@@ -1854,15 +1872,48 @@ class VCF_filler:
             self.snpidx += 1
 
 
+    def denovo_enter_catgs(self):
+        """
+        Grab catg depths for each SNP position -- needs to take into account
+        trim from left end, and impution of indels.
+        """
+        nidx = self.names.index(self.sname)
+        sidx = self.sidxs[nidx]
+        tups = [[int(j) for j in i.split(":")] for i in sidx.split("-")]
+
+        # SNP is in samples, so get and store catg data for locidx
+        # [0] post-trim chrom:start-end of locus
+        # [1:] how far ahead of start does this sample start
+        # FOR DEBUGGING 
+        seq = self.seqs[nidx]
+
+        # enter each SNP 
+        for snp in self.locsnps[:, 1]:
+            # indels before this SNP
+            ishift = seq[:snp].count("-")
+
+            # in case multiple consens were merged in step 6 of this sample
+            for tup in tups:
+                cidx, coffset = tup
+                pos = snp + (self.gtrim - coffset) - ishift
+                if (pos >= 0) & (pos < self.maxlen):
+                    self.vcfd[self.snpidx] += self.catgs[cidx, pos]
+            self.snpidx += 1
+
+
     def yield_loc(self):
         self.names = []
         self.seqs = []
         while 1:
             line = next(self.loclines)
             if "|\n" not in line:
-                name, seq = line.split()
-                self.names.append(name)
-                self.seqs.append(seq)
+                # skip if .loci chunk is empty
+                try:
+                    name, seq = line.split()
+                    self.names.append(name)
+                    self.seqs.append(seq)
+                except ValueError:
+                    continue
             else:
                 self.locidx += 1
                 self.localidx += 1                
@@ -1996,7 +2047,7 @@ def build_vcf(data, chunksize=1000):
             #print(arr.head())
             ## PRINTING VCF TO FILE
             ## choose reference string
-            if data.params.reference_sequence:
+            if data.is_ref:
                 reference = data.params.reference_sequence
             else:
                 reference = "pseudo-reference (most common base at site)"
