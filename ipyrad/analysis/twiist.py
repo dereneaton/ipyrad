@@ -50,7 +50,6 @@ class Twisst:
         self.tree_table = pd.read_csv(data, index_col=0)
 
         # attrs to fill
-        self.rmap = {}
         self.tree_weights = pd.DataFrame({
             "minmap": np.repeat(False, self.tree_table.shape[0]),
             "subtree": np.nan,
@@ -64,6 +63,7 @@ class Twisst:
         )
 
         # reverse of imap
+        self.rmap = {}        
         for k, v in self.imap.items():
             for i in v:
                 self.rmap[i] = k
@@ -249,7 +249,6 @@ def calculate_weights(imap, subtree):
     
 
 
-
 def engine_process(newick, imap, rmap, minmap):
     """
     Load toytree for an interval, rename tips to clades with imap, prune
@@ -261,7 +260,7 @@ def engine_process(newick, imap, rmap, minmap):
     ttree = toytree.tree(newick)
     
     # incremental counter for subtree names from imap
-    intmap = {i:0 for i in minmap}
+    intmap = {i: 0 for i in minmap}
 
     # keep track of names to drop from tree (not in imap)
     drops = []
