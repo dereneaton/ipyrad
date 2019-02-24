@@ -11,6 +11,7 @@ import time
 import copy
 import types
 import itertools
+from collections import OrderedDict
 
 #import scipy.stats as st  ## used for dfoil
 import pandas as pd
@@ -21,79 +22,78 @@ import numba
 import toytree
 from ipyrad.analysis.utils import Params, progressbar
 from ipyrad.assemble.utils import IPyradError
-#from ipyrad.assemble.write_outfiles import reftrick    ## TODO REPLACE
 from ipyrad.plotting.baba_panel_plot import baba_panel_plot
-
+#from ipyrad.assemble.write_outfiles import reftrick    ## TODO REPLACE
 
 # set floating point precision in data frames to 3 for prettier printing
-pd.set_option('precision', 3)
+# pd.set_option('precision', 3)
+
+# Notes: treegenerateor working, test others, including toytree integratin.
 
 
-class Baba(object):
-    "new baba class object"
+class Baba:
+    """
+    ipyrad.analysis Baba Class object.
+
+    Parameters
+    ----------
+    data : string or ndarray
+        A string path to a .loci file produced by ipyrad. Alternatively, 
+        data can be entered as a Numpy array of float allele frequencies 
+        with dimension (nloci, 4 or 5, maxlen). See simulation example 
+        in the docs.
+        
+    tests : dict or list of dicts
+        A dictionary mapping Sample names to test taxon names, e.g., 
+        test = {'p1': ['a', 'b'], 'p2': ['c'], 'p3': ['e'], 'p4': ['f']}.
+        Four taxon tests should have p1-p4 whereas five taxon tests will 
+        used if dict keys are p1-p5. Other key names will raise an error. 
+        The highest value name (e.g., p5) is the outgroup. 
+    
+    newick: str
+        ...
+
+    Functions
+    ---------
+    run()
+        ...
+    generate_tests_from_tree()
+        ...
+    plot()
+        ...
+    """
     def __init__(self, 
         data=None,
         tests=None,
         newick=None,
         nboots=1000,
         mincov=1):
-        """
-        ipyrad.analysis Baba Class object.
-
-        Parameters
-        ----------
-        data : string or ndarray
-            A string path to a .loci file produced by ipyrad. Alternatively, 
-            data can be entered as a Numpy array of float allele frequencies 
-            with dimension (nloci, 4 or 5, maxlen). See simulation example 
-            in the docs.
-            
-        tests : dict or list of dicts
-            A dictionary mapping Sample names to test taxon names, e.g., 
-            test = {'p1': ['a', 'b'], 'p2': ['c'], 'p3': ['e'], 'p4': ['f']}.
-            Four taxon tests should have p1-p4 whereas five taxon tests will 
-            used if dict keys are p1-p5. Other key names will raise an error. 
-            The highest value name (e.g., p5) is the outgroup. 
         
-        newick: str
-            ...
-    
-        Functions
-        ---------
-        run()
-            ...
-        generate_tests_from_tree()
-            ...
-        plot()
-            ...
-
-        """
-        ## parse data as (1) path to data file, or (2) ndarray
+        # parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
-            self.data = os.path.realpath(data)
+            self.data = os.path.realpath(os.path.expanduser(data))
         else:
             self.data = data
 
+        # check dtype of newick/tree entry
+        self.newick = newick
         if isinstance(newick, toytree.Toytree.ToyTree):
-            self.newick = newick.newick
-        else:
-            self.newick = newick
+            self.newick = newick.newick          
 
-        ## store tests, check for errors
+        # store tests, TODO: check for errors
         self.tests = tests
 
-        ## parameters
+        # parameters
         self.params = Params()
         self.params.mincov = mincov
         self.params.nboots = nboots
         self.params.quiet = False
         self.params.database = None
 
-        ## results storage
+        # results storage
         self.results_table = None
         self.results_boots = None
         
-
 
     @property
     def taxon_table(self):
@@ -113,12 +113,12 @@ class Baba(object):
             else:
                 return pd.DataFrame(pd.Series(self.tests)).T
         else:
+            print("no tests generated.")
             return None
 
 
-    def run(self, 
-        ipyclient=None,
-        ):
+
+    def run(self, ipyclient=None):
         """
         Run a batch of dstat tests on a list of tests, where each test is 
         a dictionary mapping sample names to {p1 - p4} (and sometimes p5). 
@@ -131,12 +131,13 @@ class Baba(object):
         ipyclient (ipyparallel.Client object):
             An ipyparallel client object to distribute jobs to a cluster. 
         """
-        self.results_table, self.results_boots = batch(self, ipyclient)
+        batch_run(self, ipyclient)
 
         ## skip this for 5-part test results
         if not isinstance(self.results_table, list):
-            self.results_table.nloci = np.nan_to_num(self.results_table.nloci)\
-                                                 .astype(int)
+            self.results_table.nloci = (
+                np.nan_to_num(self.results_table.nloci).astype(int))
+
 
 
     def generate_tests_from_tree(self, 
@@ -171,11 +172,14 @@ class Baba(object):
             sample1, sample2, sample3, [sample4, sample5]
         """
         if not self.newick:
-            raise AttributeError("no newick tree information in {self}.newick")
-        tests = tree2tests(self.newick, constraint_dict, constraint_exact)
+            raise AttributeError("no newick tree")
+
+        tp = TreeParser(self.newick, constraint_dict, constraint_exact)
+        tests = tp.testset
         if verbose:
             print("{} tests generated from tree".format(len(tests)))
         self.tests = tests
+
 
 
     def plot(self, 
@@ -186,10 +190,8 @@ class Baba(object):
         pct_tree_y=0.2,
         subset_tests=None,
         prune_tree_to_tests=False,
-        #toytree_kwargs=None,
         *args,
         **kwargs):
-
         """ 
         Draw a multi-panel figure with tree, tests, and results 
         
@@ -217,8 +219,6 @@ class Baba(object):
         ...
 
         subset_tests: list
-        ...
-
         ...
 
         """
@@ -267,6 +267,7 @@ class Baba(object):
         return canvas, axes, panel
 
 
+
     def copy(self):
         """ returns a copy of the baba analysis object """
         return copy.deepcopy(self)
@@ -281,7 +282,7 @@ def batch(
     distributes jobs to the parallel client
     """
 
-    ## parse args
+    # parse args
     handle = baba.data
     taxdicts = baba.tests
     mindicts = baba.params.mincov
@@ -457,6 +458,10 @@ def batch(
             )
         return resarr, None
         #return listres, None  #_res.T, _bot
+
+    # store instead of return...
+    self.results_table, self.results_boots
+
 
 
 
@@ -638,34 +643,121 @@ def _loci_to_arr(loci, taxdict, mindict):
 
 
 
-## This should be re-written as a dynamic func
+class TreeParser:
+    def __init__(self, newick, constraint_dict, constraint_exact):
+        "Traverses tree to build test sets given constraint options."
+
+        # store sets of four-taxon splits
+        self.testset = set()
+        self.hold = [0, 0, 0, 0]
+
+        # tree to traverse
+        self.tree = toytree.tree(newick)
+        if not self.tree.is_rooted(): 
+            raise IPyradError(
+                "generate_tests_from_tree(): tree must be rooted and resolved")
+
+        # constraints
+        self.cdict = OrderedDict((i, []) for i in ["p1", "p2", "p3", "p4"])
+        if constraint_dict:
+            self.cdict.update(constraint_dict)
+
+        # constraint setting
+        self.xdict = constraint_exact
+        if isinstance(self.xdict, bool):
+            self.xdict = [self.xdict] * 4
+        if isinstance(self.xdict, list):
+            if len(self.xdict) != len(self.cdict):
+                raise Exception(
+                    "constraint_exact must be bool or list of bools length N")
+
+        # get tests
+        self.loop()
+
+
+    def loop(self, node, idx):
+        "getting closer...."
+        for topnode in node.traverse():
+            for oparent in topnode.children:
+                for onode in oparent.traverse():
+                    if self.test_constraint(onode, 3):                       
+                        self.hold[3] = onode.idx
+
+                        node2 = oparent.get_sisters()[0]
+                        for topnode2 in node2.traverse():
+                            for oparent2 in topnode2.children:
+                                for onode2 in oparent2.traverse():
+                                    if self.test_constraint(onode2, 2):                       
+                                        self.hold[2] = onode2.idx
+
+                                        node3 = oparent2.get_sisters()[0]
+                                        for topnode3 in node3.traverse():
+                                            for oparent3 in topnode3.children:
+                                                for onode3 in oparent3.traverse():
+                                                    if self.test_constraint(onode3, 1):                       
+                                                        self.hold[1] = onode3.idx
+
+                                                        node4 = oparent3.get_sisters()[0]
+                                                        for topnode4 in node4.traverse():
+                                                            for oparent4 in topnode4.children:
+                                                                for onode4 in oparent4.traverse():
+                                                                    if self.test_constraint(onode4, 0):
+                                                                        self.hold[0] = onode4.idx
+                                                                        self.testset.add(tuple(self.hold))
+
+
+    def test_constraint(self, node, idx):
+        names = set(node.get_leaf_names())
+        const = set(list(self.cdict.values())[idx])
+        if const:
+            if self.xdict[idx]:
+                if names == const:
+                    return 1
+                else:
+                    return 0
+            else:
+                if len(names.intersection(const)) == len(names):
+                    return 1
+                else:
+                    return 0        
+        return 1        
+
+
+# This should be re-written as a dynamic func
 def tree2tests(newick, constraint_dict, constraint_exact):
     """
     Returns dict of all possible four-taxon splits in a tree. Assumes
     the user has entered a rooted tree. Skips polytomies.
     """
-    ## make tree
+    # make tree
     tree = toytree.tree(newick)
+    if not tree.is_rooted(): 
+        raise IPyradError(
+            "Input tree must be rooted to use generate_tests_from_tree()")
+
+    # store results 
     testset = set()
 
-    ## expand constraint_exact if list
-    if isinstance(constraint_exact, bool):
-        constraint_exact = [constraint_exact] * 4
-    elif isinstance(constraint_exact, list):
-        if len(constraint_exact) != len(constraint_dict):
-            raise Exception(
-                "constraint_exact must be bool or list of bools of length N")
-    
-    ## constraints
-    cdict = {"p1":[], "p2":[], "p3":[], "p4":[]}
+    # constraints fill in empty 
+    cdict = OrderedDict((i, []) for i in ["p1", "p2", "p3", "p4"])
     if constraint_dict:
         cdict.update(constraint_dict)
 
-    ## traverse root to tips. Treat the left as outgroup, then the right.
+    # expand constraint_exact if list
+    if isinstance(constraint_exact, bool):
+        constraint_exact = [constraint_exact] * 4
+
+    if isinstance(constraint_exact, list):
+        if len(constraint_exact) != len(cdict):
+            raise Exception(
+                "constraint_exact must be bool or list of bools of length N")
+    
+    # traverse root to tips. Treat the left as outgroup, then the right.
     tests = []
     
-    ## topnode must have children
-    for topnode in tree.tree.traverse("levelorder"):
+    # topnode must have children. All traversals use default "levelorder"
+    for topnode in tree.treenode.traverse():
+        
         for oparent in topnode.children:
             for onode in oparent.traverse("levelorder"):
                 if test_constraint(onode, cdict, "p4", constraint_exact[3]):
@@ -674,6 +766,7 @@ def tree2tests(newick, constraint_dict, constraint_exact):
                     ## p123 parent is sister to oparent
                     p123parent = oparent.get_sisters()[0]
                     for p123node in p123parent.traverse("levelorder"):
+
                         for p3parent in p123node.children:
                             for p3node in p3parent.traverse("levelorder"):
                                 if test_constraint(p3node, cdict, "p3", constraint_exact[2]):
@@ -682,6 +775,7 @@ def tree2tests(newick, constraint_dict, constraint_exact):
                                     ## p12 parent is sister to p3parent
                                     p12parent = p3parent.get_sisters()[0]
                                     for p12node in p12parent.traverse("levelorder"):
+
                                         for p2parent in p12node.children:
                                             for p2node in p2parent.traverse("levelorder"):
                                                 if test_constraint(p2node, cdict, "p2", constraint_exact[1]):
