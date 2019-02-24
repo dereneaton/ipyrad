@@ -127,7 +127,7 @@ class TreeSlider():
     def _parse_tree_table(self):
         chromlen = self.scaffold_table.loc[self.scaffold_idx, "scaffold_length"]
         self.tree_table = pd.DataFrame(
-            data = {
+            data={
             "start": np.arange(0, chromlen - self.window_size, self.slide_size), 
             "end": np.arange(self.window_size, chromlen, self.slide_size),
             "nsnps": np.nan,
@@ -190,11 +190,13 @@ class TreeSlider():
                 scaf_name,
                 ), 
             end="")  
-        message = "inferring trees {}:{}".format(
-            self.scaffold_idx,
-            scaf_name,
-            # self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
-        )
+
+        # message for progress bar
+        # message = "inferring trees {}:{}".format(
+        # self.scaffold_idx,
+        # scaf_name,
+        # self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
+        # )
 
         # submit jobs
         for idx in self.tree_table.index:
@@ -213,7 +215,8 @@ class TreeSlider():
         # track progress and save result table
         io5.close()
         sys.stdout.flush()
-        self._track_progress_and_store_results(rasyncs, time0, "inferring raxml trees")
+        self._track_progress_and_store_results(
+            rasyncs, time0, "inferring raxml trees")
         self.tree_table.to_csv(tree_table_path)
 
 
