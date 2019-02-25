@@ -12,7 +12,7 @@ import sys
 import time
 import datetime
 import itertools
-import subprocess as sps
+# import subprocess as sps
 
 # third party
 import pandas as pd
@@ -78,6 +78,7 @@ class Twisst:
         }
 
 
+    # TODO: collapse engines if there is a quit or failure...
     def run(self, ipyclient, force=False):
         "distribute jobs in parallel client"
 
