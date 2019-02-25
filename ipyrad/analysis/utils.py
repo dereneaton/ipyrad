@@ -52,34 +52,6 @@ def progressbar(finished, total, start, message):
     sys.stdout.flush()    
 
 
-
-
-# def progressbar(njobs, finished, start, msg):
-#     "simple progress bar for ipyrad analysis tools"
-
-#     # measure progress
-#     if njobs:
-#         progress = 100 * (finished / float(njobs))
-#     else:
-#         progress = 100
-
-#     # build the bar
-#     hashes = '#' * int(progress / 5.)
-#     nohash = ' ' * int(20 - len(hashes))
-
-#     # timestamp
-#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-#     print("\r[{}] {:>3}% {} | {:<12} | {} |".format(*[
-#         hashes + nohash,
-#         int(progress),
-#         elapsed,
-#         msg[0],
-#         msg[1],
-#     ]), end="")
-#     sys.stdout.flush()
-
-
-
 # New params class is iterable returning keys
 class Params(object):
     "A dict-like object for storing params values with a custom repr"
@@ -113,4 +85,29 @@ class Params(object):
             for key in keys:
                 _val = str(self[key]).replace(os.path.expanduser("~"), "~")
                 _repr += _printstr.format(key, _val)
-        return _repr        
+        return _repr
+
+
+# def progressbar(njobs, finished, start, msg):
+#     "simple progress bar for ipyrad analysis tools"
+
+#     # measure progress
+#     if njobs:
+#         progress = 100 * (finished / float(njobs))
+#     else:
+#         progress = 100
+
+#     # build the bar
+#     hashes = '#' * int(progress / 5.)
+#     nohash = ' ' * int(20 - len(hashes))
+
+#     # timestamp
+#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
+#     print("\r[{}] {:>3}% {} | {:<12} | {} |".format(*[
+#         hashes + nohash,
+#         int(progress),
+#         elapsed,
+#         msg[0],
+#         msg[1],
+#     ]), end="")
+#     sys.stdout.flush()

@@ -23,6 +23,7 @@ setup(
     long_description=open('README.rst').read(),
     packages=find_packages(),
     install_requires=[
+        "future",
         "notebook",
         "ipyparallel>=6.0.2",
         "scipy>0.10",
@@ -39,7 +40,7 @@ setup(
     entry_points={
         'console_scripts': [
             'ipyrad = ipyrad.__main__:CLI',
-            'tetrad = ipyrad.analysis.__tetrad_cli__:main',
+            # 'tetrad = ipyrad.analysis.__tetrad_cli__:main',
         ],
     },
     data_files=[('bin', glob.glob("./bin/*"))],
