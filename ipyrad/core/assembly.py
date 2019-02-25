@@ -520,33 +520,40 @@ class Assembly(object):
         Returns a copy of the Assembly object. Does not allow Assembly
         object names to be replicated in namespace or path.
         """
-        ## subsample by removal or keeping.
+        # subsample by removal or keeping.
         remove = 0
 
-        ## is there a better way to ask if it already exists?
-        if (newname == self.name or os.path.exists(
-                os.path.join(
-                    self.params.project_dir,
-                    newname + ".assembly"))):
+        # does json file already exist?
+        exists = os.path.exists(os.path.join(
+            self.params.project_dir, 
+            "{}.json".format(newname)
+        ))
+
+        # print warning and return if name exists
+        if (newname == self.name) or exists:                    
             self._print(
                 "Assembly object named {} already exists".format(newname))
+            return 
 
+        # else do the branching
         else:
             # Make sure the new name doesn't have any wacky characters
             check_name(newname)
 
-            ## Bozo-check. Carve off 'params-' if it's in the new name.
+            # Bozo-check. Carve off 'params-' if it's in the new name.
             if newname.startswith("params-"):
                 newname = newname.split("params-")[1]
 
-            ## create a copy of the Assembly obj
+            # create a copy of the Assembly obj
             newobj = copy.deepcopy(self)
             newobj.name = newname
             newobj.params._assembly_name = newname
 
+            # warn user to only use one of these at a time
             if subsamples and infile:
                 print(BRANCH_NAMES_AND_INPUT)
 
+            # parse infile 
             if infile:
                 if infile[0] == "-":
                     remove = 1
@@ -564,7 +571,8 @@ class Assembly(object):
                     if sname in self.samples:
                         newobj.samples[sname] = copy.deepcopy(self.samples[sname])
                     else:
-                        print("Sample name not found: {}".format(sname))
+                        if sname != "reference":
+                            print("Sample name not found: {}".format(sname))
 
                 ## reload sample dict w/o non subsamples
                 newobj.samples = {
