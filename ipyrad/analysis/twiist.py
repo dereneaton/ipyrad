@@ -144,22 +144,29 @@ class Twisst:
                 break
 
         # frequencies excluding unresolved
-        self.tree_weights["fabcd"] = (self.tree_weights["abcd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
-        self.tree_weights["facbd"] = (self.tree_weights["acbd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
-        self.tree_weights["fadbc"] = (self.tree_weights["adbc"] / 
-            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+        sums = self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1)       
+        self.tree_weights["fabcd"] = np.nan
+        self.tree_weights["facbd"] = np.nan
+        self.tree_weights["fadbc"] = np.nan
+
+        self.tree_weights.loc[sums > 0, "fabcd"] /= sums[sums > 0]
+        self.tree_weights.loc[sums > 0, "facbd"] /= sums[sums > 0]
+        self.tree_weights.loc[sums > 0, "fadbc"] /= sums[sums > 0]        
+
+        # self.tree_weights["facbd"] = (self.tree_weights["acbd"] / 
+            # self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+        # self.tree_weights["fadbc"] = (self.tree_weights["adbc"] / 
+            # self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
 
         # frequencies with unresolved
-        self.tree_weights["uabcd"] = (self.tree_weights["abcd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        self.tree_weights["uacbd"] = (self.tree_weights["acbd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        self.tree_weights["uadbc"] = (self.tree_weights["adbc"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        self.tree_weights["uunk"] = (self.tree_weights["unk"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        # self.tree_weights["uabcd"] = (self.tree_weights["abcd"] / 
+            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        # self.tree_weights["uacbd"] = (self.tree_weights["acbd"] / 
+            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        # self.tree_weights["uadbc"] = (self.tree_weights["adbc"] / 
+            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        # self.tree_weights["uunk"] = (self.tree_weights["unk"] / 
+            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
 
 
     def draw_tree_weights(self, minsnps=4, window=25, min_periods=2, label=None, signif=3):
