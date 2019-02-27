@@ -1064,17 +1064,17 @@ def getbarcode3(cutters, read1, longbar):
 
         try:
             search = search.decode()
-        except TypeError:
+        except (AttributeError, TypeError):
             pass
 
         try:
             cutter = cutter.decode()
-        except TypeError:
+        except (AttributeError, TypeError):
             pass
 
         try:
             barcode = search.rsplit(cutter, 1)
-        except TypeError:
+        except (AttributeError, TypeError):
             barcode = search.decode().rsplit(cutter, 1)
 
         if len(barcode) > 1:
