@@ -148,31 +148,61 @@ class Twisst:
         self.tree_weights["fabcd"] = np.nan
         self.tree_weights["facbd"] = np.nan
         self.tree_weights["fadbc"] = np.nan
-
-        self.tree_weights.loc[sums > 0, "fabcd"] /= sums[sums > 0]
-        self.tree_weights.loc[sums > 0, "facbd"] /= sums[sums > 0]
-        self.tree_weights.loc[sums > 0, "fadbc"] /= sums[sums > 0]        
-
-        # self.tree_weights["facbd"] = (self.tree_weights["acbd"] / 
-            # self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
-        # self.tree_weights["fadbc"] = (self.tree_weights["adbc"] / 
-            # self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+        self.tree_weights.loc[sums > 0, "fabcd"] = (
+            self.tree_weights.loc[sums > 0, "abcd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "facbd"] = (
+            self.tree_weights.loc[sums > 0, "acbd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "fadbc"] = (
+            self.tree_weights.loc[sums > 0, "adbc"] / sums[sums > 0])
 
         # frequencies with unresolved
-        # self.tree_weights["uabcd"] = (self.tree_weights["abcd"] / 
-            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        # self.tree_weights["uacbd"] = (self.tree_weights["acbd"] / 
-            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        # self.tree_weights["uadbc"] = (self.tree_weights["adbc"] / 
-            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        # self.tree_weights["uunk"] = (self.tree_weights["unk"] / 
-            # self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        sums = self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1)       
+        self.tree_weights["uabcd"] = np.nan
+        self.tree_weights["uacbd"] = np.nan
+        self.tree_weights["uadbc"] = np.nan
+        self.tree_weights["uunk"] = np.nan        
+        self.tree_weights.loc[sums > 0, "uabcd"] = (
+            self.tree_weights.loc[sums > 0, "abcd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "uacbd"] = (
+            self.tree_weights.loc[sums > 0, "acbd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "uadbc"] = (
+            self.tree_weights.loc[sums > 0, "adbc"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "uunk"] = (
+            self.tree_weights.loc[sums > 0, "unk"] / sums[sums > 0])
 
 
-    def draw_tree_weights(self, minsnps=4, window=25, min_periods=2, label=None, signif=3):
+
+    def draw_tree_weights(self, 
+        minsnps=4, 
+        window=25, 
+        min_periods=2, 
+        label=None, 
+        signif=3,
+        include_unresolved=False,
+        ):
+        """
+        Draw a sliding window barplot of subtree weights. 
+        Parameters:
+        -----------
+        minsnps: exclude windows with less than minsnps.
+        window: N rows to group when computing rolling means of tree weights.
+        min_periods: minimum number of rows with data in a window. 
+        label: plot label.
+        signif: bars highlight regions with greater propotion of one subtree.
+        """
+
+        # include unresolved or not
+        if include_unresolved:
+            tests = ["uabcd", "uacbd", "uadbc", "uunk"]
+            tlabels = ["abcd", "acbd", "adbc", "unknown"]
+            nlines = 3
+        else:
+            tests = ["fabcd", "facbd", "fadbc"]
+            tlabels = ["abcd", "acbd", "adbc"]
+            nlines = 2
 
         # make dataframe copy and censor low snps windows
-        df = self.tree_weights.loc[:, ["fabcd", "facbd", "fadbc"]].copy()
+        df = self.tree_weights.loc[:, tests].copy()
         df[self.tree_table.nsnps < minsnps] = np.nan
 
         # get rolling window means 
@@ -192,13 +222,18 @@ class Twisst:
         m = axes.fill(fills, 
             baseline="stacked", 
             opacity=0.4, 
-            title=[self.wmap[i] for i in ["abcd", "acbd", "adbc"]],
+            title=[self.wmap[i] for i in tlabels],
         )
-        m = axes.plot(fills["fabcd"], stroke_width=1.25)
-        m = axes.plot(fills["fabcd"] + fills["facbd"], stroke_width=1.25)
+
+        # add line boundaries between fill regions
+        for line in range(nlines):
+            axes.plot(
+                np.sum([fills[i] for i in tests[:line + 1]], axis=0),
+                stroke_width=1.25,
+            )
 
         # mark significantly deviating regions
-        for col in ["fabcd", "facbd", "fadbc"]:
+        for col in tests:
             deviant = fills[col].mean() + (signif * fills[col].std())
             tops = np.where(fills[col] > deviant)[0]
             m = axes.scatterplot(
