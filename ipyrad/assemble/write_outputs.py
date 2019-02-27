@@ -2050,7 +2050,7 @@ def build_vcf(data, chunksize=1000):
                 )
 
             # concat and order columns correctly
-            infocols = pd.concat([df_pos, colinfo, colform])
+            infocols = pd.concat([df_pos, colinfo, colform], axis=1)
             infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]]
             arr = pd.concat([infocols, df_depth], axis=1)
 
@@ -2058,7 +2058,7 @@ def build_vcf(data, chunksize=1000):
             #print(arr.head())
             ## PRINTING VCF TO FILE
             ## choose reference string
-            if data.is_ref:
+            if data.isref:
                 reference = data.params.reference_sequence
             else:
                 reference = "pseudo-reference (most common base at site)"

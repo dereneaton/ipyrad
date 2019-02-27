@@ -679,11 +679,11 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     
     ## create CLUMPP args string
     outfile = os.path.join(self.workdir, 
-                "{}-K-{}.outfile".format(self.name, kpop))
+        "{}-K-{}.outfile".format(self.name, kpop))
     indfile = os.path.join(self.workdir, 
-                "{}-K-{}.indfile".format(self.name, kpop))
+        "{}-K-{}.indfile".format(self.name, kpop))
     miscfile = os.path.join(self.workdir, 
-                "{}-K-{}.miscfile".format(self.name, kpop))
+        "{}-K-{}.miscfile".format(self.name, kpop))
 
     # shorten filenames because clumpp can't handle names > 50 chars.
     clumphandle = clumphandle.replace(os.path.realpath('.'), '.', 1)

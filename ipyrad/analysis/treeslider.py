@@ -139,7 +139,10 @@ class TreeSlider():
 
 
     def run(self, scaffold_idx=0, window_size=None, slide_size=None, ipyclient=None, force=False):
-        
+        """
+        Submit jobs to infer trees at every window of a chromosome.
+        """
+
         # re-parse the tree-table in case window and slide were updated: 
         self.scaffold_idx = (scaffold_idx if scaffold_idx else self.scaffold_idx)
         self.window_size = (window_size if window_size else self.window_size)
@@ -182,25 +185,17 @@ class TreeSlider():
         phymap = io5["phymap"][mask, :]
 
         # initial progress ticker to run during job submission
-        print("\rbuilding database: nwindows={}; minsnps={}; scaffold={}:{};"
+        print("building database: nwindows={}; minsnps={}; scaffold={} ({})"
             .format(
                 self.tree_table.shape[0], 
                 self.minsnps, 
                 self.scaffold_idx,
                 scaf_name,
-                ), 
-            end="")  
-
-        # message for progress bar
-        # message = "inferring trees {}:{}".format(
-        # self.scaffold_idx,
-        # scaf_name,
-        # self.scaffold_table.scaffold_name.loc[self.scaffold_idx],
-        # )
+                ))
 
         # submit jobs
         for idx in self.tree_table.index:
-            
+           
             # get window margins
             start, stop = self.tree_table.loc[idx, ["start", "end"]].astype(int)
 
@@ -214,9 +209,8 @@ class TreeSlider():
 
         # track progress and save result table
         io5.close()
-        sys.stdout.flush()
-        self._track_progress_and_store_results(
-            rasyncs, time0, "inferring raxml trees")
+        message = "inferring raxml trees | scaffold {}".format(scaffold_idx)
+        self._track_progress_and_store_results(rasyncs, time0, message)           
         self.tree_table.to_csv(tree_table_path)
 
 
