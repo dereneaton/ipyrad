@@ -33,6 +33,7 @@ class Twisst:
         name=None, 
         workdir="analysis-twisst",
         minsnps=1,
+        minsupport=0,
         ipyclient=None,
         ):
 
@@ -42,6 +43,7 @@ class Twisst:
         self.name = (name if name else "-".join(sorted(imap.keys())))
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.minsnps = minsnps
+        self.minsupport = minsupport
 
         # max clades currently is 4
         assert len(imap) <= 4, "support limited to 4 imap clades currently."
@@ -52,7 +54,7 @@ class Twisst:
         # attrs to fill
         self.tree_weights = pd.DataFrame({
             "minmap": np.repeat(False, self.tree_table.shape[0]),
-            "subtree": np.nan,
+            "subtree": "",
             "nnnodes": np.nan,
             "abcd": np.nan,
             "acbd": np.nan,
@@ -107,8 +109,8 @@ class Twisst:
         for idx in self.tree_table.index:
             newick = self.tree_table.tree[idx]
             if not pd.isna(newick):
-                args = (newick, self.imap, self.rmap, self.minmap)
-                rasyncs[idx] = lbview.apply(engine_process, *args)
+                args = (newick, self.imap, self.rmap, self.minmap, self.minsupport)
+                rasyncs[idx] = lbview.apply(remote_tree_weights, *args)
             else:
                 done += 1
 
@@ -172,7 +174,8 @@ class Twisst:
 
 
 
-    def draw_tree_weights(self, 
+    def draw_tree_weights(
+        self, 
         minsnps=4, 
         window=25, 
         min_periods=2, 
@@ -219,7 +222,8 @@ class Twisst:
             xlabel="Position (Mb)",
             ylabel="Subtree weighting",
         )
-        m = axes.fill(fills, 
+        m = axes.fill(
+            fills, 
             baseline="stacked", 
             opacity=0.4, 
             title=[self.wmap[i] for i in tlabels],
@@ -256,32 +260,32 @@ class Twisst:
 def calculate_weights(imap, subtree):
     "calculate tree weights by subsampling quartet trees for imap clades"
 
-    # get a generator of unique nkey samples: e.g., quartets 
+    # get a generator of unique nkey samples: e.g., quartets
     tips = sorted(subtree.get_tip_labels(), key=lambda x: x.rsplit("-", 1)[0])
     groups = itertools.groupby(tips, lambda x: x.rsplit("-", 1)[0])
     quarts = itertools.product(*(set(j) for (i, j) in groups))
-    
+
     # record results
     arr = np.zeros(4, dtype=int)
-    
+
     # prune tree and measure topo dists
     for idx, quart in enumerate(quarts):
-        
+
         # get pruned tree
         droptips = set(subtree.get_tip_labels()) - set(quart)
         dtree = subtree.drop_tips(droptips)
-                
+
         # get treenodes of pruned tips always in alphanumeric order of imaps
         tips = sorted(dtree.get_tip_labels())
 
         # get splits in the tree that are length (2, 2)
         cache = dtree.treenode.get_cached_content("name")
         edges = [i for i in dtree.treenode.get_edges(cache) if len(i[0]) == 2]
-        
+
         # unresolved subtree
         if not edges:
             arr[3] += 1
-            
+
         # store resolved tree
         else:
             split = [i for i in edges[0] if tips[0] in i][0]
@@ -289,10 +293,10 @@ def calculate_weights(imap, subtree):
             nidx = tips.index(split.pop())
             arr[nidx - 1] += 1
     return arr
-    
 
 
-def engine_process(newick, imap, rmap, minmap):
+
+def remote_tree_weights(newick, imap, rmap, minmap, minsupport):
     """
     Load toytree for an interval, rename tips to clades with imap, prune
     samples from tree that are not in the test, test for minmap sampling, 
@@ -301,6 +305,9 @@ def engine_process(newick, imap, rmap, minmap):
     """
     # load toytree
     ttree = toytree.tree(newick)
+
+    # collapse nodes with bootstrap support below minboots
+    ttree = ttree.collapse_nodes(min_support=minsupport)
     
     # incremental counter for subtree names from imap
     intmap = {i: 0 for i in minmap}
@@ -323,7 +330,6 @@ def engine_process(newick, imap, rmap, minmap):
 
     # default values
     minmap = False
-    weight = np.nan
     nnodes = np.nan
     subtree = np.nan
     abcd = acbd = adbc = unknown = np.nan
@@ -339,7 +345,7 @@ def engine_process(newick, imap, rmap, minmap):
         adbc = (abcd[0], abcd[3], abcd[1], abcd[2])
 
         # calculate weights
-        subtree = ttree.drop_tips(drops).collapse_polytomies().unroot()
+        subtree = ttree.drop_tips(drops).collapse_nodes(min_dist=1e-6).unroot()
         abcd, acbd, adbc, null = calculate_weights(imap, subtree)
 
         # return values

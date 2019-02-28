@@ -12,7 +12,6 @@ import sys
 import time
 import datetime
 import tempfile
-import itertools
 
 # third party
 from numba import njit
@@ -23,15 +22,15 @@ from .raxml import Raxml as raxml
 
 # suppress the terrible h5 warning
 import warnings
-with warnings.catch_warnings(): 
+with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
 
 
 class TreeSlider():
     """
-    Performs phylo inference across RAD data sampled in windows. Uses the 
-    hdf5 database output from ipyrad as input (".seqs.hdf5"). 
+    Performs phylo inference across RAD data sampled in windows. Uses the
+    hdf5 database output from ipyrad as input (".seqs.hdf5").
 
     Parameters:
     ------------
@@ -42,7 +41,7 @@ class TreeSlider():
     minsnps: minimum number of SNPs to include window in analysis.
     """
     def __init__(
-        self, 
+        self,
         data,
         name=None,
         workdir="./analysis-treeslider",
@@ -52,8 +51,9 @@ class TreeSlider():
         imap=None,
         minmap=None,
         minsnps=2,
+        bootstraps=0,
         ):
-       
+
         # store attributes
         self.name = name
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
@@ -61,11 +61,12 @@ class TreeSlider():
         self.window_size = window_size
         self.slide_size = slide_size
         self.minsnps = minsnps
-               
+        self.boots = bootstraps
+
         # parse attributes
         self.imap = imap
         self.minmap = minmap
-        self.rmap = None
+        self.rmap = {}
         if self.imap:
             for k, v in self.imap.items():
                 for i in v:
@@ -79,7 +80,7 @@ class TreeSlider():
         # fill mindict
         if not minmap:
             if imap:
-                self.minmap = {i: 1 for i in self.imap}               
+                self.minmap = {i: 1 for i in self.imap}
 
         # parsed attributes
         self.scaffold_table = None
@@ -138,17 +139,26 @@ class TreeSlider():
         )
 
 
-    def run(self, scaffold_idx=0, window_size=None, slide_size=None, ipyclient=None, force=False):
+    def run(
+        self, 
+        scaffold_idx=0,
+        window_size=None,
+        slide_size=None,
+        bootstraps=0,
+        ipyclient=None,
+        force=False,
+        ):
         """
         Submit jobs to infer trees at every window of a chromosome.
         """
 
-        # re-parse the tree-table in case window and slide were updated: 
+        # re-parse the tree-table in case window and slide were updated:
+        self.boots = (bootstraps if bootstraps else self.boots)
         self.scaffold_idx = (scaffold_idx if scaffold_idx else self.scaffold_idx)
         self.window_size = (window_size if window_size else self.window_size)
         self.slide_size = (slide_size if slide_size else self.slide_size)
         self.name = (
-            self.name if self.name else 
+            self.name if self.name else
             "ts-sc{}-wi{}-sl{}".format(scaffold_idx, window_size, slide_size)
         )
 
@@ -157,14 +167,14 @@ class TreeSlider():
 
         # get outfile name
         tree_table_path = os.path.join(
-            self.workdir, 
+            self.workdir,
             "{}-{}.tree_table.csv".format(self.name, scaf_name))
 
         # do not overwrite tree table
         if os.path.exists(tree_table_path):
             if not force:
                 print((
-        "Tree table loaded from {}; Use force to instead overwrite"
+        "Existing tree table loaded from {}; Use force to instead overwrite."
         .format(tree_table_path)))
                 return
 
@@ -179,38 +189,39 @@ class TreeSlider():
         time0 = time.time()
         rasyncs = {}
 
-        # pull up local phymap
+        # subset phymap for this scaffold
         io5 = h5py.File(self.data, 'r')
         mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
         phymap = io5["phymap"][mask, :]
 
         # initial progress ticker to run during job submission
-        print("building database: nwindows={}; minsnps={}; scaffold={} ({})"
+        print(
+            "building database: nwindows={}; minsnps={}; scaffold={} ({})"
             .format(
-                self.tree_table.shape[0], 
-                self.minsnps, 
+                self.tree_table.shape[0],
+                self.minsnps,
                 self.scaffold_idx,
                 scaf_name,
-                ))
+            ))
 
         # submit jobs
         for idx in self.tree_table.index:
-           
+
             # get window margins
             start, stop = self.tree_table.loc[idx, ["start", "end"]].astype(int)
 
-            # get phy index for window margins
+            # subset phymap for this window range
             mask = (phymap[:, 3] > start) & (phymap[:, 4] < stop)
             cmap = phymap[mask, :]
-            
+
             # store async result
-            args = (self.data, cmap, self.minsnps, self.imap, self.minmap)
-            rasyncs[idx] = lbview.apply(engine_process, *args)
+            args = (self.data, cmap, self.minsnps, self.boots)
+            rasyncs[idx] = lbview.apply(remote_tree_inference, *args)
 
         # track progress and save result table
         io5.close()
         message = "inferring raxml trees | scaffold {}".format(scaffold_idx)
-        self._track_progress_and_store_results(rasyncs, time0, message)           
+        self._track_progress_and_store_results(rasyncs, time0, message)
         self.tree_table.to_csv(tree_table_path)
 
 
@@ -235,8 +246,9 @@ class TreeSlider():
                 break
 
 
-def engine_process(database, cmap, minsnps, imap, minmap):
-                    
+def remote_tree_inference(database, cmap, minsnps, bootstraps):
+    "remote job to run raxml inference."
+
     # get seqarr for phy indices
     phystring = None
     tree = np.nan
@@ -246,7 +258,7 @@ def engine_process(database, cmap, minsnps, imap, minmap):
     # parse phylip string if there is sequence in this window
     if cmap.size:
         nsnps, nsamplecov, phystring = parse_phystring(database, cmap)
-    
+
         # infer a tree if there is variation in this window
         if nsamplecov >= 4 and nsnps >= minsnps:
             fname = os.path.join(
@@ -256,13 +268,19 @@ def engine_process(database, cmap, minsnps, imap, minmap):
 
             # init raxml object and run with blocking
             rax = raxml(
-                data=fname, 
-                name="temp_" + str(os.getpid()), 
+                data=fname,
+                name="temp_" + str(os.getpid()),
                 workdir=tempfile.gettempdir(),
                 T=2,
-                )
+                N=bootstraps,
+            )
             rax.run(force=True, quiet=True, block=True)
-            tree = toytree.tree(rax.trees.bestTree).newick
+
+            try:
+                tree = toytree.tree(rax.trees.bipartitions).newick
+            except IOError:
+                tree = toytree.tree(rax.trees.bestTree).newick
+
     return nsnps, nsamplecov, tree
 
 
@@ -271,6 +289,8 @@ def parse_phystring(database, cmap):
     "Returns phystring else 0 if filtered."
 
     with h5py.File(database, 'r') as io5:
+
+        # select all sequence data in window range
         seqarr = io5["phy"][:, cmap[:, 1].min():cmap[:, 2].max()]
         pnames = np.array([
             i.decode() for i in io5["phymap"].attrs["phynames"]
@@ -278,23 +298,23 @@ def parse_phystring(database, cmap):
         longname = 1 + max([len(i) for i in pnames])
 
     # calculate stats on seqarr
-    allNs = np.all(seqarr == 78, axis=1)
-    nsamplecov = seqarr.shape[0] - allNs.sum()
+    all_ns = np.all(seqarr == 78, axis=1)
+    nsamplecov = seqarr.shape[0] - all_ns.sum()
     nsnps = count_snps(seqarr)
 
-    # dress up as phylip format
-    pnames = pnames[~allNs]
-    pseqs = seqarr[~allNs, :]
+    # dress up as phylip format, drop all N samples
+    pnames = pnames[~all_ns]
+    pseqs = seqarr[~all_ns, :]
     phylip = ["{} {}".format(len(pnames), pseqs.shape[1])]
     for name, seq in zip(pnames, pseqs):
         phylip.append("{} {}{}".format(
-            name, 
-            " " * (longname - len(name)), 
+            name,
+            " " * (longname - len(name)),
             b"".join(seq.view("S1")).decode(),
         ))
     phystring = ("\n".join(phylip))
     return nsnps, nsamplecov, phystring
-           
+
 
 
 def progressbar(finished, total, start, message):
@@ -303,9 +323,9 @@ def progressbar(finished, total, start, message):
     nohash = ' ' * int(20 - len(hashes))
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
     print("\r[{}] {:>3}% {} | {:<12} "
-        .format(hashes + nohash, int(progress), elapsed, message),
-        end="")
-    sys.stdout.flush()    
+          .format(hashes + nohash, int(progress), elapsed, message),
+          end="")
+    sys.stdout.flush()
 
 
 
