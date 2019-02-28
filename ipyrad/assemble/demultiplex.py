@@ -463,11 +463,11 @@ class Demultiplexer:
         for handle, ftuplist in self.chunksdict.items():
             for fidx, ftuple in enumerate(ftuplist):
                 args = (
-                    self.data, 
-                    ftuple, 
-                    self.longbar, 
-                    self.cutters, 
-                    self.matchdict, 
+                    self.data,
+                    ftuple,
+                    self.longbar,
+                    self.cutters,
+                    self.matchdict,
                     fidx,
                     )
                 rasync = self.lbview.apply(barmatch, args)
@@ -1050,6 +1050,7 @@ def getbarcode2(_, read1, longbar):
     "finds barcode for invariable length barcode data"
     return read1[1][:longbar[0]]
 
+
 def getbarcode3(cutters, read1, longbar):
     "find barcode sequence in the beginning of read"
     ## default barcode string
@@ -1057,8 +1058,25 @@ def getbarcode3(cutters, read1, longbar):
         ## If the cutter is unambiguous there will only be one.
         if not cutter:
             continue
+
+        # bytes-strings!
         search = read1[1][:int(longbar[0] + len(cutter) + 1)]
-        barcode = search.rsplit(cutter, 1)
+
+        try:
+            search = search.decode()
+        except (AttributeError, TypeError):
+            pass
+
+        try:
+            cutter = cutter.decode()
+        except (AttributeError, TypeError):
+            pass
+
+        try:
+            barcode = search.rsplit(cutter, 1)
+        except (AttributeError, TypeError):
+            barcode = search.decode().rsplit(cutter, 1)
+
         if len(barcode) > 1:
             return barcode[0]
     ## No cutter found
