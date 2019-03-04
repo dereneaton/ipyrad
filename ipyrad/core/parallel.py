@@ -67,12 +67,13 @@ def start_ipcluster(data):
     ## wrap ipcluster start
     try: 
         # ip.logger.info(shlex.split(standard))
-        subprocess.check_call(shlex.split(standard), 
+        subprocess.check_call(
+            shlex.split(standard), 
             stderr=subprocess.STDOUT,
             stdout=subprocess.PIPE)
 
     except subprocess.CalledProcessError as inst:
-        # ip.logger.debug("  ipcontroller already running.")
+        print(inst)
         raise
 
     except Exception as inst:
