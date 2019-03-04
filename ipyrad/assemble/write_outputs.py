@@ -1511,7 +1511,6 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                             .split("-")
                         )
 
-
                     # seq into an array
                     loc = (np.array([list(i) for i in tmploc.values()])
                         .astype(bytes).view(np.uint8))
@@ -1762,7 +1761,7 @@ def fill_snp_array(data, ntaxa, nsnps):
                 np.array([i[0] for i in resos]), 
                 np.array([i[1] for i in resos]),
                 io5['pseudoref'][:]
-                )
+            )
 
 
 ###############################################################
@@ -1832,6 +1831,8 @@ class VCF_filler:
         # iterate over the chunk of trimmed loci
         self.loclines = iter(open(self.locbits[idx], 'r'))
         while 1:
+
+            # yield increments locidx by 1
             try:
                 self.yield_loc()
             except StopIteration:
@@ -1886,7 +1887,7 @@ class VCF_filler:
         """
         nidx = self.names.index(self.sname)
         sidx = self.sidxs[nidx]
-        tups = [[int(j) for j in i.split(":")] for i in sidx.split("-")]
+        tups = [[int(j) for j in i.split("-")] for i in sidx.split(":")]
 
         # SNP is in samples, so get and store catg data for locidx
         # [0] post-trim chrom:start-end of locus
@@ -1902,7 +1903,8 @@ class VCF_filler:
             # in case multiple consens were merged in step 6 of this sample
             for tup in tups:
                 cidx, coffset = tup
-                pos = snp + (self.gtrim - coffset) - ishift
+                # pos = snp + (self.gtrim - coffset) - ishift
+                pos = snp + coffset - ishift                
                 if (pos >= 0) & (pos < self.maxlen):
                     self.vcfd[self.snpidx] += self.catgs[cidx, pos]
             self.snpidx += 1
@@ -1981,7 +1983,8 @@ def build_vcf(data, chunksize=1000):
                 snames = data.snames
                 chroms = ["locus_{}".format(i - 1) for i in snpmap[:, 0]]
                 ids = ['.'] * genos.shape[0]
-                #offset = 0
+                # positions = snpmap[:, 2]
+                # offset = 0
 
             # get alt genotype calls
             alts = [
@@ -1992,18 +1995,18 @@ def build_vcf(data, chunksize=1000):
             # build df label cols
             df_pos = pd.DataFrame({
                 '#CHROM': chroms,
-                'POS': snpmap[:, -1],  # 1-indexed
+                'POS': snpmap[:, 2],   # 1-indexed
                 'ID': ids,             # 0-indexed
                 'REF': [i.decode() for i in pref[:, 0].view("S1")],
                 'ALT': alts,
                 'QUAL': [13] * genos.shape[0],
                 'FILTER': ['PASS'] * genos.shape[0],
-                })
+            })
 
             # get sample coverage at each site
             nsamps = (
                 genos.shape[1] - np.any(genos == 9, axis=2).sum(axis=1)
-                )
+            )
 
             # store sum of coverage at each site
             asums = []
