@@ -12,11 +12,11 @@ except ImportError:
 
 import ipyparallel as ipp
 import subprocess
+import random
 import socket
-import shlex
 import time
 import sys
-import os
+# import os
 
 from ipyrad.assemble.utils import IPyradWarningExit
 
@@ -34,8 +34,9 @@ def cluster_info(ipyclient, spacer=""):
     hosts = [i.get() for i in hosts]
     result = []
     for hostname in set(hosts):
-        result.append("{}host compute node: [{} cores] on {}"
-                      .format(spacer, hosts.count(hostname), hostname))
+        result.append(
+            "{}host compute node: [{} cores] on {}"
+            .format(spacer, hosts.count(hostname), hostname))
     print("\n".join(result))
 
 
@@ -49,32 +50,44 @@ def start_ipcluster(data):
     if "MPI" in data._ipcluster["engines"]:
         iparg = "--ip=*"
 
-    ## make ipcluster arg call
-    standard = """
-        ipcluster start 
-                  --daemonize 
-                  --cluster-id={}
-                  --engines={} 
-                  --profile={}
-                  --n={}
-                  {}"""\
-        .format(data._ipcluster["cluster_id"], 
-                data._ipcluster["engines"], 
-                data._ipcluster["profile"],
-                data._ipcluster["cores"],
-                iparg)
+    # make ipcluster arg call
+    standard = [
+        "ipcluster", "start",
+        "--daemonize", 
+        "--cluster-id={}".format(data._ipcluster["cluster_id"]),
+        "--engines={}".format(data._ipcluster["engines"]),
+        "--profile={}".format(data._ipcluster["profile"]),
+        "--n={}".format(data._ipcluster["cores"]),
+        "{}".format(iparg),
+    ]
                    
-    ## wrap ipcluster start
-    try: 
-        # ip.logger.info(shlex.split(standard))
+    # wrap ipcluster start
+    try:
         subprocess.check_call(
-            shlex.split(standard), 
+            standard,
             stderr=subprocess.STDOUT,
             stdout=subprocess.PIPE)
 
+    # cluster with THIS ID is running then kill it and try again
     except subprocess.CalledProcessError as inst:
-        print(inst)
-        raise
+        subprocess.check_call([
+            "ipcluster", "stop", 
+            "--cluster-id", data._ipcluster["cluster_id"],
+        ], 
+            stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE,
+        )
+        time.sleep(3)
+
+        try:
+            # try again to start it
+            subprocess.check_call(
+                standard, 
+                stderr=subprocess.STDOUT,
+                stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as inst:
+            print(inst)
+            raise
 
     except Exception as inst:
         sys.exit("  Error launching ipcluster for parallelization:\n({})\n".\
@@ -86,10 +99,11 @@ def register_ipcluster(data):
     """
     The name is a unique id that keeps this __init__ of ipyrad distinct
     from interfering with other ipcontrollers. Run statements are wrapped
-    so that ipcluster will be killed on exit.
+    so that ipcluster SHOULD be killed on exit.
     """
-    ## check if this pid already has a running cluster
-    data._ipcluster["cluster_id"] = "ipyrad-cli-" + str(os.getpid())
+    ## check if this random/pid already has a running cluster
+    rand = random.randint(0, 1000)
+    data._ipcluster["cluster_id"] = "ipyrad-cli-{}".format(rand)
     start_ipcluster(data)
     return data
 
