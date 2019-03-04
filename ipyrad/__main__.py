@@ -129,15 +129,21 @@ class CLI:
             sys.exit(1)
 
         ## add arguments 
-        self.parser.add_argument('-v', '--version', action='version', 
-            version=str(get_distribution('ipyrad')))
-
-        self.parser.add_argument('-r', "--results", action='store_true',
-            help="show results summary for Assembly in params.txt and exit")
-
-        self.parser.add_argument('-f', "--force", action='store_true',
-            help="force overwrite of existing data")
-
+        self.parser.add_argument(
+            '-v', '--version', 
+            action='version', 
+            version=str(get_distribution('ipyrad'))
+        )
+        self.parser.add_argument(
+            '-r', "--results", 
+            action='store_true',
+            help="show results summary for Assembly in params.txt and exit",
+        )
+        self.parser.add_argument(
+            '-f', "--force", 
+            action='store_true',
+            help="force overwrite of existing data",
+        )
         self.parser.add_argument('-q', "--quiet", action='store_true',
             help="do not print to stderror or stdout.")
 
