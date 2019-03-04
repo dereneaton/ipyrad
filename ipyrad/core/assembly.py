@@ -20,6 +20,7 @@ from collections import OrderedDict
 from ipyrad.assemble.utils import IPyradParamsError, IPyradError
 from ipyrad.assemble.utils import ObjDict, IPyradWarningExit
 from ipyrad.core.paramsinfo import paraminfo, paramname
+from ipyrad.core.parallel import register_ipcluster
 
 
 # GLOBALS
@@ -36,7 +37,7 @@ OUTPUT_FORMATS = {
     'v': 'vcf',
     't': 'treemix',
     'm': 'migrate-n',
-    }
+}
     
 
 class Assembly(object):
@@ -307,8 +308,6 @@ class Assembly(object):
             # We'll concatenate them with a plus and split them later
             bdf[2] = bdf[2].str.upper()
             self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))               
-        
-
 
 
     def _link_populations(self, popdict=None, popmins=None):
@@ -628,7 +627,7 @@ class Assembly(object):
         return ipyclient
 
 
-    def _cleanup_parallel(self, ipyclient):
+    def _cleanup_parallel(self, ipyclient, auto_launched=False):
         try:
             # save the Assembly... should we save here or not. I added save
             # to substeps in six so we don't need it here. By removing it
@@ -653,7 +652,7 @@ class Assembly(object):
                 # if CLI, stop jobs and shutdown. Don't use _cli here 
                 # because you can have a CLI object but use the --ipcluster
                 # flag, in which case we don't want to kill ipcluster.
-                if self._cli:
+                if self._cli or auto_launched:
                     ipyclient.shutdown(hub=True, block=False)
                     ipyclient.close()
                 else:
@@ -670,7 +669,15 @@ class Assembly(object):
             print("warning: error during shutdown:\n{}".format(inst2))
 
 
-    def run(self, steps=None, force=False, ipyclient=None, quiet=False, show_cluster=False):
+    def run(
+        self, 
+        steps=None, 
+        force=False, 
+        ipyclient=None, 
+        quiet=False, 
+        show_cluster=False,
+        launch_client=False,
+        ):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
         e.g., "1", "123", "12345". This step checks for an existing
@@ -688,6 +695,12 @@ class Assembly(object):
         # Assembly object if it is interrupted at any point, and also
         # to ensure proper cleanup of the ipyclient.
         try:
+            # launch the parallel client (like in the CLI)
+            if launch_client:
+                if not self._ipcluster["cores"]:
+                    self._ipcluster["cores"] = 4
+                self = register_ipcluster(self)
+
             # get a running ipcluster instance or start one 
             ipyclient = self._get_parallel(ipyclient, show_cluster)
 
@@ -733,7 +746,7 @@ class Assembly(object):
         finally:
             # unquiet 
             self.quiet = False
-            self._cleanup_parallel(ipyclient)
+            self._cleanup_parallel(ipyclient, auto_launched=launch_client)
 
 
 
@@ -1349,6 +1362,7 @@ class Params:
             self._data.populations = {}
 
 
+
 class Encoder(json.JSONEncoder):
     """ 
     Save JSON string with tuples embedded as described in stackoverflow
@@ -1372,6 +1386,7 @@ class Encoder(json.JSONEncoder):
             else:
                 return item
         return super(Encoder, self).encode(hint_tuples(obj))
+
 
 
 def default(o):
@@ -1409,7 +1424,7 @@ def save_json(data):
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),
         ("hackersonly", data.hackersonly._data),
-        ])
+    ])
 
     ## sample dict
     sampledict = OrderedDict([])
@@ -1420,11 +1435,11 @@ def save_json(data):
     fulldumps = json.dumps({
         "assembly": datadict,
         "samples": sampledict
-        },
+    },
         cls=Encoder,
         sort_keys=False, indent=4, separators=(",", ":"),
         default=default,
-        )
+    )
 
     ## save to file
     assemblypath = os.path.join(data.dirs.project, data.name + ".json")
@@ -1443,82 +1458,70 @@ def save_json(data):
             continue
 
 
-def merge(name, assemblies):
+def merge(name, assemblies, rename_dict=None):
     """
     Creates and returns a new Assembly object in which samples from two or more
     Assembly objects with matching names are 'merged'. Merging does not affect 
     the actual files written on disk, but rather creates new Samples that are 
     linked to multiple data files, and with stats summed.
+
+    # merge two assemblies
+    new = ip.merge('newname', (assembly1, assembly2))
+
+    # merge two assemblies and rename samples
+    rename = {"1A_0", "A", "1B_0", "A"}
+    new = ip.merge('newname', (assembly1, assembly2), rename_dict=rename)
     """
-    # make sure assemblies is a list of more than one
-    assert len(assemblies) > 1, (
-        "You must enter a list of >1 Assemblies to merge")
-    assemblies = list(assemblies)
+    # create new Assembly
+    merged = Assembly(name)
 
-    # create new Assembly as a branch (deepcopy) of the first in list
-    merged = assemblies[0].branch(name)
+    # one or multiple assemblies?
+    try:
+        _ = len(assemblies)
+    except TypeError:
+        assemblies = [assemblies]
 
-    # get all sample names from all Assemblies
-    allsamples = set(merged.samples.keys())
-    for iterass in assemblies[1:]:
-        allsamples.update(set(iterass.samples.keys()))
+    # iterate over all sample names from all Assemblies
+    for data in assemblies:
 
-    # Make sure we have the max of all values for max frag length
-    # from all merging assemblies.
+        # make a deepcopy
+        ndata = copy.deepcopy(data)
+        for sname, sample in ndata.samples.items():
+
+            # rename sample if in rename dict
+            if sname in rename_dict:
+                sname = rename_dict[sname]
+                sample.name = sname
+
+            # is it in the merged assembly already
+            if sname in merged.samples:
+                msample = merged.samples[sname]
+
+                # update stats
+                msample.stats.reads_raw += sample.stats.reads_raw
+                if sample.stats.reads_passed_filter:
+                    msample.stats.reads_passed_filter += \
+                    sample.stats.reads_passed_filter
+
+                # append files
+                if sample.files.fastqs:
+                    msample.files.fastqs += sample.files.fastqs
+                if sample.files.edits:
+                    msample.files.edits += sample.files.edits
+
+                # do not allow state >2 at merging (requires reclustering)
+                # if merging WITHIN samples.
+                msample.stats.state = min(sample.stats.state, 2)
+
+            # merge its stats and files
+            else:
+                merged.samples[sname] = sample
+
+    # Merged assembly inherits max of hackers values (max frag length)
     merged.hackersonly.max_fragment_length = max(
         [i.hackersonly.max_fragment_length for i in assemblies])
 
-    # warning message?
-    warning = 0
-
-    # iterate over assembly objects, skip first already copied
-    for iterass in assemblies[1:]:
-        # iterate over allsamples, add if not in merged
-        for sample in iterass.samples:
-            # iterate over stats, skip 'state'
-            if sample not in merged.samples:
-                merged.samples[sample] = copy.deepcopy(iterass.samples[sample])
-                # if barcodes data present then keep it
-                if iterass.barcodes.get(sample):
-                    merged.barcodes[sample] = iterass.barcodes[sample]
-            else:
-                # merge stats and files of the sample
-                for stat in merged.stats.keys()[1:]:
-                    merged.samples[sample].stats[stat] += (
-                        iterass.samples[sample].stats[stat])
-                # merge file references into a list
-                for filetype in ['fastqs', 'edits']:
-                    merged.samples[sample].files[filetype] += (
-                        iterass.samples[sample].files[filetype])
-                if iterass.samples[sample].files["clusters"]:
-                    warning = 1
-
-    # print warning if clusters or later was present in merged assembly
-    if warning:
-        print("""\
-    Warning: the merged Assemblies contained Samples that are identically named,
-    and so ipyrad has attempted to merge these Samples. This is perfectly fine to
-    do up until step 3, but not after, because at step 3 all reads for a Sample
-    should be included during clustering/mapping. Take note, you can merge Assemblies
-    at any step *if they do not contain the same Samples*, however, here that is not
-    the case. If you wish to proceed with this merged Assembly you will have to
-    start from step 3, therefore the 'state' of the Samples in this new merged
-    Assembly ({}) have been set to 2.
-    """.format(name))
-        for sample in merged.samples:
-            merged.samples[sample].stats.state = 2
-            ## clear stats
-            for stat in ["refseq_mapped_reads", "refseq_unmapped_reads",
-                         "clusters_total", "clusters_hidepth", "hetero_est",
-                         "error_est", "reads_consens"]:
-                merged.samples[sample].stats[stat] = 0
-            ## clear files
-            for ftype in ["mapped_reads", "unmapped_reads", "clusters",
-                          "consens", "database"]:
-                merged.samples[sample].files[ftype] = []
-
-    # Set the values for some params that don't make sense inside
-    # merged assemblies
+    # Set the values for some params that don't make sense inside mergers
     merged_names = ", ".join([i.name for i in assemblies])
     merged.params.raw_fastq_path = "Merged: " + merged_names
     merged.params.barcodes_path = "Merged: " + merged_names
