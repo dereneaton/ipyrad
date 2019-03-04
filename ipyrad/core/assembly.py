@@ -956,6 +956,13 @@ class Params:
     def __str__(self):
         return self.__repr__()
         
+
+    # def __setattr__(self):
+
+    # def update(self, dict):
+
+
+
     @property
     def assembly_name(self):
         return self._assembly_name
@@ -1472,6 +1479,10 @@ def merge(name, assemblies, rename_dict=None):
     rename = {"1A_0", "A", "1B_0", "A"}
     new = ip.merge('newname', (assembly1, assembly2), rename_dict=rename)
     """
+    # null rename dict if empty
+    if not rename_dict:
+        rename_dict = {}
+
     # create new Assembly
     merged = Assembly(name)
 
@@ -1480,6 +1491,11 @@ def merge(name, assemblies, rename_dict=None):
         _ = len(assemblies)
     except TypeError:
         assemblies = [assemblies]
+
+    # inherit params setting from first assembly
+    for key in assemblies[0].params._keys[5:]:
+        value = getattr(assemblies[0].params, key)
+        setattr(merged.params, key, value)
 
     # iterate over all sample names from all Assemblies
     for data in assemblies:
