@@ -27,7 +27,7 @@ class Sample(object):
             "clusters": [],
             "consens": [],
             "database": []
-            })
+        })
 
         ## summary stats dictionary
         self.stats = pd.Series(
