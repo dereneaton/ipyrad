@@ -24,8 +24,8 @@ from ipyrad.analysis.utils import progressbar
 
 ## raise warning if missing imports
 MISSING_IMPORTS = """
-To use the ipa.sratools module you must install two additional 
-libraries which can be done with the following conda command. 
+To use the ipa.sratools module you must install the sra-tools
+software, which you can do with the following conda command. 
 
   conda install bioconda::sra-tools
 """
@@ -84,6 +84,7 @@ class SRA(object):
             if not comm:
                 raise IPyradError(MISSING_IMPORTS)
 
+
     def run(
         self, 
         ipyclient=None,
@@ -99,13 +100,13 @@ class SRA(object):
 
         Parameters
         ----------
-        force: (bool)
-            If force=True then existing files with the same name
-            will be overwritten. 
-
         ipyclient: (ipyparallel.Client)
             If provided, work will be distributed across a parallel
             client, otherwise download will be run on a single core.
+
+        force: (bool)
+            If force=True then existing files with the same name
+            will be overwritten. 
 
         name_fields: (int, str):
             Provide the index of the name fields to be used as a prefix
@@ -126,11 +127,21 @@ class SRA(object):
 
         gzip: bool
             Gzip compress fastq files.
+
+        auto: bool
+            Automatically launch new ipcluster for parallelization and 
+            shutdown when finished. See <object>.ipcluster for settings.
         """
 
         # ensure output directory, also used as tmpdir
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
+
+        # ipa.parallel.ipcluster_gather()
+        # try:
+        #     <specific job distributor>
+        # finally:
+        #     ipa.parallel.ipcluster_cleanup()
 
         try:
             ## register ipyclient for cleanup
@@ -143,7 +154,6 @@ class SRA(object):
                         self._ipcluster["pids"][eid] = pid               
 
             ## submit jobs to engines or local 
-            # self._submit_jobs(
             self._distribute_jobs(
                 force=force, 
                 ipyclient=ipyclient, 
@@ -299,6 +309,180 @@ class SRA(object):
         self._report(int(ntotal / 2))
 
 
+    def _report(self, N):
+        print("\n{} fastq files downloaded to {}".format(N, self.workdir))
+
+
+    @property
+    def fetch_fields(self):
+        "The column names (fields) in an SRA Run Table."        
+        fields = pd.DataFrame(COLNAMES, columns=["field"])
+        fields.index += 1
+        return fields
+
+    @property
+    def fields(self):
+        "The column names (fields) in an SRA Run Table"
+        fields = pd.DataFrame(COLNAMES, columns=["field"])
+        fields.index += 1
+        return fields
+
+
+    def fetch_runinfo(self, fields=None, quiet=False):
+        """
+        Query the RunInfo for a Sample or Run, returned as a DataFrame. 
+        The fields can be subselected. See <self>.fields for options.
+        """
+        if not quiet: 
+            print("\rFetching project data...", end="")
+
+        if fields is None:
+            fields = list(range(30))
+        fields = fields_checker(fields)
+
+        # SRA IDs from the SRP 
+        res = requests.get(
+            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", 
+            params={
+                "db": "sra",
+                "term": self.accession,
+                "tool": "ipyrad", 
+                "email": "de2356@columbia.edu",
+                "retmax": 1000,
+                },
+            )
+        sra_ids = [i[4:-5] for i in res.text.split() if "<Id>" in i]
+        if not sra_ids:
+            raise IPyradError("No SRA samples found in {}"
+                .format(self.accession))
+
+        # SRA Runinfo for each ID
+        res = requests.get(
+            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", 
+            params={
+                "db": "sra",
+                "id": ",".join(sra_ids),
+                "tool": "ipyrad", 
+                "email": "de2356@columbia.edu",
+                "rettype": "runinfo", 
+                "retmode": "text",                
+                },
+            )
+        time.sleep(2.5)
+        df = pd.read_csv(StringIO(res.text.strip()))
+        return df.iloc[:, [i - 1 for i in fields]]
+
+
+
+    def _call_fastq_dump_on_SRRs(self, srr, paired, gzip):
+        """
+        calls fastq-dump on SRRs, relabels fastqs by their accession
+        names, and writes them to the workdir. Saves temp sra files
+        in the designated tmp folder and immediately removes them.
+        """
+
+        # build outname
+        outname = os.path.split(srr)[-1]
+        outname = outname.rsplit(".sra")[0]
+
+        ## build command for fastq-dumping
+        fd_cmd = [
+            "fastq-dump", srr,
+            "--accession", outname,
+            "--outdir", self.workdir, 
+            # "--disable-multithreading",
+            ]
+        if gzip:
+            fd_cmd += ["--gzip"]
+        if paired:
+            fd_cmd += ["--split-files"]
+
+        ## call fq dump command
+        proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+        o, e = proc.communicate()
+
+        if proc.returncode:
+            raise IPyradError(o.decode())
+
+        ## delete the temp sra file from the place 
+        if os.path.exists(srr):
+            os.remove(srr)
+
+
+
+def download_file(url, outname):
+    " NOTE the stream=True parameter"
+    res = requests.get(url, stream=True)
+    with open(outname, 'wb') as f:
+        for chunk in res.iter_content(chunk_size=1024): 
+            if chunk:  # filter out keep-alive new chunks
+                f.write(chunk)
+    return outname
+
+
+
+def fields_checker(fields):
+    """
+    returns a fields argument formatted as a list of strings.
+    and doesn't allow zero.
+    """
+    # make sure fields will work
+    if isinstance(fields, int):
+        fields = str(fields)
+
+    if isinstance(fields, str):
+        if "," in fields:
+            fields = [str(i) for i in fields.split(",")]
+        else:
+            fields = [str(fields)]
+
+    elif isinstance(fields, (tuple, list)):
+        fields = [str(i) for i in fields]
+
+    else:
+        raise IPyradError("fields not properly formatted")
+
+    ## do not allow zero in fields
+    fields = [int(i) for i in fields if i != '0']
+    return fields
+
+
+
+## OMG FASTERQ-DUMP IS THE WORST DON"T TRY THIS!!!
+# def fasterq_dump_file(path):
+#     "Call fasterq-dump multi-threaded"
+
+#     # get fastq conversion path
+#     path = os.path.realpath(path)
+#     fastqpath = path.rsplit(".sra", 1)[0] + ".fastq"
+
+#     # call fasterq dump in a subprocess to write to .fastq
+#     cmd = [
+#         "fasterq-dump", path, 
+#         "-o", fastqpath,
+#         "-t", os.path.join(tempfile.gettempdir(), "scratch"),
+#         "--split-files", 
+#     ]
+#     print("\n\n" + " ".join(cmd) + "\n\n")    
+#     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)   
+#     res = proc.communicate()
+
+#     # check for errors
+#     if proc.returncode:
+#         raise IPyradError("error in fasterq-dump:\n{}\n{}"
+#             .format(" ".join(cmd), res[0].decode())
+#             )
+
+#     # rename files in ipyrad format of "_R1_, _R2_"
+
+
+#     # remove .sra file
+#     print(path, fastqpath)
+#     # os.remove(path)
+
+
+
+
 
     # def _submit_jobs(self, 
     #     force, 
@@ -411,96 +595,6 @@ class SRA(object):
 
 
 
-    def _report(self, N):
-        print("\n{} fastq files downloaded to {}".format(N, self.workdir))
-
-
-    @property
-    def fetch_fields(self):
-        fields = pd.DataFrame(COLNAMES, columns=["field"])
-        fields.index += 1
-        return fields
-
-
-    def fetch_runinfo(self, fields=None, quiet=False):
-        "Requests based utils for fetching SRA IDs and URLs"
-        # 
-        if not quiet: 
-            print("\rFetching project data...", end="")
-
-        if fields is None:
-            fields = list(range(30))
-        fields = fields_checker(fields)
-
-        # SRA IDs from the SRP 
-        res = requests.get(
-            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", 
-            params={
-                "db": "sra",
-                "term": self.accession,
-                "tool": "ipyrad", 
-                "email": "de2356@columbia.edu",
-                },
-            )
-        sra_ids = [i[4:-5] for i in res.text.split() if "<Id>" in i]
-        if not sra_ids:
-            raise IPyradError("No SRA samples found in {}"
-                .format(self.accession))
-
-        # SRA Runinfo for each ID
-        res = requests.get(
-            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", 
-            params={
-                "db": "sra",
-                "id": ",".join(sra_ids),
-                "tool": "ipyrad", 
-                "email": "de2356@columbia.edu",
-                "rettype": "runinfo", 
-                "retmode": "text",                
-                },
-            )
-        time.sleep(3)
-        df = pd.read_csv(StringIO(res.text.strip()))
-        return df.iloc[:, [i - 1 for i in fields]]
-
-
-
-    def _call_fastq_dump_on_SRRs(self, srr, paired, gzip):
-        """
-        calls fastq-dump on SRRs, relabels fastqs by their accession
-        names, and writes them to the workdir. Saves temp sra files
-        in the designated tmp folder and immediately removes them.
-        """
-
-        # build outname
-        outname = os.path.split(srr)[-1]
-        outname = outname.rsplit(".sra")[0]
-
-        ## build command for fastq-dumping
-        fd_cmd = [
-            "fastq-dump", srr,
-            "--accession", outname,
-            "--outdir", self.workdir, 
-            # "--disable-multithreading",
-            ]
-        if gzip:
-            fd_cmd += ["--gzip"]
-        if paired:
-            fd_cmd += ["--split-files"]
-
-        ## call fq dump command
-        proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-        o, e = proc.communicate()
-
-        if proc.returncode:
-            raise IPyradError(o.decode())
-
-        ## delete the temp sra file from the place 
-        if os.path.exists(srr):
-            os.remove(srr)
-
-
-
     # def _set_vdbconfig_path(self):
 
     #     ## get original path
@@ -529,78 +623,6 @@ class SRA(object):
     #         stderr=sps.STDOUT, stdout=sps.PIPE)
     #     o, e = proc.communicate()
     #     #print('restoring tmpdir to {}'.format(self._oldtmpdir))
-
-
-
-def download_file(url, outname):
-    " NOTE the stream=True parameter"
-    res = requests.get(url, stream=True)
-    with open(outname, 'wb') as f:
-        for chunk in res.iter_content(chunk_size=1024): 
-            if chunk:  # filter out keep-alive new chunks
-                f.write(chunk)
-    return outname
-
-
-
-def fields_checker(fields):
-    """
-    returns a fields argument formatted as a list of strings.
-    and doesn't allow zero.
-    """
-    # make sure fields will work
-    if isinstance(fields, int):
-        fields = str(fields)
-
-    if isinstance(fields, str):
-        if "," in fields:
-            fields = [str(i) for i in fields.split(",")]
-        else:
-            fields = [str(fields)]
-
-    elif isinstance(fields, (tuple, list)):
-        fields = [str(i) for i in fields]
-
-    else:
-        raise IPyradError("fields not properly formatted")
-
-    ## do not allow zero in fields
-    fields = [int(i) for i in fields if i != '0']
-    return fields
-
-
-
-## OMG FASTERQ-DUMP IS THE WORST DON"T TRY THIS...
-# def fasterq_dump_file(path):
-#     "Call fasterq-dump multi-threaded"
-
-#     # get fastq conversion path
-#     path = os.path.realpath(path)
-#     fastqpath = path.rsplit(".sra", 1)[0] + ".fastq"
-
-#     # call fasterq dump in a subprocess to write to .fastq
-#     cmd = [
-#         "fasterq-dump", path, 
-#         "-o", fastqpath,
-#         "-t", os.path.join(tempfile.gettempdir(), "scratch"),
-#         "--split-files", 
-#     ]
-#     print("\n\n" + " ".join(cmd) + "\n\n")    
-#     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)   
-#     res = proc.communicate()
-
-#     # check for errors
-#     if proc.returncode:
-#         raise IPyradError("error in fasterq-dump:\n{}\n{}"
-#             .format(" ".join(cmd), res[0].decode())
-#             )
-
-#     # rename files in ipyrad format of "_R1_, _R2_"
-
-
-#     # remove .sra file
-#     print(path, fastqpath)
-#     # os.remove(path)
 
 
 
