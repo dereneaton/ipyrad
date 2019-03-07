@@ -42,12 +42,12 @@ class SRA(object):
     """ ipyrad.analysis SRA download object"""
     def __init__(
         self, 
-        accession,
+        accessions,
         workdir="sra-fastq-data",
         ):
 
         # store attributes
-        self.accession = accession
+        self.accessions = accessions
         self.workdir = os.path.abspath(os.path.expanduser(workdir))
         self.is_sample = False
         self.is_project = False
@@ -65,14 +65,21 @@ class SRA(object):
             "pids": {},
             }
 
-        ## 
-        if any([i in self.accession for i in ["SRR", "ERR", "DRR"]]):        
+        # if accession is a list then make it comma separated string
+        if isinstance(self.accessions, (list, tuple)):
+            pass
+        if isinstance(self.accessions, (str)):
+            self.accessions = [self.accessions]
+
+        # get type
+        if any([i in self.accessions[0] for i in ["SRR", "ERR", "DRR"]]):        
             self.is_sample = True
-        elif any([i in self.accession for i in ["SRP", "ERP", "DRP"]]):
+        elif any([i in self.accessions[0] for i in ["SRP", "ERP", "DRP"]]):
             self.is_project = True
         else:
             raise IPyradError(ACCESSION_ID)
 
+        # make sure required software if installed
         self.check_binaries()
 
 
@@ -340,21 +347,24 @@ class SRA(object):
             fields = list(range(30))
         fields = fields_checker(fields)
 
-        # SRA IDs from the SRP 
-        res = requests.get(
-            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", 
-            params={
-                "db": "sra",
-                "term": self.accession,
-                "tool": "ipyrad", 
-                "email": "de2356@columbia.edu",
-                "retmax": 1000,
-                },
-            )
-        sra_ids = [i[4:-5] for i in res.text.split() if "<Id>" in i]
-        if not sra_ids:
-            raise IPyradError("No SRA samples found in {}"
-                .format(self.accession))
+        sra_ids = []
+        for accession in self.accessions:
+            # SRA IDs from the SRP 
+            res = requests.get(
+                url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", 
+                params={
+                    "db": "sra",
+                    "term": accession,
+                    "tool": "ipyrad", 
+                    "email": "de2356@columbia.edu",
+                    "retmax": 1000,
+                    },
+                )
+            sra_ids += [i[4:-5] for i in res.text.split() if "<Id>" in i]
+            if not sra_ids:
+                raise IPyradError("No SRA samples found in {}"
+                    .format(self.accessions))
+            time.sleep(3)
 
         # SRA Runinfo for each ID
         res = requests.get(
@@ -368,7 +378,6 @@ class SRA(object):
                 "retmode": "text",                
                 },
             )
-        time.sleep(2.5)
         df = pd.read_csv(StringIO(res.text.strip()))
         return df.iloc[:, [i - 1 for i in fields]]
 
