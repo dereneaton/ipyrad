@@ -676,14 +676,27 @@ class Assembly(object):
         ipyclient=None, 
         quiet=False, 
         show_cluster=False,
-        launch_client=False,
+        auto=False,
         ):
         """
-        Run assembly steps of an ipyrad analysis. Enter steps as a string,
-        e.g., "1", "123", "12345". This step checks for an existing
-        ipcluster instance otherwise it raises an exception. The ipyparallel
-        connection is made using information from the _ipcluster dict of the
-        Assembly class object.
+        Run assembly steps (1-7) of an ipyrad analysis.
+        
+        Parameters:
+        ===========
+        steps: (str, default=None)
+            The steps of assembly to run, e.g., "123", "1234567".
+        force: (bool, default=False)
+            Whether to overwrite an existing assembly with the same name.
+        ipyclient: (obj, default=None)
+            An ipyparallel.Client() object to tune parallelization. See
+            docs for details. Or, use auto=True. 
+        quiet: (bool, default=False)
+            Print progress information to stdout.
+        show_cluster: (bool, default=False)
+            Print parallelization information to stdout.
+        auto: (bool, default=False)
+            Automatically launch an ipcluster instance for parallelization 
+            of this run and shut it down when finished. 
         """
         # hide all messages/progress bars       
         self.quiet = quiet
