@@ -709,7 +709,7 @@ class Assembly(object):
         # to ensure proper cleanup of the ipyclient.
         try:
             # launch the parallel client (like in the CLI)
-            if launch_client:
+            if auto:
                 if not self._ipcluster["cores"]:
                     self._ipcluster["cores"] = 4
                 self = register_ipcluster(self)
@@ -759,7 +759,7 @@ class Assembly(object):
         finally:
             # unquiet 
             self.quiet = False
-            self._cleanup_parallel(ipyclient, auto_launched=launch_client)
+            self._cleanup_parallel(ipyclient, auto_launched=auto)
 
 
 
