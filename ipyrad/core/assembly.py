@@ -698,6 +698,9 @@ class Assembly(object):
             Automatically launch an ipcluster instance for parallelization 
             of this run and shut it down when finished. 
         """
+        # save assembly at state of run start
+        self.save()
+        
         # hide all messages/progress bars       
         self.quiet = quiet
 
