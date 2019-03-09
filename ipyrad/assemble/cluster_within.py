@@ -1069,7 +1069,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
             "--sizeout", 
             "--relabel_md5",
             ]
-    LOGGER.info("derep cmd %s", cmd)
+    LOGGER.info("derep cmd %s", " ".join(cmd))
 
     ## run vsearch
     proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
