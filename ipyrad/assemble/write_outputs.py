@@ -154,6 +154,10 @@ class Step7:
     def setup_dirs(self):
         "Create temp h5 db for storing filters and depth variants"
 
+        # reset outfiles paths
+        for key in self.data.outfiles:
+            self.data.outfiles[key] = ""
+
         # make new output directory
         self.data.dirs.outfiles = os.path.join(
             self.data.params.project_dir,
