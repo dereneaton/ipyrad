@@ -81,6 +81,10 @@ class Step7:
             self.remote_fill_depths()
             self.remote_build_vcf()
 
+        # cleanup
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
+
 
     def print_headers(self):
         if self.data._cli:
