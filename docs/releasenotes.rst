@@ -5,6 +5,14 @@
 Release Notes
 =============
 
+0.7.30
+------
+**March 09, 2019**
+
+- Fix pca for scikit 1.2.0 API and a few minor fixes.
+- Update faq.rst
+- Update faq.rst
+
 0.7.29
 ------
 **January 21, 2019**
