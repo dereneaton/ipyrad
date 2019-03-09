@@ -16,8 +16,12 @@ from ipyrad.assemble.util import DUCT, IPyradWarningExit
 
 
 try:
-    ## when you have time go back and set attrubutes on toytrees
-    from toytree import ete3mini as ete
+    try:
+        from toytree import etemini as ete3
+    except:
+        ## Failed to import toytree >= 0.1.17, try older version
+        ## when you have time go back and set attrubutes on toytrees
+        from toytree import ete3mini as ete3
 except ImportError:
     raise IPyradWarningExit("""
     Error: bpp requires the dependency 'toytree', which we haven't yet
