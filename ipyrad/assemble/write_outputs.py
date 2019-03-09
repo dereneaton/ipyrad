@@ -1179,7 +1179,7 @@ class Converter:
                                 .format(
                                     i[0], 
                                     # 1-index to 0-index fix (1/6/19)
-                                    revdict[i[3] - 1], i[4], 
+                                    revdict[i[3] - 1], i[4],
                                     i[2] + 1,
                                     counter,
                                     #i[4], 
@@ -1845,7 +1845,7 @@ class VCF_filler:
             self.gtrim = edges[self.localidx - 1]
 
             # if SNPs and data for this sample enter catgs
-            if (self.locsnps.size) and (self.sname in self.names):                   
+            if (self.locsnps.size) and (self.sname in self.names):
                 if self.isref:
                     self.ref_enter_catgs()
                 else:
@@ -1975,7 +1975,10 @@ def build_vcf(data, chunksize=1000):
                 ids = [
                     "loc{}_pos{}".format(i - 1, j) for (i, j) 
                     in snpmap[:, [0, 2]]
-                ]            
+                ]
+
+                # reference based positions: pos on scaffold: 4, yes. tested.
+                pos = snpmap[:, 4]
                 #offset = 1
                 
             else:
@@ -1983,7 +1986,9 @@ def build_vcf(data, chunksize=1000):
                 snames = data.snames
                 chroms = ["locus_{}".format(i - 1) for i in snpmap[:, 0]]
                 ids = ['.'] * genos.shape[0]
-                # positions = snpmap[:, 2]
+
+                # denovo based positions: pos on locus. tested. works. right.
+                pos = snpmap[:, 2]
                 # offset = 0
 
             # get alt genotype calls
@@ -1995,7 +2000,7 @@ def build_vcf(data, chunksize=1000):
             # build df label cols
             df_pos = pd.DataFrame({
                 '#CHROM': chroms,
-                'POS': snpmap[:, 2],   # 1-indexed
+                'POS': pos,            # 1-indexed
                 'ID': ids,             # 0-indexed
                 'REF': [i.decode() for i in pref[:, 0].view("S1")],
                 'ALT': alts,
