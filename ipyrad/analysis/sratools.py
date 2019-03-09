@@ -224,6 +224,9 @@ class SRA(object):
         # make empty Accession field
         df["Accession"] = ""
 
+        # choose spacer to replace spaces in names as different from name_sep
+        otherspacer = ("_" if name_separator != "_" else "-")
+
         # select names for downloaded .sra files
         if name_fields:
 
@@ -236,7 +239,7 @@ class SRA(object):
                     name_separator.join(
                         [df.iloc[row, i] for i in fields]
                         )
-                    )
+                    ).replace(" ", otherspacer)
 
         # backup default naming scheme
         else:
