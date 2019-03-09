@@ -50,13 +50,22 @@ def get_quick_depths(data, sample):
     ## func can be used in step 4 and that can occur after merging
     ## assemblies after step3, and if we then referenced by data.dirs.clusts
     ## the path would be broken.
-    if sample.files.clusters:
-        pass
-    else:
-        pass
-    ## set cluster file handles
+    ##
+    ## If branching at step 3 to test different clust thresholds, the
+    ## branched samples will retain the samples.files.clusters of the
+    ## parent (which have the clust_threshold value of the parent), so
+    ## it will look like nothing has changed. If we call this func
+    ## from step 3 then it indicates we are in a branch and should
+    ## reset the sample.files.clusters handle to point to the correct
+    ## data.dirs.clusts directory. See issue #229.
+    ## Easier to just always trust that samples.files.clusters is right,
+    ## no matter what step?
+    #if sample.files.clusters and not sample.stats.state == 3:
+    #    pass
+    #else:
+    #    ## set cluster file handles
     sample.files.clusters = os.path.join(
-        data.dirs.clusts, sample.name+".clustS.gz")
+         data.dirs.clusts, sample.name+".clustS.gz")
 
     ## get new clustered loci
     fclust = data.samples[sample.name].files.clusters
@@ -155,7 +164,9 @@ def sample_cleanup(data, sample):
                 ## Handle clusters_hidepth == NaN
                 sample.stats_dfs.s3["clusters_hidepth"] = 0
             sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
+            LOGGER.debug("total depth {}".format(sample.stats_dfs.s3["avg_depth_total"]))
             sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
+            LOGGER.debug("mj depth {}".format(sample.stats_dfs.s3["avg_depth_mj"]))
             sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
             sample.stats_dfs.s3["sd_depth_total"] = depths.std()
             sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
@@ -530,6 +541,7 @@ def build_clusters(data, sample, maxindels):
             ## grab the next line
             try:
                 hit, seed, _, ind, ori, _ = isort.next().strip().split()
+                LOGGER.debug(">{} {} {}".format(hit, seed, ori, seq))
             except StopIteration:
                 break
 

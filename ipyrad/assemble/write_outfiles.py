@@ -654,11 +654,11 @@ def get_alleles(locdat):
                 spacer = lastspace - firstspace + 1
                 name, seq = line.split()
                 seq1, seq2 = splitalleles(seq)
-                LOGGER.info("""
-                    seqx %s
-                    seq1 %s
-                    seq2 %s
-                    """, seq, seq1, seq2)
+                #LOGGER.info("""
+                #    seqx %s
+                #    seq1 %s
+                #    seq2 %s
+                #    """, seq, seq1, seq2)
                 inloc.append(name+"_0" + spacer * " " + seq1)
                 inloc.append(name+"_1" + spacer * " " + seq2)
             except ValueError as inst:
@@ -1338,7 +1338,13 @@ def filter_indels(data, superints, edgearr):
             ## shorten block to exclude terminal indels
             ## if data at this locus (not already filtered by edges/minsamp)
             if block.shape[1] > 1:
-                sums = maxind_numba(block)
+                try:
+                    sums = maxind_numba(block)
+                except ValueError as inst:
+                    msg = "All loci filterd by max_Indels_locus. Try increasing this parameter value."
+                    raise IPyradError(msg)
+                except Exception as inst:
+                    LOGGER.error("error in block {}".format(block))
                 #LOGGER.info("maxind numba %s %s", idx, sums)
                 #LOGGER.info("sums, maxinds[0], compare: %s %s %s",
                 #             sums, maxinds[0], sums > maxinds[0])
@@ -1357,9 +1363,12 @@ def maxind_numba(block):
     inds = 0
     for row in xrange(block.shape[0]):
         where = np.where(block[row] != 45)[0]
-        left = np.min(where)
-        right = np.max(where)
-        obs = np.sum(block[row, left:right] == 45)
+        if len(where) == 0:
+            obs = 100
+        else:
+            left = np.min(where)
+            right = np.max(where)
+            obs = np.sum(block[row, left:right] == 45)
         if obs > inds:
             inds = obs
     return inds
@@ -2273,7 +2282,7 @@ def vcfchunk(data, optim, sidx, chunk, full):
     ## maybe later replace this with a h5 array
     tmph = os.path.join(data.dirs.outfiles, ".tmp.{}.h5".format(hslice[0]))
     htmp = h5py.File(tmph, 'w')
-    htmp.create_dataset("vcf", shape=(nrows, sum(sidx)), dtype="S20")
+    htmp.create_dataset("vcf", shape=(nrows, sum(sidx)), dtype="S24")
 
     ## which loci passed all filters
     init = 0
@@ -2366,7 +2375,7 @@ def vcfchunk(data, optim, sidx, chunk, full):
 
         ## build geno+depth strings
         ## for each taxon enter 4 catg values
-        fulltmp = np.zeros((seq.shape[1], catg.shape[0]), dtype="S20")
+        fulltmp = np.zeros((seq.shape[1], catg.shape[0]), dtype="S24")
         for cidx in xrange(catg.shape[0]):
             ## fill catgs from catgs
             tmp0 = [str(i.sum()) for i in catg[cidx]]
@@ -2374,7 +2383,6 @@ def vcfchunk(data, optim, sidx, chunk, full):
             tmp2 = ["".join(i+j+":"+k) for i, j, k in zip(genos[:, cidx], tmp0, tmp1)]
             ## fill tmp allcidx
             fulltmp[:, cidx] = tmp2
-
         ## write to h5 for this locus
         htmp["vcf"][init:init+seq.shape[1], :] = fulltmp
 
