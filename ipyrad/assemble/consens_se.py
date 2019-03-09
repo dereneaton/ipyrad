@@ -257,7 +257,7 @@ class Step5:
         start = time.time()
         jobs = {sample.name: [] for sample in self.samples}
         printstr = ("consens calling     ", "s5")
-        self.data._progressbar(0, 1, start, printstr)
+        self.data._progressbar(1, 0, start, printstr)
 
         # submit jobs (10 per sample === can be hundreds of jobs...)
         for sample in self.samples:
@@ -272,7 +272,7 @@ class Step5:
                     self.lbview.apply(
                         process_chunks,
                         *(self.data, sample, chunk, self.isref)))
-                self.data._progressbar(0, 1, start, printstr)
+                self.data._progressbar(1, 0, start, printstr)
                
         # track progress - just wait for all to finish before concat'ing
         allsyncs = list(chain(*[jobs[i] for i in jobs]))
@@ -302,7 +302,7 @@ class Step5:
         # concatenate and store catgs
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
-        self.data._progressbar(0, 1, start, printstr)
+        self.data._progressbar(1, 0, start, printstr)
 
         # concat catgs for each sample
         asyncs1 = {}
