@@ -69,7 +69,7 @@ def start_ipcluster(data):
             stdout=subprocess.PIPE)
 
     # cluster with THIS ID is running then kill it and try again
-    except subprocess.CalledProcessError as inst:
+    except subprocess.CalledProcessError:
         subprocess.check_call([
             "ipcluster", "stop", 
             "--cluster-id", data._ipcluster["cluster_id"],
