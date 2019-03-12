@@ -375,7 +375,7 @@ class Step3:
 
         # create standard load-balancers
         self.lbview = self.ipyclient.load_balanced_view()
-        self.thview = self.ipyclient.load_balanced_view()
+        self.thview = self.ipyclient.load_balanced_view()  # to be threaded
 
         # if nthreads then scale thview to use threads
         eids = self.ipyclient.ids
@@ -582,17 +582,24 @@ class Step3:
 
         # enter result stats as the jobs finish
         finished = 0
+        samplelist = list(rasyncs.keys())
         while 1:
-            # get maxlen and depths array from clusters
-            for sample in self.samples:
-                if sample.name in rasyncs:
-                    if rasyncs[sample.name].ready():
-                        maxlens, depths = rasyncs[sample.name].get()
-                        store_sample_stats(self.data, sample, maxlens, depths)
-                        finished += 1
-                        if not rasyncs[sample.name].successful():
-                            raise IPyradError(rasyncs[sample.name].exception())
-                        del rasyncs[sample.name]
+            for sname in samplelist:
+                if rasyncs[sname].ready():
+
+                    # enter results to sample object
+                    maxlens, depths = rasyncs[sname].get()
+                    store_sample_stats(
+                        self.data, self.data.samples[sname], maxlens, depths)
+                    finished += 1
+                    
+                    # check for errors
+                    if not rasyncs[sname].successful():
+                        raise IPyradError(rasyncs[sample.name].get())
+
+                    # remove sample from todo list, and del from rasyncs mem
+                    samplelist.remove(sname)
+                    del rasyncs[sample.name]
 
             self.data._progressbar(njobs, finished, start, printstr)
             time.sleep(0.1)
@@ -1742,7 +1749,7 @@ def bedtools_merge(data, sample):
             outfile.write(result)
 
     # Report the number of regions we're returning
-    nregions = len(result.strip().split("\n"))
+    # nregions = len(result.strip().split("\n"))
     return result
 
 
