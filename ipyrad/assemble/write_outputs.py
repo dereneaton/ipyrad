@@ -1992,9 +1992,11 @@ def build_vcf(data, chunksize=1000):
             else:
                 genos = io5['genos'][chunk:chunk + chunksize, :, :]
                 snames = data.snames
-                chroms = ["locus_{}".format(i - 1) for i in snpmap[:, 0]]
-                ids = ['.'] * genos.shape[0]
-
+                chroms = ["RAD_{}".format(i - 1) for i in snpmap[:, 0]]
+                ids = [
+                    "loc{}_pos{}".format(i - 1, j) for (i, j) 
+                    in snpmap[:, [0, 2]]
+                ]
                 # denovo based positions: pos on locus. tested. works. right.
                 pos = snpmap[:, 2]
                 # offset = 0
@@ -2067,7 +2069,8 @@ def build_vcf(data, chunksize=1000):
 
             # concat and order columns correctly
             infocols = pd.concat([df_pos, colinfo, colform], axis=1)
-            infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]]
+            infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT",
+                "QUAL", "FILTER", "INFO", "FORMAT"]]
             arr = pd.concat([infocols, df_depth], axis=1)
 
             # debugging                       
@@ -2248,6 +2251,7 @@ def get_fai_values(data, value):
         sep="\t",
     )
     return fai[value].values  
+
 
 
 AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
