@@ -887,7 +887,7 @@ class Hackers:
     def merge_technical_replicates(self, value):
         self._data["merge_technical_replicates"] = bool(value)
 
-    
+
 
 class Params:
     def __init__(self, data):
@@ -917,12 +917,12 @@ class Params:
         self._max_Ns_consens = (5, 5)
         self._max_Hs_consens = (8, 8)
         self._min_samples_locus = 4
-        self._max_SNPs_locus = (20, 20)
+        self._max_SNPs_locus = 0.25
         self._max_Indels_locus = (8, 8)
         self._max_shared_Hs_locus = 0.5
         self._trim_reads = (0, 0, 0, 0)
         self._trim_loci = (0, 0, 0, 0)
-        self._output_formats = list("psv")
+        self._output_formats = list("psl")
         self._pop_assign_file = ""
         
         self._keys = [
@@ -1275,7 +1275,7 @@ class Params:
                     value = float(value)
                 except Exception as inst:
                     raise IPyradParamsError("""
-    max_shared_Hs_locus must be int or float, you put: {}""".format(alue))
+    max_shared_Hs_locus must be int or float, you put: {}""".format(value))
         self._max_shared_Hs_locus = value
 
 
@@ -1284,9 +1284,18 @@ class Params:
         return self._max_SNPs_locus
     @max_SNPs_locus.setter
     def max_SNPs_locus(self, value):
-        value = tuplecheck(value, int)
-        assert isinstance(value, tuple), (
-            "max_SNPs_locus should be a tuple e.g., (20, 20)")
+        #backwards compatible allow tuple and take first value
+        if isinstance(value, tuple):
+            value = value[0]
+        if isinstance(value, str):
+            if value.isdigit():
+                value = int(value)
+            else:
+                try:
+                    value = float(value)
+                except Exception as inst:
+                    raise IPyradParamsError("""
+    max_SNPs_locus must be int or float, you put: {}""".format(value))
         self._max_SNPs_locus = value
 
 
