@@ -300,7 +300,7 @@ class Step3:
 
         # tell user which samples are not ready for step 3
         if state1.any():
-            print("skipping samples not yet in state==2:\n{}"
+            self.data._print("skipping samples not yet in state==2:\n{}"
                   .format(state1.tolist()))
 
         if self.force:
@@ -311,7 +311,7 @@ class Step3:
         else:
             # tell user which samples have already cmopleted step 3
             if state3.any():
-                print("skipping samples already finished step 3:\n{}"
+                self.data._print("skipping samples already finished step 3:\n{}"
                       .format(state3.tolist()))
 
             # run all samples in state 2
@@ -323,7 +323,7 @@ class Step3:
             if sample.stats.reads_passed_filter:
                 checked_samples.append(sample)
             else:
-                print("skipping {}; no reads found.")
+                self.data._print("skipping {}; no reads found.")
         if not any(checked_samples):
             raise IPyradError("No samples ready for step 3.")
 
@@ -438,7 +438,7 @@ class Step3:
                 break
 
         # check for errors
-        print("")
+        self.data._print("")
         for job in [rasync1, rasync2]:
             if not job.successful():
                 raise IPyradError(job.exception())
@@ -480,7 +480,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in casyncs:
             if not casyncs[job].successful():
                 raise IPyradError(casyncs[job].exception())
@@ -494,7 +494,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
                 raise IPyradError(basyncs[job].exception())
@@ -508,7 +508,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in hasyncs:
             if not hasyncs[job].successful():
                 raise IPyradError(hasyncs[job].exception())
@@ -550,7 +550,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in allasyncs:
             if not job.successful():
                 raise IPyradError(job.exception())
@@ -564,7 +564,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
                 raise IPyradError(basyncs[job].exception())
@@ -581,9 +581,9 @@ class Step3:
             rasyncs[sample.name] = self.lbview.apply(get_quick_depths, *args)
 
         # enter result stats as the jobs finish
-        finished = 0
-        samplelist = list(rasyncs.keys())
+        finished = 0       
         while 1:
+            samplelist = list(rasyncs.keys())
             for sname in samplelist:
                 if rasyncs[sname].ready():
 
@@ -598,14 +598,14 @@ class Step3:
                         raise IPyradError(rasyncs[sample.name].get())
 
                     # remove sample from todo list, and del from rasyncs mem
-                    samplelist.remove(sname)
-                    del rasyncs[sample.name]
+                    rasyncs.pop(sname)
 
+            # progress bar
             self.data._progressbar(njobs, finished, start, printstr)
             time.sleep(0.1)
             if finished == njobs:
                 break
-        print("")
+        self.data._print("")
 
 
     def remote_run(self, printstr, function, args, threaded=False):
@@ -628,7 +628,7 @@ class Step3:
                 break
 
         # check for errors
-        print("")
+        self.data._print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].exception())
@@ -1530,8 +1530,8 @@ def mapping_reads(data, sample, nthreads):
     #  -q = Only keep reads with mapq score >= 30 (seems to be pretty standard)
     #  -F = Select all reads that DON'T have these flags.
     #        0x4 (segment unmapped)
-    #        0x100 (Secondary alignment)
-    #        0x800 (supplementary alignment)
+    #        0x100 (Secondary alignment) 
+    #        0x800 (supplementary alignment) (chimeric-like, not likely)
     #        0x71
     #        0xb1 
     #  -U = Write out all reads that don't pass the -F filter
