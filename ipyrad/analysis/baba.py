@@ -671,7 +671,7 @@ def tree2tests(newick, constraint_dict, constraint_exact):
     tests = []
     
     ## topnode must have children
-    for topnode in tree.tree.traverse("levelorder"):
+    for topnode in tree.treenode.traverse("levelorder"):
         for oparent in topnode.children:
             for onode in oparent.traverse("levelorder"):
                 if test_constraint(onode, cdict, "p4", constraint_exact[3]):
