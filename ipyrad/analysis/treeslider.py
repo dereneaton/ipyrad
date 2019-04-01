@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 import toytree
 from .raxml import Raxml as raxml
+from ..core.Parallel import Parallel
 
 # suppress the terrible h5 warning
 import warnings
@@ -27,17 +28,26 @@ with warnings.catch_warnings():
     import h5py
 
 
+"""
+Infer whole scaffold if windowsize = 0, None
+scaffold_idx = 0 is default.
+extract PHY and trim for a given window entered...
+"""
+
+
 class TreeSlider():
     """
     Performs phylo inference across RAD data sampled in windows. Uses the
-    hdf5 database output from ipyrad as input (".seqs.hdf5").
+    hdf5 database output from ipyrad as input (".seqs.hdf5"). If no window 
+    size is entered then entire scaffolds are used as windows. 
 
     Parameters:
     ------------
     name: name prefix for output files.
     workdir: directory for output files.
     data: .loci file
-    minmap: dictionary of minimum sampling to include window in analysis.
+    imap: optional dictionary mapping of sample names to new names. 
+    minmap: optional dictionary of minimum sampling per imap group.
     minsnps: minimum number of SNPs to include window in analysis.
     """
     def __init__(
@@ -45,51 +55,77 @@ class TreeSlider():
         data,
         name=None,
         workdir="./analysis-treeslider",
-        window_size=50000, 
-        slide_size=10000,
-        scaffold_idx=None,
-        imap=None,
-        minmap=None,
-        minsnps=2,
+        window_size=None, 
+        slide_size=None,
+        scaffold_idxs=None,
+        minsnps=1,
         bootstraps=0,
+        # imap=None,
+        # minmap=None,
         ):
 
         # store attributes
         self.name = name
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.data = os.path.realpath(os.path.expanduser(data))
+
+        # work
+        self.scaffold_idxs = scaffold_idxs
         self.window_size = window_size
         self.slide_size = slide_size
         self.minsnps = minsnps
         self.boots = bootstraps
 
-        # parse attributes
-        self.imap = imap
-        self.minmap = minmap
-        self.rmap = {}
-        if self.imap:
-            for k, v in self.imap.items():
-                for i in v:
-                    self.rmap[i] = k
-        if not scaffold_idx:
-            scaffold_idx = 0
-        self.scaffold_idx = scaffold_idx
+        # parallelization
+        self.ipcluster = {
+            "cluster_id": "", 
+            "profile": "default",
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0, 
+            "threads": 2,
+            "pids": {},
+            }        
+
+        # if not window then slide is set to window
+        if (not self.window_size) or (not self.slide_size):
+            self.slide_size = self.window_size
+
+        # # parse attributes
+        # self.imap = imap
+        # self.minmap = minmap
+        # self.rmap = {}
+        # if self.imap:
+        #     for k, v in self.imap.items():
+        #         for i in v:
+        #             self.rmap[i] = k
+
+        # ensure workdir
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        # fill mindict
-        if not minmap:
-            if imap:
-                self.minmap = {i: 1 for i in self.imap}
+        # # fill mindict
+        # if not minmap:
+        #     if imap:
+        #         self.minmap = {i: 1 for i in self.imap}
 
         # parsed attributes
         self.scaffold_table = None
         self.tree_table = None
         self.phymap = None
         self._pnames = None
-
         self._parameter_check()
+
+        # default to all scaffolds if none entered.
         self._parse_scaffolds()
+        if not self.scaffold_idxs:
+            self.scaffold_idxs = self.scaffold_table.index.to_list()
+        if isinstance(self.scaffold_idxs, (list, tuple, set)):
+            self.scaffold_idxs = sorted(self.scaffold_idxs)
+
+        # build the tree table from the scaffolds, windows, and slides.
+        self._parse_tree_table()
 
 
     def _parameter_check(self):
@@ -99,76 +135,120 @@ class TreeSlider():
 
 
     def _parse_scaffolds(self):
-        # get chromosome lengths from the database:
+        "get chromosome lengths from the database"
         with h5py.File(self.data) as io5:
+
+            # parse formatting from db
             self._pnames = np.array([
                 i.decode() for i in io5["phymap"].attrs["phynames"]
             ])
             self._longname = 1 + max([len(i) for i in self._pnames])
+
+            # parse names and lengths from db
+            scafnames = [i.decode() for i in io5["scaffold_names"][:]]
+            scaflens = io5["scaffold_lengths"][:]
             self.scaffold_table = pd.DataFrame(
                 data={
-                "scaffold_name": [i.decode() for i in io5["scaffold_names"][:]],
-                "scaffold_length": io5["scaffold_lengths"][:],
+                    "scaffold_name": scafnames,
+                    "scaffold_length": scaflens,
                 }, 
                 columns=["scaffold_name", "scaffold_length"],
             )
 
-    def _parse_scaffold_phymap(self):
 
-        # scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table
+
+    def _parse_tree_table(self):
+        "Build DataFrame for storing results"
+        dfs = []
+        for scaffold in self.scaffold_idxs:
+
+            # get the length of this scaffold
+            chromlen = (
+                self.scaffold_table.loc[scaffold, "scaffold_length"])
+            
+            # get start positions
+            if self.window_size:
+                starts = np.arange(0, chromlen - self.window_size, self.slide_size)
+            else:
+                starts = [0]
+
+            # get end positions
+            if self.window_size:
+                ends = np.arange(self.window_size, chromlen, self.slide_size)
+            else:
+                ends = [chromlen]
+
+            # build to table
+            df = pd.DataFrame(data={
+                "scaffold": scaffold,
+                "start": starts,
+                "end": ends,
+                "nsnps": np.nan,
+                "nsamplecov": np.nan,
+                "tree": np.nan,
+                }, 
+                columns=["scaffold", "start", "end", "nsnps", "nsamplecov", "tree"], 
+            )
+            dfs.append(df)
+
+        # concat data from one or more scaffolds
+        self.tree_table = pd.concat(dfs)
+        self.tree_table.reset_index(drop=True, inplace=True)
+
+
+
+    def _parse_scaffold_phymap(self, scaffold_idx):
+        "scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table"
         with h5py.File(self.data) as io5:
             colnames = io5["phymap"].attrs["columns"]
+
+            # mask to select this scaff
             mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
+
+            # load dataframe of this scaffold
             self.phymap = pd.DataFrame(
                 data=io5["phymap"][mask, :],
                 columns=[i.decode() for i in colnames],
             )
-            
-
-    def _parse_tree_table(self):
-        chromlen = self.scaffold_table.loc[self.scaffold_idx, "scaffold_length"]
-        self.tree_table = pd.DataFrame(
-            data={
-            "start": np.arange(0, chromlen - self.window_size, self.slide_size), 
-            "end": np.arange(self.window_size, chromlen, self.slide_size),
-            "nsnps": np.nan,
-            "nsamplecov": np.nan,
-            "tree": np.nan,
-            }, 
-            columns=["start", "end", "nsnps", "nsamplecov", "tree"], 
-        )
+     
 
 
     def run(
         self, 
-        scaffold_idx=0,
-        window_size=None,
-        slide_size=None,
-        bootstraps=0,
-        ipyclient=None,
+        ipyclient=None, 
+        force=False, 
+        show_cluster=False, 
+        auto=False):
+        """
+        Run command for tree slider.
+        """
+        pool = Parallel(
+            tool=self, 
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={"force": force},
+            )
+        pool.wrap_run()
+
+
+    def _run(
+        self, 
         force=False,
+        ipyclient=None,
         ):
         """
-        Submit jobs to infer trees at every window of a chromosome.
+        Hidden func to run parallel job.
         """
 
-        # re-parse the tree-table in case window and slide were updated:
-        self.boots = (bootstraps if bootstraps else self.boots)
-        self.scaffold_idx = (scaffold_idx if scaffold_idx else self.scaffold_idx)
-        self.window_size = (window_size if window_size else self.window_size)
-        self.slide_size = (slide_size if slide_size else self.slide_size)
-        self.name = (
-            self.name if self.name else
-            "ts-sc{}-wi{}-sl{}".format(scaffold_idx, window_size, slide_size)
-        )
-
-        # get scaffold name
-        scaf_name = self.scaffold_table.scaffold_name.loc[self.scaffold_idx]
+        # use user name else create one
+        if not self.name:
+            self.name = "all-scaffolds"
 
         # get outfile name
         tree_table_path = os.path.join(
             self.workdir,
-            "{}-{}.tree_table.csv".format(self.name, scaf_name))
+            "{}.tree_table.csv".format(self.name))
 
         # do not overwrite tree table
         if os.path.exists(tree_table_path):
@@ -178,10 +258,6 @@ class TreeSlider():
         .format(tree_table_path)))
                 return
 
-        # re-build tree table and phymap from (maybe new) params
-        self._parse_tree_table()
-        self._parse_scaffold_phymap()
-
         # load balance parallel jobs 2-threaded
         lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
 
@@ -189,38 +265,49 @@ class TreeSlider():
         time0 = time.time()
         rasyncs = {}
 
-        # subset phymap for this scaffold
-        io5 = h5py.File(self.data, 'r')
-        mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
-        phymap = io5["phymap"][mask, :]
-
         # initial progress ticker to run during job submission
         print(
-            "building database: nwindows={}; minsnps={}; scaffold={} ({})"
+            "building database: nwindows={}; minsnps={}"
             .format(
                 self.tree_table.shape[0],
                 self.minsnps,
-                self.scaffold_idx,
-                scaf_name,
             ))
 
-        # submit jobs
-        for idx in self.tree_table.index:
+        # subset phymap for this scaffold
+        io5 = h5py.File(self.data, 'r')
+        scaffs = io5["phymap"][:, 0]
 
-            # get window margins
-            start, stop = self.tree_table.loc[idx, ["start", "end"]].astype(int)
+        # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, boots)
+        jidx = 0
+        for scaff in self.tree_table.scaffold.unique():
 
-            # subset phymap for this window range
-            mask = (phymap[:, 3] > start) & (phymap[:, 4] < stop)
-            cmap = phymap[mask, :]
+            # load phymap for each scaff at a time
+            phymap = io5["phymap"][scaffs == scaff + 1, :]
+            subtree = self.tree_table[self.tree_table.scaffold == scaff]
 
-            # store async result
-            args = (self.data, cmap, self.minsnps, self.boots)
-            rasyncs[idx] = lbview.apply(remote_tree_inference, *args)
+            # submit jobs each window at a time
+            for idx in subtree.index:
+
+                # get window margins
+                start, stop = (
+                    subtree.loc[idx, ["start", "end"]].astype(int))
+
+                # subset phymap for this window range
+                mask = (phymap[:, 3] > start) & (phymap[:, 4] < stop)
+                cmap = phymap[mask, :]
+                wmin = cmap[:, 1].min()
+                wmax = cmap[:, 2].max()
+
+                # store async result
+                args = (self.data, wmin, wmax, self.minsnps, self.boots)
+                rasyncs[jidx] = lbview.apply(remote_tree_inference, *args)
+                jidx += 1
+
+        # close database
+        io5.close()
 
         # track progress and save result table
-        io5.close()
-        message = "inferring raxml trees | scaffold {}".format(scaffold_idx)
+        message = "inferring raxml trees"
         self._track_progress_and_store_results(rasyncs, time0, message)
         self.tree_table.to_csv(tree_table_path)
 
@@ -233,11 +320,12 @@ class TreeSlider():
             finished = [i for i in rasyncs if rasyncs[i].ready()]
             for idx in finished:
                 if rasyncs[idx].successful():
-                    self.tree_table.loc[idx, 2:] = rasyncs[idx].get()
+                    self.tree_table.iloc[idx, 3:] = rasyncs[idx].get()
                     del rasyncs[idx]
                     done += 1
                 else:
                     raise Exception(rasyncs[idx].get())
+
             # progress
             progressbar(done, nwindows, time0, message)
             time.sleep(0.5)
@@ -246,7 +334,8 @@ class TreeSlider():
                 break
 
 
-def remote_tree_inference(database, cmap, minsnps, bootstraps):
+
+def remote_tree_inference(db, wmin, wmax, minsnps, boots, threads=2):
     "remote job to run raxml inference."
 
     # get seqarr for phy indices
@@ -256,8 +345,8 @@ def remote_tree_inference(database, cmap, minsnps, bootstraps):
     nsnps = np.nan
 
     # parse phylip string if there is sequence in this window
-    if cmap.size:
-        nsnps, nsamplecov, phystring = parse_phystring(database, cmap)
+    if wmax > wmin:
+        nsnps, nsamplecov, phystring = parse_phystring(db, wmin, wmax)
 
         # infer a tree if there is variation in this window
         if nsamplecov >= 4 and nsnps >= minsnps:
@@ -271,27 +360,27 @@ def remote_tree_inference(database, cmap, minsnps, bootstraps):
                 data=fname,
                 name="temp_" + str(os.getpid()),
                 workdir=tempfile.gettempdir(),
-                T=2,
-                N=bootstraps,
+                T=max(1, threads),
+                N=max(1, boots),
             )
             rax.run(force=True, quiet=True, block=True)
 
-            try:
+            if os.path.exists(rax.trees.bipartitions):
                 tree = toytree.tree(rax.trees.bipartitions).newick
-            except IOError:
+            else:
                 tree = toytree.tree(rax.trees.bestTree).newick
 
     return nsnps, nsamplecov, tree
 
 
 
-def parse_phystring(database, cmap):
+def parse_phystring(database, wmin, wmax):
     "Returns phystring else 0 if filtered."
 
     with h5py.File(database, 'r') as io5:
 
         # select all sequence data in window range
-        seqarr = io5["phy"][:, cmap[:, 1].min():cmap[:, 2].max()]
+        seqarr = io5["phy"][:, wmin:wmax]  # cmap[:, 1].min():cmap[:, 2].max()]
         pnames = np.array([
             i.decode() for i in io5["phymap"].attrs["phynames"]
         ])
