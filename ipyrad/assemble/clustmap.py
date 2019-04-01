@@ -370,8 +370,8 @@ class Step3:
     def tune_threads(self):
         "setup threading to efficiently run clust/ref across HPC"
         # set nthreads based on _ipcluster dict (default is 2)
-        if "threads" in self.data._ipcluster.keys():
-            self.nthreads = int(self.data._ipcluster["threads"])
+        if "threads" in self.data.ipcluster.keys():
+            self.nthreads = int(self.data.ipcluster["threads"])
 
         # create standard load-balancers
         self.lbview = self.ipyclient.load_balanced_view()
