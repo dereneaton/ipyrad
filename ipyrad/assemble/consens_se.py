@@ -164,8 +164,8 @@ class Step5:
 
         # set up parallel client: allow user to throttle cpus
         self.lbview = self.ipyclient.load_balanced_view()
-        if self.data._ipcluster["cores"]:
-            self.ncpus = self.data._ipcluster["cores"]
+        if self.data.ipcluster["cores"]:
+            self.ncpus = self.data.ipcluster["cores"]
         else:
             self.ncpus = len(self.ipyclient.ids)
 
@@ -435,12 +435,8 @@ class Processor:
         self.este = self.data.stats.error_est.mean()
         self.esth = self.data.stats.hetero_est.mean()
         self.maxlen = self.data.hackersonly.max_fragment_length
-        if 'pair' in self.data.params.datatype:
-            self.maxhet = sum(self.data.params.max_Hs_consens)
-            self.maxn = sum(self.data.params.max_Ns_consens)
-        else:
-            self.maxhet = self.data.params.max_Hs_consens[0]
-            self.maxn = self.data.params.max_Ns_consens[0]
+        self.maxhet = self.data.params.max_Hs_consens
+        self.maxn = self.data.params.max_Ns_consens
         # not enforced for ref
         if self.isref:
             self.maxn = int(1e6)
@@ -534,11 +530,13 @@ class Processor:
 
     def filter_mindepth(self):
         "return 1 if READ depth > minimum param"
-        # exit if nreps is less than mindepth setting
-        if not nfilter1(self.data, self.reps):
-            self.filters['depth'] += 1
+        bool1 = sum(self.reps) >= self.data.params.mindepth_majrule
+        bool2 = sum(self.reps) <= self.data.params.maxdepth
+        if bool1 & bool2:       
             return 0
+        self.filters['depth'] += 1
         return 1
+
 
 
     def build_consens_and_array(self):
@@ -595,17 +593,21 @@ class Processor:
             j.decode() in list("RKSYWM")]
         self.nheteros = len(self.hidx)
 
+
     def filter_maxhetero(self):
-        if not nfilter2(self.nheteros, self.maxhet):
+        if self.nheteros > (len(self.consens) * self.maxhet):
             self.filters['maxh'] += 1
-            return 0
-        return 1
+            return 1
+        return 0
+
 
     def filter_maxN_minLen(self):
-        if not nfilter3(self.consens, self.maxn):
-            self.filters['maxn'] += 1
-            return 0
-        return 1
+        if self.consens.size >= 32:
+            nns = self.consens[self.consens == b"N"].size
+            if nns > (len(self.consens) * self.maxns):
+                self.filters['maxn'] += 1
+                return 1
+        return 0
 
     def get_alleles(self):
         # if less than two Hs then there is only one allele
@@ -922,7 +924,6 @@ def store_sample_stats(data, sample, statsdicts):
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
-
 def make_cigar(arr):
     "writes a cigar string with locations of indels and lower case ambigs"
 
@@ -1158,7 +1159,8 @@ def get_binom(base1, base2, estE, estH):
     return False, bestprob
 
 
-# not currently used...
+
+# not currently used in reference assemblies
 def removerepeats(consens, arrayed):
     """
     Checks for interior Ns in consensus seqs and removes those that are at
@@ -1244,35 +1246,6 @@ def removerepeats(consens, arrayed):
     arrayed = arrayed[:, ~ridx]
 
     return consens, arrayed
-
-
-
-def nfilter1(data, reps):
-    "applies read depths filter"
-    bool1 = sum(reps) >= data.params.mindepth_majrule
-    bool2 = sum(reps) <= data.params.maxdepth
-    if bool1 & bool2:       
-        return 1
-    return 0
-
-
-
-def nfilter2(nheteros, maxhet):
-    "applies max heteros in a seq filter"
-    if nheteros <= maxhet:
-        return 1
-    return 0
-
-
-
-def nfilter3(consens, maxn):
-    "applies filter for maxN and hard minlen (32)"
-    # minimum length for clustering in vsearch
-    if consens.size >= 32:
-        if consens[consens == b"N"].size <= maxn:
-            return 1
-        return 0
-    return 0
 
 
 
