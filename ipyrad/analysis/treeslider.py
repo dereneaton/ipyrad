@@ -14,10 +14,12 @@ import datetime
 import tempfile
 
 # third party
-from numba import njit
 import pandas as pd
 import numpy as np
 import toytree
+from numba import njit
+
+# internal librries
 from .raxml import Raxml as raxml
 from ..core.Parallel import Parallel
 
