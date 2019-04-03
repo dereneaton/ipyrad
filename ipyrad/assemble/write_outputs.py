@@ -1365,7 +1365,7 @@ def write_loci_and_alleles(data):
         # LOCI ONLY: iterate through chunk files
         if not allel:
             indata = open(bit, 'r')
-            for line in iter(indata, 'r'):
+            for line in iter(indata):
 
                 # write name, seq pairs
                 if "|\n" not in line:
