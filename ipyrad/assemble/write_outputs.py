@@ -1699,7 +1699,8 @@ def fill_snp_array(data, ntaxa, nsnps):
         # iterate over chunkfiles
         for bit in sortbits:
             # iterate lines of file until locus endings
-            for line in iter(open(bit, 'r')):
+            indata = open(bit, 'r')
+            for line in iter(indata):
                 
                 # while still filling locus until |\n store name,seq in dict
                 if "|\n" not in line:
@@ -1752,7 +1753,10 @@ def fill_snp_array(data, ntaxa, nsnps):
                     # reset locus
                     start = end
                     tmploc = {}
-                        
+
+            # close file handle
+            indata.close()
+
         # fill missing with 78 (N)
         tmparr[tmparr == 0] = 78
 
