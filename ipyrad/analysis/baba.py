@@ -20,11 +20,14 @@ import numba
 
 ## ipyrad tools
 import toytree
-from ipyrad.analysis.utils import Params, progressbar
+from ipyrad.analysis.utils import Params, progressbar, parallelize_run
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.plotting.baba_panel_plot import baba_panel_plot
-#from ipyrad.assemble.write_outfiles import reftrick    ## TODO REPLACE
+from ipyrad.assemble.write_outputs import reftrick
 
+# todo: wrap for warning
+import h5py
+
+# from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 # set floating point precision in data frames to 3 for prettier printing
 # pd.set_option('precision', 3)
 
@@ -64,11 +67,12 @@ class Baba:
     """
     def __init__(self, 
         data=None,
-        tests=None,
+        imap=None,
+        minmap=1,
         newick=None,
         nboots=1000,
-        mincov=1):
-        
+        ):
+
         # parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
             self.data = os.path.realpath(os.path.expanduser(data))
@@ -80,12 +84,12 @@ class Baba:
         if isinstance(newick, toytree.Toytree.ToyTree):
             self.newick = newick.newick          
 
-        # store tests, TODO: check for errors
-        self.tests = tests
+        # store tests
+        self.imap = imap
+        self.minmap = minmap
 
         # parameters
         self.params = Params()
-        self.params.mincov = mincov
         self.params.nboots = nboots
         self.params.quiet = False
         self.params.database = None
@@ -93,7 +97,18 @@ class Baba:
         # results storage
         self.results_table = None
         self.results_boots = None
-        
+       
+        # cluster attributes
+        self._ipcluster = {
+            "cluster_id": "", 
+            "profile": "default",
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0, 
+            "threads": 2,
+            "pids": {},
+            }
 
     @property
     def taxon_table(self):
@@ -118,7 +133,7 @@ class Baba:
 
 
 
-    def run(self, ipyclient=None):
+    def run(self, force=False, ipyclient=None, show_cluster=False, auto=False):
         """
         Run a batch of dstat tests on a list of tests, where each test is 
         a dictionary mapping sample names to {p1 - p4} (and sometimes p5). 
@@ -131,7 +146,16 @@ class Baba:
         ipyclient (ipyparallel.Client object):
             An ipyparallel client object to distribute jobs to a cluster. 
         """
-        batch_run(self, ipyclient)
+
+        # distribute jobs in a wrapped cleaner function
+        parallelize_run(
+            self, 
+            run_kwargs={"ipyclient": ipyclient, 'force': force}, 
+            show_cluster=show_cluster, 
+            auto=auto)
+
+
+        batch(self, ipyclient)
 
         ## skip this for 5-part test results
         if not isinstance(self.results_table, list):
@@ -273,15 +297,91 @@ class Baba:
         return copy.deepcopy(self)
 
 
+    def _run(self, force=False, ipyclient=None):
+        "Function to distribute jobs to ipyclient"
 
-def batch(
-    baba,
-    ipyclient=None,
-    ):
+        # load balancer
+        lbview = ipyclient.load_balanced_view()
+
+        # check that tests are OK
+        if not self.tests:
+            raise IPyradError("no tests found")
+        if isinstance(self.tests, dict):
+            self.tests = [self.tests]
+
+        # check that mindict is OK
+        if isinstance(self.minmap, int):
+            self.minmap = {i: self.minmap for i in self.imap}
+        if not self.minmap:
+            self.minmap = {i: 1 for i in self.imap}
+
+
+
+        # send jobs to the client (but not all at once b/c njobs can be huge)
+        rasyncs = {}
+        idx = 0
+        for i in range(len(ipyclient)):
+
+            # next entries unless fewer than len ipyclient, skip
+            try:
+                test = next(itests)
+                mindict = next(imdict)
+            except StopIteration:
+                continue
+
+            rasyncs[idx] = lbview.apply(dstat, *[loci, test, mindict, self.params.nboots])
+            idx += 1
+
+
+def write_tmp_h5(baba):
+    "Reduce VCF to temp h5 that jobs will slice from"
+
+    # load in the VCF: if this gets huge we could hdf5 it...
+    with open(baba.data) as indata:
+        for i in indata:
+            if i[:6] == "#CHROM":
+                colnames = i[1:].strip().split()
+                break
+
+    # below here could be done in chunks...
+    df = pd.read_csv(baba.data, comment="#", sep="\t", names=colnames)
+
+    # drop superfluous columns
+    df = df.drop(columns=[
+        "QUAL", "FILTER", "INFO", "FORMAT", "REF", "ALT"])
+
+    # reduce geno calls to only genos
+    for column in df.columns[3:]:
+        df[column] = df[column].apply(lambda x: x.split(":")[0])
+    
+    # set missing data to NaN
+    df.iloc[:, 3:] = df.iloc[:, 3:].applymap(sumto)
+
+    # save as hdf5
+    r = 54321
+    with h5py.File("baba-{}.h5".format(r), "w") as io5:
+        # save chrom as an int index instead of string
+        io5["CHROM"] = pd.factorize(df.CHROM)[0]
+
+        # save loc as int 
+        io5["LOC"] = [4, 4, 10]
+    
+    
+
+
+
+def sumto(value):
+    "used in pd.DataFrame applymap to convert genos to derived sums"
+    if value == "./.":
+        return np.nan
+    else:
+        return sum((int(i) for i in value.split("/") if i in ("0", "1"))) / 2.
+    
+
+def batch(baba, ipyclient=None):
     """
     distributes jobs to the parallel client
     """
-
     # parse args
     handle = baba.data
     taxdicts = baba.tests
@@ -312,19 +412,11 @@ def batch(
     bootsarr = np.zeros((tot, nboots), dtype=np.float64)
     paneldict = {}
 
-    ## TODO: Setup a wrapper to find and cleanup ipyclient
-    ## define the function and parallelization to use, 
-    ## if no ipyclient then drops back to using multiprocessing.
-    if not ipyclient:
-        # ipyclient = ip.core.parallel.get_client(**self._ipcluster)
-        raise IPyradError("you must enter an ipyparallel.Client() object")
-    else:
-        lbview = ipyclient.load_balanced_view()
-
     ## submit jobs to run on the cluster queue
     start = time.time()
     asyncs = {}
     idx = 0
+
 
     ## prepare data before sending to engines
     ## if it's a str (locifile) then parse it here just once.
@@ -332,7 +424,7 @@ def batch(
         with open(handle, 'r') as infile:
             loci = infile.read().strip().split("|\n")
     if isinstance(handle, list):
-        pass #sims()
+        pass  #sims()
 
     ## iterate over tests (repeats mindicts if fewer than taxdicts)
     if not taxdicts:
@@ -343,7 +435,7 @@ def batch(
         imdict = itertools.cycle([mindicts])
 
     #for test, mindict in zip(taxdicts, itertools.cycle([mindicts])):
-    for i in xrange(len(ipyclient)):
+    for i in range(len(ipyclient)):
 
         ## next entries unless fewer than len ipyclient, skip
         try:
@@ -514,6 +606,39 @@ def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
             )
 
     return res.T, boots
+
+
+
+
+def loci_to_arr(self, loci):
+    "Converts sequence data in loci file to binary where outgroup is 0"
+
+    # array dimensions
+    nloci = len(loci)
+    maxsnps = 10
+    testshape = (6 if len(self.imap[0]) > 4 else 4) 
+
+    # make an array
+    arr = np.zeros((nloci, testshape, maxsnps), dtype=np.float64)
+    
+    # get the outgroup sample
+    keys = sorted([i for i in self.imap if i[0] == 'p'])
+    outg = keys[-1]
+
+    # iterate over loci and store 
+    pass
+
+
+
+
+def vcf_to_arr(self, loci):
+    "Converts VCF SNP data to binary array where outgroup is 0"
+
+
+
+
+
+
 
 
 
@@ -823,9 +948,9 @@ def test_constraint(node, cdict, tip, exact):
 def masknulls(arr):
     nvarr = np.zeros(arr.shape[0], dtype=np.int8)
     trimarr = np.zeros(arr.shape, dtype=np.float64)
-    for loc in xrange(arr.shape[0]):
+    for loc in range(arr.shape[0]):
         nvars = 0
-        for site in xrange(arr.shape[2]):
+        for site in range(arr.shape[2]):
             col = arr[loc, :, site]
             ## mask cols with 9s
             if not np.any(col == 9):
@@ -843,11 +968,11 @@ def masknulls(arr):
 def _reffreq2(ancestral, iseq, consdict):
     ## empty arrays
     freq = np.zeros((1, iseq.shape[1]), dtype=np.float64)
-    amseq = np.zeros((iseq.shape[0]*2, iseq.shape[1]), dtype=np.uint8)
+    amseq = np.zeros((iseq.shape[0] * 2, iseq.shape[1]), dtype=np.uint8)
     
     ## fill in both copies
-    for seq in xrange(iseq.shape[0]):
-        for col in xrange(iseq.shape[1]):
+    for seq in range(iseq.shape[0]):
+        for col in range(iseq.shape[1]):
 
             ## get this base and check if it is hetero
             base = iseq[seq][col]
@@ -855,15 +980,15 @@ def _reffreq2(ancestral, iseq, consdict):
             
             ## if not hetero then enter it
             if not np.any(who):
-                amseq[seq*2][col] = base
-                amseq[seq*2+1][col] = base        
+                amseq[seq * 2][col] = base
+                amseq[seq * 2 + 1][col] = base        
             ## if hetero then enter the 2 resolutions
             else:
-                amseq[seq*2][col] = consdict[who, 1][0]
-                amseq[seq*2+1][col] = consdict[who, 2][0]
+                amseq[seq * 2][col] = consdict[who, 1][0]
+                amseq[seq * 2 + 1][col] = consdict[who, 2][0]
 
     ## amseq may have N or -, these need to be masked
-    for i in xrange(amseq.shape[1]):
+    for i in range(amseq.shape[1]):
         ## without N or -
         reduced = amseq[:, i][amseq[:, i] != 9]
         counts = reduced != ancestral[0][i]
@@ -879,8 +1004,8 @@ def _reffreq2(ancestral, iseq, consdict):
 def _prop_dstat(arr):
 
     ## numerator
-    abba = ((1.-arr[:, 0]) * (arr[:, 1]) * (arr[:, 2]) * (1.-arr[:, 3]))  
-    baba = ((arr[:, 0]) * (1.-arr[:, 1]) * (arr[:, 2]) * (1.-arr[:, 3]))
+    abba = ((1. - arr[:, 0]) * (arr[:, 1]) * (arr[:, 2]) * (1. - arr[:, 3]))
+    baba = ((arr[:, 0]) * (1. - arr[:, 1]) * (arr[:, 2]) * (1. - arr[:, 3]))
     top = abba - baba
     bot = abba + baba
 
@@ -904,7 +1029,7 @@ def _get_boots(arr, nboots):
     boots = np.zeros((nboots,))
     
     ## iterate to fill boots
-    for bidx in xrange(nboots):
+    for bidx in range(nboots):
         ## sample with replacement
         lidx = np.random.randint(0, arr.shape[0], arr.shape[0])
         tarr = arr[lidx]

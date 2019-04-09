@@ -17,9 +17,9 @@ import subprocess as sps
 
 # third party
 import pandas as pd
-import ipyparallel as ipp
+
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.analysis.utils import progressbar
+from ipyrad.analysis.utils import progressbar, parallelize_run
 
 
 ## raise warning if missing imports
@@ -101,6 +101,8 @@ class SRA(object):
         dry_run=False, 
         split_pairs=None,
         gzip=False,
+        show_cluster=False,
+        auto=False,
         ):
         """
         Download the accessions into a the designated workdir. 
@@ -139,70 +141,28 @@ class SRA(object):
             Automatically launch new ipcluster for parallelization and 
             shutdown when finished. See <object>.ipcluster for settings.
         """
-
         # ensure output directory, also used as tmpdir
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        # ipa.parallel.ipcluster_gather()
-        # try:
-        #     <specific job distributor>
-        # finally:
-        #     ipa.parallel.ipcluster_cleanup()
-
-        try:
-            ## register ipyclient for cleanup
-            if ipyclient:
-                self._ipcluster["pids"] = {}
-                for eid in ipyclient.ids:
-                    engine = ipyclient[eid]
-                    if not engine.outstanding:
-                        pid = engine.apply(os.getpid).get()
-                        self._ipcluster["pids"][eid] = pid               
-
-            ## submit jobs to engines or local 
-            self._distribute_jobs(
-                force=force, 
-                ipyclient=ipyclient, 
-                name_fields=name_fields, 
-                name_separator=name_separator,
-                dry_run=dry_run,
-                split_pairs=split_pairs,
-                gzip=gzip,
-                )
-
-        ## exceptions to catch, cleanup and handle ipyclient interrupts
-        except KeyboardInterrupt:
-            print("\nkeyboard interrupt...")
+        # distribute job wrapped in ipcluster cleanup
+        parallelize_run(
+            self,
+            run_kwargs={
+                "ipyclient": ipyclient,
+                "force": force,
+                "name_fields": name_fields,
+                "name_separator": name_separator,
+                "dry_run": dry_run,
+                "split_pairs": split_pairs,
+                "gzip": gzip,
+            },
+            show_cluster=show_cluster, 
+            auto=auto,
+        )
 
 
-        finally:
-            ## cleanup ipcluster shutdown
-            if ipyclient:
-                ## send SIGINT (2) to all engines still running tasks
-                try:
-                    ipyclient.abort()
-                    time.sleep(0.5)
-                    for engine_id, pid in self._ipcluster["pids"].items():
-                        if ipyclient.queue_status()[engine_id]["tasks"]:
-                            os.kill(pid, 2)
-                            print('killed', pid)
-                        time.sleep(0.1)
-                except ipp.NoEnginesRegistered:
-                    pass
-
-                # clean memory space
-                if not ipyclient.outstanding:
-                    ipyclient.purge_everything()
-
-                # uh oh, kill everything, something bad happened
-                else:
-                    ipyclient.shutdown(hub=True, block=False)
-                    ipyclient.close()
-                    print("\nwarning: ipcluster shutdown and must be restarted")
-
-
-    def _distribute_jobs(
+    def _run(
         self, 
         force, 
         ipyclient, 
@@ -211,7 +171,7 @@ class SRA(object):
         dry_run,
         split_pairs, 
         gzip):
-        "Download files and fasterq-dump them to workdir"
+        "Download files and fastq-dump them to workdir"
 
         # get run info and sort so largest samples are on top
         df = self.fetch_runinfo(list(range(31)), quiet=True)
@@ -491,152 +451,6 @@ def fields_checker(fields):
 #     # remove .sra file
 #     print(path, fastqpath)
 #     # os.remove(path)
-
-
-
-
-
-    # def _submit_jobs(self, 
-    #     force, 
-    #     ipyclient, 
-    #     name_fields, 
-    #     name_separator, 
-    #     dry_run, 
-    #     split_pairs,
-    #     ):
-    #     """
-    #     Download the accessions into a the designated workdir. 
-    #     If file already exists it will only be overwritten if 
-    #     force=True. Temporary files are removed. 
-    #     """
-
-    #     ## get Run data with default fields (1,4,6,30)
-    #     df = self.fetch_runinfo(list(range(31)), quiet=True)
-    #     sys.stdout.flush()
-
-    #     ## if not ipyclient then use multiprocessing?
-    #     if ipyclient:
-    #         lb = ipyclient.load_balanced_view()
-
-    #     ## if Run has samples with same name (replicates) then 
-    #     ## we need to include the accessions in the file names
-    #     if name_fields:
-    #         ## indexing requires -1 ints
-    #         fields = [int(i) - 1 for i in fields_checker(name_fields)]
-    #         ## make accession names, no spaces allowed
-    #         df['Accession'] = pd.Series(df[df.columns[fields[0]]], index=df.index)
-    #         for field in fields[1:]:
-    #             df.Accession += name_separator + df[df.columns[field]]
-    #         df.Accession = [i.replace(" ", "_") for i in df.Accession]    
-    #         ## check that names are unique
-    #         if not df.Accession.shape[0] == df.Accession.unique().shape[0]:
-    #             raise IPyradError("names are not unique:\n{}"
-    #                               .format(df.Accession))
-
-    #     ## backup default naming scheme
-    #     else:
-    #         if len(set(df.SampleName)) != len(df.SampleName):
-    #             accs = ("{}-{}".format(i, j) for (i, j) in zip(df.SampleName, df.Run))
-    #             df.Accession = accs
-    #         else:
-    #             df.Accession = df.SampleName
-
-    #     if dry_run:
-    #         print("\rThe following files will be written to: {}".format(self.workdir))
-    #         print("{}\n".format(df.Accession))
-    #     else:
-    #         ## iterate over and download
-    #         asyncs = []
-    #         for idx in df.index:
-
-    #             ## get args for this run
-    #             srr = df.Run[idx]
-    #             outname = df.Accession[idx]
-    #             fpath = os.path.join(self.workdir, outname + ".fastq.gz")
-
-    #             ## get paired arg
-    #             if not split_pairs:
-    #                 paired = int(df.spots_with_mates[idx])
-    #             else:
-    #                 paired = bool(split_pairs)
-
-    #             ## skip if exists and not force
-    #             skip = False
-    #             if force:
-    #                 if os.path.exists(fpath):
-    #                     os.remove(fpath)
-    #             else:
-    #                 if os.path.exists(fpath):                
-    #                     skip = True
-    #                     sys.stdout.flush()
-    #                     print("[skip] file already exists: {}".format(fpath))
-
-    #             ## single job progress bar
-    #             tidx = df.Accession.shape[0]
-    #             #if not ipyclient:
-                    
-    #             ## submit job to run
-    #             if not skip:
-    #                 args = (self, srr, outname, paired)
-    #                 if ipyclient:
-    #                     rasync = lb.apply_async(call_fastq_dump_on_SRRs, *args)
-    #                     asyncs.append(rasync)
-    #                 else:
-    #                     print("Downloading file {}/{}: {}".format(idx + 1, tidx, fpath))
-    #                     call_fastq_dump_on_SRRs(*args)
-    #                     sys.stdout.flush()
-
-    #         ## progress bar while blocking parallel
-    #         if ipyclient:
-    #             tots = df.Accession.shape[0]
-    #             printstr = ("Downloading fastq files", "")
-    #             start = time.time()
-    #             while 1:
-    #                 ready = sum([i.ready() for i in asyncs])
-    #                 progressbar(tots, ready, start, printstr)
-    #                 time.sleep(0.1)
-    #                 if tots == ready:
-    #                     print("")
-    #                     break
-    #             self._report(tots)
-
-    #             ## check for fails
-    #             for rasync in asyncs:
-    #                 if not rasync.successful():
-    #                     raise IPyradError(rasync.result())
-
-
-
-    # def _set_vdbconfig_path(self):
-
-    #     ## get original path
-    #     proc = sps.Popen(
-    #         ['vdb-config', '-p'], 
-    #         stderr=sps.STDOUT, stdout=sps.PIPE)
-    #     o, e = proc.communicate()
-    #     self._oldtmpdir = o.decode().split("root>")[1][:-2]
-
-    #     ## set new temp dir 
-    #     proc = sps.Popen(
-    #         ['vdb-config', '-s', 
-    #         'repository/user/main/public/root='+self.workdir], 
-    #         stderr=sps.STDOUT, stdout=sps.PIPE)
-    #     o, e = proc.communicate()
-    #     #print('setting tmpdir to {}'.format(self.workdir))
-
-
-    # def _restore_vdbconfig_path(self):
-    #     ## set temp dir 
-    #     if not self._oldtmpdir:
-    #         self._oldtmpdir = os.path.join(os.path.expanduser("~"), "ncbi")
-    #     proc = sps.Popen([
-    #         'vdb-config', '-s', 
-    #         'repository/user/main/public/root=' + self._oldtmpdir],
-    #         stderr=sps.STDOUT, stdout=sps.PIPE)
-    #     o, e = proc.communicate()
-    #     #print('restoring tmpdir to {}'.format(self._oldtmpdir))
-
-
 
 
 FAILED_DOWNLOAD = """

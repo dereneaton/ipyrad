@@ -23,7 +23,7 @@ import pandas as pd
 import ipyrad
 from numba import njit
 from .utils import IPyradError, clustdealer, splitalleles, chroms2ints
-from .utils import BTS, GETCONS, DCONS, bcomp
+from .utils import BTS, GETCONS, DCONS  # , bcomp
 
 
 # suppress the terrible h5 warning
@@ -41,6 +41,7 @@ class Step7:
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
         self.data.isref = bool("ref" in self.data.params.assembly_method)
+        self.data.ispair = bool("pair" in self.data.params.datatype)
 
         # returns samples in the order we want them in the outputs
         self.print_headers()
@@ -52,7 +53,7 @@ class Step7:
         self.data.snames = [i.name for i in self.samples]
         self.data.pnames, self.data.snppad = self.get_padded_names()      
 
-        # output file formats to produce
+        # output file formats to produce ('l' is required).
         self.formats = set(['l']).union(
             set(self.data.params.output_formats))
 
@@ -210,11 +211,11 @@ class Step7:
             # get nraw loci
             self.nraws = sum(1 for i in inloci if i == "//\n") // 2
 
-        # chunk to approximately 2 chunks per core
+        # chunk to approximately 4 chunks per core
         self.ncpus = len(self.ipyclient.ids)
         self.chunksize = sum([
-            (self.nraws // (self.ncpus * 2)),
-            (self.nraws % (self.ncpus * 2)),
+            (self.nraws // (self.ncpus * 4)),
+            (self.nraws % (self.ncpus * 4)),
         ])
 
 
@@ -348,11 +349,15 @@ class Step7:
             index=lrange)
         self.data.stats_dfs.s7_loci = pd.concat([covs, sums], axis=1)
 
+        # fill pis to match var
+        for i in cvar:
+            if not cpis.get(i):
+                cpis[i] = 0
+
         ## get SNP distribution       
-        maxsnps = sum(self.data.params.max_SNPs_locus)
         sumd = {}
         sump = {}
-        for i in range(maxsnps):
+        for i in range(max(cvar.keys()) + 1):
             sumd[i] = np.sum([i * cvar[i] for i in range(i + 1)])
             sump[i] = np.sum([i * cpis[i] for i in range(i + 1)])        
         self.data.stats_dfs.s7_snps = pd.concat([
@@ -372,7 +377,8 @@ class Step7:
             )[0]
         if snpmax.size:
             snpmax = snpmax.max()
-            self.data.stats_dfs.s7_snps = self.data.stats_dfs.s7_snps.loc[:snpmax]
+            self.data.stats_dfs.s7_snps = (
+                self.data.stats_dfs.s7_snps.loc[:snpmax])
 
         ## store dimensions for array building 
         self.nloci = ftable.iloc[6, 2]
@@ -568,6 +574,12 @@ def process_chunks(data, chunksize, chunkfile):
     proc = Processor(data, chunksize, chunkfile)
     proc.run()
 
+    # shorten dictionaries
+    iii = max([i for i in proc.var if proc.var[i]])
+    proc.var = {i: j for (i, j) in proc.var.items() if i <= iii}
+    iii = max([i for i in proc.pis if proc.pis[i]])
+    proc.pis = {i: j for (i, j) in proc.pis.items() if i <= iii}
+
     # write process stats to a pickle file for collating later.
     out = {
         "filters": proc.filters, 
@@ -577,6 +589,7 @@ def process_chunks(data, chunksize, chunkfile):
         "pis": proc.pis,
         "nbases": proc.nbases
     }
+
     with open(proc.outpickle, 'wb') as outpickle:
         pickle.dump(out, outpickle)
 
@@ -594,7 +607,8 @@ class Processor:
         self.data = data
         self.chunksize = chunksize
         self.chunkfile = chunkfile
-        self.isref = data.params.assembly_method == "reference"
+        self.isref = self.data.isref
+        self.ispair = self.data.ispair
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
         self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
@@ -608,12 +622,28 @@ class Processor:
         # (R1>, <R1, R2>, <R2)
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
+        # check filter settings
+        self.fmaxsnps = self.data.params.max_SNPs_locus
+        if isinstance(self.fmaxsnps, tuple):
+            self.fmaxsnps = self.fmaxsnps[0]
+        if isinstance(self.fmaxsnps, int):
+            self.fmaxsnps = 0.10  # backwards compatibility make as a float
+
+        self.fmaxhet = self.data.params.max_shared_Hs_locus
+        if isinstance(self.fmaxhet, tuple):
+            self.fmaxhet = self.fmaxhet[0]
+        if isinstance(self.fmaxhet, int):
+            self.fmaxhet = 0.5  # backwards compatibility make as a float
+
+        self.maxinds = self.data.params.max_Indels_locus
+        if isinstance(self.maxinds, tuple):
+            self.maxinds = self.maxinds[0]  # backwards compatibility
+
         # store stats on sample coverage and locus coverage
-        self.maxsnps = sum(self.data.params.max_SNPs_locus)
         self.scov = {i: 0 for i in self.data.snames}
         self.lcov = {i: 0 for i in range(1, len(self.data.snames) + 1)}
-        self.var = {i: 0 for i in range(self.maxsnps)}
-        self.pis = {i: 0 for i in range(self.maxsnps)}
+        self.var = {i: 0 for i in range(5000)}
+        self.pis = {i: 0 for i in range(5000)}
         self.nbases = 0
 
         # tmp outfile list and filename
@@ -622,104 +652,132 @@ class Processor:
         self.outpickle = self.chunkfile + '.p'
         self.outarr = self.chunkfile + '.npy'
 
+        # open a generator to the chunks
+        self.io = open(self.chunkfile, 'rb')
+        self.loci = enumerate(iter(self.io.read().split(b"//\n//\n")))
+
+        # filled in each chunk
+        self.names = []
+        self.nidxs = []
+        self.aseqs = []
+        self.useqs = []
+
+
+    def next_locus(self):
+        self.names = []
+        self.nidxs = []
+        self.aseqs = []
+        self.useqs = []
+
+        self.iloc, lines = next(self.loci)
+        lines = lines.decode().strip().split("\n")
+        for line in lines:
+            if line[0] == ">":
+                name, nidx = line[1:].rsplit("_", 1)
+                self.names.append(name)
+                self.nidxs.append(nidx)
+            else:
+                self.aseqs.append(list(line))
+                self.useqs.append(list(line.upper()))
+
+        # filter to include only samples in this assembly
+        mask = [i in self.data.snames for i in self.names]
+        self.names = np.array(self.names)[mask].tolist()
+
+        # [ref] store consens read start position as mapped to ref
+        self.nidxs = np.array(self.nidxs)[mask].tolist()
+        self.useqs = np.array(self.useqs)[mask, :].astype(bytes).view(np.uint8)
+        self.aseqs = np.array(self.aseqs)[mask, :].astype(bytes).view(np.uint8)
+
+
 
     def run(self):
 
-        # todo: this could be an iterator...
-        with open(self.chunkfile, 'rb') as infile:
-            loci = infile.read().split(b"//\n//\n")
-    
-            # iterate over loci
-            for iloc, loc in enumerate(loci):                              
-                # load names and seqs 
-                lines = loc.decode().strip().split("\n")
-                names = []
-                nidxs = []
-                aseqs = []
-                useqs = []
-                for line in lines:
-                    if line[0] == ">":
-                        name, nidx = line[1:].rsplit("_", 1)
-                        names.append(name)
-                        nidxs.append(nidx)
-                    else:
-                        aseqs.append(list(line))
-                        useqs.append(list(line.upper()))
+        while 1:
+            try:
+                self.next_locus()
+            except StopIteration:
+                break
 
-                # filter to include only samples in this assembly
-                mask = [i in self.data.snames for i in names]
-                names = np.array(names)[mask].tolist()
+            # apply filters 
+            edges = Edges(self.data, self.useqs)
+            self.edges[self.iloc] = edges.edges
 
-                # [ref] store consens read start position as mapped to ref
-                nidxs = np.array(nidxs)[mask].tolist()
-                useqs = np.array(useqs)[mask, :].astype(bytes).view(np.uint8)
-                aseqs = np.array(aseqs)[mask, :].astype(bytes).view(np.uint8)
-                
-                # apply filters
-                edges = Edges(self.data, useqs)
-                self.edges[iloc] = edges.edges
-                self.filters[iloc, 0] = self.filter_dups(names)
-                self.filters[iloc, 4] = self.filter_minsamp_pops(names)
-                self.filters[iloc, 4] += int(edges.bad)
+            # fill filter 0
+            self.filter_dups()
 
-                # bail out of locus now if it is already bad...
-                if self.filters[iloc].sum():
-                    continue
+            # fill filter 4
+            self.filter_minsamp_pops()
+            self.filters[self.iloc, 4] += int(edges.bad)
 
-                # trim edges, need to use uppered seqs for maxvar & maxshared
-                edg = self.edges[iloc]
-                ublock = useqs[:, edg[0]:edg[3]]
-                ablock = aseqs[:, edg[0]:edg[3]]
+            # bail out of locus now if it is already bad...
+            if self.filters[self.iloc].sum():
+                continue
 
-                # [denovo]: store shift of left edge start position from 
-                # alignment, this position is needed for pulling depths in VCF.
-                # [ref]: nidx string will be updated in to_locus() with edg
-                if not self.isref:
+            # trim edges, need to use uppered seqs for maxvar & maxshared
+            edg = self.edges[self.iloc]
+            ublock = self.useqs[:, edg[0]:edg[3]]
+            ablock = self.aseqs[:, edg[0]:edg[3]]
 
-                    # what is the leftmost consens edge (not -)
-                    ishift = [
-                        np.where(aseqs[i] != 45)[0].min() 
-                        for i in range(aseqs.shape[0])
-                    ]
+            # [denovo]: store shift of left edge start position from 
+            # alignment, this position is needed for pulling depths in VCF.
+            # [ref]: nidx string will be updated in to_locus() with edg
+            self.masked = None
+            if not self.isref:
 
-                    # fill nidxs with nidxs and shift info
-                    inidxs = []
-                    for idx, (i, j) in enumerate(zip(nidxs, ishift)):
-                        
-                        # add to ishift if trimmed region contains indels
-                        indshift = (aseqs[idx, j:edges.edges[0]] == 45).size
-                        inidxs.append("{}-{}".format(i, j + indshift))
-                    nidxs = inidxs
+                # what is the leftmost consens edge (not -)
+                ishift = [
+                    np.where(self.aseqs[i] != 45)[0].min() 
+                    for i in range(self.aseqs.shape[0])
+                ]
 
-                    # mask insert in denovo data
-                    aseqs[:, edges.edges[1]:edges.edges[2]] = 110
-                    useqs[:, edges.edges[1]:edges.edges[2]] = 78
+                # fill nidxs with nidxs and shift info
+                inidxs = []
+                for idx, (i, j) in enumerate(zip(self.nidxs, ishift)):
+                    
+                    # add to ishift if trimmed region contains indels
+                    indshift = (self.aseqs[idx, j:edges.edges[0]] == 45).size
+                    inidxs.append("{}-{}".format(i, j + indshift))
+                self.nidxs = inidxs
 
-                # apply filters on edge trimmed reads
-                self.filters[iloc, 1] += self.filter_maxindels(ublock)
+                # mask insert in denovo data
+                self.aseqs[:, edges.edges[1]:edges.edges[2]] = 110  # n
+                self.useqs[:, edges.edges[1]:edges.edges[2]] = 78   # N
 
-                # get snpstring on trimmed reads
-                snparr = self.get_snpsarrs(ublock)
-                self.filters[iloc, 2] = self.filter_maxvars(snparr)
+            # for is-ref we need to mask the insert between pairs
+            else:
+                if self.ispair and self.data.params.min_samples_locus > 1:
+                    inserts = np.all(ublock[1:, :] == 78, axis=0)
+                    self.masked = ublock[:, np.invert(inserts)]
 
-                # apply filters on edge trimmed reads
-                self.filters[iloc, 3] = self.filter_maxshared(ublock)
+            # apply filters on edge trimmed reads
+            self.filter_maxindels(ublock)
 
-                # store stats for the locus that passed filtering
-                if not self.filters[iloc, :].sum():
-                    # do sample and locus counters
-                    for name in names:
-                        self.scov[name] += 1
-                    self.lcov[useqs.shape[0]] += 1
+            # get snpstring on trimmed reads
+            snparr = self.get_snpsarrs(ublock)
+            self.filter_maxvars(ublock, snparr)
 
-                    # do SNP distribution counter
+            # apply filters on edge trimmed reads
+            self.filter_maxshared(ublock)
+
+            # store stats for the locus that passed filtering
+            if not self.filters[self.iloc, :].sum():
+                # do sample and locus counters
+                for name in self.names:
+                    self.scov[name] += 1
+                self.lcov[self.useqs.shape[0]] += 1
+
+                # do SNP distribution counter
+                if self.masked is None:
                     self.nbases += ublock.shape[1]
-                    self.var[snparr[:, :].sum()] += 1
-                    self.pis[snparr[:, 1].sum()] += 1                   
+                else:
+                    self.nbases += self.masked.shape[1]
+                self.var[snparr[:, :].sum()] += 1
+                self.pis[snparr[:, 1].sum()] += 1                   
 
-                    # write to .loci string
-                    locus = self.to_locus(names, nidxs, ablock, snparr, edg)
-                    self.outlist.append(locus)
+                # write to .loci string
+                locus = self.to_locus(ablock, snparr, edg)
+                self.outlist.append(locus)
 
         # write the chunk to tmpdir
         with open(self.outfile, 'w') as outchunk:
@@ -729,8 +787,11 @@ class Processor:
         mask = np.invert(self.filters.sum(axis=1).astype(np.bool_))
         np.save(self.outarr, self.edges[mask, 0])
 
+        # close file handle
+        self.io.close()
 
-    def to_locus(self, names, nidxs, block, snparr, edg):
+
+    def to_locus(self, block, snparr, edg):
         "write chunk to a loci string"
 
         # store as a list 
@@ -745,7 +806,7 @@ class Processor:
         # get nidx string for getting vcf depths to match SNPs
         if self.isref:
             # get ref position from nidxs 
-            refpos = ":".join(nidxs[0].rsplit(":", 2)[-2:])
+            refpos = ":".join(self.nidxs[0].rsplit(":", 2)[-2:])
 
             # trim ref position string for edge trims
             chrom, pos = refpos.split(":")
@@ -755,7 +816,7 @@ class Processor:
 
             # get consens hit indexes and start positions
             nidbits = []
-            for bit in nidxs[1:]:
+            for bit in self.nidxs[1:]:
                 # handle multiple consens merged
                 bkey = []
                 for cbit in bit.split(";"):
@@ -775,10 +836,10 @@ class Processor:
 
         # denovo stores start read start position in the nidx string
         else:
-            nidxstring = ",".join(nidxs)
+            nidxstring = ",".join(self.nidxs)
 
         # if not paired data (with an insert)
-        for idx, name in enumerate(names):
+        for idx, name in enumerate(self.names):
             locus.append(
                 "{}{}".format(
                     self.data.pnames[name],
@@ -789,17 +850,16 @@ class Processor:
         return "\n".join(locus)
 
 
-    def filter_dups(self, names):
-        # unames = [i.rsplit("_", 1)[0] for i in names]
-        # if len(set(unames)) < len(names):
-        if len(set(names)) < len(names):            
-            return True
+    def filter_dups(self):
+        if len(set(self.names)) < len(self.names):
+            self.filters[self.iloc, 0] = 1
         return False
 
 
-    def filter_minsamp_pops(self, names):
+    def filter_minsamp_pops(self):
         if not self.data.populations:
-            if len(names) < self.data.params.min_samples_locus:
+            if len(self.names) < self.data.params.min_samples_locus:
+                self.filters[self.iloc, 4] = 1
                 return True
             return False
 
@@ -808,88 +868,50 @@ class Processor:
             for pop in self.data.populations:
                 samps = self.data.populations[pop][1]
                 minsamp = self.data.populations[pop][0]
-                if len(set(samps).intersection(set(names))) < minsamp:
+                if len(set(samps).intersection(set(self.names))) < minsamp:
                     minfilters.append(pop)
             if any(minfilters):
+                self.filters[self.iloc, 4] = 1
                 return True
             return False
 
 
-    def filter_maxindels(self, ublock):  # 1, block2):
-        "max internal indels. Denovo vs. Ref, single versus paired."
+    def filter_maxindels(self, ublock):
+        "max size of internal indels. Denovo vs. Ref, single versus paired."
         # get max indels for read1, read2
-        maxi = self.data.params.max_Indels_locus
-        maxi = np.array(maxi).astype(np.int64)
-        inds = maxind_numba(ublock)
-        if inds > maxi[0]:
-            return True
-        return False
-        # # single-end
-        # if "pair" not in self.data.params.datatype:
-        #     inds = maxind_numba(block1)
-        #     if inds > maxi[0]:
-        #         return True
-        #     return False
-
-        # # todo: if paired then worry about splits
-        # else:
-        #     inds1 = maxind_numba(block1)
-        #     inds2 = maxind_numba(block2)            
-        #     if (inds1 > maxi[0]) or (inds2 > maxi[1]):
-        #         return True
-        #     return False
-
-
-    def filter_maxvars(self, snpstring):  # 1, snpstring2):
-        # get max snps for read1, read2
-        maxs = self.data.params.max_SNPs_locus
-        maxs = np.array(maxs).astype(np.int64)
-        if np.sum(snpstring, axis=1).sum() > maxs[0]:
-            return True
-        return False
-        # # single-end
-        # if "pair" not in self.data.params.datatype:
-        #     if np.sum(snpstring1, axis=1).sum() > maxs[0]:
-        #         return True
-        #     return False
-
-        # else:
-        #     if (np.sum(snpstring1, axis=1).sum() > maxs[0]) or \
-        #        (np.sum(snpstring2, axis=1).sum() > maxs[1]):
-        #         return True
-        #     return False
-
-
-    def filter_maxshared(self, block):  # 1, block2):
-        # blocks = np.concatenate([block1, block2], axis=1)
-        # calculate as a proportion
-        maxhet = self.data.params.max_shared_Hs_locus
-        if isinstance(maxhet, float):
-            maxhet = np.floor(maxhet * block.shape[0]).astype(np.int16)
-        elif isinstance(maxhet, int):
-            maxhet = np.int16(maxhet)
-        # unless maxhet was set to 0, use 1 as a min setting
-        if self.data.params.max_shared_Hs_locus != 0:
-            maxhet = max(1, maxhet)
-        # get max from combined block
-        if maxhet_numba(block, maxhet).max() > maxhet:
+        inds = maxind_numba(ublock)        
+        if inds > self.maxinds:
+            self.filters[self.iloc, 1] = 1
             return True
         return False
 
 
-    def get_snpsarrs(self, block):  # 1, block2):
+    def filter_maxvars(self, ublock, snpstring):
+        # mask insert area
+        if self.masked is not None:
+            if snpstring.sum() > (self.masked.shape[1] * self.fmaxsnps):
+                self.filters[self.iloc, 2] = 1
+                return True
+
+        # use full locus
+        else:
+            if snpstring.sum() > (ublock.shape[1] * self.fmaxsnps):
+                self.filters[self.iloc, 2] = 1
+                return True
+        return False
+
+
+    def filter_maxshared(self, ublock):
+        nhs = count_maxhet_numba(ublock)
+        if nhs > (self.fmaxhet * ublock.shape[0]):
+            self.filters[self.iloc, 3] = 1
+            return True
+        return False
+
+
+    def get_snpsarrs(self, block):
         snpsarr = np.zeros((block.shape[1], 2), dtype=np.bool_)
         return snpcount_numba(block, snpsarr)
-        # if "pair" not in self.data.params.datatype:
-        #     snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
-        #     snpsarr1 = snpcount_numba(block1, snpsarr1)
-        #     snpsarr2 = np.array([])
-        # else:
-        #     snpsarr1 = np.zeros((block1.shape[1], 2), dtype=np.bool_)
-        #     snpsarr1 = snpcount_numba(block1, snpsarr1)
-        #     snpsarr2 = np.zeros((block2.shape[1], 2), dtype=np.bool_)
-        #     snpsarr2 = snpcount_numba(block2, snpsarr2)
-        # return snpsarr1, snpsarr2
 
 
 ##############################################################
@@ -942,39 +964,33 @@ class Edges:
         self.edges[2] = 0
 
 
-    ### TODO: generalize to search both ends for both cutters
+
     def trim_overhangs(self):
         "fuzzy match to trim the restriction_overhangs from r1 and r2"
 
         # trim left side for overhang
-        cutter = self.data.params.restriction_overhang[0].encode()
-        cutter = np.array(list(cutter))
-        slx = slice(0, cutter.shape[0])
-        matching = self.trimseq[:, slx] == cutter
-        mask = np.where(
-            (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
-        # print(self.trimseq[:, :10])
-        # print(matching)
-        # print(mask)
-        # print(matching[mask])
-        # print("")
-        matchset = matching[mask]
-        if matchset.sum() / matchset.size >= 0.75:
-            self.trims[0] = len(cutter)
-
-        # trim right side for overhang
-        if self.data.params.restriction_overhang[1]:
-            cutter = self.data.params.restriction_overhang[1].encode()
-            cutter = bcomp(cutter)[::-1]
-            cutter = np.array(list(cutter))
-            slx = slice(
-                self.trimseq.shape[1] - cutter.shape[0], self.trimseq.shape[1])
+        for cutter in self.data.params.restriction_overhang:
+            cutter = np.array(list(cutter.encode()))
+            slx = slice(0, cutter.shape[0])
             matching = self.trimseq[:, slx] == cutter
             mask = np.where(
                 (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
             matchset = matching[mask]
             if matchset.sum() / matchset.size >= 0.75:
-                self.trims[3] = len(cutter)
+                self.trims[0] = len(cutter)
+
+            # trim right side for overhang
+            if self.data.params.restriction_overhang[1]:
+                # revcomp the cutter (string not array)
+                # cutter = np.array(list(bcomp(cutter.encode())[::-1]))
+                slx = slice(
+                    self.trimseq.shape[1] - cutter.shape[0], self.trimseq.shape[1])
+                matching = self.trimseq[:, slx] == cutter
+                mask = np.where(
+                    (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
+                matchset = matching[mask]
+                if matchset.sum() / matchset.size >= 0.75:
+                    self.trims[3] = len(cutter)
 
 
     def trim_param_trim_loci(self):
@@ -1097,7 +1113,7 @@ class Converter:
         # write from hdf5 array
         with open(self.data.outfiles.nex, 'w') as out:
             with h5py.File(self.seqs_database, 'r') as io5:
-                # load seqarray
+                # load seqarray (this could be chunked, this can be >50Gb)
                 seqarr = io5['phy'][:]
                 arrsize = io5['phymap'][-1, 2]
 
@@ -1349,9 +1365,14 @@ def write_loci_and_alleles(data):
 
         # LOCI ONLY: iterate through chunk files
         if not allel:
-            for line in iter(open(bit, 'r')):
+            indata = open(bit, 'r')
+            for line in iter(indata):
+
+                # write name, seq pairs
                 if "|\n" not in line:
                     lchunk.append(line[:pad] + line[pad:].upper())
+                
+                # write snpstring and info
                 else:
                     snpstring, nidxs = line.rsplit("|", 2)[:2]
                     if data.params.assembly_method == 'reference':
@@ -1366,10 +1387,13 @@ def write_loci_and_alleles(data):
                         lchunk.append(
                             "{}|{}|\n".format(snpstring, idx))
                     idx += 1
+            # close bit handle            
+            indata.close()
 
         # ALLELES: iterate through chunk files to write LOCI AND ALLELES
         else:
-            for line in iter(open(bit, 'r')):
+            indata = open(bit, 'r')
+            for line in iter(indata):
                 if "|\n" not in line:
                     name = line[:pad]
                     seq = line[pad:]
@@ -1399,7 +1423,7 @@ def write_loci_and_alleles(data):
                         achunk.append(
                             "{}|{}|\n".format(line.rsplit("|", 2)[0], idx))
                     idx += 1
-
+            indata.close()
             outalleles.write("".join(achunk))
         outloci.write("".join(lchunk))
     outloci.close()
@@ -1491,7 +1515,8 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         # iterate over chunkfiles
         for bit in sortbits:
             # iterate lines of file until locus endings
-            for line in iter(open(bit, 'r')):
+            indata = open(bit, 'r')
+            for line in iter(indata):
                 
                 # still filling locus until |\n
                 if "|\n" not in line:
@@ -1509,7 +1534,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     locidx += 1
 
                     # parse chrom:pos-pos                   
-                    if data.params.assembly_method == 'reference':
+                    if data.isref:
                         lineend = line.split("|")[1]
                         chrom = int(lineend.split(":")[0])
                         pos0, pos1 = 0, 0                    
@@ -1525,8 +1550,11 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                         .astype(bytes).view(np.uint8))
                     
                     # drop the site that are all N or - (e.g., pair inserts)
-                    mask = np.all((loc == 45) | (loc == 78), axis=0)
-                    loc = loc[:, ~mask]
+                    if (data.isref and data.ispair):
+                        mask = np.all(loc[1:, :] == 78, axis=0)
+                    else:
+                        mask = np.all((loc == 45) | (loc == 78), axis=0)
+                    loc = loc[:, np.invert(mask)]
                     
                     # store end position of locus for map
                     end = start + loc.shape[1]
@@ -1534,7 +1562,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                         tmparr[sidxs[name], start:end] = loc[idx]
                     mapends.append(gstart + end)
 
-                    if data.params.assembly_method == 'reference':
+                    if data.isref:
                         mapchroms.append(chrom)
                         mappos0.append(pos0)
                         mappos1.append(pos1)
@@ -1562,7 +1590,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     phy[:, gstart:gstart + trim] = tmparr[:, :trim]                       
                     phymap[mapstart:locidx, 0] = mapchroms
                     phymap[mapstart:locidx, 2] = mapends
-                    if data.params.assembly_method == 'reference':
+                    if data.isref:
                         phymap[mapstart:locidx, 3] = mappos0
                         phymap[mapstart:locidx, 4] = mappos1                       
                     mapstart = locidx
@@ -1575,6 +1603,9 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     tmparr = np.zeros((ntaxa, maxsize + 5000), dtype=np.uint8)
                     gstart += trim
                     start = end = 0
+
+            # close bit handle
+            indata.close()
                     
         # trim final chunk tmparr to size
         trim = np.where(tmparr != 0)[1]
@@ -1594,7 +1625,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         mapend = mapstart + len(mapends) + 1
         phymap[mapstart:mapend, 0] = mapchroms
         phymap[mapstart:mapend, 2] = mapends
-        if data.params.assembly_method == 'reference':        
+        if data.isref:
             phymap[mapstart:mapend, 3] = mappos0
             phymap[mapstart:mapend, 4] = mappos1
         phymap[1:, 1] = phymap[:-1, 2]
@@ -1669,7 +1700,8 @@ def fill_snp_array(data, ntaxa, nsnps):
         # iterate over chunkfiles
         for bit in sortbits:
             # iterate lines of file until locus endings
-            for line in iter(open(bit, 'r')):
+            indata = open(bit, 'r')
+            for line in iter(indata):
                 
                 # while still filling locus until |\n store name,seq in dict
                 if "|\n" not in line:
@@ -1722,7 +1754,10 @@ def fill_snp_array(data, ntaxa, nsnps):
                     # reset locus
                     start = end
                     tmploc = {}
-                        
+
+            # close file handle
+            indata.close()
+
         # fill missing with 78 (N)
         tmparr[tmparr == 0] = 78
 
@@ -1812,6 +1847,7 @@ class VCF_filler:
         with h5py.File(data.snps_database, 'r') as io5:
             self.snpsmap = io5['snpsmap'][:, [0, 2]]   
 
+        # TODO: scaffs should be ordered (right?) so no need to load it all!
         # All catgs for this sample (this could be done more mem efficient...)
         with h5py.File(sample.files.database, 'r') as io5:
             self.catgs = io5['catg'][:]
@@ -1993,9 +2029,11 @@ def build_vcf(data, chunksize=1000):
             else:
                 genos = io5['genos'][chunk:chunk + chunksize, :, :]
                 snames = data.snames
-                chroms = ["locus_{}".format(i - 1) for i in snpmap[:, 0]]
-                ids = ['.'] * genos.shape[0]
-
+                chroms = ["RAD_{}".format(i - 1) for i in snpmap[:, 0]]
+                ids = [
+                    "loc{}_pos{}".format(i - 1, j) for (i, j) 
+                    in snpmap[:, [0, 2]]
+                ]
                 # denovo based positions: pos on locus. tested. works. right.
                 pos = snpmap[:, 2]
                 # offset = 0
@@ -2068,7 +2106,8 @@ def build_vcf(data, chunksize=1000):
 
             # concat and order columns correctly
             infocols = pd.concat([df_pos, colinfo, colform], axis=1)
-            infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]]
+            infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT",
+                "QUAL", "FILTER", "INFO", "FORMAT"]]
             arr = pd.concat([infocols, df_depth], axis=1)
 
             # debugging                       
@@ -2099,7 +2138,7 @@ def build_vcf(data, chunksize=1000):
 # -------------------------------------------------------------
 @njit
 def maxind_numba(block):
-    "count the max number of internal indels"
+    "count the max size of internal indels"
     inds = 0
     for row in range(block.shape[0]):
         where = np.where(block[row] != 45)[0]
@@ -2167,14 +2206,14 @@ def snpcount_numba(block, snpsarr):
 
 
 @njit
-def maxhet_numba(block, maxhet):
+def count_maxhet_numba(block):
     counts = np.zeros(block.shape[1], dtype=np.int16)
     for fidx in range(block.shape[1]):
         subcount = 0
         for ambig in AMBIGARR:
             subcount += np.sum(block[:, fidx] == ambig)
         counts[fidx] = subcount
-    return counts
+    return counts.max()
 
 
 @njit
@@ -2249,6 +2288,7 @@ def get_fai_values(data, value):
         sep="\t",
     )
     return fai[value].values  
+
 
 
 AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
@@ -2330,134 +2370,3 @@ VCFHEADER = """\
 ##FORMAT=<ID=CATG,Number=1,Type=String,Description="Base Counts (CATG)">
 """
 
-
-### DEPRECATED
-# def fill_vcf_depths(data, nsnps, sample):
-#     "fills an array with SNP depths for VCF file."
-    
-#     # array to store vcfdepths for this taxon
-#     vcfd = np.zeros((nsnps, 4), dtype=np.uint32)
-    
-#     # load snpsmap with locations of SNPS on trimmed loci
-#     with h5py.File(data.snps_database, 'r') as io5:
-#         snpsmap = io5['snpsmap'][:, [0, 2]]   
-
-#     # load catgs for this sample (this could be done more mem efficient...)
-#     with h5py.File(sample.files.database, 'r') as io5:
-#         catgs = io5['catg'][:]
-        
-#     # loci chunk files to be streamed through (these are already trimmed)
-#     locibits = glob.glob(os.path.join(data.tmpdir, "chunk*.loci"))
-#     sortbits = sorted(locibits, key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
-
-#     # counters
-#     locidx = 0
-#     snpidx = 0
-#     names = []
-#     seqs = []
-
-#     # iterate through loci to incorporate trims and indels to get catgs
-#     for locbit in sortbits:
-
-#         # counter for this chunk
-#         localidx = 0
-
-#         # get edge trim array for this loc chunk
-#         arrfilt = np.load(locbit.split(""))
-
-#         # load trim array with left trim values of loci
-#         trim = np.load(indbit)
-#         with open(locbit, 'r') as inloci:
-#             for line in iter(inloci):
-
-#                 # continue filling locus
-#                 if "|\n" not in line:
-#                     name, seq = line.split()
-#                     names.append(name)
-#                     seqs.append(seq)
-
-#                 # locus filled, process it.
-#                 else:
-#                     # get snps for this locus
-#                     locsnps = snpsmap[snpsmap[:, 0] == locidx + 1]
-                        
-#                     # is this sample in the locus?
-#                     if sample.name in names:
-                        
-#                         # store catg idx
-#                         sidxs = [i for i in line.rsplit("|", 2)[1].split(',')]
-#                         if data.isref:
-#                             r0, r1 = sidxs[0].rsplit(":", 1)[-1].split("-")
-#                             rlen = int(r1) - int(r0)
-#                             sidxs = [0] + [i for i in sidxs[1:]]
-#                         else:
-#                             rlen = len(seqs[0])
-#                             sidxs = [i for i in sidxs]
-#                         nidx = names.index(sample.name)
-#                         sidx = sidxs[nidx]
-#                         seq = seqs[nidx]
-
-#                         # get trim for this locus
-#                         itrim = trim[localidx]
-
-#                         # enter snps into vcfd
-#                         if locsnps.size:
-#                             seqarr = np.array(list(seq))
-#                             inds = np.where(seqarr == "-")[0]
-#                             for snp in locsnps[:, 1]:
-#                                 # how many indels come before this position?
-#                                 shift = np.sum(inds < snp)
-
-#                                 # skip depths for indel sites, skips it for inds counter 
-#                                 if seqarr[snp] != "-":
-                                    
-#                                     # get strings from database tail (e.g., 3:0, or 3:0-4:90)
-#                                     sids = sidx.split("-")
-                                    
-#                                     # convert to tuple pairs (cidx, startpos)
-#                                     # locus start positions
-#                                     tids = [tuple(int(i) for i in i.split(":")) for i in sids]
-
-#                                     # all start positions in a list, append refend
-#                                     inits = [i[1] for i in tids] + [rlen]
-                                    
-#                                     # for each (cidx, pos), fill if snppos is in start:nextstart
-#                                     for tidx, tid in enumerate(tids):
-                                        
-#                                         # position of snp on locus depends on the locus edge trim
-#                                         isnp = snp + itrim
-                                        
-#                                         # find this position in the consens read
-#                                         id1 = isnp - tid[1]
-#                                         sid1 = id1 - shift
-#                                         spos = isnp - inits[tidx]  # inits[tidx] + isnp
-#                                         send = itrim + inits[tidx + 1]     # inits[tidx + 1] + isnp
-
-#                                         # if pos falls in this consens read then enter it
-#                                         try:
-#                                             if (sid1 >= spos) and (sid1 < send):
-#                                                 vcfd[snpidx] += (
-#                                                     catgs[tid[0], sid1]
-#                                                 )
-#                                         except IndexError:
-#                                             pass
-#                                             #print(locidx, tid[0], sid1, tidx, '/', len(tids), snpidx)
-#                                 snpidx += 1
-
-#                     # sample not in this locus still advance SNP counter
-#                     else:
-#                         snpidx += locsnps.shape[0]
-
-#                     # advance counter and reset dict
-#                     locidx += 1
-#                     localidx += 1
-#                     names = []
-#                     seqs = []
-
-#     # write vcfd to file
-#     vcfout = os.path.join(data.tmpdir, sample.name + ".depths.hdf5")
-#     with h5py.File(vcfout, 'w') as io5:
-#         io5.create_dataset(
-#             name="depths",
-#             data=vcfd,
-#         )
