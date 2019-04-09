@@ -588,6 +588,7 @@ class Processor:
         """
         Takes a chunk of aligned loci and (1) applies filters to it; 
         (2) gets edges, (3) builds snpstring, (4) returns chunk and stats.
+        (5) writes 
         """
         # init data
         self.data = data
